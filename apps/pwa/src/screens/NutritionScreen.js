@@ -133,7 +133,7 @@ export function NutritionScreenBase({ navigation }) {
 
   const { data: assignmentData, isLoading: loadingAssignment } = useQuery({
     queryKey: ['nutrition', 'assignment', userId],
-    queryFn: () => apiClient.get('/api/v1/nutrition/assignment').then((res) => res?.data ?? res),
+    queryFn: () => apiClient.get('/nutrition/assignment').then((res) => res?.data ?? res),
     enabled: !!userId,
     staleTime: STALE_TIMES.programStructure,
     gcTime: GC_TIMES.programStructure,
@@ -146,7 +146,7 @@ export function NutritionScreenBase({ navigation }) {
     queryKey: ['nutrition', 'diary', userId, diaryDate],
     queryFn: () =>
       apiClient
-        .get('/api/v1/nutrition/diary', { params: { date: diaryDate } })
+        .get('/nutrition/diary', { params: { date: diaryDate } })
         .then((res) => res?.data ?? res ?? []),
     enabled: !!userId && !!diaryDate,
     staleTime: STALE_TIMES.nutritionDiary,
@@ -154,7 +154,7 @@ export function NutritionScreenBase({ navigation }) {
   });
 
   const addDiaryMutation = useMutation({
-    mutationFn: (entry) => apiClient.post('/api/v1/nutrition/diary', entry),
+    mutationFn: (entry) => apiClient.post('/nutrition/diary', entry),
     onSuccess: () => {
       activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
       closeLogModal();
@@ -167,7 +167,7 @@ export function NutritionScreenBase({ navigation }) {
   });
 
   const deleteDiaryMutation = useMutation({
-    mutationFn: (entryId) => apiClient.delete(`/api/v1/nutrition/diary/${entryId}`),
+    mutationFn: (entryId) => apiClient.delete(`/nutrition/diary/${entryId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     },

@@ -1,31 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
-import { useToast } from '../../contexts/ToastContext';
-import Modal from '../Modal';
-import Input from '../Input';
-import {
-  GlowingEffect,
-  SkeletonCard,
-  AnimatedList,
-  NumberTicker,
-  ProgressRing,
-  InlineError,
-  FullScreenError,
-} from '../ui';
+import { GlowingEffect, AnimatedList, NumberTicker, ProgressRing } from '../ui';
+import PanelShell from './PanelShell';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
 
 function MacroRing({ label, grams, total, color }) {
   const percent = total > 0 ? Math.round((grams / total) * 100) : 0;
   return (
-    <div className="ns-macro-ring">
-      <ProgressRing percent={percent} size={64} strokeWidth={5} color={color} />
-      <div className="ns-macro-ring-info">
-        <span className="ns-macro-ring-label">{label}</span>
-        <span className="ns-macro-ring-grams">{Number(grams || 0).toFixed(0)} g</span>
-      </div>
+    <div className="bib-nutri-ring">
+      <ProgressRing percent={percent} size={48} strokeWidth={4} color={color} />
+      <span className="bib-nutri-ring-label">{label}</span>
+      <span className="bib-nutri-ring-grams">{Number(grams || 0).toFixed(0)} g</span>
     </div>
   );
 }
@@ -33,14 +21,9 @@ function MacroRing({ label, grams, total, color }) {
 export default function RecetasPanel({ searchQuery = '' }) {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { showToast } = useToast();
   const creatorId = user?.uid ?? '';
-  const queryClient = useQueryClient();
 
   const [selectedId, setSelectedId] = useState(null);
-  const [isNewMealModalOpen, setIsNewMealModalOpen] = useState(false);
-  const [newMealName, setNewMealName] = useState('');
-  const [newMealCreating, setNewMealCreating] = useState(false);
 
   const { data: meals = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.nutrition.meals(creatorId),
@@ -77,211 +60,123 @@ export default function RecetasPanel({ searchQuery = '' }) {
 
   const totalMacroG = macros ? macros.protein + macros.carbs + macros.fat : 0;
 
-  const handleCreateMealAndOpen = async () => {
-    const name = newMealName.trim();
-    if (!name || !creatorId) return;
-    setNewMealCreating(true);
-    try {
-      const mealId = await nutritionDb.createMeal(creatorId, { name, items: [] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meals(creatorId) });
-      setIsNewMealModalOpen(false);
-      setNewMealName('');
-      navigate(`/nutrition/meals/${mealId}`);
-    } catch (e) {
-      showToast(e?.message || 'No pudimos crear la receta. Intenta de nuevo.', 'error');
-    } finally {
-      setNewMealCreating(false);
-    }
-  };
-
-  if (isLoading && !meals.length) {
-    return (
-      <div className="ns-list-skeletons">
-        {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
-      </div>
-    );
-  }
-
-  if (isError) {
-    return <FullScreenError title="No pudimos cargar tus recetas" message="Revisa tu conexion e intenta de nuevo." onRetry={() => window.location.reload()} />;
-  }
-
   return (
-    <>
-      <div className="ns-panels">
-        <aside className="ns-panel-left">
-          <div className="ns-list">
-            {filtered.length === 0 ? (
-              <div className="ns-list-empty">
-                {searchQuery ? (
-                  <p>Sin resultados para «{searchQuery}»</p>
-                ) : (
-                  <p>Tu biblioteca de recetas esta vacia. Crea tu primera receta y empieza a armar planes.</p>
-                )}
-              </div>
-            ) : (
-              <AnimatedList stagger={50}>
-                {filtered.map((item) => {
-                  const isSelected = selectedId === item.id;
-                  const kcal = Math.round((item.items || []).reduce((s, i) => s + (Number(i.calories) || 0), 0));
-                  return (
-                    <div
-                      key={item.id}
-                      className={`ns-list-card ${isSelected ? 'ns-list-card--selected' : ''}`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setSelectedId(isSelected ? null : item.id)}
-                      onKeyDown={(e) => e.key === 'Enter' && setSelectedId(isSelected ? null : item.id)}
-                      style={{ position: 'relative' }}
-                    >
-                      <GlowingEffect spread={18} borderWidth={1} />
-                      <span className="ns-list-card-name">{item.name}</span>
-                      {kcal > 0 && <span className="ns-list-card-kcal">{kcal} kcal</span>}
-                      <span className="ns-list-card-meta">
-                        {(item.items ?? []).length} alimento{(item.items ?? []).length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                  );
-                })}
-              </AnimatedList>
-            )}
-          </div>
-        </aside>
+    <PanelShell
+      isLoading={isLoading && !meals.length}
+      isError={isError}
+      isEmpty={!meals.length && !isLoading}
+      emptyTitle="Tu biblioteca de recetas esta vacia"
+      emptySub="Crea tu primera receta y empieza a armar planes."
+      emptyCta="+ Crear receta"
+      onCta={() => navigate('/nutrition/meals/new')}
+      onRetry={() => window.location.reload()}
+    >
+      <div className="bib-nutri-master-detail">
+        <div className="bib-nutri-left">
+          {filtered.length === 0 ? (
+            <div className="bib-nutri-list-empty">
+              <p>{searchQuery ? `Sin resultados para «${searchQuery}»` : 'Sin recetas.'}</p>
+            </div>
+          ) : (
+            <AnimatedList stagger={50}>
+              {filtered.map((item) => {
+                const isSelected = selectedId === item.id;
+                const kcal = Math.round((item.items || []).reduce((s, i) => s + (Number(i.calories) || 0), 0));
+                return (
+                  <div
+                    key={item.id}
+                    className={`bib-card bib-nutri-list-card ${isSelected ? 'bib-card--selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedId(isSelected ? null : item.id)}
+                    onKeyDown={(e) => e.key === 'Enter' && setSelectedId(isSelected ? null : item.id)}
+                  >
+                    <GlowingEffect spread={18} borderWidth={1} />
+                    <span className="bib-nutri-card-name">{item.name}</span>
+                    {kcal > 0 && <span className="bib-nutri-card-kcal">{kcal} kcal</span>}
+                    <span className="bib-nutri-card-meta">
+                      {(item.items ?? []).length} alimento{(item.items ?? []).length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </AnimatedList>
+          )}
+        </div>
 
-        <section className="ns-panel-center">
+        <div className="bib-nutri-right">
           {!selectedId ? (
-            <div className="ns-detail-empty">
-              <div className="ns-detail-empty-icon">
+            <div className="bib-detail-empty">
+              <div className="bib-detail-empty-icon">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden>
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-8v4h4l-5 8z" fill="rgba(255,255,255,0.15)"/>
                 </svg>
               </div>
-              <p className="ns-detail-empty-text">Selecciona una receta para ver sus detalles</p>
+              <p className="bib-detail-empty-text">Selecciona una receta para ver sus detalles</p>
             </div>
           ) : detailLoading ? (
-            <div className="ns-detail-skeletons">
-              <SkeletonCard /><SkeletonCard /><SkeletonCard />
+            <div className="bib-nutri-detail-skeletons">
+              <div className="bib-skeleton-list" style={{ gap: 12 }}>
+                {[1, 2, 3].map((i) => <div key={i} className="bib-card" style={{ height: 48 }} />)}
+              </div>
             </div>
           ) : !selectedDetail ? (
-            <div className="ns-detail-empty">
-              <p className="ns-detail-empty-text">No se encontró el elemento seleccionado.</p>
+            <div className="bib-detail-empty">
+              <p className="bib-detail-empty-text">No se encontró el elemento seleccionado.</p>
             </div>
           ) : (
-            <div className="ns-detail" key={selectedId}>
-              <div className="ns-detail-header" style={{ position: 'relative' }}>
-                <GlowingEffect spread={24} borderWidth={1} />
-                <h2 className="ns-detail-title">{selectedDetail.name}</h2>
-                {selectedDetail.description && <p className="ns-detail-desc">{selectedDetail.description}</p>}
-                <button
-                  type="button"
-                  className="ns-detail-edit-btn"
-                  onClick={() => navigate(`/nutrition/meals/${selectedId}`)}
-                >
-                  Editar
-                </button>
+            <>
+              <div className="bib-nutri-detail" key={selectedId}>
+                <div className="bib-nutri-detail-header">
+                  <GlowingEffect spread={24} borderWidth={1} />
+                  <h2 className="bib-nutri-detail-title">{selectedDetail.name}</h2>
+                  {selectedDetail.description && <p className="bib-nutri-detail-desc">{selectedDetail.description}</p>}
+                  <button
+                    type="button"
+                    className="bib-nutri-edit-btn"
+                    onClick={() => navigate(`/nutrition/meals/${selectedId}`)}
+                  >
+                    Editar
+                  </button>
+                </div>
+                <div className="bib-nutri-items">
+                  {(selectedDetail.items ?? []).length === 0 ? (
+                    <p className="bib-nutri-no-items">Esta receta no tiene alimentos todavía.</p>
+                  ) : (
+                    <AnimatedList stagger={40}>
+                      {(selectedDetail.items ?? []).map((item, i) => (
+                        <div key={i} className="bib-nutri-item">
+                          <GlowingEffect spread={14} borderWidth={1} />
+                          <span className="bib-nutri-item-name">{item.name}</span>
+                          <span className="bib-nutri-item-sub">{item.calories ?? 0} kcal</span>
+                        </div>
+                      ))}
+                    </AnimatedList>
+                  )}
+                </div>
               </div>
-              <div className="ns-detail-items">
-                {(selectedDetail.items ?? []).length === 0 ? (
-                  <p className="ns-detail-no-items">Esta receta no tiene alimentos todavía.</p>
+
+              <div className="bib-nutri-macros">
+                {macros ? (
+                  <>
+                    <div className="bib-nutri-cal-display">
+                      <span className="bib-nutri-cal-value"><NumberTicker value={Math.round(macros.calories)} duration={900} /></span>
+                      <span className="bib-nutri-cal-unit">kcal</span>
+                    </div>
+                    <div className="bib-nutri-rings">
+                      <MacroRing label="Prot" grams={macros.protein} total={totalMacroG} color="rgba(100,200,150,0.85)" />
+                      <MacroRing label="Carbs" grams={macros.carbs} total={totalMacroG} color="rgba(100,160,240,0.85)" />
+                      <MacroRing label="Grasa" grams={macros.fat} total={totalMacroG} color="rgba(240,160,80,0.85)" />
+                    </div>
+                  </>
                 ) : (
-                  <AnimatedList stagger={40}>
-                    {(selectedDetail.items ?? []).map((item, i) => (
-                      <div key={i} className="ns-detail-item" style={{ position: 'relative' }}>
-                        <GlowingEffect spread={14} borderWidth={1} />
-                        <span className="ns-detail-item-name">{item.name}</span>
-                        <span className="ns-detail-item-kcal">{item.calories ?? 0} kcal</span>
-                      </div>
-                    ))}
-                  </AnimatedList>
+                  <p className="bib-nutri-macros-empty">Sin datos de macros</p>
                 )}
               </div>
-            </div>
+            </>
           )}
-        </section>
-
-        <aside className="ns-panel-right">
-          <div className="ns-macros-panel" style={{ position: 'relative' }}>
-            <GlowingEffect spread={22} borderWidth={1} />
-            {!selectedId ? (
-              <p className="ns-macros-empty">Selecciona un elemento para ver los macros</p>
-            ) : detailLoading ? (
-              <div className="ns-macros-loading"><SkeletonCard /></div>
-            ) : macros ? (
-              <>
-                <div className="ns-calories-display">
-                  <span className="ns-calories-value"><NumberTicker value={Math.round(macros.calories)} duration={900} /></span>
-                  <span className="ns-calories-unit">kcal</span>
-                </div>
-                <div className="ns-rings">
-                  <MacroRing label="Prot" grams={macros.protein} total={totalMacroG} color="rgba(100,200,150,0.85)" />
-                  <MacroRing label="Carbs" grams={macros.carbs} total={totalMacroG} color="rgba(100,160,240,0.85)" />
-                  <MacroRing label="Grasa" grams={macros.fat} total={totalMacroG} color="rgba(240,160,80,0.85)" />
-                </div>
-                <div className="ns-macro-totals">
-                  <div className="ns-macro-total-row">
-                    <span className="ns-macro-total-dot ns-macro-total-dot--protein" />
-                    <span className="ns-macro-total-name">Proteína</span>
-                    <span className="ns-macro-total-val">{Number(macros.protein).toFixed(0)} g</span>
-                  </div>
-                  <div className="ns-macro-total-row">
-                    <span className="ns-macro-total-dot ns-macro-total-dot--carbs" />
-                    <span className="ns-macro-total-name">Carbohidratos</span>
-                    <span className="ns-macro-total-val">{Number(macros.carbs).toFixed(0)} g</span>
-                  </div>
-                  <div className="ns-macro-total-row">
-                    <span className="ns-macro-total-dot ns-macro-total-dot--fat" />
-                    <span className="ns-macro-total-name">Grasa</span>
-                    <span className="ns-macro-total-val">{Number(macros.fat).toFixed(0)} g</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="ns-macros-empty">Sin datos de macros disponibles</p>
-            )}
-          </div>
-        </aside>
-      </div>
-
-      <Modal
-        isOpen={isNewMealModalOpen}
-        onClose={() => setIsNewMealModalOpen(false)}
-        title="Nueva receta"
-        containerClassName="propagate-modal-container"
-        contentClassName="propagate-modal-content-wrapper"
-      >
-        <div className="propagate-modal-content new-meal-modal-content">
-          <div className="propagate-modal-layout propagate-modal-layout-single new-meal-modal-layout">
-            <div className="new-meal-modal-field">
-              <label className="propagate-option-title" htmlFor="bib-new-meal-name">Nombre</label>
-              <Input
-                id="bib-new-meal-name"
-                value={newMealName}
-                onChange={(e) => setNewMealName(e.target.value)}
-                placeholder="ej. Desayuno proteico"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (newMealName.trim() && creatorId) handleCreateMealAndOpen();
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <div className="propagate-modal-footer">
-            <button type="button" className="propagate-modal-btn propagate-modal-btn-dont" onClick={() => setIsNewMealModalOpen(false)}>Cancelar</button>
-            <button
-              type="button"
-              className="propagate-modal-btn propagate-modal-btn-propagate"
-              onClick={handleCreateMealAndOpen}
-              disabled={!newMealName.trim() || newMealCreating}
-            >
-              {newMealCreating ? 'Creando…' : 'Crear'}
-            </button>
-          </div>
         </div>
-      </Modal>
-    </>
+      </div>
+    </PanelShell>
   );
 }
-
-RecetasPanel.openCreateModal = null;

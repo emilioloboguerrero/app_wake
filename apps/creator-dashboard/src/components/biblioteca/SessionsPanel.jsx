@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -14,24 +14,89 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
-import { GlowingEffect, SkeletonCard, FullScreenError } from '../ui';
+import { GlowingEffect, MenuDropdown } from '../ui';
+import MuscleSilhouetteSVG from '../MuscleSilhouetteSVG';
+import { extractAccentFromImage } from '../events/eventFieldComponents';
+import PanelShell from './PanelShell';
+import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import libraryService from '../../services/libraryService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
+import '../../screens/ProgramasScreen.css';
 
-const GripIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="9"  cy="5"  r="1.5" fill="currentColor" />
-    <circle cx="15" cy="5"  r="1.5" fill="currentColor" />
-    <circle cx="9"  cy="12" r="1.5" fill="currentColor" />
-    <circle cx="15" cy="12" r="1.5" fill="currentColor" />
-    <circle cx="9"  cy="19" r="1.5" fill="currentColor" />
-    <circle cx="15" cy="19" r="1.5" fill="currentColor" />
-  </svg>
-);
+function SessionsPanelSkeleton() {
+  return (
+    <div className="pgs-list">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div
+          key={i}
+          className="pgs-card"
+          style={{ pointerEvents: 'none', animation: 'none' }}
+        >
+          {/* Image side */}
+          <div className="pgs-card__image-side">
+            <ShimmerSkeleton width="100%" height="100%" borderRadius="0" />
+          </div>
+          {/* Content */}
+          <div className="pgs-card__content" style={{ gap: 10 }}>
+            <ShimmerSkeleton width="55%" height="18px" borderRadius="6px" />
+            <ShimmerSkeleton width="35%" height="13px" borderRadius="4px" />
+          </div>
+          {/* Muscle heatmap placeholder */}
+          <div className="pgs-card__muscle-heatmap" style={{ opacity: 0.15 }}>
+            <ShimmerSkeleton width="80px" height="140px" borderRadius="8px" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-function SortableSessionCard({ session, onNavigate }) {
+function computeMuscleVolumes(exercises, libraryDataCache = {}) {
+  if (!exercises?.length) return null;
+  const muscleSets = {};
+  exercises.forEach((ex) => {
+    const setCount = ex.sets?.length || 1;
+
+    // Try to get muscle_activation from library data via exercise's primary reference
+    let muscleActivation = null;
+    if (ex.primary && typeof ex.primary === 'object') {
+      const entries = Object.entries(ex.primary);
+      if (entries.length > 0) {
+        const [libraryId, exerciseName] = entries[0];
+        const library = libraryDataCache[libraryId];
+        if (library?.[exerciseName]) {
+          muscleActivation = library[exerciseName].muscle_activation;
+        }
+      }
+    }
+
+    if (muscleActivation && typeof muscleActivation === 'object') {
+      // Percentage-weighted activation from library exercise data
+      Object.entries(muscleActivation).forEach(([muscle, pct]) => {
+        const num = typeof pct === 'string' ? parseFloat(pct) : pct;
+        if (!Number.isNaN(num) && num > 0) {
+          muscleSets[muscle] = (muscleSets[muscle] || 0) + setCount * (num / 100);
+        }
+      });
+    } else {
+      // Fallback: equal weight for all primaryMuscles
+      const muscles = ex.primaryMuscles || [];
+      muscles.forEach((m) => {
+        muscleSets[m] = (muscleSets[m] || 0) + setCount;
+      });
+    }
+  });
+  const max = Math.max(...Object.values(muscleSets), 1);
+  const normalized = {};
+  Object.entries(muscleSets).forEach(([m, v]) => {
+    normalized[m] = v / max;
+  });
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function SortableSessionCard({ session, onNavigate, onDelete, index, libraryDataCache }) {
   const {
     attributes,
     listeners,
@@ -41,6 +106,16 @@ function SortableSessionCard({ session, onNavigate }) {
     isDragging,
   } = useSortable({ id: session.id });
 
+  const [accent, setAccent] = useState(null);
+
+  useEffect(() => {
+    if (!session.image_url) return;
+    return extractAccentFromImage(session.image_url, setAccent);
+  }, [session.image_url]);
+
+  const accentRgb = accent ? `${accent[0]}, ${accent[1]}, ${accent[2]}` : null;
+  const titleColor = accentRgb ? `rgb(${accentRgb})` : 'var(--text-primary, #fff)';
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -48,57 +123,84 @@ function SortableSessionCard({ session, onNavigate }) {
     zIndex: isDragging ? 10 : 'auto',
   };
 
-  const exerciseCount = session.exercises?.length ?? 0;
+  const exerciseCount = session.exercises?.length || session.exerciseCount || 0;
+  const muscleVolumes = useMemo(() => computeMuscleVolumes(session.exercises, libraryDataCache), [session.exercises, libraryDataCache]);
+
+  const menuItems = [
+    { label: 'Eliminar', onClick: () => onDelete?.(session), danger: true },
+  ];
 
   return (
     <div
       ref={setNodeRef}
-      style={style}
-      className="lib-session-card"
+      style={{ ...style, '--card-index': index }}
+      className="pgs-card"
+      role="button"
+      tabIndex={0}
       onClick={() => onNavigate(session.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onNavigate(session.id); }}
+      {...attributes}
+      {...listeners}
     >
-      <GlowingEffect spread={24} borderWidth={1} />
-      <div className="lib-session-card-top">
-        <button
-          className="lib-drag-handle"
-          {...attributes}
-          {...listeners}
-          onClick={(e) => e.stopPropagation()}
-          aria-label="Arrastrar sesión"
-        >
-          <GripIcon />
-        </button>
-        <h3 className="lib-session-title">
-          {session.title || `Sesión ${session.id?.slice(0, 6)}`}
-        </h3>
-        <span className="lib-count-badge">
-          {exerciseCount} {exerciseCount === 1 ? 'ejercicio' : 'ejercicios'}
-        </span>
+      <GlowingEffect spread={24} proximity={60} inactiveZone={0.6} />
+
+      <div className="pgs-card__image-side">
+        {session.image_url ? (
+          <>
+            <img
+              src={session.image_url}
+              alt={session.title || 'Sesión'}
+              className="pgs-card__img"
+              loading="lazy"
+            />
+            <div className="pgs-card__img-gradient" />
+          </>
+        ) : (
+          <div className="pgs-card__placeholder">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 22v-7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        )}
       </div>
-      {session.muscleGroups?.length > 0 && (
-        <div className="lib-session-muscles">
-          {session.muscleGroups.slice(0, 3).map((mg) => (
-            <span key={mg} className="lib-muscle-pill lib-muscle-pill--dim">{mg}</span>
-          ))}
+
+      <div className="pgs-card__content">
+        <div className="pgs-card__top-row">
+          <h3 className="pgs-card__title" style={{ color: titleColor }}>{session.title || 'Sin nombre'}</h3>
         </div>
-      )}
+
+        {exerciseCount > 0 && (
+          <span className="pgs-stat__label">{exerciseCount} ejercicio{exerciseCount !== 1 ? 's' : ''}</span>
+        )}
+      </div>
+
+      <div className="pgs-card__muscle-heatmap">
+        <MuscleSilhouetteSVG muscleVolumes={muscleVolumes || {}} accentRgb={accent} />
+      </div>
+
+      <div className="pgs-card__menu-col" onClick={(e) => e.stopPropagation()}>
+        <MenuDropdown
+          trigger={
+            <button type="button" className="pgs-card__menu-btn" aria-label="Opciones">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+              </svg>
+            </button>
+          }
+          items={menuItems}
+        />
+      </div>
     </div>
   );
 }
 
-function SkeletonGrid({ count = 6 }) {
-  return (
-    <div className="lib-skeleton-grid" style={{ '--lib-grid-cols': 2 }}>
-      {Array.from({ length: count }).map((_, i) => (
-        <SkeletonCard key={i} />
-      ))}
-    </div>
-  );
-}
-
-export default function SessionsPanel({ searchQuery = '' }) {
+export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [sessionOrder, setSessionOrder] = useState(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
@@ -109,6 +211,36 @@ export default function SessionsPanel({ searchQuery = '' }) {
     enabled: !!user?.uid,
     ...cacheConfig.programStructure,
   });
+
+  // Collect unique library IDs referenced by session exercises for muscle_activation lookup
+  const libraryIds = useMemo(() => {
+    const ids = new Set();
+    rawSessions.forEach((session) => {
+      (session.exercises || []).forEach((ex) => {
+        if (ex.primary && typeof ex.primary === 'object') {
+          Object.keys(ex.primary).forEach((libId) => { if (libId) ids.add(libId); });
+        }
+      });
+    });
+    return Array.from(ids);
+  }, [rawSessions]);
+
+  // Fetch exercise libraries to get muscle_activation data
+  const libraryQueries = useQueries({
+    queries: libraryIds.map((libId) => ({
+      queryKey: ['library', 'detail', libId],
+      queryFn: () => libraryService.getLibraryById(libId),
+      ...cacheConfig.programStructure,
+    })),
+  });
+
+  const libraryDataCache = useMemo(() => {
+    const cache = {};
+    libraryIds.forEach((id, i) => {
+      if (libraryQueries[i]?.data) cache[id] = libraryQueries[i].data;
+    });
+    return cache;
+  }, [libraryIds, libraryQueries]);
 
   const sessions = useMemo(() => {
     if (sessionOrder && sessionOrder.length === rawSessions.length) {
@@ -124,6 +256,16 @@ export default function SessionsPanel({ searchQuery = '' }) {
     [sessions, q]
   );
 
+  const deleteMutation = useMutation({
+    mutationFn: (sessionId) => libraryService.deleteLibrarySession(user?.uid, sessionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) }),
+  });
+
+  const handleDeleteSession = useCallback((session) => {
+    if (!window.confirm(`Eliminar "${session.title || 'esta sesión'}"? Esta acción no se puede deshacer.`)) return;
+    deleteMutation.mutate(session.id);
+  }, [deleteMutation]);
+
   const handleDragEnd = useCallback((event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -133,31 +275,34 @@ export default function SessionsPanel({ searchQuery = '' }) {
     setSessionOrder(arrayMove(ids, from, to));
   }, [sessions]);
 
-  if (isLoading) return <SkeletonGrid />;
-  if (isError) return <FullScreenError title="No se pudieron cargar las sesiones" message="Verifica tu conexion e intenta de nuevo." onRetry={() => window.location.reload()} />;
-  if (!filtered.length) {
-    return (
-      <div className="lib-empty">
-        <p className="lib-empty-title">Sin sesiones guardadas</p>
-        <p className="lib-empty-sub">Crea una sesion y reutilizala en multiples programas.</p>
-        <button className="lib-empty-cta" onClick={() => navigate('/library/sessions/new')}>+ Nueva sesión</button>
-      </div>
-    );
-  }
-
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <SortableContext items={filtered.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-        <div className="lib-sessions-grid">
-          {filtered.map((session) => (
-            <SortableSessionCard
-              key={session.id}
-              session={session}
-              onNavigate={(id) => navigate(`/content/sessions/${id}`)}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    </DndContext>
+    <PanelShell
+      isLoading={isLoading}
+      isError={isError}
+      isEmpty={!filtered.length && !isLoading}
+      emptyTitle="Sin sesiones guardadas"
+      emptySub="Crea una sesion y reutilizala en multiples programas."
+      emptyCta="+ Nueva sesión"
+      onCta={onCreateSession || (() => navigate('/library/sessions/new'))}
+      onRetry={() => window.location.reload()}
+      renderSkeleton={() => <SessionsPanelSkeleton />}
+    >
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={filtered.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+          <div className="pgs-list">
+            {filtered.map((session, i) => (
+              <SortableSessionCard
+                key={session.id}
+                session={session}
+                index={i}
+                libraryDataCache={libraryDataCache}
+                onNavigate={(id) => navigate(`/content/sessions/${id}`)}
+                onDelete={handleDeleteSession}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </PanelShell>
   );
 }

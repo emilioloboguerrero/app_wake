@@ -123,7 +123,7 @@
 .pgs-card__image-side {
   position: relative;
   width: 260px;
-  min-height: 190px;
+  min-height: 230px;
   flex-shrink: 0;
   overflow: hidden;
   border-radius: var(--radius-lg, 16px) 0 0 var(--radius-lg, 16px);
@@ -323,6 +323,35 @@
 .pgs-empty__cta:hover  { opacity: 0.88; transform: translateY(-1px); }
 .pgs-empty__cta:active { opacity: 0.75; transform: scale(0.977);     }
 
+/* ─── Muscle heatmap (session cards) ────────────────────── */
+.pgs-card__muscle-heatmap {
+  position: absolute;
+  right: 120px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 180px;
+  height: 85%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  opacity: 0.85;
+  pointer-events: none;
+  transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pgs-card:hover .pgs-card__muscle-heatmap {
+  opacity: 1;
+}
+
+/* ─── Menu (absolute top-right) ─────────────────────────── */
+.pgs-card__menu-col {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+}
+
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (max-width: 768px) {
   .pgs-screen {
@@ -345,5 +374,10 @@
 
   .pgs-card__stats {
     gap: 16px;
+  }
+
+  .pgs-card__muscle-heatmap {
+    width: 140px;
+    right: 100px;
   }
 }

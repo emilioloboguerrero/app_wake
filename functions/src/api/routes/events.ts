@@ -10,6 +10,20 @@ import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
 
+function normalizeDate(value: unknown): string | null {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null) {
+    if ("toDate" in value && typeof (value as { toDate: unknown }).toDate === "function") {
+      return (value as { toDate: () => Date }).toDate().toISOString();
+    }
+    if ("_seconds" in value) {
+      return new Date((value as { _seconds: number })._seconds * 1000).toISOString();
+    }
+  }
+  return null;
+}
+
 function requireCreator(auth: { role: string }): void {
   if (auth.role !== "creator" && auth.role !== "admin") {
     throw new WakeApiServerError("FORBIDDEN", 403, "Acceso restringido a creadores");
@@ -43,16 +57,14 @@ router.get("/events/:eventId", async (req, res) => {
   const event = doc.data()!;
 
   const maxRegs = event.max_registrations ?? event.maxRegistrations ?? event.capacity ?? null;
-  let spotsRemaining: number | null = null;
-  if (maxRegs) {
-    const regsSnap = await db
-      .collection("event_signups")
-      .doc(req.params.eventId)
-      .collection("registrations")
-      .count()
-      .get();
-    spotsRemaining = Math.max(0, maxRegs - regsSnap.data().count);
-  }
+  const regsSnap = await db
+    .collection("event_signups")
+    .doc(req.params.eventId)
+    .collection("registrations")
+    .count()
+    .get();
+  const regCount = regsSnap.data().count;
+  const spotsRemaining = maxRegs ? Math.max(0, maxRegs - regCount) : null;
 
   res.json({
     data: {
@@ -60,10 +72,11 @@ router.get("/events/:eventId", async (req, res) => {
       title: event.title,
       description: event.description || null,
       imageUrl: event.image_url || null,
-      date: event.date || null,
+      date: normalizeDate(event.date),
       location: event.location || null,
       status: event.status,
       max_registrations: maxRegs,
+      registration_count: regCount,
       spotsRemaining,
       fields: event.fields || [],
       settings: event.settings || null,
@@ -203,7 +216,7 @@ router.get("/creator/events", async (req, res) => {
         title: data.title,
         description: data.description || null,
         image_url: data.image_url || null,
-        date: data.date || null,
+        date: normalizeDate(data.date),
         location: data.location || null,
         status: data.status,
         max_registrations: data.max_registrations ?? data.maxRegistrations ?? null,
@@ -297,7 +310,7 @@ router.get("/creator/events/:eventId", async (req, res) => {
       title: data.title,
       description: data.description || null,
       image_url: data.image_url || null,
-      date: data.date || null,
+      date: normalizeDate(data.date),
       location: data.location || null,
       status: data.status,
       max_registrations: data.max_registrations ?? data.maxRegistrations ?? null,
@@ -434,7 +447,7 @@ router.post("/creator/events/:eventId/image/upload-url", async (req, res) => {
   }
 
   const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
-  const storagePath = `event_images/${req.params.eventId}/cover.${ext}`;
+  const storagePath = `events/${req.params.eventId}/cover.${ext}`;
   const bucket = admin.storage().bucket();
   const file = bucket.file(storagePath);
 
@@ -467,7 +480,7 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
   );
 
   // Validate storage path prefix
-  validateStoragePath(storagePath, `event_images/${req.params.eventId}/`);
+  validateStoragePath(storagePath, `events/${req.params.eventId}/`);
 
   const bucket = admin.storage().bucket();
   const [exists] = await bucket.file(storagePath).exists();
@@ -627,9 +640,12 @@ router.post(
           status: "already",
           reg: {
             registrationId: regDoc.id,
-            displayName: regData.displayName || null,
+            nombre: regData.nombre ?? regData.displayName ?? null,
+            displayName: regData.nombre ?? regData.displayName ?? null,
             email: regData.email || null,
-            fieldValues: regData.fieldValues || {},
+            responses: regData.responses ?? regData.fieldValues ?? {},
+            fieldValues: regData.responses ?? regData.fieldValues ?? {},
+            checked_in: true,
             checked_in_at: regData.checked_in_at || null,
           },
         },
@@ -650,9 +666,12 @@ router.post(
         status: "success",
         reg: {
           registrationId: regDoc.id,
-          displayName: updatedData.displayName || null,
+          nombre: updatedData.nombre ?? updatedData.displayName ?? null,
+          displayName: updatedData.nombre ?? updatedData.displayName ?? null,
           email: updatedData.email || null,
-          fieldValues: updatedData.fieldValues || {},
+          responses: updatedData.responses ?? updatedData.fieldValues ?? {},
+          fieldValues: updatedData.responses ?? updatedData.fieldValues ?? {},
+          checked_in: true,
           checked_in_at: updatedData.checked_in_at || null,
         },
       },

@@ -1,17 +1,19 @@
-import React, { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { TubelightNavBar, SpotlightTutorial } from '../components/ui';
+import { TubelightNavBar, SpotlightTutorial, GlowingEffect } from '../components/ui';
 import ExercisesPanel from '../components/biblioteca/ExercisesPanel';
 import SessionsPanel from '../components/biblioteca/SessionsPanel';
 import PlansPanel from '../components/biblioteca/PlansPanel';
 import RecetasPanel from '../components/biblioteca/RecetasPanel';
 import NutritionPlansPanel from '../components/biblioteca/NutritionPlansPanel';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
-import plansService from '../services/plansService';
+import libraryService from '../services/libraryService';
+import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { queryKeys } from '../config/queryClient';
 import './BibliotecaScreen.css';
 
 const DOMAIN_ITEMS = [
@@ -39,6 +41,67 @@ const SearchIcon = () => (
   </svg>
 );
 
+const SORT_OPTIONS = [
+  { id: 'name_asc', label: 'Nombre A→Z' },
+  { id: 'name_desc', label: 'Nombre Z→A' },
+  { id: 'date_newest', label: 'Más recientes' },
+  { id: 'date_oldest', label: 'Más antiguos' },
+];
+
+const DEFAULT_FILTERS = { sort: 'name_asc' };
+
+function FilterSortPanel({ isOpen, onClose, filters, onFiltersChange }) {
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
+    };
+    const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const activeCount = filters.sort !== 'name_asc' ? 1 : 0;
+
+  return (
+    <div className="bib-filter-panel" ref={panelRef}>
+      <div className="bib-filter-panel__section">
+        <span className="bib-filter-panel__label">Ordenar por</span>
+        <div className="bib-filter-panel__chips">
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              className={`bib-filter-chip ${filters.sort === opt.id ? 'bib-filter-chip--active' : ''}`}
+              onClick={() => onFiltersChange({ ...filters, sort: opt.id })}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeCount > 0 && (
+        <button
+          type="button"
+          className="bib-filter-panel__clear"
+          onClick={() => onFiltersChange(DEFAULT_FILTERS)}
+        >
+          Limpiar filtros
+        </button>
+      )}
+    </div>
+  );
+}
+
 const TUTORIAL_STEPS = [
   {
     selector: '.bib-domain-nav',
@@ -59,18 +122,110 @@ const TUTORIAL_STEPS = [
 
 const BibliotecaScreen = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const domain = searchParams.get('domain') || 'entrenamiento';
   const tab = searchParams.get('tab') || (domain === 'entrenamiento' ? 'ejercicios' : 'recetas');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreatePlan, setShowCreatePlan] = useState(false);
+  const [showCreateLibrary, setShowCreateLibrary] = useState(false);
+  const [libStep, setLibStep] = useState('name');
+  const [newLibraryTitle, setNewLibraryTitle] = useState('');
+  const [createdLibraryId, setCreatedLibraryId] = useState(null);
+  const libInputRef = useRef(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [showCreateSession, setShowCreateSession] = useState(false);
+  const [sessionStep, setSessionStep] = useState('name');
+  const [newSessionTitle, setNewSessionTitle] = useState('');
+  const sessionInputRef = useRef(null);
 
-  const recetasPanelRef = useRef(null);
-  const nutriPlansPanelRef = useRef(null);
+  const createLibraryMutation = useMutation({
+    mutationFn: (title) => libraryService.createLibrary(title),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.libraries(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.exercises(user?.uid) });
+      const libraryId = result?.data?.id || result?.id;
+      setCreatedLibraryId(libraryId);
+      setLibStep('success');
+      setTimeout(() => {
+        setShowCreateLibrary(false);
+        if (libraryId) navigate(`/libraries/${libraryId}`);
+      }, 1600);
+    },
+    onError: () => {
+      setLibStep('name');
+      showToast('No pudimos crear la biblioteca. Intenta de nuevo.', 'error');
+    },
+  });
+
+  const createSessionMutation = useMutation({
+    mutationFn: (title) => libraryService.createLibrarySession(user.uid, { title }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
+      const sessionId = result?.sessionId || result?.data?.sessionId;
+      setSessionStep('success');
+      setTimeout(() => {
+        setShowCreateSession(false);
+        if (sessionId) navigate(`/content/sessions/${sessionId}`);
+      }, 1600);
+    },
+    onError: () => {
+      setSessionStep('name');
+      showToast('No pudimos crear la sesión. Intenta de nuevo.', 'error');
+    },
+  });
+
+  const handleCreateSession = useCallback(() => {
+    const title = newSessionTitle.trim();
+    if (!title) return;
+    setSessionStep('creating');
+    createSessionMutation.mutate(title);
+  }, [newSessionTitle, createSessionMutation]);
+
+  const openCreateSession = useCallback(() => {
+    setShowCreateSession(true);
+    setSessionStep('name');
+    setNewSessionTitle('');
+    setTimeout(() => sessionInputRef.current?.focus(), 300);
+  }, []);
+
+  const handleCreateLibrary = useCallback(() => {
+    const title = newLibraryTitle.trim();
+    if (!title) return;
+    setLibStep('creating');
+    createLibraryMutation.mutate(title);
+  }, [newLibraryTitle, createLibraryMutation]);
+
+  const openCreateLibrary = useCallback(() => {
+    setShowCreateLibrary(true);
+    setLibStep('name');
+    setNewLibraryTitle('');
+    setCreatedLibraryId(null);
+    setTimeout(() => libInputRef.current?.focus(), 300);
+  }, []);
+
+  useEffect(() => {
+    if (!showCreateLibrary) return;
+    if (libStep !== 'name') return;
+    const handler = (e) => { if (e.key === 'Escape') setShowCreateLibrary(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showCreateLibrary, libStep]);
+
+  useEffect(() => {
+    if (!showCreateSession) return;
+    if (sessionStep !== 'name') return;
+    const handler = (e) => { if (e.key === 'Escape') setShowCreateSession(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showCreateSession, sessionStep]);
+
+  const activeFilterCount = filters.sort !== 'name_asc' ? 1 : 0;
 
   const setDomain = useCallback((d) => {
     const defaultTab = d === 'entrenamiento' ? 'ejercicios' : 'recetas';
@@ -99,9 +254,9 @@ const BibliotecaScreen = () => {
 
   const handlePrimaryAction = useCallback(() => {
     if (activeSubTab === 'ejercicios') {
-      navigate('/libraries');
+      openCreateLibrary();
     } else if (activeSubTab === 'sesiones') {
-      navigate('/library/sessions/new');
+      openCreateSession();
     } else if (activeSubTab === 'planes') {
       setShowCreatePlan(true);
     } else if (activeSubTab === 'recetas') {
@@ -127,14 +282,12 @@ const BibliotecaScreen = () => {
     if (id) navigate(`/plans/${id}`);
   }, [navigate]);
 
-  const showSearch = activeSubTab !== 'recetas' && activeSubTab !== 'planes_nutri';
-
   const renderContent = () => {
     switch (activeSubTab) {
       case 'ejercicios':
-        return <ExercisesPanel searchQuery={searchQuery} />;
+        return <ExercisesPanel searchQuery={searchQuery} onCreateLibrary={openCreateLibrary} />;
       case 'sesiones':
-        return <SessionsPanel searchQuery={searchQuery} />;
+        return <SessionsPanel searchQuery={searchQuery} onCreateSession={openCreateSession} />;
       case 'planes':
         return <PlansPanel searchQuery={searchQuery} />;
       case 'recetas':
@@ -150,23 +303,18 @@ const BibliotecaScreen = () => {
     <ErrorBoundary>
       <DashboardLayout screenName="Biblioteca">
         <div className="bib-container">
-          <div className="bib-header">
-            <div className="bib-header-text">
-              <h1 className="bib-title">Biblioteca</h1>
-              <p className="bib-subtitle">Tu contenido reutilizable en un solo lugar</p>
+          <div className="bib-top-row">
+            <div className="bib-domain-nav">
+              <TubelightNavBar
+                items={DOMAIN_ITEMS}
+                activeId={domain}
+                onSelect={setDomain}
+              />
             </div>
             <button className="bib-primary-btn" onClick={handlePrimaryAction}>
               <span className="bib-primary-btn-plus">+</span>
               {getPrimaryLabel()}
             </button>
-          </div>
-
-          <div className="bib-domain-nav">
-            <TubelightNavBar
-              items={DOMAIN_ITEMS}
-              activeId={domain}
-              onSelect={setDomain}
-            />
           </div>
 
           <div className="bib-nav-row">
@@ -177,19 +325,41 @@ const BibliotecaScreen = () => {
                 onSelect={setTab}
               />
             </div>
+          </div>
 
-            {showSearch && (
-              <div className="bib-search-field">
-                <SearchIcon />
-                <input
-                  type="text"
-                  className="bib-search-input"
-                  placeholder={getSearchPlaceholder()}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            )}
+          <div className="bib-search-row">
+            <div className="bib-search-field">
+              <SearchIcon />
+              <input
+                type="text"
+                className="bib-search-input"
+                placeholder={getSearchPlaceholder()}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="bib-filter-wrap">
+              <button
+                type="button"
+                className={`bib-filter-btn ${activeFilterCount > 0 ? 'bib-filter-btn--active' : ''}`}
+                onClick={() => setFilterOpen((v) => !v)}
+                aria-label="Filtrar"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Filtrar
+                {activeFilterCount > 0 && (
+                  <span className="bib-filter-btn__badge">{activeFilterCount}</span>
+                )}
+              </button>
+              <FilterSortPanel
+                isOpen={filterOpen}
+                onClose={() => setFilterOpen(false)}
+                filters={filters}
+                onFiltersChange={setFilters}
+              />
+            </div>
           </div>
 
           <div className="bib-content" key={`${domain}-${activeSubTab}`}>
@@ -203,6 +373,148 @@ const BibliotecaScreen = () => {
           type="plan"
           onCreated={handlePlanCreated}
         />
+
+        {showCreateLibrary && (
+          <div className="cfo-overlay" onClick={libStep === 'name' ? () => setShowCreateLibrary(false) : undefined}>
+            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
+              <GlowingEffect spread={40} borderWidth={1} />
+
+              <div className="cfo-topbar">
+                <div />
+                {libStep === 'name' && (
+                  <button type="button" className="cfo-close" onClick={() => setShowCreateLibrary(false)} aria-label="Cerrar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+
+              <div className="cfo-body">
+                {libStep === 'name' && (
+                  <div className="cfo-step" key="lib-name">
+                    <div className="cfo-step__header">
+                      <h1 className="cfo-step__title">Nueva biblioteca</h1>
+                      <p className="cfo-step__desc">Organiza tus ejercicios por categoria, nivel o disciplina.</p>
+                    </div>
+                    <div className="cfo-step__content">
+                      <input
+                        ref={libInputRef}
+                        className="cfo-name-input"
+                        type="text"
+                        placeholder="Ej: Tren superior, Calistenia avanzada..."
+                        value={newLibraryTitle}
+                        onChange={(e) => setNewLibraryTitle(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && newLibraryTitle.trim()) handleCreateLibrary(); }}
+                        maxLength={80}
+                      />
+                    </div>
+                    <div className="cfo-footer" style={{ justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        className="cfo-next-btn"
+                        onClick={handleCreateLibrary}
+                        disabled={!newLibraryTitle.trim()}
+                      >
+                        Crear biblioteca
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {libStep === 'creating' && (
+                  <div className="cfo-step cfo-step--center" key="lib-creating">
+                    <div className="cfo-spinner" />
+                    <p className="cfo-status-text">Creando biblioteca</p>
+                  </div>
+                )}
+
+                {libStep === 'success' && (
+                  <div className="cfo-step cfo-step--center" key="lib-success">
+                    <div className="cfo-check-wrap">
+                      <svg className="cfo-check-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle className="cfo-check-circle" cx="24" cy="24" r="22" stroke="rgba(74,222,128,0.8)" strokeWidth="2.5" />
+                        <path className="cfo-check-path" d="M14 25l7 7 13-14" stroke="rgba(74,222,128,0.9)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <h2 className="cfo-success-title">Biblioteca creada</h2>
+                    <p className="cfo-success-desc">Agrega ejercicios, videos y musculos.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCreateSession && (
+          <div className="cfo-overlay" onClick={sessionStep === 'name' ? () => setShowCreateSession(false) : undefined}>
+            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
+              <GlowingEffect spread={40} borderWidth={1} />
+
+              <div className="cfo-topbar">
+                <div />
+                {sessionStep === 'name' && (
+                  <button type="button" className="cfo-close" onClick={() => setShowCreateSession(false)} aria-label="Cerrar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+
+              <div className="cfo-body">
+                {sessionStep === 'name' && (
+                  <div className="cfo-step" key="session-name">
+                    <div className="cfo-step__header">
+                      <h1 className="cfo-step__title">Nueva sesión</h1>
+                      <p className="cfo-step__desc">Dale un nombre a tu sesión. Luego agregarás imagen y ejercicios.</p>
+                    </div>
+                    <div className="cfo-step__content">
+                      <input
+                        ref={sessionInputRef}
+                        className="cfo-name-input"
+                        type="text"
+                        placeholder="Ej: Empuje día A, Pierna fuerza..."
+                        value={newSessionTitle}
+                        onChange={(e) => setNewSessionTitle(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && newSessionTitle.trim()) handleCreateSession(); }}
+                        maxLength={80}
+                      />
+                    </div>
+                    <div className="cfo-footer" style={{ justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        className="cfo-next-btn"
+                        onClick={handleCreateSession}
+                        disabled={!newSessionTitle.trim()}
+                      >
+                        Crear sesión
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {sessionStep === 'creating' && (
+                  <div className="cfo-step cfo-step--center" key="session-creating">
+                    <div className="cfo-spinner" />
+                    <p className="cfo-status-text">Creando sesión</p>
+                  </div>
+                )}
+
+                {sessionStep === 'success' && (
+                  <div className="cfo-step cfo-step--center" key="session-success">
+                    <div className="cfo-check-wrap">
+                      <svg className="cfo-check-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle className="cfo-check-circle" cx="24" cy="24" r="22" stroke="rgba(74,222,128,0.8)" strokeWidth="2.5" />
+                        <path className="cfo-check-path" d="M14 25l7 7 13-14" stroke="rgba(74,222,128,0.9)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <h2 className="cfo-success-title">Sesión creada</h2>
+                    <p className="cfo-success-desc">Agrega ejercicios y configura tus series.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <SpotlightTutorial screenKey="biblioteca" steps={TUTORIAL_STEPS} />
       </DashboardLayout>

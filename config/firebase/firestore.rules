@@ -36,20 +36,16 @@ service cloud.firestore {
       return getUserRole() == 'creator' || isAdmin();
     }
     
-    // Creator can read/update a user doc if that user is their one-on-one client (creator_client_access doc exists)
-    function creatorHasClientAccess(userId) {
-      return isCreator() && exists(/databases/$(database)/documents/creator_client_access/$(request.auth.uid + '_' + userId));
-    }
-    
     // ============================================
     // USER DATA
     // ============================================
-    
-    // Users collection - owner, admin, or creator (for their clients) can read/update
+
+    // Users collection - owner or admin can read/update
+    // Creator access to client data is API-mediated (Admin SDK bypasses rules)
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
+      allow read: if isOwner(userId) || isAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
+      allow update: if isOwner(userId) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
       
       // Exercise history subcollections
@@ -57,9 +53,9 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       
-      // Session history subcollections (creator can read for completion indicator on calendar)
+      // Session history subcollections
       match /sessionHistory/{sessionId} {
-        allow read: if isOwner(userId) || isAdmin() || creatorHasClientAccess(userId);
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
 
@@ -73,10 +69,9 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
 
-      // Nutrition diary entries (creator can read for their clients)
+      // Nutrition diary entries
       match /diary/{entryId} {
         allow read, write: if isOwner(userId);
-        allow read: if creatorHasClientAccess(userId);
       }
 
       // User meals
@@ -99,14 +94,6 @@ service cloud.firestore {
       match /saved_foods/{foodId} {
         allow read, write: if isOwner(userId);
       }
-    }
-    
-    // Creator-client access: doc id = creatorId_userId; allows creator to read/update that user's document (e.g. set access end date)
-    match /creator_client_access/{accessId} {
-      allow read: if isSignedIn() && resource.data.creatorId == request.auth.uid;
-      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid && accessId == request.auth.uid + '_' + request.resource.data.userId;
-      allow update: if isSignedIn() && resource.data.creatorId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.creatorId == request.auth.uid;
     }
     
     // ============================================
@@ -572,6 +559,12 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow read, update, delete: if isAdmin();
     }
+
+    // ============================================
+    // ORPHANED LEGACY COLLECTIONS (zero code references, safe to delete from console)
+    // - checkout_intents (4 docs)
+    // - creator_client_access (7 docs) — replaced by one_on_one_clients
+    // ============================================
 
     // ============================================
     // DEFAULT RULE — deny everything not explicitly covered

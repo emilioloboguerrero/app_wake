@@ -3,7 +3,7 @@ import * as functions from "firebase-functions";
 import { db, FieldValue } from "../firestore.js";
 import type { Query } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
+import { validateBody, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -48,6 +48,9 @@ router.get("/workout/daily", async (req, res) => {
   let targetModuleId: string | null = null;
   let targetSessionId: string | null = null;
   let completedSessionIds: Set<string> | null = null;
+  // For one-on-one, exercises live in plans/ subcollections, not courses/
+  let sessionCollection: string = "courses";
+  let sessionCollectionId: string = courseId;
 
   if (deliveryType === "one_on_one") {
     // One-on-one: check plans assigned to this user for the current week
@@ -75,6 +78,8 @@ router.get("/workout/daily", async (req, res) => {
     const planData = plansSnap.docs[0].data();
     targetModuleId = planData.currentModuleId ?? null;
     targetSessionId = planData.currentSessionId ?? null;
+    sessionCollection = "plans";
+    sessionCollectionId = plansSnap.docs[0].id;
   } else {
     // Low-ticket: resolve from course modules structure
     // Guard: max modules
@@ -181,9 +186,10 @@ router.get("/workout/daily", async (req, res) => {
   }
 
   // Read the full session tree: session → exercises → sets
+  // For one-on-one, read from plans/{planId}/...; for low_ticket, from courses/{courseId}/...
   const sessionDoc = await db
-    .collection("courses")
-    .doc(courseId)
+    .collection(sessionCollection)
+    .doc(sessionCollectionId)
     .collection("modules")
     .doc(targetModuleId)
     .collection("sessions")
@@ -207,8 +213,8 @@ router.get("/workout/daily", async (req, res) => {
 
   // Load exercises
   const exercisesSnap = await db
-    .collection("courses")
-    .doc(courseId)
+    .collection(sessionCollection)
+    .doc(sessionCollectionId)
     .collection("modules")
     .doc(targetModuleId)
     .collection("sessions")
@@ -222,8 +228,8 @@ router.get("/workout/daily", async (req, res) => {
     exercisesSnap.docs.map(async (exDoc) => {
       const exData = exDoc.data();
       const setsSnap = await db
-        .collection("courses")
-        .doc(courseId)
+        .collection(sessionCollection)
+        .doc(sessionCollectionId)
         .collection("modules")
         .doc(targetModuleId!)
         .collection("sessions")
@@ -238,6 +244,16 @@ router.get("/workout/daily", async (req, res) => {
         exerciseId: exDoc.id,
         libraryId: exData.libraryId ?? null,
         name: exData.name ?? "",
+        description: exData.description ?? null,
+        video_url: exData.video_url ?? null,
+        muscle_activation: exData.muscle_activation ?? null,
+        implements: exData.implements ?? [],
+        primary: exData.primary ?? exData.primaryMuscles ?? [],
+        alternatives: exData.alternatives ?? {},
+        objectives: exData.objectives ?? [],
+        measures: exData.measures ?? [],
+        customMeasureLabels: exData.customMeasureLabels ?? {},
+        customObjectiveLabels: exData.customObjectiveLabels ?? {},
         order: exData.order ?? 0,
         primaryMuscles: exData.primaryMuscles ?? [],
         sets: setsSnap.docs.map((setDoc) => {
@@ -248,6 +264,8 @@ router.get("/workout/daily", async (req, res) => {
             weight: setData.weight ?? null,
             intensity: setData.intensity ?? null,
             rir: setData.rir ?? null,
+            title: setData.title ?? null,
+            order: setData.order ?? 0,
           };
         }),
         exerciseKey: exData.libraryId
@@ -311,6 +329,16 @@ router.get("/workout/daily", async (req, res) => {
       exerciseId: ex.exerciseId,
       libraryId: ex.libraryId,
       name: ex.name,
+      description: ex.description,
+      video_url: ex.video_url,
+      muscle_activation: ex.muscle_activation,
+      implements: ex.implements,
+      primary: ex.primary,
+      alternatives: ex.alternatives,
+      objectives: ex.objectives,
+      measures: ex.measures,
+      customMeasureLabels: ex.customMeasureLabels,
+      customObjectiveLabels: ex.customObjectiveLabels,
       order: ex.order,
       primaryMuscles: ex.primaryMuscles,
       sets: ex.sets,
@@ -329,6 +357,15 @@ router.get("/workout/daily", async (req, res) => {
         .count()
         .get()).data().count;
 
+  // Read module title for context
+  const moduleDoc = await db
+    .collection(sessionCollection)
+    .doc(sessionCollectionId)
+    .collection("modules")
+    .doc(targetModuleId!)
+    .get();
+  const moduleTitle = moduleDoc.exists ? (moduleDoc.data()!.title ?? "") : "";
+
   res.json({
     data: {
       hasSession: true,
@@ -336,7 +373,10 @@ router.get("/workout/daily", async (req, res) => {
       emptyReason: null,
       session: {
         sessionId: targetSessionId,
+        moduleId: targetModuleId,
+        moduleTitle,
         title: sessionInfo.title ?? "",
+        image_url: sessionInfo.image_url ?? null,
         order: sessionInfo.order ?? 0,
         deliveryType,
         exercises,
@@ -401,6 +441,15 @@ router.post("/workout/complete", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // Accept both legacy (duration, planned, courseName, sessionName) and new field names
+  const raw = req.body ?? {};
+  if (raw.duration !== undefined && raw.durationMs === undefined) {
+    raw.durationMs = raw.duration;
+  }
+  if (raw.planned !== undefined && raw.plannedSnapshot === undefined) {
+    raw.plannedSnapshot = raw.planned;
+  }
+
   const body = validateBody<{
     courseId: string;
     sessionId: string;
@@ -409,6 +458,8 @@ router.post("/workout/complete", async (req, res) => {
     exercises: unknown[];
     userNotes?: string;
     plannedSnapshot?: unknown;
+    courseName?: string;
+    sessionName?: string;
   }>(
     {
       courseId: "string",
@@ -418,8 +469,10 @@ router.post("/workout/complete", async (req, res) => {
       exercises: "array",
       userNotes: "optional_string",
       plannedSnapshot: "optional_object",
+      courseName: "optional_string",
+      sessionName: "optional_string",
     },
-    req.body,
+    raw,
     { maxArrayLength: 50 }
   );
 
@@ -492,7 +545,7 @@ router.post("/workout/complete", async (req, res) => {
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const userData = userDoc.data() ?? {};
   const activityStreak = userData.activityStreak ?? {};
-  const previousStreak = activityStreak.currentStreak ?? 0;
+  const previousStreak = activityStreak.currentStreak ?? activityStreak.longestStreak ?? 0;
   const previousLongest = activityStreak.longestStreak ?? 0;
   const lastSessionDate = activityStreak.lastActivityDate ?? userData.lastSessionDate ?? null;
 
@@ -546,6 +599,8 @@ router.post("/workout/complete", async (req, res) => {
     completedAt: body.completedAt,
     userNotes: body.userNotes ?? null,
     plannedSnapshot: body.plannedSnapshot ?? null,
+    ...(body.courseName ? { courseName: body.courseName } : {}),
+    ...(body.sessionName ? { sessionName: body.sessionName } : {}),
     completed_at: FieldValue.serverTimestamp(),
   });
 
@@ -592,10 +647,10 @@ router.post("/workout/complete", async (req, res) => {
     batch.set(
       historyRef,
       {
-        entries: FieldValue.arrayUnion({
+        sessions: FieldValue.arrayUnion({
           date: completionDate,
+          sessionId: completionId,
           sets: exercise.sets ?? [],
-          completionId,
         }),
         updated_at: FieldValue.serverTimestamp(),
       },
@@ -608,10 +663,24 @@ router.post("/workout/complete", async (req, res) => {
       .collection("exerciseLastPerformance")
       .doc(exerciseKey);
 
+    // Production format: exerciseId, exerciseName, libraryId, lastSessionId, lastPerformedAt, totalSets, bestSet
+    const exerciseSets = exercise.sets ?? [];
+    const prodBestSet = exerciseSets.length > 0
+      ? exerciseSets.reduce((best: Record<string, unknown>, s: Record<string, unknown>) => {
+          const bw = parseFloat(String(best.weight ?? 0));
+          const sw = parseFloat(String(s.weight ?? 0));
+          return sw > bw ? s : best;
+        }, exerciseSets[0])
+      : null;
+
     batch.set(lastPerfRef, {
-      date: completionDate,
-      sets: exercise.sets ?? [],
-      completionId,
+      exerciseId: exercise.exerciseId ?? null,
+      exerciseName: exercise.exerciseName ?? exercise.exerciseKey ?? exerciseKey,
+      libraryId: exercise.libraryId ?? null,
+      lastSessionId: completionId,
+      lastPerformedAt: completionDate,
+      totalSets: exerciseSets.length,
+      bestSet: prodBestSet,
       estimate1RM: bestEstimate1RM > 0 ? Math.round(bestEstimate1RM * 100) / 100 : existingEstimate,
       updated_at: FieldValue.serverTimestamp(),
     });
@@ -627,16 +696,22 @@ router.post("/workout/complete", async (req, res) => {
     }
   }
 
-  // 4. Update user streak + last session
+  // 4. Update user streak + last session (dot notation preserves existing fields like streakStartDate)
+  const streakStartDate = newStreak === 1 ? completionDate : (activityStreak.streakStartDate ?? completionDate);
   const userRef = db.collection("users").doc(auth.userId);
   batch.update(userRef, {
     lastSessionDate: completionDate,
-    activityStreak: {
-      currentStreak: newStreak,
-      longestStreak: newLongest,
-      lastActivityDate: completionDate,
-      flameLevel,
-    },
+    "activityStreak.currentStreak": newStreak,
+    "activityStreak.longestStreak": newLongest,
+    "activityStreak.lastActivityDate": completionDate,
+    "activityStreak.flameLevel": flameLevel,
+    "activityStreak.streakStartDate": streakStartDate,
+    ...(newLongest > previousLongest
+      ? {
+          "activityStreak.longestStreakStartDate": streakStartDate,
+          "activityStreak.longestStreakEndDate": completionDate,
+        }
+      : {}),
     updated_at: FieldValue.serverTimestamp(),
   });
 
@@ -768,14 +843,14 @@ router.get("/workout/exercises/:exerciseKey/history", async (req, res) => {
     .get();
 
   if (!doc.exists) {
-    res.json({ data: { entries: [] } });
+    res.json({ data: { sessions: [] } });
     return;
   }
 
   const data = doc.data()!;
-  const entries = (data.entries ?? []) as unknown[];
+  const sessions = (data.sessions ?? data.entries ?? []) as unknown[];
 
-  // Paginate in-memory (entries stored as array)
+  // Paginate in-memory (sessions stored as array)
   const rawPageToken = req.query.pageToken as string | undefined;
   let pageToken = 0;
   if (rawPageToken) {
@@ -786,12 +861,12 @@ router.get("/workout/exercises/:exerciseKey/history", async (req, res) => {
     pageToken = parsed;
   }
   const limit = 50;
-  const slice = entries.slice(pageToken, pageToken + limit);
+  const slice = sessions.slice(pageToken, pageToken + limit);
 
   res.json({
     data: slice,
-    nextPageToken: pageToken + limit < entries.length ? String(pageToken + limit) : null,
-    hasMore: pageToken + limit < entries.length,
+    nextPageToken: pageToken + limit < sessions.length ? String(pageToken + limit) : null,
+    hasMore: pageToken + limit < sessions.length,
   });
 });
 
@@ -806,10 +881,13 @@ router.get("/workout/streak", async (req, res) => {
 
   res.json({
     data: {
-      currentStreak: streak.currentStreak ?? 0,
+      currentStreak: streak.currentStreak ?? streak.longestStreak ?? 0,
       longestStreak: streak.longestStreak ?? 0,
       lastActivityDate: streak.lastActivityDate ?? data.lastSessionDate ?? null,
       flameLevel: streak.flameLevel ?? 0,
+      streakStartDate: streak.streakStartDate ?? null,
+      longestStreakStartDate: streak.longestStreakStartDate ?? null,
+      longestStreakEndDate: streak.longestStreakEndDate ?? null,
     },
   });
 });
@@ -933,6 +1011,107 @@ router.get("/workout/prs", async (req, res) => {
   res.json({ data: prs });
 });
 
+// Aliases: /workout/checkpoint → /workout/session/checkpoint|active
+// sessionManager.js and sessionRecoveryService.js call these paths
+router.put("/workout/checkpoint", async (req, res) => {
+  // Forward to POST /workout/session/checkpoint handler logic
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{
+    courseId: string;
+    sessionId: string;
+    sessionName: string;
+    startedAt: string;
+    currentExerciseIndex: number;
+    currentSetIndex: number;
+    exercises: unknown[];
+    completedSets: Record<string, unknown>;
+    userNotes?: string;
+    elapsedSeconds: number;
+  }>(
+    {
+      courseId: "string",
+      sessionId: "string",
+      sessionName: "string",
+      startedAt: "string",
+      currentExerciseIndex: "number",
+      currentSetIndex: "number",
+      exercises: "array",
+      completedSets: "object",
+      userNotes: "optional_string",
+      elapsedSeconds: "number",
+    },
+    req.body
+  );
+
+  await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("activeSession")
+    .doc("current")
+    .set({
+      ...body,
+      userId: auth.userId,
+      savedAt: new Date().toISOString(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.json({ data: { saved: true } });
+});
+
+router.get("/workout/checkpoint", async (req, res) => {
+  // Forward to GET /workout/session/active handler logic
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("activeSession")
+    .doc("current")
+    .get();
+
+  if (!doc.exists) {
+    res.json({ data: { checkpoint: null } });
+    return;
+  }
+
+  const checkpoint = doc.data()!;
+
+  const savedAt = checkpoint.savedAt as string | undefined;
+  if (savedAt) {
+    const ageMs = Date.now() - new Date(savedAt).getTime();
+    if (ageMs > 24 * 60 * 60 * 1000) {
+      doc.ref.delete().catch(() => {});
+      res.json({ data: { checkpoint: null } });
+      return;
+    }
+  }
+
+  res.json({ data: { checkpoint } });
+});
+
+router.delete("/workout/checkpoint", async (req, res) => {
+  // Forward to DELETE /workout/session/active handler logic
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("activeSession")
+    .doc("current");
+
+  const doc = await docRef.get();
+  if (doc.exists) {
+    await docRef.delete();
+    res.json({ data: { deleted: true } });
+  } else {
+    res.json({ data: { deleted: false } });
+  }
+});
+
 // GET /workout/prs/:exerciseKey/history
 router.get("/workout/prs/:exerciseKey/history", async (req, res) => {
   const auth = await validateAuth(req);
@@ -946,11 +1125,750 @@ router.get("/workout/prs/:exerciseKey/history", async (req, res) => {
     .get();
 
   if (!doc.exists) {
-    res.json({ data: { entries: [] } });
+    res.json({ data: { sessions: [] } });
     return;
   }
 
   res.json({ data: doc.data() });
+});
+
+// ─── Exercise Library ────────────────────────────────────────────────────
+
+// GET /exercises/:libraryId — full library document
+router.get("/exercises/:libraryId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db.collection("exercises_library").doc(req.params.libraryId).get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca de ejercicios no encontrada");
+  }
+
+  const data = doc.data()!;
+  const metaKeys = new Set(["creator_id", "creator_name", "created_at", "updated_at", "title"]);
+  const exercises: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (!metaKeys.has(key) && typeof val === "object" && val !== null) {
+      exercises[key] = val;
+    }
+  }
+
+  res.json({
+    data: {
+      id: doc.id,
+      creator_name: data.creator_name ?? null,
+      title: data.title ?? null,
+      exercises,
+    },
+  });
+});
+
+// GET /exercises/:libraryId/:exerciseName — single exercise detail
+router.get("/exercises/:libraryId/:exerciseName", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db.collection("exercises_library").doc(req.params.libraryId).get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca de ejercicios no encontrada");
+  }
+
+  const exerciseName = decodeURIComponent(req.params.exerciseName);
+  const data = doc.data()!;
+  const exercise = data[exerciseName];
+
+  if (!exercise || typeof exercise !== "object") {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
+  }
+
+  res.json({
+    data: {
+      name: exerciseName,
+      description: (exercise as Record<string, unknown>).description ?? null,
+      video_url: (exercise as Record<string, unknown>).video_url ?? null,
+      muscle_activation: (exercise as Record<string, unknown>).muscle_activation ?? null,
+      implements: (exercise as Record<string, unknown>).implements ?? [],
+    },
+  });
+});
+
+// ─── Course Progress ─────────────────────────────────────────────────────
+
+// GET /workout/progress — all course progress for user
+router.get("/workout/progress", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = (userDoc.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
+
+  const courseIds = Object.keys(courses).filter((id) => courses[id].status === "active");
+
+  const progress: Record<string, { completed: number; lastSessionDate: string | null }> = {};
+  for (const courseId of courseIds) {
+    const histSnap = await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .where("courseId", "==", courseId)
+      .orderBy("date", "desc")
+      .limit(1)
+      .get();
+
+    const countSnap = await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .where("courseId", "==", courseId)
+      .count()
+      .get();
+
+    progress[courseId] = {
+      completed: countSnap.data().count,
+      lastSessionDate: histSnap.empty ? null : (histSnap.docs[0].data().date ?? null),
+    };
+  }
+
+  res.json({ data: progress });
+});
+
+// GET /workout/courses/:courseId/progress — single course progress
+router.get("/workout/courses/:courseId/progress", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.params.courseId;
+
+  const [countSnap, recentSnap] = await Promise.all([
+    db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .where("courseId", "==", courseId)
+      .count()
+      .get(),
+    db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .where("courseId", "==", courseId)
+      .orderBy("date", "desc")
+      .limit(1)
+      .get(),
+  ]);
+
+  res.json({
+    data: {
+      courseId,
+      completed: countSnap.data().count,
+      lastSessionDate: recentSnap.empty ? null : (recentSnap.docs[0].data().date ?? null),
+    },
+  });
+});
+
+// PATCH /workout/courses/:courseId/progress — update course progress data
+router.patch("/workout/courses/:courseId/progress", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.params.courseId;
+
+  // Allowlist progress fields
+  const allowedFields = [
+    "currentModuleId", "currentSessionId", "currentModuleIndex",
+    "currentSessionIndex", "completedSessions", "lastSessionDate",
+    "lastSessionPerformed",
+  ];
+  const updates: Record<string, unknown> = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      updates[field] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
+    );
+  }
+
+  updates.updated_at = FieldValue.serverTimestamp();
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("courseProgress")
+    .doc(courseId);
+
+  await docRef.set(updates, { merge: true });
+
+  const updated = await docRef.get();
+  res.json({ data: { courseId, ...updated.data() } });
+});
+
+// POST /workout/courses/:courseId/progress/last-session — update last session performed
+router.post("/workout/courses/:courseId/progress/last-session", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.params.courseId;
+  const body = validateBody<{
+    sessionId: string;
+    sessionData?: Record<string, unknown>;
+  }>(
+    { sessionId: "string", sessionData: "optional_object" },
+    req.body
+  );
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("courseProgress")
+    .doc(courseId);
+
+  await docRef.set(
+    {
+      lastSessionPerformed: {
+        sessionId: body.sessionId,
+        ...(body.sessionData ?? {}),
+        performedAt: new Date().toISOString(),
+      },
+      updated_at: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  const updated = await docRef.get();
+  res.json({ data: { courseId, ...updated.data() } });
+});
+
+// Aliases: /workout/programs/:courseId → /workout/courses/:courseId
+// PWA apiService.js and purchaseService.js call /workout/programs/ paths
+router.get("/workout/programs/:courseId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = userDoc.data()?.courses ?? {};
+  const hasAccess = courses[req.params.courseId];
+
+  const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const isCreator = courseDoc.data()?.creator_id === auth.userId;
+
+  if (!hasAccess && !isCreator) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
+  res.json({ data: { id: courseDoc.id, ...courseDoc.data() } });
+});
+
+// GET /workout/programs/:courseId/modules — list modules for a course
+router.get("/workout/programs/:courseId/modules", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = userDoc.data()?.courses ?? {};
+  const hasAccess = courses[req.params.courseId];
+
+  const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const isCreator = courseDoc.data()?.creator_id === auth.userId;
+  if (!hasAccess && !isCreator) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
+  const modulesSnap = await db
+    .collection("courses")
+    .doc(req.params.courseId)
+    .collection("modules")
+    .orderBy("order", "asc")
+    .limit(MAX_MODULES_PER_COURSE)
+    .get();
+
+  const modules = modulesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  res.json({ data: modules });
+});
+
+// GET /workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/overrides
+router.get(
+  "/workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/overrides",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    // Check for one-on-one overrides in plans collection
+    const userDoc = await db.collection("users").doc(auth.userId).get();
+    const courseAccess = userDoc.data()?.courses?.[req.params.courseId];
+
+    if (!courseAccess) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    }
+
+    // For one-on-one delivery, look for plan overrides
+    if (courseAccess.deliveryType === "one_on_one" && courseAccess.content_plan_id) {
+      const overrideDoc = await db
+        .collection("plans")
+        .doc(courseAccess.content_plan_id)
+        .collection("modules")
+        .doc(req.params.moduleId)
+        .collection("sessions")
+        .doc(req.params.sessionId)
+        .get();
+
+      if (overrideDoc.exists) {
+        res.json({ data: { id: overrideDoc.id, ...overrideDoc.data() } });
+        return;
+      }
+    }
+
+    res.json({ data: null });
+  }
+);
+
+// GET /workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/overrides
+router.get(
+  "/workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/overrides",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    const userDoc = await db.collection("users").doc(auth.userId).get();
+    const courseAccess = userDoc.data()?.courses?.[req.params.courseId];
+
+    if (!courseAccess) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    }
+
+    if (courseAccess.deliveryType === "one_on_one" && courseAccess.content_plan_id) {
+      const overrideDoc = await db
+        .collection("plans")
+        .doc(courseAccess.content_plan_id)
+        .collection("modules")
+        .doc(req.params.moduleId)
+        .collection("sessions")
+        .doc(req.params.sessionId)
+        .collection("exercises")
+        .doc(req.params.exerciseId)
+        .get();
+
+      if (overrideDoc.exists) {
+        res.json({ data: { id: overrideDoc.id, ...overrideDoc.data() } });
+        return;
+      }
+    }
+
+    res.json({ data: null });
+  }
+);
+
+// GET /workout/programs/:courseId/modules/:mid/sessions/:sid/exercises/:eid/sets/:setId/overrides
+router.get(
+  "/workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId/overrides",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    const userDoc = await db.collection("users").doc(auth.userId).get();
+    const courseAccess = userDoc.data()?.courses?.[req.params.courseId];
+
+    if (!courseAccess) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    }
+
+    if (courseAccess.deliveryType === "one_on_one" && courseAccess.content_plan_id) {
+      const overrideDoc = await db
+        .collection("plans")
+        .doc(courseAccess.content_plan_id)
+        .collection("modules")
+        .doc(req.params.moduleId)
+        .collection("sessions")
+        .doc(req.params.sessionId)
+        .collection("exercises")
+        .doc(req.params.exerciseId)
+        .collection("sets")
+        .doc(req.params.setId)
+        .get();
+
+      if (overrideDoc.exists) {
+        res.json({ data: { id: overrideDoc.id, ...overrideDoc.data() } });
+        return;
+      }
+    }
+
+    res.json({ data: null });
+  }
+);
+
+// ─── Client Programs (PWA-facing, one-on-one) ────────────────────────────
+
+// GET /workout/client-programs — list client programs, optionally orphaned only
+router.get("/workout/client-programs", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const orphaned = req.query.orphaned === "true";
+
+  const [cpSnap, userDoc] = await Promise.all([
+    db.collection("client_programs").where("user_id", "==", auth.userId).get(),
+    db.collection("users").doc(auth.userId).get(),
+  ]);
+
+  const coursesMap = (userDoc.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
+
+  const results: Array<{ courseId: string; courseData: Record<string, unknown>; purchasedAt: string | null }> = [];
+  for (const doc of cpSnap.docs) {
+    const data = doc.data();
+    const programId = data.program_id as string;
+    const courseEntry = coursesMap[programId];
+    const isOrphaned = !courseEntry;
+
+    if (orphaned && !isOrphaned) continue;
+
+    results.push({
+      courseId: programId,
+      courseData: courseEntry ?? {},
+      purchasedAt: courseEntry?.purchased_at as string ?? null,
+    });
+  }
+
+  res.json({ data: results });
+});
+
+// GET /workout/client-programs/:programId
+router.get("/workout/client-programs/:programId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docId = `${auth.userId}_${req.params.programId}`;
+  const doc = await db.collection("client_programs").doc(docId).get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa de cliente no encontrado");
+  }
+
+  res.json({ data: { id: doc.id, ...doc.data() } });
+});
+
+// POST /workout/client-programs/:programId
+router.post("/workout/client-programs/:programId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docId = `${auth.userId}_${req.params.programId}`;
+  const docRef = db.collection("client_programs").doc(docId);
+  const existing = await docRef.get();
+
+  const writeData: Record<string, unknown> = {
+    ...(req.body ?? {}),
+    user_id: auth.userId,
+    program_id: req.params.programId,
+    updated_at: FieldValue.serverTimestamp(),
+  };
+
+  if (!existing.exists) {
+    writeData.created_at = FieldValue.serverTimestamp();
+  }
+
+  await docRef.set(writeData, { merge: true });
+
+  res.json({ data: { id: docId } });
+});
+
+// PATCH /workout/client-programs/:programId/overrides
+router.patch("/workout/client-programs/:programId/overrides", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const raw = req.body ?? {};
+  const path = raw.path;
+  const value = raw.value;
+
+  if (typeof path !== "string" || path.length === 0 || path.length > 500) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "path debe ser un string no vacío", "path");
+  }
+  if (value === undefined) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "value es requerido", "value");
+  }
+
+  // Block dangerous keys
+  const dangerousKeys = ["__proto__", "constructor", "prototype"];
+  const pathParts = path.split(".");
+  for (const part of pathParts) {
+    if (dangerousKeys.includes(part)) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "path contiene claves no permitidas", "path");
+    }
+  }
+
+  const docId = `${auth.userId}_${req.params.programId}`;
+  const docRef = db.collection("client_programs").doc(docId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa de cliente no encontrado");
+  }
+
+  await docRef.update({
+    [path]: value,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { updated: true } });
+});
+
+// DELETE /workout/client-programs/:programId
+router.delete("/workout/client-programs/:programId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docId = `${auth.userId}_${req.params.programId}`;
+  const docRef = db.collection("client_programs").doc(docId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa de cliente no encontrado");
+  }
+
+  await docRef.delete();
+  res.status(204).send();
+});
+
+// ─── Client Sessions (PWA-facing, one-on-one) ────────────────────────────
+
+// GET /workout/planned-session — single planned session by courseId + date
+router.get("/workout/planned-session", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.query.courseId as string;
+  const date = req.query.date as string;
+
+  if (!courseId) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId es requerido", "courseId");
+  }
+  if (!date) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "date es requerido", "date");
+  }
+  validateDateFormat(date, "date");
+
+  const snap = await db
+    .collection("client_sessions")
+    .where("client_id", "==", auth.userId)
+    .where("program_id", "==", courseId)
+    .where("date", "==", date)
+    .limit(1)
+    .get();
+
+  if (snap.empty) {
+    res.json({ data: null });
+    return;
+  }
+
+  const doc = snap.docs[0];
+  res.json({ data: { id: doc.id, ...doc.data() } });
+});
+
+// GET /workout/calendar/planned — planned session dates in range
+router.get("/workout/calendar/planned", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.query.courseId as string;
+  const startDate = req.query.startDate as string;
+  const endDate = req.query.endDate as string;
+
+  if (!courseId || !startDate || !endDate) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId, startDate, endDate son requeridos");
+  }
+  validateDateFormat(startDate, "startDate");
+  validateDateFormat(endDate, "endDate");
+
+  const snap = await db
+    .collection("client_sessions")
+    .where("client_id", "==", auth.userId)
+    .where("program_id", "==", courseId)
+    .where("date", ">=", startDate)
+    .where("date", "<=", endDate)
+    .orderBy("date", "asc")
+    .limit(100)
+    .get();
+
+  res.json({ data: snap.docs.map((d) => d.data().date as string) });
+});
+
+// GET /workout/calendar/completed — completed session dates in range
+router.get("/workout/calendar/completed", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.query.courseId as string;
+  const startDate = req.query.startDate as string;
+  const endDate = req.query.endDate as string;
+
+  if (!courseId || !startDate || !endDate) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId, startDate, endDate son requeridos");
+  }
+  validateDateFormat(startDate, "startDate");
+  validateDateFormat(endDate, "endDate");
+
+  // Cross-reference with sessionHistory for completed dates
+  const snap = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("sessionHistory")
+    .where("courseId", "==", courseId)
+    .where("date", ">=", startDate)
+    .where("date", "<=", endDate)
+    .get();
+
+  const dates = [...new Set(snap.docs.map((d) => d.data().date as string))];
+  res.json({ data: dates });
+});
+
+// GET /workout/calendar — low-ticket completed session dates from sessionHistory
+router.get("/workout/calendar", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.query.courseId as string;
+  const startDate = req.query.startDate as string;
+  const endDate = req.query.endDate as string;
+
+  if (!courseId || !startDate || !endDate) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId, startDate, endDate son requeridos");
+  }
+  validateDateFormat(startDate, "startDate");
+  validateDateFormat(endDate, "endDate");
+
+  const snap = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("sessionHistory")
+    .where("courseId", "==", courseId)
+    .where("date", ">=", startDate)
+    .where("date", "<=", endDate)
+    .limit(200)
+    .get();
+
+  const dates = [...new Set(snap.docs.map((d) => d.data().date as string))];
+  res.json({ data: dates });
+});
+
+// ─── Content Tree Reads (PWA-facing) ─────────────────────────────────────
+
+// Helper: load exercises → sets tree from a parent doc ref
+async function loadExerciseTree(parentRef: FirebaseFirestore.DocumentReference) {
+  const exercisesSnap = await parentRef.collection("exercises").orderBy("order", "asc").get();
+  return Promise.all(
+    exercisesSnap.docs.map(async (eDoc) => {
+      const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+      return {
+        id: eDoc.id,
+        ...eDoc.data(),
+        sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })),
+      };
+    })
+  );
+}
+
+// GET /workout/client-session-content/:clientSessionId
+router.get("/workout/client-session-content/:clientSessionId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    res.json({ data: null });
+    return;
+  }
+
+  const exercises = await loadExerciseTree(docRef);
+  res.json({ data: { id: doc.id, ...doc.data(), exercises } });
+});
+
+// GET /workout/client-plan-content/:userId/:programId/:weekKey
+router.get("/workout/client-plan-content/:userId/:programId/:weekKey", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  // Use auth.userId for security regardless of URL param
+  const docId = `${auth.userId}_${req.params.programId}_${req.params.weekKey}`;
+  const docRef = db.collection("client_plan_content").doc(docId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    res.json({ data: null });
+    return;
+  }
+
+  const docData = doc.data()!;
+
+  // Load sessions → exercises → sets tree
+  const sessionsSnap = await docRef.collection("sessions").orderBy("order", "asc").get();
+  const sessions = await Promise.all(
+    sessionsSnap.docs.map(async (sDoc) => {
+      const exercises = await loadExerciseTree(sDoc.ref);
+      return { id: sDoc.id, ...sDoc.data(), exercises };
+    })
+  );
+
+  res.json({ data: { id: doc.id, ...docData, sessions } });
+});
+
+// GET /workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full
+router.get("/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const sessionRef = db
+    .collection("plans")
+    .doc(req.params.planId)
+    .collection("modules")
+    .doc(req.params.moduleId)
+    .collection("sessions")
+    .doc(req.params.sessionId);
+
+  const sessionDoc = await sessionRef.get();
+  if (!sessionDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
+  const exercises = await loadExerciseTree(sessionRef);
+  res.json({ data: { id: sessionDoc.id, ...sessionDoc.data(), exercises } });
+});
+
+// GET /library/sessions/:sessionId — library session with full exercise tree
+router.get("/library/sessions/:sessionId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const creatorId = req.query.creatorId as string;
+  if (!creatorId) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "creatorId es requerido", "creatorId");
+  }
+
+  const sessionRef = db
+    .collection("creator_libraries")
+    .doc(creatorId)
+    .collection("sessions")
+    .doc(req.params.sessionId);
+
+  const doc = await sessionRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
+  const exercises = await loadExerciseTree(sessionRef);
+  res.json({ data: { id: doc.id, ...doc.data(), exercises } });
 });
 
 export default router;

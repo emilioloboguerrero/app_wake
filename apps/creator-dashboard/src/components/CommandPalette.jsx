@@ -86,7 +86,7 @@ export default function CommandPalette() {
 
   const { data: programs, isError: programsError } = usePrograms();
   const { data: clients, isError: clientsError } = useQuery({
-    queryKey: ['clients', user?.uid],
+    queryKey: ['clients', 'creator', user?.uid],
     queryFn: () => oneOnOneService.getClientsByCreator(),
     enabled: !!user,
     staleTime: 2 * 60 * 1000,

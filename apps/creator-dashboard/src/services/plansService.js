@@ -129,14 +129,16 @@ class PlansService {
   }
 
   async createSet(planId, moduleId, sessionId, exerciseId, order = null) {
+    const orderVal = order ?? 0;
     const result = await apiClient.post(
       `/creator/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/exercises/${exerciseId}/sets`,
       {
+        title: `Serie ${orderVal + 1}`,
         reps: '',
         weight: null,
         intensity: null,
         rir: null,
-        order: order ?? 0,
+        order: orderVal,
       }
     );
     return result?.data;

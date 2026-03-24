@@ -188,9 +188,7 @@ functions/src/
     "purchased_at": "ISO date string",
     "deliveryType": "low_ticket | one_on_one",
     "title": "...",
-    "image_url": "...",
-    "is_trial": false,
-    "trial_consumed": false
+    "image_url": "..."
   }
 }
 ```

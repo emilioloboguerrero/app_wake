@@ -101,25 +101,31 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Legal documents (publicly readable, admin-only write)
+    // Legal documents (publicly readable, admin-only write via Admin SDK)
     match /legal-documents/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null
-        && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType == 'application/pdf';
+      allow write: if false;  // Admin SDK bypasses rules
     }
 
-    // Legacy legal documents path (publicly readable)
+    // Legacy legal documents path (publicly readable, admin-only write via Admin SDK)
     match /legal/{fileName} {
       allow read: if true;
-      allow write: if request.auth != null
-        && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType == 'application/pdf';
+      allow write: if false;  // Admin SDK bypasses rules
     }
     
     // Progress photos — private to the owner
     // Upload enforcement at API layer — see signed URL flow in CLAUDE.md
     match /progress_photos/{userId}/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 500 * 1024  // Max 500KB (compress before upload)
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Body progress photos — private to the owner
+    // Upload enforcement at API layer — see signed URL flow in CLAUDE.md
+    match /body_log/{userId}/{date}/{photoId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null
         && request.auth.uid == userId

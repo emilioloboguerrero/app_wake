@@ -25,7 +25,7 @@ export async function uploadFile(_creatorId, file, onProgress = null) {
   const token = await auth.currentUser.getIdToken();
   await new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', uploadData.uploadUrl);
+    xhr.open('PUT', uploadData.uploadUrl);
     xhr.setRequestHeader('Content-Type', uploadData.contentType);
     xhr.setRequestHeader('Authorization', `Firebase ${token}`);
 

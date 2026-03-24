@@ -380,4 +380,68 @@ router.delete("/progress/readiness/:date", async (req, res) => {
   res.status(204).send();
 });
 
+// GET /progress/user-sessions — session history for a course
+router.get("/progress/user-sessions", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.query.courseId as string;
+  if (!courseId) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId es requerido", "courseId");
+  }
+
+  const rawLimit = parseInt(req.query.limit as string, 10);
+  const limitParam = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+
+  const snap = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("sessionHistory")
+    .where("courseId", "==", courseId)
+    .orderBy("date", "desc")
+    .limit(limitParam)
+    .get();
+
+  res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+});
+
+// GET /progress/session/:sessionId — single session history entry
+router.get("/progress/session/:sessionId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const doc = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("sessionHistory")
+    .doc(req.params.sessionId)
+    .get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
+  res.json({ data: { id: doc.id, ...doc.data() } });
+});
+
+// GET /progress/prs — alias for GET /workout/prs
+// exerciseHistoryService.js calls this path
+router.get("/progress/prs", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const snapshot = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("exerciseLastPerformance")
+    .get();
+
+  const prs = snapshot.docs.map((doc) => ({
+    exerciseKey: doc.id,
+    ...doc.data(),
+  }));
+
+  res.json({ data: prs });
+});
+
 export default router;

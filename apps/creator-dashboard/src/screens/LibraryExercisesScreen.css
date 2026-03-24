@@ -1,5 +1,5 @@
-/* Layout: same structure as LibrarySessionDetailScreen / planificación (left list, right detail) */
-.library-exercises-content {
+/* ─── Layout ────────────────────────────────────────────────────────────── */
+.lex-content {
   width: 100%;
   max-width: 1600px;
   padding: 24px;
@@ -7,2355 +7,1074 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 180px);
+  height: calc(100vh - 140px);
 }
 
-.library-exercises-body {
+.lex-library-actions {
   display: flex;
-  flex: 1;
-  min-height: 0;
-  gap: 24px;
-}
-
-/* Left sidebar - exercise list */
-.library-exercises-sidebar {
-  width: 360px;
-  min-width: 360px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  backdrop-filter: blur(10px);
-}
-
-.library-exercises-sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.library-exercises-sidebar-title {
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0 0 16px 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.library-exercises-sidebar-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.library-exercises-sidebar-pill {
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.library-exercises-sidebar-pill:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.library-exercises-sidebar-pill:first-child {
-  padding: 8px 12px;
-}
-
-.library-exercises-sidebar-pill-disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.library-exercises-sidebar-pill-icon {
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  line-height: 1;
-}
-
-.library-exercises-sidebar-pill-text {
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.library-exercises-search-container {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.library-exercises-search-input-container {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  padding: 10px 14px;
-  transition: all 0.2s ease;
-}
-
-.library-exercises-search-input-container:focus-within {
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
-}
-
-.library-exercises-search-icon {
-  color: rgba(255, 255, 255, 0.5);
-  flex-shrink: 0;
-}
-
-.library-exercises-search-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-family: inherit;
-}
-
-.library-exercises-search-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.library-exercises-active-filters {
-  padding: 12px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  max-height: 100px;
-  overflow-y: auto;
-}
-
-.library-exercises-active-filters-scroll {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.library-exercises-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(11px, 2.5vw, 12px);
-  font-weight: 500;
-}
-
-.library-exercises-filter-chip:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-
-.library-exercises-clear-filters {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 0.8);
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: clamp(11px, 2.5vw, 12px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-.library-exercises-clear-filters:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.4);
-}
-
-.library-exercises-sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.library-exercises-sidebar-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.library-exercises-sidebar-content::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 4px;
-}
-
-.library-exercises-sidebar-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-}
-
-.library-exercises-sidebar-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.library-exercises-sidebar-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.library-exercises-sidebar-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.library-exercises-sidebar-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  text-align: left;
-  position: relative;
-}
-
-.library-exercises-sidebar-item:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.library-exercises-sidebar-item-selected {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
-  color: rgba(255, 255, 255, 1);
-}
-
-.library-exercises-sidebar-item-selected:hover {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.library-exercises-sidebar-item-edit {
-  cursor: default;
-}
-
-.library-exercises-sidebar-item-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.library-exercises-sidebar-item-delete {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 68, 68, 0.2);
-  border: 1px solid rgba(255, 68, 68, 0.4);
-  border-radius: 8px;
-  color: rgba(255, 68, 68, 1);
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.library-exercises-sidebar-item-delete:hover {
-  background: rgba(255, 68, 68, 0.35);
-  border-color: rgba(255, 68, 68, 0.6);
-}
-
-.library-exercises-sidebar-item-incomplete {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.library-exercises-sidebar-item-incomplete svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Right main - exercise detail */
-.library-exercises-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  overflow: hidden;
-  backdrop-filter: blur(10px);
-  min-width: 0;
-}
-
-.library-exercises-main-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  text-align: center;
-}
-
-.library-exercises-main-empty-icon {
-  color: rgba(255, 255, 255, 0.25);
-  margin-bottom: 24px;
-}
-
-.library-exercises-main-empty-text {
-  font-size: clamp(14px, 3.5vw, 16px);
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0 0 24px 0;
-  max-width: 360px;
-  line-height: 1.5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.library-exercises-main-empty-button {
-  padding: 12px 24px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.95);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-.library-exercises-main-empty-button:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.library-exercises-main-header {
-  padding: 20px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
-}
-
-.library-exercises-main-header-title-wrap {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-  flex: 1;
-}
-
-.library-exercises-main-title {
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.library-exercises-main-incomplete-tag {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.75);
-  font-size: clamp(11px, 2.5vw, 12px);
-  font-weight: 600;
-}
-
-.library-exercises-main-close {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.8);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.library-exercises-main-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 1);
-}
-
-.library-exercises-main-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  min-height: 0;
-}
-
-/* Inline exercise detail (no modal) - reuse modal body styles with overflow */
-.exercise-modal-content-inline {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.exercise-modal-content-inline .exercise-modal-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-@media (max-width: 900px) {
-  .library-exercises-body {
-    flex-direction: column;
-  }
-
-  .library-exercises-sidebar {
-    width: 100%;
-    min-width: 0;
-    max-height: 40vh;
-  }
-}
-
-/* Icon Selector Modal */
-.icon-selector-modal-content {
-  padding: 20px;
-}
-
-.icon-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
-  gap: 12px;
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 12px;
-  margin-bottom: 20px;
-}
-
-.icon-selector-item {
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  padding: 12px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.icon-selector-item svg {
-  width: 100%;
-  height: 100%;
-  max-width: 32px;
-  max-height: 32px;
-}
-
-.icon-selector-item:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: scale(1.05);
-  color: rgba(255, 255, 255, 1);
-}
-
-.icon-selector-item-selected {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.5);
-  color: rgba(255, 255, 255, 1);
-}
-
-.icon-selector-item-selected:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.6);
-  color: rgba(255, 255, 255, 1);
-}
-
-.icon-selector-actions {
-  display: flex;
-  justify-content: center;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.library-exercises-legend {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 16px;
-  margin-top: 32px;
+  justify-content: flex-end;
   margin-bottom: 12px;
 }
 
-.library-exercises-legend-item {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.exercise-incomplete-icon-small {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(255, 255, 255, 0.3);
-}
-
-.exercise-incomplete-icon-small svg {
-  width: 100%;
-  height: 100%;
-}
-
-.exercise-incomplete-icon-small svg path {
-  fill: rgba(255, 255, 255, 0.2);
-  stroke: rgba(255, 255, 255, 0.35);
-}
-
-.library-exercises-legend-text {
-  font-size: clamp(13px, 3vw, 14px);
-  color: rgba(255, 255, 255, 0.7);
-  font-weight: 400;
-}
-
-.library-exercises-actions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
-.library-action-pill {
-  padding: 6px 20px;
-  height: 32px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-}
-
-.library-action-pill:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.library-action-icon {
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  line-height: 1;
-}
-
-.library-action-text {
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.library-action-pill-disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.library-exercises-loading,
-.library-exercises-error,
-.library-exercises-empty {
-  padding: 40px 20px;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.library-exercises-error {
-  color: #FF6B6B;
-}
-
-.library-exercises-empty {
-  color: var(--text-secondary);
-}
-
-.back-button {
-  margin-top: 20px;
-  padding: 10px 20px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-}
-
-.back-button:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.library-exercises-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-  margin-top: 24px;
-}
-
-/* Library exercise cards - override any shared styles */
-.library-exercises-list .exercise-card {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-radius: 12px !important;
-  padding: 16px !important;
-  padding-left: 16px !important;
-  padding-right: 16px !important;
-  padding-top: 16px !important;
-  padding-bottom: 16px !important;
-  min-height: 100px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  transition: all 0.2s ease !important;
-  cursor: pointer !important;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4) !important;
-  position: relative !important;
-  justify-content: center !important;
-  align-items: stretch !important;
-  contain: none !important;
-}
-
-.exercise-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.library-exercises-list .exercise-card .exercise-card-header {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  text-align: center !important;
-  flex: 1;
-  position: relative;
-  z-index: 0;
-  width: 100% !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-/* Fallback for exercise-card-header class used elsewhere */
-.exercise-card-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  flex: 1;
-  position: relative;
-  z-index: 0;
-  width: 100%;
-  padding: 0;
-  margin: 0;
-  box-sizing: border-box;
-  min-width: 0;
-}
-
-.library-exercises-list .exercise-card .exercise-card-header h3.exercise-card-title {
-  font-size: 1.25rem !important;
-  font-weight: 600 !important;
-  color: var(--text-primary) !important;
-  margin: 0 auto !important;
-  padding: 0 !important;
-  text-align: center !important;
-  width: 100% !important;
-  max-width: 100% !important;
-  display: block !important;
-  box-sizing: border-box !important;
-  line-height: 1.4 !important;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  text-align-last: center !important;
-  align-self: center !important;
-  float: none !important;
-  clear: both !important;
-}
-
-.exercise-card-edit-mode {
-  cursor: default;
-  pointer-events: none;
-  position: relative;
-}
-
-.exercise-card-edit-mode::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  border-radius: 12px;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.exercise-card-edit-mode:hover {
-  transform: none;
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-}
-
-.exercise-incomplete-icon {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 5;
-  pointer-events: none;
-  color: rgba(255, 255, 255, 0.3); /* Yellow-orange with low opacity */
-}
-
-.exercise-incomplete-icon svg {
-  width: 100%;
-  height: 100%;
-}
-
-.exercise-incomplete-icon svg path {
-  fill: rgba(255, 255, 255, 0.2); /* Filled with yellow-orange, low opacity */
-  stroke: rgba(255, 255, 255, 0.35); /* Yellow-orange stroke with slightly higher opacity */
-}
-
-.exercise-delete-button {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  padding: 6px 20px;
-  border-radius: 999px;
-  background-color: rgba(255, 68, 68, 0.2);
-  border: 1px solid rgba(255, 68, 68, 0.3);
-  color: rgba(255, 68, 68, 0.9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  z-index: 10;
-  pointer-events: auto;
-  box-shadow: 0 0 2px rgba(255, 68, 68, 0.4);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.exercise-delete-button:hover {
-  background-color: rgba(255, 68, 68, 0.3);
-  border-color: rgba(255, 68, 68, 0.5);
-  transform: scale(1.05);
-}
-
-.exercise-delete-icon {
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  line-height: 1;
-}
-
-/* Filter Modal - size depends on content */
-.filter-modal-modal {
-  width: fit-content;
-  max-width: min(800px, 90vw);
-  height: fit-content;
-  max-height: 90vh;
-}
-
-.filter-modal-modal .modal-content {
-  flex: 0 0 auto;
-}
-
-.filter-modal-container {
-  display: flex;
-  flex-direction: column;
-  background-color: var(--canvas);
-}
-
-.filter-modal-content {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
-}
-
-.filter-modal-body {
-  display: flex;
-  flex-direction: row;
-  gap: 24px;
-  align-items: stretch;
-  min-height: 400px;
-}
-
-.filter-modal-column {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.filter-muscles-column {
-  flex: 0 0 340px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.filter-cards-column {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 200px;
-  max-width: 260px;
-}
-
-/* Right-side cards - fill available space */
-.filter-card {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  background-color: var(--surface-3);
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  min-height: 0;
-}
-
-/* Músculos seleccionados - fixed height, scrollable */
-.filter-card-muscles-selected {
-  flex: 0 0 auto;
-  height: 200px;
-}
-
-.filter-card-muscles-selected .filter-card-scroll {
-  flex: 0 0 auto;
-  max-height: 140px;
-  overflow-y: auto;
-}
-
-.filter-card-title {
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 12px 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  flex-shrink: 0;
-}
-
-.filter-card-scroll {
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex: 1;
-  min-height: 0;
-  padding-right: 4px;
-}
-
-.filter-card-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.filter-card-scroll::-webkit-scrollbar-track {
-  background-color: rgba(255, 255, 255, 0.04);
-  border-radius: 3px;
-}
-
-.filter-card-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-}
-
-.filter-card-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.25);
-}
-
-.filter-card-empty {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: clamp(13px, 3vw, 14px);
-  margin: 0;
-  padding: 8px 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.filter-section-title {
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.filter-muscle-silhouette-container {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: var(--surface-3);
-  border-radius: 12px;
-  padding: 28px;
-  overflow: hidden;
-  position: relative;
-}
-
-/* Scale SVG (SVG default height is 330px) */
-.filter-muscle-silhouette-container svg {
-  transform: scale(1.12);
-  transform-origin: center center;
-}
-
-.filter-selected-items-container {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.filter-chip {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  background-color: rgba(255, 255, 255, 0.2);
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--text-primary);
-  color: var(--text-primary);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  text-align: left;
-  width: 100%;
-  flex-shrink: 0;
-}
-
-.filter-chip:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.8);
-}
-
-.filter-chip-text {
-  color: var(--text-primary);
-}
-
-.filter-chip-remove {
-  color: var(--text-primary);
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: bold;
-  line-height: 1;
-}
-
-.filter-implement-chip {
-  padding: 10px 16px;
-  border-radius: 8px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  text-align: left;
-  width: 100%;
-  flex-shrink: 0;
-}
-
-.filter-implement-chip:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.filter-implement-chip-selected {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: var(--text-primary);
-}
-
-.filter-implement-chip-selected:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.8);
-}
-
-.filter-implement-chip-text {
-  color: var(--text-primary);
-}
-
-.filter-implement-chip-text-selected {
-  color: var(--text-primary);
-}
-
-.muscle-filter-button {
-  padding: 12px 16px;
-  border-radius: 8px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  text-align: center;
-  text-transform: capitalize;
-}
-
-.muscle-filter-button:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.muscle-filter-button-selected {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
-  color: rgba(255, 255, 255, 1);
-}
-
-.muscle-filter-button-selected:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.filter-no-muscles {
-  color: var(--text-secondary);
-  text-align: center;
-  padding: 20px;
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.filter-modal-actions {
-  display: flex;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.filter-clear-button {
-  flex: 1;
-  padding: 14px 20px;
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  text-align: center;
-}
-
-.filter-clear-button:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.filter-clear-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.filter-apply-button {
-  flex: 1;
-  padding: 14px 20px;
-  border-radius: 12px;
-  background-color: rgba(255, 255, 255, 0.2);
-  border: 1px solid var(--text-primary);
-  color: var(--text-primary);
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  text-align: center;
-}
-
-.filter-apply-button:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.8);
-}
-
-/* Delete Modal Styles */
-.modal-library-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 24px;
-}
-
-.delete-instruction-text {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  margin-bottom: 16px;
-  text-align: left;
-}
-
-.delete-input-button-row {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.delete-input-button-row .input-container {
-  flex: 1;
-}
-
-.exercise-name-warning-text {
-  color: rgba(255, 255, 255, 0.75);
-  font-size: clamp(13px, 3vw, 14px);
-  line-height: 1.5;
-  margin-top: 12px;
-  margin-bottom: 0;
-  padding: 8px 12px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  border-left: 3px solid rgba(255, 255, 255, 0.25);
-}
-
-.delete-warning-text {
-  color: rgba(255, 68, 68, 0.9);
-  font-size: 0.9rem;
-  font-weight: 500;
-  margin-top: 16px;
-  margin-bottom: 0;
-  text-align: left;
-  line-height: 1.5;
-}
-
-.delete-library-button {
-  background-color: rgba(255, 68, 68, 0.2);
-  border: none;
-  border-radius: 12px;
-  padding: 0 40px;
-  height: 56px;
-  color: rgba(255, 68, 68, 0.8);
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 0 rgba(255, 68, 68, 0.72);
-  min-width: 120px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.delete-library-button:hover:not(.delete-library-button-disabled) {
-  background-color: rgba(255, 68, 68, 0.3);
-  box-shadow: 0 4px 12px rgba(255, 68, 68, 0.3);
-  transform: translateY(-2px);
-}
-
-.delete-library-button-disabled {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.5);
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.delete-library-button-disabled:hover {
-  transform: none;
-}
-
-/* Exercise Detail Modal Styles */
-/* Override base modal-content overflow for exercise modal */
-.modal-content:has(.exercise-modal-content) {
-  overflow: hidden !important;
-}
-
-.exercise-modal-content {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  padding: 24px;
-  overflow: hidden; /* Prevent modal content from scrolling */
-  max-height: calc(90vh - 120px); /* Account for header */
-}
-
-.exercise-modal-body {
-  display: flex;
-  flex-direction: row;
-  gap: 24px;
-  height: 600px;
-  max-height: 600px;
-  overflow: hidden; /* Prevent body from scrolling */
-  min-width: 0; /* Allow flex item to shrink below content size */
-  width: 100%; /* Ensure it respects parent width */
-  max-width: 100%; /* Don't exceed parent */
-  box-sizing: border-box;
-}
-
-.exercise-modal-left {
-  width: 300px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-height: 0;
-  min-width: 0; /* Allow flex item to shrink */
-}
-
-.exercise-input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.exercise-input-group:first-child {
-  flex-shrink: 0;
-}
-
-.exercise-input-label {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-}
-
-.exercise-implements-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-  flex: 1;
-  height: 300px;
-  max-height: 300px;
-  overflow: hidden;
-  position: relative;
-  box-sizing: border-box;
-}
-
-.exercise-implements-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.exercise-implements-actions-overlay {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  z-index: 10;
-}
-
-.exercise-implements-edit-buttons {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.exercise-implements-content {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
-  padding-top: 16px;
-}
-
-.exercise-implements-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.exercise-implements-content::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.exercise-implements-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.exercise-implements-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.exercise-implements-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.exercise-implement-chip {
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background-color: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.exercise-implement-chip:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.exercise-implement-chip-selected {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.45);
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.exercise-implement-chip-selected:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.6);
-}
-
-.exercise-implements-add-custom {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.exercise-implements-custom-input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 12px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background-color: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.95);
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.exercise-implements-custom-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.exercise-implements-custom-input:focus {
-  outline: none;
-  border-color: rgba(255, 255, 255, 0.4);
-  background-color: rgba(255, 255, 255, 0.08);
-}
-
-.exercise-implements-add-custom-btn {
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background-color: rgba(255, 255, 255, 0.07);
-  color: rgba(255, 255, 255, 0.95);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-}
-
-.exercise-implements-add-custom-btn:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.55);
-}
-
-.exercise-implements-add-custom-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.exercise-implements-display {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.exercise-implements-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.exercise-implement-tag {
-  display: flex;
-  align-items: center;
-  padding: 6px 16px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-}
-
-.exercise-implements-empty {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: clamp(13px, 3vw, 14px);
-  font-style: italic;
-  text-align: center;
-  padding: 20px;
-}
-
-.exercise-effective-sets-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 16px;
-  flex: 1;
-  height: 400px;
-  max-height: 400px;
-  overflow: hidden;
-  position: relative;
-  box-sizing: border-box;
-}
-
-.exercise-section-title {
-  color: rgba(255, 255, 255, 0.95);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.exercise-presets-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 24px;
-  margin-bottom: 0;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-}
-
-.exercise-presets-wrapper {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  flex-shrink: 0;
-  min-height: 60px;
-  max-height: 60px;
-  overflow: hidden;
-}
-
-.exercise-presets-container {
-  width: 400px;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 8px 0;
-  flex-shrink: 0;
-  position: relative;
-  align-self: flex-start;
-  box-sizing: border-box;
-  min-width: 0;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.exercise-presets-container::-webkit-scrollbar {
-  display: none;
-}
-
-.exercise-presets-scroll {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  gap: 8px;
-  padding: 0 4px;
-  min-width: min-content;
-  width: max-content;
-  box-sizing: border-box;
-  max-width: 100%;
-}
-
-.exercise-preset-item {
+.lex-delete-library-btn {
   display: inline-flex;
   align-items: center;
-  padding: 6px 12px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
-
-.exercise-preset-item:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-1px);
-}
-
-.exercise-preset-name {
-  color: rgba(255, 255, 255, 0.8);
-}
-
-/* Two-column layout when editing muscles: left = silhouette + labels + Guardar, right = Predeterminados */
-.exercise-muscles-view-edit-row {
-  display: flex;
-  flex-direction: row;
-  gap: 20px;
-  width: 100%;
-  flex: 1;
-  min-height: 0;
-}
-
-.exercise-muscles-view-left {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  position: relative;
-}
-
-/* Predeterminados column on the right of the muscles card */
-.exercise-presets-in-muscles-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-  width: 180px;
-  min-height: 0;
-}
-
-.exercise-presets-in-muscles-card .exercise-section-title {
-  margin: 0;
-  flex-shrink: 0;
-}
-
-.exercise-presets-scroll-vertical {
-  display: flex;
-  flex-direction: column;
   gap: 6px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 4px;
-  min-height: 0;
-  flex: 1;
-}
-
-.exercise-presets-scroll-vertical::-webkit-scrollbar {
-  width: 6px;
-}
-
-.exercise-presets-scroll-vertical::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.exercise-presets-scroll-vertical::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.exercise-presets-scroll-vertical::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.exercise-preset-item-vertical {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 8px 12px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 8px;
-  white-space: nowrap;
-  text-align: left;
-  background-color: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 160ms ease;
 }
 
-.exercise-preset-item-vertical:hover {
-  transform: none;
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+.lex-delete-library-btn:hover:not(:disabled) {
+  color: rgba(224, 84, 84, 0.9);
+  border-color: rgba(224, 84, 84, 0.25);
+  background: rgba(224, 84, 84, 0.06);
 }
 
-.exercise-effective-sets-header {
+.lex-delete-library-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lex-body {
   display: flex;
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
+  gap: 24px;
+}
+
+/* ─── Sidebar ───────────────────────────────────────────────────────────── */
+.lex-sidebar {
+  width: 300px;
+  min-width: 300px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lex-sidebar-header {
+  padding: 16px 16px 12px;
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.exercise-effective-sets-info-button {
+.lex-sidebar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.lex-sidebar-add-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 18px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.lex-sidebar-add-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.lex-sidebar-search {
+  padding: 8px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lex-sidebar-search-icon {
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.lex-sidebar-search-input {
+  flex: 1;
   background: none;
   border: none;
-  padding: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.2s ease;
-}
-
-.exercise-effective-sets-info-button:hover {
-  opacity: 0.7;
-}
-
-.exercise-effective-sets-info-modal-content {
-  padding: 20px 0;
   color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  line-height: 1.6;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
 }
 
-.exercise-effective-sets-info-modal-content p {
-  margin: 0 0 16px 0;
+.lex-sidebar-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
 }
 
-.exercise-effective-sets-info-modal-content p:last-child {
-  margin-bottom: 0;
-}
-
-.exercise-effective-sets-scroll {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.lex-sidebar-list {
+  flex: 1;
   overflow-y: auto;
-  overflow-x: hidden;
-  flex: 1;
-  min-height: 0;
-  padding: 4px 4px 16px 0;
-  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
-/* Custom scrollbar for effective sets */
-.exercise-effective-sets-scroll::-webkit-scrollbar {
-  width: 6px;
-}
+.lex-sidebar-list::-webkit-scrollbar { width: 3px; }
+.lex-sidebar-list::-webkit-scrollbar-track { background: transparent; }
+.lex-sidebar-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
 
-.exercise-effective-sets-scroll::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 3px;
-}
-
-.exercise-effective-sets-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
-}
-
-.exercise-effective-sets-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.exercise-effective-sets-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.exercise-effective-sets-item:last-child {
-  border-bottom: none;
-}
-
-.exercise-effective-sets-muscle-name {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  flex: 1;
-}
-
-.exercise-effective-sets-item-readonly {
-  padding: 6px 0;
-}
-
-.exercise-effective-sets-value-readonly {
-  color: rgba(255, 255, 255, 0.65);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 600;
-  min-width: 32px;
-  text-align: right;
-}
-
-.exercise-effective-sets-input-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.exercise-effective-sets-arrows {
+.lex-sidebar-list-inner {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  align-items: center;
-  justify-content: center;
+  padding: 4px 12px;
 }
 
-.exercise-effective-sets-input {
-  width: 50px;
-  height: 28px;
-  padding: 4px 4px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  text-align: center;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.1);
-  transition: all 0.2s ease;
-}
-
-.exercise-effective-sets-input:focus {
-  outline: none;
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.2);
-}
-
-.exercise-effective-sets-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-/* Hide default spinner buttons */
-.exercise-effective-sets-input::-webkit-inner-spin-button,
-.exercise-effective-sets-input::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  appearance: none;
-  margin: 0;
-}
-
-
-.exercise-effective-sets-input[type="number"] {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.exercise-effective-sets-spinner-button {
-  width: 20px;
-  height: 14px;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  transition: all 0.2s ease;
-}
-
-.exercise-effective-sets-spinner-button:hover:not(:disabled) {
-  opacity: 0.7;
-}
-
-.exercise-effective-sets-spinner-button:active:not(:disabled) {
-  transform: scale(0.95);
-}
-
-.exercise-effective-sets-spinner-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.3;
-}
-
-.exercise-effective-sets-spinner-button:disabled svg {
-  opacity: 0.5;
-}
-
-.exercise-effective-sets-spinner-button svg {
-  width: 12px;
-  height: 12px;
-}
-
-.exercise-textarea {
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 12px 16px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  resize: vertical;
-  min-height: 200px;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  transition: all 0.2s ease;
-}
-
-.exercise-textarea:focus {
-  outline: none;
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.exercise-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.exercise-modal-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0; /* Allow flex item to shrink below content size */
-  overflow: hidden; /* Prevent content from expanding */
-}
-
-.exercise-tab-header {
-  display: flex;
-  flex-direction: row;
-  position: relative;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  padding: 2px;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-}
-
-.exercise-tab-indicator-container {
-  position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 2px;
-  right: 2px;
-  pointer-events: none;
-}
-
-.exercise-tab-indicator {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: calc(50% - 2px);
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  transition: transform 0.3s ease;
-}
-
-.exercise-tab-indicator-active {
-  transform: translateX(0);
-}
-
-.exercise-tab-button {
-  flex: 1;
-  padding: 8px 16px;
-  background: none;
-  border: none;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  z-index: 1;
-  position: relative;
-}
-
-.exercise-tab-button-active {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.exercise-modal-right-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background-color: rgba(0, 0, 0, 0.3);
-  border-radius: 8px;
-  padding: 24px;
-  min-height: 500px;
-  overflow: hidden;
-  min-width: 0; /* Prevent flex item from expanding beyond container */
-  max-width: 100%; /* Ensure it doesn't exceed parent width */
-}
-
-.exercise-modal-right-content-video {
-  padding: 0;
-}
-
-.exercise-muscles-view {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  position: relative;
-}
-
-.exercise-muscle-silhouette-wrapper {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  overflow: hidden;
-  min-height: 0;
-}
-
-.exercise-muscle-silhouette-wrapper svg {
-  transform: scale(1.0);
-  transform-origin: center center;
-}
-
-/* Make selected muscles less transparent in exercise detail modal */
-.exercise-muscle-silhouette-wrapper svg path[stroke="#ffffff"] {
-  fill-opacity: 0.4 !important;
-  stroke-opacity: 0.5 !important;
-}
-
-.exercise-muscles-labels-wrapper {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  flex-shrink: 0; /* Don't shrink, maintain fixed space */
-  min-height: 60px; /* Minimum height to prevent layout shift */
-  max-height: 60px; /* Maximum height to prevent expansion */
-  overflow: hidden; /* Hide overflow */
-}
-
-.exercise-muscles-labels-container {
-  width: 400px; /* Fixed width - shows about 3-4 muscles at once */
-  max-width: 100%; /* Don't exceed parent if parent is smaller */
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 8px 0;
-  flex-shrink: 0; /* Don't shrink */
-  position: relative;
-  align-self: flex-start; /* Align to start, don't stretch */
-  box-sizing: border-box; /* Include padding in width calculation */
-  /* Force container to respect width constraint */
-  min-width: 0;
-  /* Hide default scrollbar */
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
-
-.exercise-muscles-labels-container::-webkit-scrollbar {
-  display: none;
-}
-
-.exercise-muscles-labels-scroll-indicator {
-  width: 400px;
-  max-width: 100%;
-  height: 4px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  position: relative;
-  overflow: hidden;
-  align-self: flex-start;
+.lex-sidebar-item-wrap {
   flex-shrink: 0;
-  margin-top: 4px;
 }
 
-.exercise-muscles-labels-scroll-indicator-bar {
-  position: absolute;
-  height: 100%;
-  background-color: rgba(255, 255, 255, 0.4);
-  border-radius: 2px;
-  transition: left 0.1s ease, width 0.1s ease;
+.lex-sidebar-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
 }
 
-
-.exercise-muscles-labels-scroll {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  gap: 8px;
-  padding: 0 4px;
-  min-width: min-content;
-  width: max-content;
-  box-sizing: border-box;
-  /* Prevent forcing parent to expand - content can be wider than container */
-  /* Container will scroll, but won't expand */
-}
-
-.exercise-muscle-label-item {
+.lex-sidebar-item {
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 6px 16px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 999px;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  gap: 4px;
+  padding: 0 4px 0 0;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  transition: all 0.15s ease;
 }
 
-.exercise-muscle-label-name {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
+.lex-sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.exercise-muscle-remove-button {
-  margin-left: 8px;
+.lex-sidebar-item--selected {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.lex-sidebar-item-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: clamp(16px, 4vw, 20px);
-  font-weight: 600;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  text-align: left;
   cursor: pointer;
-  padding: 0;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s ease;
+  min-width: 0;
 }
 
-.exercise-muscle-remove-button:hover {
-  color: rgba(255, 68, 68, 0.9);
-  background-color: rgba(255, 68, 68, 0.1);
-}
-
-.exercise-muscles-actions-overlay {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  z-index: 10;
-}
-
-.exercise-muscle-edit-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 16px;
-  height: 32px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  text-align: center;
-}
-
-.exercise-muscle-edit-button:hover {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px);
-}
-
-.exercise-no-muscles {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  gap: 16px;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.exercise-no-muscles-selected {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: clamp(13px, 3vw, 14px);
-  font-style: italic;
-}
-
-.exercise-no-video {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  gap: 16px;
-  color: rgba(255, 255, 255, 0.6);
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.exercise-video-view {
-  width: 100%;
-  height: 100%;
+.lex-sidebar-item-name {
   flex: 1;
-  min-height: 0;
-}
-
-.exercise-video-container {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.exercise-video-player {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 8px;
-  background-color: #000;
-  display: block;
-}
-
-.exercise-video-actions-overlay {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  z-index: 10;
-}
-
-.exercise-video-edit-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  background-color: rgba(0, 0, 0, 0.3);
-}
-
-.exercise-video-edit-buttons {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.exercise-video-edit-row {
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.exercise-video-action-group {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.exercise-video-action-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 16px;
-  height: 32px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
-  text-align: center;
-}
-
-.exercise-video-action-pill:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px);
-}
-
-.exercise-video-action-pill:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.exercise-video-action-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.exercise-video-delete-pill {
-  background-color: rgba(255, 68, 68, 0.2);
-  border-color: rgba(255, 68, 68, 0.3);
-  color: rgba(255, 68, 68, 0.9);
-  box-shadow: 0 0 2px rgba(255, 68, 68, 0.4);
+.lex-sidebar-item-tags {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.exercise-video-delete-pill:hover:not(:disabled) {
-  background-color: rgba(255, 68, 68, 0.3);
-  border-color: rgba(255, 68, 68, 0.5);
-  box-shadow: 0 0 4px rgba(255, 68, 68, 0.5);
+.lex-sidebar-missing-tag {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(255, 107, 107, 0.15);
+  color: rgba(255, 107, 107, 0.85);
+  white-space: nowrap;
 }
 
-.exercise-video-save-pill {
-  /* Same as default action pill - no distinct color */
+.lex-sidebar-item-menu {
+  opacity: 0;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  transition: opacity 0.15s;
 }
 
-.exercise-video-cancel-pill {
-  background-color: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+.lex-sidebar-item:hover .lex-sidebar-item-menu {
+  opacity: 1;
 }
 
-.exercise-video-cancel-pill:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+.lex-sidebar-item-menu:hover {
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.exercise-video-progress {
+/* ─── Workspace ─────────────────────────────────────────────────────────── */
+.lex-workspace {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  overflow-y: auto;
+}
+
+.lex-workspace-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  width: 100%;
-  margin-top: 4px;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.2);
 }
 
-.exercise-video-progress-bar {
-  width: 100%;
-  height: 8px;
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
+.lex-workspace-empty-text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0;
 }
 
-.exercise-video-progress-fill {
+.lex-workspace-empty-btn {
+  margin-top: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.lex-workspace-empty-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lex-workspace-header {
+  padding: 0 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 20px;
+}
+
+.lex-workspace-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  margin: 0;
+}
+
+.lex-workspace-main {
+  flex: 1;
+  min-height: 0;
+}
+
+.lex-workspace-columns {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
   height: 100%;
-  background-color: rgba(255, 255, 255, 1);
-  transition: width 0.3s ease;
-  border-radius: 4px;
 }
 
-.exercise-video-progress-text {
-  color: rgba(255, 255, 255, 1);
-  font-size: clamp(11px, 2.5vw, 12px);
+.lex-section-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.02em;
+}
+
+/* ─── Video Panel ───────────────────────────────────────────────────────── */
+.lex-video-panel {
+  flex: 0 0 420px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.lex-video-container {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 1;
+}
+
+.lex-video-player {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #000;
+}
+
+.lex-video-actions {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.lex-video-action-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
   font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
 }
 
-.exercise-video-upload-group {
+.lex-video-action-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.lex-video-action-btn--danger:hover {
+  background: rgba(220, 38, 38, 0.7);
+}
+
+.lex-video-upload-zone {
+  flex: 1;
+  border-radius: 12px;
+  border: 2px dashed rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.lex-video-upload-zone:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.lex-video-upload-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.lex-video-upload-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.lex-video-uploading,
+.lex-video-uploading-overlay {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  padding: 16px;
 }
 
-.exercise-video-upload-button {
+.lex-video-uploading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  border-radius: 12px;
+  justify-content: center;
+}
+
+.lex-video-progress-bar {
+  width: 120px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.lex-video-progress-fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  transition: width 0.3s;
+  border-radius: 2px;
+}
+
+.lex-video-progress-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ─── Muscle Panel ──────────────────────────────────────────────────────── */
+.lex-muscle-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lex-muscle-card {
+  flex: 5;
+  min-height: 0;
+  display: flex;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+/* Left: SVG */
+.lex-muscle-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 14px 14px;
+  overflow-y: auto;
+}
+
+/* Right: activation list */
+.lex-muscle-right {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 14px 0;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-y: auto;
+}
+
+.lex-muscle-right::-webkit-scrollbar { width: 3px; }
+.lex-muscle-right::-webkit-scrollbar-track { background: transparent; }
+.lex-muscle-right::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+
+/* ─── Muscle Right Header ───────────────────────────────────────────────── */
+.lex-muscle-right-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding-left: 14px;
+}
+
+.lex-preset-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lex-preset-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* ─── SVG Container ─────────────────────────────────────────────────────── */
+.lex-muscle-svg-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 2;
+  min-height: 0;
+}
+
+.lex-muscle-svg-container svg {
+  width: auto;
+  max-height: 100%;
+  max-width: 100%;
+}
+
+/* ─── Implements Card ───────────────────────────────────────────────────── */
+.lex-implements-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 14px;
+}
+
+.lex-implements-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ─── Implements Pills + Dropdown ────────────────────────────────────────── */
+.lex-impl {
+  position: relative;
+}
+
+.lex-impl-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.lex-impl-empty {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.lex-impl-pill {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 10px 20px;
-  height: 40px;
-  border-radius: 999px;
-  background-color: rgba(255, 255, 255, 0.08);
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+.lex-impl-pill-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.25);
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  box-shadow: 0 0 2px rgba(255, 255, 255, 0.4);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: color 0.12s;
+}
+
+.lex-impl-pill-remove:hover {
+  color: #ef4444;
+}
+
+.lex-impl-add-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+
+.lex-impl-add-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Dropdown (portal) — opens upward */
+.lex-impl-dropdown {
+  position: fixed;
+  z-index: 9999;
+  width: 220px;
+  max-height: 320px;
+  border-radius: 12px;
+  background: rgba(28, 28, 28, 0.97);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lex-impl-dropdown-search {
+  padding: 8px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lex-impl-dropdown-search input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.lex-impl-dropdown-search input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.lex-impl-dropdown-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.lex-impl-dropdown-list::-webkit-scrollbar { width: 3px; }
+.lex-impl-dropdown-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+.lex-impl-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.lex-impl-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.lex-impl-dropdown-item--selected {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.lex-impl-dropdown-check {
+  width: 14px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  flex-shrink: 0;
+}
+
+.lex-impl-dropdown-empty {
+  padding: 12px;
   text-align: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
 }
 
-.exercise-video-upload-button:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px);
+.lex-impl-dropdown-custom {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.exercise-video-upload-button:disabled {
-  opacity: 0.5;
+.lex-impl-dropdown-custom input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.lex-impl-dropdown-custom input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.lex-impl-dropdown-custom button {
+  width: 26px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lex-impl-dropdown-custom button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.lex-impl-dropdown-custom button:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
+/* ─── Muscle Activation List ────────────────────────────────────────────── */
+.lex-muscle-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding-left: 14px;
+}
+
+.lex-muscle-list::-webkit-scrollbar { width: 3px; }
+.lex-muscle-list::-webkit-scrollbar-track { background: transparent; }
+.lex-muscle-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+
+.lex-muscle-list-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+}
+
+.lex-muscle-list-empty p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  margin: 0;
+  text-align: center;
+}
+
+.lex-muscle-list-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.lex-muscle-list-row:last-child {
+  border-bottom: none;
+}
+
+.lex-muscle-list-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lex-muscle-list-input {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.lex-muscle-list-input::-webkit-inner-spin-button,
+.lex-muscle-list-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.lex-muscle-list-input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.lex-muscle-list-stepper {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 28px;
+}
+
+.lex-muscle-list-step-btn {
+  position: absolute;
+  top: 0;
+  width: 14px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+  z-index: 1;
+}
+
+.lex-muscle-list-step-btn--dec {
+  left: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.lex-muscle-list-step-btn--inc {
+  right: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.lex-muscle-list-stepper:hover .lex-muscle-list-step-btn {
+  opacity: 1;
+}
+
+.lex-muscle-list-step-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lex-muscle-list-step-btn:disabled {
+  opacity: 0 !important;
+  cursor: not-allowed;
+}
+
+.lex-muscle-list-stepper:hover .lex-muscle-list-step-btn:disabled {
+  opacity: 0.2 !important;
+}
+
+.lex-muscle-list-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.lex-muscle-list-remove:hover {
+  color: #ef4444;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Skeleton Loading State
+   ════════════════════════════════════════════════════════════════ */
+
+.lex-skeleton-sidebar {
+  width: 300px;
+  min-width: 300px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lex-skeleton-sidebar-header {
+  padding: 16px 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lex-skeleton-sidebar-search {
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lex-skeleton-sidebar-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+.lex-skeleton-sidebar-item {
+  padding: 10px 12px;
+}
+
+.lex-skeleton-workspace {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.lex-skeleton-workspace-columns {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.lex-skeleton-video {
+  flex: 0 0 420px;
+  min-height: 300px;
+}
+
+.lex-skeleton-muscle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ════════════════════════════════════════════════════════════ */
+
+@media (max-width: 1024px) {
+  .lex-body {
+    flex-direction: column;
+  }
+
+  .lex-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 280px;
+  }
+
+  .lex-workspace-columns {
+    flex-direction: column;
+  }
+
+  .lex-video-panel {
+    flex: none;
+    width: 100%;
+  }
+
+  .lex-skeleton-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 280px;
+  }
+
+  .lex-skeleton-workspace-columns {
+    flex-direction: column;
+  }
+
+  .lex-skeleton-video {
+    flex: none;
+    width: 100%;
+    min-height: 240px;
+  }
+}
+
+@media (max-width: 768px) {
+  .lex-content {
+    padding: 16px;
+    height: auto;
+    min-height: calc(100vh - 140px);
+  }
+
+  .lex-body {
+    gap: 16px;
+  }
+
+  .lex-sidebar {
+    max-height: 300px;
+  }
+
+  .lex-sidebar-item {
+    min-height: 52px;
+  }
+
+  .lex-sidebar-item-btn {
+    padding: 14px 10px 14px 14px;
+    font-size: 14px;
+  }
+
+  .lex-workspace-columns {
+    gap: 12px;
+  }
+
+  .lex-video-panel {
+    min-height: 240px;
+  }
+
+  /* Muscle panel: stack SVG and list vertically */
+  .lex-muscle-card {
+    flex-direction: column;
+  }
+
+  .lex-muscle-right {
+    flex: none;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 14px;
+    max-height: 200px;
+  }
+
+  .lex-muscle-left {
+    padding: 16px 14px 8px;
+  }
+
+  .lex-muscle-svg-container {
+    min-height: 180px;
+  }
+
+  /* Implements card */
+  .lex-implements-card {
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .lex-content {
+    padding: 12px;
+  }
+
+  .lex-sidebar {
+    max-height: 200px;
+    border-radius: 12px;
+  }
+
+  .lex-workspace-header {
+    padding: 0 0 12px;
+    margin-bottom: 14px;
+  }
+
+  .lex-workspace-title {
+    font-size: 17px;
+  }
+}

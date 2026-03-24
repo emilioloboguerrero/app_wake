@@ -262,7 +262,7 @@ function AccessManagement({ clientDetail, clientName, clientId }) {
     mutationFn: (newDate) =>
       apiClient.patch(`/creator/clients/${clientId}`, { accessEndsAt: newDate }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['clients', 'detail', clientId] });
     },
     onError: () => {
       showToast('No pudimos actualizar la fecha de acceso. Intenta de nuevo.', 'error');
@@ -903,7 +903,7 @@ const ProgramsAndClientsScreen = () => {
     isError: isDetailError,
     refetch: refetchDetail,
   } = useQuery({
-    queryKey: ['client', selectedClientId],
+    queryKey: ['clients', 'detail', selectedClientId],
     queryFn: () => apiClient.get('/creator/clients/' + selectedClientId),
     ...cacheConfig.userProfile,
     enabled: !!selectedClientId,

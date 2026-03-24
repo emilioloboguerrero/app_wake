@@ -1,151 +1,184 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
-import { GlowingEffect, SkeletonCard, VirtualList, FullScreenError } from '../ui';
+import SkewedCards from '../ui/SkewedCards';
+import Modal from '../Modal';
+import Input from '../Input';
+import Button from '../Button';
+import PanelShell from './PanelShell';
+import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import libraryService from '../../services/libraryService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
+import { useToast } from '../../contexts/ToastContext';
 
-const MUSCLE_DISPLAY = {
-  pecs: 'Pectorales',
-  front_delts: 'Deltoides Frontales',
-  side_delts: 'Deltoides Laterales',
-  rear_delts: 'Deltoides Post.',
-  triceps: 'Tríceps',
-  traps: 'Trapecios',
-  abs: 'Abdominales',
-  lats: 'Dorsales',
-  rhomboids: 'Romboides',
-  biceps: 'Bíceps',
-  forearms: 'Antebrazos',
-  quads: 'Cuádriceps',
-  glutes: 'Glúteos',
-  hamstrings: 'Isquiotibiales',
-  calves: 'Gemelos',
-  hip_flexors: 'Flexores de Cadera',
-  obliques: 'Oblicuos',
-  lower_back: 'Lumbar',
-  neck: 'Cuello',
-};
-
-function getExerciseMissing(ex) {
-  const missing = [];
-  if (!ex.video_url && !ex.video) missing.push('Video demostrativo');
-  if (!ex.muscle_activation || Object.keys(ex.muscle_activation).length === 0) missing.push('Activación muscular');
-  if (!ex.implements || (Array.isArray(ex.implements) && ex.implements.length === 0)) missing.push('Implementos');
-  return missing;
-}
-
-function getPrimaryMuscle(ex) {
-  if (ex.primaryMuscles?.length) return ex.primaryMuscles[0];
-  if (ex.muscle_activation) {
-    const entries = Object.entries(ex.muscle_activation);
-    if (entries.length) {
-      const top = entries.sort((a, b) => b[1] - a[1])[0];
-      return top[0];
-    }
-  }
-  return null;
-}
-
-function ExerciseRow({ exercise }) {
-  const [calloutOpen, setCalloutOpen] = useState(false);
-  const missing = useMemo(() => getExerciseMissing(exercise), [exercise]);
-  const isComplete = missing.length === 0;
-  const muscle = getPrimaryMuscle(exercise);
-  const muscleLabel = muscle ? (MUSCLE_DISPLAY[muscle] || muscle) : null;
-
-  const handleDotClick = useCallback((e) => {
-    e.stopPropagation();
-    if (!isComplete) setCalloutOpen((v) => !v);
-  }, [isComplete]);
-
+function ExercisesPanelSkeleton() {
   return (
-    <div className={`lib-exercise-row ${calloutOpen ? 'lib-exercise-row--open' : ''}`}>
-      <GlowingEffect disabled={!calloutOpen} spread={28} borderWidth={1} />
-      <div className="lib-exercise-row-inner">
-        <button
-          className="lib-completeness-dot"
-          style={{
-            background: isComplete
-              ? 'rgba(74,222,128,0.6)'
-              : 'rgba(251,191,36,0.8)',
-          }}
-          onClick={handleDotClick}
-          aria-label={isComplete ? 'Ejercicio completo' : 'Ver campos faltantes'}
-          title={isComplete ? 'Completo' : 'Incompleto — click para detalles'}
-        />
-        <span className="lib-exercise-name">{exercise.name || 'Sin nombre'}</span>
-        {muscleLabel && (
-          <span className="lib-muscle-pill">{muscleLabel}</span>
-        )}
+    <div className="bib-library-skewed-wrap">
+      <div className="skewed-cards-grid" style={{ animation: 'none' }}>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className={`skewed-card skewed-card--pos-${i}`}
+            style={{ pointerEvents: 'none' }}
+          >
+            <div className="skewed-card-overlay" />
+            <div className="skewed-card-row">
+              <ShimmerSkeleton width="50%" height="16px" borderRadius="6px" />
+            </div>
+            <ShimmerSkeleton width="35%" height="13px" borderRadius="4px" />
+          </div>
+        ))}
       </div>
-      {!isComplete && (
-        <div
-          className={`lib-exercise-callout ${calloutOpen ? 'lib-exercise-callout--visible' : ''}`}
-          aria-hidden={!calloutOpen}
-        >
-          <p className="lib-callout-title">A este ejercicio le falta: {missing.join(', ').toLowerCase()}.</p>
-          <p className="lib-callout-sub">No es obligatorio, pero mejora la experiencia de tus clientes.</p>
-        </div>
-      )}
     </div>
   );
 }
 
-function SkeletonRows({ count = 6 }) {
-  return (
-    <div className="lib-skeleton-rows">
-      {Array.from({ length: count }).map((_, i) => (
-        <SkeletonCard key={i} />
-      ))}
-    </div>
-  );
+function isComplete(ex) {
+  const hasVideo = !!(ex.video_url || ex.video);
+  const hasMuscles = ex.muscle_activation && Object.keys(ex.muscle_activation).length > 0;
+  const hasImplements = Array.isArray(ex.implements) && ex.implements.length > 0;
+  return hasVideo && hasMuscles && hasImplements;
 }
 
-function EmptyState({ onCta }) {
-  return (
-    <div className="lib-empty">
-      <p className="lib-empty-title">Tu biblioteca de ejercicios esta vacia</p>
-      <p className="lib-empty-sub">Crea ejercicios y usalos en tus sesiones.</p>
-      <button className="lib-empty-cta" onClick={onCta}>+ Nueva biblioteca</button>
-    </div>
-  );
-}
-
-export default function ExercisesPanel({ searchQuery = '' }) {
+export default function ExercisesPanel({ searchQuery = '', onCreateLibrary }) {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
-  const { data: exercises = [], isLoading, isError } = useQuery({
+  const [quickAddLibrary, setQuickAddLibrary] = useState(null);
+  const [newExerciseName, setNewExerciseName] = useState('');
+
+  const { data: exercises = [], isLoading: exLoading, isError: exError } = useQuery({
     queryKey: queryKeys.library.exercises(user?.uid),
     queryFn: () => libraryService.getExercises(),
     enabled: !!user?.uid,
     ...cacheConfig.programStructure,
   });
 
-  const q = searchQuery.trim().toLowerCase();
-  const filtered = useMemo(
-    () => (q ? exercises.filter((e) => e.name?.toLowerCase().includes(q)) : exercises),
-    [exercises, q]
-  );
+  const { data: libraries = [], isLoading: libLoading } = useQuery({
+    queryKey: queryKeys.library.libraries(user?.uid),
+    queryFn: () => libraryService.getLibrariesByCreator(),
+    enabled: !!user?.uid,
+    ...cacheConfig.programStructure,
+  });
 
-  if (isLoading) return <SkeletonRows />;
-  if (isError) return <FullScreenError title="No se pudo cargar la biblioteca" message="Verifica tu conexion e intenta de nuevo." onRetry={() => window.location.reload()} />;
-  if (!filtered.length) return <EmptyState onCta={() => navigate('/libraries')} />;
+  const isLoading = exLoading || libLoading;
+
+  // Group exercises by library
+  const exercisesByLibrary = useMemo(() => {
+    const map = {};
+    for (const ex of exercises) {
+      const libId = ex.libraryId;
+      if (!libId) continue;
+      if (!map[libId]) map[libId] = [];
+      map[libId].push(ex);
+    }
+    return map;
+  }, [exercises]);
+
+  // Filter libraries by search query
+  const q = searchQuery.trim().toLowerCase();
+  const filteredLibraries = useMemo(() => {
+    if (!q) return libraries;
+    return libraries.filter(lib => {
+      if (lib.title?.toLowerCase().includes(q)) return true;
+      const libExercises = exercisesByLibrary[lib.id] || [];
+      return libExercises.some(ex => ex.name?.toLowerCase().includes(q));
+    });
+  }, [libraries, q, exercisesByLibrary]);
+
+  // Quick-add mutation
+  const createExerciseMutation = useMutation({
+    mutationFn: ({ libraryId, name }) => libraryService.createExercise(libraryId, name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.exercises(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.libraries(user?.uid) });
+    },
+    onError: (err) => {
+      showToast('No pudimos crear el ejercicio. Intenta de nuevo.', 'error');
+    },
+  });
+
+  const handleNavigate = useCallback((libraryId) => {
+    navigate(`/libraries/${libraryId}`, {
+      state: { returnTo: '/content', returnState: { domain: 'entrenamiento', tab: 'ejercicios' } },
+    });
+  }, [navigate]);
+
+  const handleQuickAdd = useCallback((library) => {
+    setQuickAddLibrary(library);
+    setNewExerciseName('');
+  }, []);
+
+  const handleCreateExercise = useCallback(async () => {
+    const name = newExerciseName.trim();
+    if (!name || !quickAddLibrary) return;
+
+    const libExercises = exercisesByLibrary[quickAddLibrary.id] || [];
+    if (libExercises.some(ex => ex.name?.toLowerCase() === name.toLowerCase())) {
+      showToast('Ya existe un ejercicio con ese nombre en esta biblioteca.', 'error');
+      return;
+    }
+
+    await createExerciseMutation.mutateAsync({ libraryId: quickAddLibrary.id, name });
+    setQuickAddLibrary(null);
+    setNewExerciseName('');
+  }, [newExerciseName, quickAddLibrary, exercisesByLibrary, createExerciseMutation, showToast]);
 
   return (
-    <div className="lib-exercise-list">
-      <VirtualList
-        items={filtered}
-        itemHeight={62}
-        height={Math.max(300, window.innerHeight - 380)}
-        renderItem={(ex, index, style) => (
-          <div key={ex.id || ex.name} style={style}>
-            <ExerciseRow exercise={ex} />
-          </div>
-        )}
-      />
-    </div>
+    <PanelShell
+      isLoading={isLoading}
+      isError={exError}
+      isEmpty={!filteredLibraries.length && !isLoading}
+      emptyTitle="No tienes bibliotecas de ejercicios"
+      emptySub="Crea una biblioteca de ejercicios para organizar tus ejercicios."
+      emptyCta="+ Nueva biblioteca"
+      onCta={onCreateLibrary || (() => navigate('/libraries'))}
+      onRetry={() => window.location.reload()}
+      renderSkeleton={() => <ExercisesPanelSkeleton />}
+    >
+      <div className="bib-library-skewed-wrap">
+        <SkewedCards
+          cards={filteredLibraries.map((lib, i) => {
+            const libExercises = exercisesByLibrary[lib.id] || [];
+            const total = libExercises.length;
+            const incomplete = libExercises.filter(ex => !isComplete(ex)).length;
+
+            return {
+              key: lib.id,
+              title: lib.title || 'Sin título',
+              description: `${total} ${total === 1 ? 'ejercicio' : 'ejercicios'}${incomplete > 0 ? ` · ${incomplete} incompletos` : ''}`,
+              className: `skewed-card--pos-${Math.min(i, 3)} skewed-card--grayscale`,
+              onClick: () => handleNavigate(lib.id),
+            };
+          })}
+        />
+      </div>
+
+      {/* Quick-add exercise modal */}
+      <Modal
+        isOpen={!!quickAddLibrary}
+        onClose={() => setQuickAddLibrary(null)}
+        title={`Nuevo ejercicio en ${quickAddLibrary?.title || ''}`}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Input
+            value={newExerciseName}
+            onChange={(e) => setNewExerciseName(e.target.value)}
+            placeholder="Nombre del ejercicio — ej: Press de banca"
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateExercise()}
+            autoFocus
+          />
+          <Button
+            title="Crear ejercicio"
+            onClick={handleCreateExercise}
+            disabled={!newExerciseName.trim() || createExerciseMutation.isPending}
+            loading={createExerciseMutation.isPending}
+          />
+        </div>
+      </Modal>
+    </PanelShell>
   );
 }

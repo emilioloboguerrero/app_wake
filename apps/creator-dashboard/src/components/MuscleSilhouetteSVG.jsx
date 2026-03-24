@@ -1,15 +1,25 @@
 import React from 'react';
 import { getMuscleSelectionColor, getMuscleColor } from '../utils/muscleColorUtils';
 
-const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick, muscleVolumes = null }) => {
-  const isVolumeMode = muscleVolumes && typeof muscleVolumes === 'object' && !onMuscleClick;
+const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick, muscleVolumes = null, accentRgb = null }) => {
+  const isVolumeMode = muscleVolumes && typeof muscleVolumes === 'object';
+  const isInteractiveVolume = isVolumeMode && !!onMuscleClick;
 
   const renderMuscleGroup = (muscleId, paths) => {
     if (isVolumeMode) {
       const volume = muscleVolumes[muscleId] ?? 0;
-      const { color, opacity } = getMuscleColor(volume);
+      const base = getMuscleColor(volume);
+      const color = accentRgb && volume > 0 ? `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})` : base.color;
+      const opacity = base.opacity;
+      const isClickable = isInteractiveVolume && muscleId !== "pantorrilla'nt";
+
       return (
-        <g key={muscleId} id={muscleId}>
+        <g
+          key={muscleId}
+          id={muscleId}
+          onClick={isClickable ? (e) => onMuscleClick(muscleId, e) : undefined}
+          style={{ cursor: isClickable ? 'pointer' : 'default' }}
+        >
           {paths.map((pathData, index) => (
             <path
               key={`${muscleId}-${index}`}
@@ -30,7 +40,7 @@ const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick, muscl
       <g
         key={muscleId}
         id={muscleId}
-        onClick={isClickable ? () => onMuscleClick && onMuscleClick(muscleId) : undefined}
+        onClick={isClickable ? (e) => onMuscleClick && onMuscleClick(muscleId, e) : undefined}
         style={{ cursor: isClickable ? 'pointer' : 'default' }}
       >
         {paths.map((pathData, index) => (
@@ -50,8 +60,8 @@ const MuscleSilhouetteSVG = ({ selectedMuscles = new Set(), onMuscleClick, muscl
 
   return (
     <svg 
-      width="100%" 
-      height="330" 
+      width="100%"
+      height="100%"
       viewBox="0 0 7996 8819" 
       preserveAspectRatio="xMidYMid meet" 
       style={{ backgroundColor: 'transparent' }}

@@ -3,19 +3,15 @@
  * @param {number} setCount - Number of effective sets
  * @returns {object} - Object with color (hex) and opacity (0-1)
  */
-export const getMuscleColor = (setCount) => {
-  if (setCount === 0) {
-    return { color: '#FFFFFF', opacity: 0.1 }; // No volume - barely visible white
-  } else if (setCount <= 6) {
-    // 1-6 sets: More opaque white with increasing opacity
-    return { color: '#FFFFFF', opacity: 0.3 + ((setCount / 6) * 0.4) }; // 0.3 to 0.7 opacity
-  } else if (setCount <= 18) {
-    // 6-18 sets: White highlight
-    return { color: '#ffffff', opacity: 0.6 };
-  } else {
-    // 18+ sets: Dark red
-    return { color: '#8B0000', opacity: 0.8 };
+export const getMuscleColor = (volume) => {
+  // volume is 0.0 to 1.0 (effective sets)
+  if (volume <= 0) {
+    return { color: '#FFFFFF', opacity: 0.05 };
   }
+  // Scale from dim white (low activation) to bright white (high activation)
+  // 0.1 → faint, 0.5 → medium, 1.0 → fully lit
+  const opacity = 0.1 + volume * 0.7; // 0.1 to 0.8
+  return { color: '#FFFFFF', opacity };
 };
 
 /**

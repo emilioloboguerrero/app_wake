@@ -1,0 +1,223 @@
+/* ─── Skewed Cards Grid ──────────────────────────────────────── */
+.skewed-cards-grid {
+  display: grid;
+  grid-template-areas: 'stack';
+  place-items: center;
+  opacity: 1;
+  animation: skewed-fade-in 0.7s ease both;
+}
+
+@keyframes skewed-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Single Skewed Card ────────────────────────────────────── */
+.skewed-card {
+  grid-area: stack;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 32rem;
+  height: 9rem;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  transform: skewY(-8deg);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.skewed-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Gradient overlay (fades on hover) */
+.skewed-card-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: rgba(26, 26, 26, 0.5);
+  pointer-events: none;
+  transition: opacity 0.7s ease;
+}
+
+.skewed-card:hover .skewed-card-overlay {
+  opacity: 0;
+}
+
+/* Right fade — fade-to-background gradient */
+.skewed-card::after {
+  content: '';
+  position: absolute;
+  top: -5%;
+  right: -1px;
+  width: 20rem;
+  height: 110%;
+  background: linear-gradient(to left, var(--canvas, #1a1a1a), transparent);
+  pointer-events: none;
+}
+
+/* Grayscale effect — desaturated until hover */
+.skewed-card--grayscale {
+  filter: grayscale(100%);
+}
+
+.skewed-card--grayscale:hover {
+  filter: grayscale(0%);
+}
+
+/* ─── Card Content ──────────────────────────────────────────── */
+.skewed-card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.skewed-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.skewed-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.skewed-card-description {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  z-index: 1;
+}
+
+.skewed-card-date {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.25);
+  margin: 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Positional variants (stack offsets) ────────────────────── */
+.skewed-card--pos-0 {
+  transform: skewY(-8deg) translateX(0) translateY(0);
+}
+
+.skewed-card--pos-0:hover {
+  transform: skewY(-8deg) translateX(0) translateY(-40px);
+}
+
+.skewed-card--pos-1 {
+  transform: skewY(-8deg) translateX(48px) translateY(40px);
+}
+
+.skewed-card--pos-1:hover {
+  transform: skewY(-8deg) translateX(48px) translateY(-4px);
+}
+
+.skewed-card--pos-2 {
+  transform: skewY(-8deg) translateX(96px) translateY(80px);
+}
+
+.skewed-card--pos-2:hover {
+  transform: skewY(-8deg) translateX(96px) translateY(40px);
+}
+
+.skewed-card--pos-3 {
+  transform: skewY(-8deg) translateX(144px) translateY(120px);
+}
+
+.skewed-card--pos-3:hover {
+  transform: skewY(-8deg) translateX(144px) translateY(80px);
+}
+
+/* ─── Responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .skewed-card {
+    width: min(32rem, calc(100vw - 80px));
+    height: 7.5rem;
+    padding: 12px 14px;
+  }
+
+  .skewed-card-title {
+    font-size: 14px;
+  }
+
+  .skewed-card-description {
+    font-size: 12px;
+  }
+
+  .skewed-card::after {
+    width: 10rem;
+  }
+
+  /* Reduce X offsets for narrower viewport */
+  .skewed-card--pos-1 {
+    transform: skewY(-8deg) translateX(24px) translateY(40px);
+  }
+  .skewed-card--pos-1:hover {
+    transform: skewY(-8deg) translateX(24px) translateY(-4px);
+  }
+  .skewed-card--pos-2 {
+    transform: skewY(-8deg) translateX(48px) translateY(80px);
+  }
+  .skewed-card--pos-2:hover {
+    transform: skewY(-8deg) translateX(48px) translateY(40px);
+  }
+  .skewed-card--pos-3 {
+    transform: skewY(-8deg) translateX(72px) translateY(120px);
+  }
+  .skewed-card--pos-3:hover {
+    transform: skewY(-8deg) translateX(72px) translateY(80px);
+  }
+}
+
+@media (max-width: 480px) {
+  .skewed-card {
+    width: min(32rem, calc(100vw - 48px));
+    height: 7rem;
+  }
+
+  .skewed-card--pos-1 {
+    transform: skewY(-8deg) translateX(16px) translateY(36px);
+  }
+  .skewed-card--pos-1:hover {
+    transform: skewY(-8deg) translateX(16px) translateY(-4px);
+  }
+  .skewed-card--pos-2 {
+    transform: skewY(-8deg) translateX(32px) translateY(72px);
+  }
+  .skewed-card--pos-2:hover {
+    transform: skewY(-8deg) translateX(32px) translateY(36px);
+  }
+  .skewed-card--pos-3 {
+    transform: skewY(-8deg) translateX(48px) translateY(108px);
+  }
+  .skewed-card--pos-3:hover {
+    transform: skewY(-8deg) translateX(48px) translateY(72px);
+  }
+}

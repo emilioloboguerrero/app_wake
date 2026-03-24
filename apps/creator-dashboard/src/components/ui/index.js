@@ -39,3 +39,6 @@ export { default as VirtualList } from './VirtualList';
 
 // 1C — Error states
 export { InlineError, FullScreenError } from './ErrorStates';
+
+// 1N — Skewed display cards
+export { default as SkewedCards, SkewedCard } from './SkewedCards';

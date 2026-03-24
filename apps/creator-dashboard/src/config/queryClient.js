@@ -153,6 +153,7 @@ export const queryKeys = {
   },
   library: {
     exercises: (creatorId) => ['library', 'exercises', creatorId],
+    libraries: (creatorId) => ['library', 'libraries', creatorId],
     sessions: (creatorId) => ['library', 'sessions', creatorId],
     modules: (creatorId) => ['library', 'modules', creatorId],
   },

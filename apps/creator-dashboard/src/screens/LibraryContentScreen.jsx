@@ -2699,8 +2699,6 @@ const LibraryContentScreen = () => {
         alternatives: exerciseDraft.alternatives || {},
         measures: exerciseDraft.measures || [],
         objectives: exerciseDraft.objectives || [],
-        name: libraryService.deleteFieldSentinel(),
-        title: libraryService.deleteFieldSentinel()
       };
       
       await libraryService.updateExerciseInLibrarySession(

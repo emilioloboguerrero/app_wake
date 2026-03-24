@@ -288,6 +288,15 @@ router.post("/payments/webhook", async (req: Request, res) => {
     const dataId = req.body?.data?.id;
 
     if (ts && sig && requestId && dataId) {
+      // Reject replayed webhooks: timestamp must be within 5 minutes of now
+      const tsMs = Number(ts) * 1000;
+      if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
+        res.status(403).json({
+          error: { code: "FORBIDDEN", message: "Webhook timestamp expirado" },
+        });
+        return;
+      }
+
       const template = `id:${dataId};request-id:${requestId};ts:${ts};`;
       const expected = crypto.createHmac("sha256", webhookSecret).update(template).digest("hex");
       if (sig.length === expected.length) {

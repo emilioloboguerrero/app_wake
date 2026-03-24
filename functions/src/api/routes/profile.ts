@@ -44,12 +44,47 @@ router.get("/users/me", async (req, res) => {
       webOnboardingCompleted: data.webOnboardingCompleted ?? false,
       profileCompleted: data.profileCompleted ?? false,
       onboardingCompleted: data.onboardingCompleted ?? false,
+      courses: data.courses ?? {},
     },
   });
 });
 
+// POST /users/me/init — bootstrap user doc if it doesn't exist
+router.post("/users/me/init", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 20, "rate_limit_first_party");
+
+  const userRef = db.collection("users").doc(auth.userId);
+  const userDoc = await userRef.get();
+
+  if (userDoc.exists) {
+    res.json({ data: { userId: auth.userId, created: false } });
+    return;
+  }
+
+  // Pull email/displayName from Firebase Auth record
+  let email: string | null = null;
+  let displayName: string | null = null;
+  try {
+    const authRecord = await admin.auth().getUser(auth.userId);
+    email = authRecord.email ?? null;
+    displayName = authRecord.displayName ?? null;
+  } catch { /* user may not exist in Auth yet */ }
+
+  await userRef.set({
+    email,
+    displayName,
+    role: "user",
+    courses: {},
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.status(201).json({ data: { userId: auth.userId, created: true } });
+});
+
 // PATCH /users/me
-router.patch("/users/me", async (req, res) => {
+router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
@@ -222,6 +257,137 @@ router.get("/users/:userId/public-profile", async (req, res) => {
   });
 });
 
+// POST /users/me/courses/:courseId/trial — start a trial for a course
+router.post("/users/me/courses/:courseId/trial", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{
+    courseDetails: Record<string, unknown>;
+    durationInDays: number;
+  }>(
+    {
+      courseDetails: "object",
+      durationInDays: "number",
+    },
+    req.body
+  );
+
+  const courseId = req.params.courseId;
+
+  // Verify course exists
+  const courseDoc = await db.collection("courses").doc(courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  // Check user doesn't already have an active trial
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = userDoc.data()?.courses ?? {};
+  if (courses[courseId]?.status === "trial") {
+    throw new WakeApiServerError("CONFLICT", 409, "Ya tienes un trial activo para este programa");
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + body.durationInDays * 24 * 60 * 60 * 1000);
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${courseId}`]: {
+      status: "trial",
+      title: body.courseDetails.title ?? "",
+      image_url: body.courseDetails.image_url ?? "",
+      deliveryType: body.courseDetails.deliveryType ?? "low_ticket",
+      purchased_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      access_duration: "trial",
+    },
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { success: true, expirationDate: expiresAt.toISOString() } });
+});
+
+// POST /users/me/move-course — add/move a course to the user's courses map
+router.post("/users/me/move-course", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{
+    courseId: string;
+    expirationDate?: string;
+    accessDuration: string;
+    courseDetails: Record<string, unknown>;
+  }>(
+    {
+      courseId: "string",
+      expirationDate: "optional_string",
+      accessDuration: "string",
+      courseDetails: "object",
+    },
+    req.body
+  );
+
+  // Verify course exists
+  const courseDoc = await db.collection("courses").doc(body.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${body.courseId}`]: {
+      status: "active",
+      title: body.courseDetails.title ?? "",
+      image_url: body.courseDetails.image_url ?? "",
+      deliveryType: body.courseDetails.deliveryType ?? "low_ticket",
+      discipline: body.courseDetails.discipline ?? "General",
+      creatorName: body.courseDetails.creatorName ?? "",
+      purchased_at: new Date().toISOString(),
+      expires_at: body.expirationDate ?? null,
+      access_duration: body.accessDuration,
+    },
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { success: true } });
+});
+
+// POST /users/me/courses/:programId/backfill — backfill a course entry for orphaned client_programs
+router.post("/users/me/courses/:programId/backfill", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{ courseData: Record<string, unknown> }>(
+    { courseData: "object" },
+    req.body
+  );
+
+  const courseData = body.courseData;
+  const programId = req.params.programId;
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${programId}`]: {
+      status: "active",
+      deliveryType: courseData.deliveryType ?? "one_on_one",
+      title: courseData.title ?? "",
+      image_url: courseData.image_url ?? "",
+      discipline: courseData.discipline ?? "General",
+      creatorName: courseData.creatorName ?? "",
+      purchased_at: new Date().toISOString(),
+      expires_at: null,
+      access_duration: "one_on_one",
+    },
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { success: true } });
+});
+
+// POST /auth/logout — no-op; Firebase Auth is stateless
+router.post("/auth/logout", async (req, res) => {
+  await validateAuth(req);
+  res.json({ data: { logged_out: true } });
+});
+
 // PATCH /creator/profile
 router.patch("/creator/profile", async (req, res) => {
   const auth = await validateAuth(req);
@@ -274,6 +440,271 @@ router.patch("/creator/profile", async (req, res) => {
   });
 
   res.json({ data: { updatedAt: new Date().toISOString() } });
+});
+
+// GET /users/me/full — returns full user document including all fields
+router.get("/users/me/full", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  if (!userDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  const data = userDoc.data()!;
+  res.json({
+    data: {
+      userId: auth.userId,
+      ...data,
+      profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
+    },
+  });
+});
+
+// GET /users/me/username-check — check if username is available
+router.get("/users/me/username-check", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const username = req.query.username as string;
+  if (!username || typeof username !== "string" || username.length > 50) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "username es requerido (máx 50 caracteres)", "username"
+    );
+  }
+
+  const snapshot = await db
+    .collection("users")
+    .where("username", "==", username)
+    .limit(1)
+    .get();
+
+  const available = snapshot.empty || snapshot.docs[0].id === auth.userId;
+
+  res.json({ data: { available } });
+});
+
+// DELETE /users/me — account deletion
+router.delete("/users/me", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
+
+  const userRef = db.collection("users").doc(auth.userId);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  // Delete known subcollections
+  const subcollections = [
+    "diary", "sessionHistory", "exerciseHistory",
+    "exerciseLastPerformance", "saved_foods", "saved_meals",
+    "readiness", "bodyLog", "subscriptions", "purchase_logs",
+  ];
+
+  for (const sub of subcollections) {
+    const collRef = userRef.collection(sub);
+    let snapshot = await collRef.limit(500).get();
+    while (!snapshot.empty) {
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+      snapshot = await collRef.limit(500).get();
+    }
+  }
+
+  // Delete the user document
+  await userRef.delete();
+
+  // Delete Firebase Auth record
+  try {
+    await admin.auth().deleteUser(auth.userId);
+  } catch { /* Auth record may already be deleted */ }
+
+  res.status(204).send();
+});
+
+// POST /users/me/delete-feedback — save account deletion feedback
+router.post("/users/me/delete-feedback", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
+
+  const body = validateBody<{ feedback: Record<string, unknown> }>(
+    { feedback: "object" },
+    req.body
+  );
+
+  await db.collection("subscription_cancellation_feedback").add({
+    userId: auth.userId,
+    type: "account_deletion",
+    feedback: body.feedback,
+    submittedAt: FieldValue.serverTimestamp(),
+  });
+
+  res.status(201).json({ data: { saved: true } });
+});
+
+// DELETE /users/me/courses/:courseId — remove a course from user's courses map
+router.delete("/users/me/courses/:courseId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.params.courseId;
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  if (!userDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  const courses = userDoc.data()?.courses ?? {};
+  if (!courses[courseId]) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Curso no encontrado en tu cuenta");
+  }
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${courseId}`]: FieldValue.delete(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.status(204).send();
+});
+
+// PATCH /users/me/courses/:courseId/version — update version status fields
+router.patch("/users/me/courses/:courseId/version", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.params.courseId;
+  const allowedFields = ["update_status", "downloaded_version", "last_version_check"];
+  const updates: Record<string, unknown> = {};
+
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      updates[`courses.${courseId}.${field}`] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
+    );
+  }
+
+  updates.updated_at = FieldValue.serverTimestamp();
+  await db.collection("users").doc(auth.userId).update(updates);
+
+  res.json({ data: { updated: true } });
+});
+
+// PATCH /users/me/courses/:courseId/status — update course status
+router.patch("/users/me/courses/:courseId/status", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.params.courseId;
+  const body = validateBody<{ status: string; expiresAt?: string }>(
+    { status: "string", expiresAt: "optional_string" },
+    req.body
+  );
+
+  const updates: Record<string, unknown> = {
+    [`courses.${courseId}.status`]: body.status,
+    updated_at: FieldValue.serverTimestamp(),
+  };
+
+  if (body.expiresAt !== undefined) {
+    updates[`courses.${courseId}.expires_at`] = body.expiresAt;
+  }
+
+  await db.collection("users").doc(auth.userId).update(updates);
+
+  res.json({ data: { updated: true } });
+});
+
+// GET /courses — course listing
+router.get("/courses", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const snapshot = await db
+    .collection("courses")
+    .orderBy("created_at", "desc")
+    .limit(100)
+    .get();
+
+  res.json({
+    data: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+  });
+});
+
+// GET /storage/download-url — return signed download URL for a storage path
+router.get("/storage/download-url", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const path = req.query.path as string;
+  if (!path || typeof path !== "string") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "path es requerido", "path"
+    );
+  }
+
+  if (path.includes("..") || path.startsWith("/")) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Ruta inválida", "path"
+    );
+  }
+
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(path);
+
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado");
+  }
+
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + 60 * 60 * 1000,
+  });
+
+  res.json({ data: { url } });
+});
+
+// POST /purchases — log a purchase record
+router.post("/purchases", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{
+    courseId?: string;
+    amount?: number;
+    currency?: string;
+    paymentMethod?: string;
+    receiptId?: string;
+  }>(
+    {
+      courseId: "optional_string",
+      amount: "optional_number",
+      currency: "optional_string",
+      paymentMethod: "optional_string",
+      receiptId: "optional_string",
+    },
+    req.body
+  );
+
+  const docRef = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("purchase_logs")
+    .add({
+      ...body,
+      userId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({ data: { id: docRef.id } });
 });
 
 export default router;

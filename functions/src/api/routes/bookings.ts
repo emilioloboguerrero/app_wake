@@ -393,8 +393,8 @@ router.post("/creator/availability/slots", async (req, res) => {
 
   // Generate slots — cap at 100 per day
   const slots: Array<{
-    startLocal: string;
-    endLocal: string;
+    startUtc: string;
+    endUtc: string;
     durationMinutes: number;
     booked: boolean;
   }> = [];
@@ -414,12 +414,12 @@ router.post("/creator/availability/slots", async (req, res) => {
     const slotEndH = Math.floor(slotEndCursor / 60);
     const slotEndM = slotEndCursor % 60;
 
-    const startLocal = `${body.date}T${String(slotStartH).padStart(2, "0")}:${String(slotStartM).padStart(2, "0")}:00.000Z`;
-    const endLocal = `${body.date}T${String(slotEndH).padStart(2, "0")}:${String(slotEndM).padStart(2, "0")}:00.000Z`;
+    const startUtc = `${body.date}T${String(slotStartH).padStart(2, "0")}:${String(slotStartM).padStart(2, "0")}:00.000Z`;
+    const endUtc = `${body.date}T${String(slotEndH).padStart(2, "0")}:${String(slotEndM).padStart(2, "0")}:00.000Z`;
 
     slots.push({
-      startLocal,
-      endLocal,
+      startUtc,
+      endUtc,
       durationMinutes: body.durationMinutes,
       booked: false,
     });
@@ -460,8 +460,8 @@ router.delete("/creator/availability/slots", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ date: string; startLocal: string | null }>(
-    { date: "string", startLocal: "optional_string" },
+  const body = validateBody<{ date: string; slotStartUtc: string | null }>(
+    { date: "string", slotStartUtc: "optional_string" },
     req.body
   );
 
@@ -473,7 +473,7 @@ router.delete("/creator/availability/slots", async (req, res) => {
     return;
   }
 
-  if (!body.startLocal) {
+  if (!body.slotStartUtc) {
     // Delete all slots for the day
     await docRef.update({
       [`days.${body.date}`]: FieldValue.delete(),
@@ -485,7 +485,7 @@ router.delete("/creator/availability/slots", async (req, res) => {
     const dayData = days[body.date];
     if (dayData?.slots) {
       dayData.slots = dayData.slots.filter(
-        (s: { startLocal?: string; startUtc?: string }) => (s.startLocal ?? s.startUtc) !== body.startLocal
+        (s: { startUtc?: string; startLocal?: string }) => (s.startUtc ?? s.startLocal) !== body.slotStartUtc
       );
       await docRef.update({
         [`days.${body.date}`]: dayData,
@@ -797,6 +797,46 @@ router.post("/bookings", async (req, res) => {
       createdAt: new Date().toISOString(),
     },
   });
+});
+
+// GET /bookings — list user's bookings (with optional filters)
+router.get("/bookings", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { creatorId, courseId, status } = req.query as Record<string, string | undefined>;
+
+  // Query bookings where user is client OR creator
+  let query: Query = db
+    .collection("call_bookings")
+    .where("clientUserId", "==", auth.userId)
+    .orderBy("slotStartUtc", "desc")
+    .limit(50);
+
+  const snapshot = await query.get();
+
+  let results = snapshot.docs.map((d) => {
+    const data = d.data();
+    return {
+      bookingId: d.id,
+      creatorId: data.creatorId,
+      clientUserId: data.clientUserId,
+      clientDisplayName: data.clientDisplayName ?? null,
+      courseId: data.courseId ?? null,
+      slotStartUtc: data.slotStartUtc,
+      slotEndUtc: data.slotEndUtc,
+      status: data.status,
+      callLink: data.callLink ?? null,
+      createdAt: data.createdAt ?? data.created_at,
+    };
+  });
+
+  // Client-side filters (Firestore can only have one inequality/range)
+  if (creatorId) results = results.filter((b) => b.creatorId === creatorId);
+  if (courseId) results = results.filter((b) => b.courseId === courseId);
+  if (status) results = results.filter((b) => b.status === status);
+
+  res.json({ data: results });
 });
 
 // GET /bookings/:bookingId — get booking details

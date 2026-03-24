@@ -7,26 +7,23 @@ class LibraryService {
   }
 
   // Returns exercise libraries (exercises_library collection docs) for a creator.
-  // The creator's library doc ID is their uid.
-  async getLibrariesByCreator(creatorId) {
-    const res = await apiClient.get(`/exercises/${creatorId}`);
-    const doc = res.data;
-    if (!doc) return [];
-    // doc is a map of exerciseName → exerciseData; wrap as a single library entry
-    return [{ id: creatorId, title: 'Mi biblioteca', ...doc }];
+  async getLibrariesByCreator() {
+    const res = await apiClient.get('/creator/exercises/libraries');
+    return res.data || [];
   }
 
   // Returns a single exercise library document.
   async getLibraryById(libraryId) {
-    const res = await apiClient.get(`/exercises/${libraryId}`);
+    const res = await apiClient.get(`/creator/exercises/libraries/${libraryId}`);
     return res.data;
   }
 
   // Extracts exercises from a library document (map of exerciseName → exerciseData).
   getExercisesFromLibrary(libraryDoc) {
     if (!libraryDoc) return [];
+    const metaKeys = new Set(['id', 'title', 'creator_id', 'creator_name', 'created_at', 'updated_at', 'icon']);
     return Object.entries(libraryDoc)
-      .filter(([key]) => key !== 'id')
+      .filter(([key, val]) => !metaKeys.has(key) && val && typeof val === 'object')
       .map(([name, data]) => ({ name, data: data || {} }));
   }
 
@@ -60,20 +57,121 @@ class LibraryService {
     await apiClient.delete(`/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}`);
   }
 
-  async getSessionLibrary() {
-    const res = await apiClient.get('/creator/library/sessions');
+  // Updates exercise data (muscle_activation, implements, etc.)
+  async updateExercise(libraryId, exerciseName, updates) {
+    const res = await apiClient.patch(
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}`,
+      updates
+    );
     return res.data;
   }
 
-  async getLibrarySessionById(sessionId) {
+  // Updates library metadata (title, icon)
+  async updateLibrary(libraryId, updates) {
+    const res = await apiClient.patch(`/creator/exercises/libraries/${libraryId}`, updates);
+    return res.data;
+  }
+
+  // Uploads exercise video via signed URL flow: get URL → upload → confirm
+  async uploadExerciseVideo(libraryId, exerciseName, file, onProgress) {
+    const encodedName = encodeURIComponent(exerciseName);
+
+    // Step 1: Get signed upload URL
+    const urlRes = await apiClient.post(
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodedName}/upload-url`,
+      { contentType: file.type }
+    );
+    const { uploadUrl, storagePath } = urlRes.data;
+
+    // Step 2: Upload directly to Storage
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', file.type);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress((e.loaded / e.total) * 100);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload failed with status ${xhr.status}`));
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+      xhr.send(file);
+    });
+
+    // Step 3: Confirm upload
+    const confirmRes = await apiClient.post(
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodedName}/upload-url/confirm`,
+      { storagePath }
+    );
+
+    return confirmRes.data.video_url;
+  }
+
+  // Deletes exercise video
+  async deleteExerciseVideo(libraryId, exerciseName) {
+    await apiClient.delete(
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}/video`
+    );
+  }
+
+  async uploadLibrarySessionImage(creatorId, sessionId, file, onProgress) {
+    // Step 1: Get signed upload URL
+    const urlRes = await apiClient.post(
+      `/creator/library/sessions/${sessionId}/image/upload-url`,
+      { contentType: file.type }
+    );
+    const { uploadUrl, storagePath } = urlRes.data;
+
+    // Step 2: Upload directly to Storage
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', file.type);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress((e.loaded / e.total) * 100);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error(`Upload failed with status ${xhr.status}`));
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+      xhr.send(file);
+    });
+
+    // Step 3: Confirm upload
+    const confirmRes = await apiClient.post(
+      `/creator/library/sessions/${sessionId}/image/confirm`,
+      { storagePath }
+    );
+
+    return confirmRes.data.image_url;
+  }
+
+  async getSessionLibrary() {
+    const res = await apiClient.get('/creator/library/sessions');
+    return (res.data || []).map((s) => ({ ...s, id: s.sessionId || s.id }));
+  }
+
+  async getLibrarySessionById(_creatorId, sessionId) {
     const res = await apiClient.get(`/creator/library/sessions/${sessionId}`);
     return res.data;
   }
 
   async createLibrarySession(_creatorId, sessionData) {
-    const res = await apiClient.post('/creator/library/sessions', {
-      title: sessionData.title,
-    });
+    const payload = { title: sessionData.title };
+    if (sessionData.image_url) payload.image_url = sessionData.image_url;
+    const res = await apiClient.post('/creator/library/sessions', payload);
     return res.data;
   }
 
@@ -84,6 +182,11 @@ class LibraryService {
 
   async deleteLibrarySession(_creatorId, sessionId) {
     await apiClient.delete(`/creator/library/sessions/${sessionId}`);
+  }
+
+  async addExerciseToLibrarySession(_creatorId, sessionId, exerciseData) {
+    const res = await apiClient.post(`/creator/library/sessions/${sessionId}/exercises`, exerciseData);
+    return res.data;
   }
 
   async propagateLibrarySession(sessionId) {
@@ -145,14 +248,16 @@ class LibraryService {
   }
 
   async createSetInLibraryExercise(_creatorId, sessionId, exerciseId, order = null) {
+    const orderVal = order ?? 0;
     const res = await apiClient.post(
       `/creator/library/sessions/${sessionId}/exercises/${exerciseId}/sets`,
       {
+        title: `Serie ${orderVal + 1}`,
         reps: '',
         weight: null,
         intensity: null,
         rir: null,
-        order: order ?? 0,
+        order: orderVal,
       }
     );
     return res.data;

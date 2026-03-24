@@ -1,6 +1,10 @@
 import { List } from 'react-window';
 import './VirtualList.css';
 
+function Row({ index, style, items, renderItem }) {
+  return renderItem(items[index], index, style);
+}
+
 export default function VirtualList({
   items,
   renderItem,
@@ -15,15 +19,13 @@ export default function VirtualList({
   return (
     <div className="virtual-list-container">
       <List
-        height={height}
-        itemCount={items.length}
-        itemSize={itemHeight}
-        width="100%"
+        rowCount={items.length}
+        rowHeight={itemHeight}
+        rowComponent={Row}
+        rowProps={{ items, renderItem }}
         className="virtual-list-scroller"
-        style={{ background: 'transparent' }}
-      >
-        {({ index, style }) => renderItem(items[index], index, style)}
-      </List>
+        style={{ height, background: 'transparent' }}
+      />
     </div>
   );
 }

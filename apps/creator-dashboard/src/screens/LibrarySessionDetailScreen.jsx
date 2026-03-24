@@ -6,9 +6,10 @@ import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
-import ScreenSkeleton from '../components/ScreenSkeleton';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { FullScreenError } from '../components/ui';
+import { FullScreenError, GlowingEffect, AnimatedList } from '../components/ui';
+import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
@@ -40,8 +41,10 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { getIconById, renderIconSVG } from '../utils/libraryIcons.jsx';
+import { ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis } from 'recharts';
+import ExpandableExerciseCard from '../components/biblioteca/ExpandableExerciseCard';
+import SessionDataCard from '../components/biblioteca/SessionDataCard';
+import SessionVolumeDrawer from '../components/SessionVolumeDrawer';
 import './LibrarySessionDetailScreen.css';
 import './ProgramDetailScreen.css';
 import './SharedScreenLayout.css';
@@ -143,7 +146,7 @@ const DropZone = ({ id, children, className }) => {
 };
 
 // Draggable Exercise Item Component
-const DraggableExercise = ({ exercise, libraryTitle, libraryIcon, isInSession = false, isIncomplete = false, onDelete, isEditMode, onClick }) => {
+const DraggableExercise = ({ exercise, libraryTitle, isInSession = false, isIncomplete = false, onDelete, isEditMode, onClick }) => {
   const {
     attributes,
     listeners,
@@ -151,7 +154,7 @@ const DraggableExercise = ({ exercise, libraryTitle, libraryIcon, isInSession = 
     transform,
     transition,
     isDragging,
-  } = useSortable({ 
+  } = useSortable({
     id: exercise.dragId || exercise.id,
     data: { exercise }
   });
@@ -175,28 +178,10 @@ const DraggableExercise = ({ exercise, libraryTitle, libraryIcon, isInSession = 
       className={`draggable-exercise ${isDragging ? 'dragging' : ''} ${isInSession ? 'exercise-in-session' : 'exercise-available'}`}
       {...attributes}
       {...listeners}
-      onClick={onClick && !isEditMode ? () => onClick(exercise) : undefined}
+      onClick={onClick ? () => onClick(exercise) : undefined}
     >
+      <GlowingEffect spread={40} proximity={80} borderWidth={1} disabled={isDragging} />
       <div className="draggable-exercise-content">
-        <div className="draggable-exercise-icon">
-          {libraryIcon ? (
-            typeof libraryIcon === 'string' && libraryIcon.startsWith('http') ? (
-              <img 
-                src={libraryIcon} 
-                alt={libraryTitle || 'Library icon'} 
-                className="draggable-exercise-icon-image"
-              />
-            ) : (
-              renderIconSVG(libraryIcon, 20)
-            )
-          ) : (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          )}
-        </div>
         <div className="draggable-exercise-info">
           <div className="draggable-exercise-name">{exerciseName}</div>
           {isInSession && isIncomplete && (
@@ -264,7 +249,7 @@ const LibrarySessionDetailScreen = () => {
   const { confirm, ConfirmModal } = useConfirm();
   const queryClient = useQueryClient();
   const isPlanInstanceEdit = Boolean(planInstancePlanId && planInstanceModuleId && sessionId && location.pathname.includes('/plans/') && location.pathname.includes('/edit'));
-  const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : (location.state?.returnTo || '/content');
+  const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : (location.state?.returnTo || '/biblioteca?domain=entrenamiento&tab=sesiones');
   const backState = location.state?.returnState ?? {};
   const editScope = location.state?.editScope;
   const clientSessionId = location.state?.clientSessionId;
@@ -312,7 +297,7 @@ const LibrarySessionDetailScreen = () => {
   const [availableLibraries, setAvailableLibraries] = useState([]);
   const [availableExercises, setAvailableExercises] = useState([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState('');
-  const [isEditMode, setIsEditMode] = useState(false);
+  const isEditMode = true;
   const [activeId, setActiveId] = useState(null);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -326,13 +311,13 @@ const LibrarySessionDetailScreen = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
   // Exercise Configuration Modal State (matching ProgramDetailScreen)
+  const [isAlternativesEditMode, setIsAlternativesEditMode] = useState(false);
   const [isExerciseModalOpen, setIsExerciseModalOpen] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [exerciseDraft, setExerciseDraft] = useState(null);
   const [isCreatingExercise, setIsCreatingExercise] = useState(false);
   const [isSavingNewExercise, setIsSavingNewExercise] = useState(false);
   const [libraryTitles, setLibraryTitles] = useState({}); // Map: libraryId -> library title
-  const [libraryIcons, setLibraryIcons] = useState({}); // Map: libraryId -> library icon_url
   const [libraryDataCache, setLibraryDataCache] = useState({}); // Map: libraryId -> full library data
   const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
   
@@ -391,6 +376,9 @@ const LibrarySessionDetailScreen = () => {
   const saveSetTimeoutRef = useRef(null);
   const saveSetChangesRef = useRef(null);
 
+  // Debounce timer for measures/objectives editor onChange API calls
+  const measuresChangeTimerRef = useRef(null);
+
   // Propagate changes modal (library session only)
   const [isPropagateModalOpen, setIsPropagateModalOpen] = useState(false);
   const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
@@ -401,6 +389,34 @@ const LibrarySessionDetailScreen = () => {
 
   // Library usage count (how many programs/plans reference this session)
   const [libraryUsageCount, setLibraryUsageCount] = useState(0);
+
+  // New: expandable exercise cards + volume drawer + settings panel
+  const [expandedExerciseIds, setExpandedExerciseIds] = useState(new Set());
+  const [isVolumeDrawerOpen, setIsVolumeDrawerOpen] = useState(false);
+  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
+  const [newlyAddedIds, setNewlyAddedIds] = useState(new Set());
+
+  // Live sets map: exerciseId -> sets[] — fed by ExpandableExerciseCard children AND bulk preload for volume
+  const [liveSetsMap, setLiveSetsMap] = useState({});
+  const [volumeDataLoading, setVolumeDataLoading] = useState(true);
+  const handleSetsChanged = useCallback((exerciseId, newSets) => {
+    setLiveSetsMap(prev => {
+      if (prev[exerciseId] === newSets) return prev;
+      return { ...prev, [exerciseId]: newSets };
+    });
+  }, []);
+
+  // Accent color extraction from session image
+  const [accentRgb, setAccentRgb] = useState(null);
+
+  const toggleExerciseExpand = useCallback((id) => {
+    setExpandedExerciseIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const handleHeaderImageSelect = async (item) => {
     if (!sessionId || !user) return;
@@ -527,6 +543,45 @@ const LibrarySessionDetailScreen = () => {
   const session = sessionQueryData?.session ?? null;
   const error = loadError?.message ?? (!loading && sessionQueryData === null ? 'Sesión no encontrada' : null);
 
+  // Extract accent color from session image
+  useEffect(() => {
+    if (!session?.image_url) { setAccentRgb(null); return; }
+    return extractAccentFromImage(session.image_url, setAccentRgb);
+  }, [session?.image_url]);
+
+  const accentStyle = useMemo(() => {
+    if (!accentRgb) return {};
+    const [r, g, b] = accentRgb;
+    return {
+      '--accent': `rgb(${r},${g},${b})`,
+      '--accent-r': r,
+      '--accent-g': g,
+      '--accent-b': b,
+    };
+  }, [accentRgb]);
+
+  const [localDefaultTemplate, setLocalDefaultTemplate] = useState(null);
+  const sessionDefaultTemplate = localDefaultTemplate ?? session?.defaultDataTemplate ?? null;
+
+  // Editable session title
+  const [localTitle, setLocalTitle] = useState(null);
+  const titleSaveTimerRef = useRef(null);
+  const effectiveTitle = localTitle ?? session?.title ?? '';
+
+  // Sync localTitle when session data loads for the first time
+  useEffect(() => {
+    if (session?.title && localTitle === null) {
+      setLocalTitle(null); // keep using session.title until user edits
+    }
+  }, [session?.title]);
+
+  // Sync local override when session data loads/changes
+  useEffect(() => {
+    if (session?.defaultDataTemplate) {
+      setLocalDefaultTemplate(null); // clear override, use server data
+    }
+  }, [session?.defaultDataTemplate]);
+
   const sessionDataSeededRef = useRef(false);
   useEffect(() => {
     if (!sessionQueryData || sessionDataSeededRef.current) return;
@@ -537,12 +592,29 @@ const LibrarySessionDetailScreen = () => {
       hasClientCopyRef.current = hasCopy;
       setHasClientCopy(hasCopy);
     }
-    setExercises((s.exercises || []).map((ex) => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true })));
+    const seededExercises = (s.exercises || []).map((ex) => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true }));
+    setExercises(seededExercises);
+    // Seed liveSetsMap from already-loaded sets so volume card is accurate immediately
+    const initialSetsMap = {};
+    seededExercises.forEach(ex => {
+      if (ex.id && Array.isArray(ex.sets) && ex.sets.length > 0) {
+        initialSetsMap[ex.id] = ex.sets;
+      }
+    });
+    if (Object.keys(initialSetsMap).length > 0) {
+      setLiveSetsMap(initialSetsMap);
+    }
     if (libraries) {
       setAvailableLibraries(libraries);
-      const iconsMap = {};
-      (libraries || []).forEach((lib) => { iconsMap[lib.id] = lib.icon_url || lib.icon || null; });
-      setLibraryIcons(iconsMap);
+      // Seed libraryDataCache from already-loaded libraries so volume card works immediately
+      const libCache = {};
+      libraries.forEach(lib => {
+        if (lib.id) libCache[lib.id] = lib;
+      });
+      if (Object.keys(libCache).length > 0) {
+        setLibraryDataCache(prev => ({ ...prev, ...libCache }));
+      }
+      setVolumeDataLoading(false);
       if (libraries.length > 0) {
         setSelectedLibraryId(libraries[0].id);
         loadExercisesFromLibrary(libraries[0].id, libraries);
@@ -581,7 +653,6 @@ const LibrarySessionDetailScreen = () => {
           dragId: `available-${libraryId}-${ex.name}`,
           libraryId,
           libraryTitle: library.title,
-          libraryIcon: library.icon_url || library.icon || null,
           isInSession: false
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -771,6 +842,23 @@ const LibrarySessionDetailScreen = () => {
     };
   }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, effectiveClientSessionId, sessionId, ensureClientCopy, effectiveClientId, effectiveProgramId, effectiveWeekKey, isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId]);
 
+  const handleTitleChange = useCallback((newTitle) => {
+    setLocalTitle(newTitle);
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
+    titleSaveTimerRef.current = setTimeout(() => {
+      if (!user || !sessionId || !contentApi) return;
+      contentApi.updateLibrarySession(user.uid, sessionId, { title: newTitle.trim() || 'Sin título' })
+        .then(() => {
+          setHasMadeChanges(true);
+          queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+        })
+        .catch((err) => {
+          logger.error('Error saving session title:', err);
+          showToast('No pudimos guardar el nombre. Intenta de nuevo.', 'error');
+        });
+    }, 500);
+  }, [user, sessionId, contentApi, queryClient, showToast]);
+
   useEffect(() => {
     if (isPresetSelectorOpen && user?.uid) {
       measureObjectivePresetsService.list(user.uid).then(setPresetsList).catch((err) => {
@@ -791,6 +879,8 @@ const LibrarySessionDetailScreen = () => {
 
   const handleDragStart = (event) => {
     setActiveId(event.active.id);
+    // Collapse all expanded exercise cards during drag
+    setExpandedExerciseIds(new Set());
   };
 
   const handleDragEnd = async (event) => {
@@ -802,33 +892,10 @@ const LibrarySessionDetailScreen = () => {
     const activeId = active.id.toString();
     const overId = over.id.toString();
 
-    // Check if dragging from available to session - open configuration modal for new exercise
+    // Dragging from available to session — add directly (no modal)
     if (activeId.startsWith('available-') && overId === 'session-list') {
       const exerciseData = active.data.current.exercise;
-      
-      // Create a draft exercise for the modal
-      const library = availableLibraries.find(l => l.id === exerciseData.libraryId);
-      const exerciseFromLib = library && library[exerciseData.name];
-      
-      const newExerciseDraft = {
-        id: 'new',
-        primary: {
-          [exerciseData.libraryId]: exerciseData.name
-        },
-        alternatives: {},
-        measures: exerciseFromLib?.measures || [],
-        objectives: exerciseFromLib?.objectives || [],
-      };
-      
-      setSelectedExercise(newExerciseDraft);
-      setExerciseDraft(JSON.parse(JSON.stringify(newExerciseDraft)));
-      setIsCreatingExercise(true);
-      setExerciseSets([]);
-      setOriginalExerciseSets([]);
-      setUnsavedSetChanges({});
-      setNumberOfSetsForNewExercise(3);
-      setNewExerciseDefaultSetValues({});
-      setIsExerciseModalOpen(true);
+      addExerciseToSession(exerciseData);
       return;
     }
 
@@ -860,44 +927,70 @@ const LibrarySessionDetailScreen = () => {
   const addExerciseToSession = async (exerciseData) => {
     if (!user || !sessionId || !exerciseData.libraryId || !exerciseData.name) return;
 
-    try {
-      const nextOrder = exercises.length;
-      const library = availableLibraries.find(l => l.id === exerciseData.libraryId);
-      const exerciseFromLib = library && library[exerciseData.name];
+    const nextOrder = exercises.length;
+    const library = availableLibraries.find(l => l.id === exerciseData.libraryId);
+    const exerciseFromLib = library && library[exerciseData.name];
 
+    const newExercisePayload = {
+      primary: { [exerciseData.libraryId]: exerciseData.name },
+      alternatives: {},
+      measures: exerciseFromLib?.measures || [],
+      objectives: exerciseFromLib?.objectives || [],
+      customMeasureLabels: exerciseFromLib?.customMeasureLabels || {},
+      customObjectiveLabels: exerciseFromLib?.customObjectiveLabels || {},
+      ...(exerciseFromLib?.defaultSetValues ? { defaultSetValues: exerciseFromLib.defaultSetValues } : {}),
+      order: nextOrder,
+    };
+
+    // Optimistic: add placeholder to exercises list
+    const placeholderId = `pending-${Date.now()}`;
+    const optimisticExercise = {
+      ...newExercisePayload,
+      id: placeholderId,
+      dragId: `session-${placeholderId}`,
+      isInSession: true,
+    };
+    setExercises(prev => [...prev, optimisticExercise]);
+
+    // Auto-expand the newly added card + mark as new for animation
+    setExpandedExerciseIds(prev => new Set([...prev, placeholderId]));
+    setNewlyAddedIds(prev => new Set([...prev, placeholderId]));
+    setTimeout(() => setNewlyAddedIds(prev => { const n = new Set(prev); n.delete(placeholderId); return n; }), 800);
+
+    try {
+      let createdExercise;
       if (effectiveIsClientEdit) {
         await ensureClientCopy();
-        const payload = {
-          primary: { [exerciseData.libraryId]: exerciseData.name },
-          alternatives: {},
-          measures: exerciseFromLib?.measures || [],
-          objectives: exerciseFromLib?.objectives || []
-        };
-        await clientSessionContentService.createExercise(effectiveClientSessionId, payload, nextOrder);
+        createdExercise = await clientSessionContentService.createExercise(effectiveClientSessionId, newExercisePayload, nextOrder);
       } else {
-        const newExercise = {
-          primary: { [exerciseData.libraryId]: exerciseData.name },
-          alternatives: {},
-          measures: exerciseFromLib?.measures || [],
-          objectives: exerciseFromLib?.objectives || [],
-          order: nextOrder,
-        };
-        await libraryService.addExerciseToLibrarySession(user.uid, sessionId, newExercise);
+        createdExercise = await libraryService.addExerciseToLibrarySession(user.uid, sessionId, newExercisePayload);
         setHasMadeChanges(true);
       }
 
-      // Reload session
-      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-      const sessionExercises = (sessionData.exercises || []).map(ex => ({
-        ...ex,
-        dragId: `session-${ex.id}`,
-        isInSession: true
-      }));
-      setExercises(sessionExercises);
+      // Replace placeholder with real ID and transfer expanded state
+      if (createdExercise?.id || createdExercise?.exerciseId) {
+        const realId = createdExercise.id || createdExercise.exerciseId;
+        setExercises(prev => prev.map(ex => ex.id === placeholderId
+          ? { ...ex, id: realId, dragId: `session-${realId}` }
+          : ex
+        ));
+        setExpandedExerciseIds(prev => {
+          const n = new Set(prev);
+          if (n.has(placeholderId)) { n.delete(placeholderId); n.add(realId); }
+          return n;
+        });
+        setNewlyAddedIds(prev => {
+          const n = new Set(prev);
+          if (n.has(placeholderId)) { n.delete(placeholderId); n.add(realId); }
+          return n;
+        });
+      }
 
       // Remove from available
-      await loadExercisesFromLibrary(selectedLibraryId);
+      loadExercisesFromLibrary(selectedLibraryId);
     } catch (err) {
+      // Rollback: remove placeholder
+      setExercises(prev => prev.filter(ex => ex.id !== placeholderId));
       logger.error('Error adding exercise:', err);
       showToast('No pudimos agregar el ejercicio. Intenta de nuevo.', 'error');
     }
@@ -913,14 +1006,27 @@ const LibrarySessionDetailScreen = () => {
 
     const deletedId = exerciseToDelete.id;
 
-    // Optimistic update: remove from UI immediately so list reflects the action
+    // Snapshot for rollback
+    const previousExercises = exercises;
+
+    // Optimistic: remove from UI, expanded state, and liveSetsMap immediately
     setExercises(prev => prev.filter(ex => ex.id !== deletedId));
+    setExpandedExerciseIds(prev => {
+      if (!prev.has(deletedId)) return prev;
+      const next = new Set(prev);
+      next.delete(deletedId);
+      return next;
+    });
+    setLiveSetsMap(prev => {
+      if (!(deletedId in prev)) return prev;
+      const next = { ...prev };
+      delete next[deletedId];
+      return next;
+    });
     setIsDeleteModalOpen(false);
     setExerciseToDelete(null);
 
     try {
-      setIsDeleting(true);
-
       if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
         await plansService.deleteExercise(planInstancePlanId, planInstanceModuleId, sessionId, deletedId);
       } else if (effectiveIsClientPlanEdit) {
@@ -932,53 +1038,16 @@ const LibrarySessionDetailScreen = () => {
         setHasMadeChanges(true);
       }
 
-      // Reload from server to stay in sync (exercises already updated optimistically)
-      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-      if (sessionData != null) {
-        const sessionExercises = (sessionData.exercises || []).map(ex => ({
-          ...ex,
-          dragId: `session-${ex.id}`,
-          isInSession: true
-        }));
-        setExercises(sessionExercises);
-      }
+      // Refresh available exercises so the deleted one reappears in the sidebar
       if (selectedLibraryId) {
-        await loadExercisesFromLibrary(selectedLibraryId);
+        loadExercisesFromLibrary(selectedLibraryId);
       }
     } catch (err) {
-      // Revert optimistic update on error: reload current list from server
+      // Rollback: restore previous exercises list
       logger.error('Error deleting exercise:', err);
       showToast('No pudimos eliminar el ejercicio. Intenta de nuevo.', 'error');
-      try {
-        const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-        if (sessionData != null) {
-          const sessionExercises = (sessionData.exercises || []).map(ex => ({
-            ...ex,
-            dragId: `session-${ex.id}`,
-            isInSession: true
-          }));
-          setExercises(sessionExercises);
-        }
-      } catch (reloadErr) {
-        logger.error('Error reloading after delete failure:', reloadErr);
-      }
-    } finally {
-      setIsDeleting(false);
+      setExercises(previousExercises);
     }
-  };
-
-  // Helper function to get library icon from exercise
-  const getExerciseLibraryIcon = (exercise) => {
-    if (exercise.libraryIcon) {
-      return exercise.libraryIcon;
-    }
-    if (exercise.primary && typeof exercise.primary === 'object') {
-      const libraryId = Object.keys(exercise.primary)[0];
-      const icon = libraryIcons[libraryId];
-      // If icon is a URL string, return it; if it's an icon ID, return it for SVG rendering
-      return icon || null;
-    }
-    return null;
   };
 
   const getExerciseDisplayName = (exercise) => {
@@ -1072,9 +1141,6 @@ const LibrarySessionDetailScreen = () => {
   };
 
   const handleExerciseClick = async (exercise) => {
-    if (isEditMode) {
-      return;
-    }
     try {
       const normalizedExercise = {
         ...exercise,
@@ -1675,8 +1741,8 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       setIsCreatingSet(true);
-      const newSet = await contentApi.createSetInLibraryExercise(user.uid, sessionId, currentExerciseId);
-      
+      const newSet = await contentApi.createSetInLibraryExercise(user.uid, sessionId, currentExerciseId, exerciseSets.length);
+
       const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, currentExerciseId);
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
@@ -1822,89 +1888,100 @@ const LibrarySessionDetailScreen = () => {
   const handleSaveCreatingExercise = async () => {
     if (!canSaveCreatingExercise() || !user || !sessionId) return;
 
+    const primaryValues = Object.values(exerciseDraft.primary || {});
+    if (primaryValues.length === 0 || !primaryValues[0]) {
+      showToast('Debes seleccionar un ejercicio principal', 'error');
+      return;
+    }
+
+    const primaryExerciseName = primaryValues[0];
+    const nextOrder = exercises.length;
+
+    const updateData = {
+      primary: exerciseDraft.primary,
+      alternatives: exerciseDraft.alternatives || {},
+      measures: exerciseDraft.measures || [],
+      objectives: exerciseDraft.objectives || [],
+      customMeasureLabels: exerciseDraft.customMeasureLabels && typeof exerciseDraft.customMeasureLabels === 'object' ? exerciseDraft.customMeasureLabels : {},
+      customObjectiveLabels: exerciseDraft.customObjectiveLabels && typeof exerciseDraft.customObjectiveLabels === 'object' ? exerciseDraft.customObjectiveLabels : {},
+    };
+
+    // Build sets to create
+    let setsToCreate = exerciseSets;
+    if (setsToCreate.length === 0 && numberOfSetsForNewExercise >= 1) {
+      const fields = (draftObjectives.filter(o => o !== 'previous').length)
+        ? draftObjectives.filter(o => o !== 'previous')
+        : ['reps', 'intensity'];
+      const defaultSet = {};
+      fields.forEach(o => {
+        const v = newExerciseDefaultSetValues[o];
+        defaultSet[o] = v != null && v !== '' ? v : null;
+      });
+      const count = Math.max(1, Math.min(20, Math.floor(numberOfSetsForNewExercise) || 1));
+      setsToCreate = Array.from({ length: count }, (_, i) => ({ order: i, title: `Serie ${i + 1}`, ...defaultSet }));
+    }
+
+    // Optimistic: add exercise to list immediately
+    const placeholderId = `pending-create-${Date.now()}`;
+    const optimisticExercise = {
+      ...updateData,
+      id: placeholderId,
+      order: nextOrder,
+      sets: setsToCreate,
+      dragId: `session-${placeholderId}`,
+      isInSession: true,
+    };
+    setExercises(prev => [...prev, optimisticExercise]);
+
+    // Close modal immediately
+    setIsExerciseModalOpen(false);
+    setIsCreatingExercise(false);
+    setSelectedExercise(null);
+    setExerciseDraft(null);
+    setExerciseSets([]);
+    setOriginalExerciseSets([]);
+    setUnsavedSetChanges({});
+    loadExercisesFromLibrary(selectedLibraryId);
+
+    // Server calls in background
     setIsSavingNewExercise(true);
     try {
-      const primaryValues = Object.values(exerciseDraft.primary || {});
-      if (primaryValues.length === 0 || !primaryValues[0]) {
-        showToast('Debes seleccionar un ejercicio principal', 'error');
-        return;
-      }
-
-      const primaryExerciseName = primaryValues[0];
-      const nextOrder = exercises.length;
-
       const newExercise = await contentApi.createExerciseInLibrarySession(
-        user.uid,
-        sessionId,
-        primaryExerciseName,
-        nextOrder
+        user.uid, sessionId, primaryExerciseName, nextOrder
       );
+      const realId = newExercise.id || newExercise.exerciseId;
 
-      const updateData = {
-        primary: exerciseDraft.primary,
-        alternatives: exerciseDraft.alternatives || {},
-        measures: exerciseDraft.measures || [],
-        objectives: exerciseDraft.objectives || [],
-        customMeasureLabels: exerciseDraft.customMeasureLabels && typeof exerciseDraft.customMeasureLabels === 'object' ? exerciseDraft.customMeasureLabels : {},
-        customObjectiveLabels: exerciseDraft.customObjectiveLabels && typeof exerciseDraft.customObjectiveLabels === 'object' ? exerciseDraft.customObjectiveLabels : {},
-        name: libraryService.deleteFieldSentinel(),
-        title: libraryService.deleteFieldSentinel()
-      };
-      
-      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, newExercise.id, updateData);
+      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, realId, updateData);
 
-      let setsToCreate = exerciseSets;
-      if (setsToCreate.length === 0 && numberOfSetsForNewExercise >= 1) {
-        const fields = (draftObjectives.filter(o => o !== 'previous').length)
-          ? draftObjectives.filter(o => o !== 'previous')
-          : ['reps', 'intensity'];
-        const defaultSet = {};
-        fields.forEach(o => {
-          const v = newExerciseDefaultSetValues[o];
-          defaultSet[o] = v != null && v !== '' ? v : null;
-        });
-        const count = Math.max(1, Math.min(20, Math.floor(numberOfSetsForNewExercise) || 1));
-        setsToCreate = Array.from({ length: count }, (_, i) => ({ order: i, title: `Serie ${i + 1}`, ...defaultSet }));
-      }
       for (let i = 0; i < setsToCreate.length; i++) {
         const set = setsToCreate[i];
-        await contentApi.createSetInLibraryExercise(user.uid, sessionId, newExercise.id, i);
-        
+        const createdSet = await contentApi.createSetInLibraryExercise(user.uid, sessionId, realId, i);
+        const setRealId = createdSet?.id || createdSet?.setId;
+
         const updateSetData = {};
-        if (set.reps !== null && set.reps !== undefined && set.reps !== '') {
-          updateSetData.reps = set.reps;
-        }
-        if (set.intensity !== null && set.intensity !== undefined && set.intensity !== '') {
-          updateSetData.intensity = set.intensity;
-        }
-        
-        if (Object.keys(updateSetData).length > 0) {
-          const createdSets = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, newExercise.id);
-          const createdSet = createdSets[createdSets.length - 1];
-          if (createdSet) {
-            await contentApi.updateSetInLibraryExercise(user.uid, sessionId, newExercise.id, createdSet.id, updateSetData);
+        if (set.reps != null && set.reps !== '') updateSetData.reps = set.reps;
+        if (set.intensity != null && set.intensity !== '') updateSetData.intensity = set.intensity;
+        // Include any custom objective fields
+        Object.keys(set).forEach(k => {
+          if (!['id', 'order', 'title', 'reps', 'intensity'].includes(k) && set[k] != null && set[k] !== '') {
+            updateSetData[k] = set[k];
           }
+        });
+
+        if (Object.keys(updateSetData).length > 0 && setRealId) {
+          await contentApi.updateSetInLibraryExercise(user.uid, sessionId, realId, setRealId, updateSetData);
         }
       }
 
-      // Reload exercises
-      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-      const sessionExercises = (sessionData.exercises || []).map(ex => ({
-        ...ex,
-        dragId: `session-${ex.id}`,
-        isInSession: true
-      }));
-      setExercises(sessionExercises);
-      await loadExercisesFromLibrary(selectedLibraryId);
-
-      setIsExerciseModalOpen(false);
-      setIsCreatingExercise(false);
-      setSelectedExercise(null);
-      setExerciseDraft(null);
-      setExerciseSets([]);
-      setOriginalExerciseSets([]);
-      setUnsavedSetChanges({});
+      // Replace placeholder with real ID
+      setExercises(prev => prev.map(ex => ex.id === placeholderId
+        ? { ...ex, id: realId, dragId: `session-${realId}` }
+        : ex
+      ));
+      setHasMadeChanges(true);
     } catch (err) {
+      // Rollback: remove placeholder
+      setExercises(prev => prev.filter(ex => ex.id !== placeholderId));
       logger.error('Error creating exercise:', err);
       showToast('No pudimos crear el ejercicio. Intenta de nuevo.', 'error');
     } finally {
@@ -2010,22 +2087,25 @@ const LibrarySessionDetailScreen = () => {
         }));
       }
 
-      if (!isCreatingExercise && currentExerciseId && apiUpdatePayload) {
-        await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, apiUpdatePayload);
-
-        const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-        const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
-        if (updatedEx) {
-          setSelectedExercise(updatedEx);
-          setExerciseDraft(JSON.parse(JSON.stringify(updatedEx)));
-          setExercises(prev => prev.map(ex => ex.id === currentExerciseId
-            ? { ...ex, ...updatedEx, dragId: ex.dragId || `session-${updatedEx.id}`, isInSession: true }
-            : ex
-          ));
-        }
+      // Optimistic: update exercises list from local draft state
+      if (currentExerciseId) {
+        setExercises(prev => prev.map(ex => ex.id === currentExerciseId
+          ? { ...ex, ...apiUpdatePayload, dragId: ex.dragId || `session-${ex.id}`, isInSession: true }
+          : ex
+        ));
       }
 
       handleCloseLibraryExerciseModal();
+
+      // Fire-and-forget server call
+      if (!isCreatingExercise && currentExerciseId && apiUpdatePayload) {
+        contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, apiUpdatePayload)
+          .then(() => setHasMadeChanges(true))
+          .catch((err) => {
+            logger.error('Error updating exercise:', err);
+            showToast('No pudimos guardar el cambio de ejercicio. Intenta de nuevo.', 'error');
+          });
+      }
     } catch (err) {
       logger.error('Error updating exercise:', err);
       showToast('No pudimos actualizar el ejercicio. Intenta de nuevo.', 'error');
@@ -2195,16 +2275,23 @@ const LibrarySessionDetailScreen = () => {
 
         if (!currentExerciseId) return;
 
-        await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
-          alternatives: currentAlternatives
-        });
+        // Optimistic update
+        setExerciseDraft(prev => ({ ...prev, alternatives: currentAlternatives }));
+        setSelectedExercise(prev => prev ? { ...prev, alternatives: currentAlternatives } : null);
+        setExercises(prev => prev.map(ex => ex.id === currentExerciseId
+          ? { ...ex, alternatives: currentAlternatives }
+          : ex
+        ));
 
-        const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-        const updatedEx = sessionData.exercises?.find(ex => ex.id === currentExerciseId);
-        if (updatedEx) {
-          setSelectedExercise(updatedEx);
-          setExerciseDraft(JSON.parse(JSON.stringify(updatedEx)));
-        }
+        // Fire-and-forget
+        contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, {
+          alternatives: currentAlternatives
+        })
+          .then(() => setHasMadeChanges(true))
+          .catch((err) => {
+            logger.error('Error deleting alternative:', err);
+            showToast('No pudimos eliminar la alternativa. Intenta de nuevo.', 'error');
+          });
       }
     } catch (err) {
       logger.error('Error deleting alternative:', err);
@@ -2230,26 +2317,29 @@ const LibrarySessionDetailScreen = () => {
       return;
     }
     if (!currentExerciseId || !user || !sessionId) return;
-    try {
-      await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates);
-      const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-      const updatedEx = sessionData.exercises?.find((ex) => ex.id === currentExerciseId);
-      if (updatedEx) {
-        setSelectedExercise(updatedEx);
-        setExerciseDraft(JSON.parse(JSON.stringify(updatedEx)));
-      }
-      setAppliedPresetId(preset.id);
-      setIsPresetSelectorOpen(false);
-    } catch (err) {
-      logger.error('Error applying preset:', err);
-      showToast('No pudimos aplicar la plantilla. Intenta de nuevo.', 'error');
-    }
+    // Optimistic update
+    setExerciseDraft((prev) => ({ ...prev, ...updates }));
+    setSelectedExercise((prev) => (prev ? { ...prev, ...updates } : null));
+    setExercises(prev => prev.map(ex => ex.id === currentExerciseId ? { ...ex, ...updates } : ex));
+    setAppliedPresetId(preset.id);
+    setIsPresetSelectorOpen(false);
+    // Fire-and-forget
+    contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates)
+      .then(() => setHasMadeChanges(true))
+      .catch((err) => {
+        logger.error('Error applying preset:', err);
+        showToast('No pudimos aplicar la plantilla. Intenta de nuevo.', 'error');
+      });
   };
 
   const handleMeasuresObjectivesEditorSave = async (data) => {
+    // Cancel any pending debounced onChange API call
+    if (measuresChangeTimerRef.current) { clearTimeout(measuresChangeTimerRef.current); measuresChangeTimerRef.current = null; }
+    const rawObjectives = data.objectives || [];
+    const objectives = rawObjectives.includes('previous') ? rawObjectives : [...rawObjectives, 'previous'];
     const updates = {
       measures: data.measures || [],
-      objectives: data.objectives || [],
+      objectives,
       customMeasureLabels: data.customMeasureLabels && typeof data.customMeasureLabels === 'object' ? data.customMeasureLabels : {},
       customObjectiveLabels: data.customObjectiveLabels && typeof data.customObjectiveLabels === 'object' ? data.customObjectiveLabels : {},
     };
@@ -2271,8 +2361,11 @@ const LibrarySessionDetailScreen = () => {
         if (appliedPresetId === presetBeingEditedId) {
           setExerciseDraft((prev) => ({ ...prev, ...updates }));
           setSelectedExercise((prev) => (prev ? { ...prev, ...updates } : null));
+          setExercises(prev => prev.map(ex => ex.id === currentExerciseId ? { ...ex, ...updates } : ex));
           if (!isCreatingExercise && currentExerciseId && user && sessionId) {
-            await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates);
+            contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates)
+              .then(() => setHasMadeChanges(true))
+              .catch((err) => logger.error('Error updating exercise from preset:', err));
           }
         }
       } catch (err) {
@@ -2281,23 +2374,29 @@ const LibrarySessionDetailScreen = () => {
         return;
       }
     } else if (editorModalMode === 'exercise') {
-      if (isCreatingExercise) {
+      if (currentExerciseId) {
+        // Editing a specific exercise
         setExerciseDraft((prev) => ({ ...prev, ...updates }));
         setSelectedExercise((prev) => (prev ? { ...prev, ...updates } : null));
-      } else if (currentExerciseId && user && sessionId) {
-        try {
-          await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates);
-          const sessionData = await contentApi.getLibrarySessionById(user.uid, sessionId);
-          const updatedEx = sessionData.exercises?.find((ex) => ex.id === currentExerciseId);
-          if (updatedEx) {
-            setSelectedExercise(updatedEx);
-            setExerciseDraft(JSON.parse(JSON.stringify(updatedEx)));
-          }
-        } catch (err) {
-          logger.error('Error updating exercise:', err);
-          showToast('No pudimos guardar los cambios. Intenta de nuevo.', 'error');
-          return;
+        setExercises(prev => prev.map(ex => ex.id === currentExerciseId ? { ...ex, ...updates } : ex));
+        if (!isCreatingExercise && user && sessionId) {
+          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates)
+            .then(() => setHasMadeChanges(true))
+            .catch((err) => {
+              logger.error('Error updating exercise:', err);
+              showToast('No pudimos guardar los cambios. Intenta de nuevo.', 'error');
+            });
         }
+      } else if (user && sessionId) {
+        // No exercise open — saving session default template
+        setLocalDefaultTemplate(updates);
+        contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: updates })
+          .then(() => setHasMadeChanges(true))
+          .catch((err) => {
+            logger.error('Error saving session template:', err);
+            showToast('No pudimos guardar el formato. Intenta de nuevo.', 'error');
+            setLocalDefaultTemplate(null);
+          });
       }
       setAppliedPresetId(null);
     }
@@ -2315,9 +2414,17 @@ const LibrarySessionDetailScreen = () => {
     };
     setExerciseDraft((prev) => (prev ? { ...prev, ...updates } : null));
     setSelectedExercise((prev) => (prev ? { ...prev, ...updates } : null));
+    // Also update parent exercises array so ExpandableExerciseCard gets fresh props
+    if (currentExerciseId) {
+      setExercises(prev => prev.map(ex => ex.id === currentExerciseId ? { ...ex, ...updates } : ex));
+    }
     setAppliedPresetId(null);
+    // Debounce the API call to avoid firing on every keystroke
     if (!isCreatingExercise && currentExerciseId && user && sessionId) {
-      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates).catch((err) => logger.error('Error updating exercise:', err));
+      if (measuresChangeTimerRef.current) clearTimeout(measuresChangeTimerRef.current);
+      measuresChangeTimerRef.current = setTimeout(() => {
+        contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates).catch((err) => logger.error('Error updating exercise:', err));
+      }, 400);
     }
   };
 
@@ -2486,8 +2593,13 @@ const LibrarySessionDetailScreen = () => {
   }, [availableExercises]);
 
   // Load library data for session exercises (for planned volume muscle_activation)
+  const libraryDataCacheRef = useRef(libraryDataCache);
+  libraryDataCacheRef.current = libraryDataCache;
   useEffect(() => {
-    if (!user || !exercises?.length) return;
+    if (!user || !exercises?.length) {
+      setVolumeDataLoading(false);
+      return;
+    }
     const libraryIds = new Set();
     exercises.forEach((ex) => {
       const refs = getPrimaryReferences(ex);
@@ -2495,24 +2607,41 @@ const LibrarySessionDetailScreen = () => {
         if (libraryId) libraryIds.add(libraryId);
       });
     });
+    // Filter out already-cached libraries
+    const toLoad = Array.from(libraryIds).filter(id => !libraryDataCacheRef.current[id]);
+    if (toLoad.length === 0) {
+      setVolumeDataLoading(false);
+      return;
+    }
     let cancelled = false;
-    const load = async () => {
-      for (const libraryId of libraryIds) {
-        if (libraryDataCache[libraryId]) continue;
-        try {
-          const lib = await libraryService.getLibraryById(libraryId);
-          if (cancelled) return;
-          if (lib) {
-            setLibraryDataCache((prev) => ({ ...prev, [libraryId]: lib }));
-          }
-        } catch (err) {
-          logger.warn('[LibrarySessionDetail] Failed to load library for volume:', libraryId, err);
+    (async () => {
+      try {
+        const results = await Promise.all(
+          toLoad.map(async (libraryId) => {
+            try {
+              const lib = await libraryService.getLibraryById(libraryId);
+              return { libraryId, lib };
+            } catch (err) {
+              logger.warn('[LibrarySessionDetail] Failed to load library for volume:', libraryId, err);
+              return { libraryId, lib: null };
+            }
+          })
+        );
+        if (cancelled) return;
+        const updates = {};
+        results.forEach(({ libraryId, lib }) => {
+          if (lib) updates[libraryId] = lib;
+        });
+        if (Object.keys(updates).length > 0) {
+          setLibraryDataCache(prev => ({ ...prev, ...updates }));
         }
+      } finally {
+        if (!cancelled) setVolumeDataLoading(false);
       }
-    };
-    load();
+    })();
     return () => { cancelled = true; };
-  }, [user, exercises?.length, exercises?.map((e) => e.id).join(','), libraryDataCache]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, exercises.map(e => e.id).join(',')]);
 
   // Planned muscle volume (effective sets per muscle), assuming user completes every set with intensity >= 7
   const plannedMuscleVolumes = useMemo(() => {
@@ -2533,7 +2662,8 @@ const LibrarySessionDetailScreen = () => {
       const exerciseData = library?.[primary.exerciseName];
       const muscleActivation = exerciseData?.muscle_activation;
       if (!muscleActivation || typeof muscleActivation !== 'object') return;
-      const sets = exercise.sets || [];
+      // Use live sets from children if available, fall back to exercise.sets from initial load
+      const sets = liveSetsMap[exercise.id] || exercise.sets || [];
       let effectiveSets = 0;
       sets.forEach((set) => {
         const intensity = parsePlannedIntensity(set.intensity);
@@ -2551,7 +2681,7 @@ const LibrarySessionDetailScreen = () => {
       muscleSets[m] = Math.round(muscleSets[m] * 10) / 10;
     });
     return muscleSets;
-  }, [exercises, libraryDataCache]);
+  }, [exercises, libraryDataCache, liveSetsMap]);
 
   const top3PlannedVolumes = useMemo(
     () =>
@@ -2676,14 +2806,66 @@ const LibrarySessionDetailScreen = () => {
 
   if (loading) {
     return (
-      <DashboardLayout 
+      <DashboardLayout
         screenName={session?.title || 'Sesión'}
         showBackButton={true}
         backPath={backPath}
         backState={backState}
       >
         <div className="library-session-detail-container">
-          <ScreenSkeleton />
+          {/* Settings card skeleton */}
+          <div className="lsd-skeleton-settings">
+            <ShimmerSkeleton width="36px" height="36px" borderRadius="8px" />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <ShimmerSkeleton width="120px" height="13px" borderRadius="4px" />
+              <ShimmerSkeleton width="200px" height="10px" borderRadius="4px" />
+            </div>
+            <ShimmerSkeleton width="18px" height="18px" borderRadius="4px" />
+          </div>
+
+          {/* Body: sidebar + main */}
+          <div className="library-session-detail-body">
+            {/* Sidebar skeleton */}
+            <div className="lsd-skeleton-sidebar">
+              <div className="lsd-skeleton-sidebar-tabs">
+                <ShimmerSkeleton width="70px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="90px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="60px" height="28px" borderRadius="6px" />
+              </div>
+              <div className="lsd-skeleton-sidebar-search">
+                <ShimmerSkeleton width="100%" height="32px" borderRadius="8px" />
+              </div>
+              <div className="lsd-skeleton-sidebar-list">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="lsd-skeleton-sidebar-item">
+                    <ShimmerSkeleton width={`${55 + (i % 3) * 15}%`} height="14px" borderRadius="4px" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Main area skeleton */}
+            <div className="lsd-skeleton-main">
+              <div className="lsd-skeleton-main-header">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <ShimmerSkeleton width="200px" height="22px" borderRadius="6px" />
+                  <ShimmerSkeleton width="140px" height="13px" borderRadius="4px" />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <ShimmerSkeleton width="100px" height="32px" borderRadius="8px" />
+                  <ShimmerSkeleton width="32px" height="32px" borderRadius="8px" />
+                </div>
+              </div>
+              <div className="lsd-skeleton-main-exercises">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="lsd-skeleton-exercise-row">
+                    <ShimmerSkeleton width={`${45 + (i % 4) * 10}%`} height="14px" borderRadius="4px" />
+                    <ShimmerSkeleton width="60px" height="10px" borderRadius="4px" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -2709,28 +2891,11 @@ const LibrarySessionDetailScreen = () => {
   return (
     <ErrorBoundary>
     <DashboardLayout
-      screenName={session.title}
+      screenName={effectiveTitle || session.title}
       showBackButton={true}
       backPath={backPath}
       backState={backState}
       onBack={handleBack}
-      headerBackgroundImage={session.image_url || null}
-      headerImageIcon={
-        <button
-          type="button"
-          onClick={() => setIsMediaPickerOpen(true)}
-          aria-label="Cambiar imagen de la sesión"
-          title="Cambiar imagen"
-        >
-          {session.image_url ? (
-            <img src={session.image_url} alt="" />
-          ) : (
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          )}
-        </button>
-      }
     >
       <MediaPickerModal
         isOpen={isMediaPickerOpen}
@@ -2766,7 +2931,7 @@ const LibrarySessionDetailScreen = () => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className={`library-session-detail-container ${(effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit) ? 'library-session-detail-container-has-banner' : ''}`}>
+        <div className={`library-session-detail-container ${(effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit) ? 'library-session-detail-container-has-banner' : ''} ${accentRgb ? 'has-accent' : ''}`} style={accentStyle}>
           {isPlanInstanceEdit && (
             <div className="library-session-client-edit-banner">
               <span className="library-session-client-edit-banner-text">
@@ -2808,85 +2973,246 @@ const LibrarySessionDetailScreen = () => {
               )}
             </div>
           )}
+
+          {/* Session Settings Card — full width, expandable */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--settings">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
+          <div className={`library-session-settings-card ${isSettingsPanelOpen ? 'library-session-settings-card--expanded' : ''} ${(!session.image_url || !sessionDefaultTemplate) && !isSettingsPanelOpen ? 'library-session-settings-card--nudge' : ''}`}>
+            {/* Marquee overlay — only when collapsed + missing items */}
+            {!isSettingsPanelOpen && (!session.image_url || !sessionDefaultTemplate) && (
+              <button type="button" className="lss-nudge-bar" onClick={() => setIsSettingsPanelOpen(true)}>
+                <div className="lss-nudge-marquee-track">
+                  {Array.from({ length: 3 }).map((_, repeatIdx) => (
+                    <span key={repeatIdx} className="lss-nudge-marquee-content">
+                      {!session.image_url && (
+                        <span>Añade una portada para que tus usuarios reconozcan esta sesión</span>
+                      )}
+                      {!session.image_url && !sessionDefaultTemplate && (
+                        <span className="lss-nudge-marquee-dot">·</span>
+                      )}
+                      {!sessionDefaultTemplate && (
+                        <span>Escoge qué datos registran tus usuarios en cada serie</span>
+                      )}
+                      <span className="lss-nudge-marquee-dot">·</span>
+                    </span>
+                  ))}
+                </div>
+              </button>
+            )}
+
+            {/* Normal bar — hidden when marquee is showing */}
+            {(isSettingsPanelOpen || (session.image_url && sessionDefaultTemplate)) && (
+              <button
+                type="button"
+                className="library-session-settings-card-bar"
+                onClick={() => setIsSettingsPanelOpen(prev => !prev)}
+              >
+                <div className="library-session-settings-card-bar-left">
+                  {session.image_url && (
+                    <img src={session.image_url} alt="" className="library-session-settings-card-thumb" />
+                  )}
+                  <div className="library-session-settings-card-meta">
+                    <span className="library-session-settings-card-label">Ajustes de sesión</span>
+                    {!isSettingsPanelOpen && (
+                      <div className="library-session-settings-card-pills">
+                        {exercises.length > 0 && (
+                          <span className="library-session-settings-card-pill">{exercises.length} {exercises.length === 1 ? 'ejercicio' : 'ejercicios'}</span>
+                        )}
+                        {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && libraryUsageCount > 0 && (
+                          <span className="library-session-settings-card-pill">
+                            {libraryUsageCount} {libraryUsageCount === 1 ? 'programa' : 'programas'}
+                          </span>
+                        )}
+                        {sessionDefaultTemplate && (sessionDefaultTemplate.measures || []).length > 0 && (
+                          <span className="library-session-settings-card-pill library-session-settings-card-pill--template">
+                            {(sessionDefaultTemplate.measures || []).map(m => m === 'reps' ? 'Reps' : m === 'weight' ? 'Peso' : (sessionDefaultTemplate.customMeasureLabels?.[m] || m)).join(' · ')}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <svg className={`library-session-settings-card-chevron ${isSettingsPanelOpen ? 'library-session-settings-card-chevron--open' : ''}`} width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            )}
+
+            {/* Expandable body — animated via CSS grid */}
+            <div className="lss-expand-wrapper">
+              <div className="lss-expand-inner">
+                {/* Session title — editable */}
+                <div className="lss-title-row">
+                  <label className="lss-title-label" htmlFor="lss-title-input">Nombre</label>
+                  <input
+                    id="lss-title-input"
+                    type="text"
+                    className="lss-title-input"
+                    value={effectiveTitle}
+                    onChange={(e) => handleTitleChange(e.target.value)}
+                    placeholder="Nombre de la sesión"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div className="lss-expanded">
+                {/* Card 1: Image */}
+                <div className="lsd-glow-wrap lsd-glow-wrap--card lsd-glow-wrap--image">
+                  <GlowingEffect spread={40} proximity={100} borderWidth={1} />
+                <div className="lss-card lss-card-image" onClick={() => setIsMediaPickerOpen(true)}>
+                  {session.image_url ? (
+                    <img src={session.image_url} alt="" className="lss-card-image-img" />
+                  ) : (
+                    <div className="lss-card-image-empty">
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="1.5"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <span>Agregar portada</span>
+                    </div>
+                  )}
+                  <div className="lss-card-image-hover">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Cambiar
+                  </div>
+                </div>
+                </div>
+
+                {/* Card 2: Data structure */}
+                <SessionDataCard
+                  sessionDefaultTemplate={sessionDefaultTemplate}
+                  onSaveTemplate={(template) => {
+                    if (!user || !sessionId) return;
+                    // Optimistic local state update
+                    setLocalDefaultTemplate(template);
+                    // Fire-and-forget server save
+                    contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: template })
+                      .then(() => setHasMadeChanges(true))
+                      .catch((err) => {
+                        logger.error('Error saving session template:', err);
+                        showToast('No pudimos guardar el formato. Intenta de nuevo.', 'error');
+                        setLocalDefaultTemplate(null); // rollback
+                      });
+                  }}
+                  onOpenEditor={() => {
+                    setEditorModalMode('exercise');
+                    setPresetBeingEditedId(null);
+                    setIsMeasuresObjectivesEditorOpen(true);
+                  }}
+                />
+
+                {/* Card 3: Usage chart */}
+                <div className="lsd-glow-wrap lsd-glow-wrap--card lsd-glow-wrap--chart">
+                  <GlowingEffect spread={40} proximity={100} borderWidth={1} />
+                <div className="lss-card lss-card-chart">
+                  <div className="lss-card-header">
+                    <h4 className="lss-card-title">Alcance</h4>
+                  </div>
+                  <div className="lss-chart-stats">
+                    <div className="lss-chart-stat">
+                      <span className="lss-chart-stat-num">{libraryUsageCount || 0}</span>
+                      <span className="lss-chart-stat-label">{libraryUsageCount === 1 ? 'programa' : 'programas'}</span>
+                    </div>
+                    <div className="lss-chart-stat">
+                      <span className="lss-chart-stat-num">{propagateAffectedCount || 0}</span>
+                      <span className="lss-chart-stat-label">{propagateAffectedCount === 1 ? 'usuario' : 'usuarios'}</span>
+                    </div>
+                  </div>
+                  <div className="lss-chart-line">
+                    <ResponsiveContainer width="100%" height={100}>
+                      <LineChart data={[
+                        { name: 'Ene', v: 0 },
+                        { name: 'Feb', v: Math.max(1, Math.round((libraryUsageCount || 0) * 0.2)) },
+                        { name: 'Mar', v: Math.max(1, Math.round((libraryUsageCount || 0) * 0.4)) },
+                        { name: 'Abr', v: Math.max(1, Math.round((libraryUsageCount || 0) * 0.5)) },
+                        { name: 'May', v: Math.max(1, Math.round((libraryUsageCount || 0) * 0.7)) },
+                        { name: 'Hoy', v: libraryUsageCount || 0 },
+                      ]}>
+                        <defs>
+                          <linearGradient id="lss-line-grad" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stopColor="rgba(255,255,255,0.05)" />
+                            <stop offset="100%" stopColor="rgba(255,255,255,0.4)" />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: 'rgba(255,255,255,0.25)' }} />
+                        <YAxis hide />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            return (
+                              <div className="lss-chart-tooltip">
+                                {payload[0].payload.name}: {payload[0].value}
+                              </div>
+                            );
+                          }}
+                        />
+                        <Line type="monotone" dataKey="v" stroke="url(#lss-line-grad)" strokeWidth={2} dot={false} activeDot={{ r: 3, fill: 'rgba(255,255,255,0.8)' }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+
           <div className="library-session-detail-body">
           {/* Sidebar - Available Exercises */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--sidebar">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-sidebar">
-            <div className="library-session-sidebar-header">
-              <h3 className="library-session-sidebar-title">Ejercicios Disponibles</h3>
-              <select
-                className="library-session-library-select"
-                value={selectedLibraryId}
-                onChange={(e) => setSelectedLibraryId(e.target.value)}
-              >
-                {availableLibraries.map((library) => (
-                  <option key={library.id} value={library.id}>
-                    {library.title}
-                  </option>
-                ))}
-              </select>
+            {/* Library tabs */}
+            <div className="library-session-sidebar-tabs">
+              {availableLibraries.map((library) => (
+                <button
+                  key={library.id}
+                  className={`library-session-sidebar-tab ${selectedLibraryId === library.id ? 'active' : ''}`}
+                  onClick={() => setSelectedLibraryId(library.id)}
+                >
+                  <span>{library.title}</span>
+                </button>
+              ))}
             </div>
 
-            {/* Search Box */}
-            <div className="library-session-search-container">
+            {/* Search + Filter inline */}
+            <div className="library-session-search-row">
               <div className="library-session-search-input-container">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="library-session-search-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="library-session-search-icon">
                   <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 <input
                   type="text"
                   className="library-session-search-input"
-                  placeholder="Buscar ejercicios..."
+                  placeholder="Buscar..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-            </div>
-
-            {/* Filter Button */}
-            <div className="library-session-filter-container">
               <button
-                className={`library-session-filter-button ${(selectedMuscles.size > 0 || selectedImplements.size > 0) ? 'active' : ''}`}
+                className={`library-session-filter-icon-btn ${(selectedMuscles.size > 0 || selectedImplements.size > 0) ? 'active' : ''}`}
                 onClick={handleOpenFilter}
+                title="Filtrar por músculo o implemento"
               >
-                <span className="library-session-filter-button-text">
-                  Filtros
-                  {(selectedMuscles.size > 0 || selectedImplements.size > 0) && (
-                    <span className="library-session-filter-badge">
-                      {' '}({selectedMuscles.size + selectedImplements.size})
-                    </span>
-                  )}
-                </span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {(selectedMuscles.size > 0 || selectedImplements.size > 0) && (
+                  <span className="library-session-filter-icon-badge">{selectedMuscles.size + selectedImplements.size}</span>
+                )}
               </button>
             </div>
 
-            {/* Active Filters Display */}
+            {/* Active Filters (compact chips) */}
             {(selectedMuscles.size > 0 || selectedImplements.size > 0) && (
               <div className="library-session-active-filters">
                 <div className="library-session-active-filters-scroll">
-                  {selectedMuscles.size > 0 && Array.from(selectedMuscles).sort().map(muscle => (
-                    <div
-                      key={muscle}
-                      className="library-session-active-filter-chip"
-                      onClick={handleOpenFilter}
-                    >
-                      <span className="library-session-active-filter-chip-text">{getMuscleDisplayName(muscle)}</span>
-                    </div>
+                  {Array.from(selectedMuscles).sort().map(muscle => (
+                    <span key={muscle} className="library-session-active-filter-chip" onClick={handleOpenFilter}>
+                      {getMuscleDisplayName(muscle)}
+                    </span>
                   ))}
-                  {selectedImplements.size > 0 && Array.from(selectedImplements).sort().map(implement => (
-                    <div
-                      key={implement}
-                      className="library-session-active-filter-chip"
-                      onClick={handleOpenFilter}
-                    >
-                      <span className="library-session-active-filter-chip-text">{implement}</span>
-                    </div>
+                  {Array.from(selectedImplements).sort().map(impl => (
+                    <span key={impl} className="library-session-active-filter-chip" onClick={handleOpenFilter}>
+                      {impl}
+                    </span>
                   ))}
-                  <div
-                    className="library-session-clear-all-filters-button"
-                    onClick={handleClearAllFilters}
-                  >
-                    <span className="library-session-clear-all-filters-text">Limpiar todo</span>
-                  </div>
+                  <button className="library-session-clear-filters-btn" onClick={handleClearAllFilters}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  </button>
                 </div>
               </div>
             )}
@@ -2902,258 +3228,185 @@ const LibrarySessionDetailScreen = () => {
                 </div>
               ) : (
                 <div className="draggable-exercises-list">
-                  {filteredAvailableExercises.map((exercise) => (
-                    <DraggableExercise
-                      key={exercise.dragId}
-                      exercise={exercise}
-                      libraryTitle={exercise.libraryTitle}
-                      libraryIcon={exercise.libraryIcon}
-                      isInSession={false}
-                    />
-                  ))}
+                  <AnimatedList stagger={40} initialDelay={0}>
+                    {filteredAvailableExercises.map((exercise) => (
+                      <DraggableExercise
+                        key={exercise.dragId}
+                        exercise={exercise}
+                        libraryTitle={exercise.libraryTitle}
+                        isInSession={false}
+                      />
+                    ))}
+                  </AnimatedList>
                 </div>
               )}
             </div>
           </div>
+          </div>
 
           {/* Main Area - Session Exercises */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--main">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-main">
-            <div className="library-session-main-header">
-              <div>
-                <h2 className="library-session-main-title">Ejercicios en la Sesión</h2>
-                <p className="library-session-main-subtitle">
-                  Arrastra ejercicios desde el panel izquierdo o reorganiza los existentes
-                </p>
-                {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && libraryUsageCount > 0 && (
-                  <span className="library-session-usage-count">
-                    Usado en {libraryUsageCount} {libraryUsageCount === 1 ? 'programa' : 'programas'}
-                  </span>
-                )}
-              </div>
-              <div className="library-session-main-header-actions">
-                {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && hasMadeChanges && propagateAffectedCount > 0 && (
-                  <button
-                    type="button"
-                    className="library-session-propagate-button"
-                    onClick={handleOpenPropagateModal}
-                    title="Propagar cambios a los usuarios que tienen esta sesión asignada"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M17 1L21 5L17 9M3 11V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18H16M21 5H9C7.93913 5 6.92172 5.42143 6.17157 6.17157C5.42143 6.92172 5 7.93913 5 9V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    Propagar a usuarios
-                  </button>
-                )}
+            {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && hasMadeChanges && propagateAffectedCount > 0 && (
+              <div className="library-session-main-propagate-bar">
                 <button
-                  className={`library-session-edit-button ${isEditMode ? 'active' : ''}`}
-                  onClick={() => setIsEditMode(!isEditMode)}
+                  type="button"
+                  className="library-session-propagate-button"
+                  onClick={handleOpenPropagateModal}
+                  title="Propagar cambios a los usuarios que tienen esta sesión asignada"
                 >
-                  {isEditMode ? 'Guardar Orden' : 'Editar'}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M17 1L21 5L17 9M3 11V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18H16M21 5H9C7.93913 5 6.92172 5.42143 6.17157 6.17157C5.42143 6.92172 5 7.93913 5 9V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Propagar a usuarios
                 </button>
               </div>
-            </div>
+            )}
 
             <DropZone
               id="session-list"
-              className={`library-session-exercises-container ${exercises.length === 0 ? 'empty' : ''}`}
+              className={`library-session-exercises-container ${exercises.length === 0 ? 'empty' : ''} ${activeId && String(activeId).startsWith('available-') ? 'lsd-drop-active' : ''}`}
             >
               {exercises.length === 0 ? (
                 <div className="library-session-dropzone">
-                  <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.3">
-                    <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    <path d="M19 11H5M12 19V5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  </svg>
-                  <p>Arrastra ejercicios aquí para agregarlos a la sesión</p>
+                  <div className="lsd-dropzone-icon-wrap">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" opacity="0.25">
+                      <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  <p>Arrastra ejercicios aquí</p>
                 </div>
               ) : (
                 <SortableContext
                   items={exercises.map(ex => ex.dragId)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {exercises.map((exercise, index) => (
-                    <DraggableExercise
+                  {exercises.map((exercise, idx) => (
+                    <div
                       key={exercise.dragId}
-                      exercise={{
-                        ...exercise,
-                        name: getExerciseDisplayName(exercise)
+                      className={`lsd-exercise-enter ${newlyAddedIds.has(exercise.id) ? 'lsd-exercise-new' : ''}`}
+                      style={{ '--enter-delay': `${idx * 50}ms` }}
+                    >
+                    <ExpandableExerciseCard
+                      exercise={exercise}
+                      sessionId={sessionId}
+                      userId={user?.uid}
+                      contentApi={contentApi}
+                      isExpanded={expandedExerciseIds.has(exercise.id)}
+                      onToggleExpand={toggleExerciseExpand}
+                      sessionDefaultTemplate={sessionDefaultTemplate}
+                      libraryTitles={libraryTitles}
+                      libraryExerciseCompleteness={libraryExerciseCompleteness}
+                      onExerciseUpdated={() => {
+                        setHasMadeChanges(true);
+                        queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
                       }}
-                      libraryIcon={getExerciseLibraryIcon(exercise)}
-                      isInSession={true}
-                      isIncomplete={isSessionExerciseIncomplete(exercise)}
-                      onDelete={isEditMode ? handleDeleteExercise : null}
+                      onEditPrimary={(ex) => {
+                        setSelectedExercise(ex);
+                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+                        setLibraryExerciseModalMode('primary');
+                        setIsLibraryExerciseModalOpen(true);
+                      }}
+                      onAddAlternative={(ex) => {
+                        setSelectedExercise(ex);
+                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+                        setLibraryExerciseModalMode('add-alternative');
+                        setIsLibraryExerciseModalOpen(true);
+                      }}
+                      onOpenPresetSelector={(ex) => {
+                        setSelectedExercise(ex);
+                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+                        setIsPresetSelectorOpen(true);
+                      }}
+                      onOpenMeasuresEditor={(ex) => {
+                        setSelectedExercise(ex);
+                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+                        setEditorModalMode('exercise');
+                        setPresetBeingEditedId(null);
+                        setIsMeasuresObjectivesEditorOpen(true);
+                      }}
+                      onSetsChanged={handleSetsChanged}
                       isEditMode={isEditMode}
-                      onClick={handleExerciseClick}
+                      onDelete={isEditMode ? handleDeleteExercise : null}
+                      isIncomplete={isSessionExerciseIncomplete(exercise)}
+                      showToast={showToast}
+                      accentRgb={accentRgb}
                     />
+                    </div>
                   ))}
                 </SortableContext>
               )}
             </DropZone>
           </div>
+          </div>
 
-          {/* Right sidebar - Planned volume by muscle (same proportions as left) */}
-          <div className="library-session-sidebar-right">
-            <div className="library-session-sidebar-right-header">
-              <h3 className="library-session-sidebar-right-title">Volumen planificado</h3>
-              <p className="library-session-sidebar-right-subtitle">
-                Series efectivas por músculo (intensidad ≥7), si se completan todas las series
-              </p>
+          {/* Volume Panel — always visible right column */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--volume">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
+          <div className="library-session-volume-panel">
+            <div className="library-session-volume-panel-header">
+              <h3 className="library-session-volume-panel-title">Volumen planificado</h3>
             </div>
-            <div className="library-session-sidebar-right-content">
-              {Object.keys(plannedMuscleVolumes).length === 0 ? (
-                <div className="library-session-volume-empty">
-                  Añade ejercicios con series e intensidad para ver el volumen por músculo.
-                </div>
-              ) : (
-                <>
-                  <div className="library-session-volume-svg-wrap">
-                    <MuscleSilhouetteSVG muscleVolumes={plannedMuscleVolumes} />
-                  </div>
-                  <div className="library-session-volume-cards-wrapper">
-                    <button
-                      type="button"
-                      className={`library-session-volume-chevron library-session-volume-chevron-left ${!volumeCanScrollLeft ? 'library-session-volume-chevron-inactive' : ''}`}
-                      aria-label="Ver gráfico"
-                      disabled={!volumeCanScrollLeft}
-                      onClick={() => {
-                        const el = volumeCardsRowRef.current;
-                        if (el && volumeCanScrollLeft) el.scrollBy({ left: -el.clientWidth, behavior: 'smooth' });
-                      }}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className={`library-session-volume-chevron library-session-volume-chevron-right ${!volumeCanScrollRight ? 'library-session-volume-chevron-inactive' : ''}`}
-                      aria-label="Ver lista de series"
-                      disabled={!volumeCanScrollRight}
-                      onClick={() => {
-                        const el = volumeCardsRowRef.current;
-                        if (el && volumeCanScrollRight) el.scrollBy({ left: el.clientWidth, behavior: 'smooth' });
-                      }}
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                    <div
-                      ref={volumeCardsRowRef}
-                      className="library-session-volume-cards-row"
-                      onScroll={updateVolumeChevronState}
-                    >
-                    <div className="library-session-volume-card library-session-volume-pie-card">
-                      <div className="library-session-pie-chart-wrap">
-                        <ResponsiveContainer width="100%" height={160}>
-                          <PieChart className="library-session-pie-chart">
-                            <defs>
-                              {[...Array(3)].map((_, i) => {
-                                const top = 0.22 + (i * 0.06);
-                                const mid = 0.12 + (i * 0.04);
-                                const bottom = 0.05 + (i * 0.03);
-                                return (
-                                  <linearGradient key={i} id={`library-session-pie-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stopColor={`rgba(255,255,255,${top})`} />
-                                    <stop offset="50%" stopColor={`rgba(255,255,255,${mid})`} />
-                                    <stop offset="100%" stopColor={`rgba(255,255,255,${bottom})`} />
-                                  </linearGradient>
-                                );
-                              })}
-                            </defs>
-                            <Pie
-                              data={top3PlannedVolumes.map(([muscle, sets]) => ({
-                                name: getMuscleDisplayName(muscle),
-                                value: sets,
-                              }))}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={40}
-                              outerRadius={64}
-                              paddingAngle={2}
-                              dataKey="value"
-                              label={false}
-                            >
-                              {top3PlannedVolumes.map((_, i) => (
-                                <Cell key={i} fill={`url(#library-session-pie-grad-${i})`} />
-                              ))}
-                            </Pie>
-                            <Tooltip
-                              content={({ active, payload }) => {
-                                if (!active || !payload?.length) return null;
-                                const { name, value } = payload[0].payload;
-                                return (
-                                  <div className="library-session-pie-tooltip">
-                                    <span className="library-session-pie-tooltip-name">{name}</span>
-                                    <span className="library-session-pie-tooltip-sets">{Number(value).toFixed(1)} sets</span>
-                                  </div>
-                                );
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      {top3PlannedVolumes.length > 0 && (
-                        <div className="library-session-pie-legend">
-                          {top3PlannedVolumes.map(([muscle, sets], i) => (
-                            <div key={muscle} className="library-session-pie-legend-item">
-                              <span className="library-session-pie-legend-dot" style={{ background: `rgba(255,255,255,${0.12 + i * 0.08})` }} />
-                              <span className="library-session-pie-legend-name">{getMuscleDisplayName(muscle)}</span>
-                              <span className="library-session-pie-legend-sets">{Number(sets).toFixed(1)} sets</span>
-                            </div>
-                          ))}
+            <div className="library-session-volume-panel-body">
+              {volumeDataLoading && exercises.length > 0 ? (
+                <div className="library-session-volume-panel-skeleton" aria-busy="true">
+                  <div className="lsd-vol-skel-silhouette" />
+                  <div className="lsd-vol-skel-rows">
+                    {[100, 80, 60, 45, 30].map((w, i) => (
+                      <div key={i} className="lsd-vol-skel-row">
+                        <div className="lsd-vol-skel-label" />
+                        <div className="lsd-vol-skel-bar-wrap">
+                          <div className="lsd-vol-skel-bar" style={{ width: `${w}%` }} />
                         </div>
-                      )}
-                    </div>
-                    <div className="library-session-volume-card library-session-volume-sets-card">
-                      <div className="library-session-volume-sets-card-scroll">
-                        {Object.entries(plannedMuscleVolumes)
-                          .sort(([, a], [, b]) => b - a)
-                          .map(([muscle, sets]) => (
-                            <div key={muscle} className="library-session-volume-muscle-row">
-                              <span className="library-session-volume-muscle-name">{getMuscleDisplayName(muscle)}</span>
-                              <span className="library-session-volume-muscle-sets">{Number(sets).toFixed(1)} sets</span>
-                            </div>
-                          ))}
                       </div>
-                      <div className="library-session-volume-desliza">Desliza para ver más</div>
-                    </div>
-                    </div>
+                    ))}
                   </div>
-                  <div className="library-session-volume-desliza-lateral">Desliza para ver</div>
-                </>
-              )}
+                </div>
+              ) : Object.keys(plannedMuscleVolumes).length === 0 ? (
+                <div className="library-session-volume-panel-empty">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" opacity="0.2">
+                    <rect x="3" y="12" width="4" height="9" rx="1" stroke="currentColor" strokeWidth="2"/>
+                    <rect x="10" y="7" width="4" height="14" rx="1" stroke="currentColor" strokeWidth="2"/>
+                    <rect x="17" y="3" width="4" height="18" rx="1" stroke="currentColor" strokeWidth="2"/>
+                  </svg>
+                  <p>Añade ejercicios con series para ver el volumen por músculo.</p>
+                </div>
+              ) : (() => {
+                const volumeEntries = Object.entries(plannedMuscleVolumes).sort(([, a], [, b]) => b - a);
+                const maxSets = volumeEntries[0]?.[1] || 1;
+                return (
+                  <>
+                    {/* Muscle silhouette */}
+                    <div className="library-session-volume-panel-silhouette">
+                      <MuscleSilhouetteSVG muscleVolumes={plannedMuscleVolumes} accentRgb={accentRgb} />
+                    </div>
+
+                    {/* All muscles — sets list */}
+                    <div className="library-session-volume-panel-list">
+                      {volumeEntries.map(([muscle, sets], i) => (
+                        <div key={muscle} className="library-session-volume-panel-row" style={{ '--row-i': i }}>
+                          <span className="library-session-volume-panel-muscle">{getMuscleDisplayName(muscle)}</span>
+                          <div className="library-session-volume-panel-bar-wrap">
+                            <div className="library-session-volume-panel-bar" style={{ width: `${Math.min(100, (sets / maxSets) * 100)}%` }} />
+                          </div>
+                          <span className="library-session-volume-panel-sets">{Number(sets).toFixed(1)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
+          </div>
           </div>
           </div>
         </div>
 
         <DragOverlay>
           {activeExercise ? (
-            <div className="draggable-exercise dragging-overlay">
+            <div className="draggable-exercise dragging-overlay lsd-drag-overlay" style={accentStyle}>
               <div className="draggable-exercise-content">
-                <div className="draggable-exercise-icon">
-                  {(() => {
-                    const icon = activeExercise.libraryIcon || getExerciseLibraryIcon(activeExercise);
-                    if (icon) {
-                      return typeof icon === 'string' && icon.startsWith('http') ? (
-                        <img 
-                          src={icon} 
-                          alt={activeExercise.libraryTitle || 'Library icon'} 
-                          className="draggable-exercise-icon-image"
-                        />
-                      ) : (
-                        renderIconSVG(icon, 20)
-                      );
-                    }
-                    return (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    );
-                  })()}
-                </div>
                 <div className="draggable-exercise-info">
                   <div className="draggable-exercise-name">
                     {activeExercise.name || getExerciseDisplayName(activeExercise)}

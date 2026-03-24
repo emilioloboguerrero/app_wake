@@ -46,17 +46,43 @@ router.get("/nutrition/diary", async (req, res) => {
   res.json({ data: entries });
 });
 
-// POST /nutrition/diary
+// POST /nutrition/diary — accepts individual diary entry (one food item per call)
 router.post("/nutrition/diary", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{
     date: string;
-    meal_type: string;
-    foods: unknown[];
+    meal: string;
+    foodId?: string;
+    servingId?: string;
+    numberOfUnits?: number;
+    name?: string;
+    foodCategory?: string;
+    calories?: number;
+    protein?: number;
+    carbs?: number;
+    fat?: number;
+    servingUnit?: string;
+    gramsPerUnit?: number;
+    servings?: unknown[];
   }>(
-    { date: "string", meal_type: "string", foods: "array" },
+    {
+      date: "string",
+      meal: "string",
+      foodId: "optional_string",
+      servingId: "optional_string",
+      numberOfUnits: "optional_number",
+      name: "optional_string",
+      foodCategory: "optional_string",
+      calories: "optional_number",
+      protein: "optional_number",
+      carbs: "optional_number",
+      fat: "optional_number",
+      servingUnit: "optional_string",
+      gramsPerUnit: "optional_number",
+      servings: "optional_array",
+    },
     req.body,
     { maxArrayLength: 100 }
   );
@@ -94,7 +120,7 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
   }
 
   // Allowlist fields instead of spreading req.body
-  const allowedFields = ["date", "meal_type", "foods", "notes", "totalCalories", "totalProtein", "totalCarbs", "totalFat"];
+  const allowedFields = ["date", "meal", "foodId", "servingId", "numberOfUnits", "name", "calories", "protein", "carbs", "fat", "servingUnit", "gramsPerUnit", "notes"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -428,6 +454,42 @@ router.post("/nutrition/saved-foods", async (req, res) => {
   res.status(201).json({ data: { id: docRef.id, savedFoodId: docRef.id } });
 });
 
+// PATCH /nutrition/saved-foods/:savedFoodId
+router.patch("/nutrition/saved-foods/:savedFoodId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("saved_foods")
+    .doc(req.params.savedFoodId);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Alimento guardado no encontrado");
+  }
+
+  const allowedFields = [
+    "name", "calories", "protein", "carbs", "fat",
+    "servingUnit", "numberOfUnits", "brand", "barcode",
+  ];
+  const updates = pickFields(req.body as Record<string, unknown>, allowedFields);
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
+    );
+  }
+
+  await docRef.update({
+    ...updates,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { updated: true } });
+});
+
 // DELETE /nutrition/saved-foods/:savedFoodId
 router.delete("/nutrition/saved-foods/:savedFoodId", async (req, res) => {
   const auth = await validateAuth(req);
@@ -551,6 +613,95 @@ router.get("/nutrition/assignment", async (req, res) => {
       },
     },
   });
+});
+
+// ─── User Meals (PWA meal presets) ────────────────────────────────────────
+
+// GET /nutrition/user-meals
+router.get("/nutrition/user-meals", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const snapshot = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("saved_meals")
+    .orderBy("created_at", "desc")
+    .get();
+
+  res.json({
+    data: snapshot.docs.map((d) => ({ id: d.id, mealId: d.id, ...d.data() })),
+  });
+});
+
+// POST /nutrition/user-meals
+router.post("/nutrition/user-meals", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{ name: string; items?: unknown[] }>(
+    { name: "string", items: "optional_array" },
+    req.body,
+    { maxArrayLength: 50 }
+  );
+
+  const docRef = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("saved_meals")
+    .add({
+      ...body,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({ data: { id: docRef.id, mealId: docRef.id } });
+});
+
+// PATCH /nutrition/user-meals/:mealId
+router.patch("/nutrition/user-meals/:mealId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("saved_meals")
+    .doc(req.params.mealId);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Comida no encontrada");
+  }
+
+  const allowedFields = ["name", "items"];
+  const updates = pickFields(req.body, allowedFields);
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
+  res.json({ data: { updated: true } });
+});
+
+// DELETE /nutrition/user-meals/:mealId
+router.delete("/nutrition/user-meals/:mealId", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const docRef = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("saved_meals")
+    .doc(req.params.mealId);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Comida no encontrada");
+  }
+
+  await docRef.delete();
+  res.status(204).send();
 });
 
 // ─── FatSecret token helper (mirrors Gen1 logic) ──────────────────────────

@@ -1316,7 +1316,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       if (formData.gender) userData.gender = sanitizeInput.text(formData.gender);
       if (formData.country) userData.country = sanitizeInput.text(formData.country);
       if (formData.city?.trim()) userData.city = sanitizeInput.text(formData.city.trim());
-      if (formData.bodyweight?.trim()) userData.bodyweight = parseFloat(formData.bodyweight.trim());
+      if (formData.bodyweight?.trim()) userData.weight = parseFloat(formData.bodyweight.trim());
       if (formData.height?.trim()) userData.height = parseFloat(formData.height.trim());
       // Removed: objectives/interests persistence
       

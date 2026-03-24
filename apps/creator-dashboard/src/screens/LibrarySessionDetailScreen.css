@@ -4,8 +4,8 @@
   height: calc(100vh - 180px);
   gap: 24px;
   padding: 24px;
-  max-width: 1600px;
-  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* When client-edit banner is shown, give container more height so the body below keeps the same usable space */
@@ -90,10 +90,655 @@
   text-transform: uppercase;
 }
 
+/* Session Settings Panel (collapsible) */
+/* ── Session Settings Card (expandable full-width) ── */
+.library-session-settings-card {
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+}
+
+.library-session-settings-card--expanded {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.library-session-settings-card--nudge {
+  overflow: visible;
+}
+
+/* Grid-based expand/collapse animation */
+.lss-expand-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+  border-radius: 0 0 14px 14px;
+}
+
+.library-session-settings-card--expanded .lss-expand-wrapper {
+  grid-template-rows: 1fr;
+}
+
+.lss-expand-inner {
+  min-height: 0;
+}
+
+/* Collapsed bar */
+.library-session-settings-card-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.9);
+  transition: background 0.15s ease;
+}
+
+.library-session-settings-card-bar:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.library-session-settings-card-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.library-session-settings-card-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.library-session-settings-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.library-session-settings-card-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.library-session-settings-card-pills {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.library-session-settings-card-pill {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.library-session-settings-card-pill--template {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.library-session-settings-card-chevron {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.3);
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.library-session-settings-card-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Pulsating glow on the card itself when nudge is showing */
+.library-session-settings-card:has(.lss-nudge-bar)::before,
+.library-session-settings-card:has(.lss-nudge-bar)::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.library-session-settings-card:has(.lss-nudge-bar)::before {
+  animation: lssGlow 3s ease-in-out infinite;
+}
+
+.library-session-settings-card:has(.lss-nudge-bar)::after {
+  animation: lssGlow 3s ease-in-out 1.5s infinite;
+}
+
+@keyframes lssGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.06), 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.04), 0 0 24px 10px rgba(255, 255, 255, 0.025);
+  }
+}
+
+.library-session-settings-card:has(.lss-nudge-bar):hover::before,
+.library-session-settings-card:has(.lss-nudge-bar):hover::after {
+  animation-duration: 1.8s;
+}
+
+/* Nudge marquee bar — takes over the entire collapsed card */
+.lss-nudge-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  position: relative;
+  z-index: 1;
+}
+
+.lss-nudge-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: lssMarquee 24s linear infinite;
+  position: relative;
+  z-index: 1;
+}
+
+.lss-nudge-bar:hover .lss-nudge-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes lssMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-33.333%); }
+}
+
+.lss-nudge-marquee-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  padding: 0 16px;
+}
+
+.lss-nudge-marquee-dot {
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0 10px;
+}
+
+/* ── Session title field ── */
+.lss-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px 0;
+}
+
+.lss-title-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+}
+
+.lss-title-input {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.90);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.lss-title-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lss-title-input::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+  font-weight: 500;
+}
+
+/* ── Expanded 3-card layout ── */
+.lss-expanded {
+  display: flex;
+  gap: 16px;
+  padding: 8px 16px 16px;
+}
+
+.lss-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Card 1: Image */
+.lss-card-image {
+  height: 100%;
+  cursor: pointer;
+  position: relative;
+}
+
+.lsd-glow-wrap--image {
+  flex: 0 0 200px;
+  height: 280px;
+}
+
+.lss-card-image-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lss-card-image-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.18);
+}
+
+.lss-card-image-empty span {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lss-card-image-hover {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.lss-card-image:hover .lss-card-image-hover {
+  opacity: 1;
+}
+
+/* Card 2: Data structure */
+.lss-card-data {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.lss-card-header {
+  margin-bottom: 16px;
+}
+
+.lss-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.lss-card-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 4px 0 0;
+}
+
+/* Configured state: visual preview */
+.lss-data-configured {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+.lss-data-preview {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.lss-data-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+}
+
+.lss-data-preview-fields {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.lss-data-preview-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 50px;
+}
+
+.lss-data-preview-field-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.lss-data-preview-field-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.lss-data-preview-field--obj .lss-data-preview-field-value {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.lss-data-edit-btn {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lss-data-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Empty state: preset buttons */
+.lss-data-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+.lss-data-presets {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+}
+
+.lss-data-preset-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.lss-data-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.lss-data-preset-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.lss-data-preset-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.lss-data-preset-detail {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.lss-data-custom-btn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 16px;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.lss-data-custom-btn:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Card 3: Usage chart */
+.lsd-glow-wrap--chart {
+  flex: 0 0 240px;
+}
+
+.lss-card-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.lss-chart-stats {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.lss-chart-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lss-chart-stat-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.lss-chart-stat-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.lss-chart-line {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.lss-chart-tooltip {
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Legacy settings classes kept for backwards compat */
+.library-session-settings-image-placeholder {
+  color: rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.library-session-settings-image-label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2px 0;
+}
+
+.library-session-settings-template-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.library-session-settings-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.library-session-settings-template-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.library-session-settings-template-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.library-session-settings-pill {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+
+.library-session-settings-pill-divider {
+  color: rgba(255, 255, 255, 0.15);
+  font-size: 0.72rem;
+  margin: 0 2px;
+}
+
+.library-session-settings-edit-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.library-session-settings-edit-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.library-session-settings-template-empty {
+  display: flex;
+  gap: 8px;
+}
+
+.library-session-settings-template-btn {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.library-session-settings-template-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Volume toggle button */
+.library-session-volume-toggle {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.library-session-volume-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
 /* Sidebar Styles */
 .library-session-sidebar {
-  width: 360px;
-  min-width: 360px;
+  flex: 1;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
@@ -103,64 +748,133 @@
   backdrop-filter: blur(10px);
 }
 
-.library-session-sidebar-header {
-  padding: 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
+/* Sidebar tabs (library switcher) */
+.library-session-sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.library-session-sidebar-title {
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0 0 16px 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-}
+.library-session-sidebar-tabs::-webkit-scrollbar { display: none; }
 
-.library-session-library-select {
-  width: 100%;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-family: inherit;
+.library-session-sidebar-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  white-space: nowrap;
+  transition: all 0.15s ease;
 }
 
-.library-session-library-select:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.2);
+.library-session-sidebar-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.library-session-library-select:focus {
-  outline: none;
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+.library-session-sidebar-tab.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 }
 
-/* Search Container */
-.library-session-search-container {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+/* Search + filter row */
+.library-session-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
 }
 
 .library-session-search-input-container {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  padding: 10px 14px;
-  transition: all 0.2s ease;
+  padding: 7px 10px;
+  transition: all 0.15s ease;
 }
 
 .library-session-search-input-container:focus-within {
-  border-color: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.library-session-filter-icon-btn {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+}
+
+.library-session-filter-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.library-session-filter-icon-btn.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.library-session-filter-icon-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a1a;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.library-session-clear-filters-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.library-session-clear-filters-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .library-session-search-icon {
@@ -305,7 +1019,7 @@
   flex-direction: column;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
+  border-radius: inherit;
   overflow: hidden;
   backdrop-filter: blur(10px);
 }
@@ -318,6 +1032,14 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 24px;
+}
+
+.library-session-main-propagate-bar {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .library-session-main-title {
@@ -442,6 +1164,7 @@
 }
 
 .draggable-exercise {
+  position: relative;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
@@ -722,10 +1445,284 @@
 
 /* Wrapper for cards row + hover chevrons (wrapper only reserves space; row fills it like before) */
 .library-session-volume-cards-wrapper {
-  flex: 1;
-  min-height: 0;
   position: relative;
   width: 100%;
+  flex-shrink: 0;
+}
+
+/* ── Volume Panel (always-visible right column) ── */
+.library-session-volume-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.library-session-volume-panel-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.library-session-volume-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.library-session-volume-panel-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 4px 0 0;
+}
+
+.library-session-volume-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.library-session-volume-panel-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.library-session-volume-panel-empty p {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Volume skeleton ── */
+.library-session-volume-panel-skeleton {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.lsd-vol-skel-silhouette {
+  width: 100%;
+  height: 140px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: lsdVolSkelShimmer 1.4s ease-in-out infinite;
+}
+
+.lsd-vol-skel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lsd-vol-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lsd-vol-skel-label {
+  width: 72px;
+  height: 12px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  animation: lsdVolSkelShimmer 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.lsd-vol-skel-bar-wrap {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.lsd-vol-skel-bar {
+  height: 100%;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  animation: lsdVolSkelShimmer 1.4s ease-in-out infinite;
+}
+
+.lsd-vol-skel-row:nth-child(2) .lsd-vol-skel-label,
+.lsd-vol-skel-row:nth-child(2) .lsd-vol-skel-bar { animation-delay: 0.1s; }
+.lsd-vol-skel-row:nth-child(3) .lsd-vol-skel-label,
+.lsd-vol-skel-row:nth-child(3) .lsd-vol-skel-bar { animation-delay: 0.2s; }
+.lsd-vol-skel-row:nth-child(4) .lsd-vol-skel-label,
+.lsd-vol-skel-row:nth-child(4) .lsd-vol-skel-bar { animation-delay: 0.3s; }
+.lsd-vol-skel-row:nth-child(5) .lsd-vol-skel-label,
+.lsd-vol-skel-row:nth-child(5) .lsd-vol-skel-bar { animation-delay: 0.4s; }
+
+@keyframes lsdVolSkelShimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.library-session-volume-panel-silhouette {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+}
+
+.library-session-volume-panel-silhouette svg {
+  max-height: 340px;
+  width: auto;
+}
+
+.library-session-volume-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.library-session-volume-panel-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.library-session-volume-panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.library-session-volume-panel-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.library-session-volume-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.library-session-volume-panel-muscle {
+  flex: 0 0 auto;
+  min-width: 80px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.library-session-volume-panel-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.library-session-volume-panel-bar {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.has-accent .library-session-volume-panel-bar {
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.5);
+}
+
+.library-session-volume-panel-sets {
+  flex: 0 0 auto;
+  min-width: 28px;
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Pie chart section */
+.library-session-volume-panel-pie-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.library-session-volume-panel-pie-wrap {
+  width: 100%;
+  max-width: 220px;
+}
+
+.library-session-volume-panel-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.library-session-volume-panel-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.library-session-volume-panel-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.library-session-volume-panel-legend-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-session-volume-panel-legend-sets {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.library-session-volume-panel-tooltip {
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .library-session-volume-chevron {
@@ -772,20 +1769,13 @@
   pointer-events: none;
 }
 
-/* Bottom section: two full-width cards, scroll laterally to switch (positioned to fill wrapper = same as before) */
+/* Volume cards row (used by volume drawer snap-scroll cards) */
 .library-session-volume-cards-row {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
   display: flex;
   flex-wrap: nowrap;
   gap: 12px;
-  align-items: stretch;
   overflow-x: auto;
   overflow-y: hidden;
-  width: 100%;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
 }
@@ -1140,10 +2130,136 @@
     height: auto;
   }
 
-  .library-session-sidebar {
+  .lsd-glow-wrap--sidebar,
+  .lsd-glow-wrap--volume {
     width: 100%;
     min-width: 0;
+  }
+
+  .library-session-sidebar {
     max-height: 400px;
+  }
+
+  .library-session-detail-body {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 768px) {
+  .library-session-detail-container {
+    padding: 12px;
+    gap: 14px;
+    height: auto;
+    overflow-x: hidden;
+  }
+
+  .library-session-detail-body {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* All glow wrappers: full width on mobile */
+  .library-session-detail-body > .lsd-glow-wrap,
+  .library-session-detail-container > .lsd-glow-wrap {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-shrink: 1;
+  }
+
+  /* Settings card: stack 3-card layout vertically */
+  .lss-expanded {
+    flex-direction: column;
+    gap: 12px;
+    padding: 8px 12px 12px;
+  }
+
+  .lss-expanded > * {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .lsd-glow-wrap--image {
+    height: 200px;
+  }
+
+  .lss-card-data {
+    padding: 16px;
+  }
+
+  /* Data presets: stack vertically */
+  .lss-data-presets {
+    flex-direction: column;
+  }
+
+  .library-session-sidebar {
+    max-height: 320px;
+  }
+
+  .library-session-main {
+    width: 100%;
+  }
+
+  .library-session-main-header {
+    padding: 16px;
+    gap: 12px;
+  }
+
+  /* Title input */
+  .lss-title-row {
+    padding: 8px 12px 0;
+    gap: 8px;
+  }
+
+  /* Chart stats */
+  .lss-chart-stats {
+    gap: 14px;
+  }
+
+  .lss-chart-stat-num {
+    font-size: 22px;
+  }
+
+  /* Client edit banner */
+  .library-session-client-edit-banner {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .library-session-detail-container {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .lsd-glow-wrap--image {
+    height: 160px;
+  }
+
+  .library-session-sidebar {
+    max-height: 260px;
+  }
+
+  /* Settings card collapsed bar */
+  .library-session-settings-card-bar {
+    padding: 8px 12px;
+  }
+
+  .library-session-settings-card-thumb {
+    width: 30px;
+    height: 30px;
+  }
+
+  .library-session-settings-card-label {
+    font-size: 12px;
+  }
+
+  /* Nudge marquee */
+  .lss-nudge-marquee-content {
+    font-size: 13px;
+    padding: 0 12px;
   }
 }
 
@@ -1932,4 +3048,294 @@
 .library-picker-exercises-list::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 3px;
+}
+
+/* ── Glow wrapper — sits around overflow:hidden panels ─── */
+.lsd-glow-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: inherit;
+}
+
+.lsd-glow-wrap--sidebar {
+  width: 360px;
+  min-width: 360px;
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.lsd-glow-wrap--main {
+  flex: 1;
+  min-width: 0;
+  border-radius: 16px;
+}
+
+.lsd-glow-wrap--volume {
+  width: 360px;
+  min-width: 360px;
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.lsd-glow-wrap--settings {
+  flex-shrink: 0;
+  border-radius: 14px;
+}
+
+.lsd-glow-wrap--card {
+  flex: 1;
+  min-width: 0;
+  border-radius: 12px;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Accent color system + Animations (Session Detail)
+   ════════════════════════════════════════════════════════════════ */
+
+/* Container entrance */
+.library-session-detail-container {
+  position: relative;
+  animation: lsdFadeIn 0.5s ease both;
+}
+
+@keyframes lsdFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Exercise Card Entrance Stagger ──────────────────────── */
+.lsd-exercise-enter {
+  animation: lsdExerciseEnter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--enter-delay, 0ms);
+}
+
+@keyframes lsdExerciseEnter {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Newly Added Card Flash ──────────────────────────────── */
+.lsd-exercise-new {
+  animation: lsdNewCard 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes lsdNewCard {
+  0%   { opacity: 0; transform: translateY(16px) scale(0.95); }
+  50%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.has-accent .lsd-exercise-new > .exc-card {
+  box-shadow:
+    0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3),
+    0 0 24px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15),
+    0 8px 24px rgba(0, 0, 0, 0.4);
+  transition: box-shadow 0.8s ease;
+}
+
+/* ── Drop Zone Highlight ─────────────────────────────────── */
+.lsd-drop-active {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.has-accent .lsd-drop-active {
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.35) !important;
+  box-shadow:
+    inset 0 0 40px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06),
+    0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15);
+}
+
+.library-session-dropzone .lsd-dropzone-icon-wrap {
+  animation: lsdDropzonePulse 2.6s ease-in-out infinite;
+}
+
+@keyframes lsdDropzonePulse {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50%      { transform: scale(1.08); opacity: 0.8; }
+}
+
+/* ── Drag Overlay Enhancement ────────────────────────────── */
+.lsd-drag-overlay {
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  transform: scale(1.03);
+}
+
+/* Accent variant — uses inline CSS vars from style prop */
+.lsd-drag-overlay[style*="--accent-r"] {
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3),
+    0 0 20px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.12);
+}
+
+/* ── Accent on Settings Card Image ───────────────────────── */
+.has-accent .lss-card-image-img {
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2);
+}
+
+/* ── Accent on Settings Card Thumb ───────────────────────── */
+.has-accent .library-session-settings-card-thumb {
+  box-shadow: 0 0 12px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.2);
+}
+
+/* ── Accent on Propagate Button ──────────────────────────── */
+.has-accent .library-session-propagate-button {
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
+}
+
+.has-accent .library-session-propagate-button:hover {
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14);
+}
+
+/* ── Accent on Active Sidebar Tab ────────────────────────── */
+.has-accent .library-session-sidebar-tab.active {
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45);
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
+  color: #fff;
+}
+
+/* ── Accent on Active Filter Chips ───────────────────────── */
+.has-accent .library-session-active-filter-chip {
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.3);
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
+}
+
+/* ── Accent on Chart Line ────────────────────────────────── */
+.has-accent .lss-chart-line {
+  --chart-accent: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.6);
+}
+
+/* ── Volume panel entrance ───────────────────────────────── */
+.library-session-volume-panel-body {
+  animation: lsdFadeSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+}
+
+.library-session-volume-panel-row {
+  animation: lsdFadeSlideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--row-i, 0) * 40ms + 200ms);
+}
+
+@keyframes lsdFadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Settings card expanded accent line ──────────────────── */
+.has-accent .library-session-settings-card--expanded {
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15);
+}
+
+/* ── Nudge bar shimmer with accent ───────────────────────── */
+.has-accent .lss-nudge-bar::after {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.06) 50%,
+    transparent 100%
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Skeleton Loading State
+   ════════════════════════════════════════════════════════════════ */
+
+.lsd-skeleton-settings {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.lsd-skeleton-sidebar {
+  width: 360px;
+  min-width: 360px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lsd-skeleton-sidebar-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lsd-skeleton-sidebar-search {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lsd-skeleton-sidebar-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+}
+
+.lsd-skeleton-sidebar-item {
+  padding: 10px 8px;
+}
+
+.lsd-skeleton-main {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lsd-skeleton-main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.lsd-skeleton-main-exercises {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 24px;
+}
+
+.lsd-skeleton-exercise-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+@media (max-width: 768px) {
+  .lsd-skeleton-sidebar,
+  .lsd-skeleton-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 auto;
+  }
 }

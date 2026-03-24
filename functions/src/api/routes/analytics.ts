@@ -218,21 +218,41 @@ async function verifyCreatorOwnsClient(
   }
 }
 
+// Helper: get all processed_payments for a creator's courses
+async function getCreatorPayments(creatorId: string) {
+  const coursesSnap = await db
+    .collection("courses")
+    .where("creator_id", "==", creatorId)
+    .get();
+
+  const courseIds = coursesSnap.docs.map((d) => d.id);
+  if (courseIds.length === 0) return [];
+
+  // Firestore 'in' supports max 30 values; batch if needed
+  const allDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (let i = 0; i < courseIds.length; i += 30) {
+    const batch = courseIds.slice(i, i + 30);
+    const snap = await db
+      .collection("processed_payments")
+      .where("courseId", "in", batch)
+      .get();
+    allDocs.push(...snap.docs);
+  }
+  return allDocs;
+}
+
 // GET /analytics/revenue
 router.get("/analytics/revenue", async (req, res) => {
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const paymentsSnap = await db
-    .collection("processed_payments")
-    .where("creatorId", "==", auth.userId)
-    .get();
+  const paymentDocs = await getCreatorPayments(auth.userId);
 
   let salesCount = 0;
   let grossRevenue = 0;
 
-  for (const doc of paymentsSnap.docs) {
+  for (const doc of paymentDocs) {
     const data = doc.data();
     if (data.status === "approved" || data.status === "completed") {
       salesCount++;
@@ -447,9 +467,9 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       db.collection("users").doc(clientId).collection("readiness")
         .where("date", ">=", sevenDaysAgoStr).orderBy("date", "desc").get(),
       db.collection("nutrition_assignments")
-        .where("clientUserId", "==", clientId)
-        .where("creatorId", "==", auth.userId)
-        .where("status", "==", "active").limit(1).get(),
+        .where("userId", "==", clientId)
+        .where("assignedBy", "==", auth.userId)
+        .limit(5).get(),
       db.collection("users").doc(clientId).collection("diary")
         .where("date", ">=", sevenDaysAgoStr).where("date", "<=", nowStr).get(),
     ]);
@@ -525,18 +545,22 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   }
 
   let target = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-  if (!assignmentsSnap.empty) {
+  const activeAssignment = assignmentsSnap.docs.find((d) => {
+    const s = d.data().status;
+    return !s || s === "active";
+  });
+  if (activeAssignment) {
     const contentDoc = await db
       .collection("client_nutrition_plan_content")
-      .doc(assignmentsSnap.docs[0].id)
+      .doc(activeAssignment.id)
       .get();
     if (contentDoc.exists) {
       const c = contentDoc.data()!;
       target = {
-        calories: c.dailyCalories ?? 0,
-        protein: c.dailyProteinG ?? 0,
-        carbs: c.dailyCarbsG ?? 0,
-        fat: c.dailyFatG ?? 0,
+        calories: c.daily_calories ?? c.dailyCalories ?? 0,
+        protein: c.daily_protein_g ?? c.dailyProteinG ?? 0,
+        carbs: c.daily_carbs_g ?? c.dailyCarbsG ?? 0,
+        fat: c.daily_fat_g ?? c.dailyFatG ?? 0,
       };
     }
   }
@@ -676,16 +700,13 @@ router.get("/analytics/client-trend", async (req, res) => {
       return { month, newClients: count, totalClients: cumulative };
     });
 
-  // Programs sold: low_ticket courses
-  const paymentsSnap = await db
-    .collection("processed_payments")
-    .where("creatorId", "==", auth.userId)
-    .get();
+  // Programs sold: low_ticket courses (join through courses collection)
+  const paymentDocs = await getCreatorPayments(auth.userId);
 
   const programSales: Record<string, number> = {};
   let totalOneOnOne = clientsSnap.size;
 
-  for (const doc of paymentsSnap.docs) {
+  for (const doc of paymentDocs) {
     const data = doc.data();
     if (data.status !== "approved" && data.status !== "completed") continue;
     const createdAt = data.created_at ?? data.createdAt ?? data.paidAt;
@@ -705,7 +726,7 @@ router.get("/analytics/client-trend", async (req, res) => {
     .map(([month, count]) => ({ month, programsSold: count }));
 
   res.json({
-    data: { clientTrend: trend, salesTrend, totalOneOnOne, totalProgramsSold: paymentsSnap.size },
+    data: { clientTrend: trend, salesTrend, totalOneOnOne, totalProgramsSold: paymentDocs.length },
   });
 });
 
@@ -715,14 +736,11 @@ router.get("/analytics/revenue-trend", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const paymentsSnap = await db
-    .collection("processed_payments")
-    .where("creatorId", "==", auth.userId)
-    .get();
+  const paymentDocsForTrend = await getCreatorPayments(auth.userId);
 
   const months: Record<string, { gross: number; count: number }> = {};
 
-  for (const doc of paymentsSnap.docs) {
+  for (const doc of paymentDocsForTrend) {
     const data = doc.data();
     if (data.status !== "approved" && data.status !== "completed") continue;
 
@@ -847,16 +865,18 @@ router.get("/analytics/calendar-preview", async (req, res) => {
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
-  const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
+  const dayAfterTomorrow = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000);
 
-  // Get today's and tomorrow's bookings
+  // Query by slotStartUtc (ISO timestamp), not date field
+  const todayStart = `${todayStr}T00:00:00.000Z`;
+  const dayAfterTomorrowStart = `${dayAfterTomorrow.toISOString().slice(0, 10)}T00:00:00.000Z`;
+
   const bookingsSnap = await db
     .collection("call_bookings")
     .where("creatorId", "==", auth.userId)
-    .where("date", ">=", todayStr)
-    .where("date", "<=", tomorrowStr)
-    .orderBy("date", "asc")
+    .where("slotStartUtc", ">=", todayStart)
+    .where("slotStartUtc", "<", dayAfterTomorrowStart)
+    .orderBy("slotStartUtc", "asc")
     .get();
 
   interface CalendarEvent {
@@ -871,21 +891,16 @@ router.get("/analytics/calendar-preview", async (req, res) => {
 
   const events: CalendarEvent[] = bookingsSnap.docs.map(doc => {
     const data = doc.data();
+    const slotDate = (data.slotStartUtc as string).slice(0, 10);
     return {
       id: doc.id,
-      clientName: (data.clientName ?? data.displayName ?? "Cliente") as string,
-      date: data.date as string,
-      startTime: (data.startTime ?? data.slotStart ?? "") as string,
-      endTime: (data.endTime ?? data.slotEnd ?? "") as string,
-      status: (data.status ?? "confirmed") as string,
-      isToday: data.date === todayStr,
+      clientName: (data.clientDisplayName ?? data.clientName ?? "Cliente") as string,
+      date: slotDate,
+      startTime: (data.slotStartUtc ?? "") as string,
+      endTime: (data.slotEndUtc ?? "") as string,
+      status: (data.status ?? "scheduled") as string,
+      isToday: slotDate === todayStr,
     };
-  });
-
-  // Sort by time within each day
-  events.sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date);
-    return a.startTime.localeCompare(b.startTime);
   });
 
   res.json({

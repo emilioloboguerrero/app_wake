@@ -10,7 +10,9 @@ type SchemaType =
   | "optional_number"
   | "optional_boolean"
   | "optional_array"
-  | "optional_object";
+  | "optional_object"
+  | "string_or_number"
+  | "optional_string_or_number";
 
 export type ValidationSchema = Record<string, SchemaType>;
 
@@ -138,6 +140,15 @@ export function validateBody<T>(
           "VALIDATION_ERROR",
           400,
           `${field} excede el tamaño máximo permitido`,
+          field
+        );
+      }
+    } else if (baseType === "string_or_number") {
+      if (typeof value !== "string" && (typeof value !== "number" || !Number.isFinite(value))) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR",
+          400,
+          `${field} debe ser de tipo string o number`,
           field
         );
       }

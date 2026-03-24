@@ -64,7 +64,7 @@ class GoogleAuthService {
         lastLoginAt: new Date().toISOString(),
       };
 
-      await apiClient.patch('/profile', profileData);
+      await apiClient.patch('/creator/profile', profileData);
 
     } catch (error) {
       console.error('Error creating/updating user profile:', error);
