@@ -451,79 +451,232 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   const clientId = req.params.clientId;
   await verifyCreatorOwnsClient(auth.userId, clientId);
 
+  // Parse range parameter (7d, 30d, 90d)
+  const rangeParam = (req.query.range as string) || "30d";
+  const rangeDays = rangeParam === "7d" ? 7 : rangeParam === "90d" ? 90 : 30;
+
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0, 10);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10);
+  const rangeAgo = new Date(now.getTime() - rangeDays * 24 * 60 * 60 * 1000);
+  const rangeAgoStr = rangeAgo.toISOString().slice(0, 10);
   const nowStr = now.toISOString().slice(0, 10);
 
-  const [sessionsSnap, bodyLogSnap, readinessSnap, assignmentsSnap, diarySnap] =
+  const [sessionsSnap, bodyLogSnap, readinessSnap, assignmentsSnap, diarySnap, exerciseHistSnap] =
     await Promise.all([
       db.collection("users").doc(clientId).collection("sessionHistory")
-        .where("date", ">=", thirtyDaysAgoStr).orderBy("date", "desc").get(),
+        .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
       db.collection("users").doc(clientId).collection("bodyLog")
-        .where("date", ">=", thirtyDaysAgoStr).orderBy("date", "desc").get(),
+        .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
       db.collection("users").doc(clientId).collection("readiness")
-        .where("date", ">=", sevenDaysAgoStr).orderBy("date", "desc").get(),
+        .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
       db.collection("nutrition_assignments")
         .where("userId", "==", clientId)
         .where("assignedBy", "==", auth.userId)
         .limit(5).get(),
       db.collection("users").doc(clientId).collection("diary")
-        .where("date", ">=", sevenDaysAgoStr).where("date", "<=", nowStr).get(),
+        .where("date", ">=", rangeAgoStr).where("date", "<=", nowStr).get(),
+      db.collection("users").doc(clientId).collection("exerciseHistory")
+        .limit(200).get(),
     ]);
 
-  // Weekly volume (last 8 weeks)
+  // ── Weekly volume (last 8 weeks) ─────────────────────────────
   const eightWeeksAgo = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000);
-  const weekMap: Record<string, { sessions: number; totalSets: number }> = {};
+  const weekMap: Record<string, { sessions: number; totalSets: number; daysTrained: Set<string> }> = {};
+
+  // ── RPE accumulator ──────────────────────────────────────────
+  let rpeSum = 0;
+  let rpeCount = 0;
+  const rpeTrend: Array<{ date: string; value: number }> = [];
+
+  // ── Volume by muscle group ───────────────────────────────────
+  const muscleVolume: Record<string, number> = {};
 
   for (const doc of sessionsSnap.docs) {
     const data = doc.data();
     const date = new Date(data.date);
-    if (date < eightWeeksAgo) continue;
 
-    const day = date.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-    const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() + mondayOffset);
-    const weekKey = weekStart.toISOString().slice(0, 10);
+    // RPE
+    const sessionRpe = data.rpe ?? data.averageRpe;
+    if (typeof sessionRpe === "number" && sessionRpe > 0) {
+      rpeSum += sessionRpe;
+      rpeCount++;
+      rpeTrend.push({ date: data.date, value: sessionRpe });
+    }
 
-    if (!weekMap[weekKey]) weekMap[weekKey] = { sessions: 0, totalSets: 0 };
-    weekMap[weekKey].sessions++;
+    // Weekly volume
+    if (date >= eightWeeksAgo) {
+      const day = date.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() + mondayOffset);
+      const weekKey = weekStart.toISOString().slice(0, 10);
 
-    const exercises = (data.exercises ?? []) as Array<{ sets?: unknown[] }>;
-    for (const ex of exercises) {
-      weekMap[weekKey].totalSets += (ex.sets ?? []).length;
+      if (!weekMap[weekKey]) weekMap[weekKey] = { sessions: 0, totalSets: 0, daysTrained: new Set() };
+      weekMap[weekKey].sessions++;
+      weekMap[weekKey].daysTrained.add(data.date);
+
+      const exercises = (data.exercises ?? []) as Array<{
+        sets?: unknown[];
+        primaryMuscles?: string[];
+        muscleGroup?: string;
+        name?: string;
+      }>;
+      for (const ex of exercises) {
+        const setCount = (ex.sets ?? []).length;
+        weekMap[weekKey].totalSets += setCount;
+
+        // Muscle volume
+        const muscles = ex.primaryMuscles ?? (ex.muscleGroup ? [ex.muscleGroup] : []);
+        for (const m of muscles) {
+          const normalized = m.toLowerCase();
+          muscleVolume[normalized] = (muscleVolume[normalized] ?? 0) + setCount;
+        }
+      }
     }
   }
 
   const weeklyVolume = Object.entries(weekMap)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([week, val]) => ({ week, ...val }));
+    .map(([week, val]) => ({ week, sessions: val.sessions, totalSets: val.totalSets }));
 
+  // ── Adherence heatmap (days trained per week) ────────────────
+  const adherenceHeatmap = Object.entries(weekMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([weekStart, val]) => {
+      const ws = new Date(weekStart);
+      const days: boolean[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(ws);
+        d.setDate(ws.getDate() + i);
+        days.push(val.daysTrained.has(d.toISOString().slice(0, 10)));
+      }
+      return { weekStart, days };
+    });
+
+  // ── Adherence rate ───────────────────────────────────────────
+  const totalDaysTrained = new Set(sessionsSnap.docs.map(d => d.data().date)).size;
+  const adherenceRate = rangeDays > 0 ? Math.round((totalDaysTrained / rangeDays) * 100) : null;
+
+  // ── Volume by muscle group (sorted) ──────────────────────────
+  const volumeByMuscle = Object.entries(muscleVolume)
+    .sort((a, b) => b[1] - a[1])
+    .map(([muscle, sets]) => ({ muscle, sets }));
+
+  // ── RPE average ──────────────────────────────────────────────
+  const rpeAverage = rpeCount > 0 ? Math.round((rpeSum / rpeCount) * 10) / 10 : null;
+  rpeTrend.sort((a, b) => a.date.localeCompare(b.date));
+
+  // ── Body progress ────────────────────────────────────────────
   const bodyProgress = bodyLogSnap.docs.map((d) => {
     const data = d.data();
     return { date: data.date, weight: data.weight ?? null };
-  });
+  }).reverse();
+  const bodyWeight = bodyProgress.length > 0 ? bodyProgress[bodyProgress.length - 1].weight : null;
 
-  // Readiness average (last 7 days)
+  // ── Body photos ──────────────────────────────────────────────
+  const bodyPhotos: Array<{ date: string; urls: string[] }> = [];
+  for (const doc of bodyLogSnap.docs) {
+    const data = doc.data();
+    const photos = data.photos ?? data.photoUrls ?? [];
+    if (Array.isArray(photos) && photos.length > 0) {
+      bodyPhotos.push({ date: data.date, urls: photos });
+    }
+  }
+
+  // ── Readiness: average + breakdown ───────────────────────────
   let readinessSum = 0;
   let readinessCount = 0;
+  const readinessBreakdown: Array<{
+    date: string;
+    overall: number;
+    sleep: number | null;
+    stress: number | null;
+    energy: number | null;
+  }> = [];
+
   for (const doc of readinessSnap.docs) {
-    const score = doc.data().score ?? doc.data().overallScore;
+    const data = doc.data();
+    const score = data.score ?? data.overallScore;
     if (typeof score === "number") {
       readinessSum += score;
       readinessCount++;
+      readinessBreakdown.push({
+        date: data.date,
+        overall: score,
+        sleep: data.sleep_hours ?? data.sleepHours ?? null,
+        stress: data.stressLevel ?? data.stress ?? null,
+        energy: data.energy ?? data.energyLevel ?? null,
+      });
     }
   }
+  readinessBreakdown.sort((a, b) => a.date.localeCompare(b.date));
   const readinessAvg = readinessCount > 0
     ? Math.round((readinessSum / readinessCount) * 10) / 10
     : null;
 
-  // Nutrition: daily average from diary vs target from active plan
+  // ── PRs: recent from exerciseHistory ─────────────────────────
+  interface PREntry {
+    exercise: string;
+    value: number;
+    date: string;
+    percentChange: number | null;
+  }
+  const recentPRs: PREntry[] = [];
+  const stalledExercises: Array<{ exercise: string; lastPR: string; weeksSinceLastPR: number }> = [];
+
+  for (const doc of exerciseHistSnap.docs) {
+    const data = doc.data();
+    const exerciseName = data.exerciseName ?? data.name ?? doc.id.replace(/_/g, " ");
+    const records = (data.records ?? data.history ?? []) as Array<{
+      value?: number;
+      weight?: number;
+      date?: string;
+      previousValue?: number;
+    }>;
+
+    if (records.length > 0) {
+      // Most recent record as PR
+      const sorted = [...records]
+        .filter(r => r.date)
+        .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+
+      if (sorted.length > 0) {
+        const latest = sorted[0];
+        const val = latest.value ?? latest.weight ?? 0;
+        const prev = sorted[1]?.value ?? sorted[1]?.weight ?? latest.previousValue;
+        const pctChange = prev && prev > 0 ? Math.round(((val - prev) / prev) * 1000) / 10 : null;
+
+        recentPRs.push({
+          exercise: exerciseName,
+          value: val,
+          date: latest.date ?? "",
+          percentChange: pctChange,
+        });
+
+        // Stalled check: if last PR is > 3 weeks old
+        if (latest.date) {
+          const prDate = new Date(latest.date);
+          const weeksSince = Math.floor((now.getTime() - prDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+          if (weeksSince >= 3) {
+            stalledExercises.push({
+              exercise: exerciseName,
+              lastPR: latest.date,
+              weeksSinceLastPR: weeksSince,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Sort PRs by date (most recent first), take top 5
+  recentPRs.sort((a, b) => b.date.localeCompare(a.date));
+  const topPRs = recentPRs.slice(0, 5);
+  stalledExercises.sort((a, b) => b.weeksSinceLastPR - a.weeksSinceLastPR);
+
+  // ── Nutrition: daily averages + trends + adherence ───────────
   let actual = { calories: 0, protein: 0, carbs: 0, fat: 0 };
   const seenDays = new Set<string>();
+  const dailyNutrition: Record<string, { calories: number; protein: number; carbs: number; fat: number }> = {};
 
   for (const doc of diarySnap.docs) {
     const data = doc.data();
@@ -532,6 +685,14 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     actual.protein += data.protein ?? 0;
     actual.carbs += data.carbs ?? 0;
     actual.fat += data.fat ?? 0;
+
+    if (!dailyNutrition[data.date]) {
+      dailyNutrition[data.date] = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    }
+    dailyNutrition[data.date].calories += data.calories ?? 0;
+    dailyNutrition[data.date].protein += data.protein ?? 0;
+    dailyNutrition[data.date].carbs += data.carbs ?? 0;
+    dailyNutrition[data.date].fat += data.fat ?? 0;
   }
 
   const diaryDayCount = seenDays.size;
@@ -565,11 +726,71 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     }
   }
 
+  // Calorie trend (daily actual vs target)
+  const caloriesTrend = Object.entries(dailyNutrition)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, n]) => ({
+      date,
+      actual: Math.round(n.calories),
+      target: target.calories,
+    }));
+
+  // Macro trends (daily)
+  const macrosTrend = Object.entries(dailyNutrition)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, n]) => ({
+      date,
+      protein: Math.round(n.protein),
+      carbs: Math.round(n.carbs),
+      fat: Math.round(n.fat),
+      proteinTarget: target.protein,
+      carbsTarget: target.carbs,
+      fatTarget: target.fat,
+    }));
+
+  // Nutrition adherence: days within ±10% of calorie target
+  let daysWithinTarget = 0;
+  if (target.calories > 0) {
+    for (const n of Object.values(dailyNutrition)) {
+      const ratio = n.calories / target.calories;
+      if (ratio >= 0.9 && ratio <= 1.1) daysWithinTarget++;
+    }
+  }
+  const nutritionAdherence = diaryDayCount > 0 ? Math.round((daysWithinTarget / diaryDayCount) * 100) : null;
+
   res.json({
     data: {
+      // Backward-compatible fields
       completionRate: sessionsSnap.size,
-      trends: { weeklyVolume, bodyProgress, readinessAvg },
-      nutritionComparison: { actual, target },
+      // New flat fields for bento cards
+      adherenceRate,
+      bodyWeight,
+      readinessAvg,
+      rpeAverage,
+      // Detailed data
+      recentPRs: topPRs,
+      stalledExercises,
+      volumeByMuscle,
+      rpeTrend,
+      readinessBreakdown,
+      adherenceHeatmap,
+      bodyProgress,
+      bodyPhotos,
+      weeklyVolume,
+      // Nutrition
+      nutritionComparison: {
+        actualCalories: actual.calories,
+        actualProtein: actual.protein,
+        actualCarbs: actual.carbs,
+        actualFat: actual.fat,
+        targetCalories: target.calories,
+        targetProtein: target.protein,
+        targetCarbs: target.carbs,
+        targetFat: target.fat,
+      },
+      caloriesTrend,
+      macrosTrend,
+      nutritionAdherence,
     },
   });
 });

@@ -17,7 +17,6 @@
     0 8px 32px rgba(0,0,0,0.55),
     0 0 0 1px rgba(255,255,255,0.05);
   animation: menu-dropdown-in 180ms ease-out both;
-  transform-origin: top right;
 }
 
 @keyframes menu-dropdown-in {

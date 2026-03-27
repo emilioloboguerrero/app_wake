@@ -51,6 +51,8 @@
 }
 
 .calendar-day-adding-indicator {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -261,6 +263,7 @@
 
 /* Plan bar above each week row - rich bronze with gold accent, plan name (N semanas) */
 .calendar-week-plan-bar {
+  position: relative;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
@@ -271,6 +274,8 @@
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-left: 3px solid rgba(255, 255, 255, 0.65);
+  transform-origin: left center;
+  overflow: hidden;
 }
 
 .calendar-week-plan-bar-clickable {
@@ -282,7 +287,36 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* Plan bar being removed — pulse animation */
+.calendar-week-plan-bar-deleting {
+  pointer-events: none;
+}
+
+/* Plan bar entrance glow sweep */
+.calendar-week-plan-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: plan-bar-sweep 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.12s forwards;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+@keyframes plan-bar-sweep {
+  0% { transform: translateX(-100%); opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
 .calendar-week-plan-bar-label {
+  position: relative;
+  z-index: 2;
   font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
@@ -295,6 +329,8 @@
 }
 
 .calendar-week-plan-bar-actions {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -375,6 +411,8 @@
 }
 
 .calendar-day-number {
+  position: relative;
+  z-index: 2;
   font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   line-height: 1.2;
@@ -441,13 +479,25 @@
 .calendar-day-has-plan-assignment {
   background: linear-gradient(
     to bottom,
-    var(--calendar-plan-gradient-start, rgba(50, 50, 55, 0.55)) 0%,
+    var(--calendar-plan-gradient-start, rgba(255, 255, 255, 0.12)) 0%,
     rgba(255, 255, 255, 0.04) 100%
   ) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
+/* Loading shimmer placeholders inside day cells */
+.calendar-day-loading-shimmers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
 .calendar-day-session-cards {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -496,6 +546,7 @@
   background: #3b82f6;
   flex-shrink: 0;
   pointer-events: none;
+  z-index: 2;
 }
 
 .calendar-day-session-card-has-notes .calendar-day-session-card-name {
@@ -503,6 +554,8 @@
 }
 
 .calendar-day-session-card-name {
+  position: relative;
+  z-index: 2;
   font-size: 10px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.98);
@@ -519,6 +572,7 @@
   top: 2px;
   right: 2px;
   flex-shrink: 0;
+  z-index: 2;
 }
 
 .calendar-day-session-card-menu-trigger {
@@ -611,6 +665,20 @@
 .calendar-day-session-card-menu-item-danger:hover {
   background: rgba(220, 53, 69, 0.25);
   color: rgba(255, 255, 255, 0.95);
+}
+
+/* Deleting session - pulse shimmer animation */
+.calendar-day-session-card-deleting {
+  opacity: 0.5;
+  pointer-events: none;
+  animation: session-card-deleting 0.8s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+@keyframes session-card-deleting {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.25; }
 }
 
 .calendar-day-session-card-from-plan[draggable="true"] {

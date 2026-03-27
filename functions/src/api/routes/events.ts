@@ -307,6 +307,7 @@ router.get("/creator/events/:eventId", async (req, res) => {
     data: {
       eventId: doc.id,
       id: doc.id,
+      creator_id: data.creator_id || data.creatorId || null,
       title: data.title,
       description: data.description || null,
       image_url: data.image_url || null,

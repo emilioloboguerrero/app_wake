@@ -1,0 +1,126 @@
+/* ─── Client Screen Shell ────────────────────────────────────── */
+.cs-container {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 56px);
+  padding: 0 24px 40px;
+  max-width: 1320px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ─── Header: Client Avatar ─────────────────────────────────── */
+.cs-header-client {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cs-header-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.cs-header-avatar-fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Tab Bar ────────────────────────────────────────────────── */
+.cs-tab-bar {
+  position: sticky;
+  top: 56px;
+  z-index: 10;
+  padding: 16px 0 12px;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+}
+
+/* ─── Shared Week Area (plan + nutrition) ────────────────────── */
+.cs-week-area {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0 4px;
+}
+
+/* ─── Tab Content ────────────────────────────────────────────── */
+.cs-content {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── Loading State ──────────────────────────────────────────── */
+.cs-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.cs-loading-pulse {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  animation: cs-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes cs-pulse {
+  0%, 100% { transform: scale(0.9); opacity: 0.4; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+/* ─── Error State ────────────────────────────────────────────── */
+.cs-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 400px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.cs-error button {
+  padding: 8px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cs-error button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cs-container {
+    padding: 0 12px 24px;
+  }
+
+  .cs-tab-bar {
+    top: 48px;
+    padding: 12px 0 8px;
+  }
+}

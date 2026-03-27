@@ -1,0 +1,284 @@
+/* ─── Bento Grid Override ────────────────────────────────────── */
+.clbg-grid {
+  gap: 12px;
+}
+
+/* ─── Card Base ──────────────────────────────────────────────── */
+.clbg-card {
+  padding: 0;
+}
+
+.clbg-card-inner {
+  position: relative;
+  z-index: 1;
+  padding: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Staggered entrance animation ───────────────────────────── */
+.clbg-card--enter {
+  animation: clbg-enter 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes clbg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ─── Skeleton loading cards ─────────────────────────────────── */
+.clbg-card--skeleton .clbg-card-inner {
+  gap: 4px;
+}
+
+/* ─── Card Header ────────────────────────────────────────────── */
+.clbg-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.clbg-card-icon {
+  color: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.clbg-card-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ─── Card Value ─────────────────────────────────────────────── */
+.clbg-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.1;
+  margin-bottom: 8px;
+}
+
+.clbg-card-no-data {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.2);
+  font-weight: 400;
+}
+
+/* ─── Trend Badge ────────────────────────────────────────────── */
+.clbg-trend {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
+.clbg-trend--up {
+  color: rgba(74, 222, 128, 0.9);
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.clbg-trend--down {
+  color: rgba(248, 113, 113, 0.9);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.clbg-trend--neutral {
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Week Dots (Adherence) ──────────────────────────────────── */
+.clbg-week-dots {
+  display: flex;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.clbg-week-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clbg-week-dot--active {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ─── PRs Card ───────────────────────────────────────────────── */
+.clbg-prs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.clbg-pr-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.clbg-pr-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+}
+
+.clbg-pr-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.clbg-pr-secondary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  padding: 3px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ─── Radar Chart ────────────────────────────────────────────── */
+.clbg-radar-wrap {
+  flex: 1;
+  min-height: 100px;
+}
+
+/* ─── Macros Card ────────────────────────────────────────────── */
+.clbg-macros {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.clbg-macro-cal {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.clbg-macro-target {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.clbg-macro-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.clbg-macro-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clbg-macro-bar-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  width: 10px;
+  text-align: center;
+}
+
+.clbg-macro-bar-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.clbg-macro-bar-fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  transition: width 800ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clbg-macro-bar-val {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  width: 32px;
+  text-align: right;
+}
+
+/* ─── RPE Card ───────────────────────────────────────────────── */
+.clbg-rpe-label {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.4);
+  margin-right: 2px;
+}
+
+/* ─── Readiness Card ─────────────────────────────────────────── */
+.clbg-readiness-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.clbg-readiness-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clbg-readiness-metric {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clbg-readiness-metric-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  width: 42px;
+}
+
+.clbg-readiness-metric-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .clbg-card-value {
+    font-size: 22px;
+  }
+
+  .clbg-pr-value {
+    font-size: 20px;
+  }
+
+  .clbg-macro-cal {
+    font-size: 18px;
+  }
+}

@@ -33,7 +33,7 @@ const NAV_ITEMS = [
   },
   {
     key: 'clientes',
-    label: 'Clientes',
+    label: 'Asesorías',
     path: '/clientes',
     match: (p) =>
       p === '/clientes' ||

@@ -18,7 +18,7 @@
   content: '';
   position: absolute;
   border-radius: inherit;
-  inset: calc(-1 * var(--border-width, 2px));
+  inset: 0;
   border: var(--border-width, 2px) solid transparent;
 
   background:
@@ -58,15 +58,15 @@
     );
 }
 
-/* Outer glow halo */
+/* Outer glow halo - contained within element, uses box-shadow for bleed */
 .glowing-effect-glow::before {
   content: '';
   position: absolute;
   border-radius: inherit;
-  inset: -6px;
+  inset: 0;
   opacity: calc(var(--active, 0) * 0.7);
   transition: opacity 300ms;
-  filter: blur(12px);
+  filter: blur(8px);
 
   background:
     repeating-conic-gradient(

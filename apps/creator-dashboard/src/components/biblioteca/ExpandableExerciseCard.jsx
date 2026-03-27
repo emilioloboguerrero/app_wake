@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import useExerciseSets, { parseIntensityForDisplay, getObjectiveFields } from '../../hooks/useExerciseSets';
 import { GlowingEffect } from '../ui';
+import ExercisePicker from './ExercisePicker';
 import './ExpandableExerciseCard.css';
 
 const DEFAULT_MEASURE_LABELS = { reps: 'Repeticiones', weight: 'Peso' };
@@ -27,6 +28,20 @@ const getExerciseDisplayName = (exercise) => {
   return primaryStr || nameStr || 'Ejercicio';
 };
 
+/* ── Scope prompt — "apply to all exercises or just this one?" ── */
+const ScopePrompt = ({ onConfirm, onCancel }) => (
+  <div className="exc-card-scope-prompt">
+    <span className="exc-card-scope-prompt-label">¿Aplicar a todos los ejercicios?</span>
+    <div className="exc-card-scope-prompt-actions">
+      <button type="button" className="exc-card-scope-btn exc-card-scope-btn--all" onClick={() => onConfirm(true)}>Todos</button>
+      <button type="button" className="exc-card-scope-btn" onClick={() => onConfirm(false)}>Solo este</button>
+      <button type="button" className="exc-card-scope-btn exc-card-scope-btn--cancel" onClick={onCancel}>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+);
+
 const ExpandableExerciseCard = ({
   exercise,
   sessionId,
@@ -43,9 +58,22 @@ const ExpandableExerciseCard = ({
   onDeleteAlternative,
   onOpenPresetSelector,
   onOpenMeasuresEditor,
+  pickerLibraries,
+  pickerIsLoadingLibraries,
+  onPickerSelectLibrary,
+  pickerExercises,
+  pickerIsLoadingExercises,
+  pickerSelectedLibraryId,
+  onPickerSelect,
+  pickerIsSaving,
+  onAddObjective,
+  onRemoveObjective,
+  onAddMeasure,
+  onRemoveMeasure,
   isEditMode,
   onDelete,
   isIncomplete,
+  isMissingLibraryDetails,
   showToast,
   accentRgb,
   onSetsChanged,
@@ -71,6 +99,43 @@ const ExpandableExerciseCard = ({
   const [isBouncing, setIsBouncing] = useState(false);
   const [lastKnownSetsCount, setLastKnownSetsCount] = useState(null);
   const bounceTimeout = useRef(null);
+
+  // Exercise picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState(null); // 'primary' | 'add-alternative'
+
+  const handleOpenPicker = (mode) => {
+    setPickerMode(mode);
+    setPickerOpen(true);
+    // Trigger parent to load libraries
+    if (mode === 'primary') onEditPrimary?.(exercise, true); // true = just load, don't open modal
+    else onAddAlternative?.(exercise, true);
+  };
+
+  const handlePickerSelect = (exerciseName) => {
+    onPickerSelect?.(exercise, exerciseName, pickerMode);
+    setPickerOpen(false);
+    setPickerMode(null);
+  };
+
+  // Inline add states
+  const [addingObjective, setAddingObjective] = useState(false);
+  const [newObjectiveName, setNewObjectiveName] = useState('');
+  const [addingMeasure, setAddingMeasure] = useState(false);
+  const [newMeasureName, setNewMeasureName] = useState('');
+  const objectiveInputRef = useRef(null);
+  const measureInputRef = useRef(null);
+
+  // Scope prompt state: { action: 'add-objective'|'remove-objective'|'add-measure'|'remove-measure', key, label }
+  const [scopePrompt, setScopePrompt] = useState(null);
+
+  useEffect(() => {
+    if (addingObjective && objectiveInputRef.current) objectiveInputRef.current.focus();
+  }, [addingObjective]);
+
+  useEffect(() => {
+    if (addingMeasure && measureInputRef.current) measureInputRef.current.focus();
+  }, [addingMeasure]);
 
   const triggerBounce = useCallback(() => {
     setIsBouncing(true);
@@ -107,7 +172,6 @@ const ExpandableExerciseCard = ({
   const primaryName = getExercisePrimaryName(exercise);
   const fields = getObjectiveFields(effectiveObjectives);
 
-  // Keep sets count in sync across expand/collapse
   const liveSetsCount = setsHook.setsCount;
   useEffect(() => {
     if (liveSetsCount > 0) setLastKnownSetsCount(liveSetsCount);
@@ -121,10 +185,20 @@ const ExpandableExerciseCard = ({
     return `${count} ${count === 1 ? 'serie' : 'series'}`;
   }, [effectiveSetsCount, exercise.sets, exercise.setsCount]);
 
-  const alternativeCount = useMemo(() => {
-    if (!exercise.alternatives || typeof exercise.alternatives !== 'object') return 0;
-    return Object.values(exercise.alternatives).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0);
+  const alternativesList = useMemo(() => {
+    if (!exercise.alternatives || typeof exercise.alternatives !== 'object') return [];
+    const list = [];
+    Object.entries(exercise.alternatives).forEach(([libId, names]) => {
+      if (!Array.isArray(names)) return;
+      names.forEach((name, idx) => {
+        const displayName = typeof name === 'string' ? name : name?.name || name?.title || '';
+        if (displayName) list.push({ libraryId: libId, index: idx, name: displayName });
+      });
+    });
+    return list;
   }, [exercise.alternatives]);
+
+  const alternativeCount = alternativesList.length;
 
   const handleHeaderClick = (e) => {
     e.stopPropagation();
@@ -137,6 +211,62 @@ const ExpandableExerciseCard = ({
     triggerBounce();
   }, [setsHook, lastKnownSetsCount, triggerBounce]);
 
+  // ── Objective inline add ──
+  const handleObjectiveSubmit = () => {
+    const name = newObjectiveName.trim();
+    if (!name) return;
+    // Create a key from the name (lowercase, no spaces)
+    const key = name.toLowerCase().replace(/\s+/g, '_');
+    if (fields.includes(key)) {
+      setAddingObjective(false);
+      setNewObjectiveName('');
+      return;
+    }
+    setScopePrompt({ action: 'add-objective', key, label: name });
+    setAddingObjective(false);
+  };
+
+  const handleObjectiveRemove = (field) => {
+    setScopePrompt({ action: 'remove-objective', key: field });
+  };
+
+  // ── Measure inline add ──
+  const handleMeasureSubmit = () => {
+    const name = newMeasureName.trim();
+    if (!name) return;
+    const key = name.toLowerCase().replace(/\s+/g, '_');
+    if (effectiveMeasures.includes(key)) {
+      setAddingMeasure(false);
+      setNewMeasureName('');
+      return;
+    }
+    setScopePrompt({ action: 'add-measure', key, label: name });
+    setAddingMeasure(false);
+  };
+
+  const handleMeasureRemove = (key) => {
+    setScopePrompt({ action: 'remove-measure', key });
+  };
+
+  // ── Scope confirm ──
+  const handleScopeConfirm = (applyToAll) => {
+    if (!scopePrompt) return;
+    const { action, key, label } = scopePrompt;
+    if (action === 'add-objective') onAddObjective?.(exercise, key, label, applyToAll);
+    if (action === 'remove-objective') onRemoveObjective?.(exercise, key, applyToAll);
+    if (action === 'add-measure') onAddMeasure?.(exercise, key, label, applyToAll);
+    if (action === 'remove-measure') onRemoveMeasure?.(exercise, key, applyToAll);
+    setScopePrompt(null);
+    setNewObjectiveName('');
+    setNewMeasureName('');
+  };
+
+  const handleScopeCancel = () => {
+    setScopePrompt(null);
+    setNewObjectiveName('');
+    setNewMeasureName('');
+  };
+
   return (
     <div
       ref={setNodeRef}
@@ -145,7 +275,6 @@ const ExpandableExerciseCard = ({
       {...attributes}
     >
       <GlowingEffect spread={40} proximity={100} borderWidth={1} disabled={isDragging} />
-      {/* Accent glow behind card */}
       {/* Header */}
       <div
         className="exc-card-header"
@@ -161,6 +290,7 @@ const ExpandableExerciseCard = ({
           <div className="exc-card-info">
             <span className="exc-card-name">{exerciseName}</span>
             {isIncomplete && <span className="exc-card-incomplete-tag">Incompleto</span>}
+            {isMissingLibraryDetails && <span className="exc-card-missing-details-tag">Sin detalles</span>}
           </div>
         </div>
         <div className="exc-card-header-right">
@@ -184,7 +314,12 @@ const ExpandableExerciseCard = ({
         <div className="exc-card-expand-inner">
             <div className="exc-card-body">
 
-              {/* Loading skeleton while sets are being fetched/created */}
+              {/* Scope prompt overlay */}
+              {scopePrompt && (
+                <ScopePrompt onConfirm={handleScopeConfirm} onCancel={handleScopeCancel} />
+              )}
+
+              {/* Loading skeleton */}
               {isExpanded && !setsHook.isLoaded ? (
                 <div className="exc-card-skeleton" aria-busy="true">
                   <div className="exc-card-sections-row">
@@ -199,9 +334,8 @@ const ExpandableExerciseCard = ({
                       </div>
                       <div className="exc-card-section exc-card-section--data">
                         <div className="exc-card-section-header">
-                          <span className="exc-card-section-title">Datos</span>
+                          <span className="exc-card-section-title exc-card-section-title--small">Datos que registra el usuario</span>
                         </div>
-                        <div className="exc-card-skel-line" />
                         <div className="exc-card-skel-pills">
                           <div className="exc-card-skel-pill" />
                           <div className="exc-card-skel-pill" />
@@ -222,97 +356,101 @@ const ExpandableExerciseCard = ({
               /* ── Scrollable row: left column + series card ── */
               <div className="exc-card-sections-row">
 
-                {/* Left column: Ejercicio on top, Datos below */}
+                {/* Left column: Ejercicio on top, Measures below */}
                 <div className="exc-card-left-col">
-                  {/* Card 1: Primary & Alternatives */}
+                  {/* Card 1: Alternatives + Sustituir */}
                   <div className="exc-card-section exc-card-section--identity">
                     <GlowingEffect spread={30} proximity={80} borderWidth={1} />
                     <div className="exc-card-section-header">
-                      <span className="exc-card-section-title">Ejercicio</span>
-                    </div>
-
-                    <div className="exc-card-field">
-                      <span className="exc-card-field-label">Principal</span>
-                      <div className="exc-card-field-row">
-                        <span className="exc-card-field-value">{primaryName || 'Sin ejercicio'}</span>
-                        <button type="button" className="exc-card-icon-btn" onClick={() => onEditPrimary?.(exercise)} title="Cambiar">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 8L4 16V20H8L16 12M12 8L14.87 5.13C15.26 4.73 15.46 4.54 15.69 4.46C15.89 4.4 16.11 4.4 16.31 4.46C16.54 4.54 16.73 4.73 17.13 5.13L18.87 6.87C19.26 7.26 19.46 7.46 19.54 7.69C19.6 7.89 19.6 8.11 19.54 8.31C19.46 8.54 19.27 8.74 18.87 9.13L16 12M12 8L16 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="exc-card-divider" />
-
-                    <div className="exc-card-field">
-                      <span className="exc-card-field-label">Alternativas</span>
-                      <div className="exc-card-field-row">
-                        <span className="exc-card-field-value exc-card-field-value--dim">
-                          {alternativeCount > 0 ? `${alternativeCount} alternativa${alternativeCount > 1 ? 's' : ''}` : 'Ninguna'}
-                        </span>
-                        <button type="button" className="exc-card-icon-btn" onClick={() => onAddAlternative?.(exercise)} title="Agregar">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 3: Data Template (under Ejercicio) */}
-                  <div className="exc-card-section exc-card-section--data">
-                    <GlowingEffect spread={30} proximity={80} borderWidth={1} />
-                    <div className="exc-card-section-header">
-                      <span className="exc-card-section-title">Datos</span>
-                      <button type="button" className="exc-card-icon-btn" onClick={() => onOpenMeasuresEditor?.(exercise)} title="Editar">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 8L4 16V20H8L16 12M12 8L14.87 5.13C15.26 4.73 15.46 4.54 15.69 4.46C15.89 4.4 16.11 4.4 16.31 4.46C16.54 4.54 16.73 4.73 17.13 5.13L18.87 6.87C19.26 7.26 19.46 7.46 19.54 7.69C19.6 7.89 19.6 8.11 19.54 8.31C19.46 8.54 19.27 8.74 18.87 9.13L16 12M12 8L16 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <span className="exc-card-section-title">Alternativas</span>
+                      <button type="button" className="exc-card-icon-btn" onClick={() => handleOpenPicker('add-alternative')} title="Agregar alternativa">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                       </button>
                     </div>
 
-                    {effectiveMeasures.length > 0 ? (
-                      <div className="exc-card-data-content">
-                        <div className="exc-card-data-group">
-                          <span className="exc-card-field-label">Medidas</span>
-                          <div className="exc-card-data-pills">
-                            {effectiveMeasures.map(m => (
-                              <span key={m} className="exc-card-pill">{getMeasureLabel(m, customMeasureLabels)}</span>
-                            ))}
+                    {alternativesList.length > 0 ? (
+                      <div className="exc-card-alt-list">
+                        {alternativesList.map((alt) => (
+                          <div key={`${alt.libraryId}-${alt.index}`} className="exc-card-alt-item">
+                            <span className="exc-card-alt-name">{alt.name}</span>
+                            <button
+                              type="button"
+                              className="exc-card-alt-remove"
+                              onClick={() => onDeleteAlternative?.(alt.libraryId, alt.index)}
+                              title="Quitar"
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                            </button>
                           </div>
-                        </div>
-                        <div className="exc-card-data-group">
-                          <span className="exc-card-field-label">Objetivos</span>
-                          <div className="exc-card-data-pills">
-                            {fields.map(o => (
-                              <span key={o} className="exc-card-pill">{getObjectiveLabel(o, customObjectiveLabels)}</span>
-                            ))}
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     ) : (
-                      <div className="exc-card-data-empty">
-                        <span className="exc-card-data-empty-text">Sin plantilla configurada</span>
-                        <div className="exc-card-data-empty-actions">
-                          <button type="button" className="exc-card-data-empty-btn" onClick={() => onOpenPresetSelector?.(exercise)}>
-                            Elegir plantilla
-                          </button>
-                          <button type="button" className="exc-card-data-empty-btn" onClick={() => onOpenMeasuresEditor?.(exercise)}>
-                            Manual
-                          </button>
-                        </div>
-                      </div>
+                      <span className="exc-card-alt-empty">Sin alternativas</span>
                     )}
+
+                    <div className="exc-card-divider" />
+
+                    <button type="button" className="exc-card-sustituir-btn" onClick={() => handleOpenPicker('primary')}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 12H2L12 2L22 12H20M4 12V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H9M4 12H9M20 12V20C20 20.5304 19.7893 21.0391 19.4142 21.4142C19.0391 21.7893 18.5304 22 18 22H15M20 12H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      Sustituir ejercicio principal
+                    </button>
+                  </div>
+
+                  {/* Card 2: Measures — what the user logs */}
+                  <div className="exc-card-section exc-card-section--data">
+                    <GlowingEffect spread={30} proximity={80} borderWidth={1} />
+                    <div className="exc-card-section-header">
+                      <span className="exc-card-section-title exc-card-section-title--small">Datos que registra el usuario</span>
+                      <button type="button" className="exc-card-icon-btn" onClick={() => setAddingMeasure(true)} title="Agregar medida">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                      </button>
+                    </div>
+
+                    <div className="exc-card-measures-list">
+                      {addingMeasure && (
+                        <div className="exc-card-inline-add exc-card-inline-add--full">
+                          <input
+                            ref={measureInputRef}
+                            type="text"
+                            className="exc-card-inline-input"
+                            placeholder="Nombre de la medida..."
+                            value={newMeasureName}
+                            onChange={(e) => setNewMeasureName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleMeasureSubmit();
+                              if (e.key === 'Escape') { setAddingMeasure(false); setNewMeasureName(''); }
+                            }}
+                            onBlur={() => { if (!newMeasureName.trim()) { setAddingMeasure(false); setNewMeasureName(''); } }}
+                          />
+                        </div>
+                      )}
+                      {effectiveMeasures.length > 0 && (
+                        <div className="exc-card-data-pills">
+                          {effectiveMeasures.map(m => (
+                            <span key={m} className="exc-card-pill exc-card-pill--removable">
+                              {getMeasureLabel(m, customMeasureLabels)}
+                              <button
+                                type="button"
+                                className="exc-card-pill-remove"
+                                onClick={() => handleMeasureRemove(m)}
+                              >
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Card 2: Sets & Objectives */}
+                {/* Card 3: Sets & Objectives */}
                 {effectiveMeasures.length > 0 && (
                   <div className="exc-card-section exc-card-section--sets">
                     <GlowingEffect spread={30} proximity={80} borderWidth={1} />
                     <div className="exc-card-section-header">
                       <span className="exc-card-section-title">Series</span>
-                    </div>
-
-                    {/* Series stepper — hover-reveal +/- */}
-                    <div className="exc-card-stepper-row">
-                      <span className="exc-card-stepper-label">Cantidad</span>
-                      <div className="exc-card-stepper">
+                      <div className="exc-card-stepper exc-card-stepper--header">
                         <button
                           type="button"
                           className="exc-card-stepper-btn exc-card-stepper-btn--dec"
@@ -335,7 +473,19 @@ const ExpandableExerciseCard = ({
                     <div className="exc-card-defaults">
                       {fields.map((field) => (
                         <div key={field} className="exc-card-default-field">
-                          <span className="exc-card-field-label">{getObjectiveLabel(field, customObjectiveLabels)}</span>
+                          <div className="exc-card-field-label-row">
+                            <span className="exc-card-field-label">{getObjectiveLabel(field, customObjectiveLabels)}</span>
+                            {field !== 'previous' && (
+                              <button
+                                type="button"
+                                className="exc-card-remove-objective-btn"
+                                onClick={() => handleObjectiveRemove(field)}
+                                title="Quitar objetivo"
+                              >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                              </button>
+                            )}
+                          </div>
                           {field === 'intensity' ? (
                             <div className="exc-card-intensity-wrap">
                               <input
@@ -359,6 +509,30 @@ const ExpandableExerciseCard = ({
                           )}
                         </div>
                       ))}
+
+                      {/* Inline add objective */}
+                      {addingObjective ? (
+                        <div className="exc-card-default-field exc-card-default-field--adding">
+                          <input
+                            ref={objectiveInputRef}
+                            type="text"
+                            className="exc-card-inline-input"
+                            placeholder="Nombre del objetivo..."
+                            value={newObjectiveName}
+                            onChange={(e) => setNewObjectiveName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleObjectiveSubmit();
+                              if (e.key === 'Escape') { setAddingObjective(false); setNewObjectiveName(''); }
+                            }}
+                            onBlur={() => { if (!newObjectiveName.trim()) { setAddingObjective(false); setNewObjectiveName(''); } }}
+                          />
+                        </div>
+                      ) : (
+                        <button type="button" className="exc-card-add-objective-btn" onClick={() => setAddingObjective(true)}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                          Objetivo
+                        </button>
+                      )}
                     </div>
 
                     {/* Toggle per-set detail */}
@@ -445,6 +619,23 @@ const ExpandableExerciseCard = ({
                 )}
 
               </div>
+              )}
+
+              {/* Inline exercise picker */}
+              {pickerOpen && (
+                <ExercisePicker
+                  isOpen={pickerOpen}
+                  mode={pickerMode}
+                  libraries={pickerLibraries}
+                  isLoadingLibraries={pickerIsLoadingLibraries}
+                  onSelectLibrary={onPickerSelectLibrary}
+                  exercises={pickerExercises}
+                  isLoadingExercises={pickerIsLoadingExercises}
+                  selectedLibraryId={pickerSelectedLibraryId}
+                  onSelect={handlePickerSelect}
+                  onClose={() => { setPickerOpen(false); setPickerMode(null); }}
+                  isSaving={pickerIsSaving}
+                />
               )}
             </div>
         </div>

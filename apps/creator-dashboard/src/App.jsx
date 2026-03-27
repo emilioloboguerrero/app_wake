@@ -11,7 +11,7 @@ import LibraryContentScreen from './screens/LibraryContentScreen';
 import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
 
 import ProfileScreen from './screens/ProfileScreen';
-import ClientProgramScreen from './screens/ClientProgramScreen';
+import ClientScreen from './screens/ClientScreen';
 import PlanDetailScreen from './screens/PlanDetailScreen';
 import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
 import MealEditorScreen from './screens/MealEditorScreen';
@@ -163,7 +163,7 @@ function AppContent() {
               path="/clients/:clientId"
               element={
                 <ProtectedRoute>
-                  <ClientProgramScreen />
+                  <ClientScreen />
                 </ProtectedRoute>
               }
             />
@@ -171,7 +171,7 @@ function AppContent() {
               path="/one-on-one/:clientId"
               element={
                 <ProtectedRoute>
-                  <ClientProgramScreen />
+                  <ClientScreen />
                 </ProtectedRoute>
               }
             />

@@ -260,7 +260,7 @@
 
 @keyframes lssMarquee {
   from { transform: translateX(0); }
-  to { transform: translateX(-33.333%); }
+  to { transform: translateX(-16.667%); }
 }
 
 .lss-nudge-marquee-content {
@@ -1163,6 +1163,12 @@
   gap: 8px;
 }
 
+.draggable-exercises-list > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .draggable-exercise {
   position: relative;
   background: rgba(255, 255, 255, 0.08);
@@ -1313,6 +1319,56 @@
   background: rgba(255, 68, 68, 0.2);
   border-color: rgba(255, 68, 68, 0.5);
   transform: scale(1.1);
+}
+
+.draggable-exercise-add {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  flex-shrink: 0;
+  padding: 0;
+  opacity: 0;
+}
+
+.draggable-exercise:hover .draggable-exercise-add {
+  opacity: 1;
+}
+
+.draggable-exercise-add:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 1);
+  transform: scale(1.1);
+}
+
+.draggable-exercise-add.adding {
+  opacity: 1;
+  animation: addPulse 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes addPulse {
+  0% {
+    transform: scale(1);
+    background: rgba(255, 255, 255, 0.08);
+  }
+  30% {
+    transform: scale(1.25);
+    background: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 1);
+  }
+  100% {
+    transform: scale(0.8);
+    opacity: 0;
+    background: rgba(255, 255, 255, 0.05);
+  }
 }
 
 .draggable-exercise.dragging-overlay {
@@ -2132,6 +2188,11 @@
 
   .lsd-glow-wrap--sidebar,
   .lsd-glow-wrap--volume {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .lsd-skeleton-volume {
     width: 100%;
     min-width: 0;
   }
@@ -3120,6 +3181,16 @@
   animation: lsdNewCard 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Suppress inner entrance animations — the outer lsdNewCard already handles it */
+.lsd-exercise-new .exc-card-sections-row,
+.lsd-exercise-new .exc-card-skeleton,
+.lsd-exercise-new .exc-card-sets-table-wrap,
+.lsd-exercise-new .exc-card-tr,
+.lsd-exercise-new .exc-card-scope-prompt,
+.lsd-exercise-new .exc-card-inline-input {
+  animation: none;
+}
+
 @keyframes lsdNewCard {
   0%   { opacity: 0; transform: translateY(16px) scale(0.95); }
   50%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
@@ -3331,9 +3402,35 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
+.lsd-skeleton-volume {
+  width: 360px;
+  min-width: 360px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lsd-skeleton-volume-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lsd-skeleton-volume-body {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 @media (max-width: 768px) {
   .lsd-skeleton-sidebar,
-  .lsd-skeleton-main {
+  .lsd-skeleton-main,
+  .lsd-skeleton-volume {
     width: 100% !important;
     min-width: 0 !important;
     flex: 1 1 auto;

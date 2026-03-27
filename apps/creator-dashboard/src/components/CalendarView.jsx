@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
+import { GlowingEffect, ShimmerSkeleton } from './ui';
 import logger from '../utils/logger';
 import './CalendarView.css';
 
@@ -61,19 +63,25 @@ const CalendarView = ({
   isPersonalizingPlanWeek = false,
   isResettingPlanWeek = false,
   isDeletingPlanSession = false,
+  deletingPlanSessionId = null,
+  deletingPlanSessionWeekKey = null,
   isMovingPlanSession = false,
   isAssigningPlan = false,
   assigningPlanWeekKey = null,
   isRemovingPlanFromWeek = false,
-  removingPlanWeekKey = null,
+  removingPlanId = null,
   isAssigningSession = false,
   isDeletingSessionAssignment = false,
+  deletingSessionAssignmentId = null,
+  isLoading = false,
   showVolumeButton = false,
   onVolumeClick,
-  onWeekClick
+  onWeekClick,
+  programAccentColor = null,
 }) => {
-  const PLAN_BAR_COLOR = 'rgba(50, 50, 55, 0.96)';
-  const PLAN_BAR_ACCENT = 'rgba(255, 255, 255, 0.65)'; // visible white accent
+  const PLAN_BAR_FALLBACK = 'rgba(255, 255, 255, 0.12)';
+  const PLAN_BAR_COLOR = programAccentColor || PLAN_BAR_FALLBACK;
+  const PLAN_BAR_ACCENT = programAccentColor ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.45)';
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);
@@ -465,7 +473,8 @@ const CalendarView = ({
         return;
       }
 
-      if (type === DRAG_TYPE_LIBRARY_SESSION && dragData.librarySessionRef) {
+      const libSessionId = dragData.librarySessionRef || dragData.sourceLibrarySessionId;
+      if (type === DRAG_TYPE_LIBRARY_SESSION && libSessionId) {
         if (!selectedProgramId) {
           logger.warn('[CalendarView] handleDrop: need to select a program first');
           return;
@@ -473,10 +482,10 @@ const CalendarView = ({
         const weekKey = getMondayWeek(date);
         const weekdayIndex = (date.getDay() + 6) % 7;
         if (planAssignments[weekKey] && onAddLibrarySessionToPlanDay) {
-          onAddLibrarySessionToPlanDay({ weekKey, dayIndex: weekdayIndex, librarySessionId: dragData.librarySessionRef });
+          onAddLibrarySessionToPlanDay({ weekKey, dayIndex: weekdayIndex, librarySessionId: libSessionId });
         } else if (onSessionAssignment) {
           onSessionAssignment({
-            sessionId: dragData.librarySessionRef,
+            sessionId: libSessionId,
             date,
             library_session_ref: true
           });
@@ -632,6 +641,7 @@ const CalendarView = ({
             }
           }}
         >
+          <AnimatePresence initial={false} mode="sync">
           {weeksInMonth.flatMap((weekKey, rowIndex) => {
             const assignment = planAssignments[weekKey];
             const planId = assignment?.planId;
@@ -641,15 +651,20 @@ const CalendarView = ({
             const planBarLabel = weeksNum != null
               ? `${planTitle} (${weeksNum} ${weeksNum === 1 ? 'semana' : 'semanas'})`
               : planTitle;
+            const isPlanBeingRemoved = isRemovingPlanFromWeek && removingPlanId === planId;
             const planBar = planId ? (
-              <div
+              <motion.div
                 key={`plan-${weekKey}`}
-                className={`calendar-week-plan-bar ${onWeekClick ? 'calendar-week-plan-bar-clickable' : ''}`}
+                className={`calendar-week-plan-bar ${onWeekClick ? 'calendar-week-plan-bar-clickable' : ''} ${isPlanBeingRemoved ? 'calendar-week-plan-bar-deleting' : ''}`}
                 style={{
                   backgroundColor: PLAN_BAR_COLOR,
                   borderLeftColor: PLAN_BAR_ACCENT,
                   '--calendar-plan-gradient-start': PLAN_BAR_COLOR,
                 }}
+                initial={{ opacity: 0, scaleX: 0.3, x: -40 }}
+                animate={{ opacity: 1, scaleX: 1, x: 0 }}
+                exit={{ opacity: 0, scaleX: 0.5, x: -20, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+                transition={{ type: 'spring', damping: 22, stiffness: 260 }}
                 title={onWeekClick ? `${planTitle}. Clic para ver volumen de la semana.` : planTitle}
                 onClick={onWeekClick ? (e) => {
                   if (e.target.closest('.calendar-week-plan-bar-actions')) return;
@@ -664,9 +679,22 @@ const CalendarView = ({
                   }
                 } : undefined}
               >
-                <span className="calendar-week-plan-bar-label">{planBarLabel}</span>
+                <GlowingEffect spread={40} proximity={100} borderWidth={1} />
+                <motion.span
+                  className="calendar-week-plan-bar-label"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ type: 'spring', damping: 20, stiffness: 240, delay: 0.08 }}
+                >
+                  {planBarLabel}
+                </motion.span>
                 {onRemovePlanFromWeek && (
-                  <div className="calendar-week-plan-bar-actions">
+                  <motion.div
+                    className="calendar-week-plan-bar-actions"
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', damping: 18, stiffness: 300, delay: 0.12 }}
+                  >
                     <button
                       type="button"
                       className="calendar-week-plan-bar-menu-trigger"
@@ -687,9 +715,9 @@ const CalendarView = ({
                         <circle cx="12" cy="18" r="1.5" />
                       </svg>
                     </button>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
+              </motion.div>
             ) : null;
             const dayCells = rowDays.map((cell, colIndex) => {
             const index = rowIndex * 7 + colIndex;
@@ -739,7 +767,18 @@ const CalendarView = ({
                 onDrop={(e) => handleDrop(e, cell)}
                 style={dayStyle}
               >
+                <GlowingEffect spread={40} proximity={100} borderWidth={1} />
                 <span className="calendar-day-number">{cell.day}</span>
+                {isLoading && !isOtherMonth && (
+                  <div className="calendar-day-loading-shimmers">
+                    {(index % 3 !== 2) && (
+                      <ShimmerSkeleton width="100%" height={20} borderRadius={5} />
+                    )}
+                    {(index % 4 < 2) && (
+                      <ShimmerSkeleton width="70%" height={20} borderRadius={5} />
+                    )}
+                  </div>
+                )}
                 {isAddingToThisDay && (
                   <div className="calendar-day-adding-indicator" role="status" aria-live="polite">
                     <span className="calendar-saving-bar-spinner" aria-hidden />
@@ -749,7 +788,8 @@ const CalendarView = ({
                 {/* Plan sessions (from week plan) - colored cards, draggable, Editar / Eliminar */}
                 {hasPlanSessions && weekContent && (
                   <div className="calendar-day-session-cards">
-                    {planSessionsForDay.map((session) => {
+                  <AnimatePresence mode="popLayout">
+                  {planSessionsForDay.map((session, sessionIdx) => {
                       const sessionName = session.title || session.session_name || 'Sesión';
                       const docId = `plan-${weekKey}-${session.id}`;
                       const slotId = getSlotId(session, { type: 'plan', weekKey });
@@ -758,10 +798,15 @@ const CalendarView = ({
                       const isCompleted = isSessionCompleted(slotId);
                       const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
+                      const isBeingDeleted = (isDeletingPlanSession && deletingPlanSessionId === session.id && deletingPlanSessionWeekKey === weekKey) || isPlanBeingRemoved;
                       return (
-                        <div
+                        <motion.div
                           key={docId}
-                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
+                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''}`}
+                          initial={{ opacity: 0, y: 8, scale: 0.85 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.7, y: -4, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+                          transition={{ type: 'spring', damping: 20, stiffness: 280, delay: sessionIdx * 0.04 + colIndex * 0.03 }}
                           title={`${sessionName}. Arrastra a otro día o semana para mover.`}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -825,12 +870,13 @@ const CalendarView = ({
                               </button>
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       );
                     })}
+                  </AnimatePresence>
                   </div>
                 )}
-                
+
                 {/* History-only sessions (from sessionHistory - persist when plan is deleted) */}
                 {hasHistoryOnlySessions && (
                   <div className="calendar-day-session-cards">
@@ -898,6 +944,7 @@ const CalendarView = ({
                 {/* Date-assigned session name(s) in colored cards with 3-dots menu */}
                 {hasSessions && (
                   <div className="calendar-day-session-cards">
+                  <AnimatePresence mode="popLayout">
                     {displayedDaySessions.map((session, idx) => {
                       const sessionName = session.session_name || session.title || `Sesión ${idx + 1}`;
                       const sessionDocId = session.id || `session-${dateStr}-${session.session_id || idx}`;
@@ -906,10 +953,15 @@ const CalendarView = ({
                       const isCompleted = isSessionCompleted(slotId);
                       const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
+                      const isBeingDeleted = isDeletingSessionAssignment && deletingSessionAssignmentId === session.session_id;
                       return (
-                        <div
+                        <motion.div
                           key={sessionDocId}
-                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
+                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''}`}
+                          initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.7, y: -4, transition: { duration: 0.2 } }}
+                          transition={{ type: 'spring', damping: 22, stiffness: 300 }}
                           title={sessionName}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -956,9 +1008,10 @@ const CalendarView = ({
                               </svg>
                             </button>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
+                  </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -966,6 +1019,7 @@ const CalendarView = ({
           });
             return planBar ? [ planBar, ...dayCells ] : dayCells;
           })}
+          </AnimatePresence>
         </div>
       </div>
 

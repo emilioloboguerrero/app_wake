@@ -1,0 +1,305 @@
+/* ─── Detail Sections Container ──────────────────────────────── */
+.clds-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ─── Section ────────────────────────────────────────────────── */
+.clds-section {
+  position: relative;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 20px;
+  animation: clds-enter 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.clds-section--skeleton {
+  padding: 20px;
+}
+
+@keyframes clds-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.clds-section-header {
+  position: relative;
+  z-index: 2;
+  margin-bottom: 16px;
+}
+
+.clds-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.clds-section-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.clds-section-empty {
+  position: relative;
+  z-index: 2;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.clds-section-empty p {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* ─── Charts Row ─────────────────────────────────────────────── */
+.clds-charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+/* ─── Chart Card ─────────────────────────────────────────────── */
+.clds-chart-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.clds-chart-card--wide {
+  grid-column: 1 / -1;
+}
+
+.clds-chart-label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0 0 10px;
+}
+
+/* ─── Tooltip ────────────────────────────────────────────────── */
+.clds-tooltip {
+  background: rgba(30, 30, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 12px;
+  backdrop-filter: blur(8px);
+}
+
+.clds-tooltip-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 0 4px;
+}
+
+.clds-tooltip-value {
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* ─── PR List ────────────────────────────────────────────────── */
+.clds-pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.clds-pr-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.clds-pr-item:last-child {
+  border-bottom: none;
+}
+
+.clds-pr-item-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  flex: 1;
+}
+
+.clds-pr-item-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.clds-pr-item-change {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.clds-pr-item-change--up {
+  color: rgba(74, 222, 128, 0.8);
+  background: rgba(74, 222, 128, 0.08);
+}
+
+.clds-pr-item-date {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Stalled Exercises ──────────────────────────────────────── */
+.clds-stalled {
+  background: rgba(248, 113, 113, 0.04);
+  border: 1px solid rgba(248, 113, 113, 0.08);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.clds-stalled-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.clds-stalled-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(248, 113, 113, 0.06);
+  border-radius: 6px;
+  border: 1px solid rgba(248, 113, 113, 0.1);
+}
+
+.clds-stalled-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.clds-stalled-weeks {
+  font-size: 10px;
+  color: rgba(248, 113, 113, 0.7);
+  font-weight: 500;
+}
+
+/* ─── Nutrition Adherence ────────────────────────────────────── */
+.clds-nutrition-adherence {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.clds-nutrition-adherence-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.clds-nutrition-adherence-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ─── Photos ─────────────────────────────────────────────────── */
+.clds-photos {
+  padding: 14px;
+}
+
+.clds-photos-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.clds-photo-item {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+
+.clds-photo-img {
+  width: 80px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.clds-photo-date {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* ─── Heatmap ────────────────────────────────────────────────── */
+.clds-heatmap {
+  padding: 14px;
+}
+
+.clds-heatmap-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clds-heatmap-labels {
+  display: flex;
+  gap: 4px;
+  padding-left: 0;
+}
+
+.clds-heatmap-day-label {
+  width: 18px;
+  height: 14px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.2);
+  text-align: center;
+}
+
+.clds-heatmap-week {
+  display: flex;
+  gap: 4px;
+}
+
+.clds-heatmap-cell {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clds-heatmap-cell--active {
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .clds-section {
+    padding: 14px;
+  }
+
+  .clds-charts-row {
+    grid-template-columns: 1fr;
+  }
+}

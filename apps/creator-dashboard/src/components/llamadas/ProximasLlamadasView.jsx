@@ -211,8 +211,8 @@ export default function ProximasLlamadasView() {
           </button>
           {showPast && (
             <div className="proximas-past-list">
-              {past.map((booking) => (
-                <div key={booking.bookingId} className="proximas-card proximas-card--past">
+              {past.map((booking, i) => (
+                <div key={booking.bookingId || booking.id || i} className="proximas-card proximas-card--past">
                   <GlowingEffect spread={14} borderWidth={1} />
                   <div className="proximas-card-avatar proximas-card-avatar--past">
                     {getInitials(booking.clientDisplayName)}

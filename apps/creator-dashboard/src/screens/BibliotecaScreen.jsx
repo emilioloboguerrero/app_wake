@@ -10,6 +10,7 @@ import PlansPanel from '../components/biblioteca/PlansPanel';
 import RecetasPanel from '../components/biblioteca/RecetasPanel';
 import NutritionPlansPanel from '../components/biblioteca/NutritionPlansPanel';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
+import CreatePlanOverlay from '../components/biblioteca/CreatePlanOverlay';
 import libraryService from '../services/libraryService';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -367,10 +368,9 @@ const BibliotecaScreen = () => {
           </div>
         </div>
 
-        <CreateFlowOverlay
+        <CreatePlanOverlay
           isOpen={showCreatePlan}
           onClose={() => setShowCreatePlan(false)}
-          type="plan"
           onCreated={handlePlanCreated}
         />
 

@@ -1,20 +1,85 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
-import { GlowingEffect, AnimatedList, NumberTicker, ProgressRing } from '../ui';
+import { GlowingEffect, AnimatedList } from '../ui';
 import PanelShell from './PanelShell';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
 
-function MacroRing({ label, grams, total, color }) {
-  const percent = total > 0 ? Math.round((grams / total) * 100) : 0;
+const MACRO_COLORS = {
+  protein: 'rgba(235,120,100,0.9)',
+  carbs: 'rgba(220,170,90,0.85)',
+  fat: 'rgba(200,180,150,0.5)',
+};
+
+function MacroDonut({ protein = 0, carbs = 0, fat = 0, size = 72 }) {
+  const total = protein + carbs + fat;
+  if (total === 0) return null;
+
+  const strokeWidth = 13;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const center = size / 2;
+
+  const pPct = protein / total;
+  const cPct = carbs / total;
+  const fPct = fat / total;
+
+  const gap = 0.02;
+  const segments = [
+    { pct: pPct, color: MACRO_COLORS.protein },
+    { pct: cPct, color: MACRO_COLORS.carbs },
+    { pct: fPct, color: MACRO_COLORS.fat },
+  ].filter((s) => s.pct > 0);
+
+  const totalGap = gap * segments.length;
+  const scale = segments.length > 1 ? 1 - totalGap : 1;
+
+  let offset = 0;
+  const arcs = segments.map((seg, i) => {
+    const len = seg.pct * scale * circumference;
+    const dashOffset = circumference - len;
+    const rotation = -90 + offset * 360;
+    const arc = { ...seg, len, dashOffset, rotation, key: i };
+    offset += seg.pct * scale + (segments.length > 1 ? gap : 0);
+    return arc;
+  });
+
+  const arcRefs = useRef([]);
+
+  useEffect(() => {
+    arcRefs.current.forEach((el, i) => {
+      if (!el) return;
+      el.style.transition = 'none';
+      el.style.strokeDashoffset = `${circumference}`;
+      requestAnimationFrame(() => {
+        el.style.transition = 'stroke-dashoffset 700ms cubic-bezier(0.22,1,0.36,1)';
+        el.style.strokeDashoffset = `${arcs[i].dashOffset}`;
+      });
+    });
+  }, [protein, carbs, fat, circumference, arcs]);
+
   return (
-    <div className="bib-nutri-ring">
-      <ProgressRing percent={percent} size={48} strokeWidth={4} color={color} />
-      <span className="bib-nutri-ring-label">{label}</span>
-      <span className="bib-nutri-ring-grams">{Number(grams || 0).toFixed(0)} g</span>
-    </div>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', flexShrink: 0 }}>
+      <circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={strokeWidth} />
+      {arcs.map((arc) => (
+        <circle
+          key={arc.key}
+          ref={(el) => { arcRefs.current[arc.key] = el; }}
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={arc.color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference}
+          transform={`rotate(${arc.rotation} ${center} ${center})`}
+        />
+      ))}
+    </svg>
   );
 }
 
@@ -23,19 +88,10 @@ export default function NutritionPlansPanel({ searchQuery = '' }) {
   const { user } = useAuth();
   const creatorId = user?.uid ?? '';
 
-  const [selectedId, setSelectedId] = useState(null);
-
   const { data: plans = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.nutrition.plans(creatorId),
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
-    ...cacheConfig.otherPrograms,
-  });
-
-  const selectedPlanQuery = useQuery({
-    queryKey: queryKeys.nutrition.plan(creatorId, selectedId),
-    queryFn: () => nutritionDb.getPlanById(creatorId, selectedId),
-    enabled: !!selectedId && !!creatorId,
     ...cacheConfig.otherPrograms,
   });
 
@@ -44,21 +100,6 @@ export default function NutritionPlansPanel({ searchQuery = '' }) {
     if (!q) return plans;
     return plans.filter((i) => (i.name ?? '').toLowerCase().includes(q));
   }, [plans, q]);
-
-  const selectedDetail = selectedPlanQuery.data;
-  const detailLoading = selectedPlanQuery.isLoading;
-
-  const macros = useMemo(() => {
-    if (!selectedDetail) return null;
-    return {
-      protein: selectedDetail.daily_protein_g ?? 0,
-      carbs: selectedDetail.daily_carbs_g ?? 0,
-      fat: selectedDetail.daily_fat_g ?? 0,
-      calories: selectedDetail.daily_calories ?? 0,
-    };
-  }, [selectedDetail]);
-
-  const totalMacroG = macros ? macros.protein + macros.carbs + macros.fat : 0;
 
   return (
     <PanelShell
@@ -71,109 +112,60 @@ export default function NutritionPlansPanel({ searchQuery = '' }) {
       onCta={() => navigate('/nutrition/plans/new')}
       onRetry={() => window.location.reload()}
     >
-      <div className="bib-nutri-master-detail">
-        <div className="bib-nutri-left">
-          {filtered.length === 0 ? (
-            <div className="bib-nutri-list-empty">
-              <p>{searchQuery ? `Sin resultados para «${searchQuery}»` : 'Sin planes.'}</p>
-            </div>
-          ) : (
-            <AnimatedList stagger={50}>
-              {filtered.map((item) => {
-                const isSelected = selectedId === item.id;
-                const kcal = item.daily_calories ?? null;
-                return (
-                  <div
-                    key={item.id}
-                    className={`bib-card bib-nutri-list-card ${isSelected ? 'bib-card--selected' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedId(isSelected ? null : item.id)}
-                    onKeyDown={(e) => e.key === 'Enter' && setSelectedId(isSelected ? null : item.id)}
-                  >
-                    <GlowingEffect spread={18} borderWidth={1} />
+      <div className="bib-nutri-list">
+        {filtered.length === 0 ? (
+          <div className="bib-nutri-list-empty">
+            <p>{searchQuery ? `Sin resultados para "${searchQuery}"` : 'Sin planes.'}</p>
+          </div>
+        ) : (
+          <AnimatedList stagger={50}>
+            {filtered.map((item) => {
+              const kcal = item.daily_calories ?? 0;
+              const p = item.daily_protein_g ?? 0;
+              const c = item.daily_carbs_g ?? 0;
+              const f = item.daily_fat_g ?? 0;
+              const hasMacros = p + c + f > 0;
+
+              return (
+                <div
+                  key={item.id}
+                  className="bib-card bib-nutri-plan-card"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate(`/nutrition/plans/${item.id}`)}
+                  onKeyDown={(e) => e.key === 'Enter' && navigate(`/nutrition/plans/${item.id}`)}
+                >
+                  <GlowingEffect spread={18} borderWidth={1} />
+                  <div className="bib-nutri-plan-card__left">
                     <span className="bib-nutri-card-name">{item.name}</span>
-                    {kcal != null && kcal > 0 && <span className="bib-nutri-card-kcal">{kcal} kcal</span>}
                     {item.description && <span className="bib-nutri-card-meta">{item.description}</span>}
                   </div>
-                );
-              })}
-            </AnimatedList>
-          )}
-        </div>
-
-        <div className="bib-nutri-right">
-          {!selectedId ? (
-            <div className="bib-detail-empty">
-              <div className="bib-detail-empty-icon">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 000 4h6a2 2 0 000-4M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="rgba(255,255,255,0.15)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <p className="bib-detail-empty-text">Selecciona un plan para ver sus detalles</p>
-            </div>
-          ) : detailLoading ? (
-            <div className="bib-nutri-detail-skeletons">
-              <div className="bib-skeleton-list" style={{ gap: 12 }}>
-                {[1, 2, 3].map((i) => <div key={i} className="bib-card" style={{ height: 48 }} />)}
-              </div>
-            </div>
-          ) : !selectedDetail ? (
-            <div className="bib-detail-empty">
-              <p className="bib-detail-empty-text">No se encontró el plan seleccionado.</p>
-            </div>
-          ) : (
-            <>
-              <div className="bib-nutri-detail" key={selectedId}>
-                <div className="bib-nutri-detail-header">
-                  <GlowingEffect spread={24} borderWidth={1} />
-                  <h2 className="bib-nutri-detail-title">{selectedDetail.name}</h2>
-                  {selectedDetail.description && <p className="bib-nutri-detail-desc">{selectedDetail.description}</p>}
-                  <button
-                    type="button"
-                    className="bib-nutri-edit-btn"
-                    onClick={() => navigate(`/nutrition/plans/${selectedId}`)}
-                  >
-                    Editar
-                  </button>
-                </div>
-                {(selectedDetail.categories ?? []).length > 0 && (
-                  <div className="bib-nutri-items">
-                    <AnimatedList stagger={40}>
-                      {(selectedDetail.categories ?? []).map((cat, i) => (
-                        <div key={cat.id ?? i} className="bib-nutri-item">
-                          <GlowingEffect spread={14} borderWidth={1} />
-                          <span className="bib-nutri-item-name">{cat.label ?? `Categoría ${i + 1}`}</span>
-                          <span className="bib-nutri-item-sub">
-                            {(cat.options ?? []).length} opción{(cat.options ?? []).length !== 1 ? 'es' : ''}
+                  {hasMacros && (
+                    <div className="bib-nutri-plan-card__right">
+                      <div className="bib-nutri-plan-card__macros">
+                        <MacroDonut protein={p} carbs={c} fat={f} size={72} />
+                        <div className="bib-nutri-plan-card__macro-labels">
+                          <span className="bib-nutri-plan-card__macro" style={{ color: MACRO_COLORS.protein }}>
+                            {Math.round(p)}P
+                          </span>
+                          <span className="bib-nutri-plan-card__macro" style={{ color: MACRO_COLORS.carbs }}>
+                            {Math.round(c)}C
+                          </span>
+                          <span className="bib-nutri-plan-card__macro" style={{ color: MACRO_COLORS.fat }}>
+                            {Math.round(f)}G
                           </span>
                         </div>
-                      ))}
-                    </AnimatedList>
-                  </div>
-                )}
-              </div>
-
-              <div className="bib-nutri-macros">
-                {macros && macros.calories > 0 ? (
-                  <>
-                    <div className="bib-nutri-cal-display">
-                      <span className="bib-nutri-cal-value"><NumberTicker value={Math.round(macros.calories)} duration={900} /></span>
-                      <span className="bib-nutri-cal-unit">kcal</span>
+                      </div>
+                      {kcal > 0 && (
+                        <span className="bib-nutri-plan-card__kcal">{Math.round(kcal)} kcal</span>
+                      )}
                     </div>
-                    <div className="bib-nutri-rings">
-                      <MacroRing label="Prot" grams={macros.protein} total={totalMacroG} color="rgba(100,200,150,0.85)" />
-                      <MacroRing label="Carbs" grams={macros.carbs} total={totalMacroG} color="rgba(100,160,240,0.85)" />
-                      <MacroRing label="Grasa" grams={macros.fat} total={totalMacroG} color="rgba(240,160,80,0.85)" />
-                    </div>
-                  </>
-                ) : (
-                  <p className="bib-nutri-macros-empty">Sin datos de macros</p>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                  )}
+                </div>
+              );
+            })}
+          </AnimatedList>
+        )}
       </div>
     </PanelShell>
   );

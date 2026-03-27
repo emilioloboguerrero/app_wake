@@ -12,11 +12,19 @@ class EventService {
   }
 
   async getEvent(eventId) {
+    console.error('[EventService] getEvent called with eventId:', eventId);
     try {
       const result = await apiClient.get(`/creator/events/${eventId}`);
-      if (!result?.data) return null;
-      return { id: result.data.eventId, ...result.data };
+      console.error('[EventService] getEvent raw API response:', JSON.stringify(result));
+      if (!result?.data) {
+        console.error('[EventService] getEvent — no data in response, returning null');
+        return null;
+      }
+      const mapped = { id: result.data.eventId, ...result.data };
+      console.error('[EventService] getEvent mapped result — id:', mapped.id, 'creator_id:', mapped.creator_id, 'keys:', Object.keys(mapped));
+      return mapped;
     } catch (error) {
+      console.error('[EventService] getEvent FAILED — status:', error?.status, 'message:', error?.message, 'full:', error);
       if (error?.status === 404) return null;
       throw error;
     }

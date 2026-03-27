@@ -25,10 +25,12 @@ import apiClient from '../utils/apiClient';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ScreenSkeleton from '../components/ScreenSkeleton';
 import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
+import { GlowingEffect, ProgressRing, NumberTicker } from '../components/ui';
+import TubelightNavBar from '../components/ui/TubelightNavBar';
 import SpotlightTutorial from '../components/ui/SpotlightTutorial';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis } from 'recharts';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import useConfirm from '../hooks/useConfirm';
@@ -38,6 +40,21 @@ const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Se
 const MONTH_NAMES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const MINI_DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const NUTRITION_DRAG_TYPE = 'nutrition_plan';
+
+const LAB_CHART_TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(26,26,26,0.95)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: '8px',
+  fontSize: '13px',
+  color: '#fff',
+};
+
+const NUTRI_BARS = [
+  { key: 'calories', label: 'Calorías', unit: 'kcal' },
+  { key: 'protein', label: 'Proteína', unit: 'g' },
+  { key: 'carbs', label: 'Carbos', unit: 'g' },
+  { key: 'fat', label: 'Grasa', unit: 'g' },
+];
 
 // Resolves a plan module from the sorted modules array using the stable moduleId when
 // available, falling back to the positional moduleIndex for assignments created before
@@ -83,11 +100,10 @@ function assignmentDateToISO(value) {
 
 
 const TAB_CONFIG = [
-  { key: 'lab', title: 'Lab' },
-  { key: 'planificacion', title: 'Planificación' },
-  { key: 'nutricion', title: 'Nutrición' },
-  { key: 'llamadas', title: 'Llamadas' },
-  { key: 'info', title: 'Info' },
+  { id: 'lab', label: 'Lab' },
+  { id: 'planificacion', label: 'Planificación' },
+  { id: 'nutricion', label: 'Nutrición' },
+  { id: 'perfil', label: 'Perfil' },
 ];
 
 const TUTORIAL_STEPS = [
@@ -104,7 +120,7 @@ const ClientProgramScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const [currentTabIndex, setCurrentTabIndex] = useState(0);
+  const [currentTabKey, setCurrentTabKey] = useState('lab');
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
   const [selectedProgramId, setSelectedProgramId] = useState(null); // Selected program (container/bin)
@@ -176,8 +192,8 @@ const ClientProgramScreen = () => {
   // Restore tab when returning from session edit (back button passed returnState.tab)
   useEffect(() => {
     const tab = location.state?.tab;
-    if (typeof tab === 'number' && tab >= 0 && tab < TAB_CONFIG.length) {
-      setCurrentTabIndex(tab);
+    if (typeof tab === 'string' && TAB_CONFIG.some((t) => t.id === tab)) {
+      setCurrentTabKey(tab);
     }
   }, [location.pathname, location.state?.tab]);
 
@@ -208,19 +224,30 @@ const ClientProgramScreen = () => {
     });
   }, [assignedPrograms]);
 
-  // Load client user doc when Info tab is active (for access end date)
-  const isInfoTab = TAB_CONFIG[currentTabIndex]?.key === 'info';
+  // Load client user doc when Perfil tab is active (for profile + access end date)
+  const isPerfilTab = currentTabKey === 'perfil';
   const { data: clientUserDoc } = useQuery({
-    queryKey: queryKeys.user.detail(client?.clientUserId),
+    queryKey: queryKeys.user.detail(clientId),
     queryFn: async () => {
-      const { data } = await apiClient.get(`/creator/clients/${client.clientUserId}`);
+      const { data } = await apiClient.get(`/creator/clients/${clientId}`);
       return data;
     },
-    enabled: isInfoTab && !!client?.clientUserId,
+    enabled: isPerfilTab && !!clientId,
   });
-  const loadingClientUser = !isInfoTab ? false : !client?.clientUserId ? false : clientUserDoc === undefined;
+  const loadingClientUser = !isPerfilTab ? false : !clientId ? false : clientUserDoc === undefined;
 
-  const isNutricionTab = TAB_CONFIG[currentTabIndex]?.key === 'nutricion';
+  // Lab tab data
+  const isLabTab = currentTabKey === 'lab';
+  const { data: labData, isLoading: isLabLoading } = useQuery({
+    queryKey: ['analytics', 'client-lab', client?.clientUserId],
+    queryFn: () => apiClient.get(`/analytics/client/${client.clientUserId}/lab`),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    enabled: isLabTab && !!client?.clientUserId,
+    select: (res) => res?.data ?? null,
+  });
+
+  const isNutricionTab = currentTabKey === 'nutricion';
   const { data: nutritionPlans = [], isLoading: isNutritionLoading, error: nutritionPlansError } = useQuery({
     queryKey: ['nutrition', 'plans', user?.uid],
     queryFn: () => nutritionDb.getPlansByCreator(user.uid),
@@ -252,9 +279,10 @@ const ClientProgramScreen = () => {
     ...cacheConfig.activeProgram,
   });
   const contentPlanId = clientProgramData?.contentPlanId ?? null;
-  const planAssignments = clientProgramData?.planAssignments ?? {};
+  const EMPTY_PLAN_ASSIGNMENTS = useMemo(() => ({}), []);
+  const planAssignments = clientProgramData?.planAssignments ?? EMPTY_PLAN_ASSIGNMENTS;
 
-  const isPlanificacionTab = TAB_CONFIG[currentTabIndex]?.key === 'planificacion';
+  const isPlanificacionTab = currentTabKey === 'planificacion';
   const needsSessionHistory = isPlanificacionTab;
 
   const { data: plannedSessions = [] } = useQuery({
@@ -472,8 +500,8 @@ const ClientProgramScreen = () => {
 
   // Load week content (plan sessions or client copy) for each week visible in calendar grid that has a plan assignment
   useEffect(() => {
-    if (!client?.clientUserId || !selectedProgramId || !planAssignments || Object.keys(planAssignments).length === 0) {
-      setWeekContentByWeekKey({});
+    if (!isPlanificacionTab || !client?.clientUserId || !selectedProgramId || !planAssignments || Object.keys(planAssignments).length === 0) {
+      if (isPlanificacionTab) setWeekContentByWeekKey({});
       return;
     }
     const year = currentDate.getFullYear();
@@ -583,10 +611,11 @@ const ClientProgramScreen = () => {
     };
     load();
     return () => { cancelled = true; };
-  }, [client?.clientUserId, selectedProgramId, currentDate.getFullYear(), currentDate.getMonth(), planAssignments, user?.uid]);
+  }, [isPlanificacionTab, client?.clientUserId, selectedProgramId, currentDate.getFullYear(), currentDate.getMonth(), planAssignments, user?.uid]);
 
   // Load week count per plan for calendar plan bar "(N semanas)"
   useEffect(() => {
+    if (!isPlanificacionTab) return;
     const planIds = [...new Set(Object.values(planAssignments || {}).map((a) => a.planId).filter(Boolean))];
     if (planIds.length === 0) {
       setPlanWeeksCount({});
@@ -609,7 +638,7 @@ const ClientProgramScreen = () => {
     };
     load();
     return () => { cancelled = true; };
-  }, [planAssignments]);
+  }, [isPlanificacionTab, planAssignments]);
 
   const weekVolumeWeekOptions = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -722,8 +751,8 @@ const ClientProgramScreen = () => {
     return colors;
   }, [assignedPrograms]);
 
-  const handleTabClick = (index) => {
-    setCurrentTabIndex(index);
+  const handleTabClick = (tabId) => {
+    setCurrentTabKey(tabId);
   };
 
   const handleSessionAssigned = async (sessionData) => {
@@ -896,7 +925,7 @@ const ClientProgramScreen = () => {
 
   const handleEditSessionAssignment = async ({ session, date }) => {
     if (!client?.clientUserId || !session?.session_id) return;
-    const returnState = { tab: currentTabIndex };
+    const returnState = { tab: currentTabKey };
     if (session.plan_id) {
       const weekKey = session.week_key || getMondayWeek(date);
       try {
@@ -1079,7 +1108,7 @@ const ClientProgramScreen = () => {
       navigate(`/content/sessions/${session.id}`, {
         state: {
           returnTo: location.pathname,
-          returnState: { tab: currentTabIndex },
+          returnState: { tab: currentTabKey },
           editScope: 'client_plan',
           clientId: client.clientUserId,
           programId: selectedProgramId,
@@ -1341,16 +1370,149 @@ const ClientProgramScreen = () => {
   };
 
   const renderTabContent = () => {
-    const currentTab = TAB_CONFIG[currentTabIndex];
-    
-    switch (currentTab.key) {
-      case 'lab':
+    switch (currentTabKey) {
+      case 'lab': {
+        if (isLabLoading) {
+          return (
+            <div className="tab-content tab-lab" data-tutorial="client-program-lab">
+              <div className="lab-grid lab-grid--top">
+                {[0, 1, 2].map((i) => <div key={i} className="lab-card lab-card--skeleton"><div className="lab-skeleton-circle" /><div className="lab-skeleton-lines"><div className="lab-skeleton-line" /><div className="lab-skeleton-line short" /></div></div>)}
+              </div>
+              <div className="lab-grid lab-grid--charts">
+                {[0, 1].map((i) => <div key={i} className="lab-chart-card lab-card--skeleton"><div className="lab-skeleton-line" style={{ width: '40%' }} /><div className="lab-skeleton-line short" /><div className="lab-skeleton-rect" /></div>)}
+              </div>
+            </div>
+          );
+        }
+        const readinessScore = labData?.trends?.readinessAvg ?? 0;
+        const completionRate = labData?.completionRate ?? 0;
+        const weeklyVolume = labData?.trends?.weeklyVolume ?? [];
+        const bodyProgressData = (labData?.trends?.bodyProgress ?? [])
+          .filter((p) => p.weight != null)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const labNutrition = labData?.nutritionComparison ?? { actual: {}, target: {} };
+
+        const volumeChartData = weeklyVolume.map((w) => ({
+          name: w.week.slice(5),
+          series: w.totalSets,
+          sesiones: w.sessions,
+        }));
+
+        const bodyChartData = bodyProgressData.map((p) => ({
+          name: p.date.slice(5),
+          peso: p.weight,
+        }));
+
         return (
-          <div className="client-program-tab-content client-program-tab-empty" data-tutorial="client-program-lab">
-            <p className="client-program-tab-empty-title">Lab</p>
-            <p className="client-program-tab-empty-message">{clientName} no ha registrado datos todavia. Los vas a ver aca cuando empiece.</p>
+          <div className="tab-content tab-lab" data-tutorial="client-program-lab">
+            <div className="lab-grid lab-grid--top lab-entrance lab-entrance--in">
+              <div className="lab-card">
+                <GlowingEffect />
+                <div className="lab-card__ring-wrap">
+                  <ProgressRing
+                    percent={completionRate > 100 ? 100 : completionRate}
+                    size={80}
+                    strokeWidth={6}
+                    color="rgba(255,255,255,0.75)"
+                    label={`${completionRate}`}
+                  />
+                </div>
+                <div className="lab-card__info">
+                  <span className="lab-card__metric-label">Sesiones completadas</span>
+                  <span className="lab-card__metric-sub">Últimos 30 días</span>
+                </div>
+              </div>
+
+              <div className="lab-card">
+                <GlowingEffect />
+                <div className="lab-card__ticker-wrap">
+                  <NumberTicker value={readinessScore} suffix="/10" decimals={1} />
+                </div>
+                <div className="lab-card__info">
+                  <span className="lab-card__metric-label">Readiness</span>
+                  <span className="lab-card__metric-sub">Promedio 7 días</span>
+                </div>
+              </div>
+
+              <div className="lab-card">
+                <GlowingEffect />
+                <div className="lab-card__ring-wrap">
+                  <ProgressRing
+                    percent={bodyProgressData.length > 0 ? 100 : 0}
+                    size={80}
+                    strokeWidth={6}
+                    color="rgba(255,255,255,0.75)"
+                    label={bodyProgressData.length > 0 ? `${bodyProgressData[bodyProgressData.length - 1].weight}` : '—'}
+                  />
+                </div>
+                <div className="lab-card__info">
+                  <span className="lab-card__metric-label">Peso corporal</span>
+                  <span className="lab-card__metric-sub">{bodyProgressData.length > 0 ? 'Último registro (kg)' : 'Sin registros'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lab-grid lab-grid--charts lab-entrance lab-entrance--in" style={{ transitionDelay: '80ms' }}>
+              <div className="lab-chart-card">
+                <h4 className="lab-chart-card__title">Volumen semanal</h4>
+                <p className="lab-chart-card__sub">Series totales — últimas 8 semanas</p>
+                {volumeChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={170}>
+                    <LineChart data={volumeChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={LAB_CHART_TOOLTIP_STYLE} />
+                      <Line type="monotone" dataKey="series" stroke="rgba(255,255,255,0.8)" strokeWidth={2} dot={{ r: 3, fill: '#fff' }} activeDot={{ r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="lab-chart-card__empty">Sin datos de volumen</p>
+                )}
+              </div>
+
+              <div className="lab-chart-card">
+                <h4 className="lab-chart-card__title">Peso corporal</h4>
+                <p className="lab-chart-card__sub">Últimos 30 días</p>
+                {bodyChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={170}>
+                    <LineChart data={bodyChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={['dataMin - 1', 'dataMax + 1']} tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={LAB_CHART_TOOLTIP_STYLE} formatter={(v) => [`${v} kg`, 'Peso']} />
+                      <Line type="monotone" dataKey="peso" stroke="rgba(255,255,255,0.8)" strokeWidth={2} dot={{ r: 3, fill: '#fff' }} activeDot={{ r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="lab-chart-card__empty">Sin registros de peso</p>
+                )}
+              </div>
+            </div>
+
+            <div className="lab-chart-card lab-entrance lab-entrance--in" style={{ transitionDelay: '160ms' }}>
+              <h4 className="lab-chart-card__title">Nutrición: real vs. objetivo</h4>
+              <p className="lab-chart-card__sub">Promedio diario — últimos 7 días</p>
+              <div className="lab-nutri-bars">
+                {NUTRI_BARS.map(({ key, label, unit }) => {
+                  const actual = labNutrition.actual?.[key] ?? 0;
+                  const target = labNutrition.target?.[key] ?? 0;
+                  const pct = target > 0 ? Math.min((actual / target) * 100, 100) : 0;
+                  return (
+                    <div key={key} className="lab-nutri-row">
+                      <div className="lab-nutri-row__header">
+                        <span className="lab-nutri-row__label">{label}</span>
+                        <span className="lab-nutri-row__values">{actual} / {target} {unit}</span>
+                      </div>
+                      <div className="lab-nutri-row__track">
+                        <div className="lab-nutri-row__fill" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         );
+      }
       case 'planificacion':
         return (
           <div className="client-program-planning-content" data-tutorial="client-program-week">
@@ -1635,7 +1797,7 @@ const ClientProgramScreen = () => {
                             assignmentPlanId: currentNutritionAssignment.planId,
                             clientName: client?.clientName || client?.name || client?.displayName || 'Cliente',
                             returnTo: location.pathname,
-                            returnState: { tab: currentTabIndex },
+                            returnState: { tab: currentTabKey },
                           },
                         })}
                             aria-label="Editar plan (solo este cliente)"
@@ -1951,14 +2113,7 @@ const ClientProgramScreen = () => {
           </div>
         );
       }
-      case 'llamadas':
-        return (
-          <div className="client-program-tab-content client-program-tab-empty client-program-tab-calls-empty">
-            <p className="client-program-tab-empty-title">Llamadas</p>
-            <p className="client-program-tab-empty-message">Sin llamadas agendadas con {clientName}.</p>
-          </div>
-        );
-      case 'info':
+      case 'perfil':
         const assignedForInfo = assignedPrograms.filter((p) => p.isAssigned) || [];
         const currentExpiresAt = infoProgramId && clientUserDoc?.courses?.[infoProgramId]?.expires_at;
         const currentStatusText = (() => {
@@ -2007,12 +2162,6 @@ const ClientProgramScreen = () => {
               <div className="client-program-info-err-block">
                 <span className="client-program-info-err-icon" aria-hidden>!</span>
                 <p className="client-program-info-error">{accessEndDateError}</p>
-              </div>
-            ) : assignedForInfo.length === 0 ? (
-              <div className="client-program-info-empty-block">
-                <span className="client-program-info-empty-icon" aria-hidden>◇</span>
-                <p className="client-program-info-empty">Este cliente no tiene programas asignados</p>
-                <p className="client-program-info-empty-hint">Ve a la pestaña Planificación y asígnale un programa para gestionar su acceso aquí.</p>
               </div>
             ) : (
               <div className={`client-program-info-layout ${!hasProfile ? 'client-program-info-layout--no-profile' : ''}`}>
@@ -2075,30 +2224,34 @@ const ClientProgramScreen = () => {
                     <div className="client-program-info-access-card-row">
                       <div className="client-program-info-access-card-program-block">
                         <span className="client-program-info-access-card-label">Programa</span>
-                        <div className="client-program-info-program-list">
-                          {assignedForInfo.map((program) => (
-                            <button
-                              key={program.id}
-                              type="button"
-                              className={`client-program-info-program-item ${infoProgramId === program.id ? 'client-program-info-program-item--selected' : ''}`}
-                              onClick={() => setInfoProgramId(program.id)}
-                            >
-                              {program.image_url ? (
-                                <span className="client-program-info-program-thumb" style={{ backgroundImage: `url(${program.image_url})` }} />
-                              ) : (
-                                <span className="client-program-info-program-initial">
-                                  {(program.title || 'P').charAt(0).toUpperCase()}
+                        {assignedForInfo.length > 0 ? (
+                          <div className="client-program-info-program-list">
+                            {assignedForInfo.map((program) => (
+                              <button
+                                key={program.id}
+                                type="button"
+                                className={`client-program-info-program-item ${infoProgramId === program.id ? 'client-program-info-program-item--selected' : ''}`}
+                                onClick={() => setInfoProgramId(program.id)}
+                              >
+                                {program.image_url ? (
+                                  <span className="client-program-info-program-thumb" style={{ backgroundImage: `url(${program.image_url})` }} />
+                                ) : (
+                                  <span className="client-program-info-program-initial">
+                                    {(program.title || 'P').charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                                <span className="client-program-info-program-name">
+                                  {program.title || `Programa ${program.id.slice(0, 8)}`}
                                 </span>
-                              )}
-                              <span className="client-program-info-program-name">
-                                {program.title || `Programa ${program.id.slice(0, 8)}`}
-                              </span>
-                              {infoProgramId === program.id && (
-                                <span className="client-program-info-program-check" aria-hidden>✓</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
+                                {infoProgramId === program.id && (
+                                  <span className="client-program-info-program-check" aria-hidden>✓</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="client-program-info-access-empty-hint">No hay programas asignados. Asígnale uno desde Planificación.</p>
+                        )}
                       </div>
 
                       {infoProgramId && clientUserDoc?.courses?.[infoProgramId] ? (
@@ -2186,7 +2339,6 @@ const ClientProgramScreen = () => {
     );
   }
 
-  const containerWidth = 100 / TAB_CONFIG.length;
   const clientName = client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`;
   const clientInitials = clientName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
   const activePrograms = assignedPrograms.filter((p) => p.isAssigned);
@@ -2227,25 +2379,12 @@ const ClientProgramScreen = () => {
 
         {/* Tab Bar */}
         <div className="client-program-tab-bar">
-          <div className="client-program-tab-header-container">
-            <div className="client-program-tab-indicator-wrapper">
-              {TAB_CONFIG.map((tab, index) => (
-                <button
-                  key={tab.key}
-                  onClick={() => handleTabClick(index)}
-                  className={`client-program-tab-button ${currentTabIndex === index ? 'client-program-tab-button-active' : ''}`}
-                >
-                  <span className="client-program-tab-title-text">{tab.title}</span>
-                </button>
-              ))}
-              <div
-                className="client-program-tab-indicator"
-                style={{
-                  width: `${containerWidth}%`,
-                  transform: `translateX(${currentTabIndex * 100}%)`,
-                }}
-              />
-            </div>
+          <div className="client-program-tab-bar-inner">
+            <TubelightNavBar
+              items={TAB_CONFIG}
+              activeId={currentTabKey}
+              onSelect={handleTabClick}
+            />
           </div>
         </div>
 

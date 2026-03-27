@@ -257,28 +257,62 @@ export default function EventResultsScreen() {
 
   const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'registros';
 
-  const { data: event, isLoading: eventLoading, isError: eventError } = useQuery({
+  console.error('[EventResults] Mount — eventId:', eventId, 'user:', user?.uid, 'path:', routerLocation.pathname);
+
+  const { data: event, isLoading: eventLoading, isError: eventError, error: eventFetchError } = useQuery({
     queryKey: queryKeys.events.detail(eventId),
-    queryFn: () => eventService.getEvent(eventId),
+    queryFn: async () => {
+      console.error('[EventResults] Fetching event detail for:', eventId);
+      try {
+        const result = await eventService.getEvent(eventId);
+        console.error('[EventResults] Event detail result:', JSON.stringify(result, null, 2));
+        return result;
+      } catch (err) {
+        console.error('[EventResults] Event detail FAILED:', err?.message, err?.status, err);
+        throw err;
+      }
+    },
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
   });
 
-  const { data: registrations = [], isLoading: regsLoading } = useQuery({
+  const { data: registrations = [], isLoading: regsLoading, error: regsFetchError } = useQuery({
     queryKey: queryKeys.events.registrations(eventId),
-    queryFn: () => eventService.getEventRegistrations(eventId),
+    queryFn: async () => {
+      console.error('[EventResults] Fetching registrations for:', eventId);
+      try {
+        const result = await eventService.getEventRegistrations(eventId);
+        console.error('[EventResults] Registrations result: count=', result?.length, 'first=', JSON.stringify(result?.[0]));
+        return result;
+      } catch (err) {
+        console.error('[EventResults] Registrations FAILED:', err?.message, err?.status, err);
+        throw err;
+      }
+    },
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
   });
 
-  const { data: waitlist = [], isLoading: waitlistLoading } = useQuery({
+  const { data: waitlist = [], isLoading: waitlistLoading, error: waitlistFetchError } = useQuery({
     queryKey: queryKeys.events.waitlist(eventId),
-    queryFn: () => eventService.getEventWaitlist(eventId),
+    queryFn: async () => {
+      console.error('[EventResults] Fetching waitlist for:', eventId);
+      try {
+        const result = await eventService.getEventWaitlist(eventId);
+        console.error('[EventResults] Waitlist result: count=', result?.length);
+        return result;
+      } catch (err) {
+        console.error('[EventResults] Waitlist FAILED:', err?.message, err?.status, err);
+        throw err;
+      }
+    },
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
   });
 
   const isLoading = eventLoading || regsLoading || waitlistLoading;
+
+  console.error('[EventResults] State — eventLoading:', eventLoading, 'regsLoading:', regsLoading, 'waitlistLoading:', waitlistLoading, 'eventError:', eventError, 'event:', event ? `{id:${event.id}, creator_id:${event.creator_id}, title:${event.title}}` : null, 'registrations:', registrations?.length, 'waitlist:', waitlist?.length, 'eventFetchError:', eventFetchError?.message, 'regsFetchError:', regsFetchError?.message, 'waitlistFetchError:', waitlistFetchError?.message);
 
   const [selectedReg, setSelectedReg] = useState(null);
   const [search, setSearch] = useState('');
@@ -309,11 +343,18 @@ export default function EventResultsScreen() {
   const savedRef = useRef(null);
 
   useEffect(() => {
-    if (!event) return;
+    console.error('[EventResults] Ownership useEffect — event:', event ? `{id:${event.id}, creator_id:${event.creator_id}, status:${event.status}}` : null, 'user.uid:', user?.uid);
+    if (!event) {
+      console.error('[EventResults] No event data yet, skipping ownership check');
+      return;
+    }
     if (event.creator_id !== user?.uid) {
+      console.error('[EventResults] OWNERSHIP MISMATCH — event.creator_id:', JSON.stringify(event.creator_id), 'user.uid:', JSON.stringify(user?.uid), '— redirecting to /events');
+      console.error('[EventResults] Full event object:', JSON.stringify(event));
       navigate('/events', { replace: true });
       return;
     }
+    console.error('[EventResults] Ownership OK, populating form fields');
     const d = event;
     setTitle(d.title || '');
     setDescription(d.description || '');

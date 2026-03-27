@@ -42,3 +42,15 @@ export { InlineError, FullScreenError } from './ErrorStates';
 
 // 1N — Skewed display cards
 export { default as SkewedCards, SkewedCard } from './SkewedCards';
+
+// 1O — Confirm delete modal
+export { default as ConfirmDeleteModal } from './ConfirmDeleteModal';
+
+// 1P — Time range selector
+export { default as TimeRangeSelector } from './TimeRangeSelector';
+
+// 1Q — Slide panel
+export { default as SlidePanel } from './SlidePanel';
+
+// 1R — Week navigator
+export { default as WeekNavigator } from './WeekNavigator';

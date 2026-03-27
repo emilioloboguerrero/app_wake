@@ -176,35 +176,18 @@
   margin-top: 8px;
 }
 
-/* ========== Loading & Error ========== */
-.plan-loading,
-.plan-error {
+/* ========== Loading ========== */
+.plan-loading {
   padding: 64px 32px;
   text-align: center;
-}
-
-.plan-loading {
   color: rgba(255, 255, 255, 0.5);
-  font-size: clamp(14px, 3.5vw, 16px);
-}
-
-.plan-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-}
-
-.plan-error p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.7);
   font-size: clamp(14px, 3.5vw, 16px);
 }
 
 /* Plan page toolbar */
 .plan-page-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
@@ -249,6 +232,7 @@
 }
 
 .plan-structure-sidebars {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 300px;
@@ -257,7 +241,13 @@
   background-color: var(--canvas);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.plan-structure-sidebars > .planning-sidebar {
+  border-radius: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .plan-structure-main {
@@ -267,5 +257,113 @@
   padding: 0 0 0 24px;
   min-width: 0;
   max-width: 100%;
-  overflow: auto;
+  overflow: visible;
+}
+
+/* ─── Clients badge ───────────────────────────────────────────────────── */
+
+.plan-clients-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: clamp(12px, 3vw, 13px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  font-family: inherit;
+}
+
+.plan-clients-badge:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.plan-clients-badge svg {
+  opacity: 0.6;
+}
+
+/* ─── Clients modal ───────────────────────────────────────────────────── */
+
+.plan-clients-modal-body {
+  padding: 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.plan-clients-empty {
+  margin: 0;
+  padding: 24px 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: clamp(13px, 3vw, 14px);
+}
+
+.plan-clients-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.plan-clients-row:last-child {
+  border-bottom: none;
+}
+
+.plan-clients-name {
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.plan-clients-program {
+  font-size: clamp(11px, 2.5vw, 12px);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ========== Mobile Responsive ========== */
+@media (max-width: 768px) {
+  .plan-page:has(.plan-structure-layout) {
+    padding: 16px 12px 32px;
+  }
+
+  .plan-structure-layout {
+    flex-direction: column;
+    gap: 16px;
+    min-height: auto;
+  }
+
+  .plan-structure-sidebars {
+    width: 100%;
+    min-width: 0;
+    max-height: 220px;
+  }
+
+  .plan-structure-sidebars > .planning-sidebar {
+    max-height: 220px;
+  }
+
+  .plan-structure-main {
+    padding: 0;
+  }
+
+  .plan-page-toolbar {
+    padding: 0 0 8px;
+    margin-bottom: 12px;
+  }
+
+  .plan-content-section {
+    padding: 20px 16px;
+  }
+
+  .plan-card {
+    padding: 20px 16px;
+  }
 }

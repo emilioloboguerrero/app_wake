@@ -1,5 +1,6 @@
 import { useCallback, useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +14,7 @@ import {
   SpotlightTutorial,
   MenuDropdown,
   FullScreenError,
+  ConfirmDeleteModal,
 } from '../components/ui';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
@@ -195,9 +197,12 @@ const ProgramasScreen = () => {
 
   const programs = allPrograms.filter((p) => p.deliveryType !== 'one_on_one');
 
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const deleteMutation = useMutation({
     mutationFn: (programId) => apiClient.delete(`/creator/programs/${programId}`),
     onSuccess: () => {
+      setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
       showToast('Programa eliminado.', 'success');
     },
@@ -205,9 +210,13 @@ const ProgramasScreen = () => {
   });
 
   const handleDelete = useCallback((program) => {
-    if (!window.confirm(`Eliminar "${program.title || 'este programa'}"? Esta accion no se puede deshacer.`)) return;
-    deleteMutation.mutate(program.id);
-  }, [deleteMutation]);
+    setDeleteTarget(program);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget.id);
+  }, [deleteTarget, deleteMutation]);
 
   const handleCardClick = useCallback((program) => {
     navigate(`/programs/${program.id}`);
@@ -258,15 +267,23 @@ const ProgramasScreen = () => {
               </div>
             ) : (
               <div className="pgs-list">
-                {programs.map((program, i) => (
-                  <ProgramaCard
-                    key={program.id}
-                    program={program}
-                    index={i}
-                    onClick={handleCardClick}
-                    onDelete={handleDelete}
-                  />
-                ))}
+                <AnimatePresence mode="popLayout">
+                  {programs.map((program, i) => (
+                    <motion.div
+                      key={program.id}
+                      layout
+                      exit={{ opacity: 0, scale: 0.92, x: -30, filter: 'blur(4px)' }}
+                      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <ProgramaCard
+                        program={program}
+                        index={i}
+                        onClick={handleCardClick}
+                        onDelete={handleDelete}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             )}
           </div>
@@ -279,6 +296,15 @@ const ProgramasScreen = () => {
           onClose={() => setShowCreate(false)}
           type="program"
           onCreated={handleCreated}
+        />
+
+        <ConfirmDeleteModal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+          itemName={deleteTarget?.title || 'este programa'}
+          description="Esta acción no se puede deshacer."
+          isDeleting={deleteMutation.isPending}
         />
       </ErrorBoundary>
     </DashboardLayout>

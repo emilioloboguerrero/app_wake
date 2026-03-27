@@ -1,22 +1,11 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import Modal from './Modal';
+import { AnimatedList } from './ui';
 import './PropagateChangesModal.css';
-import './PropagateNavigateModal.css';
 
-/**
- * Modal shown when user tries to navigate away with unpropagated changes.
- * Same layout as PropagateChangesModal (two cards: explanation + usuarios afectados) with 3 buttons at bottom.
- *
- * @param {boolean} isOpen - Whether modal is open
- * @param {function} onClose - Called when modal is closed (e.g. Stay)
- * @param {string} type - 'library_session' | 'plan'
- * @param {string} itemName - Session or plan title
- * @param {number} affectedCount - Number of affected users
- * @param {{ userId: string, displayName: string }[]} affectedUsers - Optional list of affected users
- * @param {boolean} isPropagating - Whether propagation is in progress
- * @param {function} onPropagate - Called when user chooses to propagate before leaving
- * @param {function} onLeaveWithoutPropagate - Called when user chooses to leave without propagating
- */
+const SPRING_EASE = [0.22, 1, 0.36, 1];
+
 const PropagateNavigateModal = ({
   isOpen,
   onClose,
@@ -30,8 +19,8 @@ const PropagateNavigateModal = ({
 }) => {
   if (!isOpen) return null;
 
-  const isSession = type === 'library_session';
   const isNutritionPlan = type === 'nutrition_plan';
+  const isSession = type === 'library_session';
   const itemLabel = isNutritionPlan ? 'Este plan de nutrición' : (isSession ? 'Esta sesión' : 'Este plan');
 
   const handlePropagate = async () => {
@@ -45,38 +34,71 @@ const PropagateNavigateModal = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="¿Salir sin propagar los cambios?" containerClassName="propagate-modal-container" contentClassName="propagate-modal-content-wrapper">
+    <Modal isOpen={isOpen} onClose={onClose} title="¿Salir sin propagar?" containerClassName="propagate-modal-container" contentClassName="propagate-modal-content-wrapper">
       <div className="propagate-modal-content">
         {affectedCount > 0 ? (
           <>
             <div className="propagate-modal-layout">
-              <div className="propagate-modal-card propagate-modal-left">
+              <motion.div
+                className="propagate-modal-card propagate-modal-left"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: SPRING_EASE }}
+              >
                 <div className="propagate-modal-options">
                   <div className="propagate-option">
-                    <h3 className="propagate-option-title">Propagar cambios</h3>
+                    <div className="propagate-option-icon propagate-option-icon--propagate">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 1L21 5L17 9M3 11V16a2 2 0 002 2h11M21 5H9a4 4 0 00-4 4v12"/>
+                      </svg>
+                    </div>
+                    <h3 className="propagate-option-title">Propagar y salir</h3>
                     <p className="propagate-option-desc"><strong>Todos</strong> verán esta versión actualizada. Se pierden las personalizaciones.</p>
                   </div>
+                  <div className="propagate-option-divider" />
                   <div className="propagate-option">
-                    <h3 className="propagate-option-title">No propagar</h3>
-                    <p className="propagate-option-desc">Cada usuario <strong>conserva su versión</strong>. Solo las nuevas asignaciones usan la actualizada.</p>
+                    <div className="propagate-option-icon propagate-option-icon--keep">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+                      </svg>
+                    </div>
+                    <h3 className="propagate-option-title">Salir sin propagar</h3>
+                    <p className="propagate-option-desc">Cada usuario <strong>conserva su versión</strong>. Los cambios quedan guardados pero no propagados.</p>
                   </div>
                 </div>
-              </div>
+              </motion.div>
 
-              <div className="propagate-modal-card propagate-modal-right">
+              <motion.div
+                className="propagate-modal-card propagate-modal-right"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: SPRING_EASE, delay: 0.1 }}
+              >
                 <div className="propagate-modal-users-header">
                   <span className="propagate-modal-users-label">Usuarios afectados</span>
                   <span className="propagate-modal-users-count">{affectedCount}</span>
                 </div>
-                <ul className="propagate-modal-users-list">
-                  {affectedUsers.map((u) => (
-                    <li key={u.userId}>{u.displayName}</li>
-                  ))}
-                </ul>
-              </div>
+                <div className="propagate-modal-users-list">
+                  <AnimatedList stagger={40}>
+                    {affectedUsers.map((u) => (
+                      <div key={u.userId} className="propagate-modal-user-row">
+                        <span className="propagate-modal-user-avatar">
+                          {(u.displayName || '?').charAt(0).toUpperCase()}
+                        </span>
+                        <span className="propagate-modal-user-name">{u.displayName}</span>
+                      </div>
+                    ))}
+                  </AnimatedList>
+                </div>
+              </motion.div>
             </div>
 
-            <div className="propagate-modal-footer">
+            <motion.div
+              className="propagate-modal-footer"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: SPRING_EASE, delay: 0.2 }}
+            >
               <button
                 type="button"
                 className="propagate-modal-btn propagate-modal-btn-dont"
@@ -87,7 +109,7 @@ const PropagateNavigateModal = ({
               </button>
               <button
                 type="button"
-                className="propagate-modal-btn propagate-modal-btn-dont"
+                className="propagate-modal-btn propagate-modal-btn-warning"
                 onClick={handleLeaveWithoutPropagate}
                 disabled={isPropagating}
               >
@@ -99,9 +121,13 @@ const PropagateNavigateModal = ({
                 onClick={handlePropagate}
                 disabled={isPropagating}
               >
-                {isPropagating ? 'Propagando…' : 'Propagar y salir'}
+                {isPropagating ? (
+                  <><span className="propagate-modal-spinner" />Propagando…</>
+                ) : (
+                  'Propagar y salir'
+                )}
               </button>
-            </div>
+            </motion.div>
           </>
         ) : (
           <>
@@ -111,11 +137,7 @@ const PropagateNavigateModal = ({
               </p>
             </div>
             <div className="propagate-modal-footer">
-              <button
-                type="button"
-                className="propagate-modal-btn propagate-modal-btn-dont"
-                onClick={onClose}
-              >
+              <button type="button" className="propagate-modal-btn propagate-modal-btn-dont" onClick={onClose}>
                 Entendido
               </button>
             </div>

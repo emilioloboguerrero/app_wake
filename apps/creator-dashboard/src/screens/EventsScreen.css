@@ -91,11 +91,17 @@
   color: var(--text-primary, #fff);
 }
 
+/* ── Nav wrap ── */
+.es-nav-wrap {
+  margin-bottom: 16px;
+  width: fit-content;
+}
+
 /* ── Grid ── */
 .es-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ── Card ── */
@@ -104,7 +110,8 @@
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   border-radius: var(--radius-lg, 16px);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  height: 280px;
   overflow: hidden;
   transition: border-color 0.18s, transform 0.18s cubic-bezier(0.22,1,0.36,1);
   cursor: default;
@@ -112,16 +119,16 @@
 
 .es-card:hover {
   border-color: var(--border-default, rgba(255,255,255,0.1));
-  transform: translateY(-2px);
 }
 
 /* ── Cover ── */
 .es-card-cover {
   position: relative;
-  height: 140px;
+  width: 160px;
   background: var(--surface-3, #2a2a2a);
   flex-shrink: 0;
   overflow: hidden;
+  align-self: stretch;
 }
 
 .es-cover-img {
@@ -175,28 +182,57 @@
 /* ── Card body ── */
 .es-card-body {
   flex: 1;
-  padding: 14px 16px 16px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Header row ── */
+.es-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .es-card-title {
   color: var(--text-primary, #fff);
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 700;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.es-countdown {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.5);
+  white-space: nowrap;
+}
+
+.es-countdown--urgent {
+  background: rgba(251,191,36,0.12);
+  color: rgba(251,191,36,0.9);
 }
 
 /* ── Meta ── */
 .es-card-meta {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-top: 6px;
 }
 
 .es-meta-item {
@@ -204,44 +240,80 @@
   font-size: 0.75rem;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
-/* ── Attendance ── */
-.es-attendance {
+/* ── Content area (two columns) ── */
+.es-card-content {
+  flex: 1;
   display: flex;
-  align-items: baseline;
-  gap: 5px;
+  align-items: stretch;
+  gap: 16px;
+  margin-top: 10px;
+  min-height: 0;
+}
+
+.es-card-left {
+  display: flex;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.es-stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.es-stat-big {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--text-primary, #fff);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.es-stat-sub {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.3);
+}
+
+.es-stat-detail {
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.25);
   margin-top: 2px;
 }
 
-.es-attendance-num {
-  color: var(--text-primary, #fff);
-  font-size: 1.05rem;
-  font-weight: 700;
-  line-height: 1;
+.es-stat-detail--hot {
+  color: rgba(74,222,128,0.7);
 }
 
-.es-attendance-label {
-  color: var(--text-tertiary, rgba(255,255,255,0.36));
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+/* ── Mini chart (right side) ── */
+.es-card-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-width: 0;
+  position: relative;
 }
 
-/* ── Capacity bar ── */
-.es-capacity-track {
-  height: 3px;
-  background: rgba(255,255,255,0.07);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.es-capacity-fill {
+.es-mini-chart {
+  width: 100%;
   height: 100%;
-  background: rgba(255,255,255,0.3);
-  border-radius: 3px;
-  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+  display: block;
+}
+
+.es-chart-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.18);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  position: absolute;
+  top: 4px;
+  right: 0;
 }
 
 /* ── Actions row ── */
@@ -249,59 +321,62 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  flex-shrink: 0;
+  margin-top: 10px;
 }
 
-.es-btn {
+.es-action-btn {
   align-items: center;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
   border-radius: var(--radius-md, 10px);
-  color: var(--text-secondary, rgba(255,255,255,0.6));
+  color: var(--text-secondary, rgba(255,255,255,0.5));
   cursor: pointer;
   display: inline-flex;
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
   gap: 5px;
-  padding: 6px 11px;
+  padding: 5px 10px;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
-.es-btn:hover:not(:disabled) {
+.es-action-btn:hover:not(:disabled) {
   background: rgba(255,255,255,0.08);
-  border-color: var(--border-default, rgba(255,255,255,0.1));
+  border-color: rgba(255,255,255,0.12);
   color: var(--text-primary, #fff);
 }
 
-.es-btn:disabled {
+.es-action-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
 }
 
-.es-btn--primary {
-  background: rgba(255,255,255,0.08);
-  border-color: rgba(255,255,255,0.14);
+.es-action-btn--manage {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.12);
   color: var(--text-primary, #fff);
   font-weight: 700;
-  flex: 1;
-  justify-content: center;
 }
 
-.es-btn--primary:hover:not(:disabled) {
-  background: rgba(255,255,255,0.14);
-  border-color: rgba(255,255,255,0.22);
+.es-action-btn--manage:hover:not(:disabled) {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(255,255,255,0.2);
 }
 
-.es-btn--danger {
+.es-action-btn--copy {
+  color: rgba(255,255,255,0.4);
+}
+
+.es-action-btn--danger {
   background: rgba(248,113,113,0.1);
   border-color: rgba(248,113,113,0.25);
   color: rgba(248,113,113,0.9);
   font-weight: 700;
 }
 
-.es-btn--danger:hover:not(:disabled) {
+.es-action-btn--danger:hover:not(:disabled) {
   background: rgba(248,113,113,0.18);
   border-color: rgba(248,113,113,0.4);
   color: rgba(248,113,113,1);
@@ -359,12 +434,6 @@
   min-width: 160px;
   overflow: hidden;
   z-index: 10;
-  animation: dropdownIn 0.15s cubic-bezier(0.22,1,0.36,1);
-}
-
-@keyframes dropdownIn {
-  from { opacity: 0; transform: translateY(4px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .es-dropdown-item {
@@ -443,16 +512,13 @@
   pointer-events: none;
 }
 
-.es-skeleton-cover {
-  width: 100%;
-  height: 140px;
+.es-skeleton-shimmer {
   background: var(--surface-3, #2a2a2a);
 }
 
 .es-skeleton-line {
   height: 12px;
   border-radius: var(--radius-pill, 999px);
-  background: rgba(255,255,255,0.06);
   width: 80%;
 }
 
@@ -466,7 +532,7 @@
   width: 45%;
 }
 
-.es-skeleton-cover,
+.es-skeleton-shimmer,
 .es-skeleton-line {
   animation: shimmer 1.5s infinite linear;
   background-size: 400% 100%;
@@ -483,13 +549,9 @@
   100% { background-position: -100% 0; }
 }
 
-/* ── Entrance animation ── */
-@keyframes esFadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.es-card--fade {
-  opacity: 0;
-  animation: esFadeIn 0.35s cubic-bezier(0.22,1,0.36,1) forwards;
+/* ── Copy button inner ── */
+.es-copy-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }

@@ -14,7 +14,17 @@ export default function MenuDropdown({ trigger, items }) {
     const menuRect = menuRef.current.getBoundingClientRect();
     const vp = { w: window.innerWidth, h: window.innerHeight };
 
-    const top = triggerRect.bottom + 6;
+    const gap = 6;
+    let top;
+    let transformOriginY = 'top';
+
+    if (triggerRect.bottom + gap + menuRect.height > vp.h) {
+      top = triggerRect.top - menuRect.height - gap;
+      transformOriginY = 'bottom';
+    } else {
+      top = triggerRect.bottom + gap;
+    }
+
     let left = 'auto';
     let right = 'auto';
 
@@ -24,7 +34,7 @@ export default function MenuDropdown({ trigger, items }) {
       left = triggerRect.left;
     }
 
-    setPosition({ top, left, right });
+    setPosition({ top, left, right, transformOrigin: `${transformOriginY} right` });
   }, []);
 
   useEffect(() => {
@@ -58,6 +68,7 @@ export default function MenuDropdown({ trigger, items }) {
             top: position.top,
             left: position.left !== 'auto' ? position.left : undefined,
             right: position.right !== 'auto' ? position.right : undefined,
+            transformOrigin: position.transformOrigin,
           }}
           role="menu"
           onClick={(e) => e.stopPropagation()}

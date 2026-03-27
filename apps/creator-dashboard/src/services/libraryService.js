@@ -189,8 +189,8 @@ class LibraryService {
     return res.data;
   }
 
-  async propagateLibrarySession(sessionId) {
-    const res = await apiClient.post(`/creator/library/sessions/${sessionId}/propagate`);
+  async propagateLibrarySession(sessionId, mode = 'all') {
+    const res = await apiClient.post(`/creator/library/sessions/${sessionId}/propagate`, { mode });
     return res.data;
   }
 
@@ -253,10 +253,6 @@ class LibraryService {
       `/creator/library/sessions/${sessionId}/exercises/${exerciseId}/sets`,
       {
         title: `Serie ${orderVal + 1}`,
-        reps: '',
-        weight: null,
-        intensity: null,
-        rir: null,
         order: orderVal,
       }
     );

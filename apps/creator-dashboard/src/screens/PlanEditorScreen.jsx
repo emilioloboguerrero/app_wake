@@ -21,7 +21,7 @@ import PropagateNavigateModal from '../components/PropagateNavigateModal';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
-import { FullScreenError } from '../components/ui';
+import { FullScreenError, GlowingEffect } from '../components/ui';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -826,6 +826,8 @@ export default function PlanEditorScreen() {
       )}
       <div className="library-session-detail-container">
         <div className="library-session-detail-body">
+          <div className="lsd-glow-wrap lsd-glow-wrap--sidebar">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-sidebar plan-editor-sidebar">
             <div className="plan-editor-sidebar-tabs">
               <button
@@ -1017,9 +1019,11 @@ export default function PlanEditorScreen() {
               </div>
             )}
           </div>
+          </div>
 
-          <div className="library-session-main plan-editor-main">
+          <div className="plan-editor-main">
             <div className="plan-editor-macros-objectives">
+              <GlowingEffect spread={40} proximity={100} borderWidth={1} />
               <h3 className="plan-editor-macros-objectives-title">Objetivos diarios</h3>
               <p className="plan-editor-macros-objectives-hint">Indica las calorías y cómo repartirlas en macros. Si eliges un preset, los gramos se calculan solos.</p>
               <div className="plan-editor-macros-inputs">
@@ -1071,6 +1075,7 @@ export default function PlanEditorScreen() {
               )}
             </div>
             <div className="plan-editor-categories-area">
+              <GlowingEffect spread={40} proximity={100} borderWidth={1} />
               <div className="plan-editor-categories-header">
                 <h3 className="plan-editor-categories-title">Categorías y opciones</h3>
                 <button type="button" className="plan-editor-add-category-btn" onClick={addCategory}>+ Categoría</button>
@@ -1092,6 +1097,7 @@ export default function PlanEditorScreen() {
                     }}
                     onDrop={(e) => handleDropOnCategory(e, ci)}
                   >
+                    <GlowingEffect spread={30} proximity={80} borderWidth={1} />
                     <div className="plan-editor-category-title-row">
                       <h4 className="plan-editor-category-title">{cat.label || 'Categoría'}</h4>
                       <button
@@ -1277,6 +1283,8 @@ export default function PlanEditorScreen() {
             </div>
           </div>
 
+          <div className="lsd-glow-wrap lsd-glow-wrap--volume">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-sidebar-right">
             <div className="meal-editor-calories-hero">
               <div className="meal-editor-calories-value">
@@ -1369,6 +1377,7 @@ export default function PlanEditorScreen() {
                 </div>
               )}
             </div>
+          </div>
           </div>
         </div>
       </div>

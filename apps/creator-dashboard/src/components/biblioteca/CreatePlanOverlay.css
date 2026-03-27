@@ -1,0 +1,361 @@
+/* ═══════════════════════════════════════════════════════════
+   CreatePlanOverlay — cinematic plan creation experience
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Overlay ────────────────────────────────────────────── */
+.cpo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(28px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: cpo-overlay-in 0.3s ease both;
+}
+
+@keyframes cpo-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Card ───────────────────────────────────────────────── */
+.cpo-card {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  background: rgba(26, 26, 26, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 22px;
+  box-shadow:
+    0 48px 140px rgba(0, 0, 0, 0.75),
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  animation: cpo-card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+}
+
+@keyframes cpo-card-in {
+  from { opacity: 0; transform: translateY(28px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Top bar ────────────────────────────────────────────── */
+.cpo-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 0;
+  flex-shrink: 0;
+}
+
+.cpo-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.32);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.cpo-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Body ───────────────────────────────────────────────── */
+.cpo-body {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── Step ───────────────────────────────────────────────── */
+.cpo-step {
+  display: flex;
+  flex-direction: column;
+  padding: 32px 28px 0;
+  animation: cpo-step-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cpo-step--center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 300px;
+  padding-bottom: 32px;
+}
+
+@keyframes cpo-step-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Step header ────────────────────────────────────────── */
+.cpo-step__header {
+  margin-bottom: 28px;
+}
+
+.cpo-step__title {
+  font-size: clamp(19px, 4.5vw, 23px);
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 7px;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+
+.cpo-step__desc {
+  font-size: clamp(13px, 3vw, 14px);
+  color: rgba(255, 255, 255, 0.38);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cpo-step__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ─── Name input ─────────────────────────────────────────── */
+.cpo-name-input {
+  width: 100%;
+  padding: 15px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  outline: none;
+  color: #fff;
+  font-size: clamp(16px, 3.5vw, 18px);
+  font-weight: 600;
+  font-family: inherit;
+  caret-color: rgba(255, 255, 255, 0.6);
+  box-sizing: border-box;
+  transition: border-color 200ms ease, background 200ms ease;
+}
+
+.cpo-name-input::placeholder {
+  color: rgba(255, 255, 255, 0.16);
+  font-weight: 400;
+}
+
+.cpo-name-input:focus {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Link / desc ────────────────────────────────────────── */
+.cpo-link-btn {
+  padding: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.28);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: color 140ms ease;
+}
+
+.cpo-link-btn:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cpo-desc-input {
+  width: 100%;
+  padding: 13px 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  outline: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  box-sizing: border-box;
+  caret-color: rgba(255, 255, 255, 0.5);
+  transition: border-color 200ms ease;
+  animation: cpo-step-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cpo-desc-input::placeholder {
+  color: rgba(255, 255, 255, 0.14);
+}
+
+.cpo-desc-input:focus {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ─── Footer (nav buttons) ───────────────────────────────── */
+.cpo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 28px 26px;
+  gap: 12px;
+}
+
+.cpo-next-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 26px;
+  height: 42px;
+  background: rgba(255, 255, 255, 0.92);
+  border: none;
+  border-radius: 13px;
+  color: #111;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpo-next-btn:hover:not(:disabled) {
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 28px rgba(255, 255, 255, 0.12);
+}
+
+.cpo-next-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.cpo-next-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.cpo-next-btn--create {
+  background: rgba(74, 222, 128, 0.88);
+  color: #0a0a0a;
+}
+
+.cpo-next-btn--create:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 1);
+  box-shadow: 0 8px 28px rgba(74, 222, 128, 0.18);
+}
+
+/* ─── Creating state ─────────────────────────────────────── */
+.cpo-spinner {
+  width: 44px;
+  height: 44px;
+  border: 2.5px solid rgba(255, 255, 255, 0.07);
+  border-top-color: rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: cpo-spin 0.7s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes cpo-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cpo-status-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0;
+  animation: cpo-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes cpo-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ─── Success state ──────────────────────────────────────── */
+.cpo-success-rings {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 24px;
+}
+
+.cpo-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  animation: cpo-ring-expand 2s ease-out forwards;
+}
+
+.cpo-ring:nth-child(2) { animation-delay: 0.32s; }
+.cpo-ring:nth-child(3) { animation-delay: 0.64s; }
+
+@keyframes cpo-ring-expand {
+  from { transform: scale(0.4); opacity: 0.8; }
+  to   { transform: scale(3.2); opacity: 0; }
+}
+
+.cpo-check-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cpo-check-circle {
+  stroke-dasharray: 140;
+  stroke-dashoffset: 140;
+  animation: cpo-draw 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+}
+
+.cpo-check-tick {
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: cpo-draw 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
+}
+
+@keyframes cpo-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.cpo-success-title {
+  font-size: clamp(19px, 4.5vw, 23px);
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+  animation: cpo-step-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.35s both;
+}
+
+.cpo-success-desc {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.38);
+  margin: 0;
+  animation: cpo-step-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
+}
+
+/* ─── Responsive ─────────────────────────────────────────── */
+@media (max-width: 560px) {
+  .cpo-overlay {
+    padding: 16px;
+  }
+
+  .cpo-card {
+    max-width: none;
+    border-radius: 18px;
+  }
+
+  .cpo-step {
+    padding: 24px 20px 0;
+  }
+
+  .cpo-footer {
+    padding: 18px 20px 22px;
+  }
+}

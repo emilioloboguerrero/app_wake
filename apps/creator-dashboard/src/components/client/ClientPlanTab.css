@@ -1,0 +1,120 @@
+/* ═══════════════════════════════════════════════════════════════ */
+/*  TWO-PANEL LAYOUT                                              */
+/* ═══════════════════════════════════════════════════════════════ */
+.cpt-layout {
+  display: flex;
+  gap: 0;
+  min-height: calc(100vh - 240px);
+  padding-top: 4px;
+}
+
+/* ─── Left Panel: Library Sidebar ────────────────────────────── */
+.cpt-sidebar {
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: cpt-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Override sidebar's own border/background so the parent card controls it */
+.cpt-sidebar .planning-library-sidebar {
+  background: transparent;
+  border-right: none;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+/* Add inner padding to sidebar sections */
+.cpt-sidebar .planning-library-tabs {
+  padding: 0 4px 12px;
+}
+
+.cpt-sidebar .planning-library-content {
+  padding: 0 4px;
+}
+
+/* GlowingEffect on sidebar items */
+.cpt-sidebar .planning-sidebar-program-item {
+  position: relative;
+  border-radius: 8px;
+}
+
+.cpt-sidebar .plan-structure-library-item {
+  position: relative;
+  border-radius: 8px;
+}
+
+@keyframes cpt-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Right Panel: Main Content ──────────────────────────────── */
+.cpt-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
+}
+
+/* ─── Content ────────────────────────────────────────────────── */
+.cpt-content {
+  flex: 1;
+}
+
+/* ─── Skeleton Loader ─────────────────────────────────────────── */
+.cpt-container {
+  padding-top: 8px;
+}
+
+.cpt-skeleton-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cpt-skeleton-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.cpt-skeleton-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.cpt-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  RESPONSIVE                                                    */
+/* ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .cpt-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cpt-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .cpt-main {
+    padding-left: 0;
+  }
+}

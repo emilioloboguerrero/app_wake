@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Input from './Input';
+import { AnimatedList, ShimmerSkeleton, GlowingEffect } from './ui';
 import logger from '../utils/logger';
 import './PlanStructureSidebar.css';
 
@@ -50,7 +51,7 @@ const PlanStructureSidebar = ({
       JSON.stringify({
         type: DRAG_TYPE_LIBRARY_SESSION,
         librarySessionRef: session.id,
-        title: session.title || 'Sesión',
+        title: session.title || 'Sesion',
       })
     );
     e.currentTarget.classList.add('plan-structure-item-dragging');
@@ -77,7 +78,12 @@ const PlanStructureSidebar = ({
       <div className="planning-sidebar-content">
         {loading ? (
           <div className="planning-sidebar-loading">
-            <p>Cargando sesiones...</p>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px' }}>
+                <ShimmerSkeleton width="28px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="70%" height="14px" borderRadius="4px" />
+              </div>
+            ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="planning-sidebar-empty">
@@ -87,31 +93,34 @@ const PlanStructureSidebar = ({
           <div className="planning-sidebar-section">
             <h4 className="planning-sidebar-section-title">Arrastra a un día</h4>
             <div className="planning-sidebar-programs-list">
-              {filtered.map((session) => (
-                <div
-                  key={session.id}
-                  className="planning-sidebar-program-item plan-structure-library-item"
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, session)}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div className="planning-sidebar-program-content">
-                    <div className="planning-sidebar-program-image-placeholder" style={{ width: 28, height: 28, fontSize: 12 }}>
-                      {session.title?.charAt(0) || 'S'}
+              <AnimatedList stagger={40}>
+                {filtered.map((session) => (
+                  <div
+                    key={session.id}
+                    className="planning-sidebar-program-item plan-structure-library-item"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, session)}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <GlowingEffect spread={20} proximity={40} borderWidth={1} />
+                    <div className="planning-sidebar-program-content">
+                      <div className="planning-sidebar-program-image-placeholder" style={{ width: 28, height: 28, fontSize: 12 }}>
+                        {session.title?.charAt(0) || 'S'}
+                      </div>
+                      <div className="planning-sidebar-program-info">
+                        <span className="planning-sidebar-program-name">
+                          {session.title || `Sesión ${session.id?.slice(0, 8)}`}
+                        </span>
+                      </div>
                     </div>
-                    <div className="planning-sidebar-program-info">
-                      <span className="planning-sidebar-program-name">
-                        {session.title || `Sesión ${session.id?.slice(0, 8)}`}
-                      </span>
+                    <div className="plan-structure-drag-hint">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 5L15 5M9 12L15 12M9 19L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                      </svg>
                     </div>
                   </div>
-                  <div className="plan-structure-drag-hint">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M9 5L15 5M9 12L15 12M9 19L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </AnimatedList>
             </div>
           </div>
         )}

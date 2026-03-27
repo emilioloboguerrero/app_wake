@@ -132,6 +132,15 @@
       ]
     },
     {
+      "collectionGroup": "client_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "client_id", "order": "ASCENDING"},
+        {"fieldPath": "creator_id", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "workout_timers",
       "queryScope": "COLLECTION",
       "fields": [

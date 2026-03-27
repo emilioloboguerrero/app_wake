@@ -317,9 +317,11 @@
   flex-direction: column;
   gap: 20px;
   min-height: 0;
+  flex: 1;
 }
 
 .plan-editor-macros-objectives {
+  position: relative;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -426,6 +428,7 @@
 }
 
 .plan-editor-categories-area {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -500,6 +503,7 @@
 }
 
 .plan-editor-category-block {
+  position: relative;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;

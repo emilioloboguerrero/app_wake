@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import DashboardLayout from '../components/DashboardLayout';
 import {
@@ -11,6 +12,7 @@ import {
   SpotlightTutorial,
   MenuDropdown,
   AnimatedList,
+  ConfirmDeleteModal,
 } from '../components/ui/index.js';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import { useAuth } from '../contexts/AuthContext';
@@ -110,7 +112,7 @@ function ClientGroup({ title, clients, programId, imageUrl, onSelectClient, onCo
         '--cl-group-glow': glowColor,
       }}
     >
-      <button type="button" className="cl-group__header" onClick={() => setExpanded((v) => !v)}>
+      <div className="cl-group__header" role="button" tabIndex={0} onClick={() => setExpanded((v) => !v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setExpanded((v) => !v); }}>
         <svg
           className={`cl-group__chevron ${expanded ? 'cl-group__chevron--open' : ''}`}
           width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden
@@ -133,7 +135,7 @@ function ClientGroup({ title, clients, programId, imageUrl, onSelectClient, onCo
             </svg>
           </button>
         )}
-      </button>
+      </div>
       {expanded && (
         <div className="cl-group__grid">
           {clients.map((client) => (
@@ -547,10 +549,9 @@ const ClientesScreen = () => {
   // Data fetching
   const { data: clientsData, isLoading: isLoadingClients, isError: isClientsError, refetch: refetchClients } = useQuery({
     queryKey: ['clients', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/creator/clients'),
+    queryFn: () => apiClient.get('/creator/clients').then((res) => res?.data ?? []),
     ...cacheConfig.userProfile,
     enabled: !!user?.uid,
-    select: (res) => res?.data ?? [],
   });
 
   const { data: programsData = [], isLoading: isLoadingPrograms } = useQuery({
@@ -589,8 +590,8 @@ const ClientesScreen = () => {
     return counts;
   }, [clients]);
 
-  const oneOnOnePrograms = useMemo(() =>
-    programsData
+  const oneOnOnePrograms = useMemo(() => {
+    return programsData
       .filter((p) => p.deliveryType === 'one_on_one')
       .map((p) => {
         const adh = adherenceByProgram[p.id];
@@ -600,9 +601,8 @@ const ClientesScreen = () => {
           completionRate: adh?.adherence ?? 0,
           adherenceHistory: adh?.weeklyHistory ?? null,
         };
-      }),
-    [programsData, enrollmentCounts, adherenceByProgram],
-  );
+      });
+  }, [programsData, enrollmentCounts, adherenceByProgram]);
 
   // Build a map of programId → imageUrl for color extraction
   const programImageMap = useMemo(() => {
@@ -728,9 +728,12 @@ const ClientesScreen = () => {
 
   const { showToast } = useToast();
 
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const deleteAsesoriaMutation = useMutation({
     mutationFn: (programId) => apiClient.delete(`/creator/programs/${programId}`),
     onSuccess: () => {
+      setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
       showToast('Programa eliminado.', 'success');
     },
@@ -738,9 +741,13 @@ const ClientesScreen = () => {
   });
 
   const handleDeleteAsesoria = useCallback((program) => {
-    if (!window.confirm(`¿Eliminar "${program.title || 'este programa'}"? Esta acción no se puede deshacer.`)) return;
-    deleteAsesoriaMutation.mutate(program.id);
-  }, [deleteAsesoriaMutation]);
+    setDeleteTarget(program);
+  }, []);
+
+  const confirmDeleteAsesoria = useCallback(() => {
+    if (!deleteTarget) return;
+    deleteAsesoriaMutation.mutate(deleteTarget.id);
+  }, [deleteTarget, deleteAsesoriaMutation]);
 
   // ── Primary action per tab ─────────────────────────────────────────────────
 
@@ -758,14 +765,14 @@ const ClientesScreen = () => {
 
   if (isClientsError && activeTab === 'clientes') {
     return (
-      <DashboardLayout screenName="Clientes">
+      <DashboardLayout screenName="Asesorías">
         <FullScreenError title="No pudimos cargar tus clientes" message="Revisa tu conexion e intenta de nuevo." onRetry={refetchClients} />
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout screenName="Clientes">
+    <DashboardLayout screenName="Asesorías">
       <div className="cl-screen">
         <div className="cl-topbar">
           <TubelightNavBar items={TABS} activeId={activeTab} onSelect={setActiveTab} />
@@ -867,16 +874,24 @@ const ClientesScreen = () => {
               <EmptyAsesorias onCreate={() => setShowCreateAsesoria(true)} />
             ) : (
               <div className="cl-asesorias-list">
-                {oneOnOnePrograms.map((program, i) => (
-                  <AsesoriaCard
-                    key={program.id}
-                    program={program}
-                    index={i}
-                    enrollmentHistory={adherenceData?.enrollmentHistory ?? null}
-                    onClick={(p) => navigate(`/clientes/programa/${p.id}`)}
-                    onDelete={handleDeleteAsesoria}
-                  />
-                ))}
+                <AnimatePresence mode="popLayout">
+                  {oneOnOnePrograms.map((program, i) => (
+                    <motion.div
+                      key={program.id}
+                      layout
+                      exit={{ opacity: 0, scale: 0.92, x: -30, filter: 'blur(4px)' }}
+                      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                      <AsesoriaCard
+                        program={program}
+                        index={i}
+                        enrollmentHistory={adherenceData?.enrollmentHistory ?? null}
+                        onClick={(p) => navigate(`/clientes/programa/${p.id}`)}
+                        onDelete={handleDeleteAsesoria}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             )
           )}
@@ -901,7 +916,8 @@ const ClientesScreen = () => {
       <AssignProgramModal
         isOpen={isAssignOpen}
         onClose={() => { setIsAssignOpen(false); setLookedUpUser(null); }}
-        user={lookedUpUser}
+        clientUser={lookedUpUser}
+        creatorId={user?.uid}
         onAssign={handleAssign}
         isAssigning={isAssigning}
         error={assignError}
@@ -916,6 +932,15 @@ const ClientesScreen = () => {
       />
 
       <SpotlightTutorial screenKey="clientes" steps={TUTORIAL_STEPS} />
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteAsesoria}
+        itemName={deleteTarget?.title || 'este programa'}
+        description="Esta acción no se puede deshacer."
+        isDeleting={deleteAsesoriaMutation.isPending}
+      />
     </DashboardLayout>
   );
 };

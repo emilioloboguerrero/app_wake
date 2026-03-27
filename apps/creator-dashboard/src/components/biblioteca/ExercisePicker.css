@@ -1,0 +1,275 @@
+/* ── ExercisePicker — immersive inline panel ── */
+
+.exp-picker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 12px;
+  overflow: hidden;
+  max-height: 420px;
+  animation: expPickerEnter 0.35s cubic-bezier(0.22,1,0.36,1) both;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+@keyframes expPickerEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Saving overlay ── */
+.exp-picker-saving {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+
+.exp-picker-saving-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: rgba(255,255,255,0.8);
+  border-radius: 50%;
+  animation: expSpin 0.7s linear infinite;
+}
+
+@keyframes expSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Header ── */
+.exp-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.exp-picker-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.exp-picker-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.exp-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.01em;
+}
+
+.exp-picker-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.40);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exp-picker-back {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 7px;
+  color: rgba(255,255,255,0.60);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.exp-picker-back:hover {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.90);
+}
+
+.exp-picker-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  color: rgba(255,255,255,0.30);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.exp-picker-close:hover {
+  color: rgba(255,255,255,0.70);
+  background: rgba(255,255,255,0.06);
+}
+
+/* ── Search ── */
+.exp-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 14px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  flex-shrink: 0;
+  transition: border-color 0.15s ease;
+}
+
+.exp-picker-search:focus-within {
+  border-color: rgba(255,255,255,0.22);
+}
+
+.exp-picker-search-icon {
+  color: rgba(255,255,255,0.30);
+  flex-shrink: 0;
+}
+
+.exp-picker-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: rgba(255,255,255,0.90);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.exp-picker-search-input::placeholder {
+  color: rgba(255,255,255,0.30);
+}
+
+/* ── Content ── */
+.exp-picker-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+
+.exp-picker-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.exp-picker-content::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+}
+
+/* ── List ── */
+.exp-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Items ── */
+.exp-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 9px;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  transition: all 0.18s cubic-bezier(0.22,1,0.36,1);
+  animation: expItemEnter 0.3s cubic-bezier(0.22,1,0.36,1) var(--item-delay, 0ms) both;
+}
+
+@keyframes expItemEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.exp-picker-item:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.14);
+}
+
+.exp-picker-item:active {
+  transform: scale(0.98);
+}
+
+.exp-picker-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.exp-picker-item-arrow {
+  color: rgba(255,255,255,0.20);
+  flex-shrink: 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.exp-picker-item:hover .exp-picker-item-arrow {
+  color: rgba(255,255,255,0.50);
+  transform: translateX(2px);
+}
+
+/* Exercise items — slightly different */
+.exp-picker-item--exercise {
+  border-left: 2px solid transparent;
+}
+
+.exp-picker-item--exercise:hover {
+  border-left-color: rgba(255,255,255,0.30);
+}
+
+/* ── Empty state ── */
+.exp-picker-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.35);
+}

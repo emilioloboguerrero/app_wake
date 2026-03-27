@@ -113,7 +113,7 @@ export default function SessionPerformanceModal({
           if (!cancelled) setPlannedExercises(plannedFromSnapshot);
         } else {
           // Fallback: load from library (subject to plan/library changes)
-          const librarySessionId = session.librarySessionRef || sessionIdsToTry[0];
+          const librarySessionId = session.source_library_session_id ?? session.librarySessionRef ?? sessionIdsToTry[0];
           let planned = [];
           if (librarySessionId && creatorId) {
             try {
@@ -151,7 +151,7 @@ export default function SessionPerformanceModal({
       }));
     }
     const performed = historyDoc?.exercises ? { ...historyDoc.exercises } : {};
-    const fallbackSessionId = session?.librarySessionRef || sessionIdsToTry[0];
+    const fallbackSessionId = session?.source_library_session_id ?? session?.librarySessionRef ?? sessionIdsToTry[0];
     const items = [];
 
     const matchedPerformedKeys = new Set();
@@ -226,7 +226,7 @@ export default function SessionPerformanceModal({
     });
 
     return items;
-  }, [historyDoc, plannedExercises, session?.librarySessionRef, sessionIdsToTry, historyOnlyData]);
+  }, [historyDoc, plannedExercises, session?.source_library_session_id, session?.librarySessionRef, sessionIdsToTry, historyOnlyData]);
 
   const stats = useMemo(() => {
     let completed = 0, not_completed = 0, extra = 0;

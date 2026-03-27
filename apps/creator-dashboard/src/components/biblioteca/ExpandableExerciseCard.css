@@ -120,6 +120,19 @@
   flex-shrink: 0;
 }
 
+.exc-card-missing-details-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
 .exc-card-sets-pill {
   font-size: 11px;
   font-weight: 500;
@@ -309,6 +322,106 @@
   background: rgba(255,255,255,0.07);
 }
 
+/* ─── Alternatives list ─── */
+.exc-card-alt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exc-card-alt-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.exc-card-alt-item:hover {
+  background: rgba(255,255,255,0.07);
+}
+
+.exc-card-alt-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.80);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.exc-card-alt-remove {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255,255,255,0.15);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all 0.12s ease;
+}
+
+.exc-card-alt-item:hover .exc-card-alt-remove {
+  opacity: 1;
+}
+
+.exc-card-alt-remove:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.1);
+}
+
+.exc-card-alt-empty {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.30);
+}
+
+/* ─── Sustituir button ─── */
+.exc-card-sustituir-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.45);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.exc-card-sustituir-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.80);
+}
+
+.exc-card-sustituir-btn svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.exc-card-sustituir-btn:hover svg {
+  opacity: 1;
+}
+
 /* ─── Divider ─── */
 .exc-card-divider {
   height: 1px;
@@ -366,27 +479,18 @@
   font-weight: 600;
 }
 
-/* ─── Series stepper (hover-reveal, like library exercise screen) ─── */
-.exc-card-stepper-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.exc-card-stepper-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: rgba(255,255,255,0.45);
-}
-
+/* ─── Series stepper (inline in header) ─── */
 .exc-card-stepper {
   position: relative;
   width: 56px;
   height: 32px;
   flex-shrink: 0;
+}
+
+.exc-card-stepper--header {
+  width: 48px;
+  height: 26px;
+  margin-left: auto;
 }
 
 .exc-card-stepper-value {
@@ -624,6 +728,279 @@
 
 .exc-card-add-set-btn svg {
   flex-shrink: 0;
+}
+
+/* ─── Objective label row (label + remove X) ─── */
+.exc-card-field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exc-card-remove-objective-btn {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255,255,255,0.20);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.exc-card-default-field:hover .exc-card-remove-objective-btn {
+  opacity: 1;
+}
+
+.exc-card-remove-objective-btn:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.1);
+}
+
+/* ─── Add objective button (inside defaults list) ─── */
+.exc-card-add-objective-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  background: none;
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.exc-card-add-objective-btn:hover {
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.03);
+}
+
+.exc-card-add-objective-btn svg {
+  flex-shrink: 0;
+}
+
+/* ─── Scope prompt ─── */
+.exc-card-scope-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  animation: excEnterUp 0.25s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.exc-card-scope-prompt-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.70);
+}
+
+.exc-card-scope-prompt-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.exc-card-scope-btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.60);
+}
+
+.exc-card-scope-btn:hover {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.90);
+  border-color: rgba(255,255,255,0.25);
+}
+
+.exc-card-scope-btn--all {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.85);
+  border-color: rgba(255,255,255,0.20);
+}
+
+.exc-card-scope-btn--all:hover {
+  background: rgba(255,255,255,0.16);
+}
+
+.exc-card-scope-btn--cancel {
+  width: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  color: rgba(255,255,255,0.30);
+  border-color: rgba(255,255,255,0.06);
+  background: none;
+}
+
+.exc-card-scope-btn--cancel:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.08);
+  border-color: rgba(255,68,68,0.2);
+}
+
+/* ─── Inline add input ─── */
+.exc-card-inline-add {
+  display: flex;
+  align-items: center;
+}
+
+.exc-card-inline-input {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.90);
+  font-family: inherit;
+  width: 100%;
+  transition: border-color 0.15s ease;
+  animation: excEnterUp 0.2s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.exc-card-inline-input:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.10);
+}
+
+.exc-card-inline-input::placeholder {
+  color: rgba(255,255,255,0.25);
+}
+
+.exc-card-default-field--adding {
+  justify-content: stretch;
+}
+
+.exc-card-default-field--adding .exc-card-inline-input {
+  height: 32px;
+  font-size: 13px;
+}
+
+/* ─── Removable pill ─── */
+.exc-card-pill--removable {
+  gap: 4px;
+  padding-right: 5px;
+}
+
+.exc-card-pill-remove {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: rgba(255,255,255,0.20);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.12s ease;
+}
+
+.exc-card-pill--removable:hover .exc-card-pill-remove {
+  opacity: 1;
+}
+
+.exc-card-pill-remove:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.1);
+}
+
+/* ─── Add pill button ─── */
+.exc-card-pill--add {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px dashed rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.25);
+  transition: all 0.15s ease;
+}
+
+.exc-card-pill--add:hover {
+  border-color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.06);
+}
+
+/* ─── Measures list layout ─── */
+.exc-card-measures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exc-card-inline-add--full {
+  width: 100%;
+}
+
+.exc-card-add-measure-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  background: none;
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.exc-card-add-measure-btn:hover {
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.03);
+}
+
+.exc-card-add-measure-btn svg {
+  flex-shrink: 0;
+}
+
+/* ─── Smaller section title variant ─── */
+.exc-card-section-title--small {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
 }
 
 /* ─── Data section ─── */

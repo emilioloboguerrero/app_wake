@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   DndContext,
   closestCenter,
@@ -16,7 +17,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useQuery, useQueries, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
-import { GlowingEffect, MenuDropdown } from '../ui';
+import { GlowingEffect, MenuDropdown, ConfirmDeleteModal } from '../ui';
 import MuscleSilhouetteSVG from '../MuscleSilhouetteSVG';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
 import PanelShell from './PanelShell';
@@ -256,15 +257,24 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
     [sessions, q]
   );
 
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   const deleteMutation = useMutation({
     mutationFn: (sessionId) => libraryService.deleteLibrarySession(user?.uid, sessionId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) }),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
+    },
   });
 
   const handleDeleteSession = useCallback((session) => {
-    if (!window.confirm(`Eliminar "${session.title || 'esta sesión'}"? Esta acción no se puede deshacer.`)) return;
-    deleteMutation.mutate(session.id);
-  }, [deleteMutation]);
+    setDeleteTarget(session);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget.id);
+  }, [deleteTarget, deleteMutation]);
 
   const handleDragEnd = useCallback((event) => {
     const { active, over } = event;
@@ -290,19 +300,36 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={filtered.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <div className="pgs-list">
-            {filtered.map((session, i) => (
-              <SortableSessionCard
-                key={session.id}
-                session={session}
-                index={i}
-                libraryDataCache={libraryDataCache}
-                onNavigate={(id) => navigate(`/content/sessions/${id}`)}
-                onDelete={handleDeleteSession}
-              />
-            ))}
+            <AnimatePresence mode="popLayout">
+              {filtered.map((session, i) => (
+                <motion.div
+                  key={session.id}
+                  layout
+                  exit={{ opacity: 0, scale: 0.92, x: -30, filter: 'blur(4px)' }}
+                  transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <SortableSessionCard
+                    session={session}
+                    index={i}
+                    libraryDataCache={libraryDataCache}
+                    onNavigate={(id) => navigate(`/content/sessions/${id}`)}
+                    onDelete={handleDeleteSession}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         </SortableContext>
       </DndContext>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        itemName={deleteTarget?.title || 'esta sesión'}
+        description="Esta acción no se puede deshacer."
+        isDeleting={deleteMutation.isPending}
+      />
     </PanelShell>
   );
 }

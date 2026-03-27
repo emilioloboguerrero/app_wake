@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useDraggable } from '@dnd-kit/core';
 import Input from './Input';
+import { GlowingEffect } from './ui';
 import libraryService from '../services/libraryService';
 import plansService from '../services/plansService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
@@ -13,24 +13,29 @@ const LIBRARY_TAB_PLANS = 'plans';
 const DRAG_TYPE_LIBRARY_SESSION = 'plan-structure/library-session';
 const DRAG_TYPE_PLAN = 'planning/plan';
 
+// Uses native HTML5 drag (same as plans) so it's compatible with CalendarView's native onDrop
 const DraggableSessionItem = ({ session }) => {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `library-session-${session.id}`,
-    data: { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesión' },
-  });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, opacity: isDragging ? 0.5 : 1 }
-    : undefined;
+  const handleDragStart = (e) => {
+    const payload = { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesion' };
+    e.dataTransfer.effectAllowed = 'all';
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.setData('text/plain', JSON.stringify(payload));
+    e.currentTarget.classList.add('plan-structure-item-dragging');
+  };
+
+  const handleDragEnd = (e) => {
+    e.currentTarget.classList.remove('plan-structure-item-dragging');
+  };
 
   return (
     <div
-      ref={setNodeRef}
-      className={`planning-sidebar-program-item plan-structure-library-item ${isDragging ? 'plan-structure-item-dragging' : ''}`}
-      style={style}
-      {...listeners}
-      {...attributes}
+      className="planning-sidebar-program-item plan-structure-library-item"
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
     >
-      <div className="planning-sidebar-program-content">
+      <GlowingEffect spread={16} proximity={70} borderWidth={1} />
+      <div className="planning-sidebar-program-content" style={{ position: 'relative', zIndex: 2 }}>
         <div
           className="planning-sidebar-program-image-placeholder"
           style={{ width: 28, height: 28, fontSize: 12 }}
@@ -39,11 +44,11 @@ const DraggableSessionItem = ({ session }) => {
         </div>
         <div className="planning-sidebar-program-info">
           <span className="planning-sidebar-program-name">
-            {session.title || `Sesión ${session.id?.slice(0, 8)}`}
+            {session.title || `Sesion ${session.id?.slice(0, 8)}`}
           </span>
         </div>
       </div>
-      <div className="plan-structure-drag-hint">
+      <div className="plan-structure-drag-hint" style={{ position: 'relative', zIndex: 2 }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M9 5L15 5M9 12L15 12M9 19L15 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
@@ -204,7 +209,8 @@ const PlanningLibrarySidebar = ({
                   onDragStart={(e) => handlePlanDragStart(e, plan)}
                   onDragEnd={handleDragEnd}
                 >
-                  <div className="planning-sidebar-program-content">
+                  <GlowingEffect spread={16} proximity={70} borderWidth={1} />
+                  <div className="planning-sidebar-program-content" style={{ position: 'relative', zIndex: 2 }}>
                     <div
                       className="planning-sidebar-program-image-placeholder"
                       style={{ width: 28, height: 28, fontSize: 12 }}
@@ -217,7 +223,7 @@ const PlanningLibrarySidebar = ({
                       </span>
                     </div>
                   </div>
-                  <div className="plan-structure-drag-hint">
+                  <div className="plan-structure-drag-hint" style={{ position: 'relative', zIndex: 2 }}>
                     <svg
                       width="16"
                       height="16"
