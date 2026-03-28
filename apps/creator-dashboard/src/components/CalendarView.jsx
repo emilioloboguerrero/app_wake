@@ -803,12 +803,17 @@ const CalendarView = ({
                       return (
                         <motion.div
                           key={docId}
-                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''}`}
+                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''} ${session.image_url ? 'calendar-day-session-card-has-image' : ''}`}
                           initial={{ opacity: 0, y: 8, scale: 0.85 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.7, y: -4, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
                           transition={{ type: 'spring', damping: 20, stiffness: 280, delay: sessionIdx * 0.04 + colIndex * 0.03 }}
                           title={`${sessionName}. Arrastra a otro día o semana para mover.`}
+                          style={session.image_url ? {
+                            backgroundImage: isCompleted
+                              ? `linear-gradient(to bottom, rgba(34,139,34,0.3), rgba(26,26,26,0.8)), url(${session.image_url})`
+                              : `linear-gradient(to bottom, rgba(26,26,26,0.45), rgba(26,26,26,0.8)), url(${session.image_url})`,
+                          } : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (isCompleted && (onEditPlanSession || onDeletePlanSession)) {
@@ -958,12 +963,17 @@ const CalendarView = ({
                       return (
                         <motion.div
                           key={sessionDocId}
-                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''}`}
+                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''} ${session.image_url ? 'calendar-day-session-card-has-image' : ''}`}
                           initial={{ opacity: 0, y: 6, scale: 0.9 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.7, y: -4, transition: { duration: 0.2 } }}
                           transition={{ type: 'spring', damping: 22, stiffness: 300 }}
                           title={sessionName}
+                          style={session.image_url ? {
+                            backgroundImage: isCompleted
+                              ? `linear-gradient(to bottom, rgba(34,139,34,0.3), rgba(26,26,26,0.8)), url(${session.image_url})`
+                              : `linear-gradient(to bottom, rgba(26,26,26,0.45), rgba(26,26,26,0.8)), url(${session.image_url})`,
+                          } : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (isCompleted) {

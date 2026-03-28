@@ -494,35 +494,7 @@ export default function EventEditorScreen() {
               </div>
             </div>
 
-            {/* Access */}
-            <div className="ee-field-group">
-              <label className="ee-label">Acceso</label>
-              <div className="ee-access-toggle">
-                <button
-                  className={`ee-access-opt${access === 'public' ? ' ee-access-opt--on' : ''}`}
-                  onClick={() => setAccess('public')}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-                  </svg>
-                  Público
-                </button>
-                <button
-                  className={`ee-access-opt${access === 'wake_users_only' ? ' ee-access-opt--on' : ''}`}
-                  onClick={() => setAccess('wake_users_only')}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  </svg>
-                  Solo usuarios Wake
-                </button>
-              </div>
-              {access === 'wake_users_only' && (
-                <p className="ee-access-note">
-                  Los usuarios deben tener cuenta en Wake para registrarse.
-                </p>
-              )}
-            </div>
+            {/* Acceso section hidden for now */}
           </div>
 
           {/* ── Right: Field Builder ── */}
@@ -546,6 +518,7 @@ export default function EventEditorScreen() {
                   key={field.id}
                   field={field}
                   onUpdate={changes => updateField(field.id, changes)}
+                  onRemove={() => removeField(field.id)}
                 />
               ))}
             </div>

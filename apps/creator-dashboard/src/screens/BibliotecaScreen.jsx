@@ -31,7 +31,6 @@ const TRAINING_TABS = [
 
 const NUTRITION_TABS = [
   { id: 'planes_nutri', label: 'Planes nutricionales' },
-  { id: 'recetas', label: 'Recetas' },
 ];
 
 const SearchIcon = () => (
@@ -130,7 +129,7 @@ const BibliotecaScreen = () => {
   const { showToast } = useToast();
 
   const domain = searchParams.get('domain') || 'entrenamiento';
-  const tab = searchParams.get('tab') || (domain === 'entrenamiento' ? 'ejercicios' : 'recetas');
+  const tab = searchParams.get('tab') || (domain === 'entrenamiento' ? 'ejercicios' : 'planes_nutri');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreatePlan, setShowCreatePlan] = useState(false);

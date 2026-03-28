@@ -1004,7 +1004,7 @@ router.get("/creator/instagram-feed", async (req, res) => {
 
 // ─── Creator Nutrition Library ─────────────────────────────────────────────
 
-/** Maps library plan data (camelCase) to client_nutrition_plan_content schema (snake_case). */
+/** Builds a client_nutrition_plan_content document from library plan data. */
 function buildNutritionContentDoc(
   planData: Record<string, unknown>,
   assignmentId: string,
@@ -1016,10 +1016,10 @@ function buildNutritionContentDoc(
     assignment_id: assignmentId,
     name: planData.name ?? "",
     description: planData.description ?? "",
-    daily_calories: (planData.dailyCalories ?? planData.daily_calories ?? null) as unknown,
-    daily_protein_g: (planData.dailyProteinG ?? planData.daily_protein_g ?? null) as unknown,
-    daily_carbs_g: (planData.dailyCarbsG ?? planData.daily_carbs_g ?? null) as unknown,
-    daily_fat_g: (planData.dailyFatG ?? planData.daily_fat_g ?? null) as unknown,
+    daily_calories: planData.daily_calories ?? null,
+    daily_protein_g: planData.daily_protein_g ?? null,
+    daily_carbs_g: planData.daily_carbs_g ?? null,
+    daily_fat_g: planData.daily_fat_g ?? null,
     categories: planData.categories ?? [],
   };
   if (isRefresh) {
@@ -1090,7 +1090,7 @@ router.post("/creator/nutrition/meals", async (req, res) => {
     fat?: number;
     items?: unknown[];
     category?: string;
-    videoUrl?: string;
+    video_url?: string;
   }>(
     {
       name: "string",
@@ -1101,7 +1101,7 @@ router.post("/creator/nutrition/meals", async (req, res) => {
       fat: "optional_number",
       items: "optional_array",
       category: "optional_string",
-      videoUrl: "optional_string",
+      video_url: "optional_string",
     },
     req.body
   );
@@ -1137,7 +1137,7 @@ router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
   }
 
   // Allowlist meal fields
-  const allowedFields = ["name", "description", "calories", "protein", "carbs", "fat", "items", "category", "videoUrl"];
+  const allowedFields = ["name", "description", "calories", "protein", "carbs", "fat", "items", "category", "video_url"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -1183,12 +1183,18 @@ router.get("/creator/nutrition/plans", async (req, res) => {
     .collection("creator_nutrition_library")
     .doc(auth.userId)
     .collection("plans")
-    .orderBy("created_at", "desc")
     .get();
 
-  res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, planId: d.id, ...d.data() })),
+  const plans = snapshot.docs.map((d) => ({ id: d.id, planId: d.id, ...d.data() }));
+  plans.sort((a, b) => {
+    const tA = (a as Record<string, unknown>).created_at ?? (a as Record<string, unknown>).createdAt;
+    const tB = (b as Record<string, unknown>).created_at ?? (b as Record<string, unknown>).createdAt;
+    const msA = tA && typeof (tA as { toMillis?: () => number }).toMillis === "function" ? (tA as { toMillis: () => number }).toMillis() : 0;
+    const msB = tB && typeof (tB as { toMillis?: () => number }).toMillis === "function" ? (tB as { toMillis: () => number }).toMillis() : 0;
+    return msB - msA;
   });
+
+  res.json({ data: plans });
 });
 
 // POST /creator/nutrition/plans
@@ -1197,23 +1203,23 @@ router.post("/creator/nutrition/plans", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  // Validate and allowlist plan fields
+  // Validate and allowlist plan fields (snake_case to match Firestore schema)
   const body = validateBody<{
     name: string;
     description?: string;
-    dailyCalories?: number;
-    dailyProteinG?: number;
-    dailyCarbsG?: number;
-    dailyFatG?: number;
+    daily_calories?: number;
+    daily_protein_g?: number;
+    daily_carbs_g?: number;
+    daily_fat_g?: number;
     categories?: unknown[];
   }>(
     {
       name: "string",
       description: "optional_string",
-      dailyCalories: "optional_number",
-      dailyProteinG: "optional_number",
-      dailyCarbsG: "optional_number",
-      dailyFatG: "optional_number",
+      daily_calories: "optional_number",
+      daily_protein_g: "optional_number",
+      daily_carbs_g: "optional_number",
+      daily_fat_g: "optional_number",
       categories: "optional_array",
     },
     req.body
@@ -1270,8 +1276,7 @@ router.patch("/creator/nutrition/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  // Allowlist plan fields
-  const allowedFields = ["name", "description", "dailyCalories", "dailyProteinG", "dailyCarbsG", "dailyFatG", "categories"];
+  const allowedFields = ["name", "description", "daily_calories", "daily_protein_g", "daily_carbs_g", "daily_fat_g", "categories"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -1453,6 +1458,10 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
 
   // Use transaction for atomicity: assignment + content snapshot + optional pin
   const assignmentId = await db.runTransaction(async (tx) => {
+    // All reads first (Firestore requirement)
+    const userRef = db.collection("users").doc(req.params.clientId);
+    const userDoc = await tx.get(userRef);
+
     const assignmentRef = db.collection("nutrition_assignments").doc();
     tx.set(assignmentRef, {
       userId: req.params.clientId,
@@ -1473,8 +1482,6 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
     );
 
     // Pin on user if no existing pinned assignment
-    const userRef = db.collection("users").doc(req.params.clientId);
-    const userDoc = await tx.get(userRef);
     if (!userDoc.data()?.pinnedNutritionAssignmentId) {
       tx.update(userRef, { pinnedNutritionAssignmentId: assignmentRef.id });
     }
@@ -6392,6 +6399,691 @@ router.delete("/creator/library/objective-presets/:presetId", async (req, res) =
   }
 
   await ref.delete();
+  res.status(204).send();
+});
+
+// ─── Program Plan Content (general program as virtual client) ─────────────
+
+function programContentDocId(courseId: string, weekKey: string): string {
+  return `program_${courseId}_${weekKey}`;
+}
+
+async function verifyProgramOwnership(
+  creatorId: string,
+  programId: string
+): Promise<FirebaseFirestore.DocumentSnapshot> {
+  const courseDoc = await db.collection("courses").doc(programId).get();
+  if (!courseDoc.exists || courseDoc.data()?.creator_id !== creatorId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  return courseDoc;
+}
+
+async function ensureProgramCopy(
+  courseId: string,
+  weekKey: string,
+  creatorId: string
+): Promise<{ docId: string; alreadyExisted: boolean }> {
+  const docId = programContentDocId(courseId, weekKey);
+  const docRef = db.collection("client_plan_content").doc(docId);
+  const docSnap = await docRef.get();
+  if (docSnap.exists) {
+    return { docId, alreadyExisted: true };
+  }
+
+  // Read planAssignments from course
+  const courseDoc = await db.collection("courses").doc(courseId).get();
+  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
+  const assignment = planAssignments[weekKey];
+  if (!assignment?.planId || !assignment?.moduleId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "No hay plan asignado a esta semana");
+  }
+
+  // Read plan module sessions with exercises and sets
+  const planSessionsRef = db
+    .collection("plans").doc(assignment.planId)
+    .collection("modules").doc(assignment.moduleId)
+    .collection("sessions");
+  const planSessionsSnap = await planSessionsRef.orderBy("order", "asc").get();
+
+  const sessions: Array<Record<string, unknown>> = [];
+  for (const sDoc of planSessionsSnap.docs) {
+    const sData = sDoc.data();
+    const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
+    let sessionData: Record<string, unknown> = {
+      ...sData,
+      id: sDoc.id,
+      source_plan_session_id: sDoc.id,
+      source_library_session_id: sourceLibId,
+    };
+    delete sessionData.librarySessionRef;
+    delete sessionData.useLocalContent;
+
+    const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
+    let exercises: Array<Record<string, unknown>> = [];
+
+    if (exSnap.empty && sourceLibId && creatorId) {
+      try {
+        const libRef = db.collection("creator_libraries").doc(creatorId).collection("sessions").doc(sourceLibId);
+        const libDoc = await libRef.get();
+        if (libDoc.exists) {
+          const libData = libDoc.data()!;
+          sessionData.title = sData.title ?? libData.title ?? null;
+          sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
+          const libExSnap = await libRef.collection("exercises").orderBy("order", "asc").get();
+          exercises = await Promise.all(
+            libExSnap.docs.map(async (eDoc) => {
+              const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+              return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+            })
+          );
+        }
+      } catch { /* best-effort library resolution */ }
+    } else {
+      exercises = await Promise.all(
+        exSnap.docs.map(async (eDoc) => {
+          const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+          return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+        })
+      );
+      if (sourceLibId && creatorId) {
+        try {
+          const libDoc = await db.collection("creator_libraries").doc(creatorId)
+            .collection("sessions").doc(sourceLibId).get();
+          if (libDoc.exists) {
+            const libData = libDoc.data()!;
+            sessionData.title = sData.title ?? libData.title ?? null;
+            sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
+          }
+        } catch { /* best-effort */ }
+      }
+    }
+
+    sessions.push({ ...sessionData, exercises });
+  }
+
+  // Write to client_plan_content using batches
+  const moduleDoc = await db.collection("plans").doc(assignment.planId)
+    .collection("modules").doc(assignment.moduleId).get();
+  const moduleTitle = moduleDoc.exists ? (moduleDoc.data()?.title ?? weekKey) : weekKey;
+
+  let batch = db.batch();
+  let batchCount = 0;
+
+  batch.set(docRef, {
+    title: moduleTitle,
+    order: 0,
+    source_plan_id: assignment.planId,
+    source_module_id: assignment.moduleId,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+  batchCount++;
+
+  for (const session of sessions) {
+    const sessionId = (session.id as string) ?? db.collection("_").doc().id;
+    const sessionRef = docRef.collection("sessions").doc(sessionId);
+    const { exercises: exArr, ...sessionFields } = session;
+    batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+    batchCount++;
+
+    if (Array.isArray(exArr)) {
+      for (const exercise of exArr as Array<Record<string, unknown>>) {
+        const exId = (exercise.id as string) ?? db.collection("_").doc().id;
+        const exRef = sessionRef.collection("exercises").doc(exId);
+        const { sets: setsArr, ...exFields } = exercise;
+        batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+        batchCount++;
+
+        if (Array.isArray(setsArr)) {
+          for (const set of setsArr as Array<Record<string, unknown>>) {
+            const setId = (set.id as string) ?? db.collection("_").doc().id;
+            batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+            batchCount++;
+          }
+        }
+
+        if (batchCount >= 450) {
+          await batch.commit();
+          batch = db.batch();
+          batchCount = 0;
+        }
+      }
+    }
+  }
+
+  if (batchCount > 0) await batch.commit();
+  return { docId, alreadyExisted: false };
+}
+
+// GET /creator/programs/:programId/calendar?month=YYYY-MM
+router.get("/creator/programs/:programId/calendar", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const month = req.query.month as string;
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "month debe ser YYYY-MM", "month");
+  }
+
+  const { programId } = req.params;
+  const courseDoc = await verifyProgramOwnership(auth.userId, programId);
+  const creatorId = auth.userId;
+  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; assignedAt?: string }>;
+
+  const { weekKeys: visibleWeekKeys } = getCalendarMonthRange(month);
+  const weekKeysWithPlans = visibleWeekKeys.filter((wk) => planAssignments[wk]?.planId);
+
+  const planModuleCache = new Map<string, Record<string, unknown>>();
+  const weeks: Record<string, unknown> = {};
+
+  const readSessionList = async (sessionsCol: FirebaseFirestore.CollectionReference): Promise<Array<Record<string, unknown>>> => {
+    const snap = await sessionsCol.orderBy("order", "asc").get();
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  };
+
+  await Promise.all(
+    weekKeysWithPlans.map(async (weekKey) => {
+      const assignment = planAssignments[weekKey];
+      const docId = programContentDocId(programId, weekKey);
+      const docRef = db.collection("client_plan_content").doc(docId);
+
+      const docSnap = await docRef.get();
+      if (docSnap.exists) {
+        const sessions = await readSessionList(docRef.collection("sessions"));
+        weeks[weekKey] = {
+          planId: assignment.planId,
+          moduleId: assignment.moduleId,
+          moduleTitle: docSnap.data()?.title ?? weekKey,
+          isPersonalized: true,
+          sessions,
+        };
+        return;
+      }
+
+      const cacheKey = `${assignment.planId}_${assignment.moduleId}`;
+      if (!planModuleCache.has(cacheKey)) {
+        try {
+          const moduleRef = db.collection("plans").doc(assignment.planId)
+            .collection("modules").doc(assignment.moduleId);
+          const [moduleDoc, sessions] = await Promise.all([
+            moduleRef.get(),
+            readSessionList(moduleRef.collection("sessions")),
+          ]);
+
+          const libPromises = sessions.map(async (session) => {
+            const libRef = (session.source_library_session_id ?? session.librarySessionRef) as string | undefined;
+            if (!libRef || !creatorId) return;
+            try {
+              const libDoc = await db.collection("creator_libraries").doc(creatorId)
+                .collection("sessions").doc(libRef).get();
+              if (libDoc.exists) {
+                const libData = libDoc.data()!;
+                if (!session.title) session.title = libData.title ?? null;
+                if (!session.image_url) session.image_url = libData.image_url ?? null;
+              }
+            } catch { /* best-effort */ }
+          });
+          await Promise.all(libPromises);
+
+          planModuleCache.set(cacheKey, {
+            moduleTitle: moduleDoc.exists ? (moduleDoc.data()?.title ?? weekKey) : weekKey,
+            sessions,
+          });
+        } catch {
+          planModuleCache.set(cacheKey, { moduleTitle: weekKey, sessions: [] });
+        }
+      }
+
+      const cached = planModuleCache.get(cacheKey)!;
+      weeks[weekKey] = {
+        planId: assignment.planId,
+        moduleId: assignment.moduleId,
+        moduleTitle: cached.moduleTitle,
+        isPersonalized: false,
+        sessions: cached.sessions,
+      };
+    })
+  );
+
+  res.json({
+    data: {
+      planAssignments,
+      weeks,
+    },
+  });
+});
+
+// POST /creator/programs/:programId/assign-plan
+router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const { programId } = req.params;
+  const { planId, startWeekKey } = req.body;
+
+  if (!planId || typeof planId !== "string") {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "planId es requerido", "planId");
+  }
+  if (!startWeekKey || typeof startWeekKey !== "string") {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "startWeekKey es requerido", "startWeekKey");
+  }
+
+  // 1. Read plan modules
+  const modulesSnap = await db.collection("plans").doc(planId)
+    .collection("modules").orderBy("order", "asc").get();
+  if (modulesSnap.empty) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este plan no tiene semanas");
+  }
+
+  const modules = modulesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const weekKeys = getConsecutiveWeekKeys(startWeekKey, modules.length);
+
+  // 2. Write planAssignments to the course document
+  const courseRef = db.collection("courses").doc(programId);
+  const assignmentUpdate: Record<string, unknown> = {};
+  for (let i = 0; i < weekKeys.length; i++) {
+    assignmentUpdate[`planAssignments.${weekKeys[i]}`] = {
+      planId,
+      moduleIndex: i,
+      moduleId: modules[i].id,
+      assignedAt: new Date().toISOString(),
+    };
+  }
+  await courseRef.update(assignmentUpdate);
+
+  // 3. Read sessions for each module (pre-resolved response)
+  const weeks: Record<string, unknown> = {};
+  await Promise.all(
+    weekKeys.map(async (wk, i) => {
+      const mod = modules[i];
+      const moduleRef = db.collection("plans").doc(planId).collection("modules").doc(mod.id);
+      const sessions = await readSessionTree(moduleRef.collection("sessions"));
+      weeks[wk] = {
+        planId,
+        moduleId: mod.id,
+        moduleTitle: (mod as Record<string, unknown>).title ?? `Semana ${i + 1}`,
+        isPersonalized: false,
+        sessions,
+      };
+    })
+  );
+
+  res.json({ data: { assignedWeekKeys: weekKeys, weeks } });
+});
+
+// DELETE /creator/programs/:programId/remove-plan/:planId
+router.delete("/creator/programs/:programId/remove-plan/:planId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { programId, planId } = req.params;
+  const courseDoc = await verifyProgramOwnership(auth.userId, programId);
+  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string }>;
+
+  const weekKeysToRemove = Object.keys(planAssignments).filter(
+    (wk) => planAssignments[wk]?.planId === planId
+  );
+
+  if (weekKeysToRemove.length === 0) {
+    res.json({ data: { removedWeekKeys: [] } });
+    return;
+  }
+
+  const deleteUpdate: Record<string, unknown> = {};
+  for (const wk of weekKeysToRemove) {
+    deleteUpdate[`planAssignments.${wk}`] = FieldValue.delete();
+  }
+  await db.collection("courses").doc(programId).update(deleteUpdate);
+
+  // Clean up client_plan_content documents
+  await Promise.all(
+    weekKeysToRemove.map((wk) => deleteClientPlanContentDoc(programContentDocId(programId, wk)))
+  );
+
+  res.json({ data: { removedWeekKeys: weekKeysToRemove } });
+});
+
+// GET /creator/programs/:programId/plan-content/:weekKey
+router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const { programId, weekKey } = req.params;
+
+  let docId = programContentDocId(programId, weekKey);
+  let doc = await db.collection("client_plan_content").doc(docId).get();
+
+  if (!doc.exists) {
+    try {
+      const result = await ensureProgramCopy(programId, weekKey, auth.userId);
+      docId = result.docId;
+      doc = await db.collection("client_plan_content").doc(docId).get();
+    } catch {
+      res.json({ data: null });
+      return;
+    }
+    if (!doc.exists) {
+      res.json({ data: null });
+      return;
+    }
+  }
+
+  const docData = doc.data()!;
+  const sessionsSnap = await doc.ref.collection("sessions").orderBy("order", "asc").get();
+  const sessions = await Promise.all(
+    sessionsSnap.docs.map(async (sDoc) => {
+      const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
+      const exercises = await Promise.all(
+        exSnap.docs.map(async (eDoc) => {
+          const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+          return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+        })
+      );
+      return { id: sDoc.id, ...sDoc.data(), exercises };
+    })
+  );
+
+  res.json({ data: { ...docData, programId, sessions } });
+});
+
+// PUT /creator/programs/:programId/plan-content/:weekKey
+router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const { programId, weekKey } = req.params;
+  const body = req.body ?? {};
+  const docId = programContentDocId(programId, weekKey);
+  const docRef = db.collection("client_plan_content").doc(docId);
+
+  await docRef.set({
+    title: body.title ?? weekKey,
+    order: body.order ?? 0,
+    source_plan_id: body.source_plan_id ?? null,
+    source_module_id: body.source_module_id ?? null,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  const sessions = Array.isArray(body.sessions) ? body.sessions : [];
+  let batch = db.batch();
+  let batchCount = 0;
+
+  for (const session of sessions) {
+    if (!session || typeof session !== "object") continue;
+    const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
+    const sessionRef = docRef.collection("sessions").doc(sessionId);
+    const { exercises: exArr, ...sessionFields } = session as Record<string, unknown>;
+    batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+    batchCount++;
+
+    if (Array.isArray(exArr)) {
+      for (const exercise of exArr) {
+        if (!exercise || typeof exercise !== "object") continue;
+        const exId = (exercise as Record<string, unknown>).id ?? db.collection("_").doc().id;
+        const exRef = sessionRef.collection("exercises").doc(exId as string);
+        const { sets: setsArr, ...exFields } = exercise as Record<string, unknown>;
+        batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+        batchCount++;
+
+        if (Array.isArray(setsArr)) {
+          for (const set of setsArr) {
+            if (!set || typeof set !== "object") continue;
+            const setId = (set as Record<string, unknown>).id ?? db.collection("_").doc().id;
+            batch.set(exRef.collection("sets").doc(setId as string), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+            batchCount++;
+          }
+        }
+
+        if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      }
+    }
+  }
+
+  if (batchCount > 0) await batch.commit();
+  res.json({ data: { docId, weekKey, sessionsWritten: sessions.length } });
+});
+
+// DELETE /creator/programs/:programId/weeks/:weekKey/sessions/:sessionId
+router.delete("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const { programId, weekKey, sessionId } = req.params;
+  const { docId } = await ensureProgramCopy(programId, weekKey, auth.userId);
+  const docRef = db.collection("client_plan_content").doc(docId);
+  const sessionRef = docRef.collection("sessions").doc(sessionId);
+
+  const sessionDoc = await sessionRef.get();
+  if (!sessionDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada en esta semana");
+  }
+
+  const exSnap = await sessionRef.collection("exercises").get();
+  let batch = db.batch();
+  let count = 0;
+  for (const eDoc of exSnap.docs) {
+    const setsSnap = await eDoc.ref.collection("sets").get();
+    for (const setDoc of setsSnap.docs) {
+      batch.delete(setDoc.ref);
+      count++;
+      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    }
+    batch.delete(eDoc.ref);
+    count++;
+  }
+  batch.delete(sessionRef);
+  count++;
+  if (count > 0) await batch.commit();
+
+  const remainingSessions = await readSessionTree(docRef.collection("sessions"));
+  res.json({ data: { weekKey, isPersonalized: true, sessions: remainingSessions } });
+});
+
+// PATCH /creator/programs/:programId/weeks/:weekKey/sessions/:sessionId
+router.patch("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const { programId, weekKey, sessionId } = req.params;
+  const { docId } = await ensureProgramCopy(programId, weekKey, auth.userId);
+  const sessionRef = db.collection("client_plan_content").doc(docId).collection("sessions").doc(sessionId);
+
+  const sessionDoc = await sessionRef.get();
+  if (!sessionDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada en esta semana");
+  }
+
+  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id"];
+  const updates = pickFields(req.body, allowedFields);
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  await sessionRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
+  res.json({ data: { sessionId, weekKey, isPersonalized: true, updated: true } });
+});
+
+// POST /creator/programs/:programId/weeks/:weekKey/sessions
+router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const { programId, weekKey } = req.params;
+  const { librarySessionId, dayIndex } = req.body;
+
+  if (!librarySessionId || typeof librarySessionId !== "string") {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "librarySessionId es requerido", "librarySessionId");
+  }
+
+  const { docId } = await ensureProgramCopy(programId, weekKey, auth.userId);
+  const docRef = db.collection("client_plan_content").doc(docId);
+
+  const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
+    .collection("sessions").doc(librarySessionId);
+  const libDoc = await libSessionRef.get();
+  if (!libDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesion de biblioteca no encontrada");
+  }
+  const libData = libDoc.data()!;
+
+  const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+  const exercises = await Promise.all(
+    libExSnap.docs.map(async (eDoc) => {
+      const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+      return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+    })
+  );
+
+  const newSessionId = db.collection("_").doc().id;
+  const sessionRef = docRef.collection("sessions").doc(newSessionId);
+  const sessionData: Record<string, unknown> = {
+    id: newSessionId,
+    title: libData.title ?? libData.name ?? "Sesion",
+    order: 99,
+    dayIndex: typeof dayIndex === "number" ? dayIndex : null,
+    image_url: libData.image_url ?? null,
+    source_library_session_id: librarySessionId,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  };
+
+  let batch = db.batch();
+  let batchCount = 0;
+  batch.set(sessionRef, sessionData);
+  batchCount++;
+
+  for (const ex of exercises) {
+    const exId = (ex.id as string) ?? db.collection("_").doc().id;
+    const exRef = sessionRef.collection("exercises").doc(exId);
+    const { sets: setsArr, ...exFields } = ex;
+    batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+    batchCount++;
+    if (Array.isArray(setsArr)) {
+      for (const set of setsArr as Array<Record<string, unknown>>) {
+        const setId = (set.id as string) ?? db.collection("_").doc().id;
+        batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+        batchCount++;
+      }
+    }
+    if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+  }
+  if (batchCount > 0) await batch.commit();
+
+  res.status(201).json({
+    data: { weekKey, isPersonalized: true, session: { ...sessionData, exercises } },
+  });
+});
+
+// ─── Program Nutrition Assignments ────────────────────────────────────────
+
+// GET /creator/programs/:programId/nutrition/assignments
+router.get("/creator/programs/:programId/nutrition/assignments", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const snap = await db.collection("nutrition_assignments")
+    .where("programId", "==", req.params.programId)
+    .where("source", "==", "program")
+    .get();
+
+  const assignments = snap.docs.map((d) => ({
+    assignmentId: d.id,
+    ...d.data(),
+    createdAt: d.data().createdAt?.toDate?.()?.toISOString?.() ?? null,
+    updatedAt: d.data().updatedAt?.toDate?.()?.toISOString?.() ?? null,
+  }));
+
+  res.json({ data: assignments });
+});
+
+// POST /creator/programs/:programId/nutrition/assignments
+router.post("/creator/programs/:programId/nutrition/assignments", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const body = validateBody<{ planId: string }>(
+    { planId: "string" },
+    req.body
+  );
+
+  const planDoc = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("plans")
+    .doc(body.planId)
+    .get();
+
+  if (!planDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+
+  const planData = planDoc.data()!;
+
+  const assignmentRef = db.collection("nutrition_assignments").doc();
+  const batch = db.batch();
+
+  batch.set(assignmentRef, {
+    userId: null,
+    programId: req.params.programId,
+    source: "program",
+    assignedBy: auth.userId,
+    planId: body.planId,
+    planName: planData.name ?? "",
+    plan: planData,
+    startDate: null,
+    endDate: null,
+    status: "active",
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  batch.set(
+    db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
+    buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+  );
+
+  await batch.commit();
+  res.status(201).json({ data: { assignmentId: assignmentRef.id } });
+});
+
+// DELETE /creator/programs/:programId/nutrition/assignments/:assignmentId
+router.delete("/creator/programs/:programId/nutrition/assignments/:assignmentId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyProgramOwnership(auth.userId, req.params.programId);
+
+  const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
+  const assignDoc = await assignRef.get();
+  if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Asignacion no encontrada");
+  }
+
+  const batch = db.batch();
+  batch.delete(assignRef);
+  batch.delete(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId));
+  await batch.commit();
+
   res.status(204).send();
 });
 

@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell
+  BarChart, Bar, Cell, Area, ComposedChart,
 } from 'recharts';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -19,13 +19,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import { GlowingEffect, TubelightNavBar, SkeletonCard, FullScreenError, InlineError } from '../components/ui';
+import { GlowingEffect, TubelightNavBar, FullScreenError, InlineError } from '../components/ui';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
-  DEFAULT_FIELD_IDS, DEFAULT_FIELDS,
+  DEFAULT_FIELD_IDS, DEFAULT_FIELDS, UNDELETABLE_FIELD_IDS,
   relativeLuminance, extractAccentFromImage,
   SortableField, LockedField, FieldTypePicker, NumberStepper,
 } from '../components/events/eventFieldComponents';
+import MediaPickerModal from '../components/MediaPickerModal';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
 import './EventResultsScreen.css';
@@ -97,6 +99,13 @@ function getDisplayName(reg, columns) {
   return 'Registrado';
 }
 
+// ─── Analytics engine ──────────────────────────────────────────────
+
+function toDate(ts) {
+  if (!ts) return null;
+  return ts.toDate ? ts.toDate() : new Date(ts);
+}
+
 function groupByDay(registrations) {
   const map = {};
   registrations.forEach(r => {
@@ -107,23 +116,348 @@ function groupByDay(registrations) {
   return Object.entries(map).map(([day, count]) => ({ day, count }));
 }
 
-function buildFieldDistributions(event, registrations) {
-  const chartFields = (event.fields || []).filter(f =>
-    ['select', 'radio', 'multiselect'].includes(f.type)
-  );
-  return chartFields.map(field => {
-    const counts = {};
-    registrations.forEach(r => {
-      const val = r.responses?.[field.id];
-      if (!val) return;
-      const values = Array.isArray(val) ? val : [val];
-      values.forEach(v => { if (v) counts[v] = (counts[v] || 0) + 1; });
-    });
-    return {
-      field,
-      data: Object.entries(counts).map(([name, value]) => ({ name, value })),
-    };
+function buildTimelineData(registrations) {
+  const sorted = [...registrations].sort((a, b) => {
+    const da = toDate(a.created_at), db = toDate(b.created_at);
+    return (da?.getTime() || 0) - (db?.getTime() || 0);
   });
+  const dayMap = {};
+  sorted.forEach(r => {
+    const d = toDate(r.created_at);
+    if (!d) return;
+    const key = d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+    dayMap[key] = (dayMap[key] || 0) + 1;
+  });
+  let cumulative = 0;
+  return Object.entries(dayMap).map(([day, daily]) => {
+    cumulative += daily;
+    return { day, daily, cumulative };
+  });
+}
+
+function buildTimelineInsights(timelineData, total) {
+  if (timelineData.length < 2) return [];
+  const insights = [];
+  const halfTotal = total / 2;
+  const firstHalfIdx = timelineData.findIndex(d => d.cumulative >= halfTotal);
+  if (firstHalfIdx >= 0 && firstHalfIdx < timelineData.length / 3) {
+    const firstHalfPct = Math.round(timelineData[firstHalfIdx].cumulative / total * 100);
+    insights.push(`El ${firstHalfPct}% de los registros llegaron en los primeros ${firstHalfIdx + 1} dia${firstHalfIdx > 0 ? 's' : ''}.`);
+  }
+  const peakDay = timelineData.reduce((max, d) => d.daily > max.daily ? d : max, timelineData[0]);
+  const avgDaily = total / timelineData.length;
+  if (peakDay.daily > avgDaily * 2) {
+    insights.push(`Hubo un pico el ${peakDay.day} con ${peakDay.daily} registros — revisa si publicaste algo ese dia.`);
+  }
+  const lastThird = timelineData.slice(Math.floor(timelineData.length * 0.66));
+  const lastThirdTotal = lastThird.reduce((s, d) => s + d.daily, 0);
+  if (lastThirdTotal < total * 0.1 && timelineData.length > 3) {
+    insights.push('Los registros se frenaron en los ultimos dias del periodo.');
+  }
+  return insights;
+}
+
+function computeFillTime(registrations, capacity) {
+  if (!capacity) return null;
+  const sorted = [...registrations].sort((a, b) => {
+    const da = toDate(a.created_at), db = toDate(b.created_at);
+    return (da?.getTime() || 0) - (db?.getTime() || 0);
+  });
+  if (sorted.length < capacity) return null;
+  const first = toDate(sorted[0]?.created_at);
+  const atCap = toDate(sorted[capacity - 1]?.created_at);
+  if (!first || !atCap) return null;
+  const diffMs = atCap.getTime() - first.getTime();
+  const days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  const dateStr = atCap.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+  return { days, dateStr };
+}
+
+function buildSmartFieldAnalysis(event, registrations) {
+  const fields = event?.fields || [];
+  if (!fields.length || !registrations.length) return [];
+  const total = registrations.length;
+  const results = [];
+
+  for (const field of fields) {
+    const values = registrations.map(r => {
+      if (r.responses) return r.responses[field.id];
+      return r[field.id];
+    }).filter(v => v != null && v !== '');
+
+    if (values.length < 3) continue;
+
+    const labelLower = field.label.toLowerCase();
+    if (field.id === 'f_nombre' || labelLower.includes('nombre') || labelLower.includes('name')) continue;
+
+    if (field.type === 'number' || field.id === 'f_edad') {
+      const nums = values.map(Number).filter(n => !isNaN(n));
+      if (nums.length < 3) continue;
+      nums.sort((a, b) => a - b);
+      const avg = Math.round(nums.reduce((s, n) => s + n, 0) / nums.length);
+      const median = nums[Math.floor(nums.length / 2)];
+      const min = nums[0];
+      const max = nums[nums.length - 1];
+      const range = max - min;
+      const bucketSize = range <= 10 ? 2 : range <= 30 ? 5 : range <= 100 ? 10 : 20;
+      const bucketStart = Math.floor(min / bucketSize) * bucketSize;
+      const buckets = {};
+      nums.forEach(n => {
+        const bStart = Math.floor(n / bucketSize) * bucketSize;
+        const label = `${bStart}-${bStart + bucketSize - 1}`;
+        buckets[label] = (buckets[label] || 0) + 1;
+      });
+      const histogram = Object.entries(buckets).map(([label, count]) => ({ label, count }));
+      const maxBucket = histogram.reduce((m, b) => b.count > m.count ? b : m, histogram[0]);
+      const maxBucketPct = Math.round(maxBucket.count / nums.length * 100);
+
+      results.push({
+        field,
+        type: 'number',
+        stats: { avg, median, min, max },
+        histogram,
+        insight: `Tu audiencia promedio tiene ${avg} ${field.label.toLowerCase()}. El grupo mas grande es ${maxBucket.label} (${maxBucketPct}%).`,
+      });
+      continue;
+    }
+
+    if (['select', 'radio'].includes(field.type)) {
+      const counts = {};
+      values.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      if (sorted.length === 1 && sorted[0][1] === values.length) {
+        results.push({ field, type: 'uniform', value: sorted[0][0], count: sorted[0][1] });
+        continue;
+      }
+      const bars = sorted.map(([name, count]) => ({
+        name, count, pct: Math.round(count / values.length * 100),
+      }));
+      const topPct = bars[0]?.pct || 0;
+      const insight = topPct > 50
+        ? `La mayoria selecciono ${bars[0].name} (${topPct}%).`
+        : `${bars[0].name} fue la respuesta mas comun (${topPct}%).`;
+
+      results.push({ field, type: 'select', bars, insight });
+      continue;
+    }
+
+    if (field.type === 'multiselect') {
+      const counts = {};
+      values.forEach(v => {
+        const arr = Array.isArray(v) ? v : [v];
+        arr.forEach(opt => { if (opt) counts[opt] = (counts[opt] || 0) + 1; });
+      });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const totalResponses = Object.values(counts).reduce((s, c) => s + c, 0);
+      const bars = sorted.map(([name, count]) => ({
+        name, count, pct: Math.round(count / totalResponses * 100),
+      }));
+      const insight = `${bars[0]?.name} fue la opcion mas popular (${bars[0]?.count} respuestas).`;
+      results.push({ field, type: 'multiselect', bars, insight });
+      continue;
+    }
+
+    if (field.type === 'email' || field.id === 'f_email') continue;
+    if (field.type === 'tel' || field.id === 'f_telefono') continue;
+
+    if (['text', 'textarea'].includes(field.type)) {
+      const counts = {};
+      values.forEach(v => {
+        const norm = String(v).trim().toLowerCase();
+        counts[norm] = (counts[norm] || 0) + 1;
+      });
+      const unique = Object.keys(counts).length;
+      if (unique > 20) {
+        results.push({ field, type: 'text-many', uniqueCount: unique });
+        continue;
+      }
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const bars = sorted.map(([name, count]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        count,
+        pct: Math.round(count / values.length * 100),
+      }));
+      results.push({ field, type: 'text-few', bars, insight: `${bars[0]?.name} fue la respuesta mas comun (${bars[0]?.pct}%).` });
+      continue;
+    }
+  }
+
+  return results;
+}
+
+function buildCrossTab(event, registrations) {
+  const fields = event?.fields || [];
+  const selectFields = fields.filter(f => ['select', 'radio'].includes(f.type) && f.id !== 'f_email' && f.id !== 'f_telefono');
+  if (selectFields.length < 2 || registrations.length < 10) return null;
+
+  let bestPair = null;
+  let bestScore = 0;
+
+  for (let i = 0; i < selectFields.length; i++) {
+    for (let j = i + 1; j < selectFields.length; j++) {
+      const fA = selectFields[i];
+      const fB = selectFields[j];
+      const groupedA = {};
+      registrations.forEach(r => {
+        const vA = r.responses?.[fA.id] ?? r[fA.id];
+        const vB = r.responses?.[fB.id] ?? r[fB.id];
+        if (!vA || !vB) return;
+        if (!groupedA[vA]) groupedA[vA] = {};
+        groupedA[vA][vB] = (groupedA[vA][vB] || 0) + 1;
+      });
+      const groups = Object.keys(groupedA);
+      if (groups.length < 2) continue;
+      const allBValues = [...new Set(registrations.map(r => r.responses?.[fB.id] ?? r[fB.id]).filter(Boolean))];
+      if (allBValues.length < 2 || allBValues.length > 6) continue;
+
+      let maxDiff = 0;
+      for (const bVal of allBValues) {
+        const pcts = groups.map(g => {
+          const groupTotal = Object.values(groupedA[g]).reduce((s, c) => s + c, 0);
+          return groupTotal > 0 ? (groupedA[g][bVal] || 0) / groupTotal : 0;
+        });
+        const diff = Math.max(...pcts) - Math.min(...pcts);
+        if (diff > maxDiff) maxDiff = diff;
+      }
+
+      if (maxDiff > bestScore) {
+        bestScore = maxDiff;
+        bestPair = { rowField: fA, colField: fB, grouped: groupedA, allColValues: allBValues };
+      }
+    }
+  }
+
+  if (!bestPair || bestScore < 0.15) return null;
+
+  const { rowField, colField, grouped, allColValues } = bestPair;
+  const rows = Object.entries(grouped).map(([rowVal, colCounts]) => {
+    const rowTotal = Object.values(colCounts).reduce((s, c) => s + c, 0);
+    const cells = allColValues.map(cv => ({
+      value: cv,
+      count: colCounts[cv] || 0,
+      pct: rowTotal > 0 ? Math.round((colCounts[cv] || 0) / rowTotal * 100) : 0,
+    }));
+    return { label: rowVal, total: rowTotal, cells };
+  });
+
+  let insightParts = [];
+  if (rows.length >= 2 && allColValues.length >= 1) {
+    const topCol = allColValues[0];
+    const row0 = rows[0];
+    const row1 = rows[1];
+    const pct0 = row0.cells.find(c => c.value === topCol)?.pct || 0;
+    const pct1 = row1.cells.find(c => c.value === topCol)?.pct || 0;
+    if (Math.abs(pct0 - pct1) > 15) {
+      insightParts.push(
+        `De los ${row0.label.toLowerCase()}, el ${pct0}% selecciono ${topCol}. En ${row1.label.toLowerCase()} solo el ${pct1}%.`
+      );
+    }
+  }
+
+  return {
+    rowField,
+    colField,
+    rows,
+    colValues: allColValues,
+    insight: insightParts.join(' '),
+  };
+}
+
+function buildCheckinTimeline(registrations) {
+  const checkedIn = registrations.filter(r => r.checked_in && r.checked_in_at);
+  if (checkedIn.length < 3) return null;
+
+  const times = checkedIn.map(r => {
+    const d = toDate(r.checked_in_at);
+    return d ? d.getHours() + d.getMinutes() / 60 : null;
+  }).filter(Boolean);
+
+  if (!times.length) return null;
+  times.sort((a, b) => a - b);
+
+  const minHour = Math.floor(Math.min(...times));
+  const maxHour = Math.ceil(Math.max(...times));
+  const slotMinutes = 15;
+  const slots = [];
+
+  for (let h = minHour; h <= maxHour; h++) {
+    for (let m = 0; m < 60; m += slotMinutes) {
+      const slotStart = h + m / 60;
+      const slotEnd = slotStart + slotMinutes / 60;
+      const count = times.filter(t => t >= slotStart && t < slotEnd).length;
+      const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      slots.push({ label, count, hour: h, minute: m });
+    }
+  }
+
+  const peakSlot = slots.reduce((m, s) => s.count > m.count ? s : m, slots[0]);
+  const peakEnd = `${String(peakSlot.hour).padStart(2, '0')}:${String(peakSlot.minute + slotMinutes).padStart(2, '0')}`;
+  const insight = `La mayoria llego entre ${peakSlot.label} y ${peakEnd}.`;
+
+  return { slots, insight, peakLabel: peakSlot.label };
+}
+
+function buildNoShowProfile(event, registrations) {
+  const fields = event?.fields || [];
+  const total = registrations.length;
+  const noShows = registrations.filter(r => !r.checked_in);
+  if (noShows.length < 3 || total < 10) return null;
+
+  const segmentFields = fields.filter(f =>
+    ['select', 'radio', 'number'].includes(f.type) || f.id === 'f_edad' || f.id === 'f_genero'
+  );
+
+  const segments = [];
+  for (const field of segmentFields) {
+    const isNumber = field.type === 'number' || field.id === 'f_edad';
+
+    if (isNumber) {
+      const getVal = r => {
+        const v = r.responses?.[field.id] ?? r[field.id];
+        return v != null ? Number(v) : NaN;
+      };
+      const allNums = registrations.map(getVal).filter(n => !isNaN(n));
+      if (allNums.length < 5) continue;
+      const med = allNums.sort((a, b) => a - b)[Math.floor(allNums.length / 2)];
+      const groups = [
+        { label: `${field.label} <= ${med}`, filter: r => getVal(r) <= med },
+        { label: `${field.label} > ${med}`, filter: r => getVal(r) > med },
+      ];
+      for (const g of groups) {
+        const groupRegs = registrations.filter(g.filter);
+        const groupNoShows = groupRegs.filter(r => !r.checked_in);
+        if (groupRegs.length < 3) continue;
+        const rate = Math.round(groupNoShows.length / groupRegs.length * 100);
+        segments.push({ label: g.label, rate, count: groupNoShows.length, total: groupRegs.length });
+      }
+    } else {
+      const counts = {};
+      registrations.forEach(r => {
+        const v = r.responses?.[field.id] ?? r[field.id];
+        if (!v) return;
+        if (!counts[v]) counts[v] = { total: 0, noShow: 0 };
+        counts[v].total++;
+        if (!r.checked_in) counts[v].noShow++;
+      });
+      Object.entries(counts).forEach(([val, c]) => {
+        if (c.total < 3) return;
+        const rate = Math.round(c.noShow / c.total * 100);
+        segments.push({ label: val, rate, count: c.noShow, total: c.total });
+      });
+    }
+  }
+
+  if (segments.length < 2) return null;
+  segments.sort((a, b) => b.rate - a.rate);
+
+  const highest = segments[0];
+  const lowest = segments[segments.length - 1];
+  let insight = '';
+  if (highest.rate - lowest.rate > 15) {
+    insight = `Los no-shows fueron mas comunes en ${highest.label} (${highest.rate}% no asistio) vs ${lowest.label} (solo ${lowest.rate}%).`;
+  }
+
+  return { segments: segments.slice(0, 6), insight };
 }
 
 const CHART_COLORS = [
@@ -134,6 +468,7 @@ const CHART_COLORS = [
   'rgba(255,255,255,0.12)',
 ];
 
+
 // ─── Editor sub-components (imported from components/events/eventFieldComponents) ──
 
 // ─── Results sub-components ────────────────────────────────────────
@@ -143,18 +478,75 @@ function ChartTooltip({ active, payload, label }) {
   return (
     <div className="er-tooltip">
       <p className="er-tooltip-label">{label}</p>
-      <p className="er-tooltip-value">{payload[0].value}</p>
+      {payload.map((p, i) => (
+        <p key={i} className="er-tooltip-value">{p.name === 'cumulative' ? `Total: ${p.value}` : p.value}</p>
+      ))}
     </div>
   );
 }
 
-function StatCard({ label, value, sub }) {
+function StatCard({ label, value, sub, badge, badgeColor, comparison }) {
   return (
     <div className="er-stat-card er-fade-in" style={{ position: 'relative' }}>
       <GlowingEffect />
       <span className="er-stat-label">{label}</span>
       <span className="er-stat-value">{value}</span>
+      {badge && (
+        <span className={`er-stat-badge er-stat-badge--${badgeColor || 'neutral'}`}>{badge}</span>
+      )}
+      {comparison && (
+        <span className={`er-stat-comparison er-stat-comparison--${comparison.direction}`}>
+          {comparison.direction === 'up' ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5m-7 7 7-7 7 7"/></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14m-7-7 7 7 7-7"/></svg>
+          )}
+          {comparison.text}
+        </span>
+      )}
       {sub && <span className="er-stat-sub">{sub}</span>}
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return <h2 className="er-section-title">{children}</h2>;
+}
+
+function InsightText({ children }) {
+  if (!children) return null;
+  return <p className="er-insight-text">{children}</p>;
+}
+
+function HBarChart({ bars, accentFirst }) {
+  if (!bars?.length) return null;
+  return (
+    <div className="er-hbar-list">
+      {bars.map((bar, i) => (
+        <div key={bar.name} className="er-hbar-item">
+          <span className="er-hbar-label">{bar.name}</span>
+          <div className="er-hbar-track">
+            <div
+              className={`er-hbar-fill${accentFirst && i === 0 ? ' er-hbar-fill--accent' : ''}`}
+              style={{ width: `${Math.max(bar.pct, 2)}%` }}
+            >
+              {bar.pct >= 15 && <span className="er-hbar-pct">{bar.pct}%</span>}
+            </div>
+          </div>
+          <span className="er-hbar-count">{bar.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AnalyticsCard({ title, insight, children, className }) {
+  return (
+    <div className={`er-analytics-card er-fade-in ${className || ''}`} style={{ position: 'relative' }}>
+      <GlowingEffect />
+      {title && <h3 className="er-analytics-card-title">{title}</h3>}
+      {insight && <InsightText>{insight}</InsightText>}
+      {children}
     </div>
   );
 }
@@ -255,64 +647,42 @@ export default function EventResultsScreen() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
-  const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'registros';
+  const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'analytics';
 
-  console.error('[EventResults] Mount — eventId:', eventId, 'user:', user?.uid, 'path:', routerLocation.pathname);
-
-  const { data: event, isLoading: eventLoading, isError: eventError, error: eventFetchError } = useQuery({
+  const { data: event, isLoading: eventLoading, isError: eventError } = useQuery({
     queryKey: queryKeys.events.detail(eventId),
     queryFn: async () => {
-      console.error('[EventResults] Fetching event detail for:', eventId);
-      try {
-        const result = await eventService.getEvent(eventId);
-        console.error('[EventResults] Event detail result:', JSON.stringify(result, null, 2));
-        return result;
-      } catch (err) {
-        console.error('[EventResults] Event detail FAILED:', err?.message, err?.status, err);
-        throw err;
-      }
+      console.log('[EventResultsScreen] fetching event detail', eventId);
+      const result = await eventService.getEvent(eventId);
+      console.log('[EventResultsScreen] event detail:', { id: result?.id, status: result?.status, title: result?.title });
+      return result;
     },
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
   });
 
-  const { data: registrations = [], isLoading: regsLoading, error: regsFetchError } = useQuery({
+  const { data: registrations = [], isLoading: regsLoading } = useQuery({
     queryKey: queryKeys.events.registrations(eventId),
-    queryFn: async () => {
-      console.error('[EventResults] Fetching registrations for:', eventId);
-      try {
-        const result = await eventService.getEventRegistrations(eventId);
-        console.error('[EventResults] Registrations result: count=', result?.length, 'first=', JSON.stringify(result?.[0]));
-        return result;
-      } catch (err) {
-        console.error('[EventResults] Registrations FAILED:', err?.message, err?.status, err);
-        throw err;
-      }
-    },
+    queryFn: () => eventService.getEventRegistrations(eventId),
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
   });
 
-  const { data: waitlist = [], isLoading: waitlistLoading, error: waitlistFetchError } = useQuery({
+  const { data: waitlist = [], isLoading: waitlistLoading } = useQuery({
     queryKey: queryKeys.events.waitlist(eventId),
-    queryFn: async () => {
-      console.error('[EventResults] Fetching waitlist for:', eventId);
-      try {
-        const result = await eventService.getEventWaitlist(eventId);
-        console.error('[EventResults] Waitlist result: count=', result?.length);
-        return result;
-      } catch (err) {
-        console.error('[EventResults] Waitlist FAILED:', err?.message, err?.status, err);
-        throw err;
-      }
-    },
+    queryFn: () => eventService.getEventWaitlist(eventId),
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+  });
+
+  const { data: allCreatorEvents = [] } = useQuery({
+    queryKey: queryKeys.events.byCreator(user?.uid),
+    queryFn: () => eventService.getEventsByCreator(user.uid),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
 
   const isLoading = eventLoading || regsLoading || waitlistLoading;
-
-  console.error('[EventResults] State — eventLoading:', eventLoading, 'regsLoading:', regsLoading, 'waitlistLoading:', waitlistLoading, 'eventError:', eventError, 'event:', event ? `{id:${event.id}, creator_id:${event.creator_id}, title:${event.title}}` : null, 'registrations:', registrations?.length, 'waitlist:', waitlist?.length, 'eventFetchError:', eventFetchError?.message, 'regsFetchError:', regsFetchError?.message, 'waitlistFetchError:', waitlistFetchError?.message);
 
   const [selectedReg, setSelectedReg] = useState(null);
   const [search, setSearch] = useState('');
@@ -338,23 +708,17 @@ export default function EventResultsScreen() {
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const imageInputRef = useRef(null);
   const savedRef = useRef(null);
 
   useEffect(() => {
-    console.error('[EventResults] Ownership useEffect — event:', event ? `{id:${event.id}, creator_id:${event.creator_id}, status:${event.status}}` : null, 'user.uid:', user?.uid);
-    if (!event) {
-      console.error('[EventResults] No event data yet, skipping ownership check');
-      return;
-    }
+    if (!event) return;
     if (event.creator_id !== user?.uid) {
-      console.error('[EventResults] OWNERSHIP MISMATCH — event.creator_id:', JSON.stringify(event.creator_id), 'user.uid:', JSON.stringify(user?.uid), '— redirecting to /events');
-      console.error('[EventResults] Full event object:', JSON.stringify(event));
       navigate('/events', { replace: true });
       return;
     }
-    console.error('[EventResults] Ownership OK, populating form fields');
     const d = event;
     setTitle(d.title || '');
     setDescription(d.description || '');
@@ -478,63 +842,81 @@ export default function EventResultsScreen() {
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setFieldErrors({});
     setSaving(true);
-    try {
-      const finalImageUrl = await uploadImage();
 
-      const validFields = fields
-        .filter(f => f.locked || f.label.trim())
-        .map(f => ({
-          id: f.id,
-          label: f.label.trim(),
-          type: f.type,
-          required: Boolean(f.required),
-          placeholder: f.placeholder || '',
-          locked: Boolean(f.locked),
-          ...(f.options ? { options: f.options.filter(o => o.trim()) } : {}),
-        }));
-
-      const eventData = {
-        title: title.trim(),
-        description: description.trim(),
-        date: eventService.makeDateTimestamp(eventDate),
-        location: eventLocation.trim(),
-        access,
-        max_registrations: maxRegistrations ? Number(maxRegistrations) : null,
-        settings: {
-          confirmation_message: confirmationMessage.trim(),
-          send_confirmation_email: sendConfirmationEmail,
-          enable_qr_checkin: enableQrCheckin,
-          show_registration_count: false,
-        },
-        status: targetStatus,
-        fields: validFields,
-        image_url: finalImageUrl,
-      };
-
-      await eventService.updateEvent(eventId, eventData);
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
-      setEventStatus(targetStatus);
-      savedRef.current = {
-        title,
-        description,
-        eventDate,
-        eventLocation,
-        access,
-        maxRegistrations,
-        confirmationMessage,
-        sendConfirmationEmail,
-        enableQrCheckin,
-        eventStatus: targetStatus,
-        fields: JSON.stringify(fields),
-        imageUrl: finalImageUrl,
-      };
-    } catch (err) {
-      logger.error('[EventResults] save failed', err);
-      showToast('No pudimos guardar el evento. Intenta de nuevo.', 'error');
-      setUploadProgress(null);
-    } finally {
-      setSaving(false);
+    let finalImageUrl = imageUrl;
+    if (imageFile) {
+      try {
+        finalImageUrl = await uploadImage();
+      } catch (err) {
+        logger.error('[EventResults] image upload failed', err);
+        showToast('No pudimos subir la imagen. Intenta de nuevo.', 'error');
+        setUploadProgress(null);
+        setSaving(false);
+        return;
+      }
     }
+
+    const validFields = fields
+      .filter(f => f.locked || f.label.trim())
+      .map(f => ({
+        id: f.id,
+        label: f.label.trim(),
+        type: f.type,
+        required: Boolean(f.required),
+        placeholder: f.placeholder || '',
+        locked: Boolean(f.locked),
+        ...(f.options ? { options: f.options.filter(o => o.trim()) } : {}),
+      }));
+
+    const eventData = {
+      title: title.trim(),
+      description: description.trim(),
+      date: eventService.makeDateTimestamp(eventDate),
+      location: eventLocation.trim(),
+      access,
+      max_registrations: maxRegistrations ? Number(maxRegistrations) : null,
+      settings: {
+        confirmation_message: confirmationMessage.trim(),
+        send_confirmation_email: sendConfirmationEmail,
+        enable_qr_checkin: enableQrCheckin,
+        show_registration_count: false,
+      },
+      status: targetStatus,
+      fields: validFields,
+      image_url: finalImageUrl,
+    };
+
+    const detailKey = queryKeys.events.detail(eventId);
+    const previousEvent = queryClient.getQueryData(detailKey);
+
+    queryClient.setQueryData(detailKey, old => old ? { ...old, ...eventData, image_url: finalImageUrl } : old);
+    setEventStatus(targetStatus);
+    savedRef.current = {
+      title,
+      description,
+      eventDate,
+      eventLocation,
+      access,
+      maxRegistrations,
+      confirmationMessage,
+      sendConfirmationEmail,
+      enableQrCheckin,
+      eventStatus: targetStatus,
+      fields: JSON.stringify(fields),
+      imageUrl: finalImageUrl,
+    };
+    setSaving(false);
+    showToast('Cambios guardados');
+
+    eventService.updateEvent(eventId, eventData).then(() => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });
+    }).catch(err => {
+      logger.error('[EventResults] save failed', err);
+      queryClient.setQueryData(detailKey, previousEvent);
+      savedRef.current = null;
+      showToast('No pudimos guardar los cambios. Intenta de nuevo.', 'error');
+      queryClient.invalidateQueries({ queryKey: detailKey });
+    });
   }
 
   function exportCSV() {
@@ -631,10 +1013,35 @@ export default function EventResultsScreen() {
   const total = registrations.length;
   const checkedIn = registrations.filter(r => r.checked_in).length;
   const checkinRate = total > 0 ? Math.round(checkedIn / total * 100) : 0;
+  const noShows = total - checkedIn;
   const capacity = event?.max_registrations;
   const capacityPct = capacity ? Math.min(Math.round(total / capacity * 100), 100) : null;
-  const timelineData = groupByDay([...registrations].reverse());
-  const fieldDistributions = event ? buildFieldDistributions(event, registrations) : [];
+
+  const timelineData = useMemo(() => buildTimelineData(registrations), [registrations]);
+  const timelineInsights = useMemo(() => buildTimelineInsights(timelineData, total), [timelineData, total]);
+  const fillTime = useMemo(() => computeFillTime(registrations, capacity), [registrations, capacity]);
+  const fieldAnalysis = useMemo(() => buildSmartFieldAnalysis(event, registrations), [event, registrations]);
+  const crossTab = useMemo(() => buildCrossTab(event, registrations), [event, registrations]);
+  const checkinTimeline = useMemo(() => buildCheckinTimeline(registrations), [registrations]);
+  const noShowProfile = useMemo(() => buildNoShowProfile(event, registrations), [event, registrations]);
+  const peakDaily = useMemo(() => {
+    if (!timelineData.length) return 0;
+    return Math.max(...timelineData.map(d => d.daily));
+  }, [timelineData]);
+
+  const otherEvents = useMemo(() => {
+    if (!allCreatorEvents.length || !eventId) return [];
+    return allCreatorEvents
+      .filter(e => e.id !== eventId)
+      .sort((a, b) => {
+        const da = toDate(a.date || a.created_at);
+        const db = toDate(b.date || b.created_at);
+        return (db?.getTime() || 0) - (da?.getTime() || 0);
+      })
+      .slice(0, 5);
+  }, [allCreatorEvents, eventId]);
+
+  const checkinBadgeColor = checkinRate >= 80 ? 'green' : checkinRate >= 50 ? 'yellow' : 'red';
 
   const cssVars = {
     '--er-accent-r': accentRgb[0],
@@ -662,16 +1069,74 @@ export default function EventResultsScreen() {
 
         {isLoading ? (
           <div className="er-skeleton-wrap">
-            <div className="er-skeleton-stats">
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
+            {/* Header */}
+            <div className="er-skel-header">
+              <div>
+                <ShimmerSkeleton width="220px" height="24px" borderRadius="8px" />
+                <ShimmerSkeleton width="140px" height="14px" borderRadius="4px" className="er-skel-mt8" />
+              </div>
+              <div className="er-skel-actions">
+                <ShimmerSkeleton width="90px" height="32px" borderRadius="8px" />
+                <ShimmerSkeleton width="100px" height="32px" borderRadius="8px" />
+                <ShimmerSkeleton width="110px" height="32px" borderRadius="8px" />
+              </div>
             </div>
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
+
+            {/* Tab bar */}
+            <div className="er-skel-tabs">
+              <ShimmerSkeleton width="80px" height="32px" borderRadius="8px" />
+              <ShimmerSkeleton width="80px" height="32px" borderRadius="8px" />
+              <ShimmerSkeleton width="64px" height="32px" borderRadius="8px" />
+            </div>
+
+            {/* Section: Resumen */}
+            <ShimmerSkeleton width="90px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skeleton-stats">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="er-skel-stat-card">
+                  <ShimmerSkeleton width="70px" height="10px" borderRadius="4px" />
+                  <ShimmerSkeleton width="48px" height="28px" borderRadius="6px" />
+                  <ShimmerSkeleton width="90px" height="10px" borderRadius="4px" />
+                </div>
+              ))}
+            </div>
+
+            {/* Section: Ritmo de inscripcion (chart) */}
+            <ShimmerSkeleton width="160px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skel-chart-card">
+              <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              <ShimmerSkeleton width="100%" height="180px" borderRadius="8px" />
+            </div>
+
+            {/* Section: Quien se registro (field analysis) */}
+            <ShimmerSkeleton width="140px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skel-analysis-card">
+              <ShimmerSkeleton width="60px" height="10px" borderRadius="4px" />
+              <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              {[100, 72, 45].map((w, i) => (
+                <div key={i} className="er-skel-hbar">
+                  <ShimmerSkeleton width="80px" height="12px" borderRadius="4px" />
+                  <ShimmerSkeleton width={`${w}%`} height="28px" borderRadius="6px" />
+                  <ShimmerSkeleton width="28px" height="12px" borderRadius="4px" />
+                </div>
+              ))}
+            </div>
+
+            {/* Section: Asistencia (two-col) */}
+            <ShimmerSkeleton width="100px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skel-two-col">
+              <div className="er-skel-analysis-card">
+                <ShimmerSkeleton width="100px" height="10px" borderRadius="4px" />
+                <ShimmerSkeleton width="64px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="100%" height="8px" borderRadius="4px" />
+                <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              </div>
+              <div className="er-skel-analysis-card">
+                <ShimmerSkeleton width="120px" height="10px" borderRadius="4px" />
+                <ShimmerSkeleton width="48px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              </div>
+            </div>
           </div>
         ) : eventError ? (
           <FullScreenError
@@ -723,6 +1188,18 @@ export default function EventResultsScreen() {
                   </svg>
                   Vista previa
                 </button>
+                <button
+                  className="ee-btn ee-btn--ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://wakelab.co/e/${eventId}`);
+                    showToast('Enlace copiado');
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                  </svg>
+                  Copiar enlace
+                </button>
                 {eventStatus !== 'active' && (
                   <button
                     className="ee-btn ee-btn--publish"
@@ -732,23 +1209,57 @@ export default function EventResultsScreen() {
                     Publicar
                   </button>
                 )}
-                <button
-                  className="ee-btn ee-btn--primary"
-                  onClick={() => handleSave(eventStatus)}
-                  disabled={saving || !isDirty}
-                >
-                  {saving
-                    ? (uploadProgress != null ? `Subiendo ${uploadProgress}%…` : 'Guardando…')
-                    : 'Guardar'}
-                </button>
+                {isDirty && (
+                  <>
+                    <button
+                      className="ee-btn ee-btn--discard"
+                      onClick={() => {
+                        const s = savedRef.current;
+                        if (!s) return;
+                        setTitle(s.title);
+                        setDescription(s.description);
+                        setEventDate(s.eventDate);
+                        setEventLocation(s.eventLocation);
+                        setAccess(s.access);
+                        setMaxRegistrations(s.maxRegistrations);
+                        setConfirmationMessage(s.confirmationMessage);
+                        setSendConfirmationEmail(s.sendConfirmationEmail);
+                        setEnableQrCheckin(s.enableQrCheckin);
+                        setEventStatus(s.eventStatus);
+                        setFields(JSON.parse(s.fields));
+                        setImageFile(null);
+                        setImagePreview(s.imageUrl || null);
+                        setImageUrl(s.imageUrl);
+                      }}
+                      aria-label="Descartar cambios"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                    <button
+                      className="ee-btn ee-btn--save"
+                      onClick={() => handleSave(eventStatus)}
+                      disabled={saving}
+                      style={{
+                        background: `rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0.85)`,
+                        color: accentText,
+                      }}
+                    >
+                      {saving
+                        ? (uploadProgress != null ? `Subiendo ${uploadProgress}%…` : 'Guardando…')
+                        : 'Guardar cambios'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Tabs */}
             <TubelightNavBar
               items={[
-                { id: 'registros', label: 'Registros' },
                 { id: 'analytics', label: 'Analytics' },
+                { id: 'registros', label: 'Registros' },
                 { id: 'editar', label: 'Editar' },
               ]}
               activeId={activeTab}
@@ -881,121 +1392,341 @@ export default function EventResultsScreen() {
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
                       <path d="M18 20V10M12 20V4M6 20v-6" />
                     </svg>
-                    <p>Aún no hay datos. Los analytics aparecerán cuando lleguen los primeros registros.</p>
+                    <p>Aun no hay datos. Los analytics apareceran cuando lleguen los primeros registros.</p>
                   </div>
                 ) : (
                   <>
+                    {/* ── Section 1: Resumen ── */}
+                    <SectionTitle>Resumen</SectionTitle>
                     <div className="er-stats-row">
                       <StatCard label="Registros" value={total} />
                       <StatCard
-                        label="Check-in"
-                        value={`${checkedIn}`}
-                        sub={total > 0 ? `${checkinRate}% del total` : undefined}
+                        label="Asistencia"
+                        value={checkedIn}
+                        badge={`${checkinRate}% check-in`}
+                        badgeColor={checkinBadgeColor}
                       />
                       {capacity != null && (
                         <StatCard
                           label="Capacidad"
                           value={`${total} / ${capacity}`}
-                          sub={`${capacityPct}% lleno`}
+                          badge={total > capacity ? 'Sobrecupo' : `${capacityPct}% lleno`}
+                          badgeColor={total > capacity ? 'red' : capacityPct >= 90 ? 'yellow' : 'green'}
+                        />
+                      )}
+                      {fillTime && (
+                        <StatCard
+                          label="Tiempo de llenado"
+                          value={`${fillTime.days} dia${fillTime.days !== 1 ? 's' : ''}`}
+                          sub={`Se lleno el ${fillTime.dateStr}`}
+                        />
+                      )}
+                      {waitlist.length > 0 && (
+                        <StatCard
+                          label="Lista de espera"
+                          value={waitlist.length}
+                          sub="No alcanzaron cupo"
                         />
                       )}
                     </div>
 
+                    {/* ── Section 2: Ritmo de inscripcion ── */}
                     {timelineData.length > 1 && (
-                      <div className="er-analytics-card er-fade-in">
-                        <h3 className="er-analytics-card-title">Registros por día</h3>
-                        <div className="er-chart-wrap">
-                          <ResponsiveContainer width="100%" height={220}>
-                            <LineChart data={timelineData} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-                              <XAxis
-                                dataKey="day"
-                                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
-                                axisLine={{ stroke: 'rgba(255,255,255,0.07)' }}
-                                tickLine={false}
-                              />
-                              <YAxis
-                                allowDecimals={false}
-                                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
-                                axisLine={false}
-                                tickLine={false}
-                              />
-                              <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.08)' }} />
-                              <Line
-                                type="monotone"
-                                dataKey="count"
-                                stroke={accentCss}
-                                strokeWidth={2}
-                                dot={{ fill: accentCss, r: 4, strokeWidth: 0 }}
-                                activeDot={{ r: 6, fill: accentCss }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="er-analytics-card er-fade-in">
-                      <h3 className="er-analytics-card-title">Tasa de check-in</h3>
-                      <div className="er-checkin-rate-row">
-                        <div className="er-checkin-bar-outer">
-                          <div className="er-checkin-bar-fill" style={{ width: `${checkinRate}%` }} />
-                        </div>
-                        <span className="er-checkin-pct">{checkinRate}%</span>
-                      </div>
-                      <p className="er-checkin-sub">{checkedIn} de {total} registrados hicieron check-in</p>
-                    </div>
-
-                    {capacity != null && (
-                      <div className="er-analytics-card er-fade-in">
-                        <h3 className="er-analytics-card-title">Capacidad</h3>
-                        <div className="er-analytics-cap-bar-outer">
-                          <div className="er-analytics-cap-bar-fill" style={{ width: `${capacityPct}%` }} />
-                        </div>
-                        <div className="er-analytics-cap-labels">
-                          <span>{total} registros</span>
-                          <span>{capacity} cupos</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {fieldDistributions.map(({ field, data }) =>
-                      data.length > 0 && (
-                        <div key={field.id} className="er-analytics-card er-fade-in">
-                          <h3 className="er-analytics-card-title">{field.label}</h3>
+                      <>
+                        <SectionTitle>Ritmo de inscripcion</SectionTitle>
+                        <AnalyticsCard insight={timelineInsights.join(' ')}>
                           <div className="er-chart-wrap">
-                            <ResponsiveContainer width="100%" height={Math.max(180, data.length * 44)}>
-                              <BarChart
-                                data={data}
-                                layout="vertical"
-                                margin={{ top: 0, right: 40, bottom: 0, left: 8 }}
-                              >
+                            <ResponsiveContainer width="100%" height={220}>
+                              <ComposedChart data={timelineData} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
+                                <defs>
+                                  <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={accentCss} stopOpacity={0.25} />
+                                    <stop offset="100%" stopColor={accentCss} stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
                                 <XAxis
-                                  type="number"
-                                  allowDecimals={false}
+                                  dataKey="day"
                                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
                                   axisLine={{ stroke: 'rgba(255,255,255,0.07)' }}
                                   tickLine={false}
                                 />
                                 <YAxis
-                                  type="category"
-                                  dataKey="name"
-                                  width={120}
-                                  tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 12 }}
+                                  yAxisId="left"
+                                  allowDecimals={false}
+                                  tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
                                   axisLine={false}
                                   tickLine={false}
                                 />
-                                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                                <Bar dataKey="value" radius={[0, 5, 5, 0]}>
-                                  {data.map((_, i) => (
-                                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                  ))}
-                                </Bar>
-                              </BarChart>
+                                <YAxis yAxisId="right" orientation="right" hide />
+                                <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                                <Area
+                                  yAxisId="right"
+                                  type="monotone"
+                                  dataKey="cumulative"
+                                  fill="url(#areaGradient)"
+                                  stroke={accentCss}
+                                  strokeWidth={2}
+                                  dot={false}
+                                  name="cumulative"
+                                />
+                                <Bar
+                                  yAxisId="left"
+                                  dataKey="daily"
+                                  fill="rgba(255,255,255,0.12)"
+                                  radius={[3, 3, 0, 0]}
+                                  name="daily"
+                                />
+                              </ComposedChart>
                             </ResponsiveContainer>
                           </div>
-                        </div>
-                      )
+                        </AnalyticsCard>
+                      </>
                     )}
+
+                    {/* ── Section 3: Quien se registro ── */}
+                    {fieldAnalysis.length > 0 && (
+                      <>
+                        <SectionTitle>Quien se registro</SectionTitle>
+
+                        {fieldAnalysis.map((fa) => {
+                          if (fa.type === 'number') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label} insight={fa.insight}>
+                                <div className="er-number-stats">
+                                  <div className="er-number-stat">
+                                    <span className="er-number-stat-label">Promedio</span>
+                                    <span className="er-number-stat-value">{fa.stats.avg}</span>
+                                  </div>
+                                  <div className="er-number-stat">
+                                    <span className="er-number-stat-label">Mediana</span>
+                                    <span className="er-number-stat-value">{fa.stats.median}</span>
+                                  </div>
+                                  <div className="er-number-stat">
+                                    <span className="er-number-stat-label">Rango</span>
+                                    <span className="er-number-stat-value">{fa.stats.min} – {fa.stats.max}</span>
+                                  </div>
+                                </div>
+                                <div className="er-histogram">
+                                  {fa.histogram.map((b, i) => {
+                                    const maxCount = Math.max(...fa.histogram.map(h => h.count));
+                                    const heightPct = maxCount > 0 ? (b.count / maxCount * 100) : 0;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`er-histogram-bar${heightPct >= 80 ? ' er-histogram-bar--active' : ''}`}
+                                        style={{ height: `${Math.max(heightPct, 4)}%` }}
+                                        title={`${b.label}: ${b.count}`}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                                <div className="er-histogram-labels">
+                                  {fa.histogram.map((b, i) => (
+                                    <span key={i}>{b.label}</span>
+                                  ))}
+                                </div>
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          if (fa.type === 'uniform') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label}>
+                                <p className="er-insight-text">Todos seleccionaron <strong>{fa.value}</strong> ({fa.count} registros).</p>
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          if (fa.type === 'select' || fa.type === 'multiselect' || fa.type === 'text-few') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label} insight={fa.insight}>
+                                <HBarChart bars={fa.bars} accentFirst />
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          if (fa.type === 'text-many') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label}>
+                                <p className="er-insight-text">{fa.uniqueCount} respuestas unicas.</p>
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          return null;
+                        })}
+
+                        {crossTab && (
+                          <AnalyticsCard
+                            title={`Cruce: ${crossTab.rowField.label} × ${crossTab.colField.label}`}
+                            insight={crossTab.insight}
+                          >
+                            <div className="er-crosstab-grid" style={{
+                              gridTemplateColumns: `auto repeat(${crossTab.colValues.length}, 1fr)`,
+                            }}>
+                              <div className="er-crosstab-cell er-crosstab-cell--header" />
+                              {crossTab.colValues.map(cv => (
+                                <div key={cv} className="er-crosstab-cell er-crosstab-cell--header">{cv}</div>
+                              ))}
+                              {crossTab.rows.map(row => (
+                                <Fragment key={row.label}>
+                                  <div className="er-crosstab-cell er-crosstab-cell--row-header">{row.label}</div>
+                                  {row.cells.map(cell => {
+                                    const isMax = cell.pct === Math.max(...row.cells.map(c => c.pct)) && cell.pct > 0;
+                                    return (
+                                      <div
+                                        key={`${row.label}-${cell.value}`}
+                                        className={`er-crosstab-cell${isMax ? ' er-crosstab-cell--highlight' : ''}`}
+                                      >
+                                        {cell.pct}%
+                                      </div>
+                                    );
+                                  })}
+                                </Fragment>
+                              ))}
+                            </div>
+                          </AnalyticsCard>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── Section 4: Asistencia ── */}
+                    {checkedIn > 0 && (
+                      <>
+                        <SectionTitle>Asistencia</SectionTitle>
+                        <div className="er-two-col">
+                          <AnalyticsCard title="Tasa de check-in">
+                            <div className="er-checkin-rate-row">
+                              <span className={`er-checkin-pct er-checkin-pct--${checkinBadgeColor}`}>{checkinRate}%</span>
+                              <span className="er-checkin-sub-inline">{checkedIn} de {total} asistieron</span>
+                            </div>
+                            <div className="er-checkin-bar-outer">
+                              <div className={`er-checkin-bar-fill er-checkin-bar-fill--${checkinBadgeColor}`} style={{ width: `${checkinRate}%` }} />
+                            </div>
+                            <p className="er-insight-text" style={{ marginTop: 12 }}>
+                              <strong>{noShows} persona{noShows !== 1 ? 's' : ''} no asisti{noShows !== 1 ? 'eron' : 'o'}</strong> ({100 - checkinRate}%).
+                              {checkinRate >= 80 ? ' Un no-show menor al 20% es excelente.' : checkinRate >= 50 ? ' Considera enviar recordatorios antes del evento.' : ' Un no-show alto sugiere revisar la estrategia de confirmacion.'}
+                            </p>
+                          </AnalyticsCard>
+
+                          <AnalyticsCard title="Velocidad de llenado">
+                            <div className="er-velocity-stat">
+                              <span className="er-velocity-value">{peakDaily}</span>
+                              <span className="er-velocity-unit">registros/dia en el pico</span>
+                            </div>
+                            {fillTime && (
+                              <p className="er-insight-text">
+                                Alcanzaste capacidad en <strong>{fillTime.days} dia{fillTime.days !== 1 ? 's' : ''}</strong>.
+                              </p>
+                            )}
+                          </AnalyticsCard>
+                        </div>
+
+                        {checkinTimeline && (
+                          <AnalyticsCard title="Hora de llegada (check-in)" insight={checkinTimeline.insight}>
+                            <div className="er-arrival-bars">
+                              {checkinTimeline.slots.map((slot, i) => {
+                                const maxCount = Math.max(...checkinTimeline.slots.map(s => s.count));
+                                const heightPct = maxCount > 0 ? (slot.count / maxCount * 100) : 0;
+                                const isPeak = slot.label === checkinTimeline.peakLabel;
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`er-arrival-bar${isPeak ? ' er-arrival-bar--peak' : ''}`}
+                                    style={{ height: `${Math.max(heightPct, 3)}%` }}
+                                    title={`${slot.label}: ${slot.count}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <div className="er-arrival-labels">
+                              {checkinTimeline.slots.filter((_, i) => i % 2 === 0).map((s, i) => (
+                                <span key={i}>{s.label}</span>
+                              ))}
+                            </div>
+                          </AnalyticsCard>
+                        )}
+
+                        {noShowProfile && (
+                          <AnalyticsCard title="Perfil de no-shows" insight={noShowProfile.insight}>
+                            <div className="er-noshow-grid">
+                              {noShowProfile.segments.map((seg, i) => (
+                                <div key={i} className="er-noshow-segment">
+                                  <div className="er-noshow-segment-label">{seg.label}</div>
+                                  <div className={`er-noshow-segment-value ${seg.rate >= 30 ? 'er-noshow--red' : seg.rate >= 15 ? 'er-noshow--yellow' : 'er-noshow--green'}`}>
+                                    {seg.rate}%
+                                  </div>
+                                  <div className="er-noshow-segment-sub">no asistio ({seg.count} de {seg.total})</div>
+                                </div>
+                              ))}
+                            </div>
+                          </AnalyticsCard>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── Section 5: Comparar con eventos anteriores ── */}
+                    {otherEvents.length > 0 && (() => {
+                      const prevEvent = otherEvents[0];
+                      const prevRegs = prevEvent?.registration_count;
+                      const regDiff = prevRegs > 0 ? Math.round((total - prevRegs) / prevRegs * 100) : null;
+                      const prevCheckinRate = prevEvent?.registration_count && prevEvent?.checkin_count != null
+                        ? Math.round(prevEvent.checkin_count / prevEvent.registration_count * 100)
+                        : null;
+                      const checkinDiff = prevCheckinRate != null ? checkinRate - prevCheckinRate : null;
+
+                      const insightParts = [];
+                      if (regDiff != null && regDiff !== 0) {
+                        insightParts.push(`Tus registros ${regDiff > 0 ? 'crecieron' : 'bajaron'} un ${Math.abs(regDiff)}% vs tu ultimo evento.`);
+                      }
+                      if (checkinDiff != null && Math.abs(checkinDiff) >= 3) {
+                        insightParts.push(`Tu asistencia ${checkinDiff > 0 ? 'mejoro' : 'bajo'} ${Math.abs(checkinDiff)} puntos porcentuales.`);
+                      }
+
+                      return (
+                        <>
+                          <SectionTitle>Comparar con eventos anteriores</SectionTitle>
+                          <AnalyticsCard insight={insightParts.join(' ') || undefined}>
+                            <table className="er-compare-table">
+                              <thead>
+                                <tr>
+                                  <th>Evento</th>
+                                  <th>Registros</th>
+                                  <th>Check-in</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="er-compare-current">
+                                  <td>{event?.title}</td>
+                                  <td>
+                                    {total}
+                                    {regDiff != null && regDiff !== 0 && (
+                                      <span className={`er-compare-badge er-compare-badge--${regDiff > 0 ? 'up' : 'down'}`}>
+                                        {regDiff > 0 ? '+' : ''}{regDiff}%
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td>{checkinRate}%</td>
+                                </tr>
+                                {otherEvents.map(oe => {
+                                  const oeCheckin = oe.registration_count && oe.checkin_count != null
+                                    ? `${Math.round(oe.checkin_count / oe.registration_count * 100)}%`
+                                    : '—';
+                                  return (
+                                    <tr key={oe.id}>
+                                      <td>{oe.title}</td>
+                                      <td>{oe.registration_count ?? '—'}</td>
+                                      <td>{oeCheckin}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </AnalyticsCard>
+                        </>
+                      );
+                    })()}
+
                   </>
                 )}
               </div>
@@ -1046,23 +1777,16 @@ export default function EventResultsScreen() {
                       ) : (
                         <button
                           className="ee-image-upload-area"
-                          onClick={() => imageInputRef.current?.click()}
+                          onClick={() => setShowMediaPicker(true)}
                         >
                           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                             <rect x="3" y="3" width="18" height="18" rx="2" />
                             <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" strokeWidth="0" />
                             <polyline points="21 15 16 10 5 21" />
                           </svg>
-                          <span>Subir imagen</span>
+                          <span>Elegir imagen</span>
                         </button>
                       )}
-                      <input
-                        ref={imageInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="ee-input-hidden"
-                        onChange={handleImageChange}
-                      />
                     </div>
 
                     <div className="ee-field-group">
@@ -1162,6 +1886,7 @@ export default function EventResultsScreen() {
                       </div>
                     </div>
 
+                    {/* Acceso section hidden for now
                     <div className="ee-field-group">
                       <label className="ee-label">Acceso</label>
                       <div className="ee-access-toggle">
@@ -1169,27 +1894,17 @@ export default function EventResultsScreen() {
                           className={`ee-access-opt${access === 'public' ? ' ee-access-opt--on' : ''}`}
                           onClick={() => setAccess('public')}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-                          </svg>
-                          Público
+                          Publico
                         </button>
                         <button
                           className={`ee-access-opt${access === 'wake_users_only' ? ' ee-access-opt--on' : ''}`}
                           onClick={() => setAccess('wake_users_only')}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                          </svg>
                           Solo usuarios Wake
                         </button>
                       </div>
-                      {access === 'wake_users_only' && (
-                        <p className="ee-access-note">
-                          Los usuarios deben tener cuenta en Wake para registrarse.
-                        </p>
-                      )}
                     </div>
+                    */}
                   </div>
 
                   {/* ── Right: Field Builder ── */}
@@ -1212,6 +1927,7 @@ export default function EventResultsScreen() {
                           key={field.id}
                           field={field}
                           onUpdate={changes => updateField(field.id, changes)}
+                          onRemove={() => removeField(field.id)}
                         />
                       ))}
                     </div>
@@ -1272,6 +1988,17 @@ export default function EventResultsScreen() {
           onClose={() => setShowFieldPicker(false)}
         />
       )}
+
+      <MediaPickerModal
+        isOpen={showMediaPicker}
+        onClose={() => setShowMediaPicker(false)}
+        accept="image/*"
+        onSelect={(media) => {
+          setImagePreview(media.url);
+          setImageUrl(media.url);
+          setImageFile(null);
+        }}
+      />
 
       {lightboxOpen && imagePreview && (
         <div className="ee-lightbox" onClick={() => setLightboxOpen(false)}>

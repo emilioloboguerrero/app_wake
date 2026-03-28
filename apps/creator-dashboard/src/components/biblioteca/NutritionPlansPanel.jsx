@@ -1,13 +1,23 @@
-import { useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion } from 'motion/react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
-import { GlowingEffect, AnimatedList } from '../ui';
+import { useToast } from '../../contexts/ToastContext';
+import { GlowingEffect, MenuDropdown, ConfirmDeleteModal } from '../ui';
 import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import PanelShell from './PanelShell';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
+
+const DotsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <circle cx="12" cy="5" r="1.5" />
+    <circle cx="12" cy="12" r="1.5" />
+    <circle cx="12" cy="19" r="1.5" />
+  </svg>
+);
 
 function MacroPie({ protein = 0, carbs = 0, fat = 0, id }) {
   const data = useMemo(() => {
@@ -69,7 +79,9 @@ function MacroPie({ protein = 0, carbs = 0, fat = 0, id }) {
 
 export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const creatorId = user?.uid ?? '';
 
   const { data: plans = [], isLoading, isError } = useQuery({
@@ -84,6 +96,23 @@ export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) 
     if (!q) return plans;
     return plans.filter((i) => (i.name ?? '').toLowerCase().includes(q));
   }, [plans, q]);
+
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: (planId) => nutritionDb.deletePlan(creatorId, planId),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
+      showToast('Plan eliminado.', 'success');
+    },
+    onError: (err) => showToast(err?.message || 'No pudimos eliminar el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget.id);
+  }, [deleteTarget, deleteMutation]);
 
   const renderSkeleton = useCallback(() => (
     <div className="bib-nutri-list">
@@ -115,6 +144,7 @@ export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) 
   ), []);
 
   return (
+    <>
     <PanelShell
       isLoading={isLoading && !plans.length}
       isError={isError}
@@ -132,55 +162,80 @@ export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) 
             <p>{searchQuery ? `Sin resultados para "${searchQuery}"` : 'Sin planes.'}</p>
           </div>
         ) : (
-          <AnimatedList stagger={50}>
-            {filtered.map((item) => {
-              const kcal = item.daily_calories ?? 0;
-              const p = item.daily_protein_g ?? 0;
-              const c = item.daily_carbs_g ?? 0;
-              const f = item.daily_fat_g ?? 0;
-              const hasMacros = p + c + f > 0;
+          <div className="bib-nutri-list">
+            <AnimatePresence mode="popLayout">
+              {filtered.map((item) => {
+                const kcal = item.daily_calories ?? 0;
+                const p = item.daily_protein_g ?? 0;
+                const c = item.daily_carbs_g ?? 0;
+                const f = item.daily_fat_g ?? 0;
+                const hasMacros = p + c + f > 0;
 
-              return (
-                <div
-                  key={item.id}
-                  className="bib-card bib-nutri-plan-card"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => navigate(`/nutrition/plans/${item.id}`)}
-                  onKeyDown={(e) => e.key === 'Enter' && navigate(`/nutrition/plans/${item.id}`)}
-                >
-                  <GlowingEffect spread={18} borderWidth={1} />
-                  <div className="bib-nutri-plan-card__left">
-                    <span className="bib-nutri-card-name">{item.name}</span>
-                    {item.description && <span className="bib-nutri-card-meta">{item.description}</span>}
-                  </div>
-                  {hasMacros && (
-                    <div className="bib-nutri-plan-card__right">
-                      <div className="bib-nutri-plan-card__macros">
-                        <MacroPie protein={p} carbs={c} fat={f} id={item.id} />
-                        <div className="bib-nutri-plan-card__macro-labels">
-                          <span className="bib-nutri-plan-card__macro">
-                            {Math.round(p)}P
-                          </span>
-                          <span className="bib-nutri-plan-card__macro">
-                            {Math.round(c)}C
-                          </span>
-                          <span className="bib-nutri-plan-card__macro">
-                            {Math.round(f)}G
-                          </span>
-                        </div>
+                return (
+                  <motion.div
+                    key={item.id}
+                    layout
+                    exit={{ opacity: 0, scale: 0.92, x: -30, filter: 'blur(4px)' }}
+                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <div
+                      className="bib-card bib-nutri-plan-card"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/nutrition/plans/${item.id}`)}
+                      onKeyDown={(e) => e.key === 'Enter' && navigate(`/nutrition/plans/${item.id}`)}
+                    >
+                      <GlowingEffect spread={18} borderWidth={1} />
+                      <div className="bib-nutri-plan-card__left">
+                        <span className="bib-nutri-card-name">{item.name}</span>
+                        {item.description && <span className="bib-nutri-card-meta">{item.description}</span>}
                       </div>
-                      {kcal > 0 && (
-                        <span className="bib-nutri-plan-card__kcal">{Math.round(kcal)} kcal</span>
+                      {hasMacros && (
+                        <div className="bib-nutri-plan-card__right">
+                          <div className="bib-nutri-plan-card__macros">
+                            <MacroPie protein={p} carbs={c} fat={f} id={item.id} />
+                            <div className="bib-nutri-plan-card__macro-labels">
+                              <span className="bib-nutri-plan-card__macro">
+                                {Math.round(p)}P
+                              </span>
+                              <span className="bib-nutri-plan-card__macro">
+                                {Math.round(c)}C
+                              </span>
+                              <span className="bib-nutri-plan-card__macro">
+                                {Math.round(f)}G
+                              </span>
+                            </div>
+                          </div>
+                          {kcal > 0 && (
+                            <span className="bib-nutri-plan-card__kcal">{Math.round(kcal)} kcal</span>
+                          )}
+                        </div>
                       )}
+                      <div className="bib-plan-menu" onClick={(e) => e.stopPropagation()}>
+                        <MenuDropdown
+                          trigger={<button type="button" className="bib-plan-menu-trigger"><DotsIcon /></button>}
+                          items={[{ label: 'Eliminar', danger: true, onClick: () => setDeleteTarget({ id: item.id, name: item.name }) }]}
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </AnimatedList>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
         )}
       </div>
+
     </PanelShell>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        itemName={deleteTarget?.name || 'este plan'}
+        description="Esta accion no se puede deshacer."
+        isDeleting={deleteMutation.isPending}
+      />
+    </>
   );
 }

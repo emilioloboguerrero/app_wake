@@ -81,95 +81,169 @@ router.get("/workout/daily", async (req, res) => {
     sessionCollection = "plans";
     sessionCollectionId = plansSnap.docs[0].id;
   } else {
-    // Low-ticket: resolve from course modules structure
-    // Guard: max modules
-    const modulesSnap = await db
-      .collection("courses")
-      .doc(courseId)
-      .collection("modules")
-      .orderBy("order", "asc")
-      .limit(MAX_MODULES_PER_COURSE)
-      .get();
+    // Low-ticket: check for plan-based content first, fall back to legacy course modules
+    const planAssignments = (course.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
+    const planAssignmentKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId);
 
-    if (modulesSnap.empty) {
-      res.json({
-        data: {
-          hasSession: false,
-          isRestDay: false,
-          emptyReason: "no_planning_this_week",
-          session: null,
-          progress: { completed: 0, total: null },
-        },
-      });
-      return;
-    }
+    if (planAssignmentKeys.length > 0) {
+      // ── Plan-based low-ticket program ──────────────────────────
+      // Sort week keys to determine module order
+      planAssignmentKeys.sort();
 
-    // Gather all sessions across modules — guard: max sessions per module
-    const allSessions: Array<{ moduleId: string; sessionId: string; order: number; moduleOrder: number }> = [];
-    for (const mod of modulesSnap.docs) {
-      const sessionsSnap = await db
+      // Gather all sessions from client_plan_content (program copies) or plan templates
+      const allSessions: Array<{ moduleId: string; sessionId: string; order: number; moduleOrder: number; weekKey: string }> = [];
+      for (let weekIdx = 0; weekIdx < planAssignmentKeys.length; weekIdx++) {
+        const weekKey = planAssignmentKeys[weekIdx];
+        const assignment = planAssignments[weekKey];
+        const docId = `program_${courseId}_${weekKey}`;
+        const contentDoc = await db.collection("client_plan_content").doc(docId).get();
+
+        let sessionsSnap: FirebaseFirestore.QuerySnapshot;
+        if (contentDoc.exists) {
+          sessionsSnap = await contentDoc.ref.collection("sessions")
+            .orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
+        } else {
+          sessionsSnap = await db.collection("plans").doc(assignment.planId)
+            .collection("modules").doc(assignment.moduleId)
+            .collection("sessions").orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
+        }
+
+        for (const sess of sessionsSnap.docs) {
+          allSessions.push({
+            moduleId: contentDoc.exists ? docId : assignment.moduleId,
+            sessionId: sess.id,
+            order: sess.data().order ?? 0,
+            moduleOrder: weekIdx,
+            weekKey,
+          });
+        }
+      }
+
+      allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
+
+      if (allSessions.length === 0) {
+        res.json({
+          data: { hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: { completed: 0, total: null } },
+        });
+        return;
+      }
+
+      const completedSnap = await db.collection("users").doc(auth.userId)
+        .collection("sessionHistory").where("courseId", "==", courseId).get();
+      completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
+
+      const nextSession = allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+      if (!nextSession) {
+        res.json({
+          data: { hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: { completed: completedSessionIds.size, total: allSessions.length } },
+        });
+        return;
+      }
+
+      // Resolve reading path: program content copy or plan template
+      const nDocId = `program_${courseId}_${nextSession.weekKey}`;
+      const nContentDoc = await db.collection("client_plan_content").doc(nDocId).get();
+      if (nContentDoc.exists) {
+        sessionCollection = "client_plan_content";
+        sessionCollectionId = nDocId;
+        // For client_plan_content, sessions are a direct subcollection (no modules level)
+        // We need to read session directly, so override targetModuleId to signal this path
+        targetModuleId = "__direct__";
+        targetSessionId = nextSession.sessionId;
+      } else {
+        const assignment = planAssignments[nextSession.weekKey];
+        sessionCollection = "plans";
+        sessionCollectionId = assignment.planId;
+        targetModuleId = assignment.moduleId;
+        targetSessionId = nextSession.sessionId;
+      }
+    } else {
+      // ── Legacy low-ticket: resolve from course modules structure ──
+      const modulesSnap = await db
         .collection("courses")
         .doc(courseId)
         .collection("modules")
-        .doc(mod.id)
-        .collection("sessions")
         .orderBy("order", "asc")
-        .limit(MAX_SESSIONS_PER_MODULE)
+        .limit(MAX_MODULES_PER_COURSE)
         .get();
 
-      for (const sess of sessionsSnap.docs) {
-        allSessions.push({
-          moduleId: mod.id,
-          sessionId: sess.id,
-          order: sess.data().order ?? 0,
-          moduleOrder: mod.data().order ?? 0,
+      if (modulesSnap.empty) {
+        res.json({
+          data: {
+            hasSession: false,
+            isRestDay: false,
+            emptyReason: "no_planning_this_week",
+            session: null,
+            progress: { completed: 0, total: null },
+          },
         });
+        return;
       }
+
+      const allSessions: Array<{ moduleId: string; sessionId: string; order: number; moduleOrder: number }> = [];
+      for (const mod of modulesSnap.docs) {
+        const sessionsSnap = await db
+          .collection("courses")
+          .doc(courseId)
+          .collection("modules")
+          .doc(mod.id)
+          .collection("sessions")
+          .orderBy("order", "asc")
+          .limit(MAX_SESSIONS_PER_MODULE)
+          .get();
+
+        for (const sess of sessionsSnap.docs) {
+          allSessions.push({
+            moduleId: mod.id,
+            sessionId: sess.id,
+            order: sess.data().order ?? 0,
+            moduleOrder: mod.data().order ?? 0,
+          });
+        }
+      }
+
+      allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
+
+      if (allSessions.length === 0) {
+        res.json({
+          data: {
+            hasSession: false,
+            isRestDay: false,
+            emptyReason: "no_planning_this_week",
+            session: null,
+            progress: { completed: 0, total: null },
+          },
+        });
+        return;
+      }
+
+      const completedSnap = await db
+        .collection("users")
+        .doc(auth.userId)
+        .collection("sessionHistory")
+        .where("courseId", "==", courseId)
+        .get();
+
+      completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
+
+      const nextSession = allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+
+      if (!nextSession) {
+        res.json({
+          data: {
+            hasSession: false,
+            isRestDay: false,
+            emptyReason: "all_sessions_completed",
+            session: null,
+            progress: { completed: completedSessionIds.size, total: allSessions.length },
+          },
+        });
+        return;
+      }
+
+      targetModuleId = nextSession.moduleId;
+      targetSessionId = nextSession.sessionId;
     }
-
-    allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-
-    if (allSessions.length === 0) {
-      res.json({
-        data: {
-          hasSession: false,
-          isRestDay: false,
-          emptyReason: "no_planning_this_week",
-          session: null,
-          progress: { completed: 0, total: null },
-        },
-      });
-      return;
-    }
-
-    // Check completed sessions for this course
-    const completedSnap = await db
-      .collection("users")
-      .doc(auth.userId)
-      .collection("sessionHistory")
-      .where("courseId", "==", courseId)
-      .get();
-
-    completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
-
-    // Find the next uncompleted session
-    const nextSession = allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
-
-    if (!nextSession) {
-      res.json({
-        data: {
-          hasSession: false,
-          isRestDay: false,
-          emptyReason: "all_sessions_completed",
-          session: null,
-          progress: { completed: completedSessionIds.size, total: allSessions.length },
-        },
-      });
-      return;
-    }
-
-    targetModuleId = nextSession.moduleId;
-    targetSessionId = nextSession.sessionId;
   }
 
   if (!targetModuleId || !targetSessionId) {
@@ -186,15 +260,18 @@ router.get("/workout/daily", async (req, res) => {
   }
 
   // Read the full session tree: session → exercises → sets
-  // For one-on-one, read from plans/{planId}/...; for low_ticket, from courses/{courseId}/...
-  const sessionDoc = await db
-    .collection(sessionCollection)
-    .doc(sessionCollectionId)
-    .collection("modules")
-    .doc(targetModuleId)
-    .collection("sessions")
-    .doc(targetSessionId)
-    .get();
+  // For plan-based programs with content copies, sessions are directly under
+  // client_plan_content/{docId}/sessions (no modules level).
+  // For all other paths, the standard collection/modules/sessions hierarchy applies.
+  const isDirect = targetModuleId === "__direct__";
+  const sessionDocRef = isDirect
+    ? db.collection(sessionCollection).doc(sessionCollectionId)
+        .collection("sessions").doc(targetSessionId)
+    : db.collection(sessionCollection).doc(sessionCollectionId)
+        .collection("modules").doc(targetModuleId)
+        .collection("sessions").doc(targetSessionId);
+
+  const sessionDoc = await sessionDocRef.get();
 
   if (!sessionDoc.exists) {
     res.json({
@@ -212,14 +289,7 @@ router.get("/workout/daily", async (req, res) => {
   const sessionInfo = sessionDoc.data()!;
 
   // Load exercises
-  const exercisesSnap = await db
-    .collection(sessionCollection)
-    .doc(sessionCollectionId)
-    .collection("modules")
-    .doc(targetModuleId)
-    .collection("sessions")
-    .doc(targetSessionId)
-    .collection("exercises")
+  const exercisesSnap = await sessionDocRef.collection("exercises")
     .orderBy("order", "asc")
     .get();
 
@@ -227,15 +297,7 @@ router.get("/workout/daily", async (req, res) => {
   const exercisesWithSets = await Promise.all(
     exercisesSnap.docs.map(async (exDoc) => {
       const exData = exDoc.data();
-      const setsSnap = await db
-        .collection(sessionCollection)
-        .doc(sessionCollectionId)
-        .collection("modules")
-        .doc(targetModuleId!)
-        .collection("sessions")
-        .doc(targetSessionId!)
-        .collection("exercises")
-        .doc(exDoc.id)
+      const setsSnap = await exDoc.ref
         .collection("sets")
         .orderBy("order", "asc")
         .get();
@@ -358,13 +420,20 @@ router.get("/workout/daily", async (req, res) => {
         .get()).data().count;
 
   // Read module title for context
-  const moduleDoc = await db
-    .collection(sessionCollection)
-    .doc(sessionCollectionId)
-    .collection("modules")
-    .doc(targetModuleId!)
-    .get();
-  const moduleTitle = moduleDoc.exists ? (moduleDoc.data()!.title ?? "") : "";
+  let moduleTitle = "";
+  if (!isDirect) {
+    const moduleDoc = await db
+      .collection(sessionCollection)
+      .doc(sessionCollectionId)
+      .collection("modules")
+      .doc(targetModuleId!)
+      .get();
+    moduleTitle = moduleDoc.exists ? (moduleDoc.data()!.title ?? "") : "";
+  } else {
+    // For plan-based programs, the "module" is the client_plan_content doc itself
+    const contentDoc = await db.collection(sessionCollection).doc(sessionCollectionId).get();
+    moduleTitle = contentDoc.exists ? (contentDoc.data()!.title ?? "") : "";
+  }
 
   res.json({
     data: {
@@ -1385,6 +1454,46 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
+  // Check for plan-based programs first
+  const courseData = courseDoc.data()!;
+  const planAssignments = (courseData.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; moduleIndex?: number }>;
+  const planWeekKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId);
+
+  if (planWeekKeys.length > 0) {
+    // Plan-based: return virtual modules from planAssignments, sorted by week key
+    planWeekKeys.sort();
+    const modules = [];
+    for (let i = 0; i < planWeekKeys.length; i++) {
+      const weekKey = planWeekKeys[i];
+      const assignment = planAssignments[weekKey];
+      const docId = `program_${req.params.courseId}_${weekKey}`;
+
+      // Try content copy first, fall back to plan module title
+      const contentDoc = await db.collection("client_plan_content").doc(docId).get();
+      let title = `Semana ${i + 1}`;
+      if (contentDoc.exists) {
+        title = (contentDoc.data()?.title as string) ?? title;
+      } else {
+        try {
+          const moduleDoc = await db.collection("plans").doc(assignment.planId)
+            .collection("modules").doc(assignment.moduleId).get();
+          if (moduleDoc.exists) title = (moduleDoc.data()?.title as string) ?? title;
+        } catch { /* best-effort */ }
+      }
+
+      modules.push({
+        id: assignment.moduleId,
+        title,
+        order: i,
+        weekKey,
+        planId: assignment.planId,
+      });
+    }
+    res.json({ data: modules });
+    return;
+  }
+
+  // Legacy: read from courses subcollection
   const modulesSnap = await db
     .collection("courses")
     .doc(req.params.courseId)

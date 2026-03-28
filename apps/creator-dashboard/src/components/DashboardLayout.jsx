@@ -40,7 +40,8 @@ const NAV_ITEMS = [
       p === '/availability' ||
       p.startsWith('/clients/') ||
       p.startsWith('/clientes/') ||
-      (p.startsWith('/content/') && (state?.editScope === 'client' || state?.editScope === 'client_plan')),
+      (p.startsWith('/content/') && (state?.editScope === 'client' || state?.editScope === 'client_plan')) ||
+      (p.startsWith('/nutrition/') && state?.editScope === 'assignment'),
     icon: <Users size={ICON_SIZE} />,
   },
   {
@@ -62,7 +63,7 @@ const NAV_ITEMS = [
       p.startsWith('/libraries') ||
       (p.startsWith('/content/') && !state?.editScope) ||
       p.startsWith('/library/') ||
-      p.startsWith('/nutrition/'),
+      (p.startsWith('/nutrition/') && state?.editScope !== 'assignment'),
     icon: <BookOpen size={ICON_SIZE} />,
   },
   {

@@ -8,13 +8,13 @@ function shapePlanFromApi(p) {
     id: p.planId ?? null,
     name: p.name ?? null,
     description: p.description ?? null,
-    daily_calories: p.dailyCalories ?? p.daily_calories ?? null,
-    daily_protein_g: p.dailyProteinG ?? p.daily_protein_g ?? null,
-    daily_carbs_g: p.dailyCarbsG ?? p.daily_carbs_g ?? null,
-    daily_fat_g: p.dailyFatG ?? p.daily_fat_g ?? null,
+    daily_calories: p.daily_calories ?? null,
+    daily_protein_g: p.daily_protein_g ?? null,
+    daily_carbs_g: p.daily_carbs_g ?? null,
+    daily_fat_g: p.daily_fat_g ?? null,
     categories: p.categories ?? [],
-    createdAt: p.createdAt ?? null,
-    updatedAt: p.updatedAt ?? null,
+    created_at: p.created_at ?? null,
+    updated_at: p.updated_at ?? null,
   };
 }
 
@@ -35,8 +35,8 @@ export async function createMeal(_creatorId, data) {
     name: data.name ?? '',
     items: data.items ?? [],
     ...(data.description !== undefined ? { description: data.description } : {}),
-    ...(data.videoUrl !== undefined ? { videoUrl: data.videoUrl } : {}),
-    ...(data.video_url !== undefined ? { videoUrl: data.video_url } : {}),
+    ...(data.video_url !== undefined ? { video_url: data.video_url } : {}),
+    ...(data.videoUrl !== undefined ? { video_url: data.videoUrl } : {}),
   });
   return result?.data?.mealId;
 }
@@ -45,8 +45,8 @@ export async function updateMeal(_creatorId, mealId, data) {
   const body = {};
   if (data.name !== undefined) body.name = data.name;
   if (data.description !== undefined) body.description = data.description;
-  if (data.videoUrl !== undefined) body.videoUrl = data.videoUrl;
-  if (data.video_url !== undefined) body.videoUrl = data.video_url;
+  if (data.video_url !== undefined) body.video_url = data.video_url;
+  if (data.videoUrl !== undefined) body.video_url = data.videoUrl;
   if (data.items !== undefined) body.items = data.items;
   await apiClient.patch(`/creator/nutrition/meals/${mealId}`, body);
 }
@@ -72,10 +72,10 @@ export async function createPlan(_creatorId, data) {
     name: data.name ?? '',
     description: data.description ?? '',
     categories: data.categories ?? [],
-    ...(data.daily_calories != null ? { dailyCalories: data.daily_calories } : {}),
-    ...(data.daily_protein_g != null ? { dailyProteinG: data.daily_protein_g } : {}),
-    ...(data.daily_carbs_g != null ? { dailyCarbsG: data.daily_carbs_g } : {}),
-    ...(data.daily_fat_g != null ? { dailyFatG: data.daily_fat_g } : {}),
+    ...(data.daily_calories != null ? { daily_calories: data.daily_calories } : {}),
+    ...(data.daily_protein_g != null ? { daily_protein_g: data.daily_protein_g } : {}),
+    ...(data.daily_carbs_g != null ? { daily_carbs_g: data.daily_carbs_g } : {}),
+    ...(data.daily_fat_g != null ? { daily_fat_g: data.daily_fat_g } : {}),
   });
   return result?.data?.planId;
 }
@@ -85,10 +85,10 @@ export async function updatePlan(_creatorId, planId, data) {
   if (data.name !== undefined) body.name = data.name;
   if (data.description !== undefined) body.description = data.description;
   if (data.categories !== undefined) body.categories = data.categories;
-  if (data.daily_calories !== undefined) body.dailyCalories = data.daily_calories;
-  if (data.daily_protein_g !== undefined) body.dailyProteinG = data.daily_protein_g;
-  if (data.daily_carbs_g !== undefined) body.dailyCarbsG = data.daily_carbs_g;
-  if (data.daily_fat_g !== undefined) body.dailyFatG = data.daily_fat_g;
+  if (data.daily_calories !== undefined) body.daily_calories = data.daily_calories;
+  if (data.daily_protein_g !== undefined) body.daily_protein_g = data.daily_protein_g;
+  if (data.daily_carbs_g !== undefined) body.daily_carbs_g = data.daily_carbs_g;
+  if (data.daily_fat_g !== undefined) body.daily_fat_g = data.daily_fat_g;
   await apiClient.patch(`/creator/nutrition/plans/${planId}`, body);
 }
 
@@ -103,10 +103,15 @@ export async function getAssignmentsByUser(clientId) {
   return (result?.data ?? []).map((a) => ({
     id: a.assignmentId,
     planId: a.planId ?? null,
-    plan: { name: a.planName ?? null },
-    assignedBy: null,
+    planName: a.planName ?? a.plan?.name ?? null,
+    daily_calories: a.plan?.daily_calories ?? a.daily_calories ?? null,
+    daily_protein_g: a.plan?.daily_protein_g ?? a.daily_protein_g ?? null,
+    daily_carbs_g: a.plan?.daily_carbs_g ?? a.daily_carbs_g ?? null,
+    daily_fat_g: a.plan?.daily_fat_g ?? a.daily_fat_g ?? null,
+    assignedBy: a.assignedBy ?? null,
     startDate: a.startDate ?? null,
     endDate: a.endDate ?? null,
+    status: a.status ?? 'active',
     createdAt: a.createdAt ?? null,
   }));
 }
@@ -153,59 +158,31 @@ export async function getDiaryEntries(clientId, date) {
   const result = await apiClient.get(`/creator/clients/${clientId}/nutrition/diary`, {
     params: { date },
   });
-  return (result?.data ?? []).map((e) => ({
-    id: e.entryId,
-    date: e.date ?? null,
-    meal: e.meal ?? null,
-    food_id: e.foodId ?? null,
-    serving_id: e.servingId ?? null,
-    number_of_units: e.numberOfUnits ?? 1,
-    name: e.name ?? null,
-    food_category: e.foodCategory ?? null,
-    calories: e.calories ?? null,
-    protein: e.protein ?? null,
-    carbs: e.carbs ?? null,
-    fat: e.fat ?? null,
-    createdAt: e.createdAt ?? null,
-  }));
+  return (result?.data ?? []).map((e) => ({ id: e.entryId ?? e.id, ...e }));
 }
 
 export async function getDiaryEntriesInRange(clientId, startDate, endDate) {
   const result = await apiClient.get(`/creator/clients/${clientId}/nutrition/diary`, {
     params: { startDate, endDate },
   });
-  return (result?.data ?? []).map((e) => ({
-    id: e.entryId,
-    date: e.date ?? null,
-    meal: e.meal ?? null,
-    food_id: e.foodId ?? null,
-    serving_id: e.servingId ?? null,
-    number_of_units: e.numberOfUnits ?? 1,
-    name: e.name ?? null,
-    food_category: e.foodCategory ?? null,
-    calories: e.calories ?? null,
-    protein: e.protein ?? null,
-    carbs: e.carbs ?? null,
-    fat: e.fat ?? null,
-    createdAt: e.createdAt ?? null,
-  }));
+  return (result?.data ?? []).map((e) => ({ id: e.entryId ?? e.id, ...e }));
 }
 
 export async function addDiaryEntry(_userId, data) {
   const result = await apiClient.post(`/creator/clients/${_userId}/nutrition/diary`, {
     date: data.date,
     meal: data.meal ?? '',
-    foodId: data.food_id,
-    servingId: data.serving_id ?? '0',
-    numberOfUnits: data.number_of_units ?? 1,
+    food_id: data.food_id,
+    serving_id: data.serving_id ?? '0',
+    number_of_units: data.number_of_units ?? 1,
     name: data.name ?? '',
-    foodCategory: data.food_category ?? null,
+    food_category: data.food_category ?? null,
     calories: data.calories ?? null,
     protein: data.protein ?? null,
     carbs: data.carbs ?? null,
     fat: data.fat ?? null,
-    servingUnit: data.serving_unit ?? null,
-    gramsPerUnit: data.grams_per_unit ?? null,
+    serving_unit: data.serving_unit ?? null,
+    grams_per_unit: data.grams_per_unit ?? null,
     ...(data.servings ? { servings: data.servings } : {}),
   }, { idempotent: false });
   return result?.data?.entryId;
@@ -265,6 +242,46 @@ export async function expandRecipeRefsInCategories(creatorId, categories) {
   return result;
 }
 
+// ─── Program Nutrition Assignments ────────────────────────────────────────
+
+function shapeAssignment(a) {
+  return {
+    id: a.assignmentId,
+    planId: a.planId ?? null,
+    planName: a.planName ?? a.plan?.name ?? null,
+    daily_calories: a.plan?.daily_calories ?? a.daily_calories ?? null,
+    daily_protein_g: a.plan?.daily_protein_g ?? a.daily_protein_g ?? null,
+    daily_carbs_g: a.plan?.daily_carbs_g ?? a.daily_carbs_g ?? null,
+    daily_fat_g: a.plan?.daily_fat_g ?? a.daily_fat_g ?? null,
+    assignedBy: a.assignedBy ?? null,
+    source: a.source ?? null,
+    programId: a.programId ?? null,
+    startDate: a.startDate ?? null,
+    endDate: a.endDate ?? null,
+    status: a.status ?? 'active',
+    createdAt: a.createdAt ?? null,
+    updatedAt: a.updatedAt ?? null,
+  };
+}
+
+export async function getProgramNutritionAssignments(programId) {
+  const result = await apiClient.get(`/creator/programs/${programId}/nutrition/assignments`);
+  return (result?.data ?? []).map(shapeAssignment);
+}
+
+export async function createProgramNutritionAssignment(programId, planId) {
+  const result = await apiClient.post(
+    `/creator/programs/${programId}/nutrition/assignments`,
+    { planId },
+    { idempotent: false }
+  );
+  return result?.data?.assignmentId;
+}
+
+export async function deleteProgramNutritionAssignment(programId, assignmentId) {
+  await apiClient.delete(`/creator/programs/${programId}/nutrition/assignments/${assignmentId}`);
+}
+
 export default {
   getMealsByCreator,
   getMealById,
@@ -287,4 +304,7 @@ export default {
   getDiaryEntriesInRange,
   addDiaryEntry,
   deleteDiaryEntry,
+  getProgramNutritionAssignments,
+  createProgramNutritionAssignment,
+  deleteProgramNutritionAssignment,
 };

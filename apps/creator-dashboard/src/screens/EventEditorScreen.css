@@ -150,6 +150,36 @@
   opacity: 0.88;
 }
 
+.ee-btn--discard {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.5);
+  padding: 8px 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ee-btn--discard:hover {
+  background: rgba(248,113,113,0.12);
+  border-color: rgba(248,113,113,0.25);
+  color: #f87171;
+}
+
+.ee-btn--save {
+  border: none;
+  font-weight: 700;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.ee-btn--save:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.ee-btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .ee-save-error {
   color: rgba(224,84,84,0.9);
   font-size: 0.83rem;

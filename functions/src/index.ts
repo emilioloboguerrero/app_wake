@@ -2560,6 +2560,115 @@ export const api = onRequest(
   app
 );
 
+// ─── Event page with dynamic OG tags ────────────────────────────────────────
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+let cachedIndexHtml: string | null = null;
+
+function getIndexHtml(): string {
+  if (cachedIndexHtml) return cachedIndexHtml;
+  const candidates = [
+    path.resolve(__dirname, "../../hosting/index.html"),
+    path.resolve(__dirname, "../../../hosting/index.html"),
+  ];
+  for (const p of candidates) {
+    try {
+      cachedIndexHtml = fs.readFileSync(p, "utf-8");
+      return cachedIndexHtml;
+    } catch {
+      // try next
+    }
+  }
+  cachedIndexHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta property="og:title" content="Wake" />
+  <meta property="og:description" content="Entrena con quienes te inspiran" />
+  <meta property="og:image" content="/app_icon.png" />
+  <meta property="og:url" content="https://wakelab.co" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Wake" />
+  <meta name="twitter:description" content="Entrena con quienes te inspiran" />
+  <meta name="twitter:image" content="/app_icon.png" />
+  <title>Wake</title>
+</head>
+<body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
+</html>`;
+  return cachedIndexHtml;
+}
+
+function formatEventDate(value: unknown): string {
+  if (!value) return "";
+  let d: Date;
+  if (typeof value === "string") {
+    d = new Date(value);
+  } else if (typeof value === "object" && value !== null && "_seconds" in value) {
+    d = new Date((value as {_seconds: number})._seconds * 1000);
+  } else if (typeof value === "object" && value !== null && "toDate" in value) {
+    d = (value as {toDate: () => Date}).toDate();
+  } else {
+    return "";
+  }
+  return d.toLocaleDateString("es-CO", {day: "numeric", month: "long", year: "numeric"});
+}
+
+export const eventPage = onRequest(
+  {
+    region: "us-central1",
+    memory: "128MiB",
+    timeoutSeconds: 10,
+    concurrency: 80,
+  },
+  async (req, res) => {
+    // Extract eventId from path: /e/{eventId} or /e/{eventId}/anything
+    const match = req.path.match(/^\/e\/([a-zA-Z0-9_-]+)/);
+    if (!match) {
+      res.status(404).send("Not found");
+      return;
+    }
+    const eventId = match[1];
+
+    let html = getIndexHtml();
+
+    try {
+      const eventDoc = await db.collection("events").doc(eventId).get();
+      if (eventDoc.exists) {
+        const data = eventDoc.data()!;
+        const title = data.title || "Evento Wake";
+        const dateStr = formatEventDate(data.date);
+        const description = dateStr
+          ? `${dateStr}${data.location ? ` — ${data.location}` : ""}`
+          : (data.description?.slice(0, 160) || "Evento en Wake");
+        const ogImage = data.og_image_url || data.image_url || "/app_icon.png";
+
+        // Replace OG meta tags
+        html = html
+          .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="https://wakelab.co/e/${eventId}" />`)
+          .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)} — Wake</title>`);
+      }
+    } catch (err) {
+      functions.logger.error("eventPage Firestore read failed:", err);
+      // Serve fallback HTML without dynamic tags
+    }
+
+    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.status(200).send(html);
+  }
+);
+
+function escapeOgAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
 // ─── Scheduled: expand weekly availability templates into concrete slots ───
 export const expandWeeklyAvailability = onSchedule(
   {

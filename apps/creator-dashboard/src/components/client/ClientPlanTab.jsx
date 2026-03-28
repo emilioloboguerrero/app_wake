@@ -204,7 +204,7 @@ export default function ClientPlanTab({
     navigate(`/content/sessions/${session.id}`, {
       state: {
         returnTo: location.pathname,
-        returnState: { tab: 'planificacion' },
+        returnState: { tab: 'contenido', subtab: 'entrenamiento' },
         editScope: 'client_plan',
         clientId: clientUserId,
         programId,
@@ -263,7 +263,7 @@ export default function ClientPlanTab({
   // FLOW 11: Edit date-assigned session
   const handleEditSessionAssignment = useCallback(({ session, date }) => {
     if (!clientUserId || !session?.session_id) return;
-    const returnState = { tab: 'planificacion' };
+    const returnState = { tab: 'contenido', subtab: 'entrenamiento' };
     if (session.plan_id) {
       const weekKey = session.week_key || getMondayWeek(date);
       navigate(`/content/sessions/${session.session_id}`, {

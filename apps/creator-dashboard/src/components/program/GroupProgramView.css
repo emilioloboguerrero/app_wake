@@ -889,6 +889,12 @@
   color: rgba(255, 255, 255, 0.35);
 }
 
+/* ── Contenido subtab bar ────────────────────────────────────── */
+.gp-subtab-bar {
+  padding: 4px 0 12px;
+  display: inline-flex;
+}
+
 /* ── Content tab container ───────────────────────────────────── */
 .gp-content-wrap {
   animation: gp-enter 0.4s var(--gp-spring) both;

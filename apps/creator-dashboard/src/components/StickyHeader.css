@@ -21,6 +21,7 @@
 .sticky-header.sticky-header-scrolled {
   background-color: rgba(26, 26, 26, 0.8);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
 }
 

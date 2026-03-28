@@ -10,7 +10,8 @@ import { BentoCard } from '../ui/BentoGrid';
 import GlowingEffect from '../ui/GlowingEffect';
 import NumberTicker from '../ui/NumberTicker';
 import DemographicsCard from './DemographicsCard';
-import ProgramContentTab from './ProgramContentTab';
+import ProgramPlanTab from './ProgramPlanTab';
+import ProgramNutritionTab from './ProgramNutritionTab';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
 import { useModules } from '../../hooks/usePrograms';
@@ -28,6 +29,11 @@ const TAB_ITEMS = [
   { id: 'contenido', label: 'Contenido' },
 ];
 
+const CONTENIDO_SUBTABS = [
+  { id: 'entrenamiento', label: 'Entrenamiento' },
+  { id: 'nutricion', label: 'Nutricion' },
+];
+
 const TUTORIAL_SCREENS = [
   { key: 'dailyWorkout', label: 'Primera vez que abre el programa' },
   { key: 'workoutExecution', label: 'Primer entrenamiento del programa' },
@@ -43,14 +49,23 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   const { confirm, ConfirmModal } = useConfirm();
 
   const [activeTab, setActiveTab] = useState('programa');
+  const [contenidoSubtab, setContenidoSubtab] = useState('entrenamiento');
 
   // ── Accent color ──────────────────────────────────────────────
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
+  const [hasExtractedAccent, setHasExtractedAccent] = useState(false);
 
   useEffect(() => {
-    if (!program?.image_url) return;
-    return extractAccentFromImage(program.image_url, setAccentRgb);
+    if (!program?.image_url) { setHasExtractedAccent(false); return; }
+    return extractAccentFromImage(program.image_url, (rgb) => {
+      setAccentRgb(rgb);
+      setHasExtractedAccent(true);
+    });
   }, [program?.image_url]);
+
+  const programAccentColor = hasExtractedAccent
+    ? `rgba(${accentRgb[0]}, ${accentRgb[1]}, ${accentRgb[2]}, 0.18)`
+    : null;
 
   const cssVars = {
     '--gp-accent-r': accentRgb[0],
@@ -92,16 +107,8 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   }, [program?.weight_suggestions, program?.availableLibraries, program?.price, program?.free_trial]);
 
   // ── Content tab state ─────────────────────────────────────────
-  const [selectedModule, setSelectedModule] = useState(null);
-  const [selectedSession, setSelectedSession] = useState(null);
-  const [contentPlanId, setContentPlanId] = useState(null);
-  const [isSavingContentPlan, setIsSavingContentPlan] = useState(false);
   const [mediaPickerContext, setMediaPickerContext] = useState('program');
   const [isMigratingSessionToLibrary, setIsMigratingSessionToLibrary] = useState(false);
-
-  useEffect(() => {
-    setContentPlanId(program?.content_plan_id ?? null);
-  }, [program?.content_plan_id]);
 
   // ── Data fetching ─────────────────────────────────────────────
   const { data: availableLibraries = [] } = useQuery({
@@ -238,22 +245,8 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
         showToast('No pudimos subir la imagen. Revisa tu conexion e intenta de nuevo.', 'error');
       }
       setIsMediaPickerOpen(false);
-      return;
     }
-    if (mediaPickerContext === 'session' && selectedSession && programId && selectedModule) {
-      try {
-        if (selectedSession.librarySessionRef && user) {
-          await libraryService.updateLibrarySession(user.uid, selectedSession.librarySessionRef, { image_url: item.url });
-        }
-        await programService.updateSession(programId, selectedModule.id, selectedSession.id, { image_url: item.url });
-        setSelectedSession((prev) => ({ ...prev, image_url: item.url }));
-        queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
-      } catch {
-        showToast('No pudimos subir la imagen. Revisa tu conexion e intenta de nuevo.', 'error');
-      }
-      setIsMediaPickerOpen(false);
-    }
-  }, [mediaPickerContext, programId, selectedSession, selectedModule, user, queryClient, showToast]);
+  }, [mediaPickerContext, programId, queryClient, showToast]);
 
   const handleImageDelete = useCallback(async () => {
     if (!program?.image_path) return;
@@ -329,78 +322,10 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     }
   }, [program?.tutorials, programId, queryClient, showToast, confirm]);
 
-  // ── Content tab handlers ──────────────────────────────────────
-  const handleContentPlanChange = async (planId) => {
-    if (!program?.id) return;
-    setIsSavingContentPlan(true);
-    try {
-      await programService.updateProgram(program.id, { content_plan_id: planId || null });
-      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, content_plan_id: planId || null }));
-      queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
-      setContentPlanId(planId || null);
-    } catch {
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
-    } finally {
-      setIsSavingContentPlan(false);
-    }
-  };
-
   const handleOpenMediaPicker = (context) => {
     setMediaPickerContext(context);
     setIsMediaPickerOpen(true);
   };
-
-  const navigateToSessionEdit = useCallback(async (session, module) => {
-    if (!programId || !user || !module) return;
-    const targetLibraryId = session.librarySessionRef;
-    if (targetLibraryId) {
-      navigate(`/content/sessions/${targetLibraryId}`, { state: { returnTo: location.pathname } });
-      return;
-    }
-    setIsMigratingSessionToLibrary(true);
-    try {
-      const librarySession = await libraryService.createLibrarySession(user.uid, {
-        title: session.title || session.name || 'Sesion',
-        image_url: session.image_url || null,
-      });
-      const librarySessionId = librarySession.id;
-      const programExercises = await programService.getExercisesBySession(programId, module.id, session.id);
-      for (let i = 0; i < programExercises.length; i++) {
-        const ex = programExercises[i];
-        const exerciseName = ex.title || ex.name || (ex.primary && typeof ex.primary === 'object' && Object.values(ex.primary)[0]) || 'Ejercicio';
-        const created = await libraryService.createExerciseInLibrarySession(user.uid, librarySessionId, exerciseName, i);
-        const exerciseUpdateData = {};
-        if (ex.primary != null && typeof ex.primary === 'object') exerciseUpdateData.primary = ex.primary;
-        if (ex.alternatives != null && typeof ex.alternatives === 'object') exerciseUpdateData.alternatives = ex.alternatives;
-        if (Array.isArray(ex.measures)) exerciseUpdateData.measures = ex.measures;
-        if (Array.isArray(ex.objectives)) exerciseUpdateData.objectives = ex.objectives;
-        if (ex.customObjectiveLabels != null && typeof ex.customObjectiveLabels === 'object') exerciseUpdateData.customObjectiveLabels = ex.customObjectiveLabels;
-        if (ex.customMeasureLabels != null && typeof ex.customMeasureLabels === 'object') exerciseUpdateData.customMeasureLabels = ex.customMeasureLabels;
-        if (Object.keys(exerciseUpdateData).length > 0) {
-          await libraryService.updateExerciseInLibrarySession(user.uid, librarySessionId, created.id, exerciseUpdateData);
-        }
-        const programSets = await programService.getSetsByExercise(programId, module.id, session.id, ex.id);
-        for (let j = 0; j < programSets.length; j++) {
-          const setData = programSets[j];
-          const newSet = await libraryService.createSetInLibraryExercise(user.uid, librarySessionId, created.id, j);
-          const setUpdates = {};
-          const skipKeys = new Set(['id', 'created_at', 'updated_at']);
-          Object.keys(setData).forEach((k) => { if (!skipKeys.has(k)) setUpdates[k] = setData[k]; });
-          if (Object.keys(setUpdates).length > 0) {
-            await libraryService.updateSetInLibraryExercise(user.uid, librarySessionId, created.id, newSet.id, setUpdates);
-          }
-        }
-      }
-      await programService.updateSession(programId, module.id, session.id, { librarySessionRef: librarySessionId });
-      navigate(`/content/sessions/${librarySessionId}`, { state: { returnTo: location.pathname } });
-    } catch (err) {
-      logger.error('[GroupProgramView] navigateToSessionEdit error:', err);
-      showToast('No pudimos abrir la sesion para editar. Intenta de nuevo.', 'error');
-    } finally {
-      setIsMigratingSessionToLibrary(false);
-    }
-  }, [programId, user, navigate, location.pathname, showToast]);
 
   // ── Keyboard handlers ─────────────────────────────────────────
   const handleTitleKeyDown = (e) => {
@@ -415,25 +340,13 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   // ── Tab change ────────────────────────────────────────────────
   const handleTabChange = useCallback((tabId) => {
     if (tabId === activeTab) return;
-    if (activeTab === 'contenido') {
-      setSelectedModule(null);
-      setSelectedSession(null);
-    }
     setActiveTab(tabId);
   }, [activeTab]);
 
   // ── Screen name for header ────────────────────────────────────
-  const isContenidoTab = activeTab === 'contenido';
-  const getScreenName = () => {
-    if (selectedSession && isContenidoTab) return selectedSession.title || selectedSession.name || 'Sesion';
-    if (selectedModule && isContenidoTab) return `Sesiones - ${selectedModule.title || selectedModule.name || 'Semana'}`;
-    return program?.title || 'Programa';
-  };
+  const getScreenName = () => program?.title || 'Programa';
 
-  const getBackPath = () => {
-    if (isContenidoTab && (selectedSession || selectedModule)) return null;
-    return backTo || location.state?.returnTo || '/programas';
-  };
+  const getBackPath = () => backTo || location.state?.returnTo || '/programas';
 
   // ── Render ────────────────────────────────────────────────────
   return (
@@ -441,7 +354,6 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
       screenName={getScreenName()}
       backPath={getBackPath()}
       showBackButton
-      onBack={selectedSession ? () => setSelectedSession(null) : selectedModule ? () => { setSelectedModule(null); setSelectedSession(null); } : null}
       backState={location.state?.returnState ?? {}}
       headerRight={
         <button
@@ -769,24 +681,33 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
         )}
 
         {activeTab === 'contenido' && (
-          <div className="gp-content-wrap">
-            <ProgramContentTab
-              program={program}
-              programId={programId}
-              user={user}
-              showToast={showToast}
-              confirm={confirm}
-              selectedModule={selectedModule}
-              selectedSession={selectedSession}
-              onModuleSelect={setSelectedModule}
-              onSessionSelect={setSelectedSession}
-              onNavigateToSession={navigateToSessionEdit}
-              contentPlanId={contentPlanId}
-              plans={plans}
-              onContentPlanChange={handleContentPlanChange}
-              isSavingContentPlan={isSavingContentPlan}
-            />
-          </div>
+          <>
+            <div className="gp-subtab-bar">
+              <TubelightNavBar
+                items={CONTENIDO_SUBTABS}
+                activeId={contenidoSubtab}
+                onSelect={setContenidoSubtab}
+              />
+            </div>
+            {contenidoSubtab === 'entrenamiento' && (
+              <div className="gp-content-wrap">
+                <ProgramPlanTab
+                  programId={programId}
+                  programName={program?.title}
+                  creatorId={user.uid}
+                  programAccentColor={programAccentColor}
+                />
+              </div>
+            )}
+            {contenidoSubtab === 'nutricion' && (
+              <div className="gp-content-wrap">
+                <ProgramNutritionTab
+                  programId={programId}
+                  creatorId={user.uid}
+                />
+              </div>
+            )}
+          </>
         )}
 
       </div>

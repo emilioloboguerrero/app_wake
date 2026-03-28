@@ -99,6 +99,14 @@
       ]
     },
     {
+      "collectionGroup": "nutrition_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "programId", "order": "ASCENDING"},
+        {"fieldPath": "source", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "one_on_one_clients",
       "queryScope": "COLLECTION",
       "fields": [

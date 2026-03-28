@@ -15,23 +15,7 @@ function toDateStr(value) {
 }
 
 function shapeDiaryEntry(e) {
-  return {
-    id: e.entryId,
-    date: e.date ?? null,
-    meal: e.meal ?? null,
-    food_id: e.foodId ?? null,
-    serving_id: e.servingId ?? null,
-    number_of_units: e.numberOfUnits ?? 1,
-    name: e.name ?? null,
-    food_category: e.foodCategory ?? null,
-    calories: e.calories ?? null,
-    protein: e.protein ?? null,
-    carbs: e.carbs ?? null,
-    fat: e.fat ?? null,
-    serving_unit: e.servingUnit ?? null,
-    grams_per_unit: e.gramsPerUnit ?? null,
-    createdAt: e.createdAt ?? null,
-  };
+  return { id: e.entryId ?? e.id, ...e };
 }
 
 function shapeAssignment(d) {
@@ -48,12 +32,12 @@ function shapeAssignment(d) {
 function shapePlan(p) {
   if (!p) return null;
   return {
-    id: p.planId ?? null,
+    id: p.planId ?? p.id ?? null,
     name: p.name ?? null,
-    daily_calories: p.dailyCalories ?? null,
-    daily_protein_g: p.dailyProteinG ?? null,
-    daily_carbs_g: p.dailyCarbsG ?? null,
-    daily_fat_g: p.dailyFatG ?? null,
+    daily_calories: p.daily_calories ?? null,
+    daily_protein_g: p.daily_protein_g ?? null,
+    daily_carbs_g: p.daily_carbs_g ?? null,
+    daily_fat_g: p.daily_fat_g ?? null,
     categories: p.categories ?? [],
   };
 }
@@ -160,17 +144,17 @@ export async function addDiaryEntry(_userId, data) {
   const body = {
     date: data.date,
     meal: data.meal ?? '',
-    foodId: data.food_id,
-    servingId: data.serving_id ?? '0',
-    numberOfUnits: data.number_of_units ?? 1,
+    food_id: data.food_id,
+    serving_id: data.serving_id ?? '0',
+    number_of_units: data.number_of_units ?? 1,
     name: data.name ?? '',
-    foodCategory: data.food_category ?? null,
+    food_category: data.food_category ?? null,
     calories: data.calories ?? null,
     protein: data.protein ?? null,
     carbs: data.carbs ?? null,
     fat: data.fat ?? null,
-    servingUnit: data.serving_unit ?? null,
-    gramsPerUnit: data.grams_per_unit ?? null,
+    serving_unit: data.serving_unit ?? null,
+    grams_per_unit: data.grams_per_unit ?? null,
     ...(data.servings ? { servings: data.servings } : {}),
   };
   const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -178,19 +162,7 @@ export async function addDiaryEntry(_userId, data) {
   if (result?.queued) {
     const optimisticEntry = {
       id: tempId,
-      date: body.date,
-      meal: body.meal,
-      food_id: body.foodId,
-      serving_id: body.servingId,
-      number_of_units: body.numberOfUnits,
-      name: body.name,
-      food_category: body.foodCategory,
-      calories: body.calories,
-      protein: body.protein,
-      carbs: body.carbs,
-      fat: body.fat,
-      serving_unit: body.servingUnit,
-      grams_per_unit: body.gramsPerUnit,
+      ...body,
       createdAt: new Date().toISOString(),
     };
     queryClient.setQueryData(['nutrition', 'diary', body.date], (old) =>
@@ -203,8 +175,10 @@ export async function addDiaryEntry(_userId, data) {
 
 export async function updateDiaryEntry(_userId, entryId, data) {
   const update = {};
-  if (data.serving_id != null) update.servingId = data.serving_id;
-  if (data.number_of_units != null) update.numberOfUnits = data.number_of_units;
+  if (data.serving_id != null) update.serving_id = data.serving_id;
+  if (data.number_of_units != null) update.number_of_units = data.number_of_units;
+  if (data.serving_unit != null) update.serving_unit = data.serving_unit;
+  if (data.grams_per_unit != null) update.grams_per_unit = data.grams_per_unit;
   if (data.calories != null) update.calories = data.calories;
   if (data.protein != null) update.protein = data.protein;
   if (data.carbs != null) update.carbs = data.carbs;
@@ -220,32 +194,23 @@ export async function deleteDiaryEntry(_userId, entryId) {
 
 export async function getSavedFoods(_userId) {
   const result = await apiClient.get('/nutrition/saved-foods');
-  return (result?.data ?? []).map((f) => ({
-    id: f.savedFoodId,
-    food_id: f.foodId,
-    name: f.name,
-    food_category: null,
-    serving_id: '0',
-    serving_description: f.servingUnit ?? null,
-    calories_per_unit: f.calories,
-    protein_per_unit: f.protein,
-    carbs_per_unit: f.carbs,
-    fat_per_unit: f.fat,
-    grams_per_unit: null,
-    servings: [],
-    savedAt: f.savedAt,
-  }));
+  return (result?.data ?? []).map((f) => ({ id: f.savedFoodId ?? f.id, ...f }));
 }
 
 export async function saveFood(_userId, data) {
   const result = await apiClient.post('/nutrition/saved-foods', {
-    foodId: data.food_id,
+    food_id: data.food_id,
     name: data.name,
-    calories: data.calories_per_unit ?? data.calories ?? null,
-    protein: data.protein_per_unit ?? data.protein ?? null,
-    carbs: data.carbs_per_unit ?? data.carbs ?? null,
-    fat: data.fat_per_unit ?? data.fat ?? null,
-    servingUnit: data.serving_description ?? data.serving_unit ?? null,
+    serving_id: data.serving_id ?? '0',
+    serving_description: data.serving_description ?? data.serving_unit ?? null,
+    number_of_units: data.number_of_units ?? 1,
+    food_category: data.food_category ?? null,
+    calories_per_unit: data.calories_per_unit ?? data.calories ?? null,
+    protein_per_unit: data.protein_per_unit ?? data.protein ?? null,
+    carbs_per_unit: data.carbs_per_unit ?? data.carbs ?? null,
+    fat_per_unit: data.fat_per_unit ?? data.fat ?? null,
+    grams_per_unit: data.grams_per_unit ?? null,
+    ...(data.servings ? { servings: data.servings } : {}),
   }, { idempotent: false });
   return result?.data?.savedFoodId;
 }
@@ -254,15 +219,16 @@ export async function deleteSavedFood(_userId, savedFoodId) {
   await apiClient.delete(`/nutrition/saved-foods/${savedFoodId}`);
 }
 
-export async function updateSavedFood(_userId, savedFoodId, _data) {
+export async function updateSavedFood(_userId, savedFoodId, data) {
   const body = {};
-  if (_data.name !== undefined) body.name = _data.name;
-  if (_data.calories !== undefined) body.calories = _data.calories;
-  if (_data.protein !== undefined) body.protein = _data.protein;
-  if (_data.carbs !== undefined) body.carbs = _data.carbs;
-  if (_data.fat !== undefined) body.fat = _data.fat;
-  if (_data.serving_unit !== undefined) body.servingUnit = _data.serving_unit;
-  if (_data.servingUnit !== undefined) body.servingUnit = _data.servingUnit;
+  if (data.name !== undefined) body.name = data.name;
+  if (data.calories_per_unit !== undefined) body.calories_per_unit = data.calories_per_unit;
+  if (data.protein_per_unit !== undefined) body.protein_per_unit = data.protein_per_unit;
+  if (data.carbs_per_unit !== undefined) body.carbs_per_unit = data.carbs_per_unit;
+  if (data.fat_per_unit !== undefined) body.fat_per_unit = data.fat_per_unit;
+  if (data.serving_description !== undefined) body.serving_description = data.serving_description;
+  if (data.number_of_units !== undefined) body.number_of_units = data.number_of_units;
+  if (data.grams_per_unit !== undefined) body.grams_per_unit = data.grams_per_unit;
   await apiClient.patch(`/nutrition/saved-foods/${savedFoodId}`, body);
 }
 

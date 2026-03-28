@@ -57,6 +57,12 @@
   padding: 8px 0 4px;
 }
 
+/* ─── Contenido Subtabs ─────────────────────────────────────── */
+.cs-subtab-bar {
+  padding: 4px 0 12px;
+  display: inline-flex;
+}
+
 /* ─── Tab Content ────────────────────────────────────────────── */
 .cs-content {
   flex: 1;

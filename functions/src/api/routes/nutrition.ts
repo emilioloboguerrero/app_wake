@@ -54,33 +54,33 @@ router.post("/nutrition/diary", async (req, res) => {
   const body = validateBody<{
     date: string;
     meal: string;
-    foodId?: string;
-    servingId?: string;
-    numberOfUnits?: number;
+    food_id?: string;
+    serving_id?: string;
+    number_of_units?: number;
     name?: string;
-    foodCategory?: string;
+    food_category?: string;
     calories?: number;
     protein?: number;
     carbs?: number;
     fat?: number;
-    servingUnit?: string;
-    gramsPerUnit?: number;
+    serving_unit?: string;
+    grams_per_unit?: number;
     servings?: unknown[];
   }>(
     {
       date: "string",
       meal: "string",
-      foodId: "optional_string",
-      servingId: "optional_string",
-      numberOfUnits: "optional_number",
+      food_id: "optional_string",
+      serving_id: "optional_string",
+      number_of_units: "optional_number",
       name: "optional_string",
-      foodCategory: "optional_string",
+      food_category: "optional_string",
       calories: "optional_number",
       protein: "optional_number",
       carbs: "optional_number",
       fat: "optional_number",
-      servingUnit: "optional_string",
-      gramsPerUnit: "optional_number",
+      serving_unit: "optional_string",
+      grams_per_unit: "optional_number",
       servings: "optional_array",
     },
     req.body,
@@ -96,8 +96,8 @@ router.post("/nutrition/diary", async (req, res) => {
     .collection("diary")
     .add({
       ...body,
-      created_at: FieldValue.serverTimestamp(),
-      updated_at: FieldValue.serverTimestamp(),
+      userId: auth.userId,
+      createdAt: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { id: docRef.id, entryId: docRef.id } });
@@ -120,7 +120,7 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
   }
 
   // Allowlist fields instead of spreading req.body
-  const allowedFields = ["date", "meal", "foodId", "servingId", "numberOfUnits", "name", "calories", "protein", "carbs", "fat", "servingUnit", "gramsPerUnit", "notes"];
+  const allowedFields = ["date", "meal", "food_id", "serving_id", "number_of_units", "name", "calories", "protein", "carbs", "fat", "serving_unit", "grams_per_unit"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -383,7 +383,7 @@ router.get("/nutrition/saved-foods", async (req, res) => {
     .collection("users")
     .doc(auth.userId)
     .collection("saved_foods")
-    .orderBy("created_at", "desc")
+    .orderBy("savedAt", "desc")
     .limit(limit + 1);
 
   if (pageToken) {
@@ -414,32 +414,41 @@ router.post("/nutrition/saved-foods", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  // Validate and allowlist fields
+  // Validate and allowlist fields (snake_case to match Firestore schema)
   const body = validateBody<{
     name: string;
-    foodId?: string;
-    servingUnit?: string;
-    numberOfUnits?: number;
-    calories?: number;
-    protein?: number;
-    carbs?: number;
-    fat?: number;
+    food_id?: string;
+    serving_id?: string;
+    serving_description?: string;
+    number_of_units?: number;
+    food_category?: string;
+    calories_per_unit?: number;
+    protein_per_unit?: number;
+    carbs_per_unit?: number;
+    fat_per_unit?: number;
+    grams_per_unit?: number;
+    servings?: unknown[];
     brand?: string;
     barcode?: string;
   }>(
     {
       name: "string",
-      foodId: "optional_string",
-      servingUnit: "optional_string",
-      numberOfUnits: "optional_number",
-      calories: "optional_number",
-      protein: "optional_number",
-      carbs: "optional_number",
-      fat: "optional_number",
+      food_id: "optional_string",
+      serving_id: "optional_string",
+      serving_description: "optional_string",
+      number_of_units: "optional_number",
+      food_category: "optional_string",
+      calories_per_unit: "optional_number",
+      protein_per_unit: "optional_number",
+      carbs_per_unit: "optional_number",
+      fat_per_unit: "optional_number",
+      grams_per_unit: "optional_number",
+      servings: "optional_array",
       brand: "optional_string",
       barcode: "optional_string",
     },
-    req.body
+    req.body,
+    { maxArrayLength: 100 }
   );
 
   const docRef = await db
@@ -448,7 +457,8 @@ router.post("/nutrition/saved-foods", async (req, res) => {
     .collection("saved_foods")
     .add({
       ...body,
-      created_at: FieldValue.serverTimestamp(),
+      userId: auth.userId,
+      savedAt: FieldValue.serverTimestamp(),
     });
 
   res.status(201).json({ data: { id: docRef.id, savedFoodId: docRef.id } });
@@ -471,8 +481,9 @@ router.patch("/nutrition/saved-foods/:savedFoodId", async (req, res) => {
   }
 
   const allowedFields = [
-    "name", "calories", "protein", "carbs", "fat",
-    "servingUnit", "numberOfUnits", "brand", "barcode",
+    "name", "food_id", "serving_id", "serving_description", "number_of_units",
+    "food_category", "calories_per_unit", "protein_per_unit", "carbs_per_unit",
+    "fat_per_unit", "grams_per_unit", "brand", "barcode",
   ];
   const updates = pickFields(req.body as Record<string, unknown>, allowedFields);
 
@@ -601,14 +612,10 @@ router.get("/nutrition/assignment", async (req, res) => {
       endDate: assignmentData.endDate ?? null,
       plan: {
         name: planContent?.name ?? assignmentData.planName ?? "",
-        daily_calories: planContent?.daily_calories ?? planContent?.dailyCalories ?? null,
-        daily_protein_g: planContent?.daily_protein_g ?? planContent?.dailyProteinG ?? null,
-        daily_carbs_g: planContent?.daily_carbs_g ?? planContent?.dailyCarbsG ?? null,
-        daily_fat_g: planContent?.daily_fat_g ?? planContent?.dailyFatG ?? null,
-        dailyCalories: planContent?.daily_calories ?? planContent?.dailyCalories ?? null,
-        dailyProteinG: planContent?.daily_protein_g ?? planContent?.dailyProteinG ?? null,
-        dailyCarbsG: planContent?.daily_carbs_g ?? planContent?.dailyCarbsG ?? null,
-        dailyFatG: planContent?.daily_fat_g ?? planContent?.dailyFatG ?? null,
+        daily_calories: planContent?.daily_calories ?? null,
+        daily_protein_g: planContent?.daily_protein_g ?? null,
+        daily_carbs_g: planContent?.daily_carbs_g ?? null,
+        daily_fat_g: planContent?.daily_fat_g ?? null,
         categories,
       },
     },

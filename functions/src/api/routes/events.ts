@@ -1,12 +1,14 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
+import * as path from "node:path";
 import { db, FieldValue } from "../firestore.js";
 import type { Query, DocumentSnapshot } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
 import { checkRateLimit, checkIpRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
+import * as functions from "firebase-functions";
 
 const router = Router();
 
@@ -22,6 +24,51 @@ function normalizeDate(value: unknown): string | null {
     }
   }
   return null;
+}
+
+
+async function generateOgImage(eventId: string, storagePath: string): Promise<void> {
+  try {
+    const sharp = (await import("sharp")).default;
+    const bucket = admin.storage().bucket();
+
+    const [coverBuffer] = await bucket.file(storagePath).download();
+
+    const isotipoPath = path.resolve(__dirname, "../assets/wake-isotipo.png");
+    const isotipoBuffer = await sharp(isotipoPath)
+      .resize(400, 400, { fit: "inside" })
+      .ensureAlpha()
+      .composite([{
+        input: Buffer.from([255, 255, 255, Math.round(255 * 0.4)]),
+        raw: { width: 1, height: 1, channels: 4 },
+        tile: true,
+        blend: "dest-in",
+      }])
+      .toBuffer();
+
+    const ogBuffer = await sharp(coverBuffer)
+      .resize(1200, 630, { fit: "cover", position: "center" })
+      .composite([{
+        input: isotipoBuffer,
+        gravity: "center",
+      }])
+      .png()
+      .toBuffer();
+
+    const ogPath = `events/${eventId}/og-cover.png`;
+    const ogFile = bucket.file(ogPath);
+    await ogFile.save(ogBuffer, {
+      metadata: { contentType: "image/png", cacheControl: "public, max-age=31536000" },
+    });
+
+    const ogImageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(ogPath)}?alt=media`;
+
+    await db.collection("events").doc(eventId).update({
+      og_image_url: ogImageUrl,
+    });
+  } catch (err) {
+    functions.logger.error(`OG image generation failed for event ${eventId}:`, err);
+  }
 }
 
 function requireCreator(auth: { role: string }): void {
@@ -202,14 +249,18 @@ router.get("/creator/events", async (req, res) => {
   const events = await Promise.all(
     snapshot.docs.map(async (d) => {
       const data = d.data();
-      const regsSnap = await db
+      const regsRef = db
         .collection("event_signups")
         .doc(d.id)
-        .collection("registrations")
-        .count()
-        .get();
+        .collection("registrations");
+
+      const [regsSnap, checkinSnap] = await Promise.all([
+        regsRef.count().get(),
+        regsRef.where("checked_in", "==", true).count().get(),
+      ]);
 
       const regCount = regsSnap.data().count;
+      const checkinCount = checkinSnap.data().count;
       return {
         eventId: d.id,
         id: d.id,
@@ -221,6 +272,7 @@ router.get("/creator/events", async (req, res) => {
         status: data.status,
         max_registrations: data.max_registrations ?? data.maxRegistrations ?? null,
         registration_count: regCount,
+        checkin_count: checkinCount,
         fields: data.fields || [],
         settings: data.settings || null,
         access: data.access || null,
@@ -334,7 +386,9 @@ router.patch("/creator/events/:eventId", async (req, res) => {
   const doc = await verifyEventOwnership(req.params.eventId, auth.userId);
   const event = doc.data()!;
 
-  if (event.status !== "draft" && event.status !== "active") {
+  const bodyKeys = Object.keys(req.body);
+  const isStatusOnlyChange = bodyKeys.length === 1 && bodyKeys[0] === "status";
+  if (event.status !== "draft" && event.status !== "active" && !isStatusOnlyChange) {
     throw new WakeApiServerError(
       "FORBIDDEN", 403,
       "Solo se pueden editar eventos en estado draft o active"
@@ -342,11 +396,15 @@ router.patch("/creator/events/:eventId", async (req, res) => {
   }
 
   // Allowlist editable fields
-  const allowedFields = ["title", "description", "date", "location", "max_registrations", "maxRegistrations", "fields", "capacity", "image_url", "settings", "access"];
+  const allowedFields = ["title", "description", "date", "location", "max_registrations", "maxRegistrations", "fields", "capacity", "image_url", "settings", "access", "status"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  if (updates.status && !["draft", "active", "closed"].includes(updates.status as string)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Estado inválido. Usa: draft, active o closed", "status");
   }
 
   await doc.ref.update({
@@ -366,6 +424,8 @@ router.patch("/creator/events/:eventId", async (req, res) => {
 
 // PATCH /creator/events/:eventId/status — change event status
 router.patch("/creator/events/:eventId/status", async (req, res) => {
+  functions.logger.info("[events] PATCH status hit", { eventId: req.params.eventId, body: req.body });
+
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -387,10 +447,15 @@ router.patch("/creator/events/:eventId/status", async (req, res) => {
   await verifyEventOwnership(req.params.eventId, auth.userId);
 
   const docRef = db.collection("events").doc(req.params.eventId);
+  functions.logger.info("[events] writing status to Firestore", { eventId: req.params.eventId, status });
   await docRef.update({
     status,
     updated_at: FieldValue.serverTimestamp(),
   });
+
+  // Read back to confirm
+  const confirm = await docRef.get();
+  functions.logger.info("[events] status after write", { eventId: req.params.eventId, status: confirm.data()?.status });
 
   res.json({ data: { eventId: req.params.eventId, status } });
 });
@@ -497,6 +562,9 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
     image_url: imageUrl,
     updated_at: FieldValue.serverTimestamp(),
   });
+
+  // Fire-and-forget: generate OG image with watermark
+  generateOgImage(req.params.eventId, storagePath).catch(() => {});
 
   res.json({ data: { imageUrl } });
 });

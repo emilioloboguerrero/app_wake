@@ -457,10 +457,16 @@ export default function EventSignupScreen() {
     const str = String(val ?? '').trim();
     if (s.required !== false && !str) { setError('Este campo es obligatorio'); return false; }
     if (s.type === 'email' && str && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(str)) {
-      setError('Ingresa un email válido'); return false;
+      setError('Ingresa un email valido'); return false;
     }
-    if (s.type === 'number' && str && (!Number.isInteger(Number(str)) || Number(str) < 1 || Number(str) > 99)) {
-      setError('Ingresa una edad válida'); return false;
+    if (s.type === 'tel' && str && !/^\+?[\d\s\-()]{7,15}$/.test(str)) {
+      setError('Ingresa un numero de telefono valido'); return false;
+    }
+    if (s.type === 'number' && str) {
+      const n = Number(str);
+      if (isNaN(n) || !Number.isInteger(n) || n < 1 || n > 120) {
+        setError('Ingresa un numero valido'); return false;
+      }
     }
     return true;
   }
@@ -914,7 +920,7 @@ export default function EventSignupScreen() {
                   type={currentStep.type === 'number' ? 'number' : currentStep.type === 'date' ? 'date' : currentStep.type}
                   placeholder={currentStep.placeholder}
                   autoComplete={currentStep.autoComplete}
-                  inputMode={currentStep.type === 'number' ? 'numeric' : undefined}
+                  inputMode={currentStep.type === 'number' ? 'numeric' : currentStep.type === 'tel' ? 'tel' : undefined}
                   min={currentStep.type === 'number' ? 1 : undefined}
                   max={currentStep.type === 'number' ? 99 : undefined}
                   value={form[currentStep.field]}

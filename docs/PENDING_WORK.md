@@ -159,72 +159,179 @@ Vote count maintained via Cloud Function or transaction (increment on vote, decr
 
 ---
 
-## 4. Email Sequence Infrastructure (NOT IMPLEMENTED)
+## 4. Creator Email Platform (NOT IMPLEMENTED)
 
-Event-driven email automation system. Goal: lay the infrastructure and trigger framework, not write all sequences yet.
+Complete email marketing system for creators — manual campaigns, reusable templates, and automated sequences. Designed as a platform-level feature used across events, programs, 1:1 clients, and general marketing. Built on Resend (already integrated via `RESEND_API_KEY`).
 
-### Architecture
+### Where email is used across Wake
 
-**Trigger system (Cloud Functions):**
-- Email sequences are triggered by **events** (user sign-up, inactivity, purchase, etc.)
-- Each trigger creates a **sequence enrollment** document in Firestore
-- A scheduled Cloud Function (runs every hour or so) checks for pending emails in active sequences and sends them
+| Area | Manual campaigns | Automated sequences |
+|---|---|---|
+| **Events** | Post-event thanks, announcements | Confirmation on register, reminder 24h before, post-event survey, waitlist notification |
+| **Programs** | Updates to all enrollees | Welcome on enrollment, weekly motivation, expiry warning |
+| **1:1 clients** | Check-in messages | Onboarding sequence, progress milestones |
+| **General** | Promotions, announcements | Re-engagement for inactive users |
 
-**Firestore collections:**
+### Data Model
 
-`email_sequences/{sequenceId}` — sequence definitions
+**Templates:**
 ```
-{
-  name: string,
-  triggerEvent: string,           // e.g., "user.signup", "user.inactive_7d"
+creator_emails/{creatorId}/templates/{templateId}
+  name: string
+  subject: string
+  body: string (HTML)
+  variables: string[]              // e.g. ["nombre", "evento", "fecha"]
+  created_at, updated_at
+```
+
+**Campaigns (manual sends):**
+```
+creator_emails/{creatorId}/campaigns/{campaignId}
+  templateId: string | null        // or inline subject + body
+  subject: string
+  body: string
+  audience: {
+    type: 'event_registrants' | 'program_enrollees' | 'clients' | 'all_contacts'
+    resourceId: string | null      // specific event/program ID
+    filters: { ... }               // e.g. { checked_in: true, field_f_genero: 'Femenino' }
+  }
+  status: 'draft' | 'scheduled' | 'sending' | 'sent'
+  scheduled_at: timestamp | null   // null = send now
+  stats: { total, sent, opened, clicked, failed }
+  created_at
+```
+
+**Sequences (automated):**
+```
+creator_emails/{creatorId}/sequences/{sequenceId}
+  name: string
+  status: 'active' | 'paused' | 'draft'
+  trigger: {
+    type: 'event_register' | 'event_checkin' | 'program_enroll' | 'client_added' |
+          'user_signup' | 'user_inactive_7d' | 'subscription_cancelled'
+    resourceId: string | null
+  }
   steps: [
-    { delayHours: 0, templateId: "welcome_1" },
-    { delayHours: 48, templateId: "welcome_2" },
-    { delayHours: 168, templateId: "welcome_3" }
-  ],
-  active: boolean,
-  targetRole: "user" | "creator" | "all"
-}
+    { delay_hours: number, subject: string, body: string, templateId?: string }
+  ]
+  created_at
 ```
 
-`email_sequence_enrollments/{enrollmentId}` — active enrollments
+**Sequence enrollments:**
 ```
-{
-  sequenceId: string,
-  userId: string,
-  email: string,
-  currentStep: number,
-  enrolledAt: timestamp,
-  nextSendAt: timestamp,
-  status: "active" | "completed" | "cancelled",
-  history: [{ step: 0, sentAt: timestamp, templateId: "welcome_1" }]
-}
+email_sequence_enrollments/{enrollmentId}
+  creatorId: string
+  sequenceId: string
+  recipientEmail: string
+  recipientName: string
+  currentStep: number
+  enrolledAt: timestamp
+  nextSendAt: timestamp
+  status: 'active' | 'completed' | 'cancelled'
 ```
 
-**Sending:** Use Resend (already integrated for event confirmation emails). Email templates as HTML in Cloud Functions code or stored in Firestore.
+**Send log (single source of truth for all emails):**
+```
+email_sends/{sendId}
+  creatorId: string
+  campaignId | sequenceId: string
+  recipientEmail: string
+  resendMessageId: string
+  status: 'queued' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced'
+  sent_at, opened_at, clicked_at
+```
 
-### Trigger Events (initial set — expand over time)
-- `user.signup` — new user created
-- `user.inactive_7d` — no workout or diary entry in 7 days
-- `user.first_purchase` — first program purchased
-- `creator.signup` — new creator onboarding completed
-- `creator.first_client` — creator enrolls their first client
-- `user.subscription_cancelled` — subscription cancelled (already have cancellation feedback collection)
+### Audience Resolver
 
-### Implementation Scope (infrastructure only)
-- [ ] Sequence and enrollment Firestore collections
-- [ ] Enrollment trigger logic (Cloud Function that listens for events and creates enrollments)
-- [ ] Scheduled sender function (checks `nextSendAt`, sends email, advances step)
-- [ ] Cancellation logic (user unsubscribes, sequence completes, or manual cancel)
-- [ ] One test sequence (e.g., welcome email on signup) to validate the pipeline
-- [ ] Admin endpoint to list/create/deactivate sequences
+Cross-platform function that takes an audience definition and returns `{ email, name, variables }[]`. Same resolver used by campaigns and sequences.
 
-### Considerations
-- Resend handles deliverability, bounce tracking, and unsubscribe links
-- Keep templates simple — plain HTML, no heavy templating engine
-- Unsubscribe must be respected (store opt-out flag on user doc or in Resend)
-- Rate limit sending to avoid Resend limits on free tier
-- This replaces no existing system — it's net-new infrastructure
+| audience.type | Firestore source | Key filters |
+|---|---|---|
+| `event_registrants` | `event_signups/{resourceId}/registrations` | `checked_in`, custom field values |
+| `program_enrollees` | `users` where `courses.{resourceId}` exists | `status`, `deliveryType` |
+| `clients` | `one_on_one_clients` where `creatorId` matches | `status` |
+| `all_contacts` | Union of all above, deduplicated by email | — |
+
+### Phase 1: Manual Campaigns (BUILD FIRST)
+
+**Creator dashboard UI:**
+- New screen: `/creators/emails` — campaign list with status and stats
+- New screen: `/creators/emails/new` — compose email
+  - Subject line input
+  - Rich text body (bold, italic, links, variables like `{{nombre}}`)
+  - Audience picker: source type → specific resource → optional filters
+  - "Enviar ahora" button
+- Campaign detail: sent count, open rate, click rate (from Resend webhooks)
+
+**API endpoints:**
+- `GET /creator/emails/campaigns` — list campaigns with stats
+- `POST /creator/emails/campaigns` — create campaign (draft)
+- `PATCH /creator/emails/campaigns/:id` — update draft
+- `POST /creator/emails/campaigns/:id/send` — trigger send
+- `GET /creator/emails/campaigns/:id` — detail with per-recipient status
+
+**Backend:**
+- Cloud Function processes send: resolve audience → loop recipients → call Resend API → write `email_sends` records
+- Resend webhook handler (`POST /webhooks/resend`) updates `email_sends` with delivery/open/click events
+- Batch sends (Resend batch API or chunked loop with rate limiting)
+
+**Phase 1 checklist:**
+- [ ] Firestore collections: `creator_emails`, `email_sends`
+- [ ] Audience resolver function (event_registrants + clients initially)
+- [ ] Campaign CRUD API endpoints
+- [ ] Send processor (Cloud Function)
+- [ ] Resend webhook handler for delivery tracking
+- [ ] Creator dashboard: campaign list screen
+- [ ] Creator dashboard: compose + audience picker screen
+- [ ] Creator dashboard: campaign detail with stats
+
+### Phase 2: Templates + Scheduling
+
+- Save any campaign as a reusable template
+- Pre-built starter templates: "Confirmacion de registro", "Recordatorio 24h", "Gracias por asistir"
+- Schedule picker: send at specific date/time
+- Cloud Scheduler function checks for `scheduled_at` <= now and fires sends
+- Template management screen in creator dashboard
+
+**Phase 2 checklist:**
+- [ ] Template CRUD (Firestore + API)
+- [ ] Template picker in compose screen
+- [ ] Schedule picker UI + `scheduled_at` field
+- [ ] Scheduled send processor (pub/sub or Cloud Scheduler)
+
+### Phase 3: Automated Sequences
+
+- Sequence builder UI: list of steps with configurable delays
+- Trigger system: Firestore `onCreate` / Cloud Function listeners that check for matching active sequences and create enrollments
+- Execution engine: scheduled Cloud Function (runs hourly) processes enrollments where `nextSendAt` <= now
+- Pause/resume sequences
+- Per-step analytics (sent, opened per step)
+
+**Trigger events (expand over time):**
+- `event_register` — user registers for event
+- `event_checkin` — user checks in at event
+- `program_enroll` — user enrolls in program
+- `client_added` — creator adds 1:1 client
+- `user_signup` — new user created
+- `user_inactive_7d` — no activity in 7 days
+- `subscription_cancelled` — subscription cancelled
+
+**Phase 3 checklist:**
+- [ ] Sequence CRUD (Firestore + API)
+- [ ] Enrollment trigger logic
+- [ ] Scheduled sender for sequence steps
+- [ ] Cancellation logic (unsubscribe, sequence complete, manual)
+- [ ] Sequence builder UI in creator dashboard
+- [ ] Per-step analytics
+
+### Key Design Decisions
+
+- **`email_sends` is the spine** — every email from any source (campaign or sequence) gets a record here. Analytics, billing, deliverability monitoring all read from one place.
+- **Audience resolver is abstract** — adding a new audience type is one function, not a schema change.
+- **Resend handles the hard parts** — deliverability, open/click tracking, bounce handling, unsubscribe compliance. We don't build email infrastructure.
+- **Variables are universal** — `{{nombre}}`, `{{evento}}`, `{{fecha}}` work identically in campaigns, sequences, and templates.
+- **Unsubscribe is mandatory** — store opt-out per creator per recipient (Resend manages the link). Never email someone who opted out.
+- **Rate limiting** — batch sends respect Resend rate limits. Queue excess and process over time.
 
 ---
 
@@ -267,7 +374,9 @@ Low. Implement after session notes are shipped and validated.
 
 1. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
 2. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
-3. **Section 4** — Email sequence infrastructure (lay the trigger framework while API is fresh)
+3. **Section 4 Phase 1** — Creator email platform: manual campaigns (immediate creator value, lays foundation for sequences)
 4. **Section 3** — Feedback board (self-contained feature, gives users a voice)
-5. **Section 5** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
-6. **Section 6** — Video exchange (future)
+5. **Section 4 Phase 2** — Email templates + scheduling
+6. **Section 5** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
+7. **Section 4 Phase 3** — Automated email sequences (builds on stable campaign infrastructure)
+8. **Section 6** — Video exchange (future)

@@ -118,8 +118,6 @@ const PlanningLibrarySidebar = ({
     e.currentTarget.classList.remove('plan-structure-item-dragging');
   };
 
-  const title =
-    activeTab === LIBRARY_TAB_SESSIONS ? 'Biblioteca de sesiones' : 'Biblioteca de planes';
   const searchPlaceholder =
     activeTab === LIBRARY_TAB_SESSIONS ? 'Buscar sesiones...' : 'Buscar planes...';
   const isLoading =
@@ -153,10 +151,6 @@ const PlanningLibrarySidebar = ({
         >
           Planes
         </button>
-      </div>
-
-      <div className="planning-sidebar-header">
-        <h3 className="planning-sidebar-title">{title}</h3>
       </div>
 
       <div className="plan-structure-search">

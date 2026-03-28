@@ -8,23 +8,18 @@ class EventService {
 
   async getEventsByCreator(_creatorId) {
     const result = await apiClient.get('/creator/events');
-    return (result?.data ?? []).map((e) => ({ id: e.eventId, ...e }));
+    const events = (result?.data ?? []).map((e) => ({ id: e.eventId, ...e }));
+    console.log('[eventService] getEventsByCreator raw statuses:', events.map(e => ({ id: e.id, status: e.status })));
+    return events;
   }
 
   async getEvent(eventId) {
-    console.error('[EventService] getEvent called with eventId:', eventId);
     try {
       const result = await apiClient.get(`/creator/events/${eventId}`);
-      console.error('[EventService] getEvent raw API response:', JSON.stringify(result));
-      if (!result?.data) {
-        console.error('[EventService] getEvent — no data in response, returning null');
-        return null;
-      }
-      const mapped = { id: result.data.eventId, ...result.data };
-      console.error('[EventService] getEvent mapped result — id:', mapped.id, 'creator_id:', mapped.creator_id, 'keys:', Object.keys(mapped));
-      return mapped;
+      console.log('[eventService] getEvent raw response', { eventId, status: result?.data?.status });
+      if (!result?.data) return null;
+      return { id: result.data.eventId, ...result.data };
     } catch (error) {
-      console.error('[EventService] getEvent FAILED — status:', error?.status, 'message:', error?.message, 'full:', error);
       if (error?.status === 404) return null;
       throw error;
     }
@@ -38,9 +33,11 @@ class EventService {
   async updateEvent(eventId, eventData) {
     const keys = Object.keys(eventData);
     if (keys.length === 1 && keys[0] === 'status') {
+      console.log('[eventService] PATCH status', { eventId, status: eventData.status });
       const result = await apiClient.patch(`/creator/events/${eventId}/status`, {
         status: eventData.status,
       });
+      console.log('[eventService] PATCH status response', result);
       return result?.data;
     }
     const result = await apiClient.patch(`/creator/events/${eventId}`, eventData);

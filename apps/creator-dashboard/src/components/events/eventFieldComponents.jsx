@@ -19,6 +19,7 @@ export const FIELD_TYPES = [
 export const TYPE_LABELS = Object.fromEntries(FIELD_TYPES.map(f => [f.type, f.label]));
 
 export const DEFAULT_FIELD_IDS = ['f_nombre', 'f_email', 'f_telefono', 'f_edad', 'f_genero'];
+export const UNDELETABLE_FIELD_IDS = ['f_nombre', 'f_email'];
 export const DEFAULT_FIELDS = [
   { id: 'f_nombre',   type: 'text',   label: 'Nombre',   placeholder: 'Tu nombre completo', required: true,  locked: true },
   { id: 'f_email',    type: 'email',  label: 'Email',    placeholder: 'correo@ejemplo.com', required: true,  locked: true },
@@ -26,6 +27,8 @@ export const DEFAULT_FIELDS = [
   { id: 'f_edad',     type: 'number', label: 'Edad',     placeholder: '25',                 required: false, locked: true },
   { id: 'f_genero',   type: 'select', label: 'Género',   placeholder: '',                   required: false, locked: true, options: ['Masculino', 'Femenino', 'Prefiero no decir'] },
 ];
+
+const TYPES_WITH_PLACEHOLDER = ['text', 'email', 'tel', 'number', 'textarea', 'date'];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -78,6 +81,7 @@ export function SortableField({ field, onUpdate, onRemove }) {
   };
   const [expanded, setExpanded] = useState(false);
   const hasOptions = ['select', 'radio', 'multiselect'].includes(field.type);
+  const showPlaceholder = TYPES_WITH_PLACEHOLDER.includes(field.type);
 
   return (
     <div ref={setNodeRef} style={style} className={`ee-field-card${isDragging ? ' ee-field-card--dragging' : ''}`}>
@@ -118,15 +122,17 @@ export function SortableField({ field, onUpdate, onRemove }) {
 
       {expanded && (
         <div className="ee-field-card-body">
-          <div className="ee-field-row">
-            <label className="ee-field-sub-label">Placeholder</label>
-            <input
-              className="ee-field-input"
-              placeholder="Texto de ayuda…"
-              value={field.placeholder || ''}
-              onChange={e => onUpdate({ placeholder: e.target.value })}
-            />
-          </div>
+          {showPlaceholder && (
+            <div className="ee-field-row">
+              <label className="ee-field-sub-label">Placeholder</label>
+              <input
+                className="ee-field-input"
+                placeholder="Texto de ayuda…"
+                value={field.placeholder || ''}
+                onChange={e => onUpdate({ placeholder: e.target.value })}
+              />
+            </div>
+          )}
           <div className="ee-field-row ee-field-row--toggle">
             <span className="ee-field-sub-label">Obligatorio</span>
             <button
@@ -144,7 +150,7 @@ export function SortableField({ field, onUpdate, onRemove }) {
                 <div key={i} className="ee-option-row">
                   <input
                     className="ee-field-input"
-                    placeholder={`Opción ${i + 1}`}
+                    placeholder={`Opcion ${i + 1}`}
                     value={opt}
                     onChange={e => {
                       const o = [...(field.options || [])];
@@ -158,7 +164,7 @@ export function SortableField({ field, onUpdate, onRemove }) {
                       const o = (field.options || []).filter((_, j) => j !== i);
                       onUpdate({ options: o });
                     }}
-                    aria-label="Eliminar opción"
+                    aria-label="Eliminar opcion"
                   >×</button>
                 </div>
               ))}
@@ -166,7 +172,7 @@ export function SortableField({ field, onUpdate, onRemove }) {
                 className="ee-add-option-btn"
                 onClick={() => onUpdate({ options: [...(field.options || []), ''] })}
               >
-                + Agregar opción
+                + Agregar opcion
               </button>
             </div>
           )}
@@ -178,9 +184,11 @@ export function SortableField({ field, onUpdate, onRemove }) {
 
 // ─── LockedField ────────────────────────────────────────────────────
 
-export function LockedField({ field, onUpdate }) {
+export function LockedField({ field, onUpdate, onRemove }) {
   const [expanded, setExpanded] = useState(false);
   const hasOptions = ['select', 'radio', 'multiselect'].includes(field.type);
+  const showPlaceholder = TYPES_WITH_PLACEHOLDER.includes(field.type);
+  const canDelete = !UNDELETABLE_FIELD_IDS.includes(field.id);
 
   return (
     <div className="ee-field-card ee-field-card--locked">
@@ -205,20 +213,29 @@ export function LockedField({ field, onUpdate }) {
                 : <polyline points="6 9 12 15 18 9" />}
             </svg>
           </button>
+          {canDelete && (
+            <button className="ee-field-remove-btn" onClick={onRemove} aria-label="Eliminar campo">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
       {expanded && (
         <div className="ee-field-card-body">
-          <div className="ee-field-row">
-            <label className="ee-field-sub-label">Placeholder</label>
-            <input
-              className="ee-field-input"
-              placeholder="Texto de ayuda…"
-              value={field.placeholder || ''}
-              onChange={e => onUpdate({ placeholder: e.target.value })}
-            />
-          </div>
+          {showPlaceholder && (
+            <div className="ee-field-row">
+              <label className="ee-field-sub-label">Placeholder</label>
+              <input
+                className="ee-field-input"
+                placeholder="Texto de ayuda…"
+                value={field.placeholder || ''}
+                onChange={e => onUpdate({ placeholder: e.target.value })}
+              />
+            </div>
+          )}
           <div className="ee-field-row ee-field-row--toggle">
             <span className="ee-field-sub-label">Obligatorio</span>
             <button
@@ -236,7 +253,7 @@ export function LockedField({ field, onUpdate }) {
                 <div key={i} className="ee-option-row">
                   <input
                     className="ee-field-input"
-                    placeholder={`Opción ${i + 1}`}
+                    placeholder={`Opcion ${i + 1}`}
                     value={opt}
                     onChange={e => {
                       const o = [...(field.options || [])];

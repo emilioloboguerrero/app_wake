@@ -27,7 +27,7 @@ const TUTORIAL_STEPS = [
 const NAV_TABS = [
   { id: 'active', label: 'Activos' },
   { id: 'draft', label: 'Borradores' },
-  { id: 'closed', label: 'Pasados' },
+  { id: 'closed', label: 'Cerrados' },
 ];
 
 function statusConfig(status) {
@@ -95,7 +95,7 @@ function EventCard({ ev, copiedId, togglingId, confirmDeleteId, deletingId, menu
       layout
       className="es-card"
       style={{ position: 'relative' }}
-      onClick={() => { if (isMenuOpen) onMenuToggle(null); }}
+      onClick={() => { if (isMenuOpen) { onMenuToggle(null); } else { navigate(`/events/${ev.id}/results`); } }}
       whileHover={{ y: -3, borderColor: 'rgba(255,255,255,0.12)' }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
     >
@@ -215,13 +215,24 @@ function EventCard({ ev, copiedId, togglingId, confirmDeleteId, deletingId, menu
         </div>
 
         <div className="es-actions">
-          <button
-            className="es-action-btn es-action-btn--manage"
-            data-tutorial="events-results"
-            onClick={(e) => { e.stopPropagation(); navigate(`/events/${ev.id}/results`); }}
-          >
-            Gestionar
-          </button>
+          {ev.status === 'active' && (
+            <button
+              className="es-action-btn es-action-btn--close"
+              onClick={(e) => { e.stopPropagation(); onToggleStatus(ev); }}
+              disabled={isToggling}
+            >
+              {isToggling ? '...' : 'Cerrar evento'}
+            </button>
+          )}
+          {ev.status === 'closed' && (
+            <button
+              className="es-action-btn es-action-btn--close"
+              onClick={(e) => { e.stopPropagation(); onToggleStatus(ev); }}
+              disabled={isToggling}
+            >
+              {isToggling ? '...' : 'Reabrir'}
+            </button>
+          )}
           <button
             className="es-action-btn es-action-btn--copy"
             onClick={(e) => { e.stopPropagation(); onCopyLink(ev); }}
@@ -380,7 +391,12 @@ export default function EventsScreen() {
 
   const { data: events = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.events.byCreator(user?.uid),
-    queryFn: () => eventService.getEventsByCreator(user.uid),
+    queryFn: async () => {
+      console.log('[EventsScreen] fetching events...');
+      const result = await eventService.getEventsByCreator(user.uid);
+      console.log('[EventsScreen] fetched events:', result.map(e => ({ id: e.id, title: e.title, status: e.status })));
+      return result;
+    },
     enabled: !!user,
     ...cacheConfig.events,
   });
@@ -395,10 +411,18 @@ export default function EventsScreen() {
   });
 
   const toggleMutation = useMutation({
-    mutationFn: ({ eventId, nextStatus }) => eventService.updateEvent(eventId, { status: nextStatus }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) }),
+    mutationFn: async ({ eventId, nextStatus }) => {
+      console.log('[EventsScreen] toggleStatus calling API', { eventId, nextStatus });
+      const result = await eventService.updateEvent(eventId, { status: nextStatus });
+      console.log('[EventsScreen] toggleStatus API response', result);
+      return result;
+    },
+    onSuccess: (data, variables) => {
+      console.log('[EventsScreen] toggleStatus onSuccess, invalidating queries', { data, variables });
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });
+    },
     onError: (err) => {
-      logger.error('[EventsScreen] toggle status failed', err);
+      console.error('[EventsScreen] toggle status failed', err);
       showToast('No pudimos cambiar el estado del evento', 'error');
     },
   });
@@ -429,10 +453,14 @@ export default function EventsScreen() {
 
   async function toggleStatus(ev) {
     const nextStatus = ev.status === 'active' ? 'closed' : 'active';
+    console.log('[EventsScreen] toggleStatus called', { id: ev.id, currentStatus: ev.status, nextStatus });
     setTogglingId(ev.id);
     setMenuOpenId(null);
     try {
       await toggleMutation.mutateAsync({ eventId: ev.id, nextStatus });
+      console.log('[EventsScreen] toggleStatus completed successfully');
+    } catch (err) {
+      console.error('[EventsScreen] toggleStatus threw', err);
     } finally {
       setTogglingId(null);
     }
@@ -561,7 +589,7 @@ export default function EventsScreen() {
                 >
                   {activeFilter === 'active' && 'No tienes eventos activos'}
                   {activeFilter === 'draft' && 'Ningun borrador guardado'}
-                  {activeFilter === 'closed' && 'Sin eventos pasados'}
+                  {activeFilter === 'closed' && 'Sin eventos cerrados'}
                 </motion.p>
                 <motion.p
                   className="es-empty-sub"
@@ -571,7 +599,7 @@ export default function EventsScreen() {
                 >
                   {activeFilter === 'active' && 'Crea uno y compartelo con tu audiencia.'}
                   {activeFilter === 'draft' && 'Los borradores que guardes van a aparecer aca.'}
-                  {activeFilter === 'closed' && 'Aqui van a aparecer tus eventos pasados con sus resultados.'}
+                  {activeFilter === 'closed' && 'Los eventos que cierres van a aparecer aca.'}
                 </motion.p>
                 {activeFilter === 'active' && (
                   <motion.button

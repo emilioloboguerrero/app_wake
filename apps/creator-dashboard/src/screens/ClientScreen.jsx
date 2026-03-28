@@ -18,12 +18,15 @@ import './ClientScreen.css';
 
 const TAB_CONFIG = [
   { id: 'lab', label: 'Lab' },
-  { id: 'planificacion', label: 'Planificacion' },
-  { id: 'nutricion', label: 'Nutricion' },
+  { id: 'contenido', label: 'Contenido' },
   { id: 'perfil', label: 'Perfil' },
 ];
 
-const SHOW_WEEK_NAV = new Set(['nutricion']);
+const CONTENIDO_SUBTABS = [
+  { id: 'entrenamiento', label: 'Entrenamiento' },
+  { id: 'nutricion', label: 'Nutricion' },
+];
+
 
 export default function ClientScreen() {
   const { clientId } = useParams();
@@ -36,11 +39,25 @@ export default function ClientScreen() {
   const [currentTab, setCurrentTab] = useState(
     () => location.state?.tab || 'lab'
   );
+  const [contenidoSubtab, setContenidoSubtab] = useState(
+    () => location.state?.subtab || 'entrenamiento'
+  );
 
   const handleTabChange = useCallback((tabId) => {
     setCurrentTab(tabId);
     navigate('.', { replace: true, state: { ...location.state, tab: tabId } });
   }, [navigate, location.state]);
+
+  const handleBack = useCallback(() => {
+    if (currentTab === 'contenido') {
+      setCurrentTab('lab');
+      navigate('.', { replace: true, state: { ...location.state, tab: 'lab' } });
+    } else {
+      navigate(location.state?.returnTo || '/clientes', {
+        state: location.state?.returnState || {},
+      });
+    }
+  }, [currentTab, navigate, location.state]);
 
   // ── Shared week state (synced across plan + nutrition) ───────
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
@@ -178,14 +195,13 @@ export default function ClientScreen() {
     );
   }
 
-  const showWeekNav = SHOW_WEEK_NAV.has(currentTab) && totalWeeks > 0;
+  const showWeekNav = currentTab === 'contenido' && contenidoSubtab === 'nutricion' && totalWeeks > 0;
 
   return (
     <DashboardLayout
       screenName={clientName}
       showBackButton
-      backPath={backPath}
-      backState={backState}
+      onBack={handleBack}
       headerIcon={headerIcon}
     >
       <div className="cs-container">
@@ -227,31 +243,42 @@ export default function ClientScreen() {
               creatorId={creatorId}
             />
           )}
-          {currentTab === 'planificacion' && (
-            <ClientPlanTab
-              clientId={clientId}
-              clientUserId={clientUserId}
-              clientName={clientName}
-              creatorId={creatorId}
-              currentModule={currentModule}
-              planId={planId}
-              activeProgram={activeProgram}
-              programs={programs}
-              programsLoading={programsLoading}
-              selectedProgramId={selectedProgramId}
-              onProgramChange={setSelectedProgramId}
-            />
-          )}
-          {currentTab === 'nutricion' && (
-            <ClientNutritionTab
-              clientId={clientId}
-              clientUserId={clientUserId}
-              clientName={clientName}
-              creatorId={creatorId}
-              currentWeekIndex={currentWeekIndex}
-              weekDateRange={weekDateRange}
-              labData={labData}
-            />
+          {currentTab === 'contenido' && (
+            <>
+              <div className="cs-subtab-bar">
+                <TubelightNavBar
+                  items={CONTENIDO_SUBTABS}
+                  activeId={contenidoSubtab}
+                  onSelect={setContenidoSubtab}
+                />
+              </div>
+              {contenidoSubtab === 'entrenamiento' && (
+                <ClientPlanTab
+                  clientId={clientId}
+                  clientUserId={clientUserId}
+                  clientName={clientName}
+                  creatorId={creatorId}
+                  currentModule={currentModule}
+                  planId={planId}
+                  activeProgram={activeProgram}
+                  programs={programs}
+                  programsLoading={programsLoading}
+                  selectedProgramId={selectedProgramId}
+                  onProgramChange={setSelectedProgramId}
+                />
+              )}
+              {contenidoSubtab === 'nutricion' && (
+                <ClientNutritionTab
+                  clientId={clientId}
+                  clientUserId={clientUserId}
+                  clientName={clientName}
+                  creatorId={creatorId}
+                  currentWeekIndex={currentWeekIndex}
+                  weekDateRange={weekDateRange}
+                  labData={labData}
+                />
+              )}
+            </>
           )}
           {currentTab === 'perfil' && (
             <ClientProfileTab

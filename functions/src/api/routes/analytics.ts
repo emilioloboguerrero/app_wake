@@ -718,10 +718,10 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     if (contentDoc.exists) {
       const c = contentDoc.data()!;
       target = {
-        calories: c.daily_calories ?? c.dailyCalories ?? 0,
-        protein: c.daily_protein_g ?? c.dailyProteinG ?? 0,
-        carbs: c.daily_carbs_g ?? c.dailyCarbsG ?? 0,
-        fat: c.daily_fat_g ?? c.dailyFatG ?? 0,
+        calories: c.daily_calories ?? 0,
+        protein: c.daily_protein_g ?? 0,
+        carbs: c.daily_carbs_g ?? 0,
+        fat: c.daily_fat_g ?? 0,
       };
     }
   }

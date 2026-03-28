@@ -502,7 +502,7 @@
   flex-direction: column;
   gap: 3px;
   width: 100%;
-  margin-top: auto;
+  flex: 1;
   min-height: 0;
   overflow: visible;
 }
@@ -516,11 +516,13 @@
   padding-right: 22px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   min-height: 0;
-  flex-shrink: 1;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: visible;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
 }
 
 /* Completed session - green gradient indicator (top-right to bottom-left) */
@@ -533,6 +535,11 @@
   ) !important;
   border-color: rgba(34, 139, 34, 0.5) !important;
   cursor: pointer;
+}
+
+/* Completed + has image: green tint is baked into the inline backgroundImage gradient */
+.calendar-day-session-card-completed.calendar-day-session-card-has-image {
+  background: none !important;
 }
 
 /* Blue dot: completed session with notes (top-left) */
