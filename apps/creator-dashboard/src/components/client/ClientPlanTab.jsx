@@ -52,7 +52,8 @@ export default function ClientPlanTab({
     queryKey: calendarKey,
     queryFn: () => clientProgramService.getCalendar(clientUserId, programId, monthStr),
     enabled: !!clientUserId && !!programId,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const planAssignments = calendar?.planAssignments || {};
@@ -144,7 +145,10 @@ export default function ClientPlanTab({
         sessionData.sessionId,
         sessionData.date,
         sessionData.moduleId ?? null,
-        sessionData.library_session_ref ? { library_session_ref: true } : {}
+        {
+          ...(sessionData.library_session_ref ? { library_session_ref: true } : {}),
+          ...(sessionData.session_name ? { session_name: sessionData.session_name } : {}),
+        }
       ),
     onSuccess: () => invalidateCalendar(),
   });
@@ -330,15 +334,34 @@ export default function ClientPlanTab({
   // ── Loading skeleton ─────────────────────────────────────────
   if (programsLoading || !programs?.length) {
     return (
-      <div className="cpt-container">
-        <div className="cpt-skeleton-calendar">
+      <div className="cpt-layout">
+        {/* Sidebar skeleton */}
+        <div className="cpt-skeleton-sidebar">
+          <div className="cpt-skeleton-tabs">
+            <ShimmerSkeleton width="48%" height={32} borderRadius={6} />
+            <ShimmerSkeleton width="48%" height={32} borderRadius={6} />
+          </div>
+          <ShimmerSkeleton width={140} height={16} borderRadius={4} />
+          <ShimmerSkeleton width="100%" height={36} borderRadius={8} />
+          <div className="cpt-skeleton-sidebar-items">
+            {Array.from({ length: 5 }, (_, i) => (
+              <ShimmerSkeleton key={i} width="100%" height={40} borderRadius={8} />
+            ))}
+          </div>
+        </div>
+
+        {/* Calendar skeleton */}
+        <div className="cpt-skeleton-main">
           <div className="cpt-skeleton-header">
-            <ShimmerSkeleton width={120} height={20} borderRadius={6} />
-            <ShimmerSkeleton width={80} height={20} borderRadius={6} />
+            <ShimmerSkeleton width={160} height={32} borderRadius={6} />
+            <div className="cpt-skeleton-nav">
+              <ShimmerSkeleton width={32} height={32} borderRadius={6} />
+              <ShimmerSkeleton width={32} height={32} borderRadius={6} />
+            </div>
           </div>
           <div className="cpt-skeleton-weekdays">
             {Array.from({ length: 7 }, (_, i) => (
-              <ShimmerSkeleton key={i} width="100%" height={12} borderRadius={4} />
+              <ShimmerSkeleton key={i} width={32} height={14} borderRadius={4} />
             ))}
           </div>
           <div className="cpt-skeleton-grid">

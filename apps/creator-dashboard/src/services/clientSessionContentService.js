@@ -68,7 +68,7 @@ class ClientSessionContentService {
 
   async updateSession(clientSessionId, updates) {
     const clientId = this.#clientIdFromSessionId(clientSessionId);
-    await apiClient.put(
+    await apiClient.patch(
       `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
       updates
     );
@@ -82,12 +82,18 @@ class ClientSessionContentService {
     );
   }
 
-  async createExercise(clientSessionId, exerciseData, order = 0) {
+  async createExercise(clientSessionId, exerciseData, order = 0, initialSetCount = 3) {
     return withMutex(`session:${clientSessionId}`, async () => {
       const clientId = this.#clientIdFromSessionId(clientSessionId);
       const content = await this.getClientSessionContent(clientSessionId);
       const exercises = content?.exercises ?? [];
-      const newExercise = { ...exerciseData, order };
+      const id = exerciseData.id || `ex_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const sets = Array.from({ length: initialSetCount }, (_, i) => ({
+        id: `set_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        order: i,
+        title: `Serie ${i + 1}`,
+      }));
+      const newExercise = { ...exerciseData, id, order, sets };
       const updated = [...exercises, newExercise];
       await apiClient.put(
         `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
@@ -154,16 +160,20 @@ class ClientSessionContentService {
     return withMutex(`session:${clientSessionId}`, async () => {
       const clientId = this.#clientIdFromSessionId(clientSessionId);
       const content = await this.getClientSessionContent(clientSessionId);
-      if (!content) return;
+      if (!content) return null;
+      const id = setData.id || `set_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      let createdSet = null;
       const exercises = (content.exercises ?? []).map((ex) => {
         if (ex.id !== exerciseId) return ex;
-        const newSet = { ...setData, order: setData.order ?? (ex.sets ?? []).length };
-        return { ...ex, sets: [...(ex.sets ?? []), newSet] };
+        const s = { ...setData, id, order: setData.order ?? (ex.sets ?? []).length };
+        createdSet = s;
+        return { ...ex, sets: [...(ex.sets ?? []), s] };
       });
       await apiClient.put(
         `${CLIENT_SESSION_BASE(clientId, clientSessionId)}/content`,
         { ...content, exercises }
       );
+      return createdSet;
     });
   }
 

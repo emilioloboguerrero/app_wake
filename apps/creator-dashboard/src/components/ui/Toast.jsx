@@ -22,7 +22,7 @@ const ICONS = {
   ),
 };
 
-const Toast = ({ id, message, type, duration, onRemove }) => {
+const Toast = ({ id, message, type, duration, onRemove, action }) => {
   const [phase, setPhase] = useState('enter');
 
   useEffect(() => {
@@ -38,12 +38,21 @@ const Toast = ({ id, message, type, duration, onRemove }) => {
     <div
       className={`toast toast-${type} toast-${phase}`}
       onAnimationEnd={handleAnimEnd}
-      onClick={() => setPhase('exit')}
+      onClick={action ? undefined : () => setPhase('exit')}
       role="status"
       aria-live="polite"
     >
       <span className={`toast-icon toast-icon-${type}`}>{ICONS[type]}</span>
       <span className="toast-message">{message}</span>
+      {action && (
+        <button
+          type="button"
+          className="toast-action"
+          onClick={(e) => { e.stopPropagation(); onRemove(id); action.onClick(); }}
+        >
+          {action.label}
+        </button>
+      )}
     </div>
   );
 };

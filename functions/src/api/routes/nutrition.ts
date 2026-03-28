@@ -523,7 +523,7 @@ router.get("/nutrition/assignment", async (req, res) => {
     .collection("nutrition_assignments")
     .where("userId", "==", auth.userId);
 
-  const snapshot = await assignmentQuery.limit(5).get();
+  const snapshot = await assignmentQuery.orderBy("createdAt", "desc").limit(20).get();
 
   // Filter to active-or-no-status in code (production docs lack status field)
   const activeDocs = snapshot.docs.filter((doc) => {

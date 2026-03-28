@@ -298,11 +298,15 @@ const LibrarySessionDetailScreen = () => {
   }
 
   // Effective client-edit values: location.state -> ref -> sessionStorage (survives remounts and state loss)
-  const effectiveClientSessionId = clientSessionId ?? clientEditContextRef.current.clientSessionId ?? storedContext?.clientSessionId;
-  const effectiveClientId = clientId ?? clientEditContextRef.current.clientId ?? storedContext?.clientId;
-  const effectiveProgramId = programId ?? clientEditContextRef.current.programId ?? storedContext?.programId;
-  const effectiveWeekKey = weekKey ?? clientEditContextRef.current.weekKey ?? storedContext?.weekKey;
-  const effectiveEditScope = editScope ?? clientEditContextRef.current.editScope ?? storedContext?.editScope;
+  // Use sessionStorage fallback when: editScope is present OR location.state is null (page reload).
+  // Skip sessionStorage only when location.state exists but has no editScope (explicit navigation from library).
+  const isPageReload = location.state == null;
+  const useStoredFallback = !!(editScope || clientEditContextRef.current.editScope || isPageReload);
+  const effectiveClientSessionId = clientSessionId ?? clientEditContextRef.current.clientSessionId ?? (useStoredFallback ? storedContext?.clientSessionId : null);
+  const effectiveClientId = clientId ?? clientEditContextRef.current.clientId ?? (useStoredFallback ? storedContext?.clientId : null);
+  const effectiveProgramId = programId ?? clientEditContextRef.current.programId ?? (useStoredFallback ? storedContext?.programId : null);
+  const effectiveWeekKey = weekKey ?? clientEditContextRef.current.weekKey ?? (useStoredFallback ? storedContext?.weekKey : null);
+  const effectiveEditScope = editScope ?? clientEditContextRef.current.editScope ?? (useStoredFallback ? storedContext?.editScope : null);
   const effectiveIsClientEdit = (effectiveEditScope === 'client') && !!effectiveClientSessionId;
   const effectiveIsClientPlanEdit = (effectiveEditScope === 'client_plan') && !!effectiveClientId && !!effectiveProgramId && !!effectiveWeekKey;
 
@@ -401,6 +405,7 @@ const LibrarySessionDetailScreen = () => {
   const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
   const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
   const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
+  const [propagateAffectedPrograms, setPropagateAffectedPrograms] = useState([]);
   const [isPropagating, setIsPropagating] = useState(false);
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
@@ -567,8 +572,8 @@ const LibrarySessionDetailScreen = () => {
       return { session: libSession, libraries, editMode: 'library' };
     },
     enabled: !!user && !!sessionId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: (effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit) ? 0 : 5 * 60 * 1000,
+    gcTime: (effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit) ? 0 : 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
@@ -754,7 +759,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async updateSetInLibraryExercise(uid, sessId, exId, setId, data) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.updateSet(planId, moduleId, sessId, exId, setId, data);
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.updateSet(planId, moduleId, sessId, exId, setId, data); setHasMadeChanges(true); return r; }
         if (effectiveIsClientPlanEdit) return clientPlanContentService.updateSet(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessId, exId, setId, data);
         if (effectiveIsClientEdit) return clientSessionContentService.updateSetInExercise(effectiveSessionId, exId, setId, data);
         const result = await libraryService.updateSetInLibraryExercise(uid, sessId, exId, setId, data);
@@ -763,7 +768,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async createSetInLibraryExercise(uid, sessId, exId, order = null) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.createSet(planId, moduleId, sessId, exId, order);
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.createSet(planId, moduleId, sessId, exId, order); setHasMadeChanges(true); return r; }
         if (effectiveIsClientPlanEdit) return clientPlanContentService.addSetToExercise(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessId, exId, order ?? undefined);
         if (effectiveIsClientEdit) return clientSessionContentService.addSetToExercise(effectiveSessionId, exId, { order: order ?? 0, title: `Serie ${(order ?? 0) + 1}` });
         const result = await libraryService.createSetInLibraryExercise(uid, sessId, exId, order);
@@ -772,7 +777,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async deleteSetFromLibraryExercise(uid, sessId, exId, setId) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.deleteSet(planId, moduleId, sessId, exId, setId);
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.deleteSet(planId, moduleId, sessId, exId, setId); setHasMadeChanges(true); return r; }
         if (effectiveIsClientPlanEdit) return clientPlanContentService.deleteSet(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessId, exId, setId);
         if (effectiveIsClientEdit) return clientSessionContentService.deleteSet(effectiveSessionId, exId, setId);
         const result = await libraryService.deleteSetFromLibraryExercise(uid, sessId, exId, setId);
@@ -787,7 +792,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async updateLibrarySession(uid, sessId, updates) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.updateSession(planId, moduleId, sessId, updates);
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.updateSession(planId, moduleId, sessId, updates); setHasMadeChanges(true); return r; }
         if (effectiveIsClientPlanEdit) return clientPlanContentService.updateSession(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessId, updates);
         if (effectiveIsClientEdit) return clientSessionContentService.updateSession(effectiveSessionId, updates);
         const result = await libraryService.updateLibrarySession(uid, sessId, updates);
@@ -796,7 +801,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async updateExerciseInLibrarySession(uid, sessId, exId, updates) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.updateExercise(planId, moduleId, sessId, exId, updates);
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.updateExercise(planId, moduleId, sessId, exId, updates); setHasMadeChanges(true); return r; }
         if (effectiveIsClientPlanEdit) return clientPlanContentService.updateExercise(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessId, exId, updates);
         if (effectiveIsClientEdit) return clientSessionContentService.updateExercise(effectiveSessionId, exId, updates);
         const result = await libraryService.updateExerciseInLibrarySession(uid, sessId, exId, updates);
@@ -805,7 +810,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async createExerciseInLibrarySession(uid, sessId, exerciseName, order) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.createExercise(planId, moduleId, sessId, exerciseName?.trim?.() || exerciseName || 'Ejercicio', order);
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.createExercise(planId, moduleId, sessId, exerciseName?.trim?.() || exerciseName || 'Ejercicio', order); setHasMadeChanges(true); return r; }
         if (effectiveIsClientPlanEdit) return clientPlanContentService.createExercise(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessId, exerciseName?.trim?.() || exerciseName || 'Ejercicio', order ?? undefined);
         if (effectiveIsClientEdit) return clientSessionContentService.createExercise(effectiveSessionId, { title: exerciseName?.trim?.() || exerciseName, name: exerciseName?.trim?.() || exerciseName }, order ?? 0);
         const result = await libraryService.createExerciseInLibrarySession(uid, sessId, exerciseName, order);
@@ -860,6 +865,7 @@ const LibrarySessionDetailScreen = () => {
           for (const { exerciseId, order } of orders) {
             await plansService.updateExercise(planId, moduleId, sessId, exerciseId, { order });
           }
+          setHasMadeChanges(true);
           return;
         }
         if (effectiveIsClientPlanEdit) {
@@ -1029,7 +1035,16 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       let createdExercise;
-      if (effectiveIsClientEdit) {
+      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
+        createdExercise = await plansService.createExercise(planInstancePlanId, planInstanceModuleId, sessionId, newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio', nextOrder);
+        const realExId = createdExercise?.id || createdExercise?.exerciseId;
+        if (realExId) {
+          await plansService.updateExercise(planInstancePlanId, planInstanceModuleId, sessionId, realExId, newExercisePayload);
+        }
+      } else if (effectiveIsClientPlanEdit) {
+        await clientPlanContentService.createExercise(effectiveClientId, effectiveProgramId, effectiveWeekKey, sessionId, newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio', nextOrder);
+        createdExercise = { id: `ex_${Date.now()}` };
+      } else if (effectiveIsClientEdit) {
         await ensureClientCopy();
         createdExercise = await clientSessionContentService.createExercise(effectiveClientSessionId, newExercisePayload, nextOrder);
       } else {
@@ -2219,8 +2234,10 @@ const LibrarySessionDetailScreen = () => {
     try {
       const { affectedUserIds } = await propagationService.findAffectedByLibrarySession(user.uid, sessionId);
       setPropagateAffectedCount(affectedUserIds.length);
-      const users = await propagationService.getAffectedUsersWithDetailsByLibrarySession(user.uid, sessionId);
+      const { users, programs } = await propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId);
       setPropagateAffectedUsers(users);
+      setPropagateAffectedPrograms(programs);
+      detailsFetchedRef.current = true;
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.error('Error finding affected users:', err);
@@ -2235,29 +2252,43 @@ const LibrarySessionDetailScreen = () => {
       .then(({ affectedUserIds, programCount }) => {
         setLibraryUsageCount(programCount || affectedUserIds.length);
       })
-      .catch((err) => logger.warn('Error fetching library usage count:', err));
+      .catch((err) => console.error('[Propagation] Error fetching library usage count:', err));
   }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsClientPlanEdit, isPlanInstanceEdit]);
+
+  // Fetch plan affected count on mount (plan instance edit only)
+  const [planAffectedCount, setPlanAffectedCount] = useState(0);
+  useEffect(() => {
+    if (!isPlanInstanceEdit || !planInstancePlanId) return;
+    propagationService.findAffectedByPlan(planInstancePlanId)
+      .then(({ affectedUserIds }) => setPlanAffectedCount(affectedUserIds?.length ?? 0))
+      .catch(() => {});
+  }, [isPlanInstanceEdit, planInstancePlanId]);
 
   // Fetch affected count when hasMadeChanges becomes true (library edit only; not for client or plan-instance edit)
   useEffect(() => {
     if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsClientPlanEdit || isPlanInstanceEdit || !hasMadeChanges) return;
     propagationService.findAffectedByLibrarySession(user.uid, sessionId)
       .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
-      .catch((err) => logger.warn('Error fetching affected count:', err));
+      .catch((err) => console.error('[Propagation] Error fetching affected count:', err));
   }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsClientPlanEdit, isPlanInstanceEdit, hasMadeChanges]);
 
-  // Fetch affected users when navigate modal opens (for display in modal)
+  // Eagerly fetch affected details (users + programs) once changes are made and references exist
+  const detailsFetchedRef = useRef(false);
   useEffect(() => {
-    if (!isNavigateModalOpen || !user?.uid || !sessionId || propagateAffectedCount === 0) return;
-    if (propagateAffectedUsers.length > 0) return; // Already have them
-    propagationService.getAffectedUsersWithDetailsByLibrarySession(user.uid, sessionId)
-      .then(setPropagateAffectedUsers)
-      .catch((err) => logger.warn('Error fetching affected users:', err));
-  }, [isNavigateModalOpen, user?.uid, sessionId, propagateAffectedCount, propagateAffectedUsers.length]);
+    if (!hasMadeChanges || libraryUsageCount === 0 || !user?.uid || !sessionId) return;
+    if (detailsFetchedRef.current) return;
+    detailsFetchedRef.current = true;
+    propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId)
+      .then(({ users, programs }) => {
+        setPropagateAffectedUsers(users);
+        setPropagateAffectedPrograms(programs);
+      })
+      .catch((err) => logger.warn('Error fetching affected details:', err));
+  }, [hasMadeChanges, libraryUsageCount, user?.uid, sessionId]);
 
   // Block browser close/refresh when unpropagated changes
   useEffect(() => {
-    const shouldBlock = !effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && hasMadeChanges && propagateAffectedCount > 0;
+    const shouldBlock = !effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && hasMadeChanges && libraryUsageCount > 0;
     const handler = (e) => {
       if (shouldBlock) {
         e.preventDefault();
@@ -2268,7 +2299,7 @@ const LibrarySessionDetailScreen = () => {
       window.addEventListener('beforeunload', handler);
     }
     return () => window.removeEventListener('beforeunload', handler);
-  }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, isPlanInstanceEdit, hasMadeChanges, propagateAffectedCount]);
+  }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, isPlanInstanceEdit, hasMadeChanges, libraryUsageCount]);
 
   const handleBack = () => {
     if (effectiveIsClientEdit || effectiveIsClientPlanEdit) {
@@ -2276,15 +2307,19 @@ const LibrarySessionDetailScreen = () => {
       navigate(backPath, { state: backState });
       return;
     }
-    if (hasMadeChanges && propagateAffectedCount > 0) {
+    if (isPlanInstanceEdit && hasMadeChanges) {
+      navigate(backPath, { state: { ...backState, planHasChanges: true } });
+      return;
+    }
+    if (hasMadeChanges && libraryUsageCount > 0) {
       setIsNavigateModalOpen(true);
     } else {
       navigate(backPath, { state: backState });
     }
   };
 
-  const handleNavigatePropagate = async () => {
-    await handlePropagate();
+  const handleNavigatePropagate = () => {
+    handlePropagate();
     setIsNavigateModalOpen(false);
     navigate(backPath, { state: backState });
   };
@@ -2297,26 +2332,25 @@ const LibrarySessionDetailScreen = () => {
 
   const handlePropagate = async (mode = 'all') => {
     if (!user?.uid || !sessionId) return;
-    setIsPropagating(true);
-    try {
-      const result = await libraryService.propagateLibrarySession(sessionId, mode);
-      if (mode === 'forward_only') {
-        showToast('Los cambios solo se aplicaran a nuevas asignaciones.', 'success');
-      } else {
-        const count = result?.updatedCount ?? 0;
-        if (count > 0) {
-          showToast(`Cambios propagados correctamente a ${count} sesion(es).`, 'success');
-        } else {
-          showToast('No habia sesiones para actualizar.', 'success');
-        }
-      }
-      setHasMadeChanges(false);
-    } catch (err) {
-      logger.error('Error propagating:', err);
-      showToast(`Error al propagar: ${err?.message || 'Intentalo de nuevo.'}`, 'error');
-    } finally {
-      setIsPropagating(false);
+    setHasMadeChanges(false);
+    if (mode === 'forward_only') {
+      showToast('Los cambios solo se aplicaran a nuevas asignaciones.', 'success');
+      libraryService.propagateLibrarySession(sessionId, mode).catch(() => {});
+      return;
     }
+    showToast('Propagando cambios...', 'info', 10000);
+    libraryService.propagateLibrarySession(sessionId, mode)
+      .then((result) => {
+        const count = result?.updatedCount ?? 0;
+        showToast(count > 0 ? `Cambios propagados a ${count} sesion(es).` : 'No habia sesiones para actualizar.', 'success');
+      })
+      .catch((err) => {
+        logger.error('Error propagating:', err);
+        setHasMadeChanges(true);
+        showToast('Error al propagar.', 'error', 6000, {
+          action: { label: 'Reintentar', onClick: () => handlePropagate(mode) },
+        });
+      });
   };
 
   const handleAddAlternative = async () => {
@@ -3018,6 +3052,47 @@ const LibrarySessionDetailScreen = () => {
       backPath={backPath}
       backState={backState}
       onBack={handleBack}
+      headerRight={hasMadeChanges && (
+        (!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && libraryUsageCount > 0) ||
+        (isPlanInstanceEdit && planAffectedCount > 0)
+      ) ? (
+        <div className="library-session-propagate-group">
+          <button
+            type="button"
+            className="library-session-propagate-button"
+            onClick={isPlanInstanceEdit ? () => {
+              setHasMadeChanges(false);
+              showToast('Propagando cambios...', 'info', 10000);
+              propagationService.propagatePlan(planInstancePlanId)
+                .then((result) => {
+                  showToast(result.propagated > 0 ? `Cambios propagados a ${result.propagated} copia(s).` : 'No habia copias para actualizar.', 'success');
+                })
+                .catch((err) => {
+                  logger.error('Error propagating plan:', err);
+                  setHasMadeChanges(true);
+                  showToast('Error al propagar.', 'error', 6000, {
+                    action: { label: 'Reintentar', onClick: () => document.querySelector('.library-session-propagate-button')?.click() },
+                  });
+                });
+            } : handleOpenPropagateModal}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {isPropagating ? 'Propagando...' : isPlanInstanceEdit ? `Propagar plan a ${planAffectedCount} cliente(s)` : 'Propagar cambios'}
+          </button>
+          <button
+            type="button"
+            className="library-session-propagate-dismiss"
+            onClick={() => setHasMadeChanges(false)}
+            title="Descartar"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      ) : null}
     >
       <MediaPickerModal
         isOpen={isMediaPickerOpen}
@@ -3033,6 +3108,8 @@ const LibrarySessionDetailScreen = () => {
         itemName={session?.title}
         affectedCount={propagateAffectedCount}
         affectedUsers={propagateAffectedUsers}
+        affectedPrograms={propagateAffectedPrograms}
+        programCount={libraryUsageCount}
         isPropagating={isPropagating}
         onPropagate={handlePropagate}
       />
@@ -3043,6 +3120,8 @@ const LibrarySessionDetailScreen = () => {
         itemName={session?.title}
         affectedCount={propagateAffectedCount}
         affectedUsers={propagateAffectedUsers}
+        affectedPrograms={propagateAffectedPrograms}
+        programCount={libraryUsageCount}
         isPropagating={isPropagating}
         onPropagate={handleNavigatePropagate}
         onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
@@ -3068,7 +3147,7 @@ const LibrarySessionDetailScreen = () => {
                 <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <span className="library-session-client-only-text">
-                Solo para {clientName}
+                Editando solo para {clientName}
               </span>
               {effectiveIsClientEdit && hasClientCopy && (
                 <button
@@ -3343,22 +3422,6 @@ const LibrarySessionDetailScreen = () => {
           <div className="lsd-glow-wrap lsd-glow-wrap--main">
             <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-main">
-            {!effectiveIsClientEdit && !effectiveIsClientPlanEdit && !isPlanInstanceEdit && hasMadeChanges && propagateAffectedCount > 0 && (
-              <div className="library-session-main-propagate-bar">
-                <button
-                  type="button"
-                  className="library-session-propagate-button"
-                  onClick={handleOpenPropagateModal}
-                  title="Propagar cambios a los usuarios que tienen esta sesión asignada"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M17 1L21 5L17 9M3 11V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18H16M21 5H9C7.93913 5 6.92172 5.42143 6.17157 6.17157C5.42143 6.92172 5 7.93913 5 9V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Propagar a usuarios
-                </button>
-              </div>
-            )}
-
             <DropZone
               id="session-list"
               className={`library-session-exercises-container ${exercises.length === 0 ? 'empty' : ''} ${activeId && String(activeId).startsWith('available-') ? 'lsd-drop-active' : ''}`}

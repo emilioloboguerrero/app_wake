@@ -27,15 +27,15 @@
   justify-content: space-between;
   gap: 16px;
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.25);
   border-radius: 8px;
   flex-shrink: 0;
 }
 
 .library-session-client-edit-banner-text {
   font-size: clamp(13px, 3vw, 14px);
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(234, 179, 8, 0.85);
 }
 
 .library-session-client-edit-revert {
@@ -61,21 +61,22 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.25);
   border-radius: 6px;
   flex-shrink: 0;
   width: 100%;
 }
 
 .library-session-client-only-icon {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(234, 179, 8, 0.7);
   flex-shrink: 0;
 }
 
 .library-session-client-only-text {
   font-size: 0.78rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(234, 179, 8, 0.85);
   letter-spacing: 0.02em;
 }
 
@@ -1064,17 +1065,25 @@
   flex-shrink: 0;
 }
 
+.library-session-propagate-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  margin-left: 10px;
+  height: 44px;
+}
+
 .library-session-propagate-button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  background: rgba(34, 197, 94, 0.15);
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  border-radius: 8px;
-  color: rgba(34, 197, 94, 1);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
+  padding: 0 18px;
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  border-radius: 6px 0 0 6px;
+  color: rgba(234, 179, 8, 0.9);
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   font-family: inherit;
@@ -1082,8 +1091,29 @@
 }
 
 .library-session-propagate-button:hover {
-  background: rgba(34, 197, 94, 0.2);
-  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(234, 179, 8, 0.18);
+  border-color: rgba(234, 179, 8, 0.45);
+  color: rgba(234, 179, 8, 1);
+}
+
+.library-session-propagate-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: rgba(239, 68, 68, 0.7);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.library-session-propagate-dismiss:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: rgba(239, 68, 68, 0.95);
 }
 
 .library-session-edit-button {
@@ -3259,15 +3289,6 @@
 }
 
 /* ── Accent on Propagate Button ──────────────────────────── */
-.has-accent .library-session-propagate-button {
-  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.25);
-  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.08);
-}
-
-.has-accent .library-session-propagate-button:hover {
-  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.4);
-  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.14);
-}
 
 /* ── Accent on Active Sidebar Tab ────────────────────────── */
 .has-accent .library-session-sidebar-tab.active {

@@ -1,89 +1,73 @@
-import { useMemo, useEffect, useRef } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { GlowingEffect, AnimatedList } from '../ui';
+import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import PanelShell from './PanelShell';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
 
-const MACRO_COLORS = {
-  protein: 'rgba(235,120,100,0.9)',
-  carbs: 'rgba(220,170,90,0.85)',
-  fat: 'rgba(200,180,150,0.5)',
-};
+function MacroPie({ protein = 0, carbs = 0, fat = 0, id }) {
+  const data = useMemo(() => {
+    return [
+      { name: 'Proteina', value: protein, grams: protein },
+      { name: 'Carbohidratos', value: carbs, grams: carbs },
+      { name: 'Grasa', value: fat, grams: fat },
+    ].filter((d) => d.value > 0);
+  }, [protein, carbs, fat]);
 
-function MacroDonut({ protein = 0, carbs = 0, fat = 0, size = 72 }) {
-  const total = protein + carbs + fat;
-  if (total === 0) return null;
-
-  const strokeWidth = 13;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const center = size / 2;
-
-  const pPct = protein / total;
-  const cPct = carbs / total;
-  const fPct = fat / total;
-
-  const gap = 0.02;
-  const segments = [
-    { pct: pPct, color: MACRO_COLORS.protein },
-    { pct: cPct, color: MACRO_COLORS.carbs },
-    { pct: fPct, color: MACRO_COLORS.fat },
-  ].filter((s) => s.pct > 0);
-
-  const totalGap = gap * segments.length;
-  const scale = segments.length > 1 ? 1 - totalGap : 1;
-
-  let offset = 0;
-  const arcs = segments.map((seg, i) => {
-    const len = seg.pct * scale * circumference;
-    const dashOffset = circumference - len;
-    const rotation = -90 + offset * 360;
-    const arc = { ...seg, len, dashOffset, rotation, key: i };
-    offset += seg.pct * scale + (segments.length > 1 ? gap : 0);
-    return arc;
-  });
-
-  const arcRefs = useRef([]);
-
-  useEffect(() => {
-    arcRefs.current.forEach((el, i) => {
-      if (!el) return;
-      el.style.transition = 'none';
-      el.style.strokeDashoffset = `${circumference}`;
-      requestAnimationFrame(() => {
-        el.style.transition = 'stroke-dashoffset 700ms cubic-bezier(0.22,1,0.36,1)';
-        el.style.strokeDashoffset = `${arcs[i].dashOffset}`;
-      });
-    });
-  }, [protein, carbs, fat, circumference, arcs]);
+  if (data.length === 0) return null;
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block', flexShrink: 0 }}>
-      <circle cx={center} cy={center} r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={strokeWidth} />
-      {arcs.map((arc) => (
-        <circle
-          key={arc.key}
-          ref={(el) => { arcRefs.current[arc.key] = el; }}
-          cx={center}
-          cy={center}
-          r={radius}
-          fill="none"
-          stroke={arc.color}
-          strokeWidth={strokeWidth}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference}
-          transform={`rotate(${arc.rotation} ${center} ${center})`}
-        />
-      ))}
-    </svg>
+    <div style={{ width: 72, height: 72, flexShrink: 0 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <defs>
+            {[0, 1, 2].map((i) => (
+              <linearGradient key={i} id={`card-pie-grad-${id}-${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={`rgba(255,255,255,${0.22 + i * 0.06})`} />
+                <stop offset="50%" stopColor={`rgba(255,255,255,${0.12 + i * 0.04})`} />
+                <stop offset="100%" stopColor={`rgba(255,255,255,${0.05 + i * 0.03})`} />
+              </linearGradient>
+            ))}
+          </defs>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={18}
+            outerRadius={32}
+            paddingAngle={2}
+            dataKey="value"
+            nameKey="name"
+            label={false}
+            isAnimationActive={false}
+          >
+            {data.map((_, i) => (
+              <Cell key={i} fill={`url(#card-pie-grad-${id}-${i})`} />
+            ))}
+          </Pie>
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const { name, grams } = payload[0].payload;
+              return (
+                <div className="library-session-pie-tooltip">
+                  <span className="library-session-pie-tooltip-name">{name}</span>
+                  <span className="library-session-pie-tooltip-sets">{Number(grams ?? 0).toFixed(0)} g</span>
+                </div>
+              );
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
-export default function NutritionPlansPanel({ searchQuery = '' }) {
+export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const creatorId = user?.uid ?? '';
@@ -101,6 +85,35 @@ export default function NutritionPlansPanel({ searchQuery = '' }) {
     return plans.filter((i) => (i.name ?? '').toLowerCase().includes(q));
   }, [plans, q]);
 
+  const renderSkeleton = useCallback(() => (
+    <div className="bib-nutri-list">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className="bib-card bib-nutri-plan-card"
+          aria-hidden="true"
+          style={{ opacity: 1 - i * 0.12 }}
+        >
+          <div className="bib-nutri-plan-card__left">
+            <ShimmerSkeleton height="14px" width={`${50 + (i % 3) * 12}%`} borderRadius="4px" />
+            <ShimmerSkeleton height="11px" width={`${65 + (i % 2) * 15}%`} borderRadius="3px" />
+          </div>
+          <div className="bib-nutri-plan-card__right">
+            <div className="bib-nutri-plan-card__macros">
+              <ShimmerSkeleton width="64px" height="64px" borderRadius="50%" />
+              <div className="bib-nutri-plan-card__macro-labels">
+                <ShimmerSkeleton height="11px" width="28px" borderRadius="3px" />
+                <ShimmerSkeleton height="11px" width="28px" borderRadius="3px" />
+                <ShimmerSkeleton height="11px" width="28px" borderRadius="3px" />
+              </div>
+            </div>
+            <ShimmerSkeleton height="15px" width="58px" borderRadius="4px" />
+          </div>
+        </div>
+      ))}
+    </div>
+  ), []);
+
   return (
     <PanelShell
       isLoading={isLoading && !plans.length}
@@ -109,8 +122,9 @@ export default function NutritionPlansPanel({ searchQuery = '' }) {
       emptyTitle="Sin planes de nutricion"
       emptySub="Crea un plan y asignalo a tus clientes."
       emptyCta="+ Crear plan"
-      onCta={() => navigate('/nutrition/plans/new')}
+      onCta={onCreatePlan}
       onRetry={() => window.location.reload()}
+      renderSkeleton={renderSkeleton}
     >
       <div className="bib-nutri-list">
         {filtered.length === 0 ? (
@@ -143,15 +157,15 @@ export default function NutritionPlansPanel({ searchQuery = '' }) {
                   {hasMacros && (
                     <div className="bib-nutri-plan-card__right">
                       <div className="bib-nutri-plan-card__macros">
-                        <MacroDonut protein={p} carbs={c} fat={f} size={72} />
+                        <MacroPie protein={p} carbs={c} fat={f} id={item.id} />
                         <div className="bib-nutri-plan-card__macro-labels">
-                          <span className="bib-nutri-plan-card__macro" style={{ color: MACRO_COLORS.protein }}>
+                          <span className="bib-nutri-plan-card__macro">
                             {Math.round(p)}P
                           </span>
-                          <span className="bib-nutri-plan-card__macro" style={{ color: MACRO_COLORS.carbs }}>
+                          <span className="bib-nutri-plan-card__macro">
                             {Math.round(c)}C
                           </span>
-                          <span className="bib-nutri-plan-card__macro" style={{ color: MACRO_COLORS.fat }}>
+                          <span className="bib-nutri-plan-card__macro">
                             {Math.round(f)}G
                           </span>
                         </div>

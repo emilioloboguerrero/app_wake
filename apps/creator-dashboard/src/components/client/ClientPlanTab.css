@@ -69,14 +69,38 @@
 }
 
 /* ─── Skeleton Loader ─────────────────────────────────────────── */
-.cpt-container {
-  padding-top: 8px;
-}
-
-.cpt-skeleton-calendar {
+.cpt-skeleton-sidebar {
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.cpt-skeleton-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.cpt-skeleton-sidebar-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cpt-skeleton-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
 }
 
 .cpt-skeleton-header {
@@ -86,10 +110,16 @@
   padding: 0 4px;
 }
 
+.cpt-skeleton-nav {
+  display: flex;
+  gap: 4px;
+}
+
 .cpt-skeleton-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 8px;
+  justify-items: center;
 }
 
 .cpt-skeleton-grid {
@@ -115,6 +145,17 @@
   }
 
   .cpt-main {
+    padding-left: 0;
+  }
+
+  .cpt-skeleton-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 200px;
+    overflow: hidden;
+  }
+
+  .cpt-skeleton-main {
     padding-left: 0;
   }
 }

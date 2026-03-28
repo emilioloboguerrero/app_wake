@@ -12,11 +12,16 @@ class PropagationService {
     };
   }
 
-  async getAffectedUsersWithDetailsByLibrarySession(_creatorId, librarySessionId) {
+  async getAffectedDetailsForLibrarySession(_creatorId, librarySessionId) {
     const result = await apiClient.get(
       `/creator/library/sessions/${librarySessionId}/affected?details=true`
     );
-    return result?.data?.users ?? [];
+    const data = result?.data ?? {};
+    return {
+      users: data.users ?? [],
+      programs: data.programs ?? [],
+      programCount: data.programCount ?? 0,
+    };
   }
 
   async propagateLibrarySession(_creatorId, librarySessionId) {

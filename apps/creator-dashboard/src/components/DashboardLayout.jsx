@@ -35,11 +35,12 @@ const NAV_ITEMS = [
     key: 'clientes',
     label: 'Asesorías',
     path: '/clientes',
-    match: (p) =>
+    match: (p, state) =>
       p === '/clientes' ||
       p === '/availability' ||
       p.startsWith('/clients/') ||
-      p.startsWith('/clientes/'),
+      p.startsWith('/clientes/') ||
+      (p.startsWith('/content/') && (state?.editScope === 'client' || state?.editScope === 'client_plan')),
     icon: <Users size={ICON_SIZE} />,
   },
   {
@@ -55,11 +56,11 @@ const NAV_ITEMS = [
     key: 'biblioteca',
     label: 'Biblioteca',
     path: '/biblioteca',
-    match: (p) =>
+    match: (p, state) =>
       p === '/biblioteca' ||
       p.startsWith('/plans/') ||
       p.startsWith('/libraries') ||
-      p.startsWith('/content/') ||
+      (p.startsWith('/content/') && !state?.editScope) ||
       p.startsWith('/library/') ||
       p.startsWith('/nutrition/'),
     icon: <BookOpen size={ICON_SIZE} />,
@@ -323,9 +324,9 @@ const DashboardLayout = ({
           {visibleNavItems.map(item => (
             <button
               key={item.key}
-              className={`dl-nav-item ${item.match(location.pathname) ? 'dl-nav-item--active' : ''}`}
+              className={`dl-nav-item ${item.match(location.pathname, location.state) ? 'dl-nav-item--active' : ''}`}
               onClick={() => navTo(item.path)}
-              aria-current={item.match(location.pathname) ? 'page' : undefined}
+              aria-current={item.match(location.pathname, location.state) ? 'page' : undefined}
             >
               <span className="dl-nav-item__icon">{item.icon}</span>
               <span className="dl-nav-item__label">{item.label}</span>
@@ -339,9 +340,9 @@ const DashboardLayout = ({
           {DEV_NAV_ITEMS.map(item => (
             <button
               key={item.key}
-              className={`dl-nav-item ${item.match(location.pathname) ? 'dl-nav-item--active' : ''}`}
+              className={`dl-nav-item ${item.match(location.pathname, location.state) ? 'dl-nav-item--active' : ''}`}
               onClick={() => navTo(item.path)}
-              aria-current={item.match(location.pathname) ? 'page' : undefined}
+              aria-current={item.match(location.pathname, location.state) ? 'page' : undefined}
             >
               <span className="dl-nav-item__icon">{item.icon}</span>
               <span className="dl-nav-item__label">{item.label}</span>

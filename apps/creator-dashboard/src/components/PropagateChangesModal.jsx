@@ -13,6 +13,8 @@ const PropagateChangesModal = ({
   itemName = '',
   affectedCount = 0,
   affectedUsers = [],
+  affectedPrograms = [],
+  programCount = 0,
   isPropagating = false,
   onPropagate,
 }) => {
@@ -21,6 +23,7 @@ const PropagateChangesModal = ({
   const isNutritionPlan = type === 'nutrition_plan';
   const isSession = type === 'library_session';
   const itemLabel = isNutritionPlan ? 'Este plan de nutrición' : (isSession ? 'Esta sesión' : 'Este plan');
+  const hasReferences = programCount > 0 || affectedCount > 0;
 
   const handlePropagateAll = async () => {
     if (onPropagate) await onPropagate('all');
@@ -35,7 +38,7 @@ const PropagateChangesModal = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="¿Propagar cambios?" containerClassName="propagate-modal-container" contentClassName="propagate-modal-content-wrapper">
       <div className="propagate-modal-content">
-        {affectedCount > 0 ? (
+        {hasReferences ? (
           <>
             <div className="propagate-modal-layout">
               <motion.div
@@ -52,7 +55,7 @@ const PropagateChangesModal = ({
                       </svg>
                     </div>
                     <h3 className="propagate-option-title">Propagar cambios</h3>
-                    <p className="propagate-option-desc">Los cambios se aplican a <strong>todos los programas y clientes</strong> que usen esta sesion. Las personalizaciones se sobreescriben.</p>
+                    <p className="propagate-option-desc">Los cambios se aplican a <strong>todos los programas</strong> que usen esta sesion. Las personalizaciones se sobreescriben.</p>
                   </div>
                   <div className="propagate-option-divider" />
                   <div className="propagate-option">
@@ -74,21 +77,48 @@ const PropagateChangesModal = ({
                 transition={{ duration: 0.4, ease: SPRING_EASE, delay: 0.1 }}
               >
                 <div className="propagate-modal-users-header">
-                  <span className="propagate-modal-users-label">Usuarios afectados</span>
-                  <span className="propagate-modal-users-count">{affectedCount}</span>
+                  <span className="propagate-modal-users-label">Programas</span>
+                  <span className="propagate-modal-users-count">{programCount}</span>
                 </div>
-                <div className="propagate-modal-users-list">
-                  <AnimatedList stagger={40}>
-                    {affectedUsers.map((u) => (
-                      <div key={u.userId} className="propagate-modal-user-row">
-                        <span className="propagate-modal-user-avatar">
-                          {(u.displayName || '?').charAt(0).toUpperCase()}
-                        </span>
-                        <span className="propagate-modal-user-name">{u.displayName}</span>
-                      </div>
-                    ))}
-                  </AnimatedList>
-                </div>
+                {affectedPrograms.length > 0 && (
+                  <div className="propagate-modal-users-list">
+                    <AnimatedList stagger={40}>
+                      {affectedPrograms.map((p) => (
+                        <div key={p.id} className="propagate-modal-user-row">
+                          <span className="propagate-modal-user-avatar" style={{ fontSize: 11 }}>
+                            {p.type === 'plan' ? 'P' : 'C'}
+                          </span>
+                          <span className="propagate-modal-user-name">{p.title}</span>
+                        </div>
+                      ))}
+                    </AnimatedList>
+                  </div>
+                )}
+                {affectedCount > 0 && (
+                  <>
+                    <div className="propagate-modal-users-header" style={{ marginTop: 12 }}>
+                      <span className="propagate-modal-users-label">Usuarios afectados</span>
+                      <span className="propagate-modal-users-count">{affectedCount}</span>
+                    </div>
+                    <div className="propagate-modal-users-list">
+                      <AnimatedList stagger={40}>
+                        {affectedUsers.map((u) => (
+                          <div key={u.userId} className="propagate-modal-user-row">
+                            <span className="propagate-modal-user-avatar">
+                              {(u.displayName || '?').charAt(0).toUpperCase()}
+                            </span>
+                            <span className="propagate-modal-user-name">{u.displayName}</span>
+                          </div>
+                        ))}
+                      </AnimatedList>
+                    </div>
+                  </>
+                )}
+                {affectedCount === 0 && (
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 8 }}>
+                    Ningún usuario tiene esta sesión asignada actualmente.
+                  </p>
+                )}
               </motion.div>
             </div>
 
@@ -124,7 +154,7 @@ const PropagateChangesModal = ({
           <>
             <div className="propagate-modal-intro-wrap">
               <p className="propagate-modal-intro">
-                {itemLabel} no está asignado a ningún usuario.
+                {itemLabel} no está en ningún programa.
               </p>
             </div>
             <div className="propagate-modal-footer">

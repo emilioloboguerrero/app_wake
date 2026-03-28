@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -9,12 +9,16 @@ import PlanWeeksGrid from '../components/PlanWeeksGrid';
 import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
+import propagationService from '../services/propagationService';
+import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import '../components/PropagateChangesModal.css';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import { ShimmerSkeleton, FullScreenError, GlowingEffect } from '../components/ui';
 import { cacheConfig } from '../config/queryClient';
 import './PlanDetailScreen.css';
+import './LibrarySessionDetailScreen.css';
 
 const SPRING_EASE = [0.22, 1, 0.36, 1];
 
@@ -90,6 +94,7 @@ const PlanDetailScreen = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [planTitle, setPlanTitle] = useState('');
@@ -106,6 +111,12 @@ const PlanDetailScreen = () => {
   const [compareWeekModuleId, setCompareWeekModuleId] = useState('');
   const [compareVolumes, setCompareVolumes] = useState({});
   const [compareLoading, setCompareLoading] = useState(false);
+  const [hasMadeChanges, setHasMadeChanges] = useState(!!location.state?.planHasChanges);
+  const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
+  const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
+  const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
+  const [propagateProgramCount, setPropagateProgramCount] = useState(0);
+  const [isPropagating, setIsPropagating] = useState(false);
 
   const isNew = planId === 'new';
 
@@ -164,6 +175,7 @@ const PlanDetailScreen = () => {
       const nextNum = nextOrder + 1;
       await plansService.createModule(planId, `Semana ${nextNum}`, nextOrder);
       await queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
+      setHasMadeChanges(true);
       showToast('Semana añadida', 'success');
     } catch (err) {
       showToast(err.message || 'No pudimos añadir la semana. Intenta de nuevo.', 'error');
@@ -210,10 +222,12 @@ const PlanDetailScreen = () => {
 
   const handleModulesChange = (modules) => {
     setModulesWithSessions(modules);
+    setHasMadeChanges(true);
   };
 
   const handleDeleteWeek = () => {
     queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
+    setHasMadeChanges(true);
   };
 
   const weekVolumeWeekOptions = React.useMemo(
@@ -306,8 +320,56 @@ const PlanDetailScreen = () => {
 
   const contentReturnState = { activeTab: 'contenido' };
 
+  // Fetch affected count on mount
+  useEffect(() => {
+    if (!planId || planId === 'new') return;
+    let cancelled = false;
+    propagationService.findAffectedByPlan(planId)
+      .then((result) => {
+        if (cancelled) return;
+        setPropagateAffectedCount(result.affectedUserIds?.length ?? 0);
+        setPropagateProgramCount(result.programCount ?? 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [planId]);
+
+  // Block browser close when unpropagated changes exist
+  useEffect(() => {
+    if (!hasMadeChanges || propagateAffectedCount === 0) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasMadeChanges, propagateAffectedCount]);
+
+  const handlePropagate = async () => {
+    if (!planId) return;
+    setHasMadeChanges(false);
+    showToast('Propagando cambios...', 'info', 10000);
+    propagationService.propagatePlan(planId)
+      .then((result) => {
+        const count = result?.propagated ?? 0;
+        showToast(count > 0 ? `Cambios propagados a ${count} copia(s).` : 'No habia copias para actualizar.', 'success');
+      })
+      .catch((err) => {
+        logger.error('Error propagating plan:', err);
+        setHasMadeChanges(true);
+        showToast('Error al propagar.', 'error', 6000, {
+          action: { label: 'Reintentar', onClick: handlePropagate },
+        });
+      });
+  };
+
   const handleBack = () => {
-    navigate('/biblioteca', { state: contentReturnState });
+    if (hasMadeChanges && propagateAffectedCount > 0) {
+      // Fetch user details for modal
+      propagationService.getAffectedUsersWithDetailsByPlan(planId)
+        .then((users) => setPropagateAffectedUsers(users))
+        .catch(() => {});
+      setIsNavigateModalOpen(true);
+    } else {
+      navigate('/biblioteca', { state: contentReturnState });
+    }
   };
 
 
@@ -350,6 +412,31 @@ const PlanDetailScreen = () => {
       backPath="/content"
       onBack={handleBack}
       onHeaderEditClick={() => setIsEditModalOpen(true)}
+      headerRight={hasMadeChanges && propagateAffectedCount > 0 ? (
+        <div className="library-session-propagate-group">
+          <button
+            type="button"
+            className="library-session-propagate-button"
+            onClick={handlePropagate}
+            disabled={isPropagating}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {isPropagating ? 'Propagando...' : `Propagar a ${propagateAffectedCount} cliente(s)`}
+          </button>
+          <button
+            type="button"
+            className="library-session-propagate-dismiss"
+            onClick={() => setHasMadeChanges(false)}
+            title="Descartar"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      ) : null}
     >
       <motion.div
         className="plan-page"
@@ -466,6 +553,26 @@ const PlanDetailScreen = () => {
           </div>
         )}
 
+        <PropagateNavigateModal
+          isOpen={isNavigateModalOpen}
+          onClose={() => setIsNavigateModalOpen(false)}
+          type="plan"
+          itemName={plan?.title || 'Este plan'}
+          affectedCount={propagateAffectedCount}
+          affectedUsers={propagateAffectedUsers}
+          programCount={propagateProgramCount}
+          isPropagating={isPropagating}
+          onPropagate={async () => {
+            await handlePropagate();
+            setIsNavigateModalOpen(false);
+            navigate('/biblioteca', { state: contentReturnState });
+          }}
+          onLeaveWithoutPropagate={() => {
+            setHasMadeChanges(false);
+            setIsNavigateModalOpen(false);
+            navigate('/biblioteca', { state: contentReturnState });
+          }}
+        />
       </motion.div>
     </DashboardLayout>
   );

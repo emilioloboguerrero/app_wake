@@ -12,6 +12,7 @@ import NutritionPlansPanel from '../components/biblioteca/NutritionPlansPanel';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
 import CreatePlanOverlay from '../components/biblioteca/CreatePlanOverlay';
 import libraryService from '../services/libraryService';
+import * as nutritionDb from '../services/nutritionFirestoreService';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { queryKeys } from '../config/queryClient';
@@ -29,8 +30,8 @@ const TRAINING_TABS = [
 ];
 
 const NUTRITION_TABS = [
-  { id: 'recetas', label: 'Recetas' },
   { id: 'planes_nutri', label: 'Planes nutricionales' },
+  { id: 'recetas', label: 'Recetas' },
 ];
 
 const SearchIcon = () => (
@@ -140,6 +141,10 @@ const BibliotecaScreen = () => {
   const libInputRef = useRef(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [showCreateNutriPlan, setShowCreateNutriPlan] = useState(false);
+  const [nutriPlanStep, setNutriPlanStep] = useState('name');
+  const [nutriPlanName, setNutriPlanName] = useState('');
+  const nutriPlanInputRef = useRef(null);
   const [showCreateSession, setShowCreateSession] = useState(false);
   const [sessionStep, setSessionStep] = useState('name');
   const [newSessionTitle, setNewSessionTitle] = useState('');
@@ -226,10 +231,18 @@ const BibliotecaScreen = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [showCreateSession, sessionStep]);
 
+  useEffect(() => {
+    if (!showCreateNutriPlan) return;
+    if (nutriPlanStep !== 'name') return;
+    const handler = (e) => { if (e.key === 'Escape') setShowCreateNutriPlan(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showCreateNutriPlan, nutriPlanStep]);
+
   const activeFilterCount = filters.sort !== 'name_asc' ? 1 : 0;
 
   const setDomain = useCallback((d) => {
-    const defaultTab = d === 'entrenamiento' ? 'ejercicios' : 'recetas';
+    const defaultTab = d === 'entrenamiento' ? 'ejercicios' : 'planes_nutri';
     setSearchParams({ domain: d, tab: defaultTab }, { replace: true });
     setSearchQuery('');
   }, [setSearchParams]);
@@ -253,6 +266,36 @@ const BibliotecaScreen = () => {
     return `Buscar ${labels[activeSubTab] || 'contenido'}…`;
   };
 
+  const createNutriPlanMutation = useMutation({
+    mutationFn: (name) => nutritionDb.createPlan(user.uid, { name, description: '', categories: [] }),
+    onSuccess: (planId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(user?.uid) });
+      setNutriPlanStep('success');
+      setTimeout(() => {
+        setShowCreateNutriPlan(false);
+        if (planId) navigate(`/nutrition/plans/${planId}`);
+      }, 1600);
+    },
+    onError: () => {
+      setNutriPlanStep('name');
+      showToast('No pudimos crear el plan. Intenta de nuevo.', 'error');
+    },
+  });
+
+  const handleCreateNutriPlan = useCallback(() => {
+    const name = nutriPlanName.trim();
+    if (!name) return;
+    setNutriPlanStep('creating');
+    createNutriPlanMutation.mutate(name);
+  }, [nutriPlanName, createNutriPlanMutation]);
+
+  const openCreateNutriPlan = useCallback(() => {
+    setShowCreateNutriPlan(true);
+    setNutriPlanStep('name');
+    setNutriPlanName('');
+    setTimeout(() => nutriPlanInputRef.current?.focus(), 300);
+  }, []);
+
   const handlePrimaryAction = useCallback(() => {
     if (activeSubTab === 'ejercicios') {
       openCreateLibrary();
@@ -263,9 +306,9 @@ const BibliotecaScreen = () => {
     } else if (activeSubTab === 'recetas') {
       navigate('/nutrition/meals/new');
     } else if (activeSubTab === 'planes_nutri') {
-      navigate('/nutrition/plans/new');
+      openCreateNutriPlan();
     }
-  }, [activeSubTab, navigate]);
+  }, [activeSubTab, navigate, openCreateLibrary, openCreateSession, openCreateNutriPlan]);
 
   const getPrimaryLabel = () => {
     const labels = {
@@ -294,7 +337,7 @@ const BibliotecaScreen = () => {
       case 'recetas':
         return <RecetasPanel searchQuery={searchQuery} />;
       case 'planes_nutri':
-        return <NutritionPlansPanel searchQuery={searchQuery} />;
+        return <NutritionPlansPanel searchQuery={searchQuery} onCreatePlan={openCreateNutriPlan} />;
       default:
         return null;
     }
@@ -373,6 +416,77 @@ const BibliotecaScreen = () => {
           onClose={() => setShowCreatePlan(false)}
           onCreated={handlePlanCreated}
         />
+
+        {showCreateNutriPlan && (
+          <div className="cfo-overlay" onClick={nutriPlanStep === 'name' ? () => setShowCreateNutriPlan(false) : undefined}>
+            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
+              <GlowingEffect spread={40} borderWidth={1} />
+
+              <div className="cfo-topbar">
+                <div />
+                {nutriPlanStep === 'name' && (
+                  <button type="button" className="cfo-close" onClick={() => setShowCreateNutriPlan(false)} aria-label="Cerrar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+
+              <div className="cfo-body">
+                {nutriPlanStep === 'name' && (
+                  <div className="cfo-step" key="nutri-plan-name">
+                    <div className="cfo-step__header">
+                      <h1 className="cfo-step__title">Nuevo plan nutricional</h1>
+                      <p className="cfo-step__desc">Dale un nombre a tu plan. Luego configuraras calorias, macros y comidas.</p>
+                    </div>
+                    <div className="cfo-step__content">
+                      <input
+                        ref={nutriPlanInputRef}
+                        className="cfo-name-input"
+                        type="text"
+                        placeholder="Ej: Plan definicion, Volumen 3000 kcal..."
+                        value={nutriPlanName}
+                        onChange={(e) => setNutriPlanName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && nutriPlanName.trim()) handleCreateNutriPlan(); }}
+                        maxLength={80}
+                      />
+                    </div>
+                    <div className="cfo-footer" style={{ justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        className="cfo-next-btn"
+                        onClick={handleCreateNutriPlan}
+                        disabled={!nutriPlanName.trim()}
+                      >
+                        Crear plan
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {nutriPlanStep === 'creating' && (
+                  <div className="cfo-step cfo-step--center" key="nutri-plan-creating">
+                    <div className="cfo-spinner" />
+                    <p className="cfo-status-text">Creando plan</p>
+                  </div>
+                )}
+
+                {nutriPlanStep === 'success' && (
+                  <div className="cfo-step cfo-step--center" key="nutri-plan-success">
+                    <div className="cfo-check-wrap">
+                      <svg className="cfo-check-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle className="cfo-check-circle" cx="24" cy="24" r="22" stroke="rgba(74,222,128,0.8)" strokeWidth="2.5" />
+                        <path className="cfo-check-path" d="M14 25l7 7 13-14" stroke="rgba(74,222,128,0.9)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <h2 className="cfo-success-title">Plan creado</h2>
+                    <p className="cfo-success-desc">Configura las calorias, macros y comidas de tu plan.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {showCreateLibrary && (
           <div className="cfo-overlay" onClick={libStep === 'name' ? () => setShowCreateLibrary(false) : undefined}>

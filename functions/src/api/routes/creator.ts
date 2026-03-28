@@ -1004,6 +1004,38 @@ router.get("/creator/instagram-feed", async (req, res) => {
 
 // ─── Creator Nutrition Library ─────────────────────────────────────────────
 
+/** Maps library plan data (camelCase) to client_nutrition_plan_content schema (snake_case). */
+function buildNutritionContentDoc(
+  planData: Record<string, unknown>,
+  assignmentId: string,
+  sourcePlanId: string,
+  isRefresh: boolean
+): Record<string, unknown> {
+  const doc: Record<string, unknown> = {
+    source_plan_id: sourcePlanId,
+    assignment_id: assignmentId,
+    name: planData.name ?? "",
+    description: planData.description ?? "",
+    daily_calories: (planData.dailyCalories ?? planData.daily_calories ?? null) as unknown,
+    daily_protein_g: (planData.dailyProteinG ?? planData.daily_protein_g ?? null) as unknown,
+    daily_carbs_g: (planData.dailyCarbsG ?? planData.daily_carbs_g ?? null) as unknown,
+    daily_fat_g: (planData.dailyFatG ?? planData.daily_fat_g ?? null) as unknown,
+    categories: planData.categories ?? [],
+  };
+  if (isRefresh) {
+    doc.refreshed_at = FieldValue.serverTimestamp();
+  } else {
+    doc.snapshot_at = FieldValue.serverTimestamp();
+  }
+  return doc;
+}
+
+/** Returns true if assignment status is active or missing (production compat). */
+function isActiveAssignment(data: Record<string, unknown>): boolean {
+  const s = data.status;
+  return !s || s === "active";
+}
+
 // GET /creator/nutrition/meals
 router.get("/creator/nutrition/meals", async (req, res) => {
   const auth = await validateAuth(req);
@@ -1151,7 +1183,7 @@ router.get("/creator/nutrition/plans", async (req, res) => {
     .collection("creator_nutrition_library")
     .doc(auth.userId)
     .collection("plans")
-    .orderBy("createdAt", "desc")
+    .orderBy("created_at", "desc")
     .get();
 
   res.json({
@@ -1271,6 +1303,31 @@ router.delete("/creator/nutrition/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
+  // Block deletion if active assignments exist
+  const assignSnap = await db
+    .collection("nutrition_assignments")
+    .where("planId", "==", req.params.planId)
+    .where("assignedBy", "==", auth.userId)
+    .limit(50)
+    .get();
+
+  const hasActive = assignSnap.docs.some((d) => isActiveAssignment(d.data()));
+  if (hasActive) {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      "No puedes eliminar un plan con asignaciones activas. Desasigna los clientes primero."
+    );
+  }
+
+  // Clean up orphaned content docs from inactive assignments
+  if (!assignSnap.empty) {
+    const cleanBatch = db.batch();
+    for (const assignDoc of assignSnap.docs) {
+      cleanBatch.delete(db.collection("client_nutrition_plan_content").doc(assignDoc.id));
+    }
+    await cleanBatch.commit();
+  }
+
   await docRef.delete();
   res.status(204).send();
 });
@@ -1299,15 +1356,28 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
     .where("assignedBy", "==", auth.userId)
     .get();
 
-  let copiesDeleted = 0;
-  const batchSize = 450;
+  // Filter to active-or-no-status (production docs may lack status field)
+  const activeDocs = assignmentsSnap.docs.filter((d) => isActiveAssignment(d.data()));
+  const skippedInactive = assignmentsSnap.size - activeDocs.length;
+
+  // 2 ops per assignment: content set + assignment update
+  const batchSize = 225;
+  let clientsAffected = 0;
   let batch = db.batch();
   let batchCount = 0;
 
-  for (const assignDoc of assignmentsSnap.docs) {
+  for (const assignDoc of activeDocs) {
     const contentRef = db.collection("client_nutrition_plan_content").doc(assignDoc.id);
-    batch.set(contentRef, { ...planData, refreshed_at: FieldValue.serverTimestamp() });
-    copiesDeleted++;
+    batch.set(contentRef, buildNutritionContentDoc(planData, assignDoc.id, req.params.planId, true));
+
+    // Keep assignment's embedded snapshot and planName in sync
+    batch.update(assignDoc.ref, {
+      planName: planData.name ?? "",
+      plan: planData,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    clientsAffected++;
     batchCount++;
     if (batchCount >= batchSize) {
       await batch.commit();
@@ -1317,7 +1387,7 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
   }
   if (batchCount > 0) await batch.commit();
 
-  res.json({ data: { clientsAffected: assignmentsSnap.size, copiesDeleted } });
+  res.json({ data: { clientsAffected, skippedInactive } });
 });
 
 // ─── Client Nutrition Assignments ─────────────────────────────────────────
@@ -1397,18 +1467,10 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
     });
 
     // Snapshot plan content
-    tx.set(db.collection("client_nutrition_plan_content").doc(assignmentRef.id), {
-      source_plan_id: body.planId,
-      assignment_id: assignmentRef.id,
-      name: planData.name ?? "",
-      description: planData.description ?? "",
-      daily_calories: planData.dailyCalories ?? planData.daily_calories ?? null,
-      daily_protein_g: planData.dailyProteinG ?? planData.daily_protein_g ?? null,
-      daily_carbs_g: planData.dailyCarbsG ?? planData.daily_carbs_g ?? null,
-      daily_fat_g: planData.dailyFatG ?? planData.daily_fat_g ?? null,
-      categories: planData.categories ?? [],
-      snapshot_at: FieldValue.serverTimestamp(),
-    });
+    tx.set(
+      db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
+      buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+    );
 
     // Pin on user if no existing pinned assignment
     const userRef = db.collection("users").doc(req.params.clientId);
@@ -1455,10 +1517,39 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
     }
   }
 
-  await assignRef.update({
-    ...updates,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // If planId is changing, re-snapshot the new plan into client_nutrition_plan_content
+  const currentPlanId = assignDoc.data()?.planId;
+  if (updates.planId && updates.planId !== currentPlanId) {
+    const newPlanDoc = await db
+      .collection("creator_nutrition_library")
+      .doc(auth.userId)
+      .collection("plans")
+      .doc(updates.planId as string)
+      .get();
+
+    if (!newPlanDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+    }
+
+    const newPlanData = newPlanDoc.data()!;
+    const batch = db.batch();
+    batch.update(assignRef, {
+      ...updates,
+      planName: newPlanData.name ?? "",
+      plan: newPlanData,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    batch.set(
+      db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
+      buildNutritionContentDoc(newPlanData, req.params.assignmentId, updates.planId as string, false)
+    );
+    await batch.commit();
+  } else {
+    await assignRef.update({
+      ...updates,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   res.json({ data: { updated: true } });
 });
@@ -1972,12 +2063,24 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "programId es requerido", "programId");
   }
 
-  const docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
-  const doc = await db.collection("client_plan_content").doc(docId).get();
+  let docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
+  let doc = await db.collection("client_plan_content").doc(docId).get();
 
   if (!doc.exists) {
-    res.json({ data: null });
-    return;
+    // Auto-create copy from plan template if a plan is assigned to this week
+    try {
+      const result = await ensureClientCopy(req.params.clientId, programId, req.params.weekKey, auth.userId);
+      docId = result.docId;
+      doc = await db.collection("client_plan_content").doc(docId).get();
+    } catch {
+      // No plan assigned to this week — return null
+      res.json({ data: null });
+      return;
+    }
+    if (!doc.exists) {
+      res.json({ data: null });
+      return;
+    }
   }
 
   const docData = doc.data()!;
@@ -2217,6 +2320,151 @@ router.delete("/creator/clients/:clientId/client-sessions/:clientSessionId", asy
 
   await docRef.delete();
   res.status(204).send();
+});
+
+// ─── Client Session Content (exercises/sets tree) ─────────────────────────
+
+// GET /creator/clients/:clientId/client-sessions/:clientSessionId/content
+router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    res.json({ data: null });
+    return;
+  }
+
+  // Load exercises → sets tree
+  const exercisesSnap = await docRef.collection("exercises").orderBy("order", "asc").get();
+  const exercises = await Promise.all(
+    exercisesSnap.docs.map(async (eDoc) => {
+      const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+      return {
+        id: eDoc.id,
+        ...eDoc.data(),
+        sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })),
+      };
+    })
+  );
+
+  res.json({ data: { id: doc.id, ...doc.data(), exercises } });
+});
+
+// PUT /creator/clients/:clientId/client-sessions/:clientSessionId/content
+router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  const body = req.body ?? {};
+  const { exercises: exercisesArr, ...docFields } = body as {
+    exercises?: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+  };
+
+  const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
+
+  // Delete existing exercises/sets subcollections before rewriting
+  const existingExercises = await docRef.collection("exercises").get();
+  if (!existingExercises.empty) {
+    let delBatch = db.batch();
+    let delCount = 0;
+    for (const eDoc of existingExercises.docs) {
+      const setsSnap = await eDoc.ref.collection("sets").get();
+      for (const sDoc of setsSnap.docs) {
+        delBatch.delete(sDoc.ref);
+        delCount++;
+        if (delCount >= 450) { await delBatch.commit(); delBatch = db.batch(); delCount = 0; }
+      }
+      delBatch.delete(eDoc.ref);
+      delCount++;
+      if (delCount >= 450) { await delBatch.commit(); delBatch = db.batch(); delCount = 0; }
+    }
+    if (delCount > 0) await delBatch.commit();
+  }
+
+  // Write doc + exercises/sets tree
+  let batch = db.batch();
+  let batchCount = 0;
+
+  batch.set(docRef, {
+    ...docFields,
+    client_id: req.params.clientId,
+    creator_id: auth.userId,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+  batchCount++;
+
+  if (Array.isArray(exercisesArr)) {
+    for (const exercise of exercisesArr) {
+      const exId = (exercise.id as string) ?? db.collection("_").doc().id;
+      const exRef = docRef.collection("exercises").doc(exId);
+      const { sets: setsArr, ...exFields } = exercise;
+      batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+      batchCount++;
+
+      if (Array.isArray(setsArr)) {
+        for (const set of setsArr as Array<Record<string, unknown>>) {
+          const setId = (set.id as string) ?? db.collection("_").doc().id;
+          batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+          batchCount++;
+        }
+      }
+
+      if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+    }
+  }
+
+  if (batchCount > 0) await batch.commit();
+  res.json({ data: { id: req.params.clientSessionId } });
+});
+
+// PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content
+// Updates doc-level fields only — does NOT touch exercises/sets subcollections
+router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Contenido de sesión no encontrado");
+  }
+
+  const { exercises: _ignored, ...updates } = req.body ?? {};
+  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
+  res.json({ data: { id: req.params.clientSessionId, updated: true } });
+});
+
+// PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId
+router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId", async (req, res) => {
+  const auth = await validateAuth(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  const exRef = db.collection("client_session_content")
+    .doc(req.params.clientSessionId)
+    .collection("exercises")
+    .doc(req.params.exerciseId);
+
+  const exDoc = await exRef.get();
+  if (!exDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
+  }
+
+  const updates = req.body ?? {};
+  await exRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
+  res.json({ data: { id: req.params.exerciseId, updated: true } });
 });
 
 // ─── Creator Plans Hierarchy (modules/sessions/exercises/sets) ────────────
@@ -3413,22 +3661,22 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
   const sessionId = req.params.sessionId;
   const wantDetails = req.query.details === "true";
 
-  // Check plans that reference this library session
+  let programCount = 0;
+  const affectedPlanIds: string[] = [];
+  const affectedCourseIds: string[] = [];
+  const affectedUserIdSet = new Set<string>();
+
+  // Phase 1: Check plans collection (one-on-one plans)
   const plansSnap = await db
     .collection("plans")
     .where("creator_id", "==", auth.userId)
     .limit(100)
     .get();
 
-  let programCount = 0;
-  const affectedPlanIds: string[] = [];
-  const affectedUserIdSet = new Set<string>();
-
   for (const planDoc of plansSnap.docs) {
     const modulesSnap = await planDoc.ref.collection("modules").get();
     let planHasRef = false;
     for (const moduleDoc of modulesSnap.docs) {
-      // Check both new and legacy field names
       const newSnap = await moduleDoc.ref.collection("sessions")
         .where("source_library_session_id", "==", sessionId)
         .limit(1)
@@ -3446,7 +3694,35 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
     }
   }
 
-  // Find affected users: clients whose planAssignments reference any affected plan
+  // Phase 2: Check courses collection (group programs)
+  const coursesSnap = await db
+    .collection("courses")
+    .where("creator_id", "==", auth.userId)
+    .limit(100)
+    .get();
+
+  for (const courseDoc of coursesSnap.docs) {
+    const modulesSnap = await courseDoc.ref.collection("modules").get();
+    let courseHasRef = false;
+    for (const moduleDoc of modulesSnap.docs) {
+      const newSnap = await moduleDoc.ref.collection("sessions")
+        .where("source_library_session_id", "==", sessionId)
+        .limit(1)
+        .get();
+      if (!newSnap.empty) { courseHasRef = true; break; }
+      const oldSnap = await moduleDoc.ref.collection("sessions")
+        .where("librarySessionRef", "==", sessionId)
+        .limit(1)
+        .get();
+      if (!oldSnap.empty) { courseHasRef = true; break; }
+    }
+    if (courseHasRef) {
+      programCount++;
+      affectedCourseIds.push(courseDoc.id);
+    }
+  }
+
+  // Phase 3: Find affected users from plans (via planAssignments)
   if (affectedPlanIds.length > 0) {
     const affectedPlanIdSet = new Set(affectedPlanIds);
     const clientsSnap = await db
@@ -3456,7 +3732,6 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
 
     for (const clientDoc of clientsSnap.docs) {
       const clientUserId = clientDoc.data().clientUserId as string;
-      // Read planAssignments from user doc (source of truth)
       const userDoc = await db.collection("users").doc(clientUserId).get();
       if (!userDoc.exists) continue;
       const courses = userDoc.data()?.courses ?? {};
@@ -3473,19 +3748,93 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
     }
   }
 
+  // Phase 4: Find affected users from courses (via users.courses map)
+  if (affectedCourseIds.length > 0) {
+    const affectedCourseIdSet = new Set(affectedCourseIds);
+    const clientsSnap = await db
+      .collection("one_on_one_clients")
+      .where("creatorId", "==", auth.userId)
+      .get();
+
+    const checkedUserIds = new Set<string>();
+    for (const clientDoc of clientsSnap.docs) {
+      const clientUserId = clientDoc.data().clientUserId as string;
+      if (checkedUserIds.has(clientUserId)) continue;
+      checkedUserIds.add(clientUserId);
+      const userDoc = await db.collection("users").doc(clientUserId).get();
+      if (!userDoc.exists) continue;
+      const userCourses = userDoc.data()?.courses ?? {};
+      for (const courseId of Object.keys(userCourses)) {
+        if (affectedCourseIdSet.has(courseId)) {
+          affectedUserIdSet.add(clientUserId);
+          break;
+        }
+      }
+    }
+
+    for (const courseId of affectedCourseIds) {
+      const usersWithCourse = await db
+        .collection("users")
+        .where(`courses.${courseId}.status`, "==", "active")
+        .limit(200)
+        .get();
+      for (const userDoc of usersWithCourse.docs) {
+        affectedUserIdSet.add(userDoc.id);
+      }
+    }
+  }
+
+  // Phase 5: Check client_sessions for direct assignments from this library session
+  const [csSnapBySessionId, csSnapBySourceId] = await Promise.all([
+    db.collection("client_sessions")
+      .where("creator_id", "==", auth.userId)
+      .where("session_id", "==", sessionId)
+      .limit(200)
+      .get(),
+    db.collection("client_sessions")
+      .where("creator_id", "==", auth.userId)
+      .where("source_session_id", "==", sessionId)
+      .limit(200)
+      .get(),
+  ]);
+
+  const seenCsDocs = new Set<string>();
+  for (const csDoc of [...csSnapBySessionId.docs, ...csSnapBySourceId.docs]) {
+    if (seenCsDocs.has(csDoc.id)) continue;
+    seenCsDocs.add(csDoc.id);
+    const clientId = csDoc.data().client_id as string;
+    if (clientId) affectedUserIdSet.add(clientId);
+  }
+
   const affectedUserIds = Array.from(affectedUserIdSet);
 
-  if (wantDetails && affectedUserIds.length > 0) {
-    const userDocs = await Promise.all(
-      affectedUserIds.slice(0, 50).map((uid) => db.collection("users").doc(uid).get())
-    );
-    const detailedUsers = userDocs
-      .filter((d) => d.exists)
-      .map((d) => ({
-        userId: d.id,
-        displayName: d.data()?.displayName || d.data()?.email || d.id,
-      }));
-    res.json({ data: { users: detailedUsers } });
+  if (wantDetails) {
+    // Fetch program/plan details
+    const programs: Array<{ id: string; title: string; type: string }> = [];
+    for (const planId of affectedPlanIds) {
+      const pDoc = plansSnap.docs.find((d) => d.id === planId);
+      programs.push({ id: planId, title: (pDoc?.data()?.title as string) || planId, type: "plan" });
+    }
+    for (const courseId of affectedCourseIds) {
+      const cDoc = coursesSnap.docs.find((d) => d.id === courseId);
+      programs.push({ id: courseId, title: (cDoc?.data()?.title as string) || courseId, type: "course" });
+    }
+
+    // Fetch user details
+    let detailedUsers: Array<{ userId: string; displayName: string }> = [];
+    if (affectedUserIds.length > 0) {
+      const userDocs = await Promise.all(
+        affectedUserIds.slice(0, 50).map((uid) => db.collection("users").doc(uid).get())
+      );
+      detailedUsers = userDocs
+        .filter((d) => d.exists)
+        .map((d) => ({
+          userId: d.id,
+          displayName: (d.data()?.displayName || d.data()?.email || d.id) as string,
+        }));
+    }
+
+    res.json({ data: { users: detailedUsers, programs, programCount } });
     return;
   }
 
@@ -3646,6 +3995,55 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
         }
       }
     }
+  }
+
+  // Phase 3: Update client_session_content (date-assigned sessions)
+  const dateSessionsSnap = await db
+    .collection("client_session_content")
+    .where("source_session_id", "==", req.params.sessionId)
+    .where("creator_id", "==", auth.userId)
+    .get();
+
+  for (const contentDoc of dateSessionsSnap.docs) {
+    const contentRef = contentDoc.ref;
+    // Delete existing exercises/sets
+    const existingExSnap = await contentRef.collection("exercises").get();
+    for (const exDoc of existingExSnap.docs) {
+      const existingSetsSnap = await exDoc.ref.collection("sets").get();
+      for (const setDoc of existingSetsSnap.docs) {
+        batch.delete(setDoc.ref);
+        batchCount++;
+        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      }
+      batch.delete(exDoc.ref);
+      batchCount++;
+      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+    }
+
+    // Write library content
+    batch.update(contentRef, {
+      title: libSessionData.title,
+      image_url: libSessionData.image_url ?? null,
+      updated_at: FieldValue.serverTimestamp(),
+    });
+    batchCount++;
+    if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+    for (const ex of exercises) {
+      const newExRef = contentRef.collection("exercises").doc();
+      batch.set(newExRef, { ...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp() });
+      batchCount++;
+      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+      for (const setData of ex.sets) {
+        const newSetRef = newExRef.collection("sets").doc();
+        batch.set(newSetRef, { ...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
+        batchCount++;
+        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      }
+    }
+
+    updatedCount++;
   }
 
   if (batchCount > 0) await batch.commit();
@@ -5315,6 +5713,7 @@ router.get("/creator/plans/:planId/affected", async (req, res) => {
   const wantDetails = req.query.details === "true";
 
   const affectedUserIdSet = new Set<string>();
+  const affectedProgramIdSet = new Set<string>();
 
   // Find clients whose planAssignments reference this plan
   const clientsSnap = await db
@@ -5324,21 +5723,19 @@ router.get("/creator/plans/:planId/affected", async (req, res) => {
 
   for (const clientDoc of clientsSnap.docs) {
     const clientUserId = clientDoc.data().clientUserId as string;
-    const cpSnap = await db
-      .collection("client_programs")
-      .where("user_id", "==", clientUserId)
-      .get();
+    const userDoc = await db.collection("users").doc(clientUserId).get();
+    if (!userDoc.exists) continue;
+    const courses = userDoc.data()?.courses ?? {};
 
-    for (const cpDoc of cpSnap.docs) {
-      const assignments = cpDoc.data().planAssignments as Record<string, { planId: string }> | undefined;
-      if (!assignments) continue;
+    for (const [programId, courseData] of Object.entries(courses) as Array<[string, Record<string, unknown>]>) {
+      const assignments = (courseData?.planAssignments ?? {}) as Record<string, { planId: string }>;
       for (const val of Object.values(assignments)) {
         if (val.planId === planId) {
           affectedUserIdSet.add(clientUserId);
+          affectedProgramIdSet.add(programId);
           break;
         }
       }
-      if (affectedUserIdSet.has(clientUserId)) break;
     }
   }
 
@@ -5358,7 +5755,7 @@ router.get("/creator/plans/:planId/affected", async (req, res) => {
     return;
   }
 
-  res.json({ data: { affectedUserIds, programCount: 0 } });
+  res.json({ data: { affectedUserIds, programCount: affectedProgramIdSet.size, programIds: Array.from(affectedProgramIdSet) } });
 });
 
 // POST /creator/plans/:planId/propagate
@@ -5372,10 +5769,171 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  // Plans are per-user assignments — propagation means the plan content itself is the source of truth.
-  // No copies to update (unlike nutrition plans which snapshot into client_nutrition_plan_content).
-  // This endpoint exists to satisfy the client-side propagation flow.
-  res.json({ data: { updatedCount: 0, message: "Plans are live — no copies to propagate." } });
+  const planId = req.params.planId;
+  const mode = (req.body?.mode as string) ?? "all";
+
+  if (mode === "forward_only") {
+    res.json({ data: { updatedCount: 0, mode: "forward_only" } });
+    return;
+  }
+
+  // Find all client_plan_content docs created from this plan
+  const contentSnap = await db
+    .collection("client_plan_content")
+    .where("source_plan_id", "==", planId)
+    .get();
+
+  if (contentSnap.empty) {
+    res.json({ data: { updatedCount: 0, mode: "all" } });
+    return;
+  }
+
+  // Read all modules from the plan (keyed by moduleId for quick lookup)
+  const modulesSnap = await db.collection("plans").doc(planId).collection("modules").get();
+  const moduleContentCache: Record<string, { title: string; sessions: Array<Record<string, unknown>> }> = {};
+
+  for (const mDoc of modulesSnap.docs) {
+    const sessionsSnap = await mDoc.ref.collection("sessions").orderBy("order", "asc").get();
+    const sessions: Array<Record<string, unknown>> = [];
+
+    for (const sDoc of sessionsSnap.docs) {
+      const sData = sDoc.data();
+      const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
+      let sessionData: Record<string, unknown> = {
+        ...sData,
+        id: sDoc.id,
+        source_plan_session_id: sDoc.id,
+        source_library_session_id: sourceLibId,
+      };
+      delete sessionData.librarySessionRef;
+      delete sessionData.useLocalContent;
+
+      const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
+      let exercises: Array<Record<string, unknown>> = [];
+
+      if (exSnap.empty && sourceLibId) {
+        try {
+          const libRef = db.collection("creator_libraries").doc(auth.userId).collection("sessions").doc(sourceLibId);
+          const libDoc = await libRef.get();
+          if (libDoc.exists) {
+            const libData = libDoc.data()!;
+            sessionData.title = sData.title ?? libData.title ?? null;
+            sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
+            const libExSnap = await libRef.collection("exercises").orderBy("order", "asc").get();
+            exercises = await Promise.all(
+              libExSnap.docs.map(async (eDoc) => {
+                const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+                return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+              })
+            );
+          }
+        } catch { /* best-effort */ }
+      } else {
+        exercises = await Promise.all(
+          exSnap.docs.map(async (eDoc) => {
+            const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+            return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+          })
+        );
+        if (sourceLibId) {
+          try {
+            const libDoc = await db.collection("creator_libraries").doc(auth.userId)
+              .collection("sessions").doc(sourceLibId).get();
+            if (libDoc.exists) {
+              const libData = libDoc.data()!;
+              sessionData.title = sData.title ?? libData.title ?? null;
+              sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
+            }
+          } catch { /* best-effort */ }
+        }
+      }
+
+      sessions.push({ ...sessionData, exercises });
+    }
+
+    moduleContentCache[mDoc.id] = { title: mDoc.data()?.title ?? mDoc.id, sessions };
+  }
+
+  // Overwrite each client_plan_content doc (parallel, max 5 concurrent)
+  const batchSize = 450;
+  const docsToUpdate = contentSnap.docs.filter((d) => {
+    const mid = d.data().source_module_id as string | undefined;
+    return mid && moduleContentCache[mid];
+  });
+
+  const updateOneDoc = async (contentDoc: FirebaseFirestore.QueryDocumentSnapshot) => {
+    const docData = contentDoc.data();
+    const sourceModuleId = docData.source_module_id as string;
+    const { title: moduleTitle, sessions } = moduleContentCache[sourceModuleId];
+    const docRef = contentDoc.ref;
+
+    // Collect all refs to delete in parallel
+    const existingSessions = await docRef.collection("sessions").get();
+    const deleteRefs: FirebaseFirestore.DocumentReference[] = [];
+    await Promise.all(existingSessions.docs.map(async (sDoc) => {
+      const exSnap = await sDoc.ref.collection("exercises").get();
+      await Promise.all(exSnap.docs.map(async (eDoc) => {
+        const setsSnap = await eDoc.ref.collection("sets").get();
+        setsSnap.docs.forEach((setDoc) => deleteRefs.push(setDoc.ref));
+        deleteRefs.push(eDoc.ref);
+      }));
+      deleteRefs.push(sDoc.ref);
+    }));
+
+    // Single batch: delete + write
+    let batch = db.batch();
+    let count = 0;
+    for (const ref of deleteRefs) {
+      batch.delete(ref);
+      count++;
+      if (count >= batchSize) { await batch.commit(); batch = db.batch(); count = 0; }
+    }
+
+    batch.update(docRef, {
+      title: moduleTitle,
+      source_plan_id: planId,
+      source_module_id: sourceModuleId,
+      updated_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+
+    for (const session of sessions) {
+      const sessionId = (session.id as string) ?? db.collection("_").doc().id;
+      const sessionRef = docRef.collection("sessions").doc(sessionId);
+      const { exercises: exArr, ...sessionFields } = session;
+      batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp() });
+      count++;
+
+      if (Array.isArray(exArr)) {
+        for (const exercise of exArr as Array<Record<string, unknown>>) {
+          const exId = (exercise.id as string) ?? db.collection("_").doc().id;
+          const exRef = sessionRef.collection("exercises").doc(exId);
+          const { sets: setsArr, ...exFields } = exercise;
+          batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+          count++;
+
+          if (Array.isArray(setsArr)) {
+            for (const set of setsArr as Array<Record<string, unknown>>) {
+              const setId = (set.id as string) ?? db.collection("_").doc().id;
+              batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+              count++;
+            }
+          }
+          if (count >= batchSize) { await batch.commit(); batch = db.batch(); count = 0; }
+        }
+      }
+    }
+
+    if (count > 0) await batch.commit();
+  };
+
+  // Process up to 5 client docs concurrently
+  const CONCURRENCY = 5;
+  for (let i = 0; i < docsToUpdate.length; i += CONCURRENCY) {
+    await Promise.all(docsToUpdate.slice(i, i + CONCURRENCY).map(updateOneDoc));
+  }
+
+  res.json({ data: { updatedCount: docsToUpdate.length, mode: "all" } });
 });
 
 // GET /creator/nutrition/plans/:planId/affected

@@ -14,19 +14,9 @@ export async function nutritionFoodSearch(searchExpression, pageNumber = 0, _max
   const result = await apiClient.get('/nutrition/foods/search', {
     params: { q: searchExpression, page: String(page) },
   });
-  const foods = (result?.data?.foods ?? []).map((f) => ({
-    food_id: f.foodId,
-    food_name: f.name,
-    food_type: f.foodType,
-    brand_name: f.brandName ?? null,
-    food_category: null,
-    food_description: f.servingDescription ?? '',
-    calories: f.calories,
-    protein: f.protein,
-    carbohydrate: f.carbs,
-    fat: f.fat,
-    servings: { serving: [] },
-  }));
+  // API returns raw FatSecret objects (snake_case fields) inside data.foods
+  const rawFoods = result?.data?.foods ?? [];
+  const foods = Array.isArray(rawFoods) ? rawFoods : (rawFoods ? [rawFoods] : []);
   return {
     foods_search: {
       results: { food: foods },
@@ -43,27 +33,9 @@ export async function nutritionFoodSearch(searchExpression, pageNumber = 0, _max
  */
 export async function nutritionFoodGet(foodId, _options = {}) {
   const result = await apiClient.get(`/nutrition/foods/${foodId}`);
-  const d = result?.data ?? {};
-  return {
-    food: {
-      food_id: d.foodId ?? foodId,
-      food_name: d.name ?? '',
-      brand_name: d.brandName ?? null,
-      servings: {
-        serving: (d.servings ?? []).map((s) => ({
-          serving_id: s.servingId,
-          serving_description: s.description,
-          calories: s.calories,
-          protein: s.protein,
-          carbohydrate: s.carbs,
-          fat: s.fat,
-          grams_per_unit: s.gramsPerUnit ?? null,
-          metric_serving_amount: s.metricServingAmount ?? null,
-          metric_serving_unit: s.metricServingUnit ?? null,
-        })),
-      },
-    },
-  };
+  // API returns raw FatSecret food object (snake_case fields) inside data
+  const foodData = result?.data ?? {};
+  return { food: foodData };
 }
 
 /**
@@ -73,28 +45,9 @@ export async function nutritionFoodGet(foodId, _options = {}) {
  */
 export async function nutritionBarcodeLookup(barcode) {
   const result = await apiClient.get(`/nutrition/foods/barcode/${encodeURIComponent(barcode)}`);
-  const d = result?.data ?? {};
-  return {
-    food: {
-      food_id: d.foodId ?? '',
-      food_name: d.name ?? '',
-      brand_name: d.brandName ?? null,
-      food_category: null,
-      servings: {
-        serving: (d.servings ?? []).map((s) => ({
-          serving_id: s.servingId,
-          serving_description: s.description,
-          calories: s.calories,
-          protein: s.protein,
-          carbohydrate: s.carbs,
-          fat: s.fat,
-          grams_per_unit: s.gramsPerUnit ?? null,
-          metric_serving_amount: s.metricServingAmount ?? null,
-          metric_serving_unit: s.metricServingUnit ?? null,
-        })),
-      },
-    },
-  };
+  // API returns raw FatSecret food object (snake_case fields) inside data
+  const foodData = result?.data ?? {};
+  return { food: foodData };
 }
 
 export default {

@@ -1,4 +1,12 @@
-/* Plan editor — reuses library-session + meal-editor layout */
+/* Plan editor — redesigned layout: left=search, center=categories, right=objectives+summary */
+
+/* ── LEFT SIDEBAR ── */
+
+/* Narrower sidebar for plan editor */
+.lsd-glow-wrap--sidebar.plan-editor-sidebar-wrap {
+  width: 300px;
+  min-width: 300px;
+}
 
 .plan-editor-sidebar {
   display: flex;
@@ -6,7 +14,20 @@
   min-height: 0;
 }
 
-/* Tabs at top (same style as Planes/Sesiones) */
+.plan-editor-sidebar .plan-editor-sidebar-tabs {
+  padding: 12px 14px;
+}
+
+.plan-editor-sidebar .plan-editor-sidebar-list-wrap {
+  padding: 12px 14px;
+}
+
+.plan-editor-sidebar .meal-editor-search-block {
+  flex-shrink: 0;
+  padding: 12px 14px;
+}
+
+
 .plan-editor-sidebar-tabs {
   display: flex;
   gap: 0;
@@ -52,27 +73,12 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Panel content below tabs — same structure for Alimentos and Recetas */
 .plan-editor-sidebar-panel {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-.plan-editor-sidebar-section-header {
-  padding: 12px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-}
-
-.plan-editor-sidebar-section-header .plan-editor-sidebar-section-hint {
-  margin: 0 0 8px 0;
-}
-
-.plan-editor-sidebar-section-header .plan-editor-category-select {
-  margin-bottom: 0;
 }
 
 .plan-editor-sidebar-list-wrap {
@@ -102,138 +108,13 @@
   cursor: default;
 }
 
-/* Draggable cards must receive pointer events so drag works */
 .plan-editor-food-card-readonly.plan-editor-recipe-card-draggable {
   pointer-events: auto;
   cursor: grab;
 }
+
 .plan-editor-food-card-readonly.plan-editor-recipe-card-draggable:active {
   cursor: grabbing;
-}
-
-/* Food item card in center (option item with portion selector on the right) */
-.plan-editor-option-item-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-}
-
-.plan-editor-option-item-card:last-child {
-  margin-bottom: 0;
-}
-
-.plan-editor-option-item-card-left {
-  flex: 1;
-  min-width: 0;
-}
-
-.plan-editor-option-item-card-left .meal-editor-item-name {
-  display: block;
-  margin-bottom: 2px;
-}
-
-.plan-editor-option-item-card .meal-editor-item-meta {
-  display: block;
-  font-size: clamp(11px, 2.5vw, 12px);
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.plan-editor-option-item-card-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-/* Portion: inputs row (cards) moved down; labels row below */
-.plan-editor-option-item-portion {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.plan-editor-option-item-portion-inputs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-select,
-.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units {
-  height: 26px;
-  padding: 0 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(11px, 2.5vw, 12px);
-  font-family: inherit;
-  box-sizing: border-box;
-  text-align: center;
-}
-
-.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-select {
-  width: 120px;
-}
-
-.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units {
-  width: 44px;
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-/* Hide number input arrows (spinners) on all number inputs in the plan editor */
-.plan-editor-macros-objectives input[type="number"]::-webkit-inner-spin-button,
-.plan-editor-macros-objectives input[type="number"]::-webkit-outer-spin-button,
-.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units::-webkit-inner-spin-button,
-.plan-editor-option-item-portion-inputs .plan-editor-option-item-portion-units::-webkit-outer-spin-button,
-.meal-editor-manual-form-in-modal input[type="number"]::-webkit-inner-spin-button,
-.meal-editor-manual-form-in-modal input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  appearance: none;
-  margin: 0;
-}
-
-.plan-editor-macros-objectives input[type="number"] {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.meal-editor-manual-form-in-modal input[type="number"] {
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-.plan-editor-option-item-portion-labels {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  width: 172px;
-  box-sizing: border-box;
-}
-
-.plan-editor-option-item-portion-labels .plan-editor-option-item-portion-label:first-child {
-  width: 120px;
-  text-align: center;
-}
-
-.plan-editor-option-item-portion-labels .plan-editor-option-item-portion-label:last-child {
-  width: 44px;
-  text-align: center;
-}
-
-.plan-editor-option-item-portion-label {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
 }
 
 .plan-editor-sidebar-section {
@@ -256,6 +137,20 @@
   font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   margin: 0 0 8px 0;
+}
+
+.plan-editor-sidebar-section-header {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.plan-editor-sidebar-section-header .plan-editor-sidebar-section-hint {
+  margin: 0 0 8px 0;
+}
+
+.plan-editor-sidebar-section-header .plan-editor-category-select {
+  margin-bottom: 0;
 }
 
 .plan-editor-category-select {
@@ -306,150 +201,31 @@
   cursor: grabbing;
 }
 
-.plan-editor-category-block-dropzone-active {
-  outline: 2px dashed rgba(255, 255, 255, 0.6);
-  outline-offset: 2px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.plan-editor-main {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-height: 0;
-  flex: 1;
-}
-
-.plan-editor-macros-objectives {
-  position: relative;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.plan-editor-macros-objectives-title {
-  font-size: clamp(14px, 3.5vw, 16px);
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0 0 14px 0;
-}
-
-.plan-editor-macros-inputs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-
-.plan-editor-macro-input-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.plan-editor-macro-input-wrap label {
-  font-size: clamp(11px, 2.5vw, 12px);
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.plan-editor-macro-input-wrap input {
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-family: inherit;
-}
-
-.plan-editor-macro-input-wrap input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
-}
-
-.plan-editor-macros-objectives-hint {
-  font-size: clamp(11px, 2.5vw, 12px);
-  color: rgba(255, 255, 255, 0.5);
-  margin: -8px 0 12px 0;
-}
-
-.plan-editor-macro-distribution-wrap {
-  grid-column: span 1;
-}
-
-.plan-editor-distribution-select {
-  padding: 8px 40px 8px 12px;
-  background-color: rgba(255, 255, 255, 0.08);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 14px center;
-  -webkit-appearance: none;
-  appearance: none;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
-  font-family: inherit;
-  width: 100%;
-  cursor: pointer;
-}
-
-.plan-editor-macros-inputs {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.plan-editor-macros-inputs-gram {
-  margin-top: 12px;
-  grid-template-columns: repeat(3, 1fr);
-}
-
-.plan-editor-macros-computed {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  margin-top: 12px;
-  font-size: clamp(13px, 3vw, 14px);
-  color: rgba(255, 255, 255, 0.75);
-}
-
-/* Right sidebar: planned vs objective (smaller, less opaque) */
-.plan-editor-calories-vs-objective {
-  font-size: 0.55em;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.45);
-  margin-left: 4px;
-}
-
-.plan-editor-macro-vs-objective {
-  font-size: 0.85em;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.5);
-  margin-left: 4px;
-}
-
-.plan-editor-categories-area {
-  position: relative;
+/* ── CENTER PANEL ── */
+.plan-editor-center {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: inherit;
   overflow: hidden;
+  backdrop-filter: blur(10px);
 }
 
-.plan-editor-categories-header {
+.plan-editor-center-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
 }
 
-.plan-editor-categories-title {
-  font-size: clamp(14px, 3.5vw, 16px);
+.plan-editor-center-title {
+  font-size: clamp(15px, 3.5vw, 17px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0;
@@ -465,6 +241,7 @@
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
 }
 
 .plan-editor-add-category-btn:hover {
@@ -478,36 +255,41 @@
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  /* Scrollbar inside card: track same as card background */
-  scrollbar-color: rgba(255, 255, 255, 0.25) rgba(255, 255, 255, 0.04);
-  scrollbar-gutter: stable;
+  gap: 14px;
+  padding: 16px 20px;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
 }
 
 .plan-editor-categories-list::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
 }
 
 .plan-editor-categories-list::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 0 12px 12px 0;
+  background: transparent;
 }
 
 .plan-editor-categories-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.25);
-  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 .plan-editor-categories-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.3);
 }
 
+/* ── CATEGORY BLOCK ── */
 .plan-editor-category-block {
   position: relative;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   padding: 14px;
+}
+
+.plan-editor-category-block-dropzone-active {
+  outline: 2px dashed rgba(255, 255, 255, 0.6);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .plan-editor-category-title-row {
@@ -525,26 +307,100 @@
   flex: 1;
 }
 
-.plan-editor-category-edit-btn {
+.plan-editor-category-edit-btn,
+.plan-editor-category-delete-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.4);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
+  opacity: 0;
+}
+
+.plan-editor-category-title-row:hover .plan-editor-category-edit-btn,
+.plan-editor-category-title-row:hover .plan-editor-category-delete-btn {
+  opacity: 1;
 }
 
 .plan-editor-category-edit-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
 }
 
+.plan-editor-category-delete-btn:hover {
+  background: rgba(180, 60, 60, 0.25);
+  color: rgba(255, 200, 200, 0.9);
+}
+
+/* Inline category name editing */
+.plan-editor-inline-category-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: clamp(14px, 3.5vw, 16px);
+  font-weight: 600;
+  font-family: inherit;
+}
+
+.plan-editor-inline-category-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Inline delete confirmation */
+.plan-editor-inline-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.plan-editor-inline-delete-text {
+  font-size: clamp(13px, 3vw, 14px);
+  color: rgba(255, 200, 200, 0.9);
+  flex: 1;
+}
+
+.plan-editor-inline-delete-yes,
+.plan-editor-inline-delete-no {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: clamp(12px, 2.5vw, 13px);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+}
+
+.plan-editor-inline-delete-yes {
+  background: rgba(180, 60, 60, 0.35);
+  color: rgba(255, 200, 200, 0.95);
+}
+
+.plan-editor-inline-delete-yes:hover {
+  background: rgba(200, 70, 70, 0.5);
+}
+
+.plan-editor-inline-delete-no {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.plan-editor-inline-delete-no:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ── OPTION PILLS ── */
 .plan-editor-options-pills {
   display: flex;
   flex-wrap: wrap;
@@ -588,10 +444,7 @@
   transition: color 0.2s;
 }
 
-.plan-editor-option-pill-wrap:hover .plan-editor-option-pill {
-  color: rgba(255, 255, 255, 0.95);
-}
-
+.plan-editor-option-pill-wrap:hover .plan-editor-option-pill,
 .plan-editor-option-pill-wrap.active .plan-editor-option-pill {
   color: rgba(255, 255, 255, 0.95);
 }
@@ -643,22 +496,22 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
-/* Option pill as drop target: highlight when dragging over so user can drop on a specific option */
 .plan-editor-option-pill-wrap.plan-editor-option-pill-dropzone-active {
   outline: 2px dashed rgba(255, 255, 255, 0.5);
   outline-offset: 2px;
   background: rgba(255, 255, 255, 0.2) !important;
 }
 
+/* ── DROPZONE & ITEMS ── */
 .plan-editor-option-items-wrap {
   margin-top: 4px;
 }
 
 .plan-editor-option-items-dropzone {
-  min-height: 56px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-height: 48px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   transition: border-color 0.2s, background 0.2s;
 }
@@ -686,141 +539,230 @@
   margin: 0;
 }
 
-/* Category edit modal */
-.plan-editor-category-edit-modal {
+/* ── FLAT ITEM CARD (single row) ── */
+.plan-editor-option-item-flat {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 8px 0;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
 }
 
-.plan-editor-category-edit-label {
+.plan-editor-option-item-flat:last-child {
+  margin-bottom: 0;
+}
+
+.plan-editor-item-name {
+  flex: 1;
+  min-width: 0;
   font-size: clamp(13px, 3vw, 14px);
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plan-editor-item-serving {
+  width: 110px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: clamp(11px, 2.5vw, 12px);
+  font-family: inherit;
+}
+
+.plan-editor-item-units {
+  width: 44px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: clamp(11px, 2.5vw, 12px);
+  font-family: inherit;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.plan-editor-item-units::-webkit-inner-spin-button,
+.plan-editor-item-units::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.plan-editor-item-kcal {
+  flex-shrink: 0;
+  font-size: clamp(11px, 2.5vw, 12px);
+  color: rgba(255, 255, 255, 0.5);
+  min-width: 52px;
+  text-align: right;
+}
+
+/* ── RIGHT PANEL ── */
+.plan-editor-right {
+  padding: 16px;
+}
+
+.plan-editor-right-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plan-editor-right-section--macros {
+  flex: 1;
+  min-height: 0;
+}
+
+.plan-editor-right-section-title {
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+}
+
+.plan-editor-right-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 14px 0;
+}
+
+.plan-editor-objectives-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Calories hero (reuses meal-editor-calories-hero) */
+.plan-editor-calories-hero {
+  border-bottom: none;
+  padding: 12px 0;
+}
+
+.plan-editor-calories-vs-objective {
+  font-size: 0.5em;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 2px;
+}
+
+/* Macros section */
+.plan-editor-pie-wrap {
+  margin: 0 -8px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.plan-editor-macro-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plan-editor-macro-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.plan-editor-macro-name {
+  font-size: clamp(12px, 2.5vw, 13px);
   color: rgba(255, 255, 255, 0.7);
 }
 
-.plan-editor-category-edit-input {
-  padding: 10px 12px;
+.plan-editor-macro-value {
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.plan-editor-macro-target {
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.plan-editor-right-empty {
+  font-size: clamp(12px, 2.5vw, 13px);
+  color: rgba(255, 255, 255, 0.4);
+  margin: 8px 0 0;
+}
+
+/* Macro input fields (reused in objectives form) */
+.plan-editor-macro-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.plan-editor-macro-input-wrap label {
+  font-size: clamp(11px, 2.5vw, 12px);
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.plan-editor-macro-input-wrap input,
+.plan-editor-macro-input-wrap select {
+  padding: 7px 10px;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: rgba(255, 255, 255, 0.9);
   font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
 }
 
-.plan-editor-category-edit-input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+.plan-editor-macro-input-wrap input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
 }
 
-.plan-editor-category-edit-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.plan-editor-category-edit-cancel {
-  padding: 8px 16px;
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: clamp(13px, 3vw, 14px);
-  cursor: pointer;
-}
-
-.plan-editor-category-edit-save {
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.plan-editor-category-edit-save:hover {
-  background: rgba(255, 255, 255, 0.45);
-}
-
-.plan-editor-category-edit-confirm-text {
-  margin: 0;
-  font-size: clamp(13px, 3vw, 14px);
+.plan-editor-distribution-select {
+  padding: 7px 32px 7px 10px;
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.7)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
   color: rgba(255, 255, 255, 0.9);
-  line-height: 1.4;
-}
-
-.plan-editor-category-edit-delete-row {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.plan-editor-category-edit-delete-btn {
+  font-size: clamp(13px, 3vw, 14px);
+  font-family: inherit;
   width: 100%;
-  padding: 10px 16px;
-  background: rgba(180, 60, 60, 0.25);
-  border: 1px solid rgba(220, 80, 80, 0.5);
-  border-radius: 8px;
-  color: rgba(255, 200, 200, 0.95);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
   cursor: pointer;
 }
 
-.plan-editor-category-edit-delete-btn:hover {
-  background: rgba(200, 70, 70, 0.4);
-  border-color: rgba(220, 80, 80, 0.65);
+
+/* Hide number input spinners globally in plan editor */
+.plan-editor-right input[type="number"]::-webkit-inner-spin-button,
+.plan-editor-right input[type="number"]::-webkit-outer-spin-button,
+.meal-editor-manual-form-in-modal input[type="number"]::-webkit-inner-spin-button,
+.meal-editor-manual-form-in-modal input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
 }
 
-.plan-editor-category-edit-delete {
-  padding: 8px 16px;
-  background: rgba(180, 60, 60, 0.35);
-  border: 1px solid rgba(220, 80, 80, 0.6);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
+.plan-editor-right input[type="number"],
+.meal-editor-manual-form-in-modal input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
-.plan-editor-category-edit-delete:hover {
-  background: rgba(200, 70, 70, 0.5);
-}
-
-@media (max-width: 1200px) {
-  .plan-editor-macros-inputs {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-/* No focus indicator (border/outline) on inputs and buttons */
-.plan-editor-sidebar input:focus,
-.plan-editor-sidebar input:focus-visible,
-.plan-editor-sidebar button:focus,
-.plan-editor-sidebar button:focus-visible,
-.plan-editor-main input:focus,
-.plan-editor-main input:focus-visible,
-.plan-editor-main button:focus,
-.plan-editor-main button:focus-visible,
-.plan-editor-category-edit-modal input:focus,
-.plan-editor-category-edit-modal input:focus-visible,
-.plan-editor-category-edit-modal button:focus,
-.plan-editor-category-edit-modal button:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.plan-editor-category-block input:focus,
-.plan-editor-category-block input:focus-visible {
-  outline: none;
-  box-shadow: none;
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-/* Assignment scope banner — same UI as session edit (LibrarySessionDetailScreen) */
+/* ── BANNERS ── */
 .library-session-client-edit-banner.plan-editor-assignment-banner {
   display: flex;
   flex-wrap: wrap;
@@ -835,44 +777,28 @@
   flex-shrink: 0;
 }
 
-.library-session-client-edit-banner-text {
-  font-size: clamp(13px, 3vw, 14px);
-  color: rgba(255, 255, 255, 0.9);
+/* ── FOCUS RESETS ── */
+.plan-editor-sidebar input:focus,
+.plan-editor-sidebar input:focus-visible,
+.plan-editor-sidebar button:focus,
+.plan-editor-sidebar button:focus-visible,
+.plan-editor-center input:focus-visible,
+.plan-editor-center button:focus,
+.plan-editor-center button:focus-visible,
+.plan-editor-center select:focus,
+.plan-editor-center select:focus-visible,
+.plan-editor-right input:focus,
+.plan-editor-right input:focus-visible,
+.plan-editor-right select:focus,
+.plan-editor-right select:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
-.library-session-client-edit-banner-text strong {
-  color: rgba(255, 255, 255, 1);
-}
-
-/* Propagate bar — library plan with affected users */
-.plan-editor-propagate-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 24px;
-  background: rgba(255, 255, 255, 0.06);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.plan-editor-propagate-text {
-  color: rgba(255, 255, 255, 0.7);
-  font-size: clamp(13px, 3vw, 14px);
-}
-
-.plan-editor-propagate-btn {
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  color: rgba(255, 255, 255, 1);
-  font-size: clamp(13px, 3vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: 8px;
-  transition: background 0.2s, border-color 0.2s;
-}
-
-.plan-editor-propagate-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.7);
+.plan-editor-category-block input:focus,
+.plan-editor-category-block input:focus-visible,
+.plan-editor-category-block select:focus,
+.plan-editor-category-block select:focus-visible {
+  outline: none;
+  box-shadow: none;
 }

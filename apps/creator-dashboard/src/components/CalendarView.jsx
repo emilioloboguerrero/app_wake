@@ -487,7 +487,8 @@ const CalendarView = ({
           onSessionAssignment({
             sessionId: libSessionId,
             date,
-            library_session_ref: true
+            library_session_ref: true,
+            session_name: dragData.title || null,
           });
         }
       } else {

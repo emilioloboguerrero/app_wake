@@ -91,6 +91,14 @@
       ]
     },
     {
+      "collectionGroup": "nutrition_assignments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "one_on_one_clients",
       "queryScope": "COLLECTION",
       "fields": [

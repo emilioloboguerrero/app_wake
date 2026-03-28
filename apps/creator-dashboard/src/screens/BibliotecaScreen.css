@@ -691,7 +691,7 @@
 .bib-nutri-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
 }
 
 .bib-nutri-plan-card {
@@ -756,6 +756,7 @@
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .bib-nutri-plan-card__kcal {
