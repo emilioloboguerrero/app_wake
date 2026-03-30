@@ -51,7 +51,7 @@ export const cacheConfig = {
   // Active program being edited: no cache, always fresh
   activeProgram: {
     staleTime: 0,
-    gcTime: 0,
+    gcTime: 5 * 60 * 1000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   },
@@ -103,6 +103,32 @@ export const cacheConfig = {
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   },
+  clientsOverview: {
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
+  libraries: {
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
+  // Session/module library lists — change only on explicit create/delete/rename
+  // (all of which already call invalidateQueries), so safe to cache
+  librarySessions: {
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
+  apiKeys: {
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
 };
 
 // Query keys factory
@@ -130,6 +156,7 @@ export const queryKeys = {
   },
   analytics: {
     program: (programId) => ['analytics', 'program', programId],
+    adherence: (creatorId, opts) => ['analytics', 'adherence', creatorId, opts],
   },
   user: {
     detail: (userId) => ['user', userId],
@@ -142,8 +169,10 @@ export const queryKeys = {
   },
   clients: {
     byCreator: (creatorId) => ['clients', 'creator', creatorId],
+    overview: (creatorId, opts) => ['clients', 'overview', creatorId, opts],
     detail: (clientId) => ['clients', 'detail', clientId],
     programs: (clientUserId, creatorId) => ['clients', clientUserId, 'programs', creatorId],
+    byProgram: (programId) => ['clients', 'program', programId],
   },
   availability: {
     byCreator: (creatorId) => ['availability', creatorId],
@@ -151,10 +180,15 @@ export const queryKeys = {
   bookings: {
     byCreator: (creatorId) => ['bookings', creatorId],
   },
+  plans: {
+    byCreator: (creatorId) => ['plans', 'creator', creatorId],
+    detail: (planId) => ['plans', planId],
+  },
   library: {
     exercises: (creatorId) => ['library', 'exercises', creatorId],
     libraries: (creatorId) => ['library', 'libraries', creatorId],
     sessions: (creatorId) => ['library', 'sessions', creatorId],
+    sessionsSlim: (creatorId) => ['library', 'sessions-slim', creatorId],
     modules: (creatorId) => ['library', 'modules', creatorId],
   },
   nutrition: {
@@ -163,5 +197,9 @@ export const queryKeys = {
     plans: (creatorId) => ['nutrition', 'plans', creatorId],
     plan: (creatorId, planId) => ['nutrition', 'plan', creatorId, planId],
     diary: (userId, date) => ['nutrition', 'diary', userId, date],
+    foodSearch: (query) => ['nutrition', 'foodSearch', query],
+  },
+  apiKeys: {
+    all: () => ['creator', 'api-keys'],
   },
 };

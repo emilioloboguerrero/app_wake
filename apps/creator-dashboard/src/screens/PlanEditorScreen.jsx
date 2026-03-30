@@ -22,7 +22,7 @@ import EditScopeInfoModal from '../components/EditScopeInfoModal';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
-import { FullScreenError, GlowingEffect } from '../components/ui';
+import { FullScreenError, GlowingEffect, ScrollProgress } from '../components/ui';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -161,6 +161,44 @@ function normalizeCategory(c, i) {
   };
 }
 
+function expandRecipeRefsLocally(categories, mealsMap) {
+  return categories.map((cat) => ({
+    ...cat,
+    options: (cat.options || []).map((opt) => {
+      let newItems = [];
+      let recipe_meal_id = null;
+      let recipe_name = null;
+      let recipe_video_url = null;
+      for (const item of opt.items || []) {
+        if (item.recipe === true && item.meal_id) {
+          const meal = mealsMap.get(item.meal_id);
+          if (meal?.items?.length) {
+            newItems = newItems.concat(meal.items);
+            recipe_meal_id = meal.id;
+            recipe_name = meal.name ?? item.name ?? '';
+            recipe_video_url = meal.video_url ?? meal.videoUrl ?? null;
+          } else {
+            newItems.push({ ...item, name: item.name || meal?.name || 'Receta' });
+          }
+        } else {
+          newItems.push(item);
+        }
+      }
+      const expanded = { id: opt.id, label: opt.label ?? '', items: newItems };
+      if (recipe_meal_id != null) {
+        expanded.recipe_meal_id = recipe_meal_id;
+        expanded.recipe_name = recipe_name;
+        expanded.recipe_video_url = recipe_video_url;
+      } else if (opt.recipe_meal_id != null || opt.recipe_video_url != null) {
+        expanded.recipe_meal_id = opt.recipe_meal_id;
+        expanded.recipe_name = opt.recipe_name;
+        expanded.recipe_video_url = opt.recipe_video_url;
+      }
+      return expanded;
+    }),
+  }));
+}
+
 export default function PlanEditorScreen() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -190,6 +228,7 @@ export default function PlanEditorScreen() {
   const seededRef = useRef(false);
   const justSeededRef = useRef(false);
   const lastSavedRef = useRef({ name: '', macros: '', categoriesJson: '' });
+  const assignmentCopyExistsRef = useRef(false);
   const [editingCategoryIndex, setEditingCategoryIndex] = useState(null);
   const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
   const [deletingCategoryIndex, setDeletingCategoryIndex] = useState(null);
@@ -204,8 +243,7 @@ export default function PlanEditorScreen() {
   const [leftPanelTab, setLeftPanelTab] = useState('alimentos'); // 'alimentos' | 'recetas'
 
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
-  const [foodSearchResults, setFoodSearchResults] = useState([]);
-  const [foodSearchLoading, setFoodSearchLoading] = useState(false);
+  const [submittedFoodQuery, setSubmittedFoodQuery] = useState('');
   const [foodSortBy, setFoodSortBy] = useState('name'); // 'name' | 'calories' | 'protein' | 'carbs' | 'fat'
   const [foodSortMenuOpen, setFoodSortMenuOpen] = useState(false);
   const [customFoods, setCustomFoods] = useState([]); // manual food items for Alimentos tab
@@ -240,7 +278,7 @@ export default function PlanEditorScreen() {
     queryFn: async () => {
       if (isAssignmentScope) {
         const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
-        if (copy) return copy;
+        if (copy) { assignmentCopyExistsRef.current = true; return copy; }
         const effectivePlanId = assignmentPlanId || planId;
         return nutritionDb.getPlanById(creatorId, effectivePlanId);
       }
@@ -249,6 +287,20 @@ export default function PlanEditorScreen() {
     enabled: !!planId && !!creatorId && (!isAssignmentScope || !!assignmentId),
     ...cacheConfig.activeProgram,
   });
+
+  const { data: foodSearchResults = [], isLoading: foodSearchLoading } = useQuery({
+    queryKey: queryKeys.nutrition.foodSearch(submittedFoodQuery),
+    queryFn: async () => {
+      const data = await nutritionApi.nutritionFoodSearch(submittedFoodQuery, 0, 20);
+      const raw = data?.foods_search?.results?.food ?? [];
+      return Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    },
+    enabled: !!submittedFoodQuery.trim(),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const mealsMap = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
 
   useEffect(() => {
     if (mealsData) setMeals(mealsData);
@@ -343,15 +395,16 @@ export default function PlanEditorScreen() {
 
     const t = setTimeout(async () => {
       try {
-        const expandedCategories = await nutritionDb.expandRecipeRefsInCategories(creatorId, planPayload.categories);
+        const expandedCategories = expandRecipeRefsLocally(planPayload.categories, mealsMap);
         const payloadToSave = {
           ...planPayload,
           categories: expandedCategories,
         };
         if (isAssignmentScope) {
-          const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
-          const effectivePlanId = assignmentPlanId || planId;
-          if (!copy) {
+          if (assignmentCopyExistsRef.current) {
+            await clientNutritionPlanContentService.update(assignmentId, payloadToSave);
+          } else {
+            const effectivePlanId = assignmentPlanId || planId;
             await clientNutritionPlanContentService.setFromLibrary(assignmentId, effectivePlanId, {
               name: payloadToSave.name,
               description: '',
@@ -361,14 +414,13 @@ export default function PlanEditorScreen() {
               daily_fat_g: payloadToSave.daily_fat_g,
               categories: payloadToSave.categories,
             });
-          } else {
-            await clientNutritionPlanContentService.update(assignmentId, payloadToSave);
+            assignmentCopyExistsRef.current = true;
           }
         } else {
           await nutritionDb.updatePlan(creatorId, planId, payloadToSave);
         }
         lastSavedRef.current = { name, macros, categoriesJson };
-        queryClient.removeQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
       } catch (e) {
         logger.error(e);
         showToast('No pudimos guardar los cambios. Revisa tu conexion.', 'error');
@@ -376,7 +428,7 @@ export default function PlanEditorScreen() {
     }, 700);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId, meals]);
+  }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId]);
 
   useEffect(() => {
     if (!planId || isAssignmentScope || !hasMadeChanges) return;
@@ -415,10 +467,9 @@ export default function PlanEditorScreen() {
   const handleOpenPropagateModal = async () => {
     if (!planId) return;
     try {
-      const { affectedUserIds } = await propagationService.findAffectedByNutritionPlan(planId);
-      setPropagateAffectedCount(affectedUserIds.length);
       const users = await propagationService.getAffectedUsersWithDetailsByNutritionPlan(planId);
       setPropagateAffectedUsers(users);
+      setPropagateAffectedCount(users.length);
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.warn(err);
@@ -457,21 +508,9 @@ export default function PlanEditorScreen() {
     else navigate('/biblioteca?domain=nutricion&tab=planes_nutri');
   };
 
-  async function handleFoodSearch() {
+  function handleFoodSearch() {
     if (!foodSearchQuery.trim()) return;
-    setFoodSearchLoading(true);
-    setFoodSearchResults([]);
-    try {
-      const data = await nutritionApi.nutritionFoodSearch(foodSearchQuery.trim(), 0, 20);
-      const raw = data?.foods_search?.results?.food ?? [];
-      const foods = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-      setFoodSearchResults(foods);
-    } catch (e) {
-      setFoodSearchResults([]);
-      showToast('No pudimos buscar alimentos. Intenta de nuevo.', 'error');
-    } finally {
-      setFoodSearchLoading(false);
-    }
+    setSubmittedFoodQuery(foodSearchQuery.trim());
   }
 
   const filteredMeals = recipeSearchQuery.trim()
@@ -843,6 +882,8 @@ export default function PlanEditorScreen() {
   }
 
   return (
+    <>
+    <ScrollProgress />
     <DashboardLayout
       screenName={planName || 'Plan'}
       showBackButton
@@ -1306,5 +1347,6 @@ export default function PlanEditorScreen() {
         onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
       />
     </DashboardLayout>
+    </>
   );
 }

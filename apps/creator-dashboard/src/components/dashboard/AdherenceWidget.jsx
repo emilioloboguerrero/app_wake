@@ -1,4 +1,5 @@
-import { ProgressRing, SkeletonCard } from '../ui';
+import { SkeletonCard } from '../ui';
+import AnimatedCircularProgressBar from '../ui/AnimatedCircularProgressBar';
 import { InlineError } from '../ui/ErrorStates';
 
 const MAX_PROGRAMS_SHOWN = 3;
@@ -22,11 +23,12 @@ export default function AdherenceWidget({ adherenceQuery, overallAdherence, byPr
       ) : (
         <>
           <div className="ds-adherence-ring">
-            <ProgressRing
-              percent={overallAdherence}
+            <AnimatedCircularProgressBar
+              value={overallAdherence}
               size={72}
               strokeWidth={5}
-              color="rgba(255,255,255,0.85)"
+              gaugePrimaryColor="rgba(255,255,255,0.85)"
+              gaugeSecondaryColor="rgba(255,255,255,0.08)"
               label={`${Math.round(overallAdherence)}%`}
             />
           </div>

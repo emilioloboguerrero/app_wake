@@ -176,7 +176,7 @@ const LibraryModuleDetailScreen = () => {
     queryKey: queryKeys.library.sessions(user?.uid),
     queryFn: () => libraryService.getSessionLibrary(user.uid),
     enabled: !!user && !!moduleQueryData?.module,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.librarySessions,
   });
 
   const module = moduleQueryData?.module ?? null;

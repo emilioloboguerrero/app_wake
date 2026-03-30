@@ -82,17 +82,17 @@ const PlanningLibrarySidebar = ({
   }, [pulseTrigger]);
 
   const { data: librarySessions = [], isLoading: sessionsLoading, isError: sessionsError } = useQuery({
-    queryKey: queryKeys.library.sessions(creatorId),
-    queryFn: () => libraryService.getSessionLibrary(creatorId),
+    queryKey: queryKeys.library.sessionsSlim(creatorId),
+    queryFn: () => libraryService.getSessionLibrarySlim(creatorId),
     enabled: !!creatorId && activeTab === LIBRARY_TAB_SESSIONS,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.librarySessions,
   });
 
   const { data: plans = [], isLoading: plansLoading, isError: plansError } = useQuery({
-    queryKey: ['plans', 'byCreator', creatorId],
+    queryKey: ['library', 'plans', creatorId],
     queryFn: () => plansService.getPlansByCreator(creatorId),
     enabled: !!creatorId && activeTab === LIBRARY_TAB_PLANS,
-    ...cacheConfig.programStructure,
+    staleTime: 10 * 60 * 1000,
   });
 
   const q = (searchQuery || '').trim().toLowerCase();

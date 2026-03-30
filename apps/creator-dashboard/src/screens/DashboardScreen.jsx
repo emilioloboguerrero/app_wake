@@ -4,7 +4,7 @@ import { LayoutGrid, Grid3X3, Pencil, Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { BentoGrid, BentoCard, GlowingEffect, SpotlightTutorial } from '../components/ui';
+import { BentoGrid, BentoCard, GlowingEffect, SpotlightTutorial, Marquee } from '../components/ui';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import {
   ClientsWidget,
@@ -171,6 +171,7 @@ function useGreeting(displayName) {
 }
 
 const DashboardScreen = () => {
+  console.log(`[boot] DashboardScreen render — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
   const { user } = useAuth();
   const greeting = useGreeting(user?.displayName);
   const [layout, setLayout] = useState(getStoredLayout);
@@ -305,6 +306,23 @@ const DashboardScreen = () => {
         return ta - tb;
       });
   }, [bookingsQuery.data]);
+
+  // ── Recent activity items for marquee ────────────────────────────────────
+  const activityItems = useMemo(() => {
+    const items = [];
+    const activity = activityQuery.data?.data;
+    if (activity?.recentSessions?.length) {
+      activity.recentSessions.slice(0, 8).forEach(s => {
+        items.push(`${s.clientName || 'Cliente'} completo ${s.sessionTitle || 'una sesion'}`);
+      });
+    }
+    if (activity?.recentEnrollments?.length) {
+      activity.recentEnrollments.slice(0, 4).forEach(e => {
+        items.push(`${e.clientName || 'Nuevo cliente'} se inscribio a ${e.programTitle || 'un programa'}`);
+      });
+    }
+    return items;
+  }, [activityQuery.data]);
 
   const callCountThisWeek = useMemo(() => {
     const raw = bookingsQuery.data?.data ?? bookingsQuery.data ?? [];
@@ -456,6 +474,18 @@ const DashboardScreen = () => {
               )}
             </div>
           </div>
+
+          {activityItems.length > 0 && !editing && (
+            <Marquee
+              pauseOnHover
+              className="ds-activity-marquee"
+              style={{ '--duration': '35s', '--gap': '2rem', marginBottom: 16 }}
+            >
+              {activityItems.map((item, i) => (
+                <span key={i} className="ds-activity-marquee__item">{item}</span>
+              ))}
+            </Marquee>
+          )}
 
           <BentoGrid key={layout} layout={layout} className={editing ? 'ds-bento--editing' : ''}>
             {slots.map((slot, index) => {

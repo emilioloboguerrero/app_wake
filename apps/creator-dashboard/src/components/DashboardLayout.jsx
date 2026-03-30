@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { ASSET_BASE } from '../config/assets';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -118,6 +119,7 @@ const DashboardLayout = ({
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
 
   // ── Layout state ──────────────────────────────────────────────
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
@@ -170,20 +172,25 @@ const DashboardLayout = ({
     }
   }, [sidebarAnimating]);
 
-  // ── Load nav preferences from Firestore on mount ──────────────
+  // ── Load nav preferences (cached via React Query — no re-fetch per navigation)
+  const { data: navPrefs } = useQuery({
+    queryKey: ['nav-preferences', user?.uid],
+    queryFn: () => userPreferencesService.getNavPreferences(user?.uid),
+    enabled: !!user?.uid,
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
   useEffect(() => {
-    if (!user?.uid) return;
-    userPreferencesService.getNavPreferences(user.uid).then((prefs) => {
-      if (!prefs) return;
-      const hidden = [];
-      if (prefs.eventos === false) hidden.push('events');
-      if (prefs.disponibilidad === false) hidden.push('availability');
-      setHiddenNavState(hidden);
-      setHiddenNavLocal(hidden);
-    }).catch(() => {
-      // silently fall back to localStorage state
-    });
-  }, [user?.uid]);
+    if (!navPrefs) return;
+    const hidden = [];
+    if (navPrefs.eventos === false) hidden.push('events');
+    if (navPrefs.disponibilidad === false) hidden.push('availability');
+    setHiddenNavState(hidden);
+    setHiddenNavLocal(hidden);
+  }, [navPrefs]);
 
   // ── Close settings panel on outside click ─────────────────────
   useEffect(() => {
@@ -210,6 +217,7 @@ const DashboardLayout = ({
         eventos: !next.includes('events'),
         disponibilidad: !next.includes('availability'),
       };
+      queryClient.setQueryData(['nav-preferences', user.uid], prefs);
       userPreferencesService.setNavPreferences(user.uid, prefs).catch(() => {});
     }
   };

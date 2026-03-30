@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../utils/apiClient';
+import { cacheConfig } from '../../config/queryClient';
 import TimeRangeSelector from '../ui/TimeRangeSelector';
 import ClientLabBentoGrid from './ClientLabBentoGrid';
 import ClientLabDetailSections from './ClientLabDetailSections';
@@ -15,15 +16,32 @@ const RANGES = [
 export default function ClientLabTab({ clientId, clientUserId, clientName, creatorId }) {
   const [range, setRange] = useState('30d');
 
-  const { data: labData, isLoading, error } = useQuery({
+  // Phase 1: Summary (fast, ~60 reads — skips diary + exerciseHistory)
+  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+    queryKey: ['analytics', 'client-lab', clientUserId, range, 'summary'],
+    queryFn: async () => {
+      const res = await apiClient.get(`/analytics/client/${clientUserId}/lab?range=${range}&fields=summary`);
+      return res.data || res;
+    },
+    enabled: !!clientUserId,
+    ...cacheConfig.analytics,
+  });
+
+  // Phase 2: Full data (heavier, ~210 reads — includes diary + exerciseHistory)
+  const { data: fullData, isLoading: fullLoading } = useQuery({
     queryKey: ['analytics', 'client-lab', clientUserId, range],
     queryFn: async () => {
       const res = await apiClient.get(`/analytics/client/${clientUserId}/lab?range=${range}`);
       return res.data || res;
     },
     enabled: !!clientUserId,
-    staleTime: 2 * 60 * 1000,
+    ...cacheConfig.analytics,
   });
+
+  // Merge: use full data when available, fall back to summary for bento grid
+  const labData = fullData || summaryData;
+  const bentoLoading = summaryLoading;
+  const detailLoading = !fullData;
 
   return (
     <div className="clt-container">
@@ -37,17 +55,17 @@ export default function ClientLabTab({ clientId, clientUserId, clientName, creat
         />
       </div>
 
-      {/* ── Bento Grid ───────────────────────────────────────── */}
+      {/* ── Bento Grid (renders with summary data, fast) ─────── */}
       <ClientLabBentoGrid
         data={labData}
-        isLoading={isLoading}
+        isLoading={bentoLoading}
         range={range}
       />
 
-      {/* ── Detail Sections ──────────────────────────────────── */}
+      {/* ── Detail Sections (waits for full data) ────────────── */}
       <ClientLabDetailSections
-        data={labData}
-        isLoading={isLoading}
+        data={fullData}
+        isLoading={detailLoading}
         clientName={clientName}
         range={range}
       />

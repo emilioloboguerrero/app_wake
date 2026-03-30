@@ -1,4 +1,5 @@
 import { SkeletonCard, FullScreenError } from '../ui';
+import TextAnimate from '../ui/TextAnimate';
 
 export default function PanelShell({
   isLoading,
@@ -44,8 +45,14 @@ export default function PanelShell({
             <path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </div>
-        <p className="bib-empty-title">{emptyTitle}</p>
-        {emptySub && <p className="bib-empty-sub">{emptySub}</p>}
+        <TextAnimate animation="blurInUp" by="word" as="p" className="bib-empty-title" once>
+          {emptyTitle}
+        </TextAnimate>
+        {emptySub && (
+          <TextAnimate animation="fadeIn" by="word" as="p" className="bib-empty-sub" delay={0.15} once>
+            {emptySub}
+          </TextAnimate>
+        )}
         {emptyCta && onCta && (
           <button className="bib-empty-cta" onClick={onCta}>
             {emptyCta}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
@@ -48,12 +48,16 @@ export default function ProximasLlamadasView() {
 
   const { data: allBookings = [], isLoading } = useQuery({
     queryKey: queryKeys.bookings.byCreator(user?.uid),
-    queryFn: () => getBookingsForCreator(user.uid),
+    queryFn: () => getBookingsForCreator(),
     enabled: !!user?.uid,
     ...cacheConfig.bookings,
   });
 
-  const now = useMemo(() => new Date().toISOString(), []);
+  const [now, setNow] = useState(() => new Date().toISOString());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date().toISOString()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const { upcoming, past } = useMemo(() => {
     const scheduled = allBookings.filter((b) => b.status === 'scheduled');

@@ -1,0 +1,125 @@
+/* ─── File Tree ──────────────────────────────────────────── */
+.file-tree {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+
+.file-tree__folder {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-tree__folder-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+  user-select: none;
+}
+
+.file-tree__folder-trigger:hover {
+  background: var(--surface-hover);
+}
+
+.file-tree__folder-trigger--selected {
+  background: var(--surface-active);
+}
+
+.file-tree__folder-trigger--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.file-tree__folder-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-base) var(--spring);
+}
+
+.file-tree__folder-content--open {
+  grid-template-rows: 1fr;
+}
+
+.file-tree__folder-content-inner {
+  overflow: hidden;
+  margin-left: 16px;
+  padding-left: 4px;
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.file-tree__file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+  user-select: none;
+  text-align: left;
+}
+
+.file-tree__file:hover {
+  background: var(--surface-hover);
+}
+
+.file-tree__file--selected {
+  background: var(--surface-active);
+}
+
+.file-tree__file--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.file-tree__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.file-tree__collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.file-tree__collapse-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}

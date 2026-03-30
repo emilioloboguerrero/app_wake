@@ -1,0 +1,47 @@
+/* ─── Marquee ────────────────────────────────────────────── */
+.marquee {
+  --duration: 40s;
+  --gap: 1rem;
+
+  display: flex;
+  gap: var(--gap);
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.marquee--vertical {
+  flex-direction: column;
+}
+
+.marquee__track {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-around;
+  gap: var(--gap);
+  min-width: 100%;
+  animation: marquee-scroll var(--duration) linear infinite;
+}
+
+.marquee--vertical .marquee__track {
+  flex-direction: column;
+  min-width: unset;
+  animation-name: marquee-scroll-vertical;
+}
+
+.marquee__track--reverse {
+  animation-direction: reverse;
+}
+
+.marquee:hover .marquee__track--pause-on-hover {
+  animation-play-state: paused;
+}
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(-100% - var(--gap))); }
+}
+
+@keyframes marquee-scroll-vertical {
+  from { transform: translateY(0); }
+  to   { transform: translateY(calc(-100% - var(--gap))); }
+}

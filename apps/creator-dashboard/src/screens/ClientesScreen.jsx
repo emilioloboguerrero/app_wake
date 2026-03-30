@@ -18,7 +18,7 @@ import { FullScreenError } from '../components/ui/ErrorStates';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
-import { cacheConfig } from '../config/queryClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import FindUserModal from '../components/FindUserModal';
 import AssignProgramModal from '../components/AssignProgramModal';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
@@ -546,27 +546,28 @@ const ClientesScreen = () => {
   const [assignError, setAssignError] = useState(null);
   const [showCreateAsesoria, setShowCreateAsesoria] = useState(false);
 
-  // Data fetching
-  const { data: clientsData, isLoading: isLoadingClients, isError: isClientsError, refetch: refetchClients } = useQuery({
-    queryKey: ['clients', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/creator/clients').then((res) => res?.data ?? []),
-    ...cacheConfig.userProfile,
-    enabled: !!user?.uid,
+  // Data fetching — single consolidated endpoint, adherence loaded lazily
+  const needsAdherence = activeTab === 'asesorias';
+  const overviewParams = needsAdherence ? '?includeAdherence=true' : '';
+
+  const { data: overviewData, isLoading: isLoadingOverview, isError: isClientsError, refetch: refetchClients } = useQuery({
+    queryKey: queryKeys.clients.overview(user?.uid, { adherence: needsAdherence }),
+    queryFn: async () => {
+      const t0 = performance.now();
+      const result = await apiClient.get(`/creator/clients-overview${overviewParams}`).then((r) => r.data);
+      console.log(`[ClientesScreen] clients-overview — ${result?.clients?.length ?? 0} clients — ${Math.round(performance.now() - t0)}ms`);
+      return result;
+    },
+    enabled: !!user?.uid && activeTab !== 'llamadas',
+    ...cacheConfig.clientsOverview,
+    placeholderData: (prev) => prev,
   });
 
-  const { data: programsData = [], isLoading: isLoadingPrograms } = useQuery({
-    queryKey: ['programs', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/creator/programs').then((r) => r.data),
-    enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
-  });
-
-  const { data: adherenceData } = useQuery({
-    queryKey: ['analytics', 'adherence', user?.uid],
-    queryFn: () => apiClient.get('/analytics/adherence').then((r) => r.data),
-    enabled: !!user?.uid,
-    ...cacheConfig.analytics,
-  });
+  const clientsData = overviewData?.clients;
+  const programsData = overviewData?.programs ?? [];
+  const adherenceData = overviewData?.adherence ?? null;
+  const isLoadingClients = isLoadingOverview;
+  const isLoadingPrograms = isLoadingOverview;
 
   const adherenceByProgram = useMemo(() => {
     if (!adherenceData?.byProgram) return {};
@@ -578,6 +579,44 @@ const ClientesScreen = () => {
   }, [adherenceData]);
 
   const clients = clientsData || [];
+
+  // Seed per-program caches for warm navigation to ProgramDetailScreen
+  useEffect(() => {
+    if (!overviewData || !user?.uid) return;
+
+    for (const program of overviewData.programs || []) {
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => old ?? program);
+    }
+
+    if (overviewData.clients) {
+      const byProgram = {};
+      for (const client of overviewData.clients) {
+        for (const enrollment of client.enrolledPrograms || []) {
+          if (!byProgram[enrollment.courseId]) byProgram[enrollment.courseId] = [];
+          byProgram[enrollment.courseId].push({
+            ...client,
+            enrolledProgram: enrollment,
+          });
+        }
+      }
+      for (const [pid, programClients] of Object.entries(byProgram)) {
+        queryClient.setQueryData(queryKeys.clients.byProgram(pid), (old) => old ?? programClients);
+      }
+    }
+
+    if (overviewData.adherence?.byProgram) {
+      for (const progAdh of overviewData.adherence.byProgram) {
+        queryClient.setQueryData(
+          queryKeys.analytics.adherence(user.uid, { programId: progAdh.programId }),
+          (old) => old ?? {
+            overallAdherence: progAdh.adherence,
+            byProgram: [progAdh],
+            enrollmentHistory: overviewData.adherence.enrollmentHistory,
+          }
+        );
+      }
+    }
+  }, [overviewData, user?.uid, queryClient]);
 
   // Count enrolled clients per program from already-fetched clients data
   const enrollmentCounts = useMemo(() => {
@@ -682,7 +721,9 @@ const ClientesScreen = () => {
 
   const handleSelectClient = useCallback((client) => {
     const id = client.id || client.clientUserId || client.userId;
-    navigate(`/clients/${id}`);
+    navigate(`/clients/${id}`, {
+      state: { clientUserId: client.clientUserId || client.userId },
+    });
   }, [navigate]);
 
   const handleConfigClick = useCallback((programId) => {
@@ -710,7 +751,10 @@ const ClientesScreen = () => {
       setIsAssigning(true);
       setAssignError(null);
       await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
-      await queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
+      await queryClient.invalidateQueries({ queryKey: ['clients', 'overview', user.uid] });
+      queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
+      queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user.uid] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user.uid] });
       setIsAssignOpen(false);
       setLookedUpUser(null);
     } catch (err) {
@@ -722,7 +766,10 @@ const ClientesScreen = () => {
 
   const handleAsesoriaCreated = useCallback(() => {
     setShowCreateAsesoria(false);
+    queryClient.invalidateQueries({ queryKey: ['clients', 'overview', user?.uid] });
     queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
+    queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user?.uid] });
+    queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user?.uid] });
     setActiveTab('asesorias');
   }, [queryClient, user?.uid]);
 
@@ -734,7 +781,10 @@ const ClientesScreen = () => {
     mutationFn: (programId) => apiClient.delete(`/creator/programs/${programId}`),
     onSuccess: () => {
       setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['clients', 'overview', user?.uid] });
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user?.uid] });
       showToast('Programa eliminado.', 'success');
     },
     onError: () => showToast('No pudimos eliminar el programa. Intenta de nuevo.', 'error'),

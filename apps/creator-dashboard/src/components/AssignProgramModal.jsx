@@ -20,10 +20,9 @@ const AssignProgramModal = ({
 
   const { data: programsData, isLoading: isLoadingPrograms } = useQuery({
     queryKey: ['programs', 'one_on_one', creatorId],
-    queryFn: () => apiClient.get('/creator/programs'),
+    queryFn: () => apiClient.get('/creator/programs', { params: { deliveryType: 'one_on_one', skipEnrollmentCounts: 'true' } }).then((r) => r.data ?? []),
     enabled: isOpen && !!creatorId,
-    ...cacheConfig.programStructure,
-    select: (res) => (res?.data ?? []).filter((p) => p.deliveryType === 'one_on_one'),
+    ...cacheConfig.otherPrograms,
   });
 
   const programs = programsData ?? [];

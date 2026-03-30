@@ -54,3 +54,18 @@ export { default as SlidePanel } from './SlidePanel';
 
 // 1R — Week navigator
 export { default as WeekNavigator } from './WeekNavigator';
+
+// 1S — Marquee (Magic UI)
+export { default as Marquee } from './Marquee';
+
+// 1T — Animated Circular Progress Bar (Magic UI)
+export { default as AnimatedCircularProgressBar } from './AnimatedCircularProgressBar';
+
+// 1U — Scroll Progress (Magic UI)
+export { default as ScrollProgress } from './ScrollProgress';
+
+// 1V — Text Animate (Magic UI)
+export { default as TextAnimate } from './TextAnimate';
+
+// 1W — File Tree (Magic UI)
+export { Tree, TreeFolder, TreeFile, CollapseButton } from './FileTree';

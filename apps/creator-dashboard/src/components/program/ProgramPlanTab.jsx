@@ -30,8 +30,8 @@ export default function ProgramPlanTab({ programId, programName, creatorId, prog
     queryKey: calendarKey,
     queryFn: () => programPlanService.getCalendar(programId, monthStr),
     enabled: !!programId,
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 
   const planAssignments = calendar?.planAssignments || {};

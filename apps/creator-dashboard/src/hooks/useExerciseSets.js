@@ -62,6 +62,8 @@ const useExerciseSets = ({
   showToast,
   onSetsChanged,
   initialDefaults,
+  initialSets,
+  isLibraryMode = false,
 }) => {
   const [sets, setSets] = useState([]);
   const [originalSets, setOriginalSets] = useState([]);
@@ -81,6 +83,8 @@ const useExerciseSets = ({
 
   // Cache sets across collapse/expand to avoid stale flash
   const cachedSetsRef = useRef(null);
+  const initialSetsRef = useRef(initialSets);
+  const initialSetsConsumedRef = useRef(false);
   const onSetsChangedRef = useRef(onSetsChanged);
   onSetsChangedRef.current = onSetsChanged;
   const initialDefaultsRef = useRef(initialDefaults);
@@ -143,15 +147,30 @@ const useExerciseSets = ({
     // Skip loading for placeholder exercise IDs — sets will load once real ID arrives
     if (isPendingId(exerciseId)) return;
 
-    // Show cached data immediately to avoid stale flash
+    // 1. Use cached sets (from previous expand) — return early
     if (cachedSetsRef.current && cachedSetsRef.current.length > 0) {
       setSets(cachedSetsRef.current);
       setOriginalSets(JSON.parse(JSON.stringify(cachedSetsRef.current)));
       setUnsavedChanges({});
       setIsLoaded(true);
       seedDefaults(cachedSetsRef.current);
+      return;
     }
 
+    // 2. Use initial sets from parent (first expand only) — avoids full-session fetch
+    if (!initialSetsConsumedRef.current && initialSetsRef.current && initialSetsRef.current.length > 0) {
+      initialSetsConsumedRef.current = true;
+      const data = initialSetsRef.current;
+      updateSets(data);
+      cachedSetsRef.current = data;
+      setOriginalSets(JSON.parse(JSON.stringify(data)));
+      setUnsavedChanges({});
+      setIsLoaded(true);
+      seedDefaults(data);
+      return;
+    }
+
+    // 3. Fetch from API (no cache, no initial data, or empty exercise)
     let cancelled = false;
     (async () => {
       try {
@@ -172,9 +191,17 @@ const useExerciseSets = ({
           seedDefaults(placeholders);
 
           try {
-            for (let i = 0; i < DEFAULT_INITIAL_SETS; i++) {
-              if (cancelled) return;
-              await contentApi.createSetInLibraryExercise(userId, sessionId, exerciseId, i);
+            if (isLibraryMode) {
+              await Promise.all(
+                Array.from({ length: DEFAULT_INITIAL_SETS }, (_, i) =>
+                  contentApi.createSetInLibraryExercise(userId, sessionId, exerciseId, i)
+                )
+              );
+            } else {
+              for (let i = 0; i < DEFAULT_INITIAL_SETS; i++) {
+                if (cancelled) return;
+                await contentApi.createSetInLibraryExercise(userId, sessionId, exerciseId, i);
+              }
             }
             if (cancelled) return;
             const created = await contentApi.getSetsByLibraryExercise(userId, sessionId, exerciseId);
@@ -434,21 +461,43 @@ const useExerciseSets = ({
       setOriginalSets(prev => [...prev, ...placeholders.map(p => ({ ...p }))]);
 
       try {
-        for (let i = 0; i < target - current; i++) {
-          await contentApi.createSetInLibraryExercise(userId, sessionId, exerciseId, current + i);
-        }
-        const data = await contentApi.getSetsByLibraryExercise(userId, sessionId, exerciseId);
-        // Apply defaults to new sets
-        if (Object.values(defaults).some(v => v != null)) {
-          for (const set of data) {
-            const update = {};
-            objectiveFields.forEach(o => { update[o] = defaults[o] ?? set[o] ?? null; });
-            await contentApi.updateSetInLibraryExercise(userId, sessionId, exerciseId, set.id, update);
+        // Create sets (parallel in library mode, sequential otherwise)
+        if (isLibraryMode) {
+          await Promise.all(
+            Array.from({ length: target - current }, (_, i) =>
+              contentApi.createSetInLibraryExercise(userId, sessionId, exerciseId, current + i)
+            )
+          );
+        } else {
+          for (let i = 0; i < target - current; i++) {
+            await contentApi.createSetInLibraryExercise(userId, sessionId, exerciseId, current + i);
           }
         }
-        const updated = await contentApi.getSetsByLibraryExercise(userId, sessionId, exerciseId);
-        updateSets(updated);
-        setOriginalSets(JSON.parse(JSON.stringify(updated)));
+        const data = await contentApi.getSetsByLibraryExercise(userId, sessionId, exerciseId);
+        // Apply defaults to new sets (parallel in library mode)
+        if (Object.values(defaults).some(v => v != null)) {
+          const updateCalls = data.map(set => {
+            const update = {};
+            objectiveFields.forEach(o => { update[o] = defaults[o] ?? set[o] ?? null; });
+            return () => contentApi.updateSetInLibraryExercise(userId, sessionId, exerciseId, set.id, update);
+          });
+          if (isLibraryMode) {
+            await Promise.all(updateCalls.map(fn => fn()));
+          } else {
+            for (const fn of updateCalls) await fn();
+          }
+          // Optimistic: apply defaults locally instead of re-fetching
+          const updatedData = data.map(set => {
+            const updated = { ...set };
+            objectiveFields.forEach(o => { updated[o] = defaults[o] ?? set[o] ?? null; });
+            return updated;
+          });
+          updateSets(updatedData);
+          setOriginalSets(JSON.parse(JSON.stringify(updatedData)));
+        } else {
+          updateSets(data);
+          setOriginalSets(JSON.parse(JSON.stringify(data)));
+        }
         setUnsavedChanges({});
       } catch (err) {
         logger.error('Error adding sets:', err);
@@ -468,8 +517,15 @@ const useExerciseSets = ({
       });
 
       try {
-        for (const s of toRemove) {
-          await contentApi.deleteSetFromLibraryExercise(userId, sessionId, exerciseId, s.id);
+        // Delete sets (parallel in library mode, sequential otherwise)
+        if (isLibraryMode) {
+          await Promise.all(toRemove.map(s =>
+            contentApi.deleteSetFromLibraryExercise(userId, sessionId, exerciseId, s.id)
+          ));
+        } else {
+          for (const s of toRemove) {
+            await contentApi.deleteSetFromLibraryExercise(userId, sessionId, exerciseId, s.id);
+          }
         }
       } catch (err) {
         logger.error('Error deleting sets:', err);
@@ -480,7 +536,7 @@ const useExerciseSets = ({
         showToast?.('No pudimos eliminar series. Intenta de nuevo.', 'error');
       }
     }
-  }, [sets, defaultSetValues, userId, sessionId, exerciseId, contentApi, showToast, updateSets]);
+  }, [sets, defaultSetValues, userId, sessionId, exerciseId, contentApi, showToast, updateSets, isLibraryMode]);
 
   const setsCount = optimisticCount ?? sets.length;
 

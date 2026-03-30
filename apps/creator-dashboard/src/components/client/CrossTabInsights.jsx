@@ -74,7 +74,7 @@ function evaluateRules(labData) {
   return alerts;
 }
 
-export default function CrossTabInsights({ labData, clientUserId, currentWeekIndex }) {
+export default function CrossTabInsights({ labData }) {
   const [dismissed, setDismissed] = useState(new Set());
 
   const alerts = useMemo(() => evaluateRules(labData), [labData]);

@@ -32,8 +32,9 @@ class OneOnOneService {
     return client;
   }
 
-  async getClientById(clientId) {
-    const res = await apiClient.get(`/creator/clients/${clientId}`);
+  async getClientById(clientId, { userId } = {}) {
+    const params = userId ? { userId } : undefined;
+    const res = await apiClient.get(`/creator/clients/${clientId}`, { params });
     return res.data;
   }
 

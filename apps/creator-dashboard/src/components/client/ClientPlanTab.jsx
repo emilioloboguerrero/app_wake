@@ -10,6 +10,7 @@ import clientSessionService from '../../services/clientSessionService';
 import plansService from '../../services/plansService';
 import { getMondayWeek } from '../../utils/weekCalculation';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
+import { queryKeys } from '../../config/queryClient';
 import DeleteSessionModal from './DeleteSessionModal';
 import './ClientPlanTab.css';
 
@@ -50,10 +51,17 @@ export default function ClientPlanTab({
 
   const { data: calendar, isLoading: calendarLoading, error: calendarError } = useQuery({
     queryKey: calendarKey,
-    queryFn: () => clientProgramService.getCalendar(clientUserId, programId, monthStr),
+    queryFn: async () => {
+      const t0 = performance.now();
+      const result = await clientProgramService.getCalendar(clientUserId, programId, monthStr);
+      const weeks = Object.keys(result?.weeks || {}).length;
+      const dateSess = result?.dateSessions?.length || 0;
+      console.log(`[ClientPlanTab] getCalendar(${monthStr}) — ${weeks} weeks, ${dateSess} dateSessions — ${Math.round(performance.now() - t0)}ms`);
+      return result;
+    },
     enabled: !!clientUserId && !!programId,
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
 
   const planAssignments = calendar?.planAssignments || {};
@@ -106,7 +114,7 @@ export default function ClientPlanTab({
       clientProgramService.assignPlan(programId, clientUserId, assignPlanId, weekKey),
     onSuccess: () => {
       invalidateCalendar();
-      queryClient.invalidateQueries({ queryKey: ['assignedPrograms'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
     },
   });
 
@@ -115,7 +123,7 @@ export default function ClientPlanTab({
       clientProgramService.removePlan(programId, clientUserId, removePlanId),
     onSuccess: () => {
       invalidateCalendar();
-      queryClient.invalidateQueries({ queryKey: ['assignedPrograms'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
     },
   });
 
@@ -201,6 +209,7 @@ export default function ClientPlanTab({
   // FLOW 5: Edit session within plan week — navigate to editor
   const handleEditPlanSession = useCallback(({ session, weekKey }) => {
     if (!clientUserId || !programId || !session?.id || !weekKey) return;
+    console.log(`[ClientPlanTab] navigating to session editor — sessionId=${session.id}, weekKey=${weekKey}, editScope=client_plan`);
     navigate(`/content/sessions/${session.id}`, {
       state: {
         returnTo: location.pathname,

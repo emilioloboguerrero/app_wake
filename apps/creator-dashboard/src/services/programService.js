@@ -68,6 +68,14 @@ class ProgramService {
     await apiClient.patch(`/creator/programs/${programId}`, { image_url: null, image_path: null });
   }
 
+  async deleteProgramIntroVideo(_programId, _videoUrl) {
+    // Storage cleanup not implemented yet — Firestore field is nulled by the subsequent updateProgram() call
+  }
+
+  async deleteTutorialVideo(_programId, _screenKey, _videoURL) {
+    // Storage cleanup not implemented yet — tutorials map is updated by the subsequent updateProgram() call
+  }
+
   getWeekCount(programData) {
     if (!programData) return 0;
     if (programData.modules && Array.isArray(programData.modules)) {

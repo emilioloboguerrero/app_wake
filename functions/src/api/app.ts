@@ -21,6 +21,9 @@ import notificationsRouter from "./routes/notifications.js";
 
 export const app = express();
 
+// ─── Cold start detection ─────────────────────────────────────────────────
+let _cold = true;
+
 // ─── Body parsing ──────────────────────────────────────────────────────────
 app.use(express.json({ limit: "1mb" }));
 
@@ -77,6 +80,19 @@ app.get("/v1/health", (_req: Request, res: Response) => {
 if (isEmulator) {
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(generateOpenApiSpec()));
 }
+
+// ─── Request-level timing ─────────────────────────────────────────────────
+app.use("/v1", (req: Request, res: Response, next: NextFunction) => {
+  const t0 = Date.now();
+  const cold = _cold;
+  _cold = false;
+  const method = req.method;
+  const path = req.path;
+  res.on("finish", () => {
+    console.log(`[api] ${method} ${path} — ${res.statusCode} — ${Date.now() - t0}ms${cold ? " (COLD START)" : ""}`);
+  });
+  next();
+});
 
 // ─── Auth + Scope enforcement + Daily rate limit (all /v1/* except health) ─
 const PUBLIC_PATHS = [

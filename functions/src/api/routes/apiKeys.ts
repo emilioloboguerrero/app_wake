@@ -22,8 +22,8 @@ router.get("/api-keys", async (req, res) => {
     .where("owner_id", "==", auth.userId)
     .get();
 
-  // Never return key_hash
-  const keys = snapshot.docs.map((d) => {
+  // Never return key_hash; filter out revoked keys
+  const keys = snapshot.docs.filter((d) => !d.data().revoked).map((d) => {
     const data = d.data();
     return {
       keyId: d.id,
@@ -47,12 +47,12 @@ router.post("/api-keys", async (req, res) => {
   }
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  // Include useCase in the validated schema; add length/scope caps
-  const body = validateBody<{ name: string; scope: string[]; useCase?: string }>(
-    { name: "string", scope: "array", useCase: "optional_string" },
+  const body = validateBody<{ name: string; scope?: string[]; useCase?: string }>(
+    { name: "string", scope: "optional_array", useCase: "optional_string" },
     req.body,
     { maxStringLength: 100, maxArrayLength: 10 }
   );
+  const scopes = body.scope ?? ["read"];
 
   // Validate name length
   if (body.name.length > 100) {
@@ -64,7 +64,7 @@ router.post("/api-keys", async (req, res) => {
 
   // Validate scope entries
   const validScopes = ["read", "write", "creator"];
-  for (const s of body.scope) {
+  for (const s of scopes) {
     if (typeof s !== "string" || !validScopes.includes(s)) {
       throw new WakeApiServerError(
         "VALIDATION_ERROR", 400,
@@ -78,10 +78,6 @@ router.post("/api-keys", async (req, res) => {
   const rawKey = `wk_live_${crypto.randomBytes(32).toString("hex")}`;
   const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
 
-  // Determine initial status — read keys are self-serve, write needs approval
-  const needsApproval = body.scope.some((s) => s === "write" || s === "creator");
-  const status = needsApproval ? "pending_approval" : "active";
-
   // Generate key_<12 hex chars> ID per spec
   const keyId = `key_${crypto.randomBytes(6).toString("hex")}`;
   const useCase = body.useCase?.trim() || null;
@@ -89,10 +85,10 @@ router.post("/api-keys", async (req, res) => {
   const docData: Record<string, unknown> = {
     owner_id: auth.userId,
     name: body.name,
-    scopes: body.scope,
+    scopes,
     key_hash: keyHash,
     key_prefix: rawKey.slice(0, 12),
-    revoked: needsApproval ? false : false,
+    revoked: false,
     created_at: new Date().toISOString(),
     last_used_at: null,
     revoked_at: null,
@@ -107,8 +103,8 @@ router.post("/api-keys", async (req, res) => {
       keyId,
       rawKey,
       name: body.name,
-      scope: body.scope,
-      status,
+      scope: scopes,
+      status: "active",
       ...(useCase ? { useCase } : {}),
     },
   });

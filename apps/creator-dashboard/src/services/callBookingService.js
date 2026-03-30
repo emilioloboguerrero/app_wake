@@ -1,6 +1,6 @@
 import apiClient from '../utils/apiClient';
 
-export async function getBookingsForCreator(_creatorId, opts = {}) {
+export async function getBookingsForCreator(opts = {}) {
   const params = {};
   if (opts.fromDate) params.date = opts.fromDate;
   const result = await apiClient.get('/creator/bookings', { params });

@@ -42,6 +42,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import PlanningLibrarySidebar, { DRAG_TYPE_LIBRARY_SESSION } from '../PlanningLibrarySidebar';
+import { Tree, TreeFolder, TreeFile } from '../ui/FileTree';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
 import WeekVolumeDrawer from '../WeekVolumeDrawer';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../../utils/plannedVolumeUtils';
@@ -930,6 +931,45 @@ const ProgramContentTab = ({
     }
   }, [programId, user?.uid, queryClient, showToast]);
 
+  // --- Program structure tree data ---
+  const [showOutline, setShowOutline] = useState(false);
+
+  const treeElements = useMemo(() => {
+    if (!modules.length) return [];
+    return modules.map((mod, i) => {
+      const moduleNumber = (mod.order != null ? mod.order : i) + 1;
+      const moduleSessions = mod.sessions || mod._sessions || [];
+      return {
+        id: mod.id,
+        name: mod.title || `Semana ${moduleNumber}`,
+        type: 'folder',
+        children: moduleSessions.map((s, si) => ({
+          id: s.id,
+          name: s.title || s.name || `Sesion ${si + 1}`,
+          type: 'file',
+        })),
+      };
+    });
+  }, [modules]);
+
+  const handleTreeSelect = useCallback((id) => {
+    const mod = modules.find(m => m.id === id);
+    if (mod) {
+      onModuleSelect(mod);
+      return;
+    }
+    for (const m of modules) {
+      const moduleSessions = m.sessions || m._sessions || [];
+      const sess = moduleSessions.find(s => s.id === id);
+      if (sess) {
+        onModuleSelect(m);
+        onSessionSelect?.(sess);
+        onNavigateToSession?.(m.id, sess.id);
+        return;
+      }
+    }
+  }, [modules, onModuleSelect, onSessionSelect, onNavigateToSession]);
+
   // --- RENDER ---
 
   // View 1: Selected module — show sessions list
@@ -1132,7 +1172,37 @@ const ProgramContentTab = ({
   return (
     <>
       <div className="program-tab-content">
-        <h1 className="program-page-title">Contenido</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <h1 className="program-page-title" style={{ margin: 0 }}>Contenido</h1>
+          {treeElements.length > 0 && !isModuleEditMode && (
+            <button
+              className="module-action-pill"
+              onClick={() => setShowOutline(prev => !prev)}
+              style={{ fontSize: '0.76rem' }}
+            >
+              {showOutline ? 'Ocultar estructura' : 'Ver estructura'}
+            </button>
+          )}
+        </div>
+
+        {showOutline && treeElements.length > 0 && !isModuleEditMode && (
+          <div style={{
+            marginBottom: 16,
+            background: 'var(--surface-1)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '8px 0',
+            maxHeight: 240,
+            overflow: 'auto',
+          }}>
+            <Tree
+              elements={treeElements}
+              initialSelectedId={selectedModule?.id}
+              onSelect={handleTreeSelect}
+            />
+          </div>
+        )}
+
         {modules.length === 0 && !isLoadingModules && (
           <p className="pd-empty-hint" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
             Este programa no tiene contenido todavia. Agrega una semana para empezar a construir.

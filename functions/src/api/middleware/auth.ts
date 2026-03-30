@@ -3,6 +3,32 @@ import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import { db } from "../firestore.js";
 import { WakeApiServerError } from "../errors.js";
+import { checkRateLimit } from "./rateLimit.js";
+
+// ─── In-memory token verification cache ───────────────────────────────────
+// Caches decoded ID tokens by a truncated SHA-256 hash of the raw token.
+// Avoids repeated verifyIdToken network calls for the same token across
+// concurrent requests (e.g. 8 dashboard queries firing simultaneously).
+const TOKEN_CACHE_MAX = 50;
+const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
+const tokenCache = new Map<string, { decoded: admin.auth.DecodedIdToken; expiresAt: number }>();
+
+function getCachedToken(token: string): admin.auth.DecodedIdToken | null {
+  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+  const entry = tokenCache.get(hash);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { tokenCache.delete(hash); return null; }
+  return entry.decoded;
+}
+
+function setCachedToken(token: string, decoded: admin.auth.DecodedIdToken): void {
+  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+  if (tokenCache.size >= TOKEN_CACHE_MAX) {
+    const firstKey = tokenCache.keys().next().value;
+    if (firstKey) tokenCache.delete(firstKey);
+  }
+  tokenCache.set(hash, { decoded, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
+}
 
 export interface AuthResult {
   userId: string;
@@ -10,6 +36,7 @@ export interface AuthResult {
   authType: "firebase" | "apikey";
   scope?: string[];
   keyId?: string;
+  userData?: FirebaseFirestore.DocumentData | null;
 }
 
 declare global {
@@ -81,6 +108,91 @@ export function enforceScope(req: Request): void {
   }
 }
 
+/**
+ * Combined auth + rate limit in a single call. For Firebase token auth,
+ * parallelizes the user doc read with the rate limit transaction — saves
+ * one sequential Firestore round-trip per request.
+ */
+export async function validateAuthAndRateLimit(
+  req: Request,
+  limitRpm = 200,
+  collection: "rate_limit_windows" | "rate_limit_first_party" = "rate_limit_first_party"
+): Promise<AuthResult> {
+  if (req.auth) {
+    await checkRateLimit(req.auth.userId, limitRpm, collection);
+    return req.auth;
+  }
+
+  const header = req.headers.authorization;
+  if (!header || typeof header !== "string" || !header.startsWith("Bearer ")) {
+    throw new WakeApiServerError("UNAUTHENTICATED", 401, "Token de autenticación requerido");
+  }
+  const token = header.slice(7);
+
+  // API key path — sequential (need userId from key lookup first)
+  if (token.startsWith("wk_live_") || token.startsWith("wk_test_")) {
+    const result = await validateApiKey(token);
+    req.auth = result;
+    await checkRateLimit(
+      result.keyId!,
+      limitRpm,
+      "rate_limit_windows"
+    );
+    return result;
+  }
+
+  // Firebase path — parallelize user doc read + rate limit after token verify
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
+  const t0 = Date.now();
+  let decoded = getCachedToken(token);
+  if (decoded) {
+    console.log(`[auth] verifyIdToken — cache hit`);
+  } else {
+    try {
+      decoded = await admin.auth().verifyIdToken(token, !isEmulator);
+    } catch {
+      throw new WakeApiServerError("UNAUTHENTICATED", 401, "Token de autenticación inválido o expirado");
+    }
+    setCachedToken(token, decoded);
+    console.log(`[auth] verifyIdToken — ${Date.now() - t0}ms`);
+  }
+
+  // App Check (skip in emulator)
+  if (!isEmulator) {
+    const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
+    if (appCheckToken) {
+      const t1 = Date.now();
+      try {
+        await admin.appCheck().verifyToken(appCheckToken);
+      } catch {
+        throw new WakeApiServerError("UNAUTHENTICATED", 401, "App Check token inválido");
+      }
+      console.log(`[auth] appCheck — ${Date.now() - t1}ms`);
+    }
+  }
+
+  const t2 = Date.now();
+  const [userDoc] = await Promise.all([
+    db.collection("users").doc(decoded.uid).get(),
+    checkRateLimit(decoded.uid, limitRpm, collection),
+  ]);
+  console.log(`[auth] userDoc+rateLimit — ${Date.now() - t2}ms (total auth: ${Date.now() - t0}ms)`);
+
+  const userData = userDoc.exists ? userDoc.data()! : null;
+  const role = userData
+    ? ((userData.role as "user" | "creator" | "admin") || "user")
+    : "user";
+
+  const result: AuthResult = {
+    userId: decoded.uid,
+    role,
+    authType: "firebase",
+    userData,
+  };
+  req.auth = result;
+  return result;
+}
+
 async function validateApiKey(key: string): Promise<AuthResult> {
   const hash = crypto.createHash("sha256").update(key).digest("hex");
 
@@ -126,17 +238,19 @@ async function validateFirebaseToken(
   token: string,
   req: Request
 ): Promise<AuthResult> {
-  let decoded: admin.auth.DecodedIdToken;
   const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-  try {
-    // Skip checkRevoked in emulator — requires ADC with project access
-    decoded = await admin.auth().verifyIdToken(token, !isEmulator);
-  } catch {
-    throw new WakeApiServerError(
-      "UNAUTHENTICATED",
-      401,
-      "Token de autenticación inválido o expirado"
-    );
+  let decoded = getCachedToken(token);
+  if (!decoded) {
+    try {
+      decoded = await admin.auth().verifyIdToken(token, !isEmulator);
+    } catch {
+      throw new WakeApiServerError(
+        "UNAUTHENTICATED",
+        401,
+        "Token de autenticación inválido o expirado"
+      );
+    }
+    setCachedToken(token, decoded);
   }
 
   // Optional App Check verification (skip in emulator).
@@ -161,15 +275,17 @@ async function validateFirebaseToken(
     }
   }
 
-  // Lookup user role from Firestore
+  // Lookup user role from Firestore — keep full doc data for reuse by handlers
   const userDoc = await db.collection("users").doc(decoded.uid).get();
-  const role = userDoc.exists
-    ? ((userDoc.data()?.role as "user" | "creator" | "admin") || "user")
+  const userData = userDoc.exists ? userDoc.data()! : null;
+  const role = userData
+    ? ((userData.role as "user" | "creator" | "admin") || "user")
     : "user";
 
   return {
     userId: decoded.uid,
     role,
     authType: "firebase",
+    userData,
   };
 }

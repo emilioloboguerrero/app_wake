@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import PanelShell from './PanelShell';
 import CreatePlanOverlay from './CreatePlanOverlay';
 import apiClient from '../../utils/apiClient';
 import plansService from '../../services/plansService';
-import { cacheConfig } from '../../config/queryClient';
+import { cacheConfig, queryKeys } from '../../config/queryClient';
 
 const DotsIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -58,7 +58,7 @@ function PlanCard({ plan, onDelete, onOpen }) {
   );
 }
 
-export default function PlansPanel({ searchQuery = '' }) {
+export default function PlansPanel({ searchQuery = '', sortKey }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -66,17 +66,24 @@ export default function PlansPanel({ searchQuery = '' }) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const { data: plans = [], isLoading, error } = useQuery({
-    queryKey: ['plans', 'creator', user?.uid],
+    queryKey: queryKeys.plans.byCreator(user?.uid),
     queryFn: () => apiClient.get('/creator/plans').then((r) => r.data),
     enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.otherPrograms,
   });
 
   const q = searchQuery.trim().toLowerCase();
-  const filtered = q ? plans.filter((p) => p.title?.toLowerCase().includes(q)) : plans;
+  const filtered = useMemo(() => {
+    let result = q ? plans.filter((p) => p.title?.toLowerCase().includes(q)) : [...plans];
+    if (sortKey === 'name_asc') result.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    else if (sortKey === 'name_desc') result.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+    else if (sortKey === 'date_newest') result.sort((a, b) => (b.created_at?._seconds || 0) - (a.created_at?._seconds || 0));
+    else if (sortKey === 'date_oldest') result.sort((a, b) => (a.created_at?._seconds || 0) - (b.created_at?._seconds || 0));
+    return result;
+  }, [plans, q, sortKey]);
 
   const handlePlanCreated = useCallback((data) => {
-    queryClient.invalidateQueries({ queryKey: ['plans', 'creator', user?.uid] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
     setIsCreateOpen(false);
     if (data?.id) navigate(`/plans/${data.id}`);
   }, [queryClient, user?.uid, navigate]);
@@ -87,7 +94,7 @@ export default function PlansPanel({ searchQuery = '' }) {
     mutationFn: (planId) => plansService.deletePlan(planId),
     onSuccess: () => {
       setDeleteTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
       showToast('Plan eliminado.', 'success');
     },
     onError: () => showToast('No pudimos eliminar el plan. Intenta de nuevo.', 'error'),
@@ -116,7 +123,7 @@ export default function PlansPanel({ searchQuery = '' }) {
         emptySub="Crea un plan base y personalizalo por cliente."
         emptyCta="+ Nuevo plan"
         onCta={() => setIsCreateOpen(true)}
-        onRetry={() => queryClient.invalidateQueries({ queryKey: ['plans', 'creator', user?.uid] })}
+        onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) })}
       >
         <div className="bib-plans-list">
           <AnimatePresence mode="popLayout">

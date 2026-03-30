@@ -1,8 +1,7 @@
-import { useCallback, useState, useMemo, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -10,16 +9,16 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import {
   GlowingEffect,
   SkeletonCard,
-  NumberTicker,
   SpotlightTutorial,
   MenuDropdown,
   FullScreenError,
   ConfirmDeleteModal,
+  TextAnimate,
 } from '../components/ui';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import apiClient from '../utils/apiClient';
-import { cacheConfig } from '../config/queryClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import './ProgramasScreen.css';
 
 const TUTORIAL_STEPS = [
@@ -36,7 +35,6 @@ const TUTORIAL_STEPS = [
 ];
 
 const ProgramaCard = ({ program, index, onClick, onDelete }) => {
-  const completion = program.completionRate ?? 0;
   const enrollments = program.enrollmentCount ?? 0;
   const [accent, setAccent] = useState(null);
 
@@ -47,21 +45,10 @@ const ProgramaCard = ({ program, index, onClick, onDelete }) => {
 
   const accentRgb = accent ? `${accent[0]}, ${accent[1]}, ${accent[2]}` : null;
   const titleColor = accentRgb ? `rgb(${accentRgb})` : 'var(--text-primary, #fff)';
-  const strokeColor = accentRgb ? `rgba(${accentRgb}, 0.7)` : 'rgba(255,255,255,0.5)';
-  const gradTopColor = accentRgb ? `rgba(${accentRgb}, 0.35)` : 'rgba(255,255,255,0.3)';
-  const gradBotColor = accentRgb ? `rgba(${accentRgb}, 0)` : 'rgba(255,255,255,0)';
 
   const menuItems = [
     { label: 'Eliminar', onClick: () => onDelete(program), danger: true },
   ];
-
-  const adherenceData = useMemo(() => {
-    if (program.adherenceHistory?.length) return program.adherenceHistory;
-    const base = Math.max(0, completion - 15);
-    return Array.from({ length: 8 }, (_, i) => ({
-      adherence: Math.round(base + Math.random() * 20 + (i * (completion - base)) / 8),
-    }));
-  }, [program.adherenceHistory, completion]);
 
   return (
     <div
@@ -114,59 +101,10 @@ const ProgramaCard = ({ program, index, onClick, onDelete }) => {
         </div>
 
         <div className="pgs-card__stats">
-          <div className="pgs-stat pgs-stat--chart">
-            <span className="pgs-stat__label">{Math.round(completion)}% adherencia</span>
-            <div className="pgs-card__chart">
-              <ResponsiveContainer width="100%" height={48}>
-                <AreaChart data={adherenceData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id={`pgs-adh-grad-${index}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={gradTopColor} />
-                      <stop offset="100%" stopColor={gradBotColor} />
-                    </linearGradient>
-                  </defs>
-                  <YAxis hide domain={[dataMin => Math.max(0, dataMin - 5), dataMax => Math.min(100, dataMax + Math.max(10, Math.ceil(dataMax * 0.3)))]} />
-                  <Area
-                    type="monotone"
-                    dataKey="adherence"
-                    stroke={strokeColor}
-                    strokeWidth={1.5}
-                    fill={`url(#pgs-adh-grad-${index})`}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div className="pgs-stat pgs-stat--chart">
-            <span className="pgs-stat__label">
-              <span className="pgs-stat__value-inline" style={{ color: titleColor }}>{enrollments}</span> inscritos
-            </span>
-            <div className="pgs-card__chart">
-              <ResponsiveContainer width="100%" height={48}>
-                <AreaChart data={program.enrollmentHistory?.length > 0 ? program.enrollmentHistory : [{ clients: 0 }, { clients: enrollments }]} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id={`pgs-enroll-grad-${index}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={gradTopColor} />
-                      <stop offset="100%" stopColor={gradBotColor} />
-                    </linearGradient>
-                  </defs>
-                  <YAxis hide domain={[dataMin => Math.max(0, dataMin - 1), dataMax => dataMax + Math.max(1, Math.ceil(dataMax * 0.3))]} />
-                  <Area
-                    type="monotone"
-                    dataKey="clients"
-                    stroke={strokeColor}
-                    strokeWidth={1.5}
-                    fill={`url(#pgs-enroll-grad-${index})`}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <span className="pgs-stat__label">
+            <span className="pgs-stat__value-inline" style={{ color: titleColor }}>{enrollments}</span>{' '}
+            {enrollments === 1 ? 'inscrito' : 'inscritos'}
+          </span>
         </div>
       </div>
     </div>
@@ -189,24 +127,31 @@ const ProgramasScreen = () => {
   const [showCreate, setShowCreate] = useState(false);
 
   const { data: allPrograms = [], isLoading, error } = useQuery({
-    queryKey: ['programs', 'creator', user?.uid],
-    queryFn: () => apiClient.get('/creator/programs').then((r) => r.data),
+    queryKey: queryKeys.programs.byCreator(user?.uid),
+    queryFn: () => apiClient.get('/creator/programs', { params: { skipEnrollmentCounts: 'true' } }).then((r) => r.data),
     enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.otherPrograms,
   });
 
   const programs = allPrograms.filter((p) => p.deliveryType !== 'one_on_one');
 
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const programsQueryKey = queryKeys.programs.byCreator(user?.uid);
 
   const deleteMutation = useMutation({
     mutationFn: (programId) => apiClient.delete(`/creator/programs/${programId}`),
-    onSuccess: () => {
+    onMutate: async (programId) => {
+      await queryClient.cancelQueries({ queryKey: programsQueryKey });
+      const previous = queryClient.getQueryData(programsQueryKey);
+      queryClient.setQueryData(programsQueryKey, (old) => old?.filter((p) => p.id !== programId));
       setDeleteTarget(null);
-      queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
-      showToast('Programa eliminado.', 'success');
+      return { previous };
     },
-    onError: () => showToast('No pudimos eliminar el programa. Intenta de nuevo.', 'error'),
+    onError: (_err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(programsQueryKey, context.previous);
+      showToast('No pudimos eliminar el programa. Intenta de nuevo.', 'error');
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: programsQueryKey }),
   });
 
   const handleDelete = useCallback((program) => {
@@ -224,7 +169,7 @@ const ProgramasScreen = () => {
 
   const handleCreated = useCallback(({ id }) => {
     setShowCreate(false);
-    queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
+    queryClient.invalidateQueries({ queryKey: queryKeys.programs.byCreator(user?.uid) });
     if (id) navigate(`/programs/${id}`);
   }, [navigate, queryClient, user?.uid]);
 
@@ -259,8 +204,12 @@ const ProgramasScreen = () => {
                     <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                   </svg>
                 </div>
-                <p className="pgs-empty__text">Todavia no tienes programas grupales.</p>
-                <p className="pgs-empty__sub">Crea tu primer programa y empieza a vender.</p>
+                <TextAnimate animation="blurInUp" by="word" as="p" className="pgs-empty__text" once>
+                  Todavia no tienes programas grupales.
+                </TextAnimate>
+                <TextAnimate animation="fadeIn" by="word" as="p" className="pgs-empty__sub" delay={0.15} once>
+                  Crea tu primer programa y empieza a vender.
+                </TextAnimate>
                 <button className="pgs-empty__cta" onClick={() => setShowCreate(true)}>
                   + Nuevo programa
                 </button>

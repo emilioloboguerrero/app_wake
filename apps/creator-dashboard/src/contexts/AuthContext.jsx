@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import apiClient from '../utils/apiClient';
@@ -76,7 +76,9 @@ export const AuthProvider = ({ children }) => {
       setAuthError(null);
       if (firebaseUser) {
         try {
+          const t0 = performance.now();
           const { data } = await apiClient.get('/users/me');
+          console.log(`[boot] /users/me — ${Math.round(performance.now() - t0)}ms (role=${data.role})`);
           setUserRole(data.role || 'user');
           setWebOnboardingCompleted(data.webOnboardingCompleted ?? false);
           setProfileCompleted(data.profileCompleted ?? false);
@@ -101,7 +103,9 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
+    console.log(`[boot] AuthProvider mounted — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log(`[boot] onAuthStateChanged — user=${!!firebaseUser} — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
       setUser(firebaseUser);
       if (firebaseUser) {
         setAuthenticating(true);
@@ -111,22 +115,23 @@ export const AuthProvider = ({ children }) => {
         await fetchUserData(null);
       }
       setLoading(false);
+      console.log(`[boot] auth loading=false — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
     });
 
     return unsubscribe;
   }, []);
 
-  const refreshUserData = async () => {
+  const refreshUserData = useCallback(async () => {
     const currentUser = auth.currentUser;
     if (currentUser) {
       await fetchUserData(currentUser);
     }
-  };
+  }, []);
 
   const isCreatorValue = userRole === 'creator' || userRole === 'admin';
   const isAdminValue = userRole === 'admin';
 
-  const value = {
+  const value = useMemo(() => ({
     user,
     userRole,
     loading,
@@ -138,7 +143,9 @@ export const AuthProvider = ({ children }) => {
     isAdmin: isAdminValue,
     authError,
     refreshUserData
-  };
+  }), [user, userRole, loading, authenticating, webOnboardingCompleted,
+       profileCompleted, onboardingCompleted, isCreatorValue, isAdminValue,
+       authError, refreshUserData]);
 
   return (
     <AuthContext.Provider value={value}>

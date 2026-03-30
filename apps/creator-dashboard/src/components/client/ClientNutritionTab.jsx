@@ -2,7 +2,6 @@ import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
-import apiClient from '../../utils/apiClient';
 import { GlowingEffect, ShimmerSkeleton } from '../ui';
 import { Search, Pencil, Trash2, Plus, Apple, Target, AlertTriangle } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -22,7 +21,8 @@ const NUTRITION_GOAL_LABELS = {
 
 export default function ClientNutritionTab({
   clientId, clientUserId, clientName, creatorId,
-  currentWeekIndex, weekDateRange, labData,
+  labData,
+  nutritionGoal, dietaryRestrictions = [],
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,6 +30,7 @@ export default function ClientNutritionTab({
   const [searchQuery, setSearchQuery] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [assigningPlanId, setAssigningPlanId] = useState(null);
+  const [rangeDays, setRangeDays] = useState(7);
 
   // ── Creator's nutrition plans ────────────────────────────────
   const { data: plans = [], isLoading: plansLoading } = useQuery({
@@ -47,16 +48,7 @@ export default function ClientNutritionTab({
     staleTime: 2 * 60 * 1000,
   });
 
-  // ── Client profile (for nutrition goal / restrictions) ───────
-  const { data: clientProfile } = useQuery({
-    queryKey: ['clientProfile', 'full', clientId],
-    queryFn: async () => {
-      const res = await apiClient.get(`/creator/clients/${clientId}`);
-      return res.data || res;
-    },
-    enabled: !!clientId,
-    staleTime: 5 * 60 * 1000,
-  });
+  // nutritionGoal and dietaryRestrictions are passed as props from ClientScreen
 
   const activeAssignment = useMemo(() =>
     assignments.find(a => !a.status || a.status === 'active'),
@@ -76,6 +68,7 @@ export default function ClientNutritionTab({
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', clientUserId] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'client-lab', clientUserId] });
       setAssigningPlanId(null);
     },
   });
@@ -85,37 +78,31 @@ export default function ClientNutritionTab({
     mutationFn: () => nutritionDb.deleteAssignment(activeAssignment.id, clientUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', clientUserId] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'client-lab', clientUserId] });
       setConfirmRemove(false);
     },
   });
 
-  // ── Derive nutrition data (last 7 days, or week range if available) ──
-  const weekNutrition = useMemo(() => {
+  // ── Derive nutrition data (last N days) ──
+  const rangeNutrition = useMemo(() => {
     const caloriesTrend = labData?.caloriesTrend || [];
     const macrosTrend = labData?.macrosTrend || [];
 
-    // Use weekDateRange if available, otherwise last 7 days of actual data
-    let weekCalories, weekMacros;
-    if (weekDateRange?.start && weekDateRange?.end) {
-      weekCalories = caloriesTrend.filter(d => d.date >= weekDateRange.start && d.date <= weekDateRange.end);
-      weekMacros = macrosTrend.filter(d => d.date >= weekDateRange.start && d.date <= weekDateRange.end);
-    } else {
-      weekCalories = caloriesTrend.slice(-7);
-      weekMacros = macrosTrend.slice(-7);
-    }
+    const rangeCalories = caloriesTrend.slice(-rangeDays);
+    const rangeMacros = macrosTrend.slice(-rangeDays);
 
     const days = [];
-    for (let i = 0; i < 7; i++) {
-      const entry = weekCalories[i];
+    for (let i = 0; i < rangeDays; i++) {
+      const entry = rangeCalories[i];
       days.push(entry ? { date: entry.date, actual: entry.actual } : null);
     }
 
-    const withData = weekCalories.filter(d => d.actual > 0);
+    const withData = rangeCalories.filter(d => d.actual > 0);
     const avgCalories = withData.length > 0
       ? Math.round(withData.reduce((s, d) => s + d.actual, 0) / withData.length)
       : null;
 
-    const macroWithData = weekMacros.filter(d => d.protein > 0 || d.carbs > 0 || d.fat > 0);
+    const macroWithData = rangeMacros.filter(d => d.protein > 0 || d.carbs > 0 || d.fat > 0);
     const avgProtein = macroWithData.length > 0
       ? Math.round(macroWithData.reduce((s, d) => s + d.protein, 0) / macroWithData.length)
       : null;
@@ -126,7 +113,7 @@ export default function ClientNutritionTab({
       ? Math.round(macroWithData.reduce((s, d) => s + d.fat, 0) / macroWithData.length)
       : null;
 
-    const target = activeAssignment?.daily_calories || weekCalories[0]?.target || labData?.nutritionComparison?.targetCalories || 0;
+    const target = activeAssignment?.daily_calories || rangeCalories[0]?.target || labData?.nutritionComparison?.targetCalories || 0;
     const targetProtein = activeAssignment?.daily_protein_g || labData?.nutritionComparison?.targetProtein || 0;
     const targetCarbs = activeAssignment?.daily_carbs_g || labData?.nutritionComparison?.targetCarbs || 0;
     const targetFat = activeAssignment?.daily_fat_g || labData?.nutritionComparison?.targetFat || 0;
@@ -136,7 +123,7 @@ export default function ClientNutritionTab({
       : null;
 
     return { days, avgCalories, avgProtein, avgCarbs, avgFat, target, targetProtein, targetCarbs, targetFat, adherencePct, daysLogged: withData.length };
-  }, [labData, weekDateRange, activeAssignment]);
+  }, [labData, rangeDays, activeAssignment]);
 
   // ── Pie chart data from assignment ───────────────────────────
   const macroData = useMemo(() => {
@@ -155,10 +142,7 @@ export default function ClientNutritionTab({
 
   const dailyCalories = activeAssignment?.daily_calories ?? activePlan?.daily_calories ?? 0;
 
-  // ── Profile info ─────────────────────────────────────────────
-  const onboarding = clientProfile?.onboardingData;
-  const nutritionGoal = onboarding?.nutritionGoal;
-  const dietaryRestrictions = onboarding?.dietaryRestrictions || [];
+  // nutritionGoal and dietaryRestrictions received as props
 
   // ── Filtered plans for library ───────────────────────────────
   const filteredPlans = useMemo(() => {
@@ -167,7 +151,7 @@ export default function ClientNutritionTab({
     return plans.filter(p => p.name?.toLowerCase().includes(q));
   }, [plans, searchQuery]);
 
-  const hasNutritionData = weekNutrition.avgCalories != null;
+  const hasNutritionData = rangeNutrition.avgCalories != null;
 
   // ── Handlers ─────────────────────────────────────────────────
   const handleEditPlan = useCallback(() => {
@@ -279,12 +263,28 @@ export default function ClientNutritionTab({
         <GlowingEffect spread={40} proximity={120} borderWidth={1} />
         <div className="cnt-stats-inner">
           <div className="cnt-stats-header">
-            <h3 className="cnt-section-title">Nutricion esta semana</h3>
-            {weekNutrition.adherencePct != null && (
-              <span className={`cnt-adherence-badge ${weekNutrition.adherencePct >= 90 && weekNutrition.adherencePct <= 110 ? 'cnt-adherence-badge--good' : weekNutrition.adherencePct >= 70 ? 'cnt-adherence-badge--ok' : 'cnt-adherence-badge--low'}`}>
-                {weekNutrition.adherencePct}%
-              </span>
-            )}
+            <div className="cnt-stats-header-left">
+              <h3 className="cnt-section-title">Nutricion</h3>
+              {rangeNutrition.adherencePct != null && (
+                <span className={`cnt-adherence-badge ${rangeNutrition.adherencePct >= 90 && rangeNutrition.adherencePct <= 110 ? 'cnt-adherence-badge--good' : rangeNutrition.adherencePct >= 70 ? 'cnt-adherence-badge--ok' : 'cnt-adherence-badge--low'}`}>
+                  {rangeNutrition.adherencePct}%
+                </span>
+              )}
+            </div>
+            <div className="cnt-range-toggle">
+              <button
+                className={`cnt-range-btn ${rangeDays === 7 ? 'cnt-range-btn--active' : ''}`}
+                onClick={() => setRangeDays(7)}
+              >
+                7d
+              </button>
+              <button
+                className={`cnt-range-btn ${rangeDays === 30 ? 'cnt-range-btn--active' : ''}`}
+                onClick={() => setRangeDays(30)}
+              >
+                30d
+              </button>
+            </div>
           </div>
 
           {/* Profile chips */}
@@ -308,20 +308,20 @@ export default function ClientNutritionTab({
           {hasNutritionData ? (
             <>
               <DailyCalorieBars
-                days={weekNutrition.days}
-                target={weekNutrition.target}
+                days={rangeNutrition.days}
+                target={rangeNutrition.target}
               />
 
               <div className="cnt-summary">
                 <SummaryItem
                   label="Promedio"
-                  actual={weekNutrition.avgCalories}
-                  target={weekNutrition.target}
+                  actual={rangeNutrition.avgCalories}
+                  target={rangeNutrition.target}
                   unit="kcal"
                 />
-                <SummaryItem label="P" actual={weekNutrition.avgProtein} target={weekNutrition.targetProtein} unit="g" />
-                <SummaryItem label="C" actual={weekNutrition.avgCarbs} target={weekNutrition.targetCarbs} unit="g" />
-                <SummaryItem label="F" actual={weekNutrition.avgFat} target={weekNutrition.targetFat} unit="g" />
+                <SummaryItem label="P" actual={rangeNutrition.avgProtein} target={rangeNutrition.targetProtein} unit="g" />
+                <SummaryItem label="C" actual={rangeNutrition.avgCarbs} target={rangeNutrition.targetCarbs} unit="g" />
+                <SummaryItem label="F" actual={rangeNutrition.avgFat} target={rangeNutrition.targetFat} unit="g" />
               </div>
             </>
           ) : (

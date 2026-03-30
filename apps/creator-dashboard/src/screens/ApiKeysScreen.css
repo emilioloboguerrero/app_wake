@@ -492,6 +492,117 @@
   transform: none;
 }
 
+/* ─── Access gate (full page content area) ─────────────────────── */
+.apikeys-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.apikeys-gate__blur {
+  position: absolute;
+  inset: 0;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(26,26,26,0.6);
+}
+
+.apikeys-gate__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.apikeys-gate__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  max-width: 360px;
+  padding: 40px 32px;
+  animation: apikeys-enter-up 0.46s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.apikeys-gate__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 4px;
+}
+
+.apikeys-gate__title {
+  font-size: clamp(16px, 4vw, 20px);
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  margin: 0;
+}
+
+.apikeys-gate__desc {
+  font-size: clamp(13px, 3vw, 14px);
+  color: var(--text-secondary, rgba(255,255,255,0.5));
+  margin: 0;
+  line-height: 1.6;
+}
+
+.apikeys-gate__btn {
+  margin-top: 8px;
+  padding: 0 28px;
+  height: 44px;
+  background: rgba(255,255,255,0.9);
+  color: #111;
+  border: none;
+  border-radius: var(--radius-md, 10px);
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.22,1,0.36,1);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+}
+
+.apikeys-gate__btn:hover:not(:disabled) {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.apikeys-gate__btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.apikeys-gate__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.apikeys-gate__sent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 20px;
+  background: rgba(52,211,153,0.1);
+  border: 1px solid rgba(52,211,153,0.2);
+  border-radius: var(--radius-md, 10px);
+  color: rgba(52,211,153,0.9);
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 500;
+  animation: apikeys-enter-up 0.3s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.apikeys-btn-create--fake {
+  pointer-events: none;
+}
+
 /* ─── Responsive ────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .apikeys-screen {

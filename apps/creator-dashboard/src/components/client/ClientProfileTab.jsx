@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../utils/apiClient';
+import { queryKeys } from '../../config/queryClient';
 import { ShimmerSkeleton, GlowingEffect } from '../ui';
 import {
   MapPin, Mail, User, Target, Dumbbell, Clock, Apple, Moon, Brain,
@@ -31,39 +32,31 @@ const STRESS_LABELS = { low: 'Bajo', medium: 'Medio', high: 'Alto', very_high: '
 
 const STRESS_COLORS = { low: 'var(--cprt-green)', medium: 'var(--cprt-amber)', high: 'var(--cprt-red)', very_high: 'var(--cprt-red)' };
 
-export default function ClientProfileTab({ clientId, clientUserId, clientName, creatorId }) {
+export default function ClientProfileTab({ clientId, clientUserId, clientName, creatorId, clientDetail }) {
   const queryClient = useQueryClient();
   const [newNote, setNewNote] = useState('');
   const [accessModal, setAccessModal] = useState(null);
 
-  const { data: profile, isLoading } = useQuery({
-    queryKey: ['clientProfile', 'full', clientId],
-    queryFn: async () => {
-      const res = await apiClient.get(`/creator/clients/${clientId}`);
-      return res.data || res;
-    },
-    enabled: !!clientId,
-    staleTime: 5 * 60 * 1000,
-  });
+  const profile = clientDetail;
 
   const addNote = useMutation({
     mutationFn: (text) => apiClient.post(`/creator/clients/${clientId}/notes`, { text }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clientProfile', 'full', clientId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
       setNewNote('');
     },
   });
 
   const deleteNote = useMutation({
     mutationFn: (noteId) => apiClient.delete(`/creator/clients/${clientId}/notes/${noteId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clientProfile', 'full', clientId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) }),
   });
 
   const updateAccess = useMutation({
     mutationFn: ({ programId, expiresAt }) =>
       apiClient.patch(`/creator/clients/${clientUserId}/programs/${programId}`, { expiresAt }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clientProfile', 'full', clientId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
       setAccessModal(null);
     },
   });
@@ -74,7 +67,7 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
     addNote.mutate(newNote.trim());
   }, [newNote, addNote]);
 
-  if (isLoading) return <ProfileSkeleton />;
+  if (!profile) return <ProfileSkeleton />;
 
   const avatar = profile?.profilePictureUrl || profile?.avatarUrl;
   const email = profile?.email || profile?.clientEmail;

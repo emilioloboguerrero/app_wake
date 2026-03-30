@@ -77,6 +77,7 @@ const ExpandableExerciseCard = ({
   showToast,
   accentRgb,
   onSetsChanged,
+  isLibraryMode,
 }) => {
   const {
     attributes,
@@ -166,6 +167,8 @@ const ExpandableExerciseCard = ({
     showToast,
     onSetsChanged,
     initialDefaults: exercise.defaultSetValues,
+    initialSets: exercise.sets || [],
+    isLibraryMode,
   });
 
   const exerciseName = getExerciseDisplayName(exercise);

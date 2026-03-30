@@ -77,7 +77,7 @@ function MacroPie({ protein = 0, carbs = 0, fat = 0, id }) {
   );
 }
 
-export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) {
+export default function NutritionPlansPanel({ searchQuery = '', sortKey, onCreatePlan }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -93,9 +93,13 @@ export default function NutritionPlansPanel({ searchQuery = '', onCreatePlan }) 
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!q) return plans;
-    return plans.filter((i) => (i.name ?? '').toLowerCase().includes(q));
-  }, [plans, q]);
+    let result = q ? plans.filter((i) => (i.name ?? '').toLowerCase().includes(q)) : [...plans];
+    if (sortKey === 'name_asc') result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    else if (sortKey === 'name_desc') result.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+    else if (sortKey === 'date_newest') result.sort((a, b) => (b.created_at?._seconds || 0) - (a.created_at?._seconds || 0));
+    else if (sortKey === 'date_oldest') result.sort((a, b) => (a.created_at?._seconds || 0) - (b.created_at?._seconds || 0));
+    return result;
+  }, [plans, q, sortKey]);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
 

@@ -97,3 +97,20 @@
   color: rgba(255, 255, 255, 0.3);
   text-transform: uppercase;
 }
+
+/* ─── Compact mode (30d) ────────────────────────────────────── */
+.dcb-chart--compact .dcb-bars {
+  gap: 2px;
+}
+
+.dcb-chart--compact .dcb-bar-col {
+  gap: 3px;
+}
+
+.dcb-chart--compact .dcb-bar-fill {
+  border-radius: 2px 2px 1px 1px;
+}
+
+.dcb-chart--compact .dcb-bar-label {
+  font-size: 8px;
+}

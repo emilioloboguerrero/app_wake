@@ -1,6 +1,6 @@
 import './DailyCalorieBars.css';
 
-const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const SHORT_DAY = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
 
 function getBarColor(actual, target) {
   if (!actual || !target) return 'var(--dcb-empty)';
@@ -10,9 +10,19 @@ function getBarColor(actual, target) {
   return 'var(--dcb-far-off)';
 }
 
+function formatLabel(day, count) {
+  if (!day?.date) return '';
+  if (count <= 7) {
+    const d = new Date(day.date + 'T12:00:00');
+    return SHORT_DAY[d.getDay()];
+  }
+  const parts = day.date.split('-');
+  return `${parseInt(parts[2])}`;
+}
+
 export default function DailyCalorieBars({ days, target }) {
-  // days: array of { date, actual, target? } for 7 days (L-D)
-  // target: number (daily calorie target)
+  const count = days.length;
+  const compact = count > 7;
 
   const maxVal = Math.max(
     target || 0,
@@ -23,22 +33,21 @@ export default function DailyCalorieBars({ days, target }) {
 
   return (
     <div className="dcb-container">
-      <div className="dcb-chart">
-        {/* Target line */}
+      <div className={`dcb-chart ${compact ? 'dcb-chart--compact' : ''}`}>
         {target > 0 && (
           <div className="dcb-target-line" style={{ bottom: `${targetPct}%` }}>
             <span className="dcb-target-label">{target}</span>
           </div>
         )}
 
-        {/* Bars */}
         <div className="dcb-bars">
-          {DAY_LABELS.map((label, i) => {
-            const day = days[i];
+          {days.map((day, i) => {
             const actual = day?.actual || 0;
             const heightPct = actual > 0 ? (actual / scale) * 100 : 0;
             const color = getBarColor(actual, target);
             const hasData = actual > 0;
+            const label = formatLabel(day, count);
+            const showLabel = !compact || i % 5 === 0 || i === count - 1;
 
             return (
               <div key={i} className="dcb-bar-col">
@@ -51,13 +60,13 @@ export default function DailyCalorieBars({ days, target }) {
                         background: color,
                       }}
                     >
-                      <span className="dcb-bar-value">{Math.round(actual)}</span>
+                      {!compact && <span className="dcb-bar-value">{Math.round(actual)}</span>}
                     </div>
                   ) : (
                     <div className="dcb-bar-empty" />
                   )}
                 </div>
-                <span className="dcb-bar-label">{label}</span>
+                <span className="dcb-bar-label">{showLabel ? label : ''}</span>
               </div>
             );
           })}

@@ -17,7 +17,7 @@ import {
 import apiClient from '../utils/apiClient';
 import plansService from '../services/plansService';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
-import { cacheConfig } from '../config/queryClient';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import './ProgramsScreen.css';
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
@@ -272,16 +272,16 @@ const IndividualesTab = ({ userId, isEditing }) => {
   const [expandedIds, setExpandedIds] = useState({});
 
   const { data: plans = [], isLoading, error } = useQuery({
-    queryKey: ['plans', 'creator', userId],
+    queryKey: queryKeys.plans.byCreator(userId),
     queryFn: () => apiClient.get('/creator/plans').then((r) => r.data),
     enabled: !!userId,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.otherPrograms,
   });
 
   const createPlanMutation = useMutation({
     mutationFn: () => plansService.createPlan(userId, null, { title: 'Nuevo plan' }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', userId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(userId) });
       const planId = res?.id;
       if (planId) navigate(`/plans/${planId}`);
     },
@@ -291,7 +291,7 @@ const IndividualesTab = ({ userId, isEditing }) => {
   const deletePlanMutation = useMutation({
     mutationFn: (planId) => plansService.deletePlan(planId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', userId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(userId) });
       showToast('Plan eliminado.', 'success');
     },
     onError: () => showToast('No pudimos eliminar el plan. Intenta de nuevo.', 'error'),
@@ -314,7 +314,7 @@ const IndividualesTab = ({ userId, isEditing }) => {
         <FullScreenError
           title="No pudimos cargar tus planes"
           message="Revisa tu conexion e intenta de nuevo."
-          onRetry={() => queryClient.invalidateQueries({ queryKey: ['plans', 'creator', userId] })}
+          onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(userId) })}
         />
       ) : plans.length === 0 ? (
         <EmptyState
@@ -363,7 +363,7 @@ const ProgramsScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user?.uid] });
       if (id) navigate(`/programs/${id}`);
     } else {
-      queryClient.invalidateQueries({ queryKey: ['plans', 'creator', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
       if (id) navigate(`/plans/${id}`);
     }
   }, [navigate, queryClient, user?.uid]);

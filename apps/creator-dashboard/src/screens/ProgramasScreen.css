@@ -225,14 +225,6 @@
   gap: 8px;
 }
 
-.pgs-stat--chart {
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-}
-
 .pgs-stat__label {
   font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
@@ -245,11 +237,6 @@
   font-size: clamp(14px, 3vw, 18px);
   font-weight: 800;
   letter-spacing: -0.3px;
-}
-
-.pgs-card__chart {
-  width: 100%;
-  max-width: 200px;
 }
 
 /* ─── Skeleton ───────────────────────────────────────────── */

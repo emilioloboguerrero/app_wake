@@ -1,7 +1,6 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
-import { validateAuth } from "../middleware/auth.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
+import { validateAuthAndRateLimit } from "../middleware/auth.js";
 import { validateDateFormat } from "../middleware/validate.js";
 import { WakeApiServerError } from "../errors.js";
 
@@ -10,8 +9,7 @@ const db = admin.firestore();
 
 // GET /analytics/weekly-volume
 router.get("/analytics/weekly-volume", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const startDate = req.query.startDate as string;
   const endDate = req.query.endDate as string;
@@ -118,8 +116,7 @@ router.get("/analytics/weekly-volume", async (req, res) => {
 
 // GET /analytics/muscle-breakdown
 router.get("/analytics/muscle-breakdown", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const startDate = req.query.startDate as string;
   const endDate = req.query.endDate as string;
@@ -218,8 +215,16 @@ async function verifyCreatorOwnsClient(
   }
 }
 
-// Helper: get all processed_payments for a creator's courses
+// Helper: get all processed_payments for a creator's courses.
+// Short-lived in-memory cache (30s) avoids duplicate Firestore queries when
+// /analytics/revenue, /analytics/client-trend, and /analytics/revenue-trend
+// all call this within the same dashboard load.
+const paymentsCache = new Map<string, { docs: FirebaseFirestore.QueryDocumentSnapshot[]; expiresAt: number }>();
+
 async function getCreatorPayments(creatorId: string) {
+  const cached = paymentsCache.get(creatorId);
+  if (cached && Date.now() < cached.expiresAt) return cached.docs;
+
   const coursesSnap = await db
     .collection("courses")
     .where("creator_id", "==", creatorId)
@@ -238,16 +243,25 @@ async function getCreatorPayments(creatorId: string) {
       .get();
     allDocs.push(...snap.docs);
   }
+
+  paymentsCache.set(creatorId, { docs: allDocs, expiresAt: Date.now() + 30_000 });
   return allDocs;
 }
 
 // GET /analytics/revenue
 router.get("/analytics/revenue", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/revenue] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
-  const paymentDocs = await getCreatorPayments(auth.userId);
+  const [paymentDocs, clientsSnap, callsSnap] = await Promise.all([
+    getCreatorPayments(auth.userId),
+    db.collection("one_on_one_clients").where("creatorId", "==", auth.userId).get(),
+    db.collection("call_bookings").where("creatorId", "==", auth.userId).get(),
+  ]);
+  log(`payments+clients+calls (${paymentDocs.length} payments, ${clientsSnap.size} clients, ${callsSnap.size} calls)`);
 
   let salesCount = 0;
   let grossRevenue = 0;
@@ -262,59 +276,46 @@ router.get("/analytics/revenue", async (req, res) => {
 
   const netRevenue = Math.round(grossRevenue * (1 - WAKE_CUT_PERCENT / 100));
 
-  const clientsSnap = await db
-    .collection("one_on_one_clients")
-    .where("creatorId", "==", auth.userId)
-    .get();
-
-  const callsSnap = await db
-    .collection("call_bookings")
-    .where("creatorId", "==", auth.userId)
-    .get();
-
   res.json({
     data: {
       lowTicket: { salesCount, grossRevenue, netRevenue },
       oneOnOne: { clientCount: clientsSnap.size, callCount: callsSnap.size },
     },
   });
+  log("done");
 });
 
 // GET /analytics/adherence
 router.get("/analytics/adherence", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/adherence] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
-  const programsSnap = await db
-    .collection("courses")
-    .where("creator_id", "==", auth.userId)
-    .get();
+  const programIdFilter = req.query.programId as string | undefined;
 
-  const clientsSnap = await db
-    .collection("one_on_one_clients")
-    .where("creatorId", "==", auth.userId)
-    .get();
+  // Parallel fetch: programs + clients (independent queries)
+  const [programsResult, clientsSnap] = await Promise.all([
+    programIdFilter
+      ? db.collection("courses").doc(programIdFilter).get().then((doc) => {
+          if (!doc.exists || doc.data()?.creator_id !== auth.userId) return { docs: [] as FirebaseFirestore.QueryDocumentSnapshot[] };
+          return { docs: [doc] as unknown as FirebaseFirestore.QueryDocumentSnapshot[] };
+        })
+      : db.collection("courses").where("creator_id", "==", auth.userId).get(),
+    db.collection("one_on_one_clients").where("creatorId", "==", auth.userId).get(),
+  ]);
 
+  const programDocs = programsResult.docs;
   const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string);
+  log(`programs+clients (${programDocs.length} programs, ${clientUserIds.length} clients)`);
 
-  interface WeeklyPoint {
-    week: string;
-    adherence: number;
-  }
-
+  interface WeeklyPoint { week: string; adherence: number }
   interface ProgramAdherence {
-    programId: string;
-    title: string;
-    completedSessions: number;
-    totalSessions: number;
-    adherence: number;
-    weeklyHistory: WeeklyPoint[];
+    programId: string; title: string;
+    completedSessions: number; totalSessions: number;
+    adherence: number; weeklyHistory: WeeklyPoint[];
   }
-
-  const byProgram: ProgramAdherence[] = [];
-  let totalCompleted = 0;
-  let totalExpected = 0;
 
   // Compute the last 8 week start dates (Monday-based)
   const now = new Date();
@@ -329,92 +330,90 @@ router.get("/analytics/adherence", async (req, res) => {
   }
   const eightWeeksAgoStr = weekStarts[0];
 
-  for (const programDoc of programsSnap.docs) {
-    const programData = programDoc.data();
+  // Parallel: compute adherence for all programs simultaneously
+  const byProgram: ProgramAdherence[] = await Promise.all(
+    programDocs.map(async (programDoc) => {
+      const programData = programDoc.data()!;
 
-    // Count sessions by traversing the program's modules subcollections
-    const modulesSnap = await db
-      .collection("courses")
-      .doc(programDoc.id)
-      .collection("modules")
-      .get();
-    let programSessionCount = 0;
-    for (const moduleDoc of modulesSnap.docs) {
-      const sessionsSnap = await db
-        .collection("courses")
-        .doc(programDoc.id)
-        .collection("modules")
-        .doc(moduleDoc.id)
-        .collection("sessions")
-        .get();
-      programSessionCount += sessionsSnap.size;
-    }
+      // Fetch modules
+      const modulesSnap = await db.collection("courses").doc(programDoc.id).collection("modules").get();
 
-    // Estimate sessions per week (sessions / modules, min 1)
-    const moduleCount = Math.max(1, modulesSnap.size);
-    const sessionsPerWeek = Math.max(1, Math.round(programSessionCount / moduleCount));
+      // Parallel: count sessions across all modules
+      const sessionCounts = await Promise.all(
+        modulesSnap.docs.map((moduleDoc) =>
+          db.collection("courses").doc(programDoc.id)
+            .collection("modules").doc(moduleDoc.id)
+            .collection("sessions").get()
+            .then((s) => s.size)
+        )
+      );
+      const programSessionCount = sessionCounts.reduce((a, b) => a + b, 0);
 
-    let programCompleted = 0;
-    // Weekly buckets: count completed sessions per week across all clients
-    const weekBuckets: Record<string, number> = {};
-    for (const ws of weekStarts) weekBuckets[ws] = 0;
+      const moduleCount = Math.max(1, modulesSnap.size);
+      const sessionsPerWeek = Math.max(1, Math.round(programSessionCount / moduleCount));
 
-    for (const clientUserId of clientUserIds) {
-      const historySnap = await db
-        .collection("users")
-        .doc(clientUserId)
-        .collection("sessionHistory")
-        .where("courseId", "==", programDoc.id)
-        .get();
-      programCompleted += historySnap.size;
+      const weekBuckets: Record<string, number> = {};
+      for (const ws of weekStarts) weekBuckets[ws] = 0;
 
-      // Bucket recent sessions by week
-      for (const histDoc of historySnap.docs) {
-        const dateStr = histDoc.data().date as string | undefined;
-        if (!dateStr || dateStr < eightWeeksAgoStr) continue;
-        const date = new Date(dateStr);
-        const dayOfWeek = date.getDay();
-        const mondayOff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-        const weekDate = new Date(date);
-        weekDate.setDate(date.getDate() + mondayOff);
-        const weekKey = weekDate.toISOString().slice(0, 10);
-        if (weekBuckets[weekKey] !== undefined) {
-          weekBuckets[weekKey]++;
+      // Parallel: fetch client history for this program
+      const historyResults = await Promise.all(
+        clientUserIds.map((uid) =>
+          db.collection("users").doc(uid)
+            .collection("sessionHistory")
+            .where("courseId", "==", programDoc.id)
+            .get()
+        )
+      );
+
+      let programCompleted = 0;
+      for (const historySnap of historyResults) {
+        programCompleted += historySnap.size;
+        for (const histDoc of historySnap.docs) {
+          const dateStr = histDoc.data().date as string | undefined;
+          if (!dateStr || dateStr < eightWeeksAgoStr) continue;
+          const date = new Date(dateStr);
+          const dayOfWeek = date.getDay();
+          const mondayOff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+          const weekDate = new Date(date);
+          weekDate.setDate(date.getDate() + mondayOff);
+          const weekKey = weekDate.toISOString().slice(0, 10);
+          if (weekBuckets[weekKey] !== undefined) {
+            weekBuckets[weekKey]++;
+          }
         }
       }
-    }
 
-    // Compute weekly adherence %
-    const expectedPerWeek = sessionsPerWeek * Math.max(1, clientUserIds.length);
-    const weeklyHistory: WeeklyPoint[] = weekStarts.map((ws) => ({
-      week: ws,
-      adherence: Math.min(100, Math.round(((weekBuckets[ws] ?? 0) / expectedPerWeek) * 100)),
-    }));
+      const expectedPerWeek = sessionsPerWeek * Math.max(1, clientUserIds.length);
+      const weeklyHistory: WeeklyPoint[] = weekStarts.map((ws) => ({
+        week: ws,
+        adherence: Math.min(100, Math.round(((weekBuckets[ws] ?? 0) / expectedPerWeek) * 100)),
+      }));
 
-    const expectedTotal = programSessionCount * clientUserIds.length;
-    const adherence = expectedTotal > 0
-      ? Math.round((programCompleted / expectedTotal) * 100)
-      : 0;
+      const expectedTotal = programSessionCount * clientUserIds.length;
+      const adherence = expectedTotal > 0
+        ? Math.round((programCompleted / expectedTotal) * 100) : 0;
 
-    totalCompleted += programCompleted;
-    totalExpected += expectedTotal;
+      return {
+        programId: programDoc.id,
+        title: (programData.title as string) ?? "",
+        completedSessions: programCompleted,
+        totalSessions: expectedTotal,
+        adherence,
+        weeklyHistory,
+      };
+    })
+  );
 
-    byProgram.push({
-      programId: programDoc.id,
-      title: programData.title ?? "",
-      completedSessions: programCompleted,
-      totalSessions: expectedTotal,
-      adherence,
-      weeklyHistory,
-    });
+  let totalCompleted = 0;
+  let totalExpected = 0;
+  for (const p of byProgram) {
+    totalCompleted += p.completedSessions;
+    totalExpected += p.totalSessions;
   }
-
   const overallAdherence = totalExpected > 0
-    ? Math.round((totalCompleted / totalExpected) * 100)
-    : 0;
+    ? Math.round((totalCompleted / totalExpected) * 100) : 0;
 
   // Compute enrollment history: running total of clients by week (last 8 weeks)
-  const enrollmentByWeek: Array<{ week: string; clients: number }> = [];
   const clientCreatedDates: string[] = [];
   for (const doc of clientsSnap.docs) {
     const data = doc.data();
@@ -428,8 +427,8 @@ router.get("/analytics/adherence", async (req, res) => {
   }
   clientCreatedDates.sort();
 
+  const enrollmentByWeek: Array<{ week: string; clients: number }> = [];
   for (const ws of weekStarts) {
-    // Count clients created on or before end of this week (ws + 6 days)
     const weekEnd = new Date(ws);
     weekEnd.setDate(weekEnd.getDate() + 6);
     const weekEndStr = weekEnd.toISOString().slice(0, 10);
@@ -437,6 +436,7 @@ router.get("/analytics/adherence", async (req, res) => {
     enrollmentByWeek.push({ week: ws, clients: count });
   }
 
+  log(`done (${byProgram.length} programs computed)`);
   res.json({
     data: { overallAdherence, byProgram, enrollmentHistory: enrollmentByWeek },
   });
@@ -444,9 +444,8 @@ router.get("/analytics/adherence", async (req, res) => {
 
 // GET /analytics/client/:clientId/lab
 router.get("/analytics/client/:clientId/lab", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const clientId = req.params.clientId;
   await verifyCreatorOwnsClient(auth.userId, clientId);
@@ -454,29 +453,45 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   // Parse range parameter (7d, 30d, 90d)
   const rangeParam = (req.query.range as string) || "30d";
   const rangeDays = rangeParam === "7d" ? 7 : rangeParam === "90d" ? 90 : 30;
+  const isSummary = req.query.fields === "summary";
 
   const now = new Date();
   const rangeAgo = new Date(now.getTime() - rangeDays * 24 * 60 * 60 * 1000);
   const rangeAgoStr = rangeAgo.toISOString().slice(0, 10);
   const nowStr = now.toISOString().slice(0, 10);
 
-  const [sessionsSnap, bodyLogSnap, readinessSnap, assignmentsSnap, diarySnap, exerciseHistSnap] =
-    await Promise.all([
-      db.collection("users").doc(clientId).collection("sessionHistory")
-        .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
-      db.collection("users").doc(clientId).collection("bodyLog")
-        .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
-      db.collection("users").doc(clientId).collection("readiness")
-        .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
-      db.collection("nutrition_assignments")
-        .where("userId", "==", clientId)
-        .where("assignedBy", "==", auth.userId)
-        .limit(5).get(),
-      db.collection("users").doc(clientId).collection("diary")
-        .where("date", ">=", rangeAgoStr).where("date", "<=", nowStr).get(),
-      db.collection("users").doc(clientId).collection("exerciseHistory")
-        .limit(200).get(),
-    ]);
+  // Core queries (always needed)
+  const coreQueries = [
+    db.collection("users").doc(clientId).collection("sessionHistory")
+      .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
+    db.collection("users").doc(clientId).collection("bodyLog")
+      .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
+    db.collection("users").doc(clientId).collection("readiness")
+      .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
+    db.collection("nutrition_assignments")
+      .where("userId", "==", clientId)
+      .where("assignedBy", "==", auth.userId)
+      .limit(5).get(),
+  ];
+
+  // Expensive queries (skipped in summary mode)
+  const expensiveQueries = isSummary
+    ? [Promise.resolve(null), Promise.resolve(null)]
+    : [
+        db.collection("users").doc(clientId).collection("diary")
+          .where("date", ">=", rangeAgoStr).where("date", "<=", nowStr).limit(300).get(),
+        db.collection("users").doc(clientId).collection("exerciseHistory")
+          .limit(50).get(),
+      ];
+
+  const [sessionsSnap, bodyLogSnap, readinessSnap, assignmentsSnap, diarySnapOrNull, exerciseHistSnapOrNull] =
+    await Promise.all([...coreQueries, ...expensiveQueries]) as [
+      FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot,
+      FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot,
+      FirebaseFirestore.QuerySnapshot | null, FirebaseFirestore.QuerySnapshot | null,
+    ];
+  const diarySnap = diarySnapOrNull;
+  const exerciseHistSnap = exerciseHistSnapOrNull;
 
   // ── Weekly volume (last 8 weeks) ─────────────────────────────
   const eightWeeksAgo = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000);
@@ -623,7 +638,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   const recentPRs: PREntry[] = [];
   const stalledExercises: Array<{ exercise: string; lastPR: string; weeksSinceLastPR: number }> = [];
 
-  for (const doc of exerciseHistSnap.docs) {
+  for (const doc of (exerciseHistSnap?.docs ?? [])) {
     const data = doc.data();
     const exerciseName = data.exerciseName ?? data.name ?? doc.id.replace(/_/g, " ");
     const records = (data.records ?? data.history ?? []) as Array<{
@@ -678,7 +693,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   const seenDays = new Set<string>();
   const dailyNutrition: Record<string, { calories: number; protein: number; carbs: number; fat: number }> = {};
 
-  for (const doc of diarySnap.docs) {
+  for (const doc of (diarySnap?.docs ?? [])) {
     const data = doc.data();
     seenDays.add(data.date);
     actual.calories += data.calories ?? 0;
@@ -797,14 +812,17 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
 
 // GET /analytics/client-activity
 router.get("/analytics/client-activity", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/client-activity] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
   const clientsSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
+  log(`clients query (${clientsSnap.size} clients)`);
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -819,54 +837,55 @@ router.get("/analytics/client-activity", async (req, res) => {
     status: "active" | "inactive" | "ghost";
   }
 
-  const clients: ClientActivity[] = [];
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0, 10);
 
-  for (const doc of clientsSnap.docs) {
-    const data = doc.data();
-    const userId = data.userId as string;
-    const displayName = (data.clientName ?? data.displayName ?? "Cliente") as string;
+  const clientResults = await Promise.all(
+    clientsSnap.docs.map(async (doc): Promise<ClientActivity | null> => {
+      const data = doc.data();
+      const userId = data.userId as string;
+      if (!userId) return null;
+      const displayName = (data.clientName ?? data.displayName ?? "Cliente") as string;
 
-    const historySnap = await db
-      .collection("users")
-      .doc(userId)
-      .collection("sessionHistory")
-      .where("date", ">=", sevenDaysAgoStr)
-      .where("date", "<=", todayStr)
-      .get();
-
-    const sessionsThisWeek = historySnap.size;
-    let lastSessionDate: string | null = null;
-
-    if (sessionsThisWeek > 0) {
-      const dates = historySnap.docs.map(d => d.data().date as string).sort().reverse();
-      lastSessionDate = dates[0];
-    } else {
-      // Check last 30 days for ghost detection
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const recentSnap = await db
-        .collection("users")
-        .doc(userId)
+      const historySnap = await db
+        .collection("users").doc(userId)
         .collection("sessionHistory")
-        .where("date", ">=", thirtyDaysAgo.toISOString().slice(0, 10))
-        .orderBy("date", "desc")
-        .limit(1)
+        .where("date", ">=", sevenDaysAgoStr)
+        .where("date", "<=", todayStr)
         .get();
-      if (!recentSnap.empty) {
-        lastSessionDate = recentSnap.docs[0].data().date as string;
+
+      const sessionsThisWeek = historySnap.size;
+      let lastSessionDate: string | null = null;
+
+      if (sessionsThisWeek > 0) {
+        const dates = historySnap.docs.map(d => d.data().date as string).sort().reverse();
+        lastSessionDate = dates[0];
+      } else {
+        const recentSnap = await db
+          .collection("users").doc(userId)
+          .collection("sessionHistory")
+          .where("date", ">=", thirtyDaysAgoStr)
+          .orderBy("date", "desc")
+          .limit(1)
+          .get();
+        if (!recentSnap.empty) {
+          lastSessionDate = recentSnap.docs[0].data().date as string;
+        }
       }
-    }
 
-    let status: "active" | "inactive" | "ghost" = "ghost";
-    if (sessionsThisWeek > 0) {
-      status = "active";
-    } else if (lastSessionDate) {
-      const lastDate = new Date(lastSessionDate);
-      const daysSince = (now.getTime() - lastDate.getTime()) / (24 * 60 * 60 * 1000);
-      status = daysSince <= 14 ? "inactive" : "ghost";
-    }
+      let status: "active" | "inactive" | "ghost" = "ghost";
+      if (sessionsThisWeek > 0) {
+        status = "active";
+      } else if (lastSessionDate) {
+        const daysSince = (now.getTime() - new Date(lastSessionDate).getTime()) / (24 * 60 * 60 * 1000);
+        status = daysSince <= 14 ? "inactive" : "ghost";
+      }
 
-    clients.push({ userId, displayName, lastSessionDate, sessionsThisWeek, status });
-  }
+      return { userId, displayName, lastSessionDate, sessionsThisWeek, status };
+    })
+  );
+  const clients = clientResults.filter((c): c is ClientActivity => c !== null);
+  log(`per-client parallel done (${clients.length} clients processed)`);
 
   // Sort: active first, then inactive, then ghost
   const order = { active: 0, inactive: 1, ghost: 2 };
@@ -876,6 +895,7 @@ router.get("/analytics/client-activity", async (req, res) => {
   const inactiveCount = clients.filter(c => c.status === "inactive").length;
   const ghostCount = clients.filter(c => c.status === "ghost").length;
 
+  log("done");
   res.json({
     data: { clients, summary: { activeCount, inactiveCount, ghostCount, total: clients.length } },
   });
@@ -883,14 +903,17 @@ router.get("/analytics/client-activity", async (req, res) => {
 
 // GET /analytics/client-trend
 router.get("/analytics/client-trend", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/client-trend] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
   const clientsSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
+  log(`clients (${clientsSnap.size})`);
 
   // Group by month of enrollment
   const months: Record<string, number> = {};
@@ -923,6 +946,7 @@ router.get("/analytics/client-trend", async (req, res) => {
 
   // Programs sold: low_ticket courses (join through courses collection)
   const paymentDocs = await getCreatorPayments(auth.userId);
+  log(`payments (${paymentDocs.length})`);
 
   const programSales: Record<string, number> = {};
   let totalOneOnOne = clientsSnap.size;
@@ -946,6 +970,7 @@ router.get("/analytics/client-trend", async (req, res) => {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, count]) => ({ month, programsSold: count }));
 
+  log("done");
   res.json({
     data: { clientTrend: trend, salesTrend, totalOneOnOne, totalProgramsSold: paymentDocs.length },
   });
@@ -953,11 +978,14 @@ router.get("/analytics/client-trend", async (req, res) => {
 
 // GET /analytics/revenue-trend
 router.get("/analytics/revenue-trend", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/revenue-trend] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
   const paymentDocsForTrend = await getCreatorPayments(auth.userId);
+  log(`payments (${paymentDocsForTrend.length})`);
 
   const months: Record<string, { gross: number; count: number }> = {};
 
@@ -989,19 +1017,23 @@ router.get("/analytics/revenue-trend", async (req, res) => {
       sales: val.count,
     }));
 
+  log("done");
   res.json({ data: { trend } });
 });
 
 // GET /analytics/expiring-access
 router.get("/analytics/expiring-access", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/expiring-access] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
   const coursesSnap = await db
     .collection("courses")
     .where("creator_id", "==", auth.userId)
     .get();
+  log(`courses (${coursesSnap.size})`);
 
   const courseIds = new Set(coursesSnap.docs.map(d => d.id));
   if (courseIds.size === 0) {
@@ -1012,13 +1044,11 @@ router.get("/analytics/expiring-access", async (req, res) => {
   const now = new Date();
   const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-  // Get all users who have these courses
-  // We need to check users.courses map for expiring entries
-  // Since we can't query inside maps efficiently, get clients first
   const clientsSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
+  log(`clients (${clientsSnap.size})`);
 
   const clientUserIds = clientsSnap.docs.map(d => (d.data().clientUserId ?? d.data().userId) as string);
 
@@ -1075,14 +1105,17 @@ router.get("/analytics/expiring-access", async (req, res) => {
 
   expiring.sort((a, b) => a.daysLeft - b.daysLeft);
 
+  log(`done (${expiring.length} expiring)`);
   res.json({ data: { expiring, count: expiring.length } });
 });
 
 // GET /analytics/calendar-preview
 router.get("/analytics/calendar-preview", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[analytics/calendar-preview] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
@@ -1124,6 +1157,7 @@ router.get("/analytics/calendar-preview", async (req, res) => {
     };
   });
 
+  log(`done (${events.length} events)`);
   res.json({
     data: {
       today: events.filter(e => e.isToday),

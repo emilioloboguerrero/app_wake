@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { FullScreenError, GlowingEffect, AnimatedList } from '../components/ui';
+import { FullScreenError, GlowingEffect, AnimatedList, ScrollProgress } from '../components/ui';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Modal from '../components/Modal';
@@ -387,6 +387,8 @@ const LibrarySessionDetailScreen = () => {
   const [isSavingNewExercise, setIsSavingNewExercise] = useState(false);
   const [libraryTitles, setLibraryTitles] = useState({}); // Map: libraryId -> library title
   const [libraryDataCache, setLibraryDataCache] = useState({}); // Map: libraryId -> full library data
+  const libraryDataCacheRef = useRef(libraryDataCache);
+  libraryDataCacheRef.current = libraryDataCache;
   const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
   
   const [isLibraryExerciseModalOpen, setIsLibraryExerciseModalOpen] = useState(false);
@@ -550,13 +552,10 @@ const LibrarySessionDetailScreen = () => {
 
       if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
         log('planInstance path START');
-        const [sessionData, libraries] = await Promise.all([
-          plansService.getSessionById(planInstancePlanId, planInstanceModuleId, sessionId),
-          libraryService.getLibrariesByCreator(user.uid),
-        ]);
-        log(`parallel done — ${sessionData?.exercises?.length ?? 0} exercises, ${libraries?.length ?? 0} libraries`);
+        const sessionData = await plansService.getSessionById(planInstancePlanId, planInstanceModuleId, sessionId);
+        log(`done — ${sessionData?.exercises?.length ?? 0} exercises`);
         if (!sessionData) return null;
-        return { session: sessionData, libraries, editMode: 'planInstance' };
+        return { session: sessionData, editMode: 'planInstance' };
       }
 
       // Resolve effective client-edit context from ref/sessionStorage
@@ -569,6 +568,7 @@ const LibrarySessionDetailScreen = () => {
       const effIsClientPlanEdit = (effEditScope === 'client_plan') && !!effClientId && !!effProgramId && !!effWeekKey;
       const effIsProgramPlanEdit = (effEditScope === 'program_plan') && !!effProgramId && !!effWeekKey;
       const effIsAnyPlanContentEdit = effIsClientPlanEdit || effIsProgramPlanEdit;
+      log(`resolved editScope=${effEditScope} clientPlan=${effIsClientPlanEdit} programPlan=${effIsProgramPlanEdit} clientEdit=${effIsClientEdit}`);
 
       if (effIsAnyPlanContentEdit) {
         log('planContent path START');
@@ -598,9 +598,7 @@ const LibrarySessionDetailScreen = () => {
             image_url: sessionFromPlan.image_url ?? libSession?.image_url ?? null,
             title: sessionFromPlan.title ?? libSession?.title ?? sessionFromPlan.title
           };
-          const libraries = await libraryService.getLibrariesByCreator(user.uid);
-          log(`getLibrariesByCreator done — ${libraries?.length ?? 0} libraries`);
-          return { session: clientSession, libraries, editMode: 'clientPlan' };
+          return { session: clientSession, editMode: 'clientPlan' };
         }
       }
 
@@ -609,25 +607,28 @@ const LibrarySessionDetailScreen = () => {
         const clientContent = await clientSessionContentService.getClientSessionContent(effClientSessionId);
         log(`getClientSessionContent done — hasContent: ${!!clientContent}`);
         if (clientContent) {
-          const libraries = await libraryService.getLibrariesByCreator(user.uid);
-          log(`getLibrariesByCreator done — ${libraries?.length ?? 0} libraries`);
-          return { session: clientContent, libraries, editMode: 'client', hasCopy: true };
+          return { session: clientContent, editMode: 'client', hasCopy: true };
         }
+        log('clientEdit returned null — falling through to library path');
       }
 
-      // Standard library session
+      // Standard library session (or fallthrough from client/plan paths that returned null)
       log('library path START');
-      const [libSession, libraries] = await Promise.all([
-        libraryService.getLibrarySessionById(user.uid, sessionId),
-        libraryService.getLibrariesByCreator(user.uid),
-      ]);
-      log(`parallel done — ${libSession?.exercises?.length ?? 0} exercises, ${libraries?.length ?? 0} libraries`);
-      return { session: libSession, libraries, editMode: 'library' };
+      const libSession = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      log(`done — ${libSession?.exercises?.length ?? 0} exercises`);
+      return { session: libSession, editMode: 'library' };
     },
     enabled: !!user && !!sessionId,
     staleTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 0 : 5 * 60 * 1000,
     gcTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 0 : 10 * 60 * 1000,
     refetchOnWindowFocus: false,
+  });
+
+  const { data: librariesData } = useQuery({
+    queryKey: queryKeys.library.libraries(user?.uid),
+    queryFn: () => libraryService.getLibrariesByCreator(user.uid),
+    enabled: !!user?.uid,
+    ...cacheConfig.libraries,
   });
 
   const session = sessionQueryData?.session ?? null;
@@ -676,7 +677,7 @@ const LibrarySessionDetailScreen = () => {
   useEffect(() => {
     if (!sessionQueryData || sessionDataSeededRef.current) return;
     sessionDataSeededRef.current = true;
-    const { session: s, libraries, hasCopy } = sessionQueryData;
+    const { session: s, hasCopy } = sessionQueryData;
     if (!s) return;
     if (hasCopy !== undefined) {
       hasClientCopyRef.current = hasCopy;
@@ -696,24 +697,29 @@ const LibrarySessionDetailScreen = () => {
     if (Object.keys(initialSetsMap).length > 0) {
       setLiveSetsMap(initialSetsMap);
     }
-    if (libraries) {
-      setAvailableLibraries(libraries);
-      // Seed libraryDataCache from already-loaded libraries so volume card works immediately
-      const libCache = {};
-      libraries.forEach(lib => {
-        if (lib.id) libCache[lib.id] = lib;
-      });
-      if (Object.keys(libCache).length > 0) {
-        setLibraryDataCache(prev => ({ ...prev, ...libCache }));
-      }
-      setVolumeDataLoading(false);
-      if (libraries.length > 0) {
-        setSelectedLibraryId(libraries[0].id);
-        loadExercisesFromLibrary(libraries[0].id, libraries);
-      }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionQueryData]);
+
+  // Seed libraries from separate query (long-lived cache, independent of session)
+  const librariesSeededRef = useRef(false);
+  useEffect(() => {
+    if (!librariesData || librariesSeededRef.current) return;
+    librariesSeededRef.current = true;
+    setAvailableLibraries(librariesData);
+    const libCache = {};
+    librariesData.forEach(lib => {
+      if (lib.id) libCache[lib.id] = lib;
+    });
+    if (Object.keys(libCache).length > 0) {
+      setLibraryDataCache(prev => ({ ...prev, ...libCache }));
+    }
+    setVolumeDataLoading(false);
+    if (librariesData.length > 0) {
+      setSelectedLibraryId(librariesData[0].id);
+      loadExercisesFromLibrary(librariesData[0].id, librariesData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [librariesData]);
 
   const loadExercisesFromLibrary = useCallback(async (libraryId, libraries = null) => {
     if (!libraryId) return;
@@ -780,7 +786,10 @@ const LibrarySessionDetailScreen = () => {
       await Promise.all(
         libraryIds.map(async (libraryId) => {
           try {
-            const libraryData = await libraryService.getLibraryById(libraryId);
+            // Use cached/available library data to avoid redundant fetches
+            const libraryData = libraryDataCacheRef.current[libraryId]
+              || availableLibraries.find(l => l.id === libraryId)
+              || await libraryService.getLibraryById(libraryId);
             referenceLibrariesMap[libraryId].forEach((exerciseName) => {
               if (!exerciseName) return;
               const key = getLibraryExerciseKey(libraryId, exerciseName);
@@ -799,7 +808,7 @@ const LibrarySessionDetailScreen = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [exercises]);
+  }, [exercises, availableLibraries]);
 
   const contentApi = useMemo(() => {
     const effectiveSessionId = effectiveIsClientEdit ? effectiveClientSessionId : sessionId;
@@ -1401,7 +1410,10 @@ const LibrarySessionDetailScreen = () => {
       // Load sets/series
       if (user && sessionId && exercise.id) {
         try {
-          const setsData = await contentApi.getSetsByLibraryExercise(user.uid, sessionId, exercise.id);
+          const cached = liveSetsMap[exercise.id];
+          const setsData = cached?.length > 0
+            ? cached
+            : await contentApi.getSetsByLibraryExercise(user.uid, sessionId, exercise.id);
           setExerciseSets(setsData);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
           setUnsavedSetChanges({});
@@ -2107,23 +2119,46 @@ const LibrarySessionDetailScreen = () => {
 
       await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, realId, updateData);
 
-      for (let i = 0; i < setsToCreate.length; i++) {
-        const set = setsToCreate[i];
-        const createdSet = await contentApi.createSetInLibraryExercise(user.uid, sessionId, realId, i);
-        const setRealId = createdSet?.id || createdSet?.setId;
-
-        const updateSetData = {};
-        if (set.reps != null && set.reps !== '') updateSetData.reps = set.reps;
-        if (set.intensity != null && set.intensity !== '') updateSetData.intensity = set.intensity;
-        // Include any custom objective fields
-        Object.keys(set).forEach(k => {
-          if (!['id', 'order', 'title', 'reps', 'intensity'].includes(k) && set[k] != null && set[k] !== '') {
-            updateSetData[k] = set[k];
+      const isLibMode = !effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit;
+      if (isLibMode && setsToCreate.length > 0) {
+        // Parallel: create all sets, then update all with values
+        const createdSets = await Promise.all(
+          setsToCreate.map((_, i) =>
+            contentApi.createSetInLibraryExercise(user.uid, sessionId, realId, i)
+          )
+        );
+        const updatePromises = createdSets.map((createdSet, i) => {
+          const set = setsToCreate[i];
+          const setRealId = createdSet?.id || createdSet?.setId;
+          const updateSetData = {};
+          if (set.reps != null && set.reps !== '') updateSetData.reps = set.reps;
+          if (set.intensity != null && set.intensity !== '') updateSetData.intensity = set.intensity;
+          Object.keys(set).forEach(k => {
+            if (!['id', 'order', 'title', 'reps', 'intensity'].includes(k) && set[k] != null && set[k] !== '') {
+              updateSetData[k] = set[k];
+            }
+          });
+          if (Object.keys(updateSetData).length > 0 && setRealId) {
+            return contentApi.updateSetInLibraryExercise(user.uid, sessionId, realId, setRealId, updateSetData);
           }
         });
-
-        if (Object.keys(updateSetData).length > 0 && setRealId) {
-          await contentApi.updateSetInLibraryExercise(user.uid, sessionId, realId, setRealId, updateSetData);
+        await Promise.all(updatePromises.filter(Boolean));
+      } else {
+        for (let i = 0; i < setsToCreate.length; i++) {
+          const set = setsToCreate[i];
+          const createdSet = await contentApi.createSetInLibraryExercise(user.uid, sessionId, realId, i);
+          const setRealId = createdSet?.id || createdSet?.setId;
+          const updateSetData = {};
+          if (set.reps != null && set.reps !== '') updateSetData.reps = set.reps;
+          if (set.intensity != null && set.intensity !== '') updateSetData.intensity = set.intensity;
+          Object.keys(set).forEach(k => {
+            if (!['id', 'order', 'title', 'reps', 'intensity'].includes(k) && set[k] != null && set[k] !== '') {
+              updateSetData[k] = set[k];
+            }
+          });
+          if (Object.keys(updateSetData).length > 0 && setRealId) {
+            await contentApi.updateSetInLibraryExercise(user.uid, sessionId, realId, setRealId, updateSetData);
+          }
         }
       }
 
@@ -2145,26 +2180,16 @@ const LibrarySessionDetailScreen = () => {
   handleSaveCreatingExerciseRef.current = handleSaveCreatingExercise;
 
   // Handlers for exercise configuration (adapted from ProgramDetailScreen for library sessions)
-  const handleEditPrimary = async () => {
+  const handleEditPrimary = () => {
     if (!user) return;
     if (!isCreatingExercise && !currentExerciseId) return;
-    
-    try {
-      setIsLoadingLibrariesForSelection(true);
-      setLibraryExerciseModalMode('primary');
-      setAlternativeToEdit(null);
-      setSelectedLibraryForExercise(null);
-      setExercisesFromSelectedLibrary([]);
-      
-      const libraries = await libraryService.getLibrariesByCreator(user.uid);
-      setAvailableLibrariesForSelection(libraries);
-      setIsLibraryExerciseModalOpen(true);
-    } catch (err) {
-      logger.error('Error loading libraries:', err);
-      showToast('No pudimos cargar las bibliotecas. Intenta de nuevo.', 'error');
-    } finally {
-      setIsLoadingLibrariesForSelection(false);
-    }
+
+    setLibraryExerciseModalMode('primary');
+    setAlternativeToEdit(null);
+    setSelectedLibraryForExercise(null);
+    setExercisesFromSelectedLibrary([]);
+    setAvailableLibrariesForSelection(availableLibraries);
+    setIsLibraryExerciseModalOpen(true);
   };
 
   const handleSelectLibrary = async (libraryId) => {
@@ -2283,12 +2308,15 @@ const LibrarySessionDetailScreen = () => {
   const handleOpenPropagateModal = async () => {
     if (!user?.uid || !sessionId) return;
     try {
-      const { affectedUserIds } = await propagationService.findAffectedByLibrarySession(user.uid, sessionId);
-      setPropagateAffectedCount(affectedUserIds.length);
-      const { users, programs } = await propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId);
-      setPropagateAffectedUsers(users);
-      setPropagateAffectedPrograms(programs);
-      detailsFetchedRef.current = true;
+      // Use already-fetched details if available
+      if (!detailsFetchedRef.current) {
+        const { users, programs, programCount } = await propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId);
+        setPropagateAffectedUsers(users);
+        setPropagateAffectedPrograms(programs);
+        setPropagateAffectedCount(users.length);
+        setLibraryUsageCount(prev => prev || programCount || 0);
+        detailsFetchedRef.current = true;
+      }
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.error('Error finding affected users:', err);
@@ -2296,15 +2324,17 @@ const LibrarySessionDetailScreen = () => {
     }
   };
 
-  // Fetch library usage count on mount (library edit only — how many programs reference this session)
+  // Fetch library usage count + affected count only after first mutation (deferred — saves ~67 Firestore reads on view-only visits)
   useEffect(() => {
+    if (!hasMadeChanges) return;
     if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) return;
     propagationService.findAffectedByLibrarySession(user.uid, sessionId)
       .then(({ affectedUserIds, programCount }) => {
         setLibraryUsageCount(programCount || affectedUserIds.length);
+        setPropagateAffectedCount(affectedUserIds.length);
       })
-      .catch((err) => console.error('[Propagation] Error fetching library usage count:', err));
-  }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit]);
+      .catch((err) => console.error('[Propagation] Error fetching affected:', err));
+  }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges]);
 
   // Fetch plan affected count on mount (plan instance edit only)
   const [planAffectedCount, setPlanAffectedCount] = useState(0);
@@ -2314,14 +2344,6 @@ const LibrarySessionDetailScreen = () => {
       .then(({ affectedUserIds }) => setPlanAffectedCount(affectedUserIds?.length ?? 0))
       .catch(() => {});
   }, [isPlanInstanceEdit, planInstancePlanId]);
-
-  // Fetch affected count when hasMadeChanges becomes true (library edit only; not for client or plan-instance edit)
-  useEffect(() => {
-    if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit || !hasMadeChanges) return;
-    propagationService.findAffectedByLibrarySession(user.uid, sessionId)
-      .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
-      .catch((err) => console.error('[Propagation] Error fetching affected count:', err));
-  }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges]);
 
   // Eagerly fetch affected details (users + programs) once changes are made and references exist
   const detailsFetchedRef = useRef(false);
@@ -2353,26 +2375,27 @@ const LibrarySessionDetailScreen = () => {
   }, [effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges, libraryUsageCount]);
 
   const handleBack = () => {
+    const navState = hasMadeChanges ? { ...backState, sessionChanged: true } : backState;
     if (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit) {
       if (sessionId) setStoredClientEditContext(sessionId, null);
-      navigate(backPath, { state: backState });
+      navigate(backPath, { state: navState });
       return;
     }
     if (isPlanInstanceEdit && hasMadeChanges) {
-      navigate(backPath, { state: { ...backState, planHasChanges: true } });
+      navigate(backPath, { state: { ...backState, planHasChanges: true, sessionChanged: true } });
       return;
     }
     if (hasMadeChanges && libraryUsageCount > 0) {
       setIsNavigateModalOpen(true);
     } else {
-      navigate(backPath, { state: backState });
+      navigate(backPath, { state: navState });
     }
   };
 
   const handleNavigatePropagate = () => {
     handlePropagate();
     setIsNavigateModalOpen(false);
-    navigate(backPath, { state: backState });
+    navigate(backPath, { state: { ...backState, sessionChanged: true } });
   };
 
   const handleNavigateLeaveWithoutPropagate = () => {
@@ -2404,26 +2427,16 @@ const LibrarySessionDetailScreen = () => {
       });
   };
 
-  const handleAddAlternative = async () => {
+  const handleAddAlternative = () => {
     if (!user) return;
     if (!isCreatingExercise && !currentExerciseId) return;
-    
-    try {
-      setIsLoadingLibrariesForSelection(true);
-      setLibraryExerciseModalMode('add-alternative');
-      setAlternativeToEdit(null);
-      setSelectedLibraryForExercise(null);
-      setExercisesFromSelectedLibrary([]);
-      
-      const libraries = await libraryService.getLibrariesByCreator(user.uid);
-      setAvailableLibrariesForSelection(libraries);
-      setIsLibraryExerciseModalOpen(true);
-    } catch (err) {
-      logger.error('Error loading libraries:', err);
-      showToast('No pudimos cargar las bibliotecas. Intenta de nuevo.', 'error');
-    } finally {
-      setIsLoadingLibrariesForSelection(false);
-    }
+
+    setLibraryExerciseModalMode('add-alternative');
+    setAlternativeToEdit(null);
+    setSelectedLibraryForExercise(null);
+    setExercisesFromSelectedLibrary([]);
+    setAvailableLibrariesForSelection(availableLibraries);
+    setIsLibraryExerciseModalOpen(true);
   };
 
   const handleDeleteAlternative = async (libraryId, index) => {
@@ -2770,8 +2783,6 @@ const LibrarySessionDetailScreen = () => {
   }, [availableExercises]);
 
   // Load library data for session exercises (for planned volume muscle_activation)
-  const libraryDataCacheRef = useRef(libraryDataCache);
-  libraryDataCacheRef.current = libraryDataCache;
   useEffect(() => {
     if (!user || !exercises?.length) {
       setVolumeDataLoading(false);
@@ -3097,6 +3108,7 @@ const LibrarySessionDetailScreen = () => {
 
   return (
     <ErrorBoundary>
+    <ScrollProgress />
     <DashboardLayout
       screenName={effectiveTitle || session.title}
       showBackButton={true}
@@ -3530,13 +3542,7 @@ const LibrarySessionDetailScreen = () => {
                         setPickerMode('primary');
                         setSelectedLibraryForExercise(null);
                         setExercisesFromSelectedLibrary([]);
-                        if (user) {
-                          setIsLoadingLibrariesForSelection(true);
-                          libraryService.getLibrariesByCreator(user.uid)
-                            .then(libs => setAvailableLibrariesForSelection(libs))
-                            .catch(() => showToast('No pudimos cargar las bibliotecas.', 'error'))
-                            .finally(() => setIsLoadingLibrariesForSelection(false));
-                        }
+                        setAvailableLibrariesForSelection(availableLibraries);
                       }}
                       onAddAlternative={(ex) => {
                         setSelectedExercise(ex);
@@ -3545,13 +3551,7 @@ const LibrarySessionDetailScreen = () => {
                         setPickerMode('add-alternative');
                         setSelectedLibraryForExercise(null);
                         setExercisesFromSelectedLibrary([]);
-                        if (user) {
-                          setIsLoadingLibrariesForSelection(true);
-                          libraryService.getLibrariesByCreator(user.uid)
-                            .then(libs => setAvailableLibrariesForSelection(libs))
-                            .catch(() => showToast('No pudimos cargar las bibliotecas.', 'error'))
-                            .finally(() => setIsLoadingLibrariesForSelection(false));
-                        }
+                        setAvailableLibrariesForSelection(availableLibraries);
                       }}
                       onDeleteAlternative={(libraryId, index) => {
                         if (!user || !sessionId) return;
@@ -3616,6 +3616,7 @@ const LibrarySessionDetailScreen = () => {
                         setAvailableLibrariesForSelection([]);
                       }}
                       pickerIsSaving={pickerActiveExerciseId === exercise.id && isSavingLibraryExerciseChoice}
+                      isLibraryMode={!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit}
                       onOpenPresetSelector={(ex) => {
                         setSelectedExercise(ex);
                         setExerciseDraft(JSON.parse(JSON.stringify(ex)));

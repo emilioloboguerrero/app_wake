@@ -7,20 +7,20 @@ import { TubelightNavBar, SpotlightTutorial, GlowingEffect } from '../components
 import ExercisesPanel from '../components/biblioteca/ExercisesPanel';
 import SessionsPanel from '../components/biblioteca/SessionsPanel';
 import PlansPanel from '../components/biblioteca/PlansPanel';
-import RecetasPanel from '../components/biblioteca/RecetasPanel';
 import NutritionPlansPanel from '../components/biblioteca/NutritionPlansPanel';
-import CreateFlowOverlay from '../components/CreateFlowOverlay';
 import CreatePlanOverlay from '../components/biblioteca/CreatePlanOverlay';
+import SimpleCreateOverlay from '../components/biblioteca/SimpleCreateOverlay';
 import libraryService from '../services/libraryService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
+import apiClient from '../utils/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { queryKeys } from '../config/queryClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import './BibliotecaScreen.css';
 
 const DOMAIN_ITEMS = [
   { id: 'entrenamiento', label: 'Entrenamiento' },
-  { id: 'nutricion', label: 'Nutrición' },
+  { id: 'nutricion', label: 'Nutricion' },
 ];
 
 const TRAINING_TABS = [
@@ -45,8 +45,8 @@ const SearchIcon = () => (
 const SORT_OPTIONS = [
   { id: 'name_asc', label: 'Nombre A→Z' },
   { id: 'name_desc', label: 'Nombre Z→A' },
-  { id: 'date_newest', label: 'Más recientes' },
-  { id: 'date_oldest', label: 'Más antiguos' },
+  { id: 'date_newest', label: 'Mas recientes' },
+  { id: 'date_oldest', label: 'Mas antiguos' },
 ];
 
 const DEFAULT_FILTERS = { sort: 'name_asc' };
@@ -107,17 +107,17 @@ const TUTORIAL_STEPS = [
   {
     selector: '.bib-domain-nav',
     title: 'Dos mundos',
-    body: 'Entrenamiento tiene tus ejercicios, sesiones y planes. Nutrición tiene tus recetas y planes nutricionales.',
+    body: 'Entrenamiento tiene tus ejercicios, sesiones y planes. Nutricion tiene tus recetas y planes nutricionales.',
   },
   {
     selector: '.bib-sub-nav',
     title: 'Contenido reutilizable',
-    body: 'Todo lo que creas acá lo puedes usar en cualquier programa o asignar a clientes.',
+    body: 'Todo lo que creas aca lo puedes usar en cualquier programa o asignar a clientes.',
   },
   {
     selector: '.bib-primary-btn',
     title: 'Crear',
-    body: 'El botón + cambia segun la pestaña activa. Crea sesiones, planes, recetas o planes nutricionales.',
+    body: 'El boton + cambia segun la pestana activa. Crea sesiones, planes o planes nutricionales.',
   },
 ];
 
@@ -134,20 +134,13 @@ const BibliotecaScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreatePlan, setShowCreatePlan] = useState(false);
   const [showCreateLibrary, setShowCreateLibrary] = useState(false);
-  const [libStep, setLibStep] = useState('name');
-  const [newLibraryTitle, setNewLibraryTitle] = useState('');
-  const [createdLibraryId, setCreatedLibraryId] = useState(null);
-  const libInputRef = useRef(null);
+  const [showCreateSession, setShowCreateSession] = useState(false);
+  const [showCreateNutriPlan, setShowCreateNutriPlan] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [showCreateNutriPlan, setShowCreateNutriPlan] = useState(false);
-  const [nutriPlanStep, setNutriPlanStep] = useState('name');
-  const [nutriPlanName, setNutriPlanName] = useState('');
-  const nutriPlanInputRef = useRef(null);
-  const [showCreateSession, setShowCreateSession] = useState(false);
-  const [sessionStep, setSessionStep] = useState('name');
-  const [newSessionTitle, setNewSessionTitle] = useState('');
-  const sessionInputRef = useRef(null);
+  const [successFor, setSuccessFor] = useState(null);
+
+  // --- Mutations ---
 
   const createLibraryMutation = useMutation({
     mutationFn: (title) => libraryService.createLibrary(title),
@@ -155,15 +148,14 @@ const BibliotecaScreen = () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.libraries(user?.uid) });
       queryClient.invalidateQueries({ queryKey: queryKeys.library.exercises(user?.uid) });
       const libraryId = result?.data?.id || result?.id;
-      setCreatedLibraryId(libraryId);
-      setLibStep('success');
+      setSuccessFor('library');
       setTimeout(() => {
         setShowCreateLibrary(false);
+        setSuccessFor(null);
         if (libraryId) navigate(`/libraries/${libraryId}`);
       }, 1600);
     },
     onError: () => {
-      setLibStep('name');
       showToast('No pudimos crear la biblioteca. Intenta de nuevo.', 'error');
     },
   });
@@ -173,70 +165,35 @@ const BibliotecaScreen = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
       const sessionId = result?.sessionId || result?.data?.sessionId;
-      setSessionStep('success');
+      setSuccessFor('session');
       setTimeout(() => {
         setShowCreateSession(false);
+        setSuccessFor(null);
         if (sessionId) navigate(`/content/sessions/${sessionId}`);
       }, 1600);
     },
     onError: () => {
-      setSessionStep('name');
-      showToast('No pudimos crear la sesión. Intenta de nuevo.', 'error');
+      showToast('No pudimos crear la sesion. Intenta de nuevo.', 'error');
     },
   });
 
-  const handleCreateSession = useCallback(() => {
-    const title = newSessionTitle.trim();
-    if (!title) return;
-    setSessionStep('creating');
-    createSessionMutation.mutate(title);
-  }, [newSessionTitle, createSessionMutation]);
+  const createNutriPlanMutation = useMutation({
+    mutationFn: (name) => nutritionDb.createPlan(user.uid, { name, description: '', categories: [] }),
+    onSuccess: (planId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(user?.uid) });
+      setSuccessFor('nutriPlan');
+      setTimeout(() => {
+        setShowCreateNutriPlan(false);
+        setSuccessFor(null);
+        if (planId) navigate(`/nutrition/plans/${planId}`);
+      }, 1600);
+    },
+    onError: () => {
+      showToast('No pudimos crear el plan. Intenta de nuevo.', 'error');
+    },
+  });
 
-  const openCreateSession = useCallback(() => {
-    setShowCreateSession(true);
-    setSessionStep('name');
-    setNewSessionTitle('');
-    setTimeout(() => sessionInputRef.current?.focus(), 300);
-  }, []);
-
-  const handleCreateLibrary = useCallback(() => {
-    const title = newLibraryTitle.trim();
-    if (!title) return;
-    setLibStep('creating');
-    createLibraryMutation.mutate(title);
-  }, [newLibraryTitle, createLibraryMutation]);
-
-  const openCreateLibrary = useCallback(() => {
-    setShowCreateLibrary(true);
-    setLibStep('name');
-    setNewLibraryTitle('');
-    setCreatedLibraryId(null);
-    setTimeout(() => libInputRef.current?.focus(), 300);
-  }, []);
-
-  useEffect(() => {
-    if (!showCreateLibrary) return;
-    if (libStep !== 'name') return;
-    const handler = (e) => { if (e.key === 'Escape') setShowCreateLibrary(false); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [showCreateLibrary, libStep]);
-
-  useEffect(() => {
-    if (!showCreateSession) return;
-    if (sessionStep !== 'name') return;
-    const handler = (e) => { if (e.key === 'Escape') setShowCreateSession(false); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [showCreateSession, sessionStep]);
-
-  useEffect(() => {
-    if (!showCreateNutriPlan) return;
-    if (nutriPlanStep !== 'name') return;
-    const handler = (e) => { if (e.key === 'Escape') setShowCreateNutriPlan(false); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [showCreateNutriPlan, nutriPlanStep]);
+  // --- Navigation ---
 
   const activeFilterCount = filters.sort !== 'name_asc' ? 1 : 0;
 
@@ -259,62 +216,29 @@ const BibliotecaScreen = () => {
       ejercicios: 'ejercicios',
       sesiones: 'sesiones',
       planes: 'planes',
-      recetas: 'recetas',
       planes_nutri: 'planes nutricionales',
     };
-    return `Buscar ${labels[activeSubTab] || 'contenido'}…`;
+    return `Buscar ${labels[activeSubTab] || 'contenido'}...`;
   };
 
-  const createNutriPlanMutation = useMutation({
-    mutationFn: (name) => nutritionDb.createPlan(user.uid, { name, description: '', categories: [] }),
-    onSuccess: (planId) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(user?.uid) });
-      setNutriPlanStep('success');
-      setTimeout(() => {
-        setShowCreateNutriPlan(false);
-        if (planId) navigate(`/nutrition/plans/${planId}`);
-      }, 1600);
-    },
-    onError: () => {
-      setNutriPlanStep('name');
-      showToast('No pudimos crear el plan. Intenta de nuevo.', 'error');
-    },
-  });
+  // --- Actions ---
 
-  const handleCreateNutriPlan = useCallback(() => {
-    const name = nutriPlanName.trim();
-    if (!name) return;
-    setNutriPlanStep('creating');
-    createNutriPlanMutation.mutate(name);
-  }, [nutriPlanName, createNutriPlanMutation]);
-
-  const openCreateNutriPlan = useCallback(() => {
-    setShowCreateNutriPlan(true);
-    setNutriPlanStep('name');
-    setNutriPlanName('');
-    setTimeout(() => nutriPlanInputRef.current?.focus(), 300);
-  }, []);
+  const openCreateLibrary = useCallback(() => setShowCreateLibrary(true), []);
+  const openCreateSession = useCallback(() => setShowCreateSession(true), []);
+  const openCreateNutriPlan = useCallback(() => setShowCreateNutriPlan(true), []);
 
   const handlePrimaryAction = useCallback(() => {
-    if (activeSubTab === 'ejercicios') {
-      openCreateLibrary();
-    } else if (activeSubTab === 'sesiones') {
-      openCreateSession();
-    } else if (activeSubTab === 'planes') {
-      setShowCreatePlan(true);
-    } else if (activeSubTab === 'recetas') {
-      navigate('/nutrition/meals/new');
-    } else if (activeSubTab === 'planes_nutri') {
-      openCreateNutriPlan();
-    }
-  }, [activeSubTab, navigate, openCreateLibrary, openCreateSession, openCreateNutriPlan]);
+    if (activeSubTab === 'ejercicios') openCreateLibrary();
+    else if (activeSubTab === 'sesiones') openCreateSession();
+    else if (activeSubTab === 'planes') setShowCreatePlan(true);
+    else if (activeSubTab === 'planes_nutri') openCreateNutriPlan();
+  }, [activeSubTab, openCreateLibrary, openCreateSession, openCreateNutriPlan]);
 
   const getPrimaryLabel = () => {
     const labels = {
       ejercicios: 'Nueva biblioteca',
-      sesiones: 'Nueva sesión',
+      sesiones: 'Nueva sesion',
       planes: 'Nuevo plan',
-      recetas: 'Crear receta',
       planes_nutri: 'Crear plan',
     };
     return labels[activeSubTab] || 'Crear';
@@ -325,18 +249,52 @@ const BibliotecaScreen = () => {
     if (id) navigate(`/plans/${id}`);
   }, [navigate]);
 
+  // --- Cross-tab prefetching ---
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    if (domain === 'entrenamiento') {
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.library.exercises(user.uid),
+        queryFn: () => libraryService.getExercises(),
+        ...cacheConfig.libraries,
+      });
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.library.libraries(user.uid),
+        queryFn: () => libraryService.getLibrariesByCreator(),
+        ...cacheConfig.libraries,
+      });
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.library.sessions(user.uid),
+        queryFn: () => libraryService.getSessionLibraryWithExercises(),
+        ...cacheConfig.librarySessions,
+      });
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.plans.byCreator(user.uid),
+        queryFn: () => apiClient.get('/creator/plans').then((r) => r.data),
+        ...cacheConfig.otherPrograms,
+      });
+    } else if (domain === 'nutricion') {
+      queryClient.prefetchQuery({
+        queryKey: queryKeys.nutrition.plans(user.uid),
+        queryFn: () => nutritionDb.getPlansByCreator(user.uid),
+        ...cacheConfig.otherPrograms,
+      });
+    }
+  }, [domain, user?.uid, queryClient]);
+
+  // --- Render ---
+
   const renderContent = () => {
     switch (activeSubTab) {
       case 'ejercicios':
-        return <ExercisesPanel searchQuery={searchQuery} onCreateLibrary={openCreateLibrary} />;
+        return <ExercisesPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateLibrary={openCreateLibrary} />;
       case 'sesiones':
-        return <SessionsPanel searchQuery={searchQuery} onCreateSession={openCreateSession} />;
+        return <SessionsPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateSession={openCreateSession} />;
       case 'planes':
-        return <PlansPanel searchQuery={searchQuery} />;
-      case 'recetas':
-        return <RecetasPanel searchQuery={searchQuery} />;
+        return <PlansPanel searchQuery={searchQuery} sortKey={filters.sort} />;
       case 'planes_nutri':
-        return <NutritionPlansPanel searchQuery={searchQuery} onCreatePlan={openCreateNutriPlan} />;
+        return <NutritionPlansPanel searchQuery={searchQuery} sortKey={filters.sort} onCreatePlan={openCreateNutriPlan} />;
       default:
         return null;
     }
@@ -416,218 +374,50 @@ const BibliotecaScreen = () => {
           onCreated={handlePlanCreated}
         />
 
-        {showCreateNutriPlan && (
-          <div className="cfo-overlay" onClick={nutriPlanStep === 'name' ? () => setShowCreateNutriPlan(false) : undefined}>
-            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
-              <GlowingEffect spread={40} borderWidth={1} />
+        <SimpleCreateOverlay
+          isOpen={showCreateLibrary}
+          onClose={() => setShowCreateLibrary(false)}
+          title="Nueva biblioteca"
+          description="Organiza tus ejercicios por categoria, nivel o disciplina."
+          placeholder="Ej: Tren superior, Calistenia avanzada..."
+          ctaLabel="Crear biblioteca"
+          creatingText="Creando biblioteca"
+          successTitle="Biblioteca creada"
+          successDesc="Agrega ejercicios, videos y musculos."
+          onSubmit={(name) => createLibraryMutation.mutate(name)}
+          isPending={createLibraryMutation.isPending}
+          isSuccess={successFor === 'library'}
+        />
 
-              <div className="cfo-topbar">
-                <div />
-                {nutriPlanStep === 'name' && (
-                  <button type="button" className="cfo-close" onClick={() => setShowCreateNutriPlan(false)} aria-label="Cerrar">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                  </button>
-                )}
-              </div>
+        <SimpleCreateOverlay
+          isOpen={showCreateSession}
+          onClose={() => setShowCreateSession(false)}
+          title="Nueva sesion"
+          description="Dale un nombre a tu sesion. Luego agregaras imagen y ejercicios."
+          placeholder="Ej: Empuje dia A, Pierna fuerza..."
+          ctaLabel="Crear sesion"
+          creatingText="Creando sesion"
+          successTitle="Sesion creada"
+          successDesc="Agrega ejercicios y configura tus series."
+          onSubmit={(name) => createSessionMutation.mutate(name)}
+          isPending={createSessionMutation.isPending}
+          isSuccess={successFor === 'session'}
+        />
 
-              <div className="cfo-body">
-                {nutriPlanStep === 'name' && (
-                  <div className="cfo-step" key="nutri-plan-name">
-                    <div className="cfo-step__header">
-                      <h1 className="cfo-step__title">Nuevo plan nutricional</h1>
-                      <p className="cfo-step__desc">Dale un nombre a tu plan. Luego configuraras calorias, macros y comidas.</p>
-                    </div>
-                    <div className="cfo-step__content">
-                      <input
-                        ref={nutriPlanInputRef}
-                        className="cfo-name-input"
-                        type="text"
-                        placeholder="Ej: Plan definicion, Volumen 3000 kcal..."
-                        value={nutriPlanName}
-                        onChange={(e) => setNutriPlanName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && nutriPlanName.trim()) handleCreateNutriPlan(); }}
-                        maxLength={80}
-                      />
-                    </div>
-                    <div className="cfo-footer" style={{ justifyContent: 'center' }}>
-                      <button
-                        type="button"
-                        className="cfo-next-btn"
-                        onClick={handleCreateNutriPlan}
-                        disabled={!nutriPlanName.trim()}
-                      >
-                        Crear plan
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {nutriPlanStep === 'creating' && (
-                  <div className="cfo-step cfo-step--center" key="nutri-plan-creating">
-                    <div className="cfo-spinner" />
-                    <p className="cfo-status-text">Creando plan</p>
-                  </div>
-                )}
-
-                {nutriPlanStep === 'success' && (
-                  <div className="cfo-step cfo-step--center" key="nutri-plan-success">
-                    <div className="cfo-check-wrap">
-                      <svg className="cfo-check-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
-                        <circle className="cfo-check-circle" cx="24" cy="24" r="22" stroke="rgba(74,222,128,0.8)" strokeWidth="2.5" />
-                        <path className="cfo-check-path" d="M14 25l7 7 13-14" stroke="rgba(74,222,128,0.9)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                    <h2 className="cfo-success-title">Plan creado</h2>
-                    <p className="cfo-success-desc">Configura las calorias, macros y comidas de tu plan.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showCreateLibrary && (
-          <div className="cfo-overlay" onClick={libStep === 'name' ? () => setShowCreateLibrary(false) : undefined}>
-            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
-              <GlowingEffect spread={40} borderWidth={1} />
-
-              <div className="cfo-topbar">
-                <div />
-                {libStep === 'name' && (
-                  <button type="button" className="cfo-close" onClick={() => setShowCreateLibrary(false)} aria-label="Cerrar">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                  </button>
-                )}
-              </div>
-
-              <div className="cfo-body">
-                {libStep === 'name' && (
-                  <div className="cfo-step" key="lib-name">
-                    <div className="cfo-step__header">
-                      <h1 className="cfo-step__title">Nueva biblioteca</h1>
-                      <p className="cfo-step__desc">Organiza tus ejercicios por categoria, nivel o disciplina.</p>
-                    </div>
-                    <div className="cfo-step__content">
-                      <input
-                        ref={libInputRef}
-                        className="cfo-name-input"
-                        type="text"
-                        placeholder="Ej: Tren superior, Calistenia avanzada..."
-                        value={newLibraryTitle}
-                        onChange={(e) => setNewLibraryTitle(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && newLibraryTitle.trim()) handleCreateLibrary(); }}
-                        maxLength={80}
-                      />
-                    </div>
-                    <div className="cfo-footer" style={{ justifyContent: 'center' }}>
-                      <button
-                        type="button"
-                        className="cfo-next-btn"
-                        onClick={handleCreateLibrary}
-                        disabled={!newLibraryTitle.trim()}
-                      >
-                        Crear biblioteca
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {libStep === 'creating' && (
-                  <div className="cfo-step cfo-step--center" key="lib-creating">
-                    <div className="cfo-spinner" />
-                    <p className="cfo-status-text">Creando biblioteca</p>
-                  </div>
-                )}
-
-                {libStep === 'success' && (
-                  <div className="cfo-step cfo-step--center" key="lib-success">
-                    <div className="cfo-check-wrap">
-                      <svg className="cfo-check-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
-                        <circle className="cfo-check-circle" cx="24" cy="24" r="22" stroke="rgba(74,222,128,0.8)" strokeWidth="2.5" />
-                        <path className="cfo-check-path" d="M14 25l7 7 13-14" stroke="rgba(74,222,128,0.9)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                    <h2 className="cfo-success-title">Biblioteca creada</h2>
-                    <p className="cfo-success-desc">Agrega ejercicios, videos y musculos.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showCreateSession && (
-          <div className="cfo-overlay" onClick={sessionStep === 'name' ? () => setShowCreateSession(false) : undefined}>
-            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
-              <GlowingEffect spread={40} borderWidth={1} />
-
-              <div className="cfo-topbar">
-                <div />
-                {sessionStep === 'name' && (
-                  <button type="button" className="cfo-close" onClick={() => setShowCreateSession(false)} aria-label="Cerrar">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                  </button>
-                )}
-              </div>
-
-              <div className="cfo-body">
-                {sessionStep === 'name' && (
-                  <div className="cfo-step" key="session-name">
-                    <div className="cfo-step__header">
-                      <h1 className="cfo-step__title">Nueva sesión</h1>
-                      <p className="cfo-step__desc">Dale un nombre a tu sesión. Luego agregarás imagen y ejercicios.</p>
-                    </div>
-                    <div className="cfo-step__content">
-                      <input
-                        ref={sessionInputRef}
-                        className="cfo-name-input"
-                        type="text"
-                        placeholder="Ej: Empuje día A, Pierna fuerza..."
-                        value={newSessionTitle}
-                        onChange={(e) => setNewSessionTitle(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && newSessionTitle.trim()) handleCreateSession(); }}
-                        maxLength={80}
-                      />
-                    </div>
-                    <div className="cfo-footer" style={{ justifyContent: 'center' }}>
-                      <button
-                        type="button"
-                        className="cfo-next-btn"
-                        onClick={handleCreateSession}
-                        disabled={!newSessionTitle.trim()}
-                      >
-                        Crear sesión
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {sessionStep === 'creating' && (
-                  <div className="cfo-step cfo-step--center" key="session-creating">
-                    <div className="cfo-spinner" />
-                    <p className="cfo-status-text">Creando sesión</p>
-                  </div>
-                )}
-
-                {sessionStep === 'success' && (
-                  <div className="cfo-step cfo-step--center" key="session-success">
-                    <div className="cfo-check-wrap">
-                      <svg className="cfo-check-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
-                        <circle className="cfo-check-circle" cx="24" cy="24" r="22" stroke="rgba(74,222,128,0.8)" strokeWidth="2.5" />
-                        <path className="cfo-check-path" d="M14 25l7 7 13-14" stroke="rgba(74,222,128,0.9)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </div>
-                    <h2 className="cfo-success-title">Sesión creada</h2>
-                    <p className="cfo-success-desc">Agrega ejercicios y configura tus series.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <SimpleCreateOverlay
+          isOpen={showCreateNutriPlan}
+          onClose={() => setShowCreateNutriPlan(false)}
+          title="Nuevo plan nutricional"
+          description="Dale un nombre a tu plan. Luego configuraras calorias, macros y comidas."
+          placeholder="Ej: Plan definicion, Volumen 3000 kcal..."
+          ctaLabel="Crear plan"
+          creatingText="Creando plan"
+          successTitle="Plan creado"
+          successDesc="Configura las calorias, macros y comidas de tu plan."
+          onSubmit={(name) => createNutriPlanMutation.mutate(name)}
+          isPending={createNutriPlanMutation.isPending}
+          isSuccess={successFor === 'nutriPlan'}
+        />
 
         <SpotlightTutorial screenKey="biblioteca" steps={TUTORIAL_STEPS} />
       </DashboardLayout>

@@ -1,11 +1,11 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
+import { Resend } from "resend";
 import { db, FieldValue, FieldPath } from "../firestore.js";
 import type { Query } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
+import { validateAuthAndRateLimit } from "../middleware/auth.js";
 import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
@@ -18,37 +18,51 @@ function requireCreator(auth: { role: string }): void {
 
 // GET /creator/clients — paginated 50/page, optional ?programId=X filter
 router.get("/creator/clients", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const programId = req.query.programId as string | undefined;
   const pageToken = req.query.pageToken as string | undefined;
 
   if (programId) {
-    // Server-side filtering: fetch all clients, look up each user's courses,
-    // return only those enrolled in the requested program.
-    let query: Query = db
+    // Server-side filtering: fetch all clients, batch-lookup users, filter by enrollment.
+    const snapshot = await db
       .collection("one_on_one_clients")
       .where("creatorId", "==", auth.userId)
-      .orderBy("createdAt", "desc");
+      .orderBy("createdAt", "desc")
+      .get();
 
-    const snapshot = await query.get();
+    const clientDocs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const userIds = [...new Set(
+      clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
+    )];
+
+    // Batch fetch user docs (same pattern as non-programId branch)
+    const userDocsMap: Record<string, Record<string, unknown>> = {};
+    if (userIds.length > 0) {
+      const batchSize = 10;
+      for (let i = 0; i < userIds.length; i += batchSize) {
+        const batch = userIds.slice(i, i + batchSize);
+        const userDocs = await db.getAll(...batch.map((uid) => db.collection("users").doc(uid)));
+        for (const uDoc of userDocs) {
+          if (uDoc.exists) userDocsMap[uDoc.id] = uDoc.data() as Record<string, unknown>;
+        }
+      }
+    }
 
     const results: Record<string, unknown>[] = [];
-    for (const d of snapshot.docs) {
-      const clientData = d.data();
-      const userDoc = await db.collection("users").doc(clientData.clientUserId).get();
-      const userData = userDoc.data();
-      const courses = userData?.courses ?? {};
+    for (const client of clientDocs) {
+      const uid = (client as Record<string, unknown>).clientUserId as string;
+      const userData = userDocsMap[uid];
+      if (!userData) continue;
+      const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
       const enrollment = courses[programId];
       if (enrollment && enrollment.deliveryType === "one_on_one") {
         results.push({
-          id: d.id,
-          ...clientData,
-          clientName: userData?.displayName ?? userData?.name ?? null,
-          clientEmail: userData?.email ?? null,
-          avatarUrl: userData?.profilePictureUrl ?? userData?.photoURL ?? null,
+          ...client,
+          clientName: userData.displayName ?? userData.name ?? null,
+          clientEmail: userData.email ?? null,
+          avatarUrl: userData.profilePictureUrl ?? userData.photoURL ?? null,
           enrolledProgram: { courseId: programId, ...enrollment },
         });
       }
@@ -221,11 +235,255 @@ router.get("/creator/clients", async (req, res) => {
   });
 });
 
+// GET /creator/clients-overview — combined clients + programs + adherence in one call
+// Eliminates duplicate reads across the three individual endpoints
+router.get("/creator/clients-overview", async (req, res) => {
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[creator/clients-overview] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+  log("auth");
+
+  const [clientsSnap, coursesSnap] = await Promise.all([
+    db.collection("one_on_one_clients")
+      .where("creatorId", "==", auth.userId)
+      .orderBy("createdAt", "desc")
+      .get(),
+    db.collection("courses")
+      .where("creator_id", "==", auth.userId)
+      .get(),
+  ]);
+
+  const creatorCourseIds = new Set(coursesSnap.docs.map((d) => d.id));
+
+  const clientDocs = clientsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const clientUserIds = [...new Set(
+    clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
+  )];
+  log(`clients+courses (${clientDocs.length} clients, ${coursesSnap.size} courses)`);
+
+  // ── 2. Batch fetch user docs (N reads) ──
+  const userDocsMap: Record<string, Record<string, unknown>> = {};
+  if (clientUserIds.length > 0) {
+    const batchSize = 10;
+    for (let i = 0; i < clientUserIds.length; i += batchSize) {
+      const batch = clientUserIds.slice(i, i + batchSize);
+      const userDocs = await db.getAll(...batch.map((uid) => db.collection("users").doc(uid)));
+      for (const uDoc of userDocs) {
+        if (uDoc.exists) {
+          userDocsMap[uDoc.id] = uDoc.data() as Record<string, unknown>;
+        }
+      }
+    }
+  }
+
+  log(`user docs batch (${Object.keys(userDocsMap).length} fetched)`);
+
+  // ── 3. Compute enrollment counts from user docs (0 reads) ──
+  const enrollmentCounts: Record<string, number> = {};
+  for (const userData of Object.values(userDocsMap)) {
+    const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
+    for (const [courseId, entry] of Object.entries(courses)) {
+      if (entry.status === "active") {
+        enrollmentCounts[courseId] = (enrollmentCounts[courseId] ?? 0) + 1;
+      }
+    }
+  }
+
+  // ── 4. Build clients (no per-client stats — they're not shown on the listing) ──
+  const clients = clientDocs.map((client) => {
+    const userId = (client as Record<string, unknown>).clientUserId as string;
+    const userData = userDocsMap[userId];
+    const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    const enrolledPrograms = Object.entries(courses)
+      .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
+      .map(([courseId, v]) => ({ courseId, title: v.title, status: v.status }));
+
+    let accessEndsAt: string | null = null;
+    for (const [courseId, entry] of Object.entries(courses)) {
+      if (entry.deliveryType === "one_on_one" && entry.status === "active" && entry.expires_at && creatorCourseIds.has(courseId)) {
+        const ea = entry.expires_at as string;
+        if (!accessEndsAt || ea < accessEndsAt) accessEndsAt = ea;
+      }
+    }
+
+    return {
+      ...client,
+      clientName: userData?.displayName ?? userData?.name ?? (client as Record<string, unknown>).clientName ?? null,
+      clientEmail: userData?.email ?? (client as Record<string, unknown>).clientEmail ?? null,
+      avatarUrl: userData?.profilePictureUrl ?? userData?.photoURL ?? null,
+      enrolledPrograms,
+      accessEndsAt,
+    };
+  });
+
+  // ── 5. Build programs list ──
+  const programs = coursesSnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      imageUrl: data.image_url ?? null,
+      enrollmentCount: enrollmentCounts[d.id] ?? 0,
+    };
+  });
+
+  log("build clients+programs");
+
+  // ── 6. Compute adherence (only when requested — saves 19 reads) ──
+  const includeAdherence = req.query.includeAdherence === "true";
+
+  let adherencePayload: Record<string, unknown> | null = null;
+
+  if (includeAdherence) {
+    const now = new Date();
+    const weekStarts: string[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (i * 7));
+      const day = d.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      d.setDate(d.getDate() + mondayOffset);
+      weekStarts.push(d.toISOString().slice(0, 10));
+    }
+    const eightWeeksAgoStr = weekStarts[0];
+
+    // Fetch modules + sessions per program (P + P*M reads)
+    interface ProgramMeta { id: string; title: string; sessionCount: number; moduleCount: number }
+    const programMetas: ProgramMeta[] = [];
+    await Promise.all(coursesSnap.docs.map(async (programDoc) => {
+      const modulesSnap = await db.collection("courses").doc(programDoc.id).collection("modules").get();
+      let sessionCount = 0;
+      await Promise.all(modulesSnap.docs.map(async (moduleDoc) => {
+        const sessionsSnap = await db.collection("courses").doc(programDoc.id)
+          .collection("modules").doc(moduleDoc.id).collection("sessions").get();
+        sessionCount += sessionsSnap.size;
+      }));
+      programMetas.push({
+        id: programDoc.id,
+        title: (programDoc.data().title as string) ?? "",
+        sessionCount,
+        moduleCount: Math.max(1, modulesSnap.size),
+      });
+    }));
+
+    // Fetch recent sessionHistory per client, bucket by courseId (N reads instead of P*N)
+    const historyByProgram: Record<string, { total: number; weekBuckets: Record<string, number> }> = {};
+    for (const pm of programMetas) {
+      const buckets: Record<string, number> = {};
+      for (const ws of weekStarts) buckets[ws] = 0;
+      historyByProgram[pm.id] = { total: 0, weekBuckets: buckets };
+    }
+
+    await Promise.all(clientUserIds.map(async (uid) => {
+      const histSnap = await db.collection("users").doc(uid)
+        .collection("sessionHistory")
+        .where("date", ">=", eightWeeksAgoStr)
+        .get();
+
+      for (const histDoc of histSnap.docs) {
+        const data = histDoc.data();
+        const courseId = data.courseId as string | undefined;
+        const dateStr = data.date as string | undefined;
+        if (!courseId || !dateStr || !historyByProgram[courseId]) continue;
+
+        historyByProgram[courseId].total++;
+
+        const date = new Date(dateStr);
+        const dayOfWeek = date.getDay();
+        const mondayOff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const weekDate = new Date(date);
+        weekDate.setDate(date.getDate() + mondayOff);
+        const weekKey = weekDate.toISOString().slice(0, 10);
+        if (historyByProgram[courseId].weekBuckets[weekKey] !== undefined) {
+          historyByProgram[courseId].weekBuckets[weekKey]++;
+        }
+      }
+    }));
+
+    // Compute per-program adherence
+    let totalCompleted = 0;
+    let totalExpected = 0;
+
+    interface WeeklyPoint { week: string; adherence: number }
+    interface ProgramAdherence {
+      programId: string; title: string;
+      completedSessions: number; totalSessions: number;
+      adherence: number; weeklyHistory: WeeklyPoint[];
+    }
+    const byProgram: ProgramAdherence[] = [];
+
+    for (const pm of programMetas) {
+      const hist = historyByProgram[pm.id];
+      const sessionsPerWeek = Math.max(1, Math.round(pm.sessionCount / pm.moduleCount));
+      const expectedPerWeek = sessionsPerWeek * Math.max(1, clientUserIds.length);
+      const expectedTotal = pm.sessionCount * clientUserIds.length;
+
+      const weeklyHistory: WeeklyPoint[] = weekStarts.map((ws) => ({
+        week: ws,
+        adherence: Math.min(100, Math.round(((hist.weekBuckets[ws] ?? 0) / expectedPerWeek) * 100)),
+      }));
+
+      const adherence = expectedTotal > 0 ? Math.round((hist.total / expectedTotal) * 100) : 0;
+      totalCompleted += hist.total;
+      totalExpected += expectedTotal;
+
+      byProgram.push({
+        programId: pm.id,
+        title: pm.title,
+        completedSessions: hist.total,
+        totalSessions: expectedTotal,
+        adherence,
+        weeklyHistory,
+      });
+    }
+
+    const overallAdherence = totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0;
+
+    // Enrollment history (weekly running total from clientsSnap)
+    const clientCreatedDates: string[] = [];
+    for (const doc of clientsSnap.docs) {
+      const data = doc.data();
+      let createdStr: string | null = null;
+      if (data.created_at?.toDate) {
+        createdStr = data.created_at.toDate().toISOString().slice(0, 10);
+      } else if (data.createdAt?.toDate) {
+        createdStr = data.createdAt.toDate().toISOString().slice(0, 10);
+      } else if (typeof data.created_at === "string") {
+        createdStr = data.created_at.slice(0, 10);
+      } else if (typeof data.createdAt === "string") {
+        createdStr = (data.createdAt as string).slice(0, 10);
+      }
+      if (createdStr) clientCreatedDates.push(createdStr);
+    }
+    clientCreatedDates.sort();
+
+    const enrollmentHistory: Array<{ week: string; clients: number }> = [];
+    for (const ws of weekStarts) {
+      const weekEnd = new Date(ws);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const weekEndStr = weekEnd.toISOString().slice(0, 10);
+      const count = clientCreatedDates.filter((d) => d <= weekEndStr).length;
+      enrollmentHistory.push({ week: ws, clients: count });
+    }
+
+    adherencePayload = { overallAdherence, byProgram, enrollmentHistory };
+  }
+
+  log(`done (adherence=${includeAdherence})`);
+  res.json({
+    data: {
+      clients,
+      programs,
+      adherence: adherencePayload,
+    },
+  });
+});
+
 // POST /creator/clients/lookup
 router.post("/creator/clients/lookup", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { emailOrUsername } = req.body as { emailOrUsername?: string };
   if (!emailOrUsername?.trim()) {
@@ -268,9 +526,8 @@ router.post("/creator/clients/lookup", async (req, res) => {
 
 // POST /creator/clients/invite — lookup by email + create client in one step
 router.post("/creator/clients/invite", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { email } = req.body as { email?: string };
   if (!email?.trim()) {
@@ -340,9 +597,8 @@ router.post("/creator/clients/invite", async (req, res) => {
 
 // POST /creator/clients
 router.post("/creator/clients", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ userId: string }>(
     { userId: "string" },
@@ -385,30 +641,59 @@ router.post("/creator/clients", async (req, res) => {
 
 // GET /creator/clients/:clientId — single client detail
 router.get("/creator/clients/:clientId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[creator/clients/:id] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
-  const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const doc = await docRef.get();
+  const hintUserId = req.query.userId as string | undefined;
+  log(`hint=${hintUserId ? "yes" : "no"}`);
 
+  let doc: FirebaseFirestore.DocumentSnapshot;
+  let userDoc: FirebaseFirestore.DocumentSnapshot;
+  let creatorPrograms: FirebaseFirestore.QuerySnapshot;
+  let notesSnap: FirebaseFirestore.QuerySnapshot;
+
+  if (hintUserId) {
+    [doc, userDoc, creatorPrograms, notesSnap] = await Promise.all([
+      db.collection("one_on_one_clients").doc(req.params.clientId).get(),
+      db.collection("users").doc(hintUserId).get(),
+      db.collection("courses")
+        .where("creator_id", "==", auth.userId)
+        .where("deliveryType", "==", "one_on_one")
+        .get(),
+      db.collection("one_on_one_clients").doc(req.params.clientId)
+        .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
+    ]);
+    log("parallel reads (4 docs)");
+  } else {
+    [doc, creatorPrograms, notesSnap] = await Promise.all([
+      db.collection("one_on_one_clients").doc(req.params.clientId).get(),
+      db.collection("courses")
+        .where("creator_id", "==", auth.userId)
+        .where("deliveryType", "==", "one_on_one")
+        .get(),
+      db.collection("one_on_one_clients").doc(req.params.clientId)
+        .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
+    ]);
+    log("parallel reads (3 docs)");
+    if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
+    }
+    const resolvedUserId = doc.data()!.clientUserId ?? doc.data()!.userId;
+    userDoc = await db.collection("users").doc(resolvedUserId).get();
+    log("sequential userDoc read");
+  }
   if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
   }
 
   const clientData = doc.data()!;
-  const clientUserId = clientData.clientUserId ?? clientData.userId;
 
-  // Enrich with user data
-  const userDoc = await db.collection("users").doc(clientUserId).get();
   const userData = userDoc.exists ? userDoc.data()! : {};
   const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
-
-  // Only return programs that belong to this creator
-  const creatorPrograms = await db.collection("courses")
-    .where("creatorId", "==", auth.userId)
-    .where("deliveryType", "==", "one_on_one")
-    .get();
+  const creatorCourseMap = new Map(creatorPrograms.docs.map(d => [d.id, d.data()]));
   const creatorCourseIds = new Set(creatorPrograms.docs.map(d => d.id));
 
   const enrolledPrograms = Object.entries(courses)
@@ -420,13 +705,13 @@ router.get("/creator/clients/:clientId", async (req, res) => {
       image_url: v.image_url ?? null,
       expires_at: v.expires_at ?? null,
       access_duration: v.access_duration ?? null,
+      content_plan_id: creatorCourseMap.get(courseId)?.content_plan_id ?? null,
+      planAssignments: v.planAssignments ?? null,
     }));
 
-  // Fetch creator notes for this client
-  const notesSnap = await db.collection("one_on_one_clients").doc(req.params.clientId)
-    .collection("notes").orderBy("createdAt", "desc").limit(50).get();
   const notes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+  log(`done (${enrolledPrograms.length} programs, ${notes.length} notes)`);
   res.json({
     data: {
       id: doc.id,
@@ -435,11 +720,13 @@ router.get("/creator/clients/:clientId", async (req, res) => {
       clientName: userData.displayName ?? userData.name ?? clientData.clientName ?? null,
       clientEmail: userData.email ?? clientData.clientEmail ?? null,
       avatarUrl: userData.profilePictureUrl ?? userData.photoURL ?? null,
+      profilePictureUrl: userData.profilePictureUrl ?? userData.photoURL ?? null,
       enrolledPrograms,
       onboardingData: userData.onboardingData ?? null,
       country: userData.country ?? null,
       city: userData.city ?? null,
       gender: userData.gender ?? null,
+      email: userData.email ?? clientData.clientEmail ?? null,
       notes,
     },
   });
@@ -447,9 +734,8 @@ router.get("/creator/clients/:clientId", async (req, res) => {
 
 // POST /creator/clients/:clientId/notes — add a note
 router.post("/creator/clients/:clientId/notes", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
   const doc = await docRef.get();
@@ -473,9 +759,8 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
 
 // DELETE /creator/clients/:clientId/notes/:noteId
 router.delete("/creator/clients/:clientId/notes/:noteId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const clientRef = db.collection("one_on_one_clients").doc(req.params.clientId);
   const clientDoc = await clientRef.get();
@@ -489,9 +774,8 @@ router.delete("/creator/clients/:clientId/notes/:noteId", async (req, res) => {
 
 // DELETE /creator/clients/:clientId — remove client
 router.delete("/creator/clients/:clientId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
   const doc = await docRef.get();
@@ -506,9 +790,8 @@ router.delete("/creator/clients/:clientId", async (req, res) => {
 
 // GET /creator/courses — alias for /creator/programs (PWA apiService.getCoursesByCreatorId)
 router.get("/creator/courses", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snapshot = await db
     .collection("courses")
@@ -524,11 +807,12 @@ router.get("/creator/courses", async (req, res) => {
 
 // GET /creator/programs — paginated
 router.get("/creator/programs", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const pageToken = req.query.pageToken as string | undefined;
+  const deliveryType = req.query.deliveryType as string | undefined;
+  const skipEnrollmentCounts = req.query.skipEnrollmentCounts === "true";
   const limit = 100;
 
   let query: Query = db
@@ -537,38 +821,73 @@ router.get("/creator/programs", async (req, res) => {
     .orderBy("created_at", "desc")
     .limit(limit + 1);
 
+  if (deliveryType) {
+    query = query.where("deliveryType", "==", deliveryType);
+  }
+
   if (pageToken) {
     const cursor = await db.collection("courses").doc(pageToken).get();
     if (cursor.exists) query = query.startAfter(cursor);
   }
 
-  const snapshot = await query.get();
-  const docs = snapshot.docs.slice(0, limit);
-  const hasMore = snapshot.docs.length > limit;
+  let enrollmentCounts: Record<string, number> = {};
 
-  // Fetch clients once to compute per-program enrollment counts
-  const clientsSnap = await db
-    .collection("one_on_one_clients")
-    .where("creatorId", "==", auth.userId)
-    .get();
-  const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string).filter(Boolean);
+  if (!skipEnrollmentCounts) {
+    // Parallelize courses query and clients query
+    const [snapshot, clientsSnap] = await Promise.all([
+      query.get(),
+      db.collection("one_on_one_clients")
+        .where("creatorId", "==", auth.userId)
+        .get(),
+    ]);
+    const docs = snapshot.docs.slice(0, limit);
+    const hasMore = snapshot.docs.length > limit;
 
-  // Batch-fetch user docs for course maps
-  const enrollmentCounts: Record<string, number> = {};
-  const batchSize = 10;
-  for (let i = 0; i < clientUserIds.length; i += batchSize) {
-    const batch = clientUserIds.slice(i, i + batchSize);
-    const userDocs = await db.getAll(...batch.map((uid) => db.collection("users").doc(uid)));
-    for (const uDoc of userDocs) {
-      if (!uDoc.exists) continue;
-      const courses = (uDoc.data()!.courses ?? {}) as Record<string, Record<string, unknown>>;
-      for (const [courseId, entry] of Object.entries(courses)) {
-        if (entry.status === "active") {
-          enrollmentCounts[courseId] = (enrollmentCounts[courseId] ?? 0) + 1;
+    const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string).filter(Boolean);
+
+    // Batch-fetch user docs for course maps (parallel batches)
+    const batchSize = 10;
+    const batches: string[][] = [];
+    for (let i = 0; i < clientUserIds.length; i += batchSize) {
+      batches.push(clientUserIds.slice(i, i + batchSize));
+    }
+    const allBatchResults = await Promise.all(
+      batches.map((batch) => db.getAll(...batch.map((uid) => db.collection("users").doc(uid))))
+    );
+    for (const userDocs of allBatchResults) {
+      for (const uDoc of userDocs) {
+        if (!uDoc.exists) continue;
+        const courses = (uDoc.data()!.courses ?? {}) as Record<string, Record<string, unknown>>;
+        for (const [courseId, entry] of Object.entries(courses)) {
+          if (entry.status === "active") {
+            enrollmentCounts[courseId] = (enrollmentCounts[courseId] ?? 0) + 1;
+          }
         }
       }
     }
+
+    const programs = docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        imageUrl: data.image_url ?? null,
+        enrollmentCount: enrollmentCounts[d.id] ?? 0,
+      };
+    });
+
+    res.json({
+      data: programs,
+      nextPageToken: hasMore ? docs[docs.length - 1].id : null,
+      hasMore,
+    });
+    return;
   }
+
+  // skipEnrollmentCounts path — just fetch courses
+  const snapshot = await query.get();
+  const docs = snapshot.docs.slice(0, limit);
+  const hasMore = snapshot.docs.length > limit;
 
   const programs = docs.map((d) => {
     const data = d.data();
@@ -576,7 +895,7 @@ router.get("/creator/programs", async (req, res) => {
       id: d.id,
       ...data,
       imageUrl: data.image_url ?? null,
-      enrollmentCount: enrollmentCounts[d.id] ?? 0,
+      enrollmentCount: 0,
     };
   });
 
@@ -589,9 +908,8 @@ router.get("/creator/programs", async (req, res) => {
 
 // GET /creator/programs/:programId
 router.get("/creator/programs/:programId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db.collection("courses").doc(req.params.programId).get();
 
@@ -605,9 +923,8 @@ router.get("/creator/programs/:programId", async (req, res) => {
 
 // POST /creator/programs
 router.post("/creator/programs", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   // Only destructure validated fields
   const body = validateBody<{
@@ -679,9 +996,8 @@ router.post("/creator/programs", async (req, res) => {
 
 // PATCH /creator/programs/:programId
 router.patch("/creator/programs/:programId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("courses").doc(req.params.programId);
   const doc = await docRef.get();
@@ -714,9 +1030,8 @@ router.patch("/creator/programs/:programId", async (req, res) => {
 
 // PATCH /creator/programs/:programId/status
 router.patch("/creator/programs/:programId/status", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { status } = validateBody<{ status: string }>(
     { status: "string" },
@@ -751,9 +1066,8 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
 
 // DELETE /creator/programs/:programId
 router.delete("/creator/programs/:programId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("courses").doc(req.params.programId);
   const doc = await docRef.get();
@@ -762,30 +1076,25 @@ router.delete("/creator/programs/:programId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  // Cascade delete: modules → sessions → exercises → sets
+  // Cascade delete: breadth-first parallel reads, then batch delete
   const modulesSnap = await docRef.collection("modules").get();
+  const sessionSnaps = await Promise.all(
+    modulesSnap.docs.map((m) => m.ref.collection("sessions").get())
+  );
+  const allSessions = sessionSnaps.flatMap((s) => s.docs);
+  const exerciseSnaps = await Promise.all(
+    allSessions.map((s) => s.ref.collection("exercises").get())
+  );
+  const allExercises = exerciseSnaps.flatMap((e) => e.docs);
+  const setSnaps = await Promise.all(
+    allExercises.map((e) => e.ref.collection("sets").get())
+  );
+  const allSets = setSnaps.flatMap((s) => s.docs);
+
   let batch = db.batch();
   let count = 0;
-  for (const mDoc of modulesSnap.docs) {
-    const sessionsSnap = await mDoc.ref.collection("sessions").get();
-    for (const sDoc of sessionsSnap.docs) {
-      const exSnap = await sDoc.ref.collection("exercises").get();
-      for (const eDoc of exSnap.docs) {
-        const setsSnap = await eDoc.ref.collection("sets").get();
-        for (const setDoc of setsSnap.docs) {
-          batch.delete(setDoc.ref);
-          count++;
-          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
-        }
-        batch.delete(eDoc.ref);
-        count++;
-        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
-      }
-      batch.delete(sDoc.ref);
-      count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
-    }
-    batch.delete(mDoc.ref);
+  for (const d of [...allSets, ...allExercises, ...allSessions, ...modulesSnap.docs]) {
+    batch.delete(d.ref);
     count++;
     if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
   }
@@ -796,9 +1105,8 @@ router.delete("/creator/programs/:programId", async (req, res) => {
 
 // POST /creator/programs/:programId/duplicate
 router.post("/creator/programs/:programId/duplicate", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sourceDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!sourceDoc.exists || sourceDoc.data()?.creator_id !== auth.userId) {
@@ -858,9 +1166,8 @@ router.post("/creator/programs/:programId/duplicate", async (req, res) => {
 
 // POST /creator/programs/:programId/image/upload-url
 router.post("/creator/programs/:programId/image/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { contentType } = validateBody<{ contentType: string }>(
     { contentType: "string" },
@@ -883,9 +1190,8 @@ router.post("/creator/programs/:programId/image/upload-url", async (req, res) =>
 
 // POST /creator/programs/:programId/image/confirm
 router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { storagePath } = validateBody<{ storagePath: string }>(
     { storagePath: "string" },
@@ -914,9 +1220,8 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
 
 // GET /creator/clients/:clientId/sessions
 router.get("/creator/clients/:clientId/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const snapshot = await db
@@ -934,9 +1239,8 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
 
 // GET /creator/clients/:clientId/activity
 router.get("/creator/clients/:clientId/activity", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const clientDoc = await db.collection("one_on_one_clients").doc(req.params.clientId).get();
   if (!clientDoc.exists || clientDoc.data()?.creatorId !== auth.userId) {
@@ -963,9 +1267,8 @@ const INSTAGRAM_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 // GET /creator/instagram-feed
 router.get("/creator/instagram-feed", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const beholdFeedId = userDoc.data()?.beholdFeedId;
@@ -1038,9 +1341,8 @@ function isActiveAssignment(data: Record<string, unknown>): boolean {
 
 // GET /creator/nutrition/meals
 router.get("/creator/nutrition/meals", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snapshot = await db
     .collection("creator_nutrition_library")
@@ -1056,9 +1358,8 @@ router.get("/creator/nutrition/meals", async (req, res) => {
 
 // GET /creator/nutrition/meals/:mealId
 router.get("/creator/nutrition/meals/:mealId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db
     .collection("creator_nutrition_library")
@@ -1076,9 +1377,8 @@ router.get("/creator/nutrition/meals/:mealId", async (req, res) => {
 
 // POST /creator/nutrition/meals
 router.post("/creator/nutrition/meals", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   // Validate and allowlist meal fields
   const body = validateBody<{
@@ -1121,9 +1421,8 @@ router.post("/creator/nutrition/meals", async (req, res) => {
 
 // PATCH /creator/nutrition/meals/:mealId
 router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db
     .collection("creator_nutrition_library")
@@ -1154,9 +1453,8 @@ router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
 
 // DELETE /creator/nutrition/meals/:mealId
 router.delete("/creator/nutrition/meals/:mealId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db
     .collection("creator_nutrition_library")
@@ -1175,9 +1473,8 @@ router.delete("/creator/nutrition/meals/:mealId", async (req, res) => {
 
 // GET /creator/nutrition/plans
 router.get("/creator/nutrition/plans", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snapshot = await db
     .collection("creator_nutrition_library")
@@ -1199,9 +1496,8 @@ router.get("/creator/nutrition/plans", async (req, res) => {
 
 // POST /creator/nutrition/plans
 router.post("/creator/nutrition/plans", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   // Validate and allowlist plan fields (snake_case to match Firestore schema)
   const body = validateBody<{
@@ -1241,9 +1537,8 @@ router.post("/creator/nutrition/plans", async (req, res) => {
 
 // GET /creator/nutrition/plans/:planId
 router.get("/creator/nutrition/plans/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db
     .collection("creator_nutrition_library")
@@ -1261,9 +1556,8 @@ router.get("/creator/nutrition/plans/:planId", async (req, res) => {
 
 // PATCH /creator/nutrition/plans/:planId
 router.patch("/creator/nutrition/plans/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db
     .collection("creator_nutrition_library")
@@ -1293,9 +1587,8 @@ router.patch("/creator/nutrition/plans/:planId", async (req, res) => {
 
 // DELETE /creator/nutrition/plans/:planId
 router.delete("/creator/nutrition/plans/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db
     .collection("creator_nutrition_library")
@@ -1339,9 +1632,8 @@ router.delete("/creator/nutrition/plans/:planId", async (req, res) => {
 
 // POST /creator/nutrition/plans/:planId/propagate
 router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db
     .collection("creator_nutrition_library")
@@ -1416,26 +1708,26 @@ async function verifyClientAccess(
 
 // GET /creator/clients/:clientId/nutrition/assignments
 router.get("/creator/clients/:clientId/nutrition/assignments", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-  await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const snap = await db
-    .collection("nutrition_assignments")
-    .where("userId", "==", req.params.clientId)
-    .where("assignedBy", "==", auth.userId)
-    .orderBy("createdAt", "desc")
-    .get();
+  // Parallelize access check and assignments query (independent)
+  const [, snap] = await Promise.all([
+    verifyClientAccess(auth.userId, req.params.clientId),
+    db.collection("nutrition_assignments")
+      .where("userId", "==", req.params.clientId)
+      .where("assignedBy", "==", auth.userId)
+      .orderBy("createdAt", "desc")
+      .get(),
+  ]);
 
   res.json({ data: snap.docs.map((d) => ({ id: d.id, assignmentId: d.id, ...d.data() })) });
 });
 
 // POST /creator/clients/:clientId/nutrition/assignments
 router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = validateBody<{ planId: string; startDate?: string; endDate?: string }>(
@@ -1494,9 +1786,8 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
 
 // PATCH /creator/clients/:clientId/nutrition/assignments/:assignmentId
 router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
@@ -1563,9 +1854,8 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
 
 // DELETE /creator/clients/:clientId/nutrition/assignments/:assignmentId
 router.delete("/creator/clients/:clientId/nutrition/assignments/:assignmentId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
@@ -1584,9 +1874,8 @@ router.delete("/creator/clients/:clientId/nutrition/assignments/:assignmentId", 
 
 // GET /creator/clients/:clientId/nutrition/assignments/:assignmentId/content
 router.get("/creator/clients/:clientId/nutrition/assignments/:assignmentId/content", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const assignDoc = await db.collection("nutrition_assignments").doc(req.params.assignmentId).get();
@@ -1605,9 +1894,8 @@ router.get("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
 
 // PUT /creator/clients/:clientId/nutrition/assignments/:assignmentId/content
 router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/content", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const assignDoc = await db.collection("nutrition_assignments").doc(req.params.assignmentId).get();
@@ -1634,9 +1922,8 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
 
 // GET /creator/nutrition/assignments — list all assignments for this creator
 router.get("/creator/nutrition/assignments", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snap = await db
     .collection("nutrition_assignments")
@@ -1655,9 +1942,8 @@ router.get("/creator/nutrition/assignments", async (req, res) => {
 
 // GET /creator/nutrition/assignments/:assignmentId
 router.get("/creator/nutrition/assignments/:assignmentId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db.collection("nutrition_assignments").doc(req.params.assignmentId).get();
   if (!doc.exists || doc.data()?.assignedBy !== auth.userId) {
@@ -1669,9 +1955,8 @@ router.get("/creator/nutrition/assignments/:assignmentId", async (req, res) => {
 
 // GET /creator/nutrition/assignments-by-plan?sourcePlanId=...
 router.get("/creator/nutrition/assignments-by-plan", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sourcePlanId = req.query.sourcePlanId as string;
   if (!sourcePlanId) {
@@ -1691,9 +1976,8 @@ router.get("/creator/nutrition/assignments-by-plan", async (req, res) => {
 
 // POST /creator/feedback/upload-url
 router.post("/creator/feedback/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req, 10);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
 
   const { filename, contentType } = validateBody<{ filename: string; contentType: string }>(
     { filename: "string", contentType: "string" },
@@ -1722,9 +2006,8 @@ router.post("/creator/feedback/upload-url", async (req, res) => {
 
 // POST /creator/feedback
 router.post("/creator/feedback", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req, 20);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 20, "rate_limit_first_party");
 
   const body = validateBody<{
     type: string;
@@ -1758,9 +2041,8 @@ router.post("/creator/feedback", async (req, res) => {
 
 // GET /creator/clients/:clientId/nutrition/diary
 router.get("/creator/clients/:clientId/nutrition/diary", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { date, startDate, endDate } = req.query as Record<string, string>;
@@ -2060,10 +2342,13 @@ async function deleteClientPlanContentDoc(docId: string): Promise<void> {
 
 // GET /creator/clients/:clientId/plan-content/:weekKey?programId=X
 router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[plan-content GET] ${label} — ${Date.now() - t0}ms`);
+
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
+  log("auth+access");
 
   const programId = req.query.programId as string;
   if (!programId) {
@@ -2072,6 +2357,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
 
   let docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
   let doc = await db.collection("client_plan_content").doc(docId).get();
+  log(`doc read (exists=${doc.exists})`);
 
   if (!doc.exists) {
     // Auto-create copy from plan template if a plan is assigned to this week
@@ -2079,8 +2365,10 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
       const result = await ensureClientCopy(req.params.clientId, programId, req.params.weekKey, auth.userId);
       docId = result.docId;
       doc = await db.collection("client_plan_content").doc(docId).get();
+      log("ensureClientCopy done");
     } catch {
       // No plan assigned to this week — return null
+      log("no plan assigned — returning null");
       res.json({ data: null });
       return;
     }
@@ -2094,6 +2382,8 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
 
   // Load sessions subcollection
   const sessionsSnap = await doc.ref.collection("sessions").orderBy("order", "asc").get();
+  log(`sessions query — ${sessionsSnap.size} sessions`);
+
   const sessions = await Promise.all(
     sessionsSnap.docs.map(async (sDoc) => {
       const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
@@ -2110,15 +2400,15 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
       return { id: sDoc.id, ...sDoc.data(), exercises };
     })
   );
+  log(`tree loaded — ${sessions.length} sessions, ${sessions.reduce((a, s) => a + (s.exercises?.length || 0), 0)} exercises`);
 
   res.json({ data: { ...docData, programId, sessions } });
 });
 
 // PUT /creator/clients/:clientId/plan-content/:weekKey
 router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = req.body ?? {};
@@ -2192,9 +2482,8 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
 
 // PATCH /creator/clients/:clientId/plan-content/:weekKey/sessions/:sessionId
 router.patch("/creator/clients/:clientId/plan-content/:weekKey/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const programId = req.query.programId as string;
@@ -2229,9 +2518,8 @@ router.patch("/creator/clients/:clientId/plan-content/:weekKey/sessions/:session
 
 // GET /creator/clients/:clientId/client-sessions
 router.get("/creator/clients/:clientId/client-sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { startDate, endDate } = req.query as Record<string, string | undefined>;
@@ -2253,9 +2541,8 @@ router.get("/creator/clients/:clientId/client-sessions", async (req, res) => {
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId
 router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = req.body ?? {};
@@ -2273,9 +2560,8 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
 
 // GET /creator/clients/:clientId/client-sessions/:clientSessionId
 router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db.collection("client_sessions").doc(req.params.clientSessionId).get();
   if (!doc.exists) {
@@ -2292,9 +2578,8 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("client_sessions").doc(req.params.clientSessionId);
   const doc = await docRef.get();
@@ -2315,9 +2600,8 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId", asyn
 
 // DELETE /creator/clients/:clientId/client-sessions/:clientSessionId
 router.delete("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("client_sessions").doc(req.params.clientSessionId);
   const doc = await docRef.get();
@@ -2333,15 +2617,20 @@ router.delete("/creator/clients/:clientId/client-sessions/:clientSessionId", asy
 
 // GET /creator/clients/:clientId/client-sessions/:clientSessionId/content
 router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[client-session-content GET] ${label} — ${Date.now() - t0}ms`);
+
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
+  log("auth+access");
 
   const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
   const doc = await docRef.get();
+  log(`doc read (exists=${doc.exists})`);
 
   if (!doc.exists) {
+    log("returning null — no content");
     res.json({ data: null });
     return;
   }
@@ -2364,9 +2653,8 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId/content
 router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = req.body ?? {};
@@ -2435,9 +2723,8 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content
 // Updates doc-level fields only — does NOT touch exercises/sets subcollections
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
@@ -2454,9 +2741,8 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/conten
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const exRef = db.collection("client_session_content")
@@ -2478,9 +2764,8 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/conten
 
 // POST /creator/plans
 router.post("/creator/plans", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { title, description, discipline } = req.body as {
     title?: string;
@@ -2524,9 +2809,8 @@ router.post("/creator/plans", async (req, res) => {
 
 // GET /creator/plans
 router.get("/creator/plans", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const [snap, coursesSnap] = await Promise.all([
     db.collection("plans")
@@ -2547,7 +2831,7 @@ router.get("/creator/plans", async (req, res) => {
     }
   }
 
-  // Fetch modules per plan in parallel for weekCount and weeks[]
+  // Fetch module titles per plan in parallel (select only needed fields)
   const plans = await Promise.all(
     snap.docs.map(async (d) => {
       const data = d.data();
@@ -2556,6 +2840,7 @@ router.get("/creator/plans", async (req, res) => {
         .doc(d.id)
         .collection("modules")
         .orderBy("order", "asc")
+        .select("title", "order")
         .get();
 
       return {
@@ -2576,21 +2861,19 @@ router.get("/creator/plans", async (req, res) => {
 
 // GET /creator/plans/:planId
 router.get("/creator/plans/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const planDoc = await db.collection("plans").doc(req.params.planId).get();
+  // Parallelize plan doc + modules query (modules path is independent)
+  const [planDoc, modulesSnap] = await Promise.all([
+    db.collection("plans").doc(req.params.planId).get(),
+    db.collection("plans").doc(req.params.planId)
+      .collection("modules").orderBy("order", "asc").get(),
+  ]);
+
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
-
-  const modulesSnap = await db
-    .collection("plans")
-    .doc(req.params.planId)
-    .collection("modules")
-    .orderBy("order", "asc")
-    .get();
 
   const modules = await Promise.all(
     modulesSnap.docs.map(async (mDoc) => {
@@ -2619,9 +2902,8 @@ router.get("/creator/plans/:planId", async (req, res) => {
 
 // PATCH /creator/plans/:planId
 router.patch("/creator/plans/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("plans").doc(req.params.planId);
   const doc = await docRef.get();
@@ -2643,9 +2925,8 @@ router.patch("/creator/plans/:planId", async (req, res) => {
 
 // DELETE /creator/plans/:planId
 router.delete("/creator/plans/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const docRef = db.collection("plans").doc(req.params.planId);
   const doc = await docRef.get();
@@ -2689,9 +2970,8 @@ router.delete("/creator/plans/:planId", async (req, res) => {
 
 // POST /creator/plans/:planId/modules
 router.post("/creator/plans/:planId/modules", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -2715,9 +2995,8 @@ router.post("/creator/plans/:planId/modules", async (req, res) => {
 
 // PATCH /creator/plans/:planId/modules/:moduleId
 router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -2742,9 +3021,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
 
 // DELETE /creator/plans/:planId/modules/:moduleId
 router.delete("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -2780,9 +3058,8 @@ router.delete("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
 
 // POST /creator/plans/:planId/modules/:moduleId/sessions
 router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -2855,9 +3132,8 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
 
 // GET /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
 router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sessionRef = db
     .collection("plans")
@@ -2897,9 +3173,8 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
 
 // PATCH /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
 router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -2930,9 +3205,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
 
 // DELETE /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
 router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -2968,9 +3242,8 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", as
 
 // POST exercises for plan sessions — with validateBody
 router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -3002,9 +3275,8 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
 });
 
 router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -3036,9 +3308,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
 });
 
 router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -3061,9 +3332,8 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exer
 
 // POST sets — with validateBody
 router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -3113,9 +3383,8 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
 });
 
 router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -3149,9 +3418,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
 });
 
 router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -3173,9 +3441,8 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exer
 
 // GET /creator/library/exercises — deduplicated exercises from creator_libraries sessions + exercises_library
 router.get("/creator/library/exercises", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const seen = new Map<string, Record<string, unknown>>();
 
@@ -3247,16 +3514,101 @@ router.get("/creator/library/exercises", async (req, res) => {
 
 // GET /creator/library/sessions
 router.get("/creator/library/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sessionsCol = db
     .collection("creator_libraries")
     .doc(auth.userId)
     .collection("sessions");
 
+  const slim = req.query.slim === "true";
   const snap = await sessionsCol.orderBy("created_at", "desc").get();
+
+  if (slim) {
+    const data = snap.docs.map((d) => ({
+      sessionId: d.id,
+      id: d.id,
+      title: (d.data().title as string) ?? "",
+    }));
+    res.json({ data });
+    return;
+  }
+
+  const fields = req.query.fields as string | undefined;
+  if (fields === "exercises") {
+    // Return sessions with exercises (for muscle heatmap) but skip sets — saves ~180 reads
+    const sessionsWithExercises = await Promise.all(
+      snap.docs.map(async (d) => {
+        const exSnap = await d.ref.collection("exercises").orderBy("order", "asc").get();
+        return { doc: d, exercises: exSnap.docs };
+      })
+    );
+
+    // Collect unique library IDs from exercise primary references
+    const libraryIdsSet = new Set<string>();
+    for (const { exercises } of sessionsWithExercises) {
+      for (const eDoc of exercises) {
+        const primary = eDoc.data().primary;
+        if (primary && typeof primary === "object") {
+          for (const libId of Object.keys(primary)) {
+            if (libId) libraryIdsSet.add(libId);
+          }
+        }
+      }
+    }
+
+    // Batch-fetch all referenced exercise libraries (deduped)
+    const libraryCache: Record<string, FirebaseFirestore.DocumentData | null> = {};
+    const libIds = Array.from(libraryIdsSet);
+    if (libIds.length > 0) {
+      const libDocs = await Promise.all(
+        libIds.map((id) => db.collection("exercises_library").doc(id).get())
+      );
+      libDocs.forEach((ld) => {
+        if (ld.exists) libraryCache[ld.id] = ld.data() ?? null;
+      });
+    }
+
+    // Assemble response with resolved muscle_activation
+    const data = sessionsWithExercises.map(({ doc, exercises }) => {
+      const sessionData = doc.data();
+      return {
+        sessionId: doc.id,
+        id: doc.id,
+        title: sessionData.title ?? "",
+        image_url: sessionData.image_url ?? null,
+        created_at: sessionData.created_at ?? null,
+        order: sessionData.order ?? null,
+        exercises: exercises.map((eDoc) => {
+          const exData = eDoc.data();
+          let resolvedMuscleActivation: Record<string, number> | null = null;
+          if (exData.primary && typeof exData.primary === "object") {
+            const entries = Object.entries(exData.primary);
+            if (entries.length > 0) {
+              const [libraryId, exerciseName] = entries[0];
+              const libData = libraryCache[libraryId as string];
+              if (libData?.[exerciseName as string]?.muscle_activation) {
+                resolvedMuscleActivation = libData[exerciseName as string].muscle_activation;
+              }
+            }
+          }
+          return {
+            exerciseId: eDoc.id,
+            id: eDoc.id,
+            name: exData.name ?? "",
+            primary: exData.primary ?? null,
+            primaryMuscles: exData.primaryMuscles ?? [],
+            muscle_activation: resolvedMuscleActivation,
+            order: exData.order ?? 0,
+          };
+        }),
+      };
+    });
+
+    res.json({ data });
+    return;
+  }
 
   const data = await Promise.all(
     snap.docs.map(async (d) => {
@@ -3276,9 +3628,8 @@ router.get("/creator/library/sessions", async (req, res) => {
 
 // POST /creator/library/sessions
 router.post("/creator/library/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ title: string; image_url?: string }>({ title: "string", image_url: "optional_string" }, req.body);
   const sessionData: Record<string, unknown> = { title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() };
@@ -3322,32 +3673,62 @@ router.post("/creator/library/sessions", async (req, res) => {
   res.status(201).json({ data: { sessionId: ref.id, id: ref.id } });
 });
 
+// PATCH /creator/library/sessions/reorder
+router.patch("/creator/library/sessions/reorder", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const { order } = req.body;
+  if (!Array.isArray(order) || order.length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "order must be a non-empty array of session IDs");
+  }
+
+  const sessionsCol = db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions");
+
+  const batch = db.batch();
+  order.forEach((sessionId: string, index: number) => {
+    batch.update(sessionsCol.doc(sessionId), { order: index, updated_at: FieldValue.serverTimestamp() });
+  });
+  await batch.commit();
+
+  res.json({ success: true });
+});
+
 // GET /creator/library/sessions/:sessionId
 router.get("/creator/library/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[lib-session GET] ${label} — ${Date.now() - t0}ms`);
+
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  log("auth");
 
   const sessionRef = db.collection("creator_libraries").doc(auth.userId).collection("sessions").doc(req.params.sessionId);
   const doc = await sessionRef.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  log("session doc");
 
   const exercisesSnap = await sessionRef.collection("exercises").orderBy("order", "asc").get();
+  log(`exercises query — ${exercisesSnap.size} exercises`);
+
   const exercises = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
       return { exerciseId: eDoc.id, id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ setId: s.id, id: s.id, ...s.data() })) };
     })
   );
+  log(`sets loaded — ${exercises.reduce((a, e) => a + (e.sets?.length || 0), 0)} total sets`);
 
   res.json({ data: { sessionId: doc.id, id: doc.id, ...doc.data(), exercises } });
 });
 
 // PATCH /creator/library/sessions/:sessionId
 router.patch("/creator/library/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("creator_libraries").doc(auth.userId).collection("sessions").doc(req.params.sessionId);
   const doc = await ref.get();
@@ -3366,9 +3747,8 @@ router.patch("/creator/library/sessions/:sessionId", async (req, res) => {
 
 // POST /creator/library/sessions/:sessionId/image/upload-url
 router.post("/creator/library/sessions/:sessionId/image/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sessionRef = db.collection("creator_libraries").doc(auth.userId).collection("sessions").doc(req.params.sessionId);
   const doc = await sessionRef.get();
@@ -3393,9 +3773,8 @@ router.post("/creator/library/sessions/:sessionId/image/upload-url", async (req,
 
 // POST /creator/library/sessions/:sessionId/image/confirm
 router.post("/creator/library/sessions/:sessionId/image/confirm", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { storagePath } = validateBody<{ storagePath: string }>({ storagePath: "string" }, req.body);
 
@@ -3419,9 +3798,8 @@ router.post("/creator/library/sessions/:sessionId/image/confirm", async (req, re
 
 // DELETE /creator/library/sessions/:sessionId
 router.delete("/creator/library/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("creator_libraries").doc(auth.userId).collection("sessions").doc(req.params.sessionId);
   const doc = await ref.get();
@@ -3449,9 +3827,8 @@ router.delete("/creator/library/sessions/:sessionId", async (req, res) => {
 
 // Library session exercise/set CRUD — with allowlisted fields
 router.post("/creator/library/sessions/:sessionId/exercises", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const allowedExFields = [
     "name", "order", "libraryId", "primaryMuscles", "notes",
@@ -3472,9 +3849,8 @@ router.post("/creator/library/sessions/:sessionId/exercises", async (req, res) =
 });
 
 router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db
     .collection("creator_libraries").doc(auth.userId)
@@ -3497,9 +3873,8 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async
 });
 
 router.delete("/creator/library/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const exRef = db
     .collection("creator_libraries").doc(auth.userId)
@@ -3515,9 +3890,8 @@ router.delete("/creator/library/sessions/:sessionId/exercises/:exerciseId", asyn
 });
 
 router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ order: number; title?: string; reps?: string | number; weight?: number; intensity?: string; rir?: number; restSeconds?: number; type?: string }>(
     { order: "number", title: "optional_string", reps: "optional_string_or_number", weight: "optional_number", intensity: "optional_string", rir: "optional_number", restSeconds: "optional_number", type: "optional_string" },
@@ -3535,9 +3909,8 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
 });
 
 router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db
     .collection("creator_libraries").doc(auth.userId)
@@ -3564,9 +3937,8 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
 });
 
 router.delete("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   await db
     .collection("creator_libraries").doc(auth.userId)
@@ -3581,9 +3953,8 @@ router.delete("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:
 // ─── Library Modules CRUD ──────────────────────────────────────────────
 
 router.get("/creator/library/modules", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snap = await db
     .collection("creator_libraries")
@@ -3596,9 +3967,8 @@ router.get("/creator/library/modules", async (req, res) => {
 });
 
 router.post("/creator/library/modules", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ title: string }>({ title: "string" }, req.body);
   const ref = await db
@@ -3611,9 +3981,8 @@ router.post("/creator/library/modules", async (req, res) => {
 });
 
 router.get("/creator/library/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db.collection("creator_libraries").doc(auth.userId).collection("modules").doc(req.params.moduleId).get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
@@ -3622,9 +3991,8 @@ router.get("/creator/library/modules/:moduleId", async (req, res) => {
 });
 
 router.patch("/creator/library/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("creator_libraries").doc(auth.userId).collection("modules").doc(req.params.moduleId);
   const doc = await ref.get();
@@ -3642,9 +4010,8 @@ router.patch("/creator/library/modules/:moduleId", async (req, res) => {
 });
 
 router.delete("/creator/library/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("creator_libraries").doc(auth.userId).collection("modules").doc(req.params.moduleId);
   const doc = await ref.get();
@@ -3661,9 +4028,8 @@ router.delete("/creator/library/modules/:moduleId", async (req, res) => {
 
 // GET /creator/library/sessions/:sessionId/affected
 router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const sessionId = req.params.sessionId;
   const wantDetails = req.query.details === "true";
@@ -3853,9 +4219,8 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
 // "all" = overwrite all downstream copies (plans + clients lose personalization)
 // "forward_only" = library is already updated; existing copies untouched, new assignments get latest
 router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const mode = (req.body?.mode as string) ?? "all";
 
@@ -4060,9 +4425,8 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
 
 // POST /creator/library/modules/:moduleId/propagate
 router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const libModuleRef = db
     .collection("creator_libraries")
@@ -4182,9 +4546,8 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
 
 // GET /creator/clients/:clientId/programs
 router.get("/creator/clients/:clientId/programs", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const userDoc = await db.collection("users").doc(req.params.clientId).get();
@@ -4199,9 +4562,8 @@ router.get("/creator/clients/:clientId/programs", async (req, res) => {
 
 // POST /creator/clients/:clientId/programs/:programId
 router.post("/creator/clients/:clientId/programs/:programId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
@@ -4250,9 +4612,8 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
 
 // DELETE /creator/clients/:clientId/programs/:programId
 router.delete("/creator/clients/:clientId/programs/:programId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   await db.collection("users").doc(req.params.clientId).update({
@@ -4264,9 +4625,8 @@ router.delete("/creator/clients/:clientId/programs/:programId", async (req, res)
 
 // PATCH /creator/clients/:clientId/programs/:programId — update access dates
 router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { expiresAt } = req.body;
@@ -4288,9 +4648,8 @@ router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) 
 
 // PUT /creator/clients/:clientId/programs/:programId/schedule/:weekKey
 router.put("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = validateBody<{ planId: string; moduleId: string }>(
@@ -4312,9 +4671,8 @@ router.put("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", a
 
 // DELETE /creator/clients/:clientId/programs/:programId/schedule/:weekKey
 router.delete("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   await db.collection("users").doc(req.params.clientId).update({
@@ -4328,10 +4686,11 @@ router.delete("/creator/clients/:clientId/programs/:programId/schedule/:weekKey"
 
 // GET /creator/clients/:clientId/programs/:programId/calendar?month=YYYY-MM
 router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req, res) => {
-  const auth = await validateAuth(req);
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[creator/calendar] ${label} — ${Date.now() - t0}ms`);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-  await verifyClientAccess(auth.userId, req.params.clientId);
+  log("auth");
 
   const month = req.query.month as string;
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
@@ -4341,8 +4700,11 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
   const { clientId, programId } = req.params;
   const creatorId = auth.userId;
 
-  // 1. Read planAssignments from user's courses entry
-  const userDoc = await db.collection("users").doc(clientId).get();
+  const [, userDoc] = await Promise.all([
+    verifyClientAccess(auth.userId, clientId),
+    db.collection("users").doc(clientId).get(),
+  ]);
+  log("access+userDoc");
   const courseEntry = userDoc.data()?.courses?.[programId] as Record<string, unknown> | undefined;
   if (!courseEntry) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no tiene este programa asignado");
@@ -4365,6 +4727,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   };
 
+  log(`${weekKeysWithPlans.length} weeks with plans`);
   const [/* weeksDone */, dateSessionsSnap, historySnap] = await Promise.all([
     // 3a. Load week content in parallel
     Promise.all(
@@ -4399,21 +4762,29 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
               readSessionList(moduleRef.collection("sessions")),
             ]);
 
-            // Resolve library session titles in parallel (calendar only needs title + image)
-            const libPromises = sessions.map(async (session) => {
+            // Collect library refs for batch fetch after all weeks resolve
+            const libRefs: Array<{ session: Record<string, unknown>; libRef: string }> = [];
+            for (const session of sessions) {
               const libRef = (session.source_library_session_id ?? session.librarySessionRef) as string | undefined;
-              if (!libRef || !creatorId) return;
+              if (libRef && creatorId) libRefs.push({ session, libRef });
+            }
+            if (libRefs.length > 0) {
               try {
-                const libDoc = await db.collection("creator_libraries").doc(creatorId)
-                  .collection("sessions").doc(libRef).get();
-                if (libDoc.exists) {
-                  const libData = libDoc.data()!;
-                  if (!session.title) session.title = libData.title ?? null;
-                  if (!session.image_url) session.image_url = libData.image_url ?? null;
+                const libDocs = await db.getAll(
+                  ...libRefs.map(({ libRef }) =>
+                    db.collection("creator_libraries").doc(creatorId).collection("sessions").doc(libRef))
+                );
+                for (let li = 0; li < libRefs.length; li++) {
+                  const libDoc = libDocs[li];
+                  const session = libRefs[li].session;
+                  if (libDoc.exists) {
+                    const libData = libDoc.data()!;
+                    if (!session.title) session.title = libData.title ?? null;
+                    if (!session.image_url) session.image_url = libData.image_url ?? null;
+                  }
                 }
               } catch { /* best-effort */ }
-            });
-            await Promise.all(libPromises);
+            }
 
             planModuleCache.set(cacheKey, {
               title: moduleDoc.exists ? (moduleDoc.data()?.title ?? weekKey) : weekKey,
@@ -4454,7 +4825,29 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
       .get(),
   ]);
 
-  const dateSessions = dateSessionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  log(`parallel queries done (${Object.keys(weeks).length} weeks, ${dateSessionsSnap.size} dateSessions, ${historySnap.size} history)`);
+
+  const dateSessions: Array<Record<string, unknown>> = dateSessionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  // Enrich date-assigned sessions with image_url from library sessions
+  const libSessionRefs = dateSessions.filter(
+    (s) => s.library_session_ref && s.session_id && !s.image_url
+  );
+  if (libSessionRefs.length > 0 && creatorId) {
+    try {
+      const libDocs = await db.getAll(
+        ...libSessionRefs.map((s) =>
+          db.collection("creator_libraries").doc(creatorId).collection("sessions").doc(s.session_id as string))
+      );
+      for (let i = 0; i < libSessionRefs.length; i++) {
+        if (libDocs[i].exists) {
+          const libData = libDocs[i].data()!;
+          if (libData.image_url) libSessionRefs[i].image_url = libData.image_url;
+          if (!libSessionRefs[i].session_name && libData.title) libSessionRefs[i].session_name = libData.title;
+        }
+      }
+    } catch { /* best-effort — calendar still works without images */ }
+  }
 
   const completedByDate: Record<string, unknown[]> = {};
   for (const hDoc of historySnap.docs) {
@@ -4466,6 +4859,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     completedByDate[dateStr].push({ id: hDoc.id, ...hData });
   }
 
+  log("done");
   res.json({
     data: {
       planAssignments,
@@ -4478,9 +4872,8 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
 
 // POST /creator/clients/:clientId/programs/:programId/assign-plan
 router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { clientId, programId } = req.params;
@@ -4566,9 +4959,8 @@ router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async 
 
 // DELETE /creator/clients/:clientId/programs/:programId/remove-plan/:planId
 router.delete("/creator/clients/:clientId/programs/:programId/remove-plan/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { clientId, programId, planId } = req.params;
@@ -4605,9 +4997,8 @@ router.delete("/creator/clients/:clientId/programs/:programId/remove-plan/:planI
 
 // DELETE /creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions/:sessionId
 router.delete("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { clientId, programId, weekKey, sessionId } = req.params;
@@ -4647,9 +5038,8 @@ router.delete("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/ses
 
 // PATCH /creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions/:sessionId
 router.patch("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { clientId, programId, weekKey, sessionId } = req.params;
@@ -4675,9 +5065,8 @@ router.patch("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sess
 
 // POST /creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions
 router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { clientId, programId, weekKey } = req.params;
@@ -4758,9 +5147,8 @@ router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessi
 // Body: { sourceWeekKey, sessionId, sourceLibrarySessionId }
 // Copies a session's exercises/sets to all other weeks that reference the same library session
 router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const { clientId, programId } = req.params;
@@ -4863,9 +5251,8 @@ router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async
 
 // GET /creator/username-check?username=... — check if username is available
 router.get("/creator/username-check", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const username = req.query.username as string | undefined;
   if (!username || !username.trim()) {
@@ -4889,9 +5276,8 @@ router.get("/creator/username-check", async (req, res) => {
 
 // GET /creator/media — list all media files for the authenticated creator
 router.get("/creator/media", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snapshot = await db
     .collection("creator_media")
@@ -4923,9 +5309,8 @@ router.get("/creator/media", async (req, res) => {
 
 // POST /creator/media/upload-url — generate upload target for direct Storage upload
 router.post("/creator/media/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { filename, contentType } = validateBody<{
     filename: string;
@@ -4959,9 +5344,8 @@ router.post("/creator/media/upload-url", async (req, res) => {
 
 // POST /creator/media/upload-url/confirm — confirm upload and save metadata
 router.post("/creator/media/upload-url/confirm", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { storagePath, filename, contentType, downloadToken } = validateBody<{
     storagePath: string;
@@ -5016,9 +5400,8 @@ router.post("/creator/media/upload-url/confirm", async (req, res) => {
 
 // DELETE /creator/media/:fileId — delete a media file
 router.delete("/creator/media/:fileId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const fileDoc = await db
     .collection("creator_media")
@@ -5054,9 +5437,8 @@ router.delete("/creator/media/:fileId", async (req, res) => {
 
 // GET /creator/programs/:programId/demographics
 router.get("/creator/programs/:programId/demographics", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { programId } = req.params;
 
@@ -5156,9 +5538,8 @@ router.get("/creator/programs/:programId/demographics", async (req, res) => {
 
 // GET /creator/bookings — list creator's call bookings
 router.get("/creator/bookings", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snap = await db
     .collection("call_bookings")
@@ -5189,9 +5570,8 @@ router.get("/creator/bookings", async (req, res) => {
 
 // GET /creator/availability
 router.get("/creator/availability", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db.collection("creator_availability").doc(auth.userId).get();
   if (!doc.exists) {
@@ -5213,9 +5593,8 @@ router.get("/creator/availability", async (req, res) => {
 
 // PUT /creator/availability/template
 router.put("/creator/availability/template", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{
     weeklyTemplate: unknown;
@@ -5250,9 +5629,8 @@ router.put("/creator/availability/template", async (req, res) => {
 
 // GET /creator/programs/:programId/modules
 router.get("/creator/programs/:programId/modules", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5271,9 +5649,8 @@ router.get("/creator/programs/:programId/modules", async (req, res) => {
 
 // POST /creator/programs/:programId/modules
 router.post("/creator/programs/:programId/modules", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5300,9 +5677,8 @@ router.post("/creator/programs/:programId/modules", async (req, res) => {
 
 // PATCH /creator/programs/:programId/modules/:moduleId
 router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5331,9 +5707,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) 
 
 // DELETE /creator/programs/:programId/modules/:moduleId
 router.delete("/creator/programs/:programId/modules/:moduleId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5356,9 +5731,8 @@ router.delete("/creator/programs/:programId/modules/:moduleId", async (req, res)
 
 // GET /creator/programs/:programId/modules/:moduleId/sessions
 router.get("/creator/programs/:programId/modules/:moduleId/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5379,9 +5753,8 @@ router.get("/creator/programs/:programId/modules/:moduleId/sessions", async (req
 
 // POST /creator/programs/:programId/modules/:moduleId/sessions
 router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5413,9 +5786,8 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
 
 // PATCH /creator/programs/:programId/modules/:moduleId/sessions/:sessionId
 router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5445,9 +5817,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
 
 // DELETE /creator/programs/:programId/modules/:moduleId/sessions/:sessionId
 router.delete("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5472,9 +5843,8 @@ router.delete("/creator/programs/:programId/modules/:moduleId/sessions/:sessionI
 
 // GET /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises
 router.get("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5509,9 +5879,8 @@ router.get("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/e
 
 // POST /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises
 router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5539,9 +5908,8 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/
 
 // PATCH /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId
 router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5577,9 +5945,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
 
 // DELETE /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId
 router.delete("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5606,9 +5973,8 @@ router.delete("/creator/programs/:programId/modules/:moduleId/sessions/:sessionI
 
 // POST /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets
 router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5636,9 +6002,8 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/
 
 // PATCH /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId
 router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5674,9 +6039,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
 
 // DELETE /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId
 router.delete("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
@@ -5707,9 +6071,8 @@ router.delete("/creator/programs/:programId/modules/:moduleId/sessions/:sessionI
 
 // GET /creator/plans/:planId/affected
 router.get("/creator/plans/:planId/affected", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -5767,9 +6130,8 @@ router.get("/creator/plans/:planId/affected", async (req, res) => {
 
 // POST /creator/plans/:planId/propagate
 router.post("/creator/plans/:planId/propagate", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db.collection("plans").doc(req.params.planId).get();
   if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
@@ -5945,9 +6307,8 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
 
 // GET /creator/nutrition/plans/:planId/affected
 router.get("/creator/nutrition/plans/:planId/affected", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const planDoc = await db
     .collection("creator_nutrition_library")
@@ -5998,9 +6359,8 @@ router.get("/creator/nutrition/plans/:planId/affected", async (req, res) => {
 
 // GET /creator/exercises/libraries — list all exercise libraries for the authenticated creator
 router.get("/creator/exercises/libraries", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snap = await db
     .collection("exercises_library")
@@ -6012,9 +6372,8 @@ router.get("/creator/exercises/libraries", async (req, res) => {
 
 // GET /creator/exercises/libraries/:libraryId — single library by ID
 router.get("/creator/exercises/libraries/:libraryId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const doc = await db.collection("exercises_library").doc(req.params.libraryId).get();
   if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
@@ -6026,9 +6385,8 @@ router.get("/creator/exercises/libraries/:libraryId", async (req, res) => {
 
 // POST /creator/exercises/libraries — create new library
 router.post("/creator/exercises/libraries", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ title: string }>({ title: "string" }, req.body);
 
@@ -6048,9 +6406,8 @@ router.post("/creator/exercises/libraries", async (req, res) => {
 
 // DELETE /creator/exercises/libraries/:libraryId — delete a library
 router.delete("/creator/exercises/libraries/:libraryId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -6064,9 +6421,8 @@ router.delete("/creator/exercises/libraries/:libraryId", async (req, res) => {
 
 // POST /creator/exercises/libraries/:libraryId/exercises — add exercise to library
 router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ name: string }>({ name: "string" }, req.body);
 
@@ -6089,9 +6445,8 @@ router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res
 
 // DELETE /creator/exercises/libraries/:libraryId/exercises/:name — remove exercise from library
 router.delete("/creator/exercises/libraries/:libraryId/exercises/:name", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -6112,9 +6467,8 @@ router.delete("/creator/exercises/libraries/:libraryId/exercises/:name", async (
 
 // PATCH /creator/exercises/libraries/:libraryId/exercises/:name — update exercise data
 router.patch("/creator/exercises/libraries/:libraryId/exercises/:name", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -6157,9 +6511,8 @@ router.patch("/creator/exercises/libraries/:libraryId/exercises/:name", async (r
 
 // POST /creator/exercises/libraries/:libraryId/exercises/:name/upload-url
 router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { contentType } = validateBody<{ contentType: string }>(
     { contentType: "string" },
@@ -6196,9 +6549,8 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url"
 
 // POST /creator/exercises/libraries/:libraryId/exercises/:name/upload-url/confirm
 router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/confirm", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { storagePath } = validateBody<{ storagePath: string }>(
     { storagePath: "string" },
@@ -6235,9 +6587,8 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/
 
 // DELETE /creator/exercises/libraries/:libraryId/exercises/:name/video
 router.delete("/creator/exercises/libraries/:libraryId/exercises/:name/video", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -6273,9 +6624,8 @@ router.delete("/creator/exercises/libraries/:libraryId/exercises/:name/video", a
 
 // PATCH /creator/exercises/libraries/:libraryId — update library metadata
 router.patch("/creator/exercises/libraries/:libraryId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -6302,9 +6652,8 @@ router.patch("/creator/exercises/libraries/:libraryId", async (req, res) => {
 
 // GET /creator/library/objective-presets — list all presets
 router.get("/creator/library/objective-presets", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const snap = await db
     .collection("creator_libraries")
@@ -6318,9 +6667,8 @@ router.get("/creator/library/objective-presets", async (req, res) => {
 
 // POST /creator/library/objective-presets — create preset
 router.post("/creator/library/objective-presets", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{
     name: string;
@@ -6355,9 +6703,8 @@ router.post("/creator/library/objective-presets", async (req, res) => {
 
 // PATCH /creator/library/objective-presets/:presetId — update preset
 router.patch("/creator/library/objective-presets/:presetId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db
     .collection("creator_libraries")
@@ -6383,9 +6730,8 @@ router.patch("/creator/library/objective-presets/:presetId", async (req, res) =>
 
 // DELETE /creator/library/objective-presets/:presetId — delete preset
 router.delete("/creator/library/objective-presets/:presetId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const ref = db
     .collection("creator_libraries")
@@ -6558,9 +6904,8 @@ async function ensureProgramCopy(
 
 // GET /creator/programs/:programId/calendar?month=YYYY-MM
 router.get("/creator/programs/:programId/calendar", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const month = req.query.month as string;
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
@@ -6657,9 +7002,8 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
 
 // POST /creator/programs/:programId/assign-plan
 router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const { programId } = req.params;
@@ -6717,9 +7061,8 @@ router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
 
 // DELETE /creator/programs/:programId/remove-plan/:planId
 router.delete("/creator/programs/:programId/remove-plan/:planId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { programId, planId } = req.params;
   const courseDoc = await verifyProgramOwnership(auth.userId, programId);
@@ -6750,9 +7093,8 @@ router.delete("/creator/programs/:programId/remove-plan/:planId", async (req, re
 
 // GET /creator/programs/:programId/plan-content/:weekKey
 router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const { programId, weekKey } = req.params;
@@ -6795,9 +7137,8 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
 
 // PUT /creator/programs/:programId/plan-content/:weekKey
 router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const { programId, weekKey } = req.params;
@@ -6855,9 +7196,8 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
 
 // DELETE /creator/programs/:programId/weeks/:weekKey/sessions/:sessionId
 router.delete("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const { programId, weekKey, sessionId } = req.params;
@@ -6893,9 +7233,8 @@ router.delete("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId",
 
 // PATCH /creator/programs/:programId/weeks/:weekKey/sessions/:sessionId
 router.patch("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const { programId, weekKey, sessionId } = req.params;
@@ -6919,9 +7258,8 @@ router.patch("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", 
 
 // POST /creator/programs/:programId/weeks/:weekKey/sessions
 router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const { programId, weekKey } = req.params;
@@ -6994,9 +7332,8 @@ router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, 
 
 // GET /creator/programs/:programId/nutrition/assignments
 router.get("/creator/programs/:programId/nutrition/assignments", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const snap = await db.collection("nutrition_assignments")
@@ -7016,9 +7353,8 @@ router.get("/creator/programs/:programId/nutrition/assignments", async (req, res
 
 // POST /creator/programs/:programId/nutrition/assignments
 router.post("/creator/programs/:programId/nutrition/assignments", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const body = validateBody<{ planId: string }>(
@@ -7068,9 +7404,8 @@ router.post("/creator/programs/:programId/nutrition/assignments", async (req, re
 
 // DELETE /creator/programs/:programId/nutrition/assignments/:assignmentId
 router.delete("/creator/programs/:programId/nutrition/assignments/:assignmentId", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const assignRef = db.collection("nutrition_assignments").doc(req.params.assignmentId);
@@ -7085,6 +7420,46 @@ router.delete("/creator/programs/:programId/nutrition/assignments/:assignmentId"
   await batch.commit();
 
   res.status(204).send();
+});
+
+// POST /creator/request-api-access — send email requesting API access
+router.post("/creator/request-api-access", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const userData = userDoc.data() || {};
+  const creatorName = userData.displayName || userData.name || auth.userId;
+  const creatorEmail = userData.email || "sin email";
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error("[request-api-access] RESEND_API_KEY not available");
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "Servicio de email no disponible");
+  }
+
+  const resend = new Resend(apiKey);
+  await resend.emails.send({
+    from: "Wake Platform <platform@wakelab.co>",
+    to: "emilioloboguerrero@gmail.com",
+    subject: `Solicitud de acceso API - ${creatorName}`,
+    html: `
+      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#1a1a1a;color:#fff;border-radius:12px;">
+        <h2 style="margin:0 0 16px;font-size:18px;color:#fff;">Solicitud de acceso a API</h2>
+        <p style="margin:0 0 8px;color:rgba(255,255,255,0.7);font-size:14px;">
+          <strong style="color:#fff;">${creatorName}</strong> esta solicitando acceso a las integraciones de API.
+        </p>
+        <p style="margin:0 0 24px;color:rgba(255,255,255,0.5);font-size:13px;">
+          Email: ${creatorEmail}<br/>
+          User ID: ${auth.userId}
+        </p>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:16px 0;"/>
+        <p style="margin:0;color:rgba(255,255,255,0.3);font-size:12px;">Wake Platform</p>
+      </div>
+    `,
+  });
+
+  res.status(200).json({ data: { sent: true } });
 });
 
 export default router;

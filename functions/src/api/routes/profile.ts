@@ -1,28 +1,26 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { db, FieldValue } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
+import { validateAuth, validateAuthAndRateLimit } from "../middleware/auth.js";
 import { validateBody, validateStoragePath } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
 
 const router = Router();
 
 // GET /users/me
 router.get("/users/me", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(
-    auth.authType === "apikey" ? auth.keyId! : auth.userId,
-    auth.authType === "apikey" ? 60 : 200,
-    auth.authType === "apikey" ? "rate_limit_windows" : "rate_limit_first_party"
-  );
+  const t0 = Date.now();
+  const log = (label: string) => console.log(`[/users/me] ${label} — ${Date.now() - t0}ms`);
 
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  if (!userDoc.exists) {
+  const auth = await validateAuthAndRateLimit(req);
+  log("auth+rateLimit");
+
+  const data = auth.userData;
+  if (!data) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
+  log("responding");
 
-  const data = userDoc.data()!;
   res.json({
     data: {
       userId: auth.userId,
@@ -51,8 +49,7 @@ router.get("/users/me", async (req, res) => {
 
 // POST /users/me/init — bootstrap user doc if it doesn't exist
 router.post("/users/me/init", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 20, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req, 20);
 
   const userRef = db.collection("users").doc(auth.userId);
   const userDoc = await userRef.get();
@@ -85,8 +82,7 @@ router.post("/users/me/init", async (req, res) => {
 
 // PATCH /users/me
 router.patch(["/users/me", "/users/me/full"], async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const allowedFields = [
     "displayName", "username", "country", "city", "gender",
@@ -169,8 +165,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
 
 // POST /users/me/profile-picture/upload-url
 router.post("/users/me/profile-picture/upload-url", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req, 10);
 
   const { contentType } = validateBody<{ contentType: string }>(
     { contentType: "string" },
@@ -203,8 +198,7 @@ router.post("/users/me/profile-picture/upload-url", async (req, res) => {
 
 // POST /users/me/profile-picture/confirm
 router.post("/users/me/profile-picture/confirm", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const { storagePath } = validateBody<{ storagePath: string }>(
     { storagePath: "string" },
@@ -234,12 +228,7 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
 
 // GET /users/:userId/public-profile
 router.get("/users/:userId/public-profile", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(
-    auth.authType === "apikey" ? auth.keyId! : auth.userId,
-    auth.authType === "apikey" ? 60 : 200,
-    auth.authType === "apikey" ? "rate_limit_windows" : "rate_limit_first_party"
-  );
+  await validateAuthAndRateLimit(req);
 
   const userDoc = await db.collection("users").doc(req.params.userId).get();
   if (!userDoc.exists) {
@@ -259,8 +248,7 @@ router.get("/users/:userId/public-profile", async (req, res) => {
 
 // POST /users/me/courses/:courseId/trial — start a trial for a course
 router.post("/users/me/courses/:courseId/trial", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{
     courseDetails: Record<string, unknown>;
@@ -281,9 +269,8 @@ router.post("/users/me/courses/:courseId/trial", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  // Check user doesn't already have an active trial
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  const courses = userDoc.data()?.courses ?? {};
+  // Check user doesn't already have an active trial (reuse auth.userData)
+  const courses = (auth.userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
   if (courses[courseId]?.status === "trial") {
     throw new WakeApiServerError("CONFLICT", 409, "Ya tienes un trial activo para este programa");
   }
@@ -309,8 +296,7 @@ router.post("/users/me/courses/:courseId/trial", async (req, res) => {
 
 // POST /users/me/move-course — add/move a course to the user's courses map
 router.post("/users/me/move-course", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{
     courseId: string;
@@ -353,8 +339,7 @@ router.post("/users/me/move-course", async (req, res) => {
 
 // POST /users/me/courses/:programId/backfill — backfill a course entry for orphaned client_programs
 router.post("/users/me/courses/:programId/backfill", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{ courseData: Record<string, unknown> }>(
     { courseData: "object" },
@@ -390,11 +375,10 @@ router.post("/auth/logout", async (req, res) => {
 
 // PATCH /creator/profile
 router.patch("/creator/profile", async (req, res) => {
-  const auth = await validateAuth(req);
+  const auth = await validateAuthAndRateLimit(req);
   if (auth.role !== "creator" && auth.role !== "admin") {
     throw new WakeApiServerError("FORBIDDEN", 403, "Solo creadores pueden actualizar su perfil de creador");
   }
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const { cards } = req.body;
 
@@ -444,15 +428,13 @@ router.patch("/creator/profile", async (req, res) => {
 
 // GET /users/me/full — returns full user document including all fields
 router.get("/users/me/full", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  if (!userDoc.exists) {
+  const data = auth.userData;
+  if (!data) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  const data = userDoc.data()!;
   res.json({
     data: {
       userId: auth.userId,
@@ -464,8 +446,7 @@ router.get("/users/me/full", async (req, res) => {
 
 // GET /users/me/username-check — check if username is available
 router.get("/users/me/username-check", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const username = req.query.username as string;
   if (!username || typeof username !== "string" || username.length > 50) {
@@ -487,8 +468,7 @@ router.get("/users/me/username-check", async (req, res) => {
 
 // DELETE /users/me — account deletion
 router.delete("/users/me", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req, 10);
 
   const userRef = db.collection("users").doc(auth.userId);
   const userDoc = await userRef.get();
@@ -527,8 +507,7 @@ router.delete("/users/me", async (req, res) => {
 
 // POST /users/me/delete-feedback — save account deletion feedback
 router.post("/users/me/delete-feedback", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 10, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req, 10);
 
   const body = validateBody<{ feedback: Record<string, unknown> }>(
     { feedback: "object" },
@@ -547,16 +526,14 @@ router.post("/users/me/delete-feedback", async (req, res) => {
 
 // DELETE /users/me/courses/:courseId — remove a course from user's courses map
 router.delete("/users/me/courses/:courseId", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const courseId = req.params.courseId;
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  if (!userDoc.exists) {
+  if (!auth.userData) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  const courses = userDoc.data()?.courses ?? {};
+  const courses = (auth.userData.courses ?? {}) as Record<string, unknown>;
   if (!courses[courseId]) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Curso no encontrado en tu cuenta");
   }
@@ -571,8 +548,7 @@ router.delete("/users/me/courses/:courseId", async (req, res) => {
 
 // PATCH /users/me/courses/:courseId/version — update version status fields
 router.patch("/users/me/courses/:courseId/version", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const courseId = req.params.courseId;
   const allowedFields = ["update_status", "downloaded_version", "last_version_check"];
@@ -598,8 +574,7 @@ router.patch("/users/me/courses/:courseId/version", async (req, res) => {
 
 // PATCH /users/me/courses/:courseId/status — update course status
 router.patch("/users/me/courses/:courseId/status", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const courseId = req.params.courseId;
   const body = validateBody<{ status: string; expiresAt?: string }>(
@@ -623,8 +598,7 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
 
 // GET /courses — course listing
 router.get("/courses", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await validateAuthAndRateLimit(req);
 
   const snapshot = await db
     .collection("courses")
@@ -639,8 +613,7 @@ router.get("/courses", async (req, res) => {
 
 // GET /storage/download-url — return signed download URL for a storage path
 router.get("/storage/download-url", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  await validateAuthAndRateLimit(req);
 
   const path = req.query.path as string;
   if (!path || typeof path !== "string") {
@@ -674,8 +647,7 @@ router.get("/storage/download-url", async (req, res) => {
 
 // POST /purchases — log a purchase record
 router.post("/purchases", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+  const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{
     courseId?: string;

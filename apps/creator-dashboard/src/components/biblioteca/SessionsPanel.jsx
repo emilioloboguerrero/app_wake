@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
@@ -15,7 +15,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useQuery, useQueries, useQueryClient, useMutation } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { GlowingEffect, MenuDropdown, ConfirmDeleteModal } from '../ui';
 import MuscleSilhouetteSVG from '../MuscleSilhouetteSVG';
@@ -35,16 +35,13 @@ function SessionsPanelSkeleton() {
           className="pgs-card"
           style={{ pointerEvents: 'none', animation: 'none' }}
         >
-          {/* Image side */}
           <div className="pgs-card__image-side">
             <ShimmerSkeleton width="100%" height="100%" borderRadius="0" />
           </div>
-          {/* Content */}
           <div className="pgs-card__content" style={{ gap: 10 }}>
             <ShimmerSkeleton width="55%" height="18px" borderRadius="6px" />
             <ShimmerSkeleton width="35%" height="13px" borderRadius="4px" />
           </div>
-          {/* Muscle heatmap placeholder */}
           <div className="pgs-card__muscle-heatmap" style={{ opacity: 0.15 }}>
             <ShimmerSkeleton width="80px" height="140px" borderRadius="8px" />
           </div>
@@ -54,35 +51,20 @@ function SessionsPanelSkeleton() {
   );
 }
 
-function computeMuscleVolumes(exercises, libraryDataCache = {}) {
+function computeMuscleVolumes(exercises) {
   if (!exercises?.length) return null;
   const muscleSets = {};
   exercises.forEach((ex) => {
     const setCount = ex.sets?.length || 1;
 
-    // Try to get muscle_activation from library data via exercise's primary reference
-    let muscleActivation = null;
-    if (ex.primary && typeof ex.primary === 'object') {
-      const entries = Object.entries(ex.primary);
-      if (entries.length > 0) {
-        const [libraryId, exerciseName] = entries[0];
-        const library = libraryDataCache[libraryId];
-        if (library?.[exerciseName]) {
-          muscleActivation = library[exerciseName].muscle_activation;
-        }
-      }
-    }
-
-    if (muscleActivation && typeof muscleActivation === 'object') {
-      // Percentage-weighted activation from library exercise data
-      Object.entries(muscleActivation).forEach(([muscle, pct]) => {
+    if (ex.muscle_activation && typeof ex.muscle_activation === 'object') {
+      Object.entries(ex.muscle_activation).forEach(([muscle, pct]) => {
         const num = typeof pct === 'string' ? parseFloat(pct) : pct;
         if (!Number.isNaN(num) && num > 0) {
           muscleSets[muscle] = (muscleSets[muscle] || 0) + setCount * (num / 100);
         }
       });
     } else {
-      // Fallback: equal weight for all primaryMuscles
       const muscles = ex.primaryMuscles || [];
       muscles.forEach((m) => {
         muscleSets[m] = (muscleSets[m] || 0) + setCount;
@@ -97,7 +79,7 @@ function computeMuscleVolumes(exercises, libraryDataCache = {}) {
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
-function SortableSessionCard({ session, onNavigate, onDelete, index, libraryDataCache }) {
+function SortableSessionCard({ session, onNavigate, onDelete, index }) {
   const {
     attributes,
     listeners,
@@ -125,7 +107,7 @@ function SortableSessionCard({ session, onNavigate, onDelete, index, libraryData
   };
 
   const exerciseCount = session.exercises?.length || session.exerciseCount || 0;
-  const muscleVolumes = useMemo(() => computeMuscleVolumes(session.exercises, libraryDataCache), [session.exercises, libraryDataCache]);
+  const muscleVolumes = useMemo(() => computeMuscleVolumes(session.exercises), [session.exercises]);
 
   const menuItems = [
     { label: 'Eliminar', onClick: () => onDelete?.(session), danger: true },
@@ -150,7 +132,7 @@ function SortableSessionCard({ session, onNavigate, onDelete, index, libraryData
           <>
             <img
               src={session.image_url}
-              alt={session.title || 'Sesión'}
+              alt={session.title || 'Sesion'}
               className="pgs-card__img"
               loading="lazy"
             />
@@ -198,50 +180,22 @@ function SortableSessionCard({ session, onNavigate, onDelete, index, libraryData
   );
 }
 
-export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
+export default function SessionsPanel({ searchQuery = '', sortKey, onCreateSession }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [sessionOrder, setSessionOrder] = useState(null);
+  const reorderTimeoutRef = useRef(null);
 
+  const isDragEnabled = !sortKey || sortKey === 'name_asc';
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const { data: rawSessions = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.library.sessions(user?.uid),
-    queryFn: () => libraryService.getSessionLibrary(),
+    queryFn: () => libraryService.getSessionLibraryWithExercises(),
     enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.librarySessions,
   });
-
-  // Collect unique library IDs referenced by session exercises for muscle_activation lookup
-  const libraryIds = useMemo(() => {
-    const ids = new Set();
-    rawSessions.forEach((session) => {
-      (session.exercises || []).forEach((ex) => {
-        if (ex.primary && typeof ex.primary === 'object') {
-          Object.keys(ex.primary).forEach((libId) => { if (libId) ids.add(libId); });
-        }
-      });
-    });
-    return Array.from(ids);
-  }, [rawSessions]);
-
-  // Fetch exercise libraries to get muscle_activation data
-  const libraryQueries = useQueries({
-    queries: libraryIds.map((libId) => ({
-      queryKey: ['library', 'detail', libId],
-      queryFn: () => libraryService.getLibraryById(libId),
-      ...cacheConfig.programStructure,
-    })),
-  });
-
-  const libraryDataCache = useMemo(() => {
-    const cache = {};
-    libraryIds.forEach((id, i) => {
-      if (libraryQueries[i]?.data) cache[id] = libraryQueries[i].data;
-    });
-    return cache;
-  }, [libraryIds, libraryQueries]);
 
   const sessions = useMemo(() => {
     if (sessionOrder && sessionOrder.length === rawSessions.length) {
@@ -252,10 +206,14 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
   }, [rawSessions, sessionOrder]);
 
   const q = searchQuery.trim().toLowerCase();
-  const filtered = useMemo(
-    () => (q ? sessions.filter((s) => s.title?.toLowerCase().includes(q)) : sessions),
-    [sessions, q]
-  );
+  const filtered = useMemo(() => {
+    let result = q ? sessions.filter((s) => s.title?.toLowerCase().includes(q)) : [...sessions];
+    if (sortKey === 'name_asc') result.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    else if (sortKey === 'name_desc') result.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+    else if (sortKey === 'date_newest') result.sort((a, b) => (b.created_at?._seconds || 0) - (a.created_at?._seconds || 0));
+    else if (sortKey === 'date_oldest') result.sort((a, b) => (a.created_at?._seconds || 0) - (b.created_at?._seconds || 0));
+    return result;
+  }, [sessions, q, sortKey]);
 
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -266,6 +224,19 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
     },
   });
+
+  const reorderMutation = useMutation({
+    mutationFn: (order) => libraryService.reorderSessions(order),
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
+    };
+  }, []);
 
   const handleDeleteSession = useCallback((session) => {
     setDeleteTarget(session);
@@ -282,8 +253,14 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
     const ids = sessions.map((s) => s.id);
     const from = ids.indexOf(active.id);
     const to = ids.indexOf(over.id);
-    setSessionOrder(arrayMove(ids, from, to));
-  }, [sessions]);
+    const newOrder = arrayMove(ids, from, to);
+    setSessionOrder(newOrder);
+
+    if (reorderTimeoutRef.current) clearTimeout(reorderTimeoutRef.current);
+    reorderTimeoutRef.current = setTimeout(() => {
+      reorderMutation.mutate(newOrder);
+    }, 500);
+  }, [sessions, reorderMutation]);
 
   return (
     <PanelShell
@@ -292,12 +269,12 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
       isEmpty={!filtered.length && !isLoading}
       emptyTitle="Sin sesiones guardadas"
       emptySub="Crea una sesion y reutilizala en multiples programas."
-      emptyCta="+ Nueva sesión"
+      emptyCta="+ Nueva sesion"
       onCta={onCreateSession || (() => navigate('/library/sessions/new'))}
       onRetry={() => window.location.reload()}
       renderSkeleton={() => <SessionsPanelSkeleton />}
     >
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext sensors={isDragEnabled ? sensors : undefined} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={filtered.map((s) => s.id)} strategy={verticalListSortingStrategy}>
           <div className="pgs-list">
             <AnimatePresence mode="popLayout">
@@ -311,7 +288,6 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
                   <SortableSessionCard
                     session={session}
                     index={i}
-                    libraryDataCache={libraryDataCache}
                     onNavigate={(id) => navigate(`/content/sessions/${id}`)}
                     onDelete={handleDeleteSession}
                   />
@@ -326,8 +302,8 @@ export default function SessionsPanel({ searchQuery = '', onCreateSession }) {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
-        itemName={deleteTarget?.title || 'esta sesión'}
-        description="Esta acción no se puede deshacer."
+        itemName={deleteTarget?.title || 'esta sesion'}
+        description="Esta accion no se puede deshacer."
         isDeleting={deleteMutation.isPending}
       />
     </PanelShell>

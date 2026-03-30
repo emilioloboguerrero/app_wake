@@ -41,7 +41,7 @@ function isComplete(ex) {
   return hasVideo && hasMuscles && hasImplements;
 }
 
-export default function ExercisesPanel({ searchQuery = '', onCreateLibrary }) {
+export default function ExercisesPanel({ searchQuery = '', sortKey, onCreateLibrary }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -54,14 +54,14 @@ export default function ExercisesPanel({ searchQuery = '', onCreateLibrary }) {
     queryKey: queryKeys.library.exercises(user?.uid),
     queryFn: () => libraryService.getExercises(),
     enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.libraries,
   });
 
   const { data: libraries = [], isLoading: libLoading } = useQuery({
     queryKey: queryKeys.library.libraries(user?.uid),
     queryFn: () => libraryService.getLibrariesByCreator(),
     enabled: !!user?.uid,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.libraries,
   });
 
   const isLoading = exLoading || libLoading;
@@ -81,13 +81,20 @@ export default function ExercisesPanel({ searchQuery = '', onCreateLibrary }) {
   // Filter libraries by search query
   const q = searchQuery.trim().toLowerCase();
   const filteredLibraries = useMemo(() => {
-    if (!q) return libraries;
-    return libraries.filter(lib => {
-      if (lib.title?.toLowerCase().includes(q)) return true;
-      const libExercises = exercisesByLibrary[lib.id] || [];
-      return libExercises.some(ex => ex.name?.toLowerCase().includes(q));
-    });
-  }, [libraries, q, exercisesByLibrary]);
+    let result = libraries;
+    if (q) {
+      result = result.filter(lib => {
+        if (lib.title?.toLowerCase().includes(q)) return true;
+        const libExercises = exercisesByLibrary[lib.id] || [];
+        return libExercises.some(ex => ex.name?.toLowerCase().includes(q));
+      });
+    }
+    if (sortKey === 'name_asc') result = [...result].sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    else if (sortKey === 'name_desc') result = [...result].sort((a, b) => (b.title || '').localeCompare(a.title || ''));
+    else if (sortKey === 'date_newest') result = [...result].sort((a, b) => (b.created_at?._seconds || 0) - (a.created_at?._seconds || 0));
+    else if (sortKey === 'date_oldest') result = [...result].sort((a, b) => (a.created_at?._seconds || 0) - (b.created_at?._seconds || 0));
+    return result;
+  }, [libraries, q, exercisesByLibrary, sortKey]);
 
   // Quick-add mutation
   const createExerciseMutation = useMutation({

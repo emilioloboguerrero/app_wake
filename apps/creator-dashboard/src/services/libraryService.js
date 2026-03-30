@@ -163,6 +163,21 @@ class LibraryService {
     return (res.data || []).map((s) => ({ ...s, id: s.sessionId || s.id }));
   }
 
+  async getSessionLibraryWithExercises() {
+    const res = await apiClient.get('/creator/library/sessions?fields=exercises');
+    return (res.data || []).map((s) => ({ ...s, id: s.sessionId || s.id }));
+  }
+
+  async getSessionLibrarySlim() {
+    const res = await apiClient.get('/creator/library/sessions?slim=true');
+    return (res.data || []).map((s) => ({ ...s, id: s.sessionId || s.id }));
+  }
+
+  async reorderSessions(order) {
+    const res = await apiClient.patch('/creator/library/sessions/reorder', { order });
+    return res;
+  }
+
   async getLibrarySessionById(_creatorId, sessionId) {
     const res = await apiClient.get(`/creator/library/sessions/${sessionId}`);
     return res.data;

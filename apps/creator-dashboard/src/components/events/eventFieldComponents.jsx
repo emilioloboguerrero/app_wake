@@ -38,7 +38,16 @@ export function relativeLuminance(r, g, b) {
     .reduce((acc, c, i) => acc + c * [0.2126, 0.7152, 0.0722][i], 0);
 }
 
+const _accentCache = new Map();
+
 export function extractAccentFromImage(imageUrl, onAccent) {
+  if (!imageUrl) return () => {};
+
+  if (_accentCache.has(imageUrl)) {
+    onAccent(_accentCache.get(imageUrl));
+    return () => {};
+  }
+
   let cancelled = false;
   const img = new Image();
   img.crossOrigin = 'anonymous';
@@ -61,7 +70,9 @@ export function extractAccentFromImage(imageUrl, onAccent) {
         const score = sat * (max / 255);
         if (score > bestScore) { bestScore = score; bestR = r; bestG = g; bestB = b; }
       }
-      onAccent([bestR, bestG, bestB]);
+      const result = [bestR, bestG, bestB];
+      _accentCache.set(imageUrl, result);
+      onAccent(result);
     } catch {}
   };
   img.src = imageUrl;
