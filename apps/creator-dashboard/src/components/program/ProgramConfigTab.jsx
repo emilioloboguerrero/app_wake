@@ -5,6 +5,8 @@ import libraryService from '../../services/libraryService';
 import logger from '../../utils/logger';
 import Button from '../Button';
 import { getAccessTypeLabel } from '../../utils/durationHelper';
+import { detectVideoSource, getEmbedUrl } from '../../utils/videoUtils';
+import MediaDropZone from '../ui/MediaDropZone';
 
 const TUTORIAL_SCREENS = [
   { key: 'dailyWorkout', label: 'Entrenamiento diario' },
@@ -13,9 +15,10 @@ const TUTORIAL_SCREENS = [
   { key: 'warmup', label: 'Calentamiento' },
 ];
 
-export default function ProgramConfigTab({ program, programId, user, queryClient, showToast, confirm, onOpenMediaPicker }) {
+export default function ProgramConfigTab({ program, programId, user, queryClient, showToast, confirm, onOpenMediaPicker, onDropImageSelect, onDropIntroVideoSelect }) {
   const [programNameValue, setProgramNameValue] = useState('');
   const [priceValue, setPriceValue] = useState('');
+  const [compareAtPriceValue, setCompareAtPriceValue] = useState('');
   const [durationValue, setDurationValue] = useState(1);
   const [descriptionValue, setDescriptionValue] = useState('');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -40,6 +43,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
 
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
+  const [isUpdatingCompareAtPrice, setIsUpdatingCompareAtPrice] = useState(false);
   const [isUpdatingDuration, setIsUpdatingDuration] = useState(false);
   const [isUpdatingProgram, setIsUpdatingProgram] = useState(false);
   const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
@@ -51,6 +55,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
     if (!program) return;
     setProgramNameValue(program.title || '');
     setPriceValue(program.price != null ? String(program.price) : '');
+    setCompareAtPriceValue(program.compare_at_price != null ? String(program.compare_at_price) : '');
     let dur = 1;
     if (program.duration) {
       const m = typeof program.duration === 'string' ? program.duration.match(/^(\d+)/) : null;
@@ -61,7 +66,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
     setFreeTrialDurationDays(String(program.free_trial?.duration_days ?? 0));
     setWeightSuggestionsEnabled(!!program.weight_suggestions);
     setSelectedLibraryIds(new Set(program.availableLibraries || []));
-  }, [program?.id, program?.title, program?.price, program?.duration, program?.free_trial, program?.weight_suggestions, program?.availableLibraries]);
+  }, [program?.id, program?.title, program?.price, program?.compare_at_price, program?.duration, program?.free_trial, program?.weight_suggestions, program?.availableLibraries]);
 
   useEffect(() => {
     if (!program || !user) return;
@@ -117,6 +122,24 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
     } finally {
       setIsUpdatingPrice(false);
+    }
+  };
+
+  const saveCompareAtPrice = async (value) => {
+    if (!program) return;
+    const numeric = value === '' ? null : parseInt(String(value).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 2000) return;
+    if (numeric !== null && program.price && numeric <= program.price) return;
+    if (numeric === program.compare_at_price) return;
+    try {
+      setIsUpdatingCompareAtPrice(true);
+      await programService.updateProgram(program.id, { compare_at_price: numeric });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, compare_at_price: numeric }));
+    } catch (err) {
+      logger.error(err);
+      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+    } finally {
+      setIsUpdatingCompareAtPrice(false);
     }
   };
 
@@ -318,52 +341,62 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
         </div>
         <div className="program-visual-cards">
           {/* Image card */}
-          <div className="program-visual-card program-visual-card--editable" onClick={(e) => e.stopPropagation()}>
-            <div className="program-visual-card__label">Imagen del programa</div>
-            <div className="program-visual-card__media">
-              {program.image_url ? (
-                <>
-                  <img src={program.image_url} alt="Programa" />
-                  <div className="program-visual-card__overlay">
-                    <button type="button" className="program-visual-card__btn program-visual-card__btn--change" onClick={() => onOpenMediaPicker('program')}>
-                      Cambiar
-                    </button>
-                    {isUploadingImage && (
-                      <div className="program-visual-card__progress">
-                        <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${imageUploadProgress}%` }} /></div>
-                      </div>
-                    )}
-                    <button type="button" className="program-visual-card__btn program-visual-card__btn--delete" onClick={handleImageDelete} disabled={isUploadingImage}>Eliminar</button>
-                  </div>
-                </>
-              ) : (
-                <button type="button" className="program-visual-card__placeholder program-visual-card__placeholder--clickable" onClick={() => onOpenMediaPicker('program')}>
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  <span>Subir imagen</span>
-                </button>
-              )}
+          <MediaDropZone onSelect={onDropImageSelect} accept="image/*">
+            <div className="program-visual-card program-visual-card--editable" onClick={(e) => e.stopPropagation()}>
+              <div className="program-visual-card__label">Imagen del programa</div>
+              <div className="program-visual-card__media">
+                {program.image_url ? (
+                  <>
+                    <img src={program.image_url} alt="Programa" />
+                    <div className="program-visual-card__overlay">
+                      <button type="button" className="program-visual-card__btn program-visual-card__btn--change" onClick={() => onOpenMediaPicker('program')}>
+                        Cambiar
+                      </button>
+                      {isUploadingImage && (
+                        <div className="program-visual-card__progress">
+                          <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${imageUploadProgress}%` }} /></div>
+                        </div>
+                      )}
+                      <button type="button" className="program-visual-card__btn program-visual-card__btn--delete" onClick={handleImageDelete} disabled={isUploadingImage}>Eliminar</button>
+                    </div>
+                  </>
+                ) : (
+                  <button type="button" className="program-visual-card__placeholder program-visual-card__placeholder--clickable" onClick={() => onOpenMediaPicker('program')}>
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15M17 8L12 3L7 8M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <span>Subir imagen</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          </MediaDropZone>
 
           {/* Video intro card */}
+          <MediaDropZone onSelect={onDropIntroVideoSelect} accept="video/*">
           <div className="program-visual-card program-visual-card--editable" onClick={(e) => e.stopPropagation()}>
             <div className="program-visual-card__label">Video intro</div>
             <div className="program-visual-card__media">
               {program.video_intro_url ? (
                 <>
-                  <video src={program.video_intro_url} muted playsInline />
-                  <div className="program-visual-card__overlay">
-                    <label className="program-visual-card__btn program-visual-card__btn--change">
+                  {(() => {
+                    const source = detectVideoSource(program.video_intro_url);
+                    const isExternal = source === 'youtube' || source === 'vimeo';
+                    if (isExternal) {
+                      return <iframe src={getEmbedUrl(program.video_intro_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video intro" style={{ width: '100%', height: '100%', border: 'none' }} />;
+                    }
+                    return <video src={program.video_intro_url} controls playsInline />;
+                  })()}
+                  <div className="program-visual-card__actions">
+                    <label className="program-visual-card__action-btn">
                       <input type="file" accept="video/*" onChange={handleIntroVideoUpload} disabled={isUploadingIntroVideo} className="pd-hidden-input" />
                       {isUploadingIntroVideo ? `Subiendo ${introVideoUploadProgress}%` : 'Cambiar'}
                     </label>
-                    {isUploadingIntroVideo && (
-                      <div className="program-visual-card__progress">
-                        <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${introVideoUploadProgress}%` }} /></div>
-                      </div>
-                    )}
-                    <button type="button" className="program-visual-card__btn program-visual-card__btn--delete" onClick={handleIntroVideoDelete} disabled={isUploadingIntroVideo}>Eliminar</button>
+                    <button type="button" className="program-visual-card__action-btn program-visual-card__action-btn--danger" onClick={handleIntroVideoDelete} disabled={isUploadingIntroVideo}>Eliminar</button>
                   </div>
+                  {isUploadingIntroVideo && (
+                    <div className="program-visual-card__progress program-visual-card__progress--bottom">
+                      <div className="program-visual-card__progress-bar"><div className="program-visual-card__progress-fill" style={{ width: `${introVideoUploadProgress}%` }} /></div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <label className="program-visual-card__placeholder program-visual-card__placeholder--clickable">
@@ -375,6 +408,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
               )}
             </div>
           </div>
+          </MediaDropZone>
 
           {/* Tutorials card */}
           <div className="program-visual-card program-visual-card--editable program-visual-card--tutorials" onClick={(e) => e.stopPropagation()}>
@@ -484,6 +518,14 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
               <input type="text" className="program-config-inline-input pd-inline-input-max140" value={priceValue} onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Gratis o monto" />
               <span className="program-config-inline-hint">$ (min. 2000)</span>
               <button type="button" className="program-config-inline-btn" onClick={() => savePrice(priceValue)} disabled={isUpdatingPrice || (priceValue !== '' && parseInt(priceValue, 10) < 2000)}>{isUpdatingPrice ? 'Guardando...' : 'Guardar'}</button>
+            </div>
+          </div>
+          <div className="program-config-inline-row">
+            <span className="program-config-item-label">Precio comparativo</span>
+            <div className="program-config-inline-field">
+              <input type="text" className="program-config-inline-input pd-inline-input-max140" value={compareAtPriceValue} onChange={(e) => setCompareAtPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Se muestra tachado" />
+              <span className="program-config-inline-hint">$ (mayor al precio)</span>
+              <button type="button" className="program-config-inline-btn" onClick={() => saveCompareAtPrice(compareAtPriceValue)} disabled={isUpdatingCompareAtPrice || (compareAtPriceValue !== '' && (parseInt(compareAtPriceValue, 10) < 2000 || (priceValue && parseInt(compareAtPriceValue, 10) <= parseInt(priceValue, 10))))}>{isUpdatingCompareAtPrice ? 'Guardando...' : 'Guardar'}</button>
             </div>
           </div>
           <div className="program-config-inline-row">

@@ -36,6 +36,7 @@
 .library-session-client-edit-banner-text {
   font-size: clamp(13px, 3vw, 14px);
   color: rgba(234, 179, 8, 0.85);
+  text-align: left;
 }
 
 .library-session-client-edit-revert {
@@ -78,6 +79,7 @@
   font-weight: 500;
   color: rgba(234, 179, 8, 0.85);
   letter-spacing: 0.02em;
+  text-align: left;
 }
 
 /* Library usage count */

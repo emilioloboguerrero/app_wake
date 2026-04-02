@@ -49,6 +49,7 @@ export default function ProgramNutritionTab({ programId, creatorId }) {
 
   // ── Assign mutation ──────────────────────────────────────────
   const assignMutation = useMutation({
+    mutationKey: ['nutrition', 'program-assign', programId],
     mutationFn: (planId) => nutritionDb.createProgramNutritionAssignment(programId, planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'program-assignments', programId] });
@@ -58,6 +59,7 @@ export default function ProgramNutritionTab({ programId, creatorId }) {
 
   // ── Remove mutation ──────────────────────────────────────────
   const removeMutation = useMutation({
+    mutationKey: ['nutrition', 'program-unassign', programId],
     mutationFn: () => nutritionDb.deleteProgramNutritionAssignment(programId, activeAssignment.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'program-assignments', programId] });

@@ -36,9 +36,7 @@ class ApiClient {
     if (this.#tokenCache && now < this.#tokenCache.expiresAt - REFRESH_MARGIN_MS) {
       return this.#tokenCache.value;
     }
-    const t0 = performance.now();
     const token = await user.getIdToken(false);
-    console.log(`[apiClient] getIdToken — ${Math.round(performance.now() - t0)}ms`);
     this.#tokenCache = { value: token, expiresAt: now + 3600 * 1000 };
     return token;
   }

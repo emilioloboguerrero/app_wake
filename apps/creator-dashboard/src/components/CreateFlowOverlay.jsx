@@ -173,6 +173,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
   }, [isOpen, step, stepIndex, isMultiStep, activeSteps, onClose]);
 
   const createMutation = useMutation({
+    mutationKey: ['create-flow', 'create'],
     mutationFn: async () => {
       if (type === 'plan') {
         return plansService.createPlan(null, null, { title: title.trim(), description: description.trim() || undefined });
@@ -576,6 +577,10 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
                     <div className="cfo-media-hint__item">
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><path d="M12 17h.01" /></svg>
                       <span>Video mensajes</span>
+                    </div>
+                    <div className="cfo-media-hint__item">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z" /><line x1="7" y1="7" x2="7.01" y2="7" /></svg>
+                      <span>Precio comparativo</span>
                     </div>
                   </div>
                 </div>

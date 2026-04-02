@@ -143,10 +143,8 @@ export async function validateAuthAndRateLimit(
 
   // Firebase path — parallelize user doc read + rate limit after token verify
   const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
-  const t0 = Date.now();
   let decoded = getCachedToken(token);
   if (decoded) {
-    console.log(`[auth] verifyIdToken — cache hit`);
   } else {
     try {
       decoded = await admin.auth().verifyIdToken(token, !isEmulator);
@@ -154,29 +152,24 @@ export async function validateAuthAndRateLimit(
       throw new WakeApiServerError("UNAUTHENTICATED", 401, "Token de autenticación inválido o expirado");
     }
     setCachedToken(token, decoded);
-    console.log(`[auth] verifyIdToken — ${Date.now() - t0}ms`);
   }
 
   // App Check (skip in emulator)
   if (!isEmulator) {
     const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
     if (appCheckToken) {
-      const t1 = Date.now();
       try {
         await admin.appCheck().verifyToken(appCheckToken);
       } catch {
         throw new WakeApiServerError("UNAUTHENTICATED", 401, "App Check token inválido");
       }
-      console.log(`[auth] appCheck — ${Date.now() - t1}ms`);
     }
   }
 
-  const t2 = Date.now();
   const [userDoc] = await Promise.all([
     db.collection("users").doc(decoded.uid).get(),
     checkRateLimit(decoded.uid, limitRpm, collection),
   ]);
-  console.log(`[auth] userDoc+rateLimit — ${Date.now() - t2}ms (total auth: ${Date.now() - t0}ms)`);
 
   const userData = userDoc.exists ? userDoc.data()! : null;
   const role = userData

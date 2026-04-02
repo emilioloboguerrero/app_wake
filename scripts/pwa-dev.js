@@ -28,6 +28,8 @@ const { dirPwaRoot, dirPwaWeb, dirPwaPublic, basePathPwa } = require('./paths.js
 
 const EXPO_PORT = parseInt(process.env.EXPO_PORT || '8081', 10);
 const PWA_PORT = parseInt(process.env.PWA_DEV_PORT || '5000', 10);
+const FUNCTIONS_PORT = parseInt(process.env.FUNCTIONS_EMU_PORT || '5001', 10);
+const FIREBASE_PROJECT = process.env.FIREBASE_PROJECT || 'wolf-20b8b';
 
 let expoProcess = null;
 
@@ -152,6 +154,23 @@ function startPwaServer(pwaHtml, manifestJson, expoPort) {
     const url = req.url || '/';
     const pathname = url.split('?')[0];
     const base = basePathPwa || '';
+
+    // Proxy /api/* to local functions emulator
+    if (pathname.startsWith('/api')) {
+      const targetPath = url.replace(/^\/api/, '');
+      const targetUrl = new URL(`http://127.0.0.1:${FUNCTIONS_PORT}/${FIREBASE_PROJECT}/us-central1/api${targetPath}`);
+      const proxyReq = http.request(targetUrl, { method: req.method, headers: req.headers }, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        proxyRes.pipe(res);
+      });
+      proxyReq.on('error', (err) => {
+        log(`API proxy error: ${err.message}`);
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { code: 'PROXY_ERROR', message: 'Functions emulator unreachable' } }));
+      });
+      req.pipe(proxyReq);
+      return;
+    }
 
     if (pathname === base || pathname.startsWith(base + '/')) {
       const sub = pathname.slice(base.length) || '/';

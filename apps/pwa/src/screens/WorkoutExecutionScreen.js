@@ -36,6 +36,7 @@ import { isWeb, isPWA } from '../utils/platform';
 import logger from '../utils/logger.js';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
@@ -512,7 +513,19 @@ const AddExerciseCard = memo(({ exercise, index, isExpanded, onCardTap, onVideoT
     >
       {isExpanded ? (
         <View style={styles.addExerciseVideoContainer}>
-          {exercise.video_url ? (
+          {exercise.video_url && (detectVideoSource(exercise.video_url, exercise.video_source) === 'youtube' || detectVideoSource(exercise.video_url, exercise.video_source) === 'vimeo') && Platform.OS === 'web' ? (
+            <VideoCardWebWrapper>
+              <View style={styles.addExerciseVideoWrapper}>
+                <iframe
+                  src={getEmbedUrl(exercise.video_url, detectVideoSource(exercise.video_url, exercise.video_source))}
+                  style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                  title="Exercise video"
+                />
+              </View>
+            </VideoCardWebWrapper>
+          ) : exercise.video_url ? (
             <VideoCardWebWrapper>
               <TouchableOpacity
                 style={styles.addExerciseVideoWrapper}
@@ -1097,6 +1110,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Expanded card state (null = current exercise, number = alternative index)
   const [expandedCardIndex, setExpandedCardIndex] = useState(null); // null means current exercise is expanded
   const [videoUri, setVideoUri] = useState(null); // Current video URI
+  const [videoSourceType, setVideoSourceType] = useState(null); // 'upload' | 'youtube' | 'vimeo'
   const [isVideoPaused, setIsVideoPaused] = useState(true); // Video pause state - start paused, wait for tutorial
   const [canStartVideo, setCanStartVideo] = useState(false); // Flag to control when video can start
   
@@ -1118,7 +1132,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [isMuted]);
   
   // Video player for workout videos - memoized URI to prevent unnecessary re-initialization
-  const memoizedVideoUri = useDeferredValue(videoUri);
+  // Skip passing external URLs (YouTube/Vimeo) to expo-video — they use iframe instead
+  const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
+  const nativeVideoUri = isExternalVideo ? null : videoUri;
+  const memoizedVideoUri = useDeferredValue(nativeVideoUri);
   const videoPlayer = useVideoPlayer(memoizedVideoUri, videoPlayerCallback);
   const scrollViewRef = useRef(null); // Main ScrollView reference for view switching
   const lastScrollXRef = useRef(0); // [LIST-INPUT-DEBUG] track horizontal scroll to detect reset on re-render
@@ -1669,8 +1686,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       
       // Use startTransition to mark as non-urgent
       if (isMounted) {
+        const resolvedUrl = localPath || currentExercise.video_url || null;
+        const sourceType = detectVideoSource(currentExercise.video_url, currentExercise.video_source);
         startTransition(() => {
-    setVideoUri(localPath || currentExercise.video_url || null);
+          setVideoUri(resolvedUrl);
+          setVideoSourceType(sourceType);
         });
       }
     
@@ -2651,13 +2671,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Load current exercise video immediately
       if (exercise?.video_url) {
         setSwapModalVideoUri(exercise.video_url);
-        const timeoutId = setTimeout(() => {
-          if (isMountedRef.current) {
-            swapModalVideoPlayer.replace(exercise.video_url);
-            setIsSwapModalVideoPaused(false);
-          }
-        }, 50);
-        allTimeoutIdsRef.current.push(timeoutId);
+        const exSource = detectVideoSource(exercise.video_url, exercise.video_source);
+        if (exSource !== 'youtube' && exSource !== 'vimeo') {
+          const timeoutId = setTimeout(() => {
+            if (isMountedRef.current) {
+              swapModalVideoPlayer.replace(exercise.video_url);
+              setIsSwapModalVideoPaused(false);
+            }
+          }, 50);
+          allTimeoutIdsRef.current.push(timeoutId);
+        }
       }
     } else {
       // Not cached - show loading state
@@ -2707,13 +2730,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         const currentExercise = workout.exercises[exerciseIndex];
         if (currentExercise?.video_url) {
           setSwapModalVideoUri(currentExercise.video_url);
-          const timeoutId = setTimeout(() => {
-            if (isMountedRef.current) {
-              swapModalVideoPlayer.replace(currentExercise.video_url);
-              setIsSwapModalVideoPaused(false);
-            }
-          }, 50);
-          allTimeoutIdsRef.current.push(timeoutId);
+          const curSource = detectVideoSource(currentExercise.video_url, currentExercise.video_source);
+          if (curSource !== 'youtube' && curSource !== 'vimeo') {
+            const timeoutId = setTimeout(() => {
+              if (isMountedRef.current) {
+                swapModalVideoPlayer.replace(currentExercise.video_url);
+                setIsSwapModalVideoPaused(false);
+              }
+            }, 50);
+            allTimeoutIdsRef.current.push(timeoutId);
+          }
         }
         return;
       }
@@ -2783,14 +2809,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const currentExercise = workout.exercises[exerciseIndex];
       if (currentExercise?.video_url) {
         setSwapModalVideoUri(currentExercise.video_url);
-        // Load video in background without blocking UI
-        const timeoutId = setTimeout(() => {
-          if (isMountedRef.current) {
-            swapModalVideoPlayer.replace(currentExercise.video_url);
-            setIsSwapModalVideoPaused(false);
-          }
-        }, 50);
-        allTimeoutIdsRef.current.push(timeoutId);
+        const curSource = detectVideoSource(currentExercise.video_url, currentExercise.video_source);
+        if (curSource !== 'youtube' && curSource !== 'vimeo') {
+          // Load video in background without blocking UI
+          const timeoutId = setTimeout(() => {
+            if (isMountedRef.current) {
+              swapModalVideoPlayer.replace(currentExercise.video_url);
+              setIsSwapModalVideoPaused(false);
+            }
+          }, 50);
+          allTimeoutIdsRef.current.push(timeoutId);
+        }
       }
     } catch (error) {
       logger.error('❌ Error loading alternatives:', error);
@@ -2854,18 +2883,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setExpandedAddExerciseIndex(index);
     if (exercise?.video_url) {
       setAddExerciseModalVideoUri(exercise.video_url);
-      const timeoutId = setTimeout(() => {
-        if (isMountedRef.current && exercise?.video_url) {
-          try {
-            addExerciseModalVideoPlayer.replace(exercise.video_url);
-            addExerciseModalVideoPlayer.play();
-            setIsAddExerciseModalVideoPaused(false);
-          } catch (e) {
-            if (e?.name !== 'AbortError') logger.error('Add exercise modal replace error:', e);
+      const exSource = detectVideoSource(exercise.video_url, exercise.video_source);
+      if (exSource !== 'youtube' && exSource !== 'vimeo') {
+        const timeoutId = setTimeout(() => {
+          if (isMountedRef.current && exercise?.video_url) {
+            try {
+              addExerciseModalVideoPlayer.replace(exercise.video_url);
+              addExerciseModalVideoPlayer.play();
+              setIsAddExerciseModalVideoPaused(false);
+            } catch (e) {
+              if (e?.name !== 'AbortError') logger.error('Add exercise modal replace error:', e);
+            }
           }
-        }
-      }, 100); // Same delay as swap modal so VideoView has mounted
-      allTimeoutIdsRef.current.push(timeoutId);
+        }, 100); // Same delay as swap modal so VideoView has mounted
+        allTimeoutIdsRef.current.push(timeoutId);
+      }
     } else {
       setAddExerciseModalVideoUri('');
     }
@@ -2946,15 +2978,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     // OPTIMIZED: Only load video when card is actually expanded (lazy loading)
     if (exercise?.video_url) {
       setSwapModalVideoUri(exercise.video_url);
-      
-      // Load video completely in background without blocking UI
-      const timeoutId = setTimeout(() => {
-        if (isMountedRef.current && exercise?.video_url) {
-          swapModalVideoPlayer.replace(exercise.video_url);
-          setIsSwapModalVideoPaused(false);
-        }
-      }, 100); // Slightly longer delay to ensure card expansion completes first
-      allTimeoutIdsRef.current.push(timeoutId);
+      const exSource = detectVideoSource(exercise.video_url, exercise.video_source);
+      if (exSource !== 'youtube' && exSource !== 'vimeo') {
+        // Load video completely in background without blocking UI
+        const timeoutId = setTimeout(() => {
+          if (isMountedRef.current && exercise?.video_url) {
+            swapModalVideoPlayer.replace(exercise.video_url);
+            setIsSwapModalVideoPaused(false);
+          }
+        }, 100); // Slightly longer delay to ensure card expansion completes first
+        allTimeoutIdsRef.current.push(timeoutId);
+      }
     }
   }, [expandedCardIndex, swapModalVideoPlayer]);
 
@@ -5585,9 +5619,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 <View
                   style={[styles.videoCard, videoUri && styles.videoCardNoBorder]}
                 >
-                  {videoUri ? (
+                  {videoUri && (videoSourceType === 'youtube' || videoSourceType === 'vimeo') && Platform.OS === 'web' ? (
                   <VideoCardWebWrapper>
-                  <TouchableOpacity 
+                    <View style={styles.videoContainer}>
+                      <iframe
+                        src={getEmbedUrl(videoUri, videoSourceType)}
+                        style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
+                        allow="autoplay; encrypted-media"
+                        allowFullScreen
+                        title="Exercise video"
+                      />
+                    </View>
+                  </VideoCardWebWrapper>
+                  ) : videoUri ? (
+                  <VideoCardWebWrapper>
+                  <TouchableOpacity
                       style={styles.videoContainer}
                       onPress={handleVideoTap}
                       activeOpacity={1}
@@ -5629,7 +5675,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       {isVideoPaused && (
                         <VideoOverlayWebWrapper>
                         <View style={styles.volumeIconContainer}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                             style={styles.volumeIconButton}
                             onPress={toggleMute}
                             activeOpacity={0.7}
@@ -5643,12 +5689,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         </View>
                         </VideoOverlayWebWrapper>
                       )}
-                  
+
                       {/* Restart icon overlay - only show when paused */}
                       {isVideoPaused && (
                         <VideoOverlayWebWrapper>
                         <View style={styles.restartIconContainer}>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                             style={styles.restartIconButton}
                             onPress={handleVideoRestart}
                             activeOpacity={0.7}
@@ -5960,8 +6006,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 >
                   {expandedCardIndex === null ? (
                     <View style={styles.currentExerciseVideoContainer}>
-                      {swapModalVideoUri ? (
-                        <TouchableOpacity 
+                      {swapModalVideoUri && (detectVideoSource(swapModalVideoUri) === 'youtube' || detectVideoSource(swapModalVideoUri) === 'vimeo') && Platform.OS === 'web' ? (
+                        <View style={styles.swapModalVideoContainer}>
+                          <iframe
+                            src={getEmbedUrl(swapModalVideoUri)}
+                            style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
+                            allow="autoplay; encrypted-media"
+                            allowFullScreen
+                            title="Exercise video"
+                          />
+                        </View>
+                      ) : swapModalVideoUri ? (
+                        <TouchableOpacity
                           style={styles.swapModalVideoContainer}
                           onPress={handleSwapModalVideoTap}
                           activeOpacity={1}

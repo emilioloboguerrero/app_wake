@@ -14,6 +14,7 @@ import clientProgramService from '../services/clientProgramService';
 import programService from '../services/programService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
+import ContextualHint from '../components/hints/ContextualHint';
 import './OneOnOneScreen.css';
 
 const OneOnOneScreen = ({ noLayout = false }) => {
@@ -441,6 +442,7 @@ const OneOnOneScreen = ({ noLayout = false }) => {
           )}
         </div>
       </Modal>
+      <ContextualHint screenKey="one-on-one" />
     </>
   );
 

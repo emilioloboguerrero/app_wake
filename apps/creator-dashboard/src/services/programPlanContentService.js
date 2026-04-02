@@ -6,6 +6,23 @@ const WEEK_BASE = (programId, weekKey) =>
 const CONTENT_BASE = (programId, weekKey) =>
   `/creator/programs/${programId}/plan-content/${weekKey}`;
 
+// Mutex to prevent concurrent read-modify-write on the same week content
+const mutexes = new Map();
+async function withMutex(key, fn) {
+  while (mutexes.get(key)) {
+    await mutexes.get(key);
+  }
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  mutexes.set(key, promise);
+  try {
+    return await fn();
+  } finally {
+    mutexes.delete(key);
+    resolve();
+  }
+}
+
 class ProgramPlanContentService {
   // ── Read ────────────────────────────────────────────────────────
 
@@ -69,88 +86,115 @@ class ProgramPlanContentService {
   // ── Exercise CRUD (via plan-content PUT) ─────────────────────
 
   async createExercise(programId, weekKey, sessionId, title, order = null) {
-    const content = await this.getWeekContent(programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const existing = s.exercises ?? [];
-      const orderVal = order != null ? order : existing.length;
-      const titleVal = title || 'Ejercicio';
-      return {
-        ...s,
-        exercises: [...existing, { title: titleVal, name: titleVal, order: orderVal }],
-      };
+    const key = `${programId}/${weekKey}`;
+    const exerciseId = `ex_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await withMutex(key, async () => {
+      const content = await this.getWeekContent(programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const existing = s.exercises ?? [];
+        const orderVal = order != null ? order : existing.length;
+        const titleVal = title || 'Ejercicio';
+        return {
+          ...s,
+          exercises: [...existing, { id: exerciseId, title: titleVal, name: titleVal, order: orderVal }],
+        };
+      });
+      await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
     });
-    await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
+    return { id: exerciseId };
   }
 
   async updateExercise(programId, weekKey, sessionId, exerciseId, updates) {
-    const content = await this.getWeekContent(programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) =>
-        e.id === exerciseId ? { ...e, ...updates } : e
-      );
-      return { ...s, exercises };
+    const key = `${programId}/${weekKey}`;
+    return withMutex(key, async () => {
+      const content = await this.getWeekContent(programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) =>
+          e.id === exerciseId ? { ...e, ...updates } : e
+        );
+        return { ...s, exercises };
+      });
+      await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
     });
-    await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
   }
 
   async deleteExercise(programId, weekKey, sessionId, exerciseId) {
-    const content = await this.getWeekContent(programId, weekKey);
-    if (!content) return;
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      return { ...s, exercises: (s.exercises ?? []).filter((e) => e.id !== exerciseId) };
+    const key = `${programId}/${weekKey}`;
+    return withMutex(key, async () => {
+      const content = await this.getWeekContent(programId, weekKey);
+      if (!content) return;
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        return { ...s, exercises: (s.exercises ?? []).filter((e) => e.id !== exerciseId) };
+      });
+      await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
     });
-    await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
   }
 
   // ── Set CRUD (via plan-content PUT) ──────────────────────────
 
   async addSetToExercise(programId, weekKey, sessionId, exerciseId, order = null) {
-    const content = await this.getWeekContent(programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) => {
-        if (e.id !== exerciseId) return e;
-        const existing = e.sets ?? [];
-        const orderVal = order != null ? order : existing.length;
-        return { ...e, sets: [...existing, { title: `Serie ${orderVal + 1}`, order: orderVal }] };
+    const key = `${programId}/${weekKey}`;
+    return withMutex(key, async () => {
+      const content = await this.getWeekContent(programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const session = (content.sessions ?? []).find(s => s.id === sessionId);
+      const exercise = session?.exercises?.find(e => e.id === exerciseId);
+      if (!exercise) {
+        console.warn('[programPlanContent.addSetToExercise] Exercise not found, skipping PUT:', exerciseId);
+        return;
+      }
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) => {
+          if (e.id !== exerciseId) return e;
+          const existing = e.sets ?? [];
+          const orderVal = order != null ? order : existing.length;
+          const setId = `set_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          return { ...e, sets: [...existing, { id: setId, title: `Serie ${orderVal + 1}`, order: orderVal }] };
+        });
+        return { ...s, exercises };
       });
-      return { ...s, exercises };
+      await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
     });
-    await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
   }
 
   async updateSet(programId, weekKey, sessionId, exerciseId, setId, updates) {
-    const content = await this.getWeekContent(programId, weekKey);
-    if (!content) throw new Error('Week content not found');
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) => {
-        if (e.id !== exerciseId) return e;
-        return { ...e, sets: (e.sets ?? []).map((set) => (set.id === setId ? { ...set, ...updates } : set)) };
+    const key = `${programId}/${weekKey}`;
+    return withMutex(key, async () => {
+      const content = await this.getWeekContent(programId, weekKey);
+      if (!content) throw new Error('Week content not found');
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) => {
+          if (e.id !== exerciseId) return e;
+          return { ...e, sets: (e.sets ?? []).map((set) => (set.id === setId ? { ...set, ...updates } : set)) };
+        });
+        return { ...s, exercises };
       });
-      return { ...s, exercises };
+      await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
     });
-    await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
   }
 
   async deleteSet(programId, weekKey, sessionId, exerciseId, setId) {
-    const content = await this.getWeekContent(programId, weekKey);
-    if (!content) return;
-    const sessions = (content.sessions ?? []).map((s) => {
-      if (s.id !== sessionId) return s;
-      const exercises = (s.exercises ?? []).map((e) => {
-        if (e.id !== exerciseId) return e;
-        return { ...e, sets: (e.sets ?? []).filter((set) => set.id !== setId) };
+    const key = `${programId}/${weekKey}`;
+    return withMutex(key, async () => {
+      const content = await this.getWeekContent(programId, weekKey);
+      if (!content) return;
+      const sessions = (content.sessions ?? []).map((s) => {
+        if (s.id !== sessionId) return s;
+        const exercises = (s.exercises ?? []).map((e) => {
+          if (e.id !== exerciseId) return e;
+          return { ...e, sets: (e.sets ?? []).filter((set) => set.id !== setId) };
+        });
+        return { ...s, exercises };
       });
-      return { ...s, exercises };
+      await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
     });
-    await apiClient.put(CONTENT_BASE(programId, weekKey), { ...content, sessions });
   }
 
   // ── Bulk operations ──────────────────────────────────────────

@@ -25,9 +25,6 @@ export { default as AnimatedList } from './AnimatedList';
 // 1I — Toast system (provider lives in src/contexts/ToastContext)
 export { default as Toast, ToastContainer } from './Toast';
 
-// 1J
-export { default as SpotlightTutorial } from './SpotlightTutorial';
-
 // 1K
 export { default as MenuDropdown } from './MenuDropdown';
 

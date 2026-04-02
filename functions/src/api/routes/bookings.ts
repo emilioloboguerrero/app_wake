@@ -90,7 +90,6 @@ function buildCallEmailHtml(params: {
 async function sendCallEmail(to: string, subject: string, html: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    functions.logger.warn("sendCallEmail: RESEND_API_KEY not available, skipping");
     return;
   }
   try {
@@ -499,12 +498,9 @@ router.delete("/creator/availability/slots", async (req, res) => {
 
 // GET /creator/bookings — list creator's bookings
 router.get("/creator/bookings", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[creator/bookings] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-  log("auth+rateLimit");
 
   const { date, pageToken } = req.query as Record<string, string | undefined>;
   const limit = 20;
@@ -533,7 +529,6 @@ router.get("/creator/bookings", async (req, res) => {
   }
 
   const snapshot = await query.get();
-  log(`query (${snapshot.size} docs)`);
   const docs = snapshot.docs.slice(0, limit);
   const hasMore = snapshot.docs.length > limit;
 

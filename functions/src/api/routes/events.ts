@@ -424,7 +424,6 @@ router.patch("/creator/events/:eventId", async (req, res) => {
 
 // PATCH /creator/events/:eventId/status — change event status
 router.patch("/creator/events/:eventId/status", async (req, res) => {
-  functions.logger.info("[events] PATCH status hit", { eventId: req.params.eventId, body: req.body });
 
   const auth = await validateAuth(req);
   requireCreator(auth);
@@ -447,15 +446,10 @@ router.patch("/creator/events/:eventId/status", async (req, res) => {
   await verifyEventOwnership(req.params.eventId, auth.userId);
 
   const docRef = db.collection("events").doc(req.params.eventId);
-  functions.logger.info("[events] writing status to Firestore", { eventId: req.params.eventId, status });
   await docRef.update({
     status,
     updated_at: FieldValue.serverTimestamp(),
   });
-
-  // Read back to confirm
-  const confirm = await docRef.get();
-  functions.logger.info("[events] status after write", { eventId: req.params.eventId, status: confirm.data()?.status });
 
   res.json({ data: { eventId: req.params.eventId, status } });
 });

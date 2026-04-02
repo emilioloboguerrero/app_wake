@@ -23,6 +23,7 @@ import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import { FullScreenError, GlowingEffect, ScrollProgress } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -228,6 +229,7 @@ export default function PlanEditorScreen() {
   const seededRef = useRef(false);
   const justSeededRef = useRef(false);
   const lastSavedRef = useRef({ name: '', macros: '', categoriesJson: '' });
+  const pendingSaveRef = useRef(null);
   const assignmentCopyExistsRef = useRef(false);
   const [editingCategoryIndex, setEditingCategoryIndex] = useState(null);
   const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
@@ -393,7 +395,8 @@ export default function PlanEditorScreen() {
 
     if (!isAssignmentScope) setHasMadeChanges(true);
 
-    const t = setTimeout(async () => {
+    const doSave = async () => {
+      pendingSaveRef.current = null;
       try {
         const expandedCategories = expandRecipeRefsLocally(planPayload.categories, mealsMap);
         const payloadToSave = {
@@ -421,14 +424,28 @@ export default function PlanEditorScreen() {
         }
         lastSavedRef.current = { name, macros, categoriesJson };
         queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
+        if (isAssignmentScope) {
+          queryClient.invalidateQueries({ queryKey: ['nutrition', 'plan', 'assignment', assignmentId] });
+        } else {
+          queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plan(creatorId, planId) });
+        }
       } catch (e) {
         logger.error(e);
-        showToast('No pudimos guardar los cambios. Revisa tu conexion.', 'error');
+        showToast('Error guardando el plan. Intenta de nuevo.', 'error');
       }
-    }, 700);
+    };
+
+    pendingSaveRef.current = doSave;
+    const t = setTimeout(doSave, 700);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) pendingSaveRef.current();
+    };
+  }, []);
 
   useEffect(() => {
     if (!planId || isAssignmentScope || !hasMadeChanges) return;
@@ -1346,6 +1363,7 @@ export default function PlanEditorScreen() {
         onPropagate={handleNavigatePropagate}
         onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
       />
+      <ContextualHint screenKey="plan-editor" />
     </DashboardLayout>
     </>
   );

@@ -89,6 +89,7 @@ export default function NutritionPlansPanel({ searchQuery = '', sortKey, onCreat
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
     ...cacheConfig.otherPrograms,
+    refetchOnMount: true,
   });
 
   const q = searchQuery.trim().toLowerCase();

@@ -38,6 +38,7 @@ export default function ClientNutritionTab({
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
     staleTime: 5 * 60 * 1000,
+    refetchOnMount: true,
   });
 
   // ── Client's active assignments ──────────────────────────────
@@ -46,6 +47,7 @@ export default function ClientNutritionTab({
     queryFn: () => nutritionDb.getAssignmentsByUser(clientUserId),
     enabled: !!clientUserId,
     staleTime: 2 * 60 * 1000,
+    refetchOnMount: false,
   });
 
   // nutritionGoal and dietaryRestrictions are passed as props from ClientScreen
@@ -62,6 +64,7 @@ export default function ClientNutritionTab({
 
   // ── Assign mutation ──────────────────────────────────────────
   const assignMutation = useMutation({
+    mutationKey: ['nutrition', 'assign', clientUserId],
     mutationFn: (planId) => nutritionDb.createAssignment({
       userId: clientUserId,
       planId,
@@ -75,6 +78,7 @@ export default function ClientNutritionTab({
 
   // ── Remove mutation ──────────────────────────────────────────
   const removeMutation = useMutation({
+    mutationKey: ['nutrition', 'unassign', clientUserId],
     mutationFn: () => nutritionDb.deleteAssignment(activeAssignment.id, clientUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', clientUserId] });

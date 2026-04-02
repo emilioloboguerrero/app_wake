@@ -481,7 +481,7 @@ const CalendarView = ({
         }
         const weekKey = getMondayWeek(date);
         const weekdayIndex = (date.getDay() + 6) % 7;
-        if (planAssignments[weekKey] && onAddLibrarySessionToPlanDay) {
+        if (onAddLibrarySessionToPlanDay) {
           onAddLibrarySessionToPlanDay({ weekKey, dayIndex: weekdayIndex, librarySessionId: libSessionId });
         } else if (onSessionAssignment) {
           onSessionAssignment({

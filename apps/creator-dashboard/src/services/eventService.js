@@ -9,14 +9,12 @@ class EventService {
   async getEventsByCreator(_creatorId) {
     const result = await apiClient.get('/creator/events');
     const events = (result?.data ?? []).map((e) => ({ id: e.eventId, ...e }));
-    console.log('[eventService] getEventsByCreator raw statuses:', events.map(e => ({ id: e.id, status: e.status })));
     return events;
   }
 
   async getEvent(eventId) {
     try {
       const result = await apiClient.get(`/creator/events/${eventId}`);
-      console.log('[eventService] getEvent raw response', { eventId, status: result?.data?.status });
       if (!result?.data) return null;
       return { id: result.data.eventId, ...result.data };
     } catch (error) {
@@ -33,11 +31,9 @@ class EventService {
   async updateEvent(eventId, eventData) {
     const keys = Object.keys(eventData);
     if (keys.length === 1 && keys[0] === 'status') {
-      console.log('[eventService] PATCH status', { eventId, status: eventData.status });
       const result = await apiClient.patch(`/creator/events/${eventId}/status`, {
         status: eventData.status,
       });
-      console.log('[eventService] PATCH status response', result);
       return result?.data;
     }
     const result = await apiClient.patch(`/creator/events/${eventId}`, eventData);

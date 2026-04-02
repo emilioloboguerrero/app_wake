@@ -4,7 +4,7 @@
   flex-direction: column;
   gap: 16px;
   padding-top: 4px;
-  max-width: 600px;
+  width: 100%;
 }
 
 .pnt-section-title {
@@ -278,10 +278,10 @@
 }
 
 .pnt-library-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 280px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  max-height: 400px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.08) transparent;

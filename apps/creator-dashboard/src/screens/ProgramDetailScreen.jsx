@@ -8,6 +8,7 @@ import OneOnOneProgramView from '../components/program/OneOnOneProgramView';
 import GroupProgramView from '../components/program/GroupProgramView';
 import { useProgram } from '../hooks/usePrograms';
 import { useAuth } from '../contexts/AuthContext';
+import ContextualHint from '../components/hints/ContextualHint';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import apiClient from '../utils/apiClient';
 import libraryService from '../services/libraryService';
@@ -67,6 +68,7 @@ const ProgramDetailScreen = ({ backTo }) => {
           backTo={backTo}
           refetchProgram={refetch}
         />
+        <ContextualHint screenKey="program-detail" />
       </ErrorBoundary>
     );
   }
@@ -79,6 +81,7 @@ const ProgramDetailScreen = ({ backTo }) => {
         backTo={backTo}
         refetchProgram={refetch}
       />
+      <ContextualHint screenKey="program-detail" />
     </ErrorBoundary>
   );
 };

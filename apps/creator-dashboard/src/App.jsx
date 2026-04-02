@@ -3,12 +3,14 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'rea
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { MediaUploadProvider } from './contexts/MediaUploadContext';
+import UploadStatusCard from './components/ui/UploadStatusCard';
 import LoginScreen from './screens/LoginScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
 import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
 import ProgramDetailScreen from './screens/ProgramDetailScreen';
 import LibraryContentScreen from './screens/LibraryContentScreen';
-import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
+import OnboardingEducation from './screens/onboarding/OnboardingEducation';
+import CompleteProfileScreen from './screens/CompleteProfileScreen';
 
 import ProfileScreen from './screens/ProfileScreen';
 import ClientScreen from './screens/ClientScreen';
@@ -30,6 +32,7 @@ import BibliotecaScreen from './screens/BibliotecaScreen';
 import ProgramasScreen from './screens/ProgramasScreen';
 import ClientesScreen from './screens/ClientesScreen';
 
+import DebugScreenTracker from './components/DebugScreenTracker';
 import './App.css';
 
 const RedirectLibrarySessionEdit = () => {
@@ -44,12 +47,20 @@ function AppContent() {
     <Router basename={CREATOR_BASE}>
         <div className="App">
           <Routes>
-            <Route path="/login" element={<LoginScreen />} />
+            <Route path="/login" element={<DebugScreenTracker name="LoginScreen"><LoginScreen /></DebugScreenTracker>} />
             <Route
               path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <DashboardScreen />
+                  <DebugScreenTracker name="DashboardScreen"><DashboardScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/complete-profile"
+              element={
+                <ProtectedRoute requireOnboarding={false} requireCreator={false}>
+                  <DebugScreenTracker name="CompleteProfileScreen"><CompleteProfileScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -57,7 +68,7 @@ function AppContent() {
               path="/onboarding"
               element={
                 <ProtectedRoute requireOnboarding={false}>
-                  <CreatorOnboardingScreen />
+                  <DebugScreenTracker name="OnboardingEducation"><OnboardingEducation /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -73,7 +84,7 @@ function AppContent() {
               path="/libraries/:libraryId"
               element={
                 <ProtectedRoute>
-                  <LibraryExercisesScreen />
+                  <DebugScreenTracker name="LibraryExercisesScreen"><LibraryExercisesScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -81,7 +92,7 @@ function AppContent() {
               path="/content/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <LibrarySessionDetailScreen />
+                  <DebugScreenTracker name="LibrarySessionDetailScreen"><LibrarySessionDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -90,7 +101,7 @@ function AppContent() {
               path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit"
               element={
                 <ProtectedRoute>
-                  <LibrarySessionDetailScreen />
+                  <DebugScreenTracker name="PlanSessionEditScreen"><LibrarySessionDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -98,7 +109,7 @@ function AppContent() {
               path="/plans/:planId/modules/:moduleId/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <PlanSessionDetailScreen />
+                  <DebugScreenTracker name="PlanSessionDetailScreen"><PlanSessionDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -106,7 +117,7 @@ function AppContent() {
               path="/plans/:planId"
               element={
                 <ProtectedRoute>
-                  <PlanDetailScreen />
+                  <DebugScreenTracker name="PlanDetailScreen"><PlanDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -115,7 +126,7 @@ function AppContent() {
               path="/biblioteca"
               element={
                 <ProtectedRoute>
-                  <BibliotecaScreen />
+                  <DebugScreenTracker name="BibliotecaScreen"><BibliotecaScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -123,7 +134,7 @@ function AppContent() {
               path="/programas"
               element={
                 <ProtectedRoute>
-                  <ProgramasScreen />
+                  <DebugScreenTracker name="ProgramasScreen"><ProgramasScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -131,7 +142,7 @@ function AppContent() {
               path="/clientes"
               element={
                 <ProtectedRoute>
-                  <ClientesScreen />
+                  <DebugScreenTracker name="ClientesScreen"><ClientesScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -139,7 +150,7 @@ function AppContent() {
               path="/clientes/programa/:programId"
               element={
                 <ProtectedRoute>
-                  <ProgramDetailScreen backTo="/clientes?tab=asesorias" />
+                  <DebugScreenTracker name="ProgramDetailScreen"><ProgramDetailScreen backTo="/clientes?tab=asesorias" /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -152,7 +163,7 @@ function AppContent() {
               path="/programs/:programId"
               element={
                 <ProtectedRoute>
-                  <ProgramDetailScreen backTo="/programas" />
+                  <DebugScreenTracker name="ProgramDetailScreen"><ProgramDetailScreen backTo="/programas" /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -163,7 +174,7 @@ function AppContent() {
               path="/clients/:clientId"
               element={
                 <ProtectedRoute>
-                  <ClientScreen />
+                  <DebugScreenTracker name="ClientScreen"><ClientScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -171,7 +182,7 @@ function AppContent() {
               path="/one-on-one/:clientId"
               element={
                 <ProtectedRoute>
-                  <ClientScreen />
+                  <DebugScreenTracker name="ClientScreen"><ClientScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -181,7 +192,7 @@ function AppContent() {
               path="/nutrition/meals/new"
               element={
                 <ProtectedRoute>
-                  <MealEditorScreen />
+                  <DebugScreenTracker name="MealEditorScreen"><MealEditorScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -189,7 +200,7 @@ function AppContent() {
               path="/nutrition/meals/:mealId"
               element={
                 <ProtectedRoute>
-                  <MealEditorScreen />
+                  <DebugScreenTracker name="MealEditorScreen"><MealEditorScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -197,7 +208,7 @@ function AppContent() {
               path="/nutrition/plans/:planId"
               element={
                 <ProtectedRoute>
-                  <PlanEditorScreen />
+                  <DebugScreenTracker name="PlanEditorScreen"><PlanEditorScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -205,7 +216,7 @@ function AppContent() {
               path="/profile"
               element={
                 <ProtectedRoute>
-                  <ProfileScreen />
+                  <DebugScreenTracker name="ProfileScreen"><ProfileScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -213,7 +224,7 @@ function AppContent() {
               path="/api-keys"
               element={
                 <ProtectedRoute>
-                  <ApiKeysScreen />
+                  <DebugScreenTracker name="ApiKeysScreen"><ApiKeysScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -229,7 +240,7 @@ function AppContent() {
               path="/library/sessions/new"
               element={
                 <ProtectedRoute>
-                  <CreateLibrarySessionScreen />
+                  <DebugScreenTracker name="CreateLibrarySessionScreen"><CreateLibrarySessionScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -238,7 +249,7 @@ function AppContent() {
               path="/library/content"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -246,7 +257,7 @@ function AppContent() {
               path="/library/content/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -254,7 +265,7 @@ function AppContent() {
               path="/library/content/modules/:moduleId"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -262,7 +273,7 @@ function AppContent() {
               path="/library/content/modules/:moduleId/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -270,7 +281,7 @@ function AppContent() {
               path="/events"
               element={
                 <ProtectedRoute>
-                  <EventsScreen />
+                  <DebugScreenTracker name="EventsScreen"><EventsScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -278,7 +289,7 @@ function AppContent() {
               path="/events/new"
               element={
                 <ProtectedRoute>
-                  <EventEditorScreen />
+                  <DebugScreenTracker name="EventEditorScreen"><EventEditorScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -286,7 +297,7 @@ function AppContent() {
               path="/events/:eventId/edit"
               element={
                 <ProtectedRoute>
-                  <EventResultsScreen />
+                  <DebugScreenTracker name="EventResultsScreen"><EventResultsScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -294,7 +305,7 @@ function AppContent() {
               path="/events/:eventId/results"
               element={
                 <ProtectedRoute>
-                  <EventResultsScreen />
+                  <DebugScreenTracker name="EventResultsScreen"><EventResultsScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -302,7 +313,7 @@ function AppContent() {
               path="/events/:eventId/checkin"
               element={
                 <ProtectedRoute>
-                  <EventCheckinScreen />
+                  <DebugScreenTracker name="EventCheckinScreen"><EventCheckinScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -319,6 +330,7 @@ function App() {
       <ToastProvider>
         <MediaUploadProvider>
           <AppContent />
+          <UploadStatusCard />
         </MediaUploadProvider>
       </ToastProvider>
     </AuthProvider>

@@ -27,7 +27,7 @@ import ScreenSkeleton from '../components/ScreenSkeleton';
 import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
 import { GlowingEffect, ProgressRing, NumberTicker } from '../components/ui';
 import TubelightNavBar from '../components/ui/TubelightNavBar';
-import SpotlightTutorial from '../components/ui/SpotlightTutorial';
+import ContextualHint from '../components/hints/ContextualHint';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis } from 'recharts';
@@ -106,11 +106,6 @@ const TAB_CONFIG = [
   { id: 'perfil', label: 'Perfil' },
 ];
 
-const TUTORIAL_STEPS = [
-  { selector: '[data-tutorial="client-program-week"]', title: 'Semana del cliente', body: 'La semana de tu cliente. Cada celda es un dia con las sesiones asignadas.' },
-  { selector: '[data-tutorial="client-program-nutrition"]', title: 'Nutricion', body: 'El plan de nutricion asignado con los macros objetivo y la adherencia real.' },
-  { selector: '[data-tutorial="client-program-lab"]', title: 'Lab', body: 'Metricas de progreso: peso corporal, volumen de entrenamiento, adherencia.' },
-];
 
 const ClientProgramScreen = () => {
   const { clientId } = useParams();
@@ -2393,7 +2388,7 @@ const ClientProgramScreen = () => {
           {renderTabContent()}
         </div>
 
-        <SpotlightTutorial screenKey="client-program" steps={TUTORIAL_STEPS} />
+        <ContextualHint screenKey="client-detail" />
 
         {/* Session performance modal - used from Planificación (calendar cards and history-only cards) */}
         <SessionPerformanceModal

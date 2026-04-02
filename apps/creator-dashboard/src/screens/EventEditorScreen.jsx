@@ -24,6 +24,7 @@ import {
 } from '../components/events/eventFieldComponents';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
+import ContextualHint from '../components/hints/ContextualHint';
 import './EventEditorScreen.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -580,6 +581,7 @@ export default function EventEditorScreen() {
           </div>
         )}
       </div>
+      <ContextualHint screenKey="event-editor" />
     </DashboardLayout>
     </ErrorBoundary>
   );

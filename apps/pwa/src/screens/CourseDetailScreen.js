@@ -44,6 +44,7 @@ import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -83,6 +84,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   
   // Video player state
   const [videoUri, setVideoUri] = useState(null);
+  const [videoSourceType, setVideoSourceType] = useState(null);
   const [isVideoPaused, setIsVideoPaused] = useState(false);
   const [creatorProfileImage, setCreatorProfileImage] = useState(null);
   const [creatorDisplayName, setCreatorDisplayName] = useState('');
@@ -164,8 +166,9 @@ const CourseDetailScreen = ({ navigation, route }) => {
     [course?.deliveryType, course?.delivery_type]
   );
   
-  // Initialize video player
-  const videoPlayer = useVideoPlayer(videoUri, (player) => {
+  // Initialize video player — skip external URLs (YouTube/Vimeo use iframe)
+  const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
+  const videoPlayer = useVideoPlayer(isExternalVideo ? null : videoUri, (player) => {
     if (player) {
       player.loop = false;
       player.muted = isMuted;
@@ -626,9 +629,12 @@ useEffect(() => {
   // Set video URI when course data is available
   useEffect(() => {
     if (course?.video_intro_url) {
+      const source = detectVideoSource(course.video_intro_url, course.video_intro_source);
       setVideoUri(course.video_intro_url);
+      setVideoSourceType(source);
     } else if (course?.image_url) {
-      setVideoUri(null); // Fallback to image
+      setVideoUri(null);
+      setVideoSourceType(null);
     }
   }, [course]);
 
@@ -1086,13 +1092,15 @@ useEffect(() => {
     }
 
     const currencyCode = course.currency || course.currency_id || 'COP';
+    const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
+    const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
     const purchaseButtonText = course.price
-      ? `Comprar - ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(course.price)} ${currencyCode}`
+      ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
       : 'Comprar';
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
-        style={[styles.primaryButton, purchasing && styles.disabledButton]} 
+        style={[styles.primaryButton, purchasing && styles.disabledButton]}
         onPress={handlePurchaseCourse}
         disabled={purchasing}
       >
@@ -1101,6 +1109,11 @@ useEffect(() => {
             <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
             <Text style={styles.primaryButtonText}>Procesando compra...</Text>
           </>
+        ) : hasCompareAt ? (
+          <View style={styles.priceRow}>
+            <Text style={styles.compareAtPriceText}>{formatPrice(course.compare_at_price)}</Text>
+            <Text style={styles.primaryButtonText}>{`Comprar - ${formatPrice(course.price)} ${currencyCode}`}</Text>
+          </View>
         ) : (
           <Text style={styles.primaryButtonText}>
             {purchaseButtonText}
@@ -1271,9 +1284,21 @@ useEffect(() => {
                   (videoUri || course?.image_url) && styles.imageCardNoBorder
                 ]}
               >
-                {videoUri ? (
+                {videoUri && isExternalVideo && Platform.OS === 'web' ? (
                   <VideoCardWebWrapper>
-                  <TouchableOpacity 
+                    <View style={styles.videoContainer}>
+                      <iframe
+                        src={getEmbedUrl(videoUri, videoSourceType)}
+                        style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
+                        allow="autoplay; encrypted-media"
+                        allowFullScreen
+                        title="Course intro video"
+                      />
+                    </View>
+                  </VideoCardWebWrapper>
+                ) : videoUri ? (
+                  <VideoCardWebWrapper>
+                  <TouchableOpacity
                     style={styles.videoContainer}
                     onPress={handleVideoTap}
                     activeOpacity={1}
@@ -1303,7 +1328,7 @@ useEffect(() => {
                     {isVideoPaused && (
                       <VideoOverlayWebWrapper>
                         <View style={styles.volumeIconContainer}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.volumeIconButton}
                           onPress={toggleMute}
                           activeOpacity={0.7}
@@ -1320,7 +1345,7 @@ useEffect(() => {
                     {isVideoPaused && (
                       <VideoOverlayWebWrapper>
                         <View style={styles.restartIconContainer}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.restartIconButton}
                           onPress={handleVideoRestart}
                           activeOpacity={0.7}
@@ -2156,6 +2181,16 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  priceRow: {
+    alignItems: 'center',
+  },
+  compareAtPriceText: {
+    color: 'rgba(26, 26, 26, 0.45)',
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'line-through',
+    marginBottom: 2,
   },
   buttonPriceText: {
     color: 'rgba(255, 255, 255, 1)',

@@ -6,11 +6,11 @@ export async function listFiles() {
   return (result?.data ?? []).map((f) => ({ ...f, id: f.fileId }));
 }
 
-const MAX_UPLOAD_SIZE = 50 * 1024 * 1024; // 50MB
+const MAX_UPLOAD_SIZE = 300 * 1024 * 1024; // 300MB
 
 export async function uploadFile(_creatorId, file, onProgress = null) {
   if (file.size > MAX_UPLOAD_SIZE) {
-    throw new Error('El archivo es demasiado grande. El tamaño máximo es 50MB');
+    throw new Error('El archivo es demasiado grande. El tamaño máximo es 300MB');
   }
 
   if (onProgress) onProgress(10);

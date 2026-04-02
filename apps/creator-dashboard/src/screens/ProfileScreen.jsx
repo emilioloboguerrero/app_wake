@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import Input from '../components/Input';
-import { GlowingEffect, ShimmerSkeleton, SpotlightTutorial } from '../components/ui';
+import { GlowingEffect, ShimmerSkeleton } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import { InlineError, FullScreenError } from '../components/ui/ErrorStates';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import profilePictureService from '../services/profilePictureService';
-import userPreferencesService from '../services/userPreferencesService';
 import authService from '../services/authService';
 import apiClient from '../utils/apiClient';
 import useAutoSave from '../hooks/useAutoSave';
@@ -17,33 +16,20 @@ import { useToast } from '../contexts/ToastContext';
 import { GetCountries, GetState, GetCity } from 'react-country-state-city';
 import logger from '../utils/logger';
 import InstagramCarousel from '../components/creator/InstagramCarousel';
+import MediaPickerModal from '../components/MediaPickerModal';
 import './ProfileScreen.css';
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '[data-tutorial="profile-photo"]',
-    title: 'Tu foto',
-    body: 'Tu foto aparece en tu perfil publico y en el panel de tus clientes.',
-  },
-  {
-    selector: '[data-tutorial="profile-username"]',
-    title: 'Tu usuario',
-    body: 'Tu nombre de usuario es tu link unico. Compartelo con tus clientes.',
-  },
-  {
-    selector: '[data-tutorial="profile-instagram"]',
-    title: 'Instagram',
-    body: 'Conecta tu feed de Instagram para darle vida a tu perfil.',
-  },
-  {
-    selector: '[data-tutorial="profile-nav"]',
-    title: 'Navegacion',
-    body: 'Puedes esconder secciones que no uses para mantener tu menu limpio.',
-  },
-];
+const useDebouncedValue = (value, delay) => {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+};
 
 const ProfileScreen = () => {
-  const { user, refreshUserData, isCreator } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const queryClientHook = useQueryClient();
   const { showToast } = useToast();
@@ -55,36 +41,16 @@ const ProfileScreen = () => {
     ...cacheConfig.userProfile,
   });
 
-  const [saving, setSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
-
-  const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
+  // ── Form state ──
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [gender, setGender] = useState('');
-  const [city, setCity] = useState('');
   const [country, setCountry] = useState('');
-  const [birthDate, setBirthDate] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
-  const [bio, setBio] = useState('');
-  const [profilePicture, setProfilePicture] = useState(null);
+  const [city, setCity] = useState('');
+
+  // Photo
   const [profilePicturePreview, setProfilePicturePreview] = useState(null);
-
-  const [originalValues, setOriginalValues] = useState(null);
-
-  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
-  const [showCityDropdown, setShowCityDropdown] = useState(false);
-  const [countrySearchQuery, setCountrySearchQuery] = useState('');
-  const [citySearchQuery, setCitySearchQuery] = useState('');
-
-  const fileInputRef = useRef(null);
-
-  const [usernameAvailable, setUsernameAvailable] = useState(null);
-  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
+  const [savingPhoto, setSavingPhoto] = useState(false);
 
   // Instagram
   const [instagramInput, setInstagramInput] = useState('');
@@ -93,223 +59,154 @@ const ProfileScreen = () => {
   const [navEventos, setNavEventos] = useState(true);
   const [navDisponibilidad, setNavDisponibilidad] = useState(true);
 
+  // Dropdowns
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
+  const [showCityDropdown, setShowCityDropdown] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
+  const [citySearchQuery, setCitySearchQuery] = useState('');
+
+  // Link copy feedback
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const [originalValues, setOriginalValues] = useState(null);
+
+  // ── Countries & cities ──
   const { data: countries = [] } = useQuery({
     queryKey: ['countries'],
     queryFn: async () => {
       const allCountries = (await GetCountries()) || [];
       return allCountries
-        .map((c) => ({
-          value: c.iso2,
-          label: c.name,
-          name: c.name,
-        }))
+        .map((c) => ({ value: c.iso2, label: c.name, name: c.name }))
         .sort((a, b) => a.label.localeCompare(b.label));
     },
     staleTime: Infinity,
   });
 
-  const { data: citiesList = [], isLoading: loadingCities } = useQuery({
+  const { data: citiesList = [] } = useQuery({
     queryKey: ['cities', country],
     queryFn: async () => {
       const allCountries = (await GetCountries()) || [];
       const countryObj = allCountries.find((c) => c.iso2 === country);
       if (!countryObj) return [];
-
       const states = (await GetState(countryObj.id)) || [];
-      const allCities = [];
-
       if (states.length > 0) {
-        for (const state of states) {
-          try {
-            const stateCities = (await GetCity(countryObj.id, state.id)) || [];
-            allCities.push(...stateCities);
-          } catch {
-            console.error(`Error loading cities for state ${state.name}`);
-          }
-        }
-      } else {
-        try {
-          const directCities = (await GetCity(countryObj.id, 0)) || [];
-          allCities.push(...directCities);
-        } catch {
-          console.error('Could not get cities directly');
-        }
+        const cityArrays = await Promise.all(
+          states.map((state) => GetCity(countryObj.id, state.id).catch(() => []))
+        );
+        return cityArrays.flat();
       }
-
-      return allCities;
+      try { return (await GetCity(countryObj.id, 0)) || []; }
+      catch { return []; }
     },
     enabled: !!country,
     staleTime: Infinity,
   });
 
-  // Debounced username availability check
-  useEffect(() => {
-    const savedUsername = originalValues?.username ?? '';
-    if (username === savedUsername) {
-      setUsernameAvailable(null);
-      return;
-    }
-    if (!username || username.length < 3) {
-      setUsernameAvailable(null);
-      return;
-    }
+  // Username availability
+  const debouncedUsername = useDebouncedValue(username, 600);
+  const savedUsername = originalValues?.username ?? '';
+  const shouldCheckUsername = !!debouncedUsername && debouncedUsername.length >= 3 && debouncedUsername !== savedUsername;
 
-    const timer = setTimeout(async () => {
-      setIsCheckingUsername(true);
-      try {
-        const data = await apiClient.get(`/creator/username-check?username=${encodeURIComponent(username)}`);
-        setUsernameAvailable(data.available);
-      } catch {
-        setUsernameAvailable(null);
-      } finally {
-        setIsCheckingUsername(false);
-      }
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [username, originalValues]);
-
-  const { data: navPrefsData, isSuccess: navPrefsLoaded } = useQuery({
-    queryKey: ['navPreferences', user?.uid],
-    queryFn: () => userPreferencesService.getNavPreferences(),
-    enabled: !!user?.uid,
-    staleTime: 5 * 60 * 1000,
+  const { data: usernameCheckData, isFetching: isCheckingUsername } = useQuery({
+    queryKey: ['username-check', debouncedUsername],
+    queryFn: () => apiClient.get(`/creator/username-check?username=${encodeURIComponent(debouncedUsername)}`),
+    enabled: shouldCheckUsername,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
   });
+  const usernameAvailable = shouldCheckUsername ? (usernameCheckData?.available ?? null) : null;
 
+  // Nav prefs from profile
   useEffect(() => {
-    if (!navPrefsData) return;
-    setNavEventos(navPrefsData.eventos !== false);
-    setNavDisponibilidad(navPrefsData.disponibilidad !== false);
-  }, [navPrefsData]);
+    if (!userData) return;
+    const prefs = userData.creatorNavPreferences;
+    setNavEventos(prefs?.eventos !== false);
+    setNavDisponibilidad(prefs?.disponibilidad !== false);
+  }, [userData]);
 
-  const getFilteredCountries = useMemo(() => {
+  // Sync form on data load
+  useEffect(() => {
+    if (!user || !userData) return;
+    const d = userData;
+
+    const vals = {
+      name: d.displayName || user.displayName || '',
+      username: d.username || '',
+      country: d.country || '',
+      city: d.city || '',
+      profilePictureUrl: d.profilePictureUrl || null,
+    };
+
+    setName(vals.name);
+    setUsername(vals.username);
+    setCountry(vals.country);
+    setCity(vals.city);
+    setOriginalValues(vals);
+
+    if (d.profilePictureUrl) setProfilePicturePreview(d.profilePictureUrl);
+  }, [userData, user]);
+
+  // ── Filtered dropdowns ──
+  const filteredCountries = useMemo(() => {
     if (!countrySearchQuery.trim()) return countries;
-    const searchLower = countrySearchQuery.toLowerCase();
-    return countries.filter(
-      (c) =>
-        c.label.toLowerCase().includes(searchLower) || c.name.toLowerCase().includes(searchLower)
-    );
+    const q = countrySearchQuery.toLowerCase();
+    return countries.filter((c) => c.label.toLowerCase().includes(q));
   }, [countries, countrySearchQuery]);
 
   const filteredCities = useMemo(() => {
     if (!country || citiesList.length === 0) return [];
-
-    const searchLower = citySearchQuery.toLowerCase();
-
-    if (!searchLower) {
-      return citiesList.slice(0, 100).map((c) => c.name);
-    }
-
-    return citiesList
-      .filter((c) => c.name.toLowerCase().includes(searchLower))
-      .map((c) => c.name)
-      .slice(0, 50);
+    const q = citySearchQuery.toLowerCase();
+    if (!q) return citiesList.slice(0, 100).map((c) => c.name);
+    return citiesList.filter((c) => c.name.toLowerCase().includes(q)).map((c) => c.name).slice(0, 50);
   }, [citiesList, country, citySearchQuery]);
 
   const getCountryLabel = (value) => {
     if (!value) return '';
-    const countryObj = countries.find((c) => c.value === value);
-    return countryObj ? countryObj.label : value;
+    const c = countries.find((c) => c.value === value);
+    return c ? c.label : value;
   };
 
-  // Sync form fields when userData from React Query changes
-  useEffect(() => {
-    const data = userData;
-    if (!user || !data) return;
+  // ── Auto-save ──
+  const getFormSnapshot = useCallback(() => ({
+    name, username, country, city,
+  }), [name, username, country, city]);
 
-    const initialDisplayName = data?.displayName || user.displayName || '';
-    const initialName = data?.displayName || user.displayName || '';
-    const initialUsername = data?.username || '';
-    const initialEmail = data?.email || user.email || '';
-    const initialGender = data?.gender || '';
-    const initialCity = data?.city || '';
-    const initialCountry = data?.country || '';
-    const initialHeight = data?.height || '';
-    const initialWeight = data?.weight || '';
-    const initialBirthDate = data?.birthDate || '';
-    const initialBio = data?.bio || '';
+  const saveProfile = useCallback(async (snapshot) => {
+    if (!user) return;
+    const updateData = {};
 
-    setDisplayName(initialDisplayName);
-    setName(initialName);
-    setUsername(initialUsername);
-    setEmail(initialEmail);
-    setGender(initialGender);
-    setCity(initialCity);
-    setCountry(initialCountry);
-    setHeight(initialHeight);
-    setWeight(initialWeight);
-    setBirthDate(initialBirthDate);
-    setBio(initialBio);
+    if (snapshot.name.trim() !== (userData?.displayName || '')) updateData.displayName = snapshot.name.trim();
+    if (snapshot.username.trim() !== (userData?.username || '')) updateData.username = snapshot.username.trim().toLowerCase();
+    if (snapshot.country.trim() !== (userData?.country || '')) updateData.country = snapshot.country.trim();
+    if (snapshot.city.trim() !== (userData?.city || '')) updateData.city = snapshot.city.trim();
 
-    setOriginalValues({
-      displayName: initialDisplayName,
-      name: initialName,
-      username: initialUsername,
-      gender: initialGender,
-      city: initialCity,
-      country: initialCountry,
-      height: initialHeight,
-      weight: initialWeight,
-      birthDate: initialBirthDate,
-      bio: initialBio,
-      profilePictureUrl: data?.profilePictureUrl || null,
-    });
+    if (Object.keys(updateData).length === 0) return;
+    await apiClient.patch('/users/me', updateData);
+    await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+  }, [user, userData, queryClientHook]);
 
-    if (data?.profilePictureUrl) {
-      setProfilePicturePreview(data.profilePictureUrl);
-    }
-  }, [userData, user]);
+  const { trigger: autoSaveTrigger, isSaving: isAutoSaving } = useAutoSave(
+    saveProfile,
+    { delay: 800, successMessage: 'Cambios guardados', errorMessage: 'No pudimos guardar los cambios.' }
+  );
 
-  const processImageFile = (file) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      showToast('Por favor selecciona una imagen válida', 'error');
-      return;
-    }
-    setProfilePicture(file);
-    const reader = new FileReader();
-    reader.onload = (e) => setProfilePicturePreview(e.target.result);
-    reader.readAsDataURL(file);
-  };
-
-  const handleFileSelect = (event) => processImageFile(event.target.files[0]);
-
-  const handleDragOver = (e) => { e.preventDefault(); setIsDraggingOver(true); };
-  const handleDragLeave = () => setIsDraggingOver(false);
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDraggingOver(false);
-    processImageFile(e.dataTransfer?.files?.[0]);
-  };
-
-  const handleProfilePictureUpload = async () => {
-    if (!profilePicture || !user) return;
+  // ── Handlers ──
+  const handleMediaPickerSelect = async (item) => {
+    setIsMediaPickerOpen(false);
+    if (!item?.url || !user) return;
     try {
-      setIsUploading(true);
-      setUploadProgress(0);
-
-      const newPhotoURL = await profilePictureService.uploadProfilePicture(
-        user.uid,
-        profilePicture,
-        (progress) => setUploadProgress(progress)
-      );
-
-      await refreshUserData();
+      setSavingPhoto(true);
+      setProfilePicturePreview(item.url);
+      await apiClient.patch('/users/me', { profilePictureUrl: item.url });
       await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
-
-      if (newPhotoURL) setProfilePicturePreview(newPhotoURL);
-      if (originalValues) setOriginalValues({ ...originalValues, profilePictureUrl: newPhotoURL });
-
-      setProfilePicture(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-
-      showToast('Foto actualizada con éxito', 'success');
+      if (originalValues) setOriginalValues({ ...originalValues, profilePictureUrl: item.url });
+      showToast('Foto actualizada', 'success');
     } catch (error) {
-      logger.error('Error uploading profile picture:', error);
-      showToast('No pudimos subir la foto. Intenta con otra imagen o revisa tu conexion.', 'error');
+      logger.error('Error updating profile picture:', error);
+      setProfilePicturePreview(originalValues?.profilePictureUrl || null);
+      showToast('No pudimos actualizar la foto.', 'error');
     } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
+      setSavingPhoto(false);
     }
   };
 
@@ -329,119 +226,32 @@ const ProfileScreen = () => {
     autoSaveTrigger({ ...getFormSnapshot(), city: selectedCity });
   };
 
-  const hasChanges = () => {
-    if (!originalValues) return false;
-
-    return (
-      displayName !== originalValues.displayName ||
-      name !== originalValues.name ||
-      username !== originalValues.username ||
-      gender !== originalValues.gender ||
-      city !== originalValues.city ||
-      country !== originalValues.country ||
-      height !== originalValues.height ||
-      weight !== originalValues.weight ||
-      birthDate !== originalValues.birthDate ||
-      bio !== originalValues.bio ||
-      profilePicture !== null
-    );
-  };
-
-  const handleCancel = () => {
-    if (!originalValues) return;
-
-    setDisplayName(originalValues.displayName);
-    setName(originalValues.name);
-    setUsername(originalValues.username);
-    setGender(originalValues.gender);
-    setCity(originalValues.city);
-    setCountry(originalValues.country);
-    setHeight(originalValues.height);
-    setWeight(originalValues.weight);
-    setBirthDate(originalValues.birthDate);
-    setBio(originalValues.bio);
-    setProfilePicture(null);
-    setProfilePicturePreview(originalValues.profilePictureUrl);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-
-    setUsernameAvailable(null);
-  };
-
-  const handleSignOut = async () => {
+  const handleCopyLink = async () => {
+    const link = `wake.co/${username || 'tu_usuario'}`;
     try {
-      await authService.signOutUser();
-      navigate('/login');
-    } catch (error) {
-      logger.error('Error signing out:', error);
-      showToast('Error al cerrar sesión. Intenta de nuevo.', 'error');
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      showToast('No se pudo copiar el link', 'error');
     }
   };
 
-  const saveProfile = useCallback(async (snapshot) => {
-    if (!user) return;
-
-    const updateData = {};
-
-    if (snapshot.name.trim() !== (userData?.displayName || '')) updateData.displayName = snapshot.name.trim();
-    if (snapshot.username.trim() !== (userData?.username || '')) updateData.username = snapshot.username.trim().toLowerCase();
-    if (snapshot.gender !== (userData?.gender || '')) updateData.gender = snapshot.gender;
-    if (snapshot.city.trim() !== (userData?.city || '')) updateData.city = snapshot.city.trim();
-    if (snapshot.country.trim() !== (userData?.country || '')) updateData.country = snapshot.country.trim();
-    if (String(snapshot.height) !== String(userData?.height || ''))
-      updateData.height = parseFloat(snapshot.height) || null;
-    if (String(snapshot.weight) !== String(userData?.weight || ''))
-      updateData.weight = parseFloat(snapshot.weight) || null;
-    if (snapshot.birthDate && snapshot.birthDate !== (userData?.birthDate || ''))
-      updateData.birthDate = snapshot.birthDate;
-    if (snapshot.bio !== undefined && snapshot.bio.trim() !== (userData?.bio || ''))
-      updateData.bio = snapshot.bio.trim();
-
-    if (Object.keys(updateData).length === 0) return;
-
-    await apiClient.patch('/users/me', updateData);
-
-    await refreshUserData();
-    await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
-
-    setProfilePicture(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [user, userData, refreshUserData, queryClientHook]);
-
-  const { trigger: autoSaveTrigger, flush: autoSaveFlush, isSaving: isAutoSaving } = useAutoSave(
-    saveProfile,
-    { delay: 800, successMessage: 'Cambios guardados', errorMessage: 'No pudimos guardar los cambios.' }
-  );
-
-  const getFormSnapshot = useCallback(() => ({
-    name,
-    username,
-    gender,
-    city,
-    country,
-    height,
-    weight,
-    birthDate,
-    bio,
-  }), [name, username, gender, city, country, height, weight, birthDate, bio]);
-
-  const handleSave = async () => {
-    if (!user) return;
+  const handleNavToggle = async (key, value) => {
+    const next = { eventos: navEventos, disponibilidad: navDisponibilidad, [key]: value };
+    if (key === 'eventos') setNavEventos(value);
+    else setNavDisponibilidad(value);
     try {
-      setSaving(true);
-      await autoSaveFlush(getFormSnapshot());
+      await apiClient.patch('/users/me', { creatorNavPreferences: next });
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+      showToast('Preferencias guardadas', 'success');
     } catch (error) {
-      logger.error('Error saving profile:', error);
-      showToast('No pudimos guardar los cambios.', 'error');
-    } finally {
-      setSaving(false);
+      logger.error('Error saving nav preferences:', error);
+      showToast('No se pudieron guardar las preferencias', 'error');
+      if (key === 'eventos') setNavEventos(!value);
+      else setNavDisponibilidad(!value);
     }
   };
-
-  // Instagram
-  const feedId = userData?.beholdFeedId;
 
   const handleInstagramSave = async () => {
     if (!instagramInput.trim()) return;
@@ -455,49 +265,59 @@ const ProfileScreen = () => {
     }
   };
 
-  // Nav toggles
-  const handleNavToggle = async (key, value) => {
-    const next = { eventos: navEventos, disponibilidad: navDisponibilidad, [key]: value };
-    if (key === 'eventos') setNavEventos(value);
-    else setNavDisponibilidad(value);
+  const handleSignOut = async () => {
     try {
-      await userPreferencesService.setNavPreferences(next);
-      showToast('Preferencias guardadas', 'success');
+      await authService.signOutUser();
+      navigate('/login');
     } catch (error) {
-      logger.error('Error saving nav preferences:', error);
-      showToast('No se pudieron guardar las preferencias', 'error');
-      if (key === 'eventos') setNavEventos(!value);
-      else setNavDisponibilidad(!value);
+      logger.error('Error signing out:', error);
+      showToast('Error al cerrar sesion. Intenta de nuevo.', 'error');
     }
   };
 
+  const feedId = userData?.beholdFeedId;
+  const navPrefsLoaded = !!userData;
+  const publicLink = `wake.co/${username || 'tu_usuario'}`;
+
+  // ── Loading ──
   if (loading) {
     return (
       <DashboardLayout screenName="Perfil">
         <div className="profile-screen">
           <div className="profile-content">
-            <div className="profile-card profile-card--loading">
+            <div className="profile-card profile-card--identity profile-card--loading">
               <GlowingEffect />
-              <ShimmerSkeleton width="96px" height="96px" borderRadius="50%" />
-              <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <ShimmerSkeleton height="14px" width="55%" />
+              <ShimmerSkeleton height="12px" width="35%" />
+              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                  <ShimmerSkeleton width="72px" height="72px" borderRadius="50%" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <ShimmerSkeleton height="44px" />
+                  </div>
+                </div>
                 <ShimmerSkeleton height="44px" />
-                <ShimmerSkeleton height="44px" />
-                <ShimmerSkeleton height="44px" width="75%" />
               </div>
             </div>
-            <div className="profile-card profile-card--loading">
+            <div className="profile-card profile-card--location profile-card--loading">
               <GlowingEffect />
-              <ShimmerSkeleton height="14px" width="40%" />
-              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <ShimmerSkeleton height="88px" />
-              </div>
-            </div>
-            <div className="profile-card profile-card--loading">
-              <GlowingEffect />
-              <ShimmerSkeleton height="14px" width="35%" />
+              <ShimmerSkeleton height="12px" width="45%" />
               <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <ShimmerSkeleton height="44px" />
+                <ShimmerSkeleton height="44px" />
+              </div>
+            </div>
+            <div className="profile-card profile-card--prefs profile-card--loading">
+              <GlowingEffect />
+              <ShimmerSkeleton height="12px" width="35%" />
+              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <ShimmerSkeleton height="36px" />
+                <ShimmerSkeleton height="36px" />
+              </div>
+            </div>
+            <div className="profile-card profile-card--account profile-card--loading">
+              <GlowingEffect />
+              <ShimmerSkeleton height="12px" width="30%" />
+              <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <ShimmerSkeleton height="44px" />
               </div>
             </div>
@@ -527,189 +347,108 @@ const ProfileScreen = () => {
         <div className="profile-screen">
           <div className="profile-content">
 
-            {/* ── Section 1: Foto de perfil ─────────────────── */}
-            <div className="profile-card" style={{ animationDelay: '0ms' }}>
+            {/* ── 1. Identidad publica ── */}
+            <div className="profile-card profile-card--identity" style={{ animationDelay: '0ms' }}>
               <GlowingEffect />
-              <p className="profile-card__label" data-tutorial="profile-photo">Tu foto</p>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                style={{ display: 'none' }}
-              />
-
-              <div className="profile-photo-area">
-                <div
-                  className={`profile-drop-zone${isDraggingOver ? ' profile-drop-zone--over' : ''}${profilePicturePreview ? ' profile-drop-zone--has-image' : ''}`}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
-                >
-                  {profilePicturePreview ? (
-                    <>
-                      <img src={profilePicturePreview} alt="Foto de perfil" className="profile-drop-zone__image" />
-                      <div className="profile-drop-zone__overlay">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                        </svg>
-                        <span>Cambiar foto</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="profile-drop-zone__empty">
-                      <div className="profile-drop-zone__icon-wrap">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          <polyline points="17 8 12 3 7 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          <line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </div>
-                      <p className="profile-drop-zone__title">Ponle cara a tu marca</p>
-                      <p className="profile-drop-zone__hint">Arrastra una imagen o haz clic para seleccionar</p>
-                    </div>
-                  )}
-                </div>
-
-                {profilePicture && (
-                  <div className="profile-photo-actions">
-                    {isUploading ? (
-                      <div className="profile-upload-progress">
-                        <div className="profile-upload-progress__track">
-                          <div className="profile-upload-progress__fill" style={{ width: `${Math.round(uploadProgress)}%` }} />
-                        </div>
-                        <span className="profile-upload-progress__label">Subiendo… {Math.round(uploadProgress)}%</span>
-                      </div>
-                    ) : (
-                      <button className="profile-btn-primary" onClick={handleProfilePictureUpload} disabled={isUploading}>
-                        Guardar foto
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Section 2: Identidad ──────────────────────── */}
-            <div className="profile-card" style={{ animationDelay: '60ms' }}>
-              <GlowingEffect />
-              <div className="profile-card__header">
-                <p className="profile-card__label">Informacion basica</p>
-                {hasChanges() && (
-                  <button className="profile-btn-ghost" onClick={handleCancel} disabled={saving}>
-                    Cancelar
-                  </button>
-                )}
-              </div>
+              <p className="profile-card__label">Identidad publica</p>
 
               <div className="profile-fields">
-                <div className="profile-field">
-                  <label className="profile-field__label">Nombre</label>
-                  <Input
-                    placeholder="Nombre completo"
-                    value={name}
-                    onChange={(e) => { setName(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), name: e.target.value }); }}
-                  />
+                {/* Photo + name row */}
+                <div className="profile-identity-row" data-tutorial="profile-photo">
+                  <div
+                    className="profile-avatar"
+                    onClick={() => setIsMediaPickerOpen(true)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIsMediaPickerOpen(true); }}
+                  >
+                    {profilePicturePreview ? (
+                      <img src={profilePicturePreview} alt="" className="profile-avatar__img" />
+                    ) : (
+                      <div className="profile-avatar__placeholder">
+                        {(name || 'C').charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="profile-avatar__hover">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                    </div>
+                    {savingPhoto && <div className="profile-avatar__saving" />}
+                  </div>
+                  <div className="profile-identity-info">
+                    <div className="profile-field">
+                      <label className="profile-field__label">Nombre</label>
+                      <Input
+                        placeholder="Tu nombre completo"
+                        value={name}
+                        onChange={(e) => { setName(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), name: e.target.value }); }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="profile-field" data-tutorial="profile-username">
+                {/* Username + link */}
+                <div className="profile-field" data-tutorial="profile-link">
                   <label className="profile-field__label">Usuario</label>
-                  <p className="profile-field__helper">Este es tu link unico: wake.co/{username || 'tu_usuario'}</p>
                   <div className="profile-username-wrap">
                     <Input
                       placeholder="tu_usuario"
                       value={username}
                       onChange={(e) => { const v = e.target.value.toLowerCase(); setUsername(v); autoSaveTrigger({ ...getFormSnapshot(), username: v }); }}
                     />
-                    {isCheckingUsername && <span className="profile-username-badge profile-username-badge--checking">Verificando…</span>}
+                    {isCheckingUsername && <span className="profile-username-badge profile-username-badge--checking">Verificando...</span>}
                     {!isCheckingUsername && usernameAvailable === true && <span className="profile-username-badge profile-username-badge--ok">Disponible</span>}
                   </div>
                   {!isCheckingUsername && usernameAvailable === false && (
                     <InlineError message="Ese nombre de usuario ya esta en uso." field="username" />
                   )}
+                  <div className="profile-link-row">
+                    <span className="profile-link-row__url">{publicLink}</span>
+                    <button
+                      className={`profile-link-row__copy${linkCopied ? ' profile-link-row__copy--done' : ''}`}
+                      onClick={handleCopyLink}
+                      type="button"
+                    >
+                      {linkCopied ? 'Copiado' : 'Copiar'}
+                    </button>
+                  </div>
                 </div>
+              </div>
+            </div>
 
-                <div className="profile-field">
-                  <label className="profile-field__label">Correo electrónico</label>
-                  <Input placeholder="Correo electrónico" value={email} onChange={() => {}} disabled />
-                </div>
+            {/* ── 2. Ubicacion + Redes ── */}
+            <div className="profile-card profile-card--location" style={{ animationDelay: '60ms' }}>
+              <GlowingEffect />
+              <p className="profile-card__label">Ubicacion y redes</p>
 
+              <div className="profile-fields">
                 <div className="profile-form-row">
                   <div className="profile-form-field">
-                    <label className="profile-form-label">Género</label>
-                    <select className="profile-form-select" value={gender} onChange={(e) => { setGender(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), gender: e.target.value }); }}>
-                      <option value="">Seleccionar</option>
-                      <option value="male">Masculino</option>
-                      <option value="female">Femenino</option>
-                      <option value="other">Otro</option>
-                    </select>
-                  </div>
-                  <div className="profile-form-field">
-                    <label className="profile-form-label">Fecha de nacimiento</label>
-                    <input type="date" className="profile-date-input" value={birthDate} onChange={(e) => { setBirthDate(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), birthDate: e.target.value }); }} />
-                  </div>
-                </div>
-
-                <div className="profile-form-row">
-                  <div className="profile-form-field">
-                    <label className="profile-form-label">Altura (cm)</label>
-                    <div className="profile-number-input-wrapper">
-                      <Input type="number" placeholder="Altura" value={height} onChange={(e) => { setHeight(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), height: e.target.value }); }} />
-                      <div className="profile-number-spinner">
-                        <button type="button" className="profile-spinner-button" onClick={() => { const v = String((parseFloat(height) || 0) + 1); setHeight(v); autoSaveTrigger({ ...getFormSnapshot(), height: v }); }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/></svg>
-                        </button>
-                        <button type="button" className="profile-spinner-button" onClick={() => { const v = String(Math.max(0, (parseFloat(height) || 0) - 1)); setHeight(v); autoSaveTrigger({ ...getFormSnapshot(), height: v }); }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="profile-form-field">
-                    <label className="profile-form-label">Peso (kg)</label>
-                    <div className="profile-number-input-wrapper">
-                      <Input type="number" placeholder="Peso" value={weight} onChange={(e) => { setWeight(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), weight: e.target.value }); }} />
-                      <div className="profile-number-spinner">
-                        <button type="button" className="profile-spinner-button" onClick={() => { const v = String((parseFloat(weight) || 0) + 1); setWeight(v); autoSaveTrigger({ ...getFormSnapshot(), weight: v }); }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 12 12)"/></svg>
-                        </button>
-                        <button type="button" className="profile-spinner-button" onClick={() => { const v = String(Math.max(0, (parseFloat(weight) || 0) - 1)); setWeight(v); autoSaveTrigger({ ...getFormSnapshot(), weight: v }); }}>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M19 9L12 16L5 9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="profile-section-divider">Ubicacion</p>
-
-                <div className="profile-form-row">
-                  <div className="profile-form-field">
-                    <label className="profile-form-label">País</label>
+                    <label className="profile-form-label">Pais</label>
                     <div className="profile-dropdown-container">
                       {!showCountryDropdown ? (
                         <div className="profile-dropdown-button" onClick={() => setShowCountryDropdown(true)}>
-                          <span className={country ? 'profile-dropdown-text' : 'profile-dropdown-placeholder'}>{country ? getCountryLabel(country) : 'Selecciona tu país…'}</span>
-                          <span className="profile-dropdown-chevron profile-dropdown-chevron-right">›</span>
+                          <span className={country ? 'profile-dropdown-text' : 'profile-dropdown-placeholder'}>{country ? getCountryLabel(country) : 'Selecciona...'}</span>
+                          <span className="profile-dropdown-chevron">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                          </span>
                         </div>
                       ) : (
                         <div className="profile-dropdown-button profile-dropdown-active">
-                          <input type="text" className="profile-dropdown-search" value={countrySearchQuery} onChange={(e) => setCountrySearchQuery(e.target.value)} placeholder="Buscar país…" autoFocus />
-                          <span className="profile-dropdown-chevron profile-dropdown-chevron-down" onClick={() => { setShowCountryDropdown(false); setCountrySearchQuery(''); }}>›</span>
+                          <input type="text" className="profile-dropdown-search" value={countrySearchQuery} onChange={(e) => setCountrySearchQuery(e.target.value)} placeholder="Buscar pais..." autoFocus />
+                          <span className="profile-dropdown-chevron" onClick={() => { setShowCountryDropdown(false); setCountrySearchQuery(''); }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+                          </span>
                         </div>
                       )}
                       {showCountryDropdown && (
                         <div className="profile-dropdown-list">
-                          {getFilteredCountries.map((option) => (
+                          {filteredCountries.map((option) => (
                             <div key={option.value} className={`profile-dropdown-option${country === option.value ? ' profile-dropdown-option-selected' : ''}`} onClick={() => handleCountrySelect(option.value)}>{option.label}</div>
                           ))}
-                          {getFilteredCountries.length === 0 && <div className="profile-dropdown-option">No se encontraron países</div>}
+                          {filteredCountries.length === 0 && <div className="profile-dropdown-option profile-dropdown-option--empty">No se encontraron paises</div>}
                         </div>
                       )}
                     </div>
@@ -719,13 +458,17 @@ const ProfileScreen = () => {
                     <div className="profile-dropdown-container">
                       {!showCityDropdown ? (
                         <div className={`profile-dropdown-button${!country ? ' profile-dropdown-disabled' : ''}`} onClick={() => country && setShowCityDropdown(true)}>
-                          <span className={city ? 'profile-dropdown-text' : 'profile-dropdown-placeholder'}>{city || (!country ? 'Primero selecciona un país' : 'Selecciona tu ciudad…')}</span>
-                          <span className="profile-dropdown-chevron profile-dropdown-chevron-right">›</span>
+                          <span className={city ? 'profile-dropdown-text' : 'profile-dropdown-placeholder'}>{city || (!country ? 'Primero selecciona un pais' : 'Selecciona...')}</span>
+                          <span className="profile-dropdown-chevron">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                          </span>
                         </div>
                       ) : (
                         <div className="profile-dropdown-button profile-dropdown-active">
-                          <input type="text" className="profile-dropdown-search" value={citySearchQuery} onChange={(e) => setCitySearchQuery(e.target.value)} placeholder="Buscar ciudad…" autoFocus />
-                          <span className="profile-dropdown-chevron profile-dropdown-chevron-down" onClick={() => { setShowCityDropdown(false); setCitySearchQuery(''); }}>›</span>
+                          <input type="text" className="profile-dropdown-search" value={citySearchQuery} onChange={(e) => setCitySearchQuery(e.target.value)} placeholder="Buscar ciudad..." autoFocus />
+                          <span className="profile-dropdown-chevron" onClick={() => { setShowCityDropdown(false); setCitySearchQuery(''); }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+                          </span>
                         </div>
                       )}
                       {showCityDropdown && (
@@ -733,85 +476,60 @@ const ProfileScreen = () => {
                           {filteredCities.map((cityOption) => (
                             <div key={cityOption} className={`profile-dropdown-option${city === cityOption ? ' profile-dropdown-option-selected' : ''}`} onClick={() => handleCitySelect(cityOption)}>{cityOption}</div>
                           ))}
-                          {filteredCities.length === 0 && <div className="profile-dropdown-option">No se encontraron ciudades</div>}
+                          {filteredCities.length === 0 && <div className="profile-dropdown-option profile-dropdown-option--empty">No se encontraron ciudades</div>}
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <p className="profile-section-divider">Tu bio</p>
                 <div className="profile-field">
-                  <textarea
-                    className="profile-textarea"
-                    placeholder="Cuenta un poco sobre ti y tu enfoque como coach..."
-                    value={bio}
-                    onChange={(e) => { setBio(e.target.value); autoSaveTrigger({ ...getFormSnapshot(), bio: e.target.value }); }}
-                    rows={3}
-                    maxLength={300}
-                  />
-                  <span className="profile-textarea-count">{bio.length}/300</span>
+                  <label className="profile-field__label">Instagram</label>
+                  {feedId ? (
+                    <div className="profile-instagram-connected">
+                      <div className="profile-instagram-id">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                          <rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5"/>
+                          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5"/>
+                          <circle cx="17.5" cy="6.5" r="1" fill="currentColor"/>
+                        </svg>
+                        <span className="profile-instagram-id__text">Conectado</span>
+                      </div>
+                      <InstagramCarousel feedId={feedId} />
+                    </div>
+                  ) : (
+                    <div className="profile-instagram-setup">
+                      <p className="profile-instagram-hint">
+                        Conecta tu Instagram para mostrar tu feed en tu perfil publico.
+                      </p>
+                      <div className="profile-instagram-input-row">
+                        <input
+                          className="profile-text-input"
+                          placeholder="Feed ID de Behold.so"
+                          value={instagramInput}
+                          onChange={(e) => setInstagramInput(e.target.value)}
+                        />
+                        <button className="profile-btn-sm" onClick={handleInstagramSave} disabled={!instagramInput.trim()}>
+                          Conectar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {isAutoSaving && !hasChanges() && (
-                  <p className="profile-autosave-indicator">Guardando…</p>
-                )}
-                {hasChanges() && (
-                  <button className="profile-btn-primary profile-btn-primary--full" onClick={handleSave} disabled={saving || isAutoSaving}>
-                    {saving || isAutoSaving ? 'Guardando…' : 'Guardar cambios'}
-                  </button>
-                )}
               </div>
             </div>
 
-            {/* ── Section 3: Instagram ──────────────────────── */}
-            <div className="profile-card" style={{ animationDelay: '120ms' }} data-tutorial="profile-instagram">
+            {/* ── 4. Preferencias ── */}
+            <div className="profile-card profile-card--prefs" style={{ animationDelay: '180ms' }} data-tutorial="profile-nav">
               <GlowingEffect />
-              <p className="profile-card__label">Instagram</p>
-
-              {feedId ? (
-                <div className="profile-instagram-connected">
-                  <div className="profile-instagram-id">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                      <rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor" strokeWidth="1.5"/>
-                      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.5"/>
-                      <circle cx="17.5" cy="6.5" r="1" fill="currentColor"/>
-                    </svg>
-                    <span className="profile-instagram-id__text">{feedId}</span>
-                  </div>
-                  <InstagramCarousel feedId={feedId} />
-                </div>
-              ) : (
-                <div className="profile-instagram-setup">
-                  <p className="profile-instagram-hint">
-                    Conecta tu Instagram para mostrar tu feed en tu perfil publico.
-                  </p>
-                  <div className="profile-instagram-input-row">
-                    <input
-                      className="profile-text-input"
-                      placeholder="Feed ID de Behold.so"
-                      value={instagramInput}
-                      onChange={(e) => setInstagramInput(e.target.value)}
-                    />
-                    <button className="profile-btn-primary" onClick={handleInstagramSave} disabled={!instagramInput.trim()}>
-                      Guardar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── Section 4: Navegacion ─────────────────────── */}
-            <div className="profile-card" style={{ animationDelay: '180ms' }} data-tutorial="profile-nav">
-              <GlowingEffect />
-              <p className="profile-card__label">Navegacion</p>
-              <p className="profile-card__sub">Escoge que secciones quieres ver en tu menu. Puedes cambiar esto cuando quieras.</p>
+              <p className="profile-card__label">Preferencias</p>
+              <p className="profile-card__sub">Escoge que secciones quieres ver en tu menu.</p>
 
               <div className="profile-nav-toggles">
                 <div className="profile-nav-toggle-row">
                   <div className="profile-nav-toggle-info">
-                    <span className="profile-nav-toggle-name">Mostrar Eventos</span>
-                    <span className="profile-nav-toggle-desc">Sección de eventos en el menú</span>
+                    <span className="profile-nav-toggle-name">Eventos</span>
+                    <span className="profile-nav-toggle-desc">Seccion de eventos en el menu</span>
                   </div>
                   {navPrefsLoaded ? (
                     <button
@@ -832,8 +550,8 @@ const ProfileScreen = () => {
 
                 <div className="profile-nav-toggle-row">
                   <div className="profile-nav-toggle-info">
-                    <span className="profile-nav-toggle-name">Mostrar Disponibilidad</span>
-                    <span className="profile-nav-toggle-desc">Gestión de horarios en el menú</span>
+                    <span className="profile-nav-toggle-name">Disponibilidad</span>
+                    <span className="profile-nav-toggle-desc">Gestion de horarios en el menu</span>
                   </div>
                   {navPrefsLoaded ? (
                     <button
@@ -852,16 +570,35 @@ const ProfileScreen = () => {
               </div>
             </div>
 
-            {/* ── Logout ────────────────────────────────────── */}
-            <div className="profile-logout-section">
-              <button className="profile-logout-button" onClick={handleSignOut}>
-                Cerrar sesión
-              </button>
+            {/* ── 5. Cuenta ── */}
+            <div className="profile-card profile-card--account" style={{ animationDelay: '240ms' }}>
+              <GlowingEffect />
+              <p className="profile-card__label">Cuenta</p>
+
+              <div className="profile-fields">
+                <div className="profile-field">
+                  <label className="profile-field__label">Correo electronico</label>
+                  <Input placeholder="Correo" value={user?.email || ''} onChange={() => {}} disabled />
+                </div>
+
+                <button className="profile-logout-button" onClick={handleSignOut}>
+                  Cerrar sesion
+                </button>
+              </div>
             </div>
 
           </div>
+          {isAutoSaving && (
+            <p className="profile-autosave-indicator">Guardando...</p>
+          )}
         </div>
-        <SpotlightTutorial screenKey="profile" steps={TUTORIAL_STEPS} />
+        <ContextualHint screenKey="profile" />
+        <MediaPickerModal
+          isOpen={isMediaPickerOpen}
+          onClose={() => setIsMediaPickerOpen(false)}
+          onSelect={handleMediaPickerSelect}
+          accept="image/*"
+        />
       </DashboardLayout>
     </ErrorBoundary>
   );

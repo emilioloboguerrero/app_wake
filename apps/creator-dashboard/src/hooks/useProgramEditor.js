@@ -44,6 +44,7 @@ export default function useProgramEditor(programId, program) {
   const detailKey = queryKeys.programs.detail(programId);
 
   const updateFieldMutation = useMutation({
+    mutationKey: ['programs', 'update-field'],
     mutationFn: (updates) => programService.updateProgram(programId, updates),
     onMutate: async (updates) => {
       await queryClient.cancelQueries({ queryKey: detailKey });
@@ -63,6 +64,7 @@ export default function useProgramEditor(programId, program) {
   });
 
   const updateStatusMutation = useMutation({
+    mutationKey: ['programs', 'update-status'],
     mutationFn: (status) => apiClient.patch(`/creator/programs/${programId}/status`, { status }),
     onMutate: async (status) => {
       await queryClient.cancelQueries({ queryKey: detailKey });

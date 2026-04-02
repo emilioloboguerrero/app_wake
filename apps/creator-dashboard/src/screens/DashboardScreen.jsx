@@ -4,7 +4,8 @@ import { LayoutGrid, Grid3X3, Pencil, Check, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { BentoGrid, BentoCard, GlowingEffect, SpotlightTutorial, Marquee } from '../components/ui';
+import { BentoGrid, BentoCard, GlowingEffect, Marquee } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import {
   ClientsWidget,
@@ -70,19 +71,6 @@ const DEFAULT_SLOTS = {
     G: 'expiring-access',
   },
 };
-
-const TUTORIAL_STEPS = [
-  {
-    selector: '.bento-grid',
-    title: 'Tu centro de control',
-    body: 'Este es tu centro de control. Cada tarjeta muestra una métrica importante de tu negocio.',
-  },
-  {
-    selector: '.spt-fab',
-    title: 'Feedback',
-    body: 'Algo que no funcione o que quieras ver? Mandanos feedback directo desde acá.',
-  },
-];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -171,7 +159,6 @@ function useGreeting(displayName) {
 }
 
 const DashboardScreen = () => {
-  console.log(`[boot] DashboardScreen render — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
   const { user } = useAuth();
   const greeting = useGreeting(user?.displayName);
   const [layout, setLayout] = useState(getStoredLayout);
@@ -231,61 +218,68 @@ const DashboardScreen = () => {
     setEditingSlot(null);
   }, []);
 
-  // ── Queries ──────────────────────────────────────────────────────────────
+  // ── Queries (only fetch data for widgets currently in the layout) ─────────
+
+  const activeWidgetIds = useMemo(
+    () => new Set(Object.values(slotAssignments).filter(Boolean)),
+    [slotAssignments]
+  );
+
+  const hasWidget = useCallback((...ids) => ids.some(id => activeWidgetIds.has(id)), [activeWidgetIds]);
 
   const bookingsQuery = useQuery({
     queryKey: ['bookings', 'creator', user?.uid],
     queryFn: () => apiClient.get('/creator/bookings'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('calls', 'upcoming-calls'),
     ...cacheConfig.events,
   });
 
   const revenueQuery = useQuery({
     queryKey: ['analytics', 'revenue', user?.uid],
     queryFn: () => apiClient.get('/analytics/revenue'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('revenue', 'clients'),
     ...cacheConfig.analytics,
   });
 
   const adherenceQuery = useQuery({
     queryKey: ['analytics', 'adherence', user?.uid],
     queryFn: () => apiClient.get('/analytics/adherence'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('adherence', 'sessions'),
     ...cacheConfig.analytics,
   });
 
   const activityQuery = useQuery({
     queryKey: ['analytics', 'client-activity', user?.uid],
     queryFn: () => apiClient.get('/analytics/client-activity'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('client-activity'),
     ...cacheConfig.analytics,
   });
 
   const trendQuery = useQuery({
     queryKey: ['analytics', 'client-trend', user?.uid],
     queryFn: () => apiClient.get('/analytics/client-trend'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('client-trend'),
     ...cacheConfig.analytics,
   });
 
   const revenueTrendQuery = useQuery({
     queryKey: ['analytics', 'revenue-trend', user?.uid],
     queryFn: () => apiClient.get('/analytics/revenue-trend'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('revenue-trend'),
     ...cacheConfig.analytics,
   });
 
   const expiringQuery = useQuery({
     queryKey: ['analytics', 'expiring-access', user?.uid],
     queryFn: () => apiClient.get('/analytics/expiring-access'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('expiring-access'),
     ...cacheConfig.analytics,
   });
 
   const calendarQuery = useQuery({
     queryKey: ['analytics', 'calendar-preview', user?.uid],
     queryFn: () => apiClient.get('/analytics/calendar-preview'),
-    enabled: !!user?.uid,
+    enabled: !!user?.uid && hasWidget('calendar-preview'),
     ...cacheConfig.events,
   });
 
@@ -526,7 +520,7 @@ const DashboardScreen = () => {
             })}
           </BentoGrid>
 
-          <SpotlightTutorial screenKey="dashboard" steps={TUTORIAL_STEPS} />
+          <ContextualHint screenKey="dashboard" />
         </div>
       </DashboardLayout>
     </ErrorBoundary>

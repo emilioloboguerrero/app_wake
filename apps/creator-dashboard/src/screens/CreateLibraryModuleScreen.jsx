@@ -3,6 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
+import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
+import { Revealable, RevealProgressBar } from '../components/guide';
 import libraryService from '../services/libraryService';
 import { queryKeys } from '../config/queryClient';
 import { useToast } from '../contexts/ToastContext';
@@ -19,6 +21,7 @@ const CreateLibraryModuleScreen = () => {
   const [moduleName, setModuleName] = useState('');
 
   const createModuleMutation = useMutation({
+    mutationKey: ['library-modules', 'create'],
     mutationFn: () => libraryService.createLibraryModule(user.uid, {
       title: moduleName.trim(),
       sessionRefs: [],
@@ -42,6 +45,7 @@ const CreateLibraryModuleScreen = () => {
   };
 
   return (
+    <ProgressiveRevealProvider screenKey="create-module">
     <DashboardLayout
       screenName="Nuevo Módulo"
       showBackButton={true}
@@ -49,37 +53,41 @@ const CreateLibraryModuleScreen = () => {
       backState={backState}
     >
       <div className="clm-root">
-        <div className="clm-form-container">
-          <h1 className="clm-title">Nuevo Módulo de Biblioteca</h1>
-          <p className="clm-subtitle">Biblioteca de módulos</p>
+        <Revealable step="module-form">
+          <div className="clm-form-container">
+            <h1 className="clm-title">Nuevo Módulo de Biblioteca</h1>
+            <p className="clm-subtitle">Biblioteca de módulos</p>
 
-          <div className="clm-form-group">
-            <label className="clm-label">Nombre del Módulo</label>
-            <input
-              className="clm-input"
-              placeholder="Nombre del módulo"
-              value={moduleName}
-              onChange={(e) => setModuleName(e.target.value)}
-              type="text"
-            />
-          </div>
+            <div className="clm-form-group">
+              <label className="clm-label">Nombre del Módulo</label>
+              <input
+                className="clm-input"
+                placeholder="Nombre del módulo"
+                value={moduleName}
+                onChange={(e) => setModuleName(e.target.value)}
+                type="text"
+              />
+            </div>
 
-          <div className="clm-actions">
-            <button type="button" className="clm-btn-cancel" onClick={handleCancel}>
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="clm-btn-save"
-              onClick={handleCreateModule}
-              disabled={!moduleName.trim() || createModuleMutation.isPending}
-            >
-              {createModuleMutation.isPending ? 'Creando...' : 'Crear'}
-            </button>
+            <div className="clm-actions">
+              <button type="button" className="clm-btn-cancel" onClick={handleCancel}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="clm-btn-save"
+                onClick={handleCreateModule}
+                disabled={!moduleName.trim() || createModuleMutation.isPending}
+              >
+                {createModuleMutation.isPending ? 'Creando...' : 'Crear'}
+              </button>
+            </div>
           </div>
-        </div>
+        </Revealable>
       </div>
+      <RevealProgressBar />
     </DashboardLayout>
+    </ProgressiveRevealProvider>
   );
 };
 

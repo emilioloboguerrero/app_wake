@@ -652,13 +652,12 @@ export default function EventResultsScreen() {
   const { data: event, isLoading: eventLoading, isError: eventError } = useQuery({
     queryKey: queryKeys.events.detail(eventId),
     queryFn: async () => {
-      console.log('[EventResultsScreen] fetching event detail', eventId);
       const result = await eventService.getEvent(eventId);
-      console.log('[EventResultsScreen] event detail:', { id: result?.id, status: result?.status, title: result?.title });
       return result;
     },
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+    refetchOnMount: false,
   });
 
   const { data: registrations = [], isLoading: regsLoading } = useQuery({
@@ -666,6 +665,7 @@ export default function EventResultsScreen() {
     queryFn: () => eventService.getEventRegistrations(eventId),
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+    refetchOnMount: false,
   });
 
   const { data: waitlist = [], isLoading: waitlistLoading } = useQuery({
@@ -673,6 +673,7 @@ export default function EventResultsScreen() {
     queryFn: () => eventService.getEventWaitlist(eventId),
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+    refetchOnMount: false,
   });
 
   const { data: allCreatorEvents = [] } = useQuery({

@@ -250,18 +250,14 @@ async function getCreatorPayments(creatorId: string) {
 
 // GET /analytics/revenue
 router.get("/analytics/revenue", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/revenue] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const [paymentDocs, clientsSnap, callsSnap] = await Promise.all([
     getCreatorPayments(auth.userId),
     db.collection("one_on_one_clients").where("creatorId", "==", auth.userId).get(),
     db.collection("call_bookings").where("creatorId", "==", auth.userId).get(),
   ]);
-  log(`payments+clients+calls (${paymentDocs.length} payments, ${clientsSnap.size} clients, ${callsSnap.size} calls)`);
 
   let salesCount = 0;
   let grossRevenue = 0;
@@ -282,16 +278,12 @@ router.get("/analytics/revenue", async (req, res) => {
       oneOnOne: { clientCount: clientsSnap.size, callCount: callsSnap.size },
     },
   });
-  log("done");
 });
 
 // GET /analytics/adherence
 router.get("/analytics/adherence", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/adherence] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const programIdFilter = req.query.programId as string | undefined;
 
@@ -308,7 +300,6 @@ router.get("/analytics/adherence", async (req, res) => {
 
   const programDocs = programsResult.docs;
   const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string);
-  log(`programs+clients (${programDocs.length} programs, ${clientUserIds.length} clients)`);
 
   interface WeeklyPoint { week: string; adherence: number }
   interface ProgramAdherence {
@@ -436,7 +427,6 @@ router.get("/analytics/adherence", async (req, res) => {
     enrollmentByWeek.push({ week: ws, clients: count });
   }
 
-  log(`done (${byProgram.length} programs computed)`);
   res.json({
     data: { overallAdherence, byProgram, enrollmentHistory: enrollmentByWeek },
   });
@@ -812,17 +802,13 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
 
 // GET /analytics/client-activity
 router.get("/analytics/client-activity", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/client-activity] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const clientsSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
-  log(`clients query (${clientsSnap.size} clients)`);
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -885,7 +871,6 @@ router.get("/analytics/client-activity", async (req, res) => {
     })
   );
   const clients = clientResults.filter((c): c is ClientActivity => c !== null);
-  log(`per-client parallel done (${clients.length} clients processed)`);
 
   // Sort: active first, then inactive, then ghost
   const order = { active: 0, inactive: 1, ghost: 2 };
@@ -895,7 +880,6 @@ router.get("/analytics/client-activity", async (req, res) => {
   const inactiveCount = clients.filter(c => c.status === "inactive").length;
   const ghostCount = clients.filter(c => c.status === "ghost").length;
 
-  log("done");
   res.json({
     data: { clients, summary: { activeCount, inactiveCount, ghostCount, total: clients.length } },
   });
@@ -903,17 +887,13 @@ router.get("/analytics/client-activity", async (req, res) => {
 
 // GET /analytics/client-trend
 router.get("/analytics/client-trend", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/client-trend] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const clientsSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
-  log(`clients (${clientsSnap.size})`);
 
   // Group by month of enrollment
   const months: Record<string, number> = {};
@@ -946,7 +926,6 @@ router.get("/analytics/client-trend", async (req, res) => {
 
   // Programs sold: low_ticket courses (join through courses collection)
   const paymentDocs = await getCreatorPayments(auth.userId);
-  log(`payments (${paymentDocs.length})`);
 
   const programSales: Record<string, number> = {};
   let totalOneOnOne = clientsSnap.size;
@@ -970,7 +949,6 @@ router.get("/analytics/client-trend", async (req, res) => {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, count]) => ({ month, programsSold: count }));
 
-  log("done");
   res.json({
     data: { clientTrend: trend, salesTrend, totalOneOnOne, totalProgramsSold: paymentDocs.length },
   });
@@ -978,14 +956,10 @@ router.get("/analytics/client-trend", async (req, res) => {
 
 // GET /analytics/revenue-trend
 router.get("/analytics/revenue-trend", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/revenue-trend] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const paymentDocsForTrend = await getCreatorPayments(auth.userId);
-  log(`payments (${paymentDocsForTrend.length})`);
 
   const months: Record<string, { gross: number; count: number }> = {};
 
@@ -1017,23 +991,18 @@ router.get("/analytics/revenue-trend", async (req, res) => {
       sales: val.count,
     }));
 
-  log("done");
   res.json({ data: { trend } });
 });
 
 // GET /analytics/expiring-access
 router.get("/analytics/expiring-access", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/expiring-access] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const coursesSnap = await db
     .collection("courses")
     .where("creator_id", "==", auth.userId)
     .get();
-  log(`courses (${coursesSnap.size})`);
 
   const courseIds = new Set(coursesSnap.docs.map(d => d.id));
   if (courseIds.size === 0) {
@@ -1048,7 +1017,6 @@ router.get("/analytics/expiring-access", async (req, res) => {
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
-  log(`clients (${clientsSnap.size})`);
 
   const clientUserIds = clientsSnap.docs.map(d => (d.data().clientUserId ?? d.data().userId) as string);
 
@@ -1105,17 +1073,13 @@ router.get("/analytics/expiring-access", async (req, res) => {
 
   expiring.sort((a, b) => a.daysLeft - b.daysLeft);
 
-  log(`done (${expiring.length} expiring)`);
   res.json({ data: { expiring, count: expiring.length } });
 });
 
 // GET /analytics/calendar-preview
 router.get("/analytics/calendar-preview", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[analytics/calendar-preview] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
@@ -1157,7 +1121,6 @@ router.get("/analytics/calendar-preview", async (req, res) => {
     };
   });
 
-  log(`done (${events.length} events)`);
   res.json({
     data: {
       today: events.filter(e => e.isToday),

@@ -9,30 +9,18 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import {
   GlowingEffect,
   SkeletonCard,
-  SpotlightTutorial,
   MenuDropdown,
   FullScreenError,
   ConfirmDeleteModal,
   TextAnimate,
 } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import apiClient from '../utils/apiClient';
 import { cacheConfig, queryKeys } from '../config/queryClient';
 import './ProgramasScreen.css';
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '.pgs-card',
-    title: 'Tu programa',
-    body: 'Cada programa muestra cuantos clientes estan inscritos, su adherencia, y los ingresos generados.',
-  },
-  {
-    selector: '.pgs-fab',
-    title: 'Nuevo programa',
-    body: 'Crea un programa grupal. Despues puedes agregar semanas y arrastrar sesiones desde tu biblioteca.',
-  },
-];
 
 const ProgramaCard = ({ program, index, onClick, onDelete }) => {
   const enrollments = program.enrollmentCount ?? 0;
@@ -238,7 +226,7 @@ const ProgramasScreen = () => {
           </div>
         </div>
 
-        <SpotlightTutorial screenKey="programas" steps={TUTORIAL_STEPS} />
+        <ContextualHint screenKey="programas" />
 
         <CreateFlowOverlay
           isOpen={showCreate}

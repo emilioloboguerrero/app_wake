@@ -165,4 +165,8 @@
   max-width: 100%;
   border-radius: var(--radius-md);
   display: block;
+  border: none;
+  aspect-ratio: 9 / 14;
+  object-fit: cover;
+  background: #000;
 }

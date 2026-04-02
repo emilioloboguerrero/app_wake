@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import apiClient from '../utils/apiClient';
+import { queryKeys } from '../config/queryClient';
 import { ASSET_BASE } from '../config/assets';
 import './AuthContext.css';
 
@@ -62,6 +64,7 @@ export const useAuth = () => {
 export { AuthContext };
 
 export const AuthProvider = ({ children }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [webOnboardingCompleted, setWebOnboardingCompleted] = useState(null);
@@ -76,9 +79,9 @@ export const AuthProvider = ({ children }) => {
       setAuthError(null);
       if (firebaseUser) {
         try {
-          const t0 = performance.now();
           const { data } = await apiClient.get('/users/me');
-          console.log(`[boot] /users/me — ${Math.round(performance.now() - t0)}ms (role=${data.role})`);
+          // Seed React Query cache so DashboardLayout and other consumers don't re-fetch
+          queryClient.setQueryData(queryKeys.user.detail(firebaseUser.uid), data);
           setUserRole(data.role || 'user');
           setWebOnboardingCompleted(data.webOnboardingCompleted ?? false);
           setProfileCompleted(data.profileCompleted ?? false);
@@ -103,9 +106,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    console.log(`[boot] AuthProvider mounted — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log(`[boot] onAuthStateChanged — user=${!!firebaseUser} — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
       setUser(firebaseUser);
       if (firebaseUser) {
         setAuthenticating(true);
@@ -115,7 +116,6 @@ export const AuthProvider = ({ children }) => {
         await fetchUserData(null);
       }
       setLoading(false);
-      console.log(`[boot] auth loading=false — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
     });
 
     return unsubscribe;

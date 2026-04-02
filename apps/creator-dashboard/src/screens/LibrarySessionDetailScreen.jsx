@@ -11,6 +11,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 import { FullScreenError, GlowingEffect, AnimatedList, ScrollProgress } from '../components/ui';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import MediaPickerModal from '../components/MediaPickerModal';
+import MediaDropZone from '../components/ui/MediaDropZone';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import MeasuresObjectivesEditorModal from '../components/MeasuresObjectivesEditorModal';
@@ -23,6 +24,8 @@ import plansService from '../services/plansService';
 import propagationService from '../services/propagationService';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
+import { Revealable, RevealProgressBar } from '../components/guide';
 import EditScopeInfoModal from '../components/EditScopeInfoModal';
 import '../components/PropagateChangesModal.css';
 import {
@@ -50,6 +53,9 @@ import './LibrarySessionDetailScreen.css';
 import './ProgramDetailScreen.css';
 import './SharedScreenLayout.css';
 import useConfirm from '../hooks/useConfirm';
+
+// Stable reference for empty array props (avoids new [] on every render)
+const EMPTY_ARRAY = [];
 
 // Muscle display names (matching mobile app)
 const MUSCLE_DISPLAY_NAMES = {
@@ -362,7 +368,11 @@ const LibrarySessionDetailScreen = () => {
   const [hasClientCopy, setHasClientCopy] = useState(false);
   const [showScopeInfo, setShowScopeInfo] = useState(false);
   const [exercises, setExercises] = useState([]);
+  const exercisesRef = useRef(exercises);
+  exercisesRef.current = exercises;
   const [availableLibraries, setAvailableLibraries] = useState([]);
+  const availableLibrariesRef = useRef(availableLibraries);
+  availableLibrariesRef.current = availableLibraries;
   const [availableExercises, setAvailableExercises] = useState([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState('');
   const isEditMode = true;
@@ -492,41 +502,31 @@ const LibrarySessionDetailScreen = () => {
     });
   }, []);
 
-  const handleHeaderImageSelect = async (item) => {
-    if (!sessionId || !user) return;
-    try {
-      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-        await plansService.updateSession(planInstancePlanId, planInstanceModuleId, sessionId, { image_url: item.url });
-      } else if (effectiveIsAnyPlanContentEdit) {
-        await planContentApi.updateSession(effectiveWeekKey, sessionId, { image_url: item.url });
-      } else if (effectiveIsClientEdit) {
-        await clientSessionContentService.updateSession(effectiveClientSessionId, { image_url: item.url });
-      } else {
-        await libraryService.updateLibrarySession(user.uid, sessionId, { image_url: item.url });
-        setHasMadeChanges(true);
-      }
-      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
-      queryClient.setQueryData(
-        ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
-        (old) => old ? { ...old, session: { ...old.session, image_url: item.url } } : old
-      );
-    } catch (err) {
-      logger.error('Error updating session image:', err);
-      showToast('No pudimos actualizar la imagen. Intenta de nuevo.', 'error');
-    }
-    setIsMediaPickerOpen(false);
-  };
+  // ── Memoized callbacks for ExpandableExerciseCard ──────────────────────────
+  const handleExerciseUpdated = useCallback(() => {
+    setHasMadeChanges(true);
+    queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
+  }, [sessionId, queryClient]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: () => ({ x: 0, y: 0 }),
-    })
-  );
+  const handleCardEditPrimary = useCallback((ex) => {
+    setSelectedExercise(ex);
+    setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+    setPickerActiveExerciseId(ex.id);
+    setPickerMode('primary');
+    setSelectedLibraryForExercise(null);
+    setExercisesFromSelectedLibrary([]);
+    setAvailableLibrariesForSelection(availableLibraries);
+  }, [availableLibraries]);
+
+  const handleCardAddAlternative = useCallback((ex) => {
+    setSelectedExercise(ex);
+    setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+    setPickerActiveExerciseId(ex.id);
+    setPickerMode('add-alternative');
+    setSelectedLibraryForExercise(null);
+    setExercisesFromSelectedLibrary([]);
+    setAvailableLibrariesForSelection(availableLibraries);
+  }, [availableLibraries]);
 
   const ensureClientCopy = useCallback(async () => {
     if (!effectiveIsClientEdit || hasClientCopyRef.current || !user || !sessionId) return;
@@ -542,273 +542,6 @@ const LibrarySessionDetailScreen = () => {
       throw err;
     }
   }, [effectiveIsClientEdit, effectiveClientSessionId, user, sessionId]);
-
-  const { data: sessionQueryData, isLoading: loading, error: loadError } = useQuery({
-    queryKey: ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
-    queryFn: async () => {
-      if (!user || !sessionId) return null;
-      const t0 = performance.now();
-      const log = (label) => console.log(`[LSD queryFn] ${label} — ${Math.round(performance.now() - t0)}ms`);
-
-      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-        log('planInstance path START');
-        const sessionData = await plansService.getSessionById(planInstancePlanId, planInstanceModuleId, sessionId);
-        log(`done — ${sessionData?.exercises?.length ?? 0} exercises`);
-        if (!sessionData) return null;
-        return { session: sessionData, editMode: 'planInstance' };
-      }
-
-      // Resolve effective client-edit context from ref/sessionStorage
-      const effClientSessionId = effectiveClientSessionId;
-      const effClientId = effectiveClientId;
-      const effProgramId = effectiveProgramId;
-      const effWeekKey = effectiveWeekKey;
-      const effEditScope = effectiveEditScope;
-      const effIsClientEdit = (effEditScope === 'client') && !!effClientSessionId;
-      const effIsClientPlanEdit = (effEditScope === 'client_plan') && !!effClientId && !!effProgramId && !!effWeekKey;
-      const effIsProgramPlanEdit = (effEditScope === 'program_plan') && !!effProgramId && !!effWeekKey;
-      const effIsAnyPlanContentEdit = effIsClientPlanEdit || effIsProgramPlanEdit;
-      log(`resolved editScope=${effEditScope} clientPlan=${effIsClientPlanEdit} programPlan=${effIsProgramPlanEdit} clientEdit=${effIsClientEdit}`);
-
-      if (effIsAnyPlanContentEdit) {
-        log('planContent path START');
-        const planContent = effIsProgramPlanEdit
-          ? await programPlanContentService.getSessionContent(effProgramId, effWeekKey, sessionId)
-          : await clientPlanContentService.getClientPlanSessionContent(effClientId, effProgramId, effWeekKey, sessionId);
-        log(`getClientPlanSessionContent done — hasSession: ${!!planContent?.session}`);
-        if (planContent?.session) {
-          let exercises = planContent.exercises || [];
-          const sessionFromPlan = planContent.session;
-          const sourceLibId = sessionFromPlan.source_library_session_id ?? sessionFromPlan.librarySessionRef;
-          let libSession = null;
-          if (sourceLibId && user?.uid) {
-            try {
-              libSession = await libraryService.getLibrarySessionById(user.uid, sourceLibId);
-              log(`getLibrarySessionById done — ${libSession?.exercises?.length ?? 0} exercises`);
-              if (libSession?.exercises?.length && exercises.length === 0) {
-                exercises = libSession.exercises;
-              }
-            } catch (err) {
-              logger.warn('[LibrarySessionDetail] fallback: could not load exercises from library', sourceLibId, err);
-            }
-          }
-          const clientSession = {
-            ...sessionFromPlan,
-            exercises,
-            image_url: sessionFromPlan.image_url ?? libSession?.image_url ?? null,
-            title: sessionFromPlan.title ?? libSession?.title ?? sessionFromPlan.title
-          };
-          return { session: clientSession, editMode: 'clientPlan' };
-        }
-      }
-
-      if (effIsClientEdit) {
-        log('clientEdit path START');
-        const clientContent = await clientSessionContentService.getClientSessionContent(effClientSessionId);
-        log(`getClientSessionContent done — hasContent: ${!!clientContent}`);
-        if (clientContent) {
-          return { session: clientContent, editMode: 'client', hasCopy: true };
-        }
-        log('clientEdit returned null — falling through to library path');
-      }
-
-      // Standard library session (or fallthrough from client/plan paths that returned null)
-      log('library path START');
-      const libSession = await libraryService.getLibrarySessionById(user.uid, sessionId);
-      log(`done — ${libSession?.exercises?.length ?? 0} exercises`);
-      return { session: libSession, editMode: 'library' };
-    },
-    enabled: !!user && !!sessionId,
-    staleTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 0 : 5 * 60 * 1000,
-    gcTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 0 : 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  const { data: librariesData } = useQuery({
-    queryKey: queryKeys.library.libraries(user?.uid),
-    queryFn: () => libraryService.getLibrariesByCreator(user.uid),
-    enabled: !!user?.uid,
-    ...cacheConfig.libraries,
-  });
-
-  const session = sessionQueryData?.session ?? null;
-  const error = loadError?.message ?? (!loading && sessionQueryData === null ? 'Sesión no encontrada' : null);
-
-  // Extract accent color from session image
-  useEffect(() => {
-    if (!session?.image_url) { setAccentRgb(null); return; }
-    return extractAccentFromImage(session.image_url, setAccentRgb);
-  }, [session?.image_url]);
-
-  const accentStyle = useMemo(() => {
-    if (!accentRgb) return {};
-    const [r, g, b] = accentRgb;
-    return {
-      '--accent': `rgb(${r},${g},${b})`,
-      '--accent-r': r,
-      '--accent-g': g,
-      '--accent-b': b,
-    };
-  }, [accentRgb]);
-
-  const [localDefaultTemplate, setLocalDefaultTemplate] = useState(null);
-  const sessionDefaultTemplate = localDefaultTemplate ?? session?.defaultDataTemplate ?? null;
-
-  // Editable session title
-  const [localTitle, setLocalTitle] = useState(null);
-  const titleSaveTimerRef = useRef(null);
-  const effectiveTitle = localTitle ?? session?.title ?? '';
-
-  // Sync localTitle when session data loads for the first time
-  useEffect(() => {
-    if (session?.title && localTitle === null) {
-      setLocalTitle(null); // keep using session.title until user edits
-    }
-  }, [session?.title]);
-
-  // Sync local override when session data loads/changes
-  useEffect(() => {
-    if (session?.defaultDataTemplate) {
-      setLocalDefaultTemplate(null); // clear override, use server data
-    }
-  }, [session?.defaultDataTemplate]);
-
-  const sessionDataSeededRef = useRef(false);
-  useEffect(() => {
-    if (!sessionQueryData || sessionDataSeededRef.current) return;
-    sessionDataSeededRef.current = true;
-    const { session: s, hasCopy } = sessionQueryData;
-    if (!s) return;
-    if (hasCopy !== undefined) {
-      hasClientCopyRef.current = hasCopy;
-      setHasClientCopy(hasCopy);
-    }
-    const seededExercises = (s.exercises || []).map((ex) => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true }));
-    setExercises(seededExercises);
-    // Mark initial load stagger as done after animation duration
-    setTimeout(() => { initialLoadAnimatedRef.current = true; }, seededExercises.length * 50 + 420);
-    // Seed liveSetsMap from already-loaded sets so volume card is accurate immediately
-    const initialSetsMap = {};
-    seededExercises.forEach(ex => {
-      if (ex.id && Array.isArray(ex.sets) && ex.sets.length > 0) {
-        initialSetsMap[ex.id] = ex.sets;
-      }
-    });
-    if (Object.keys(initialSetsMap).length > 0) {
-      setLiveSetsMap(initialSetsMap);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionQueryData]);
-
-  // Seed libraries from separate query (long-lived cache, independent of session)
-  const librariesSeededRef = useRef(false);
-  useEffect(() => {
-    if (!librariesData || librariesSeededRef.current) return;
-    librariesSeededRef.current = true;
-    setAvailableLibraries(librariesData);
-    const libCache = {};
-    librariesData.forEach(lib => {
-      if (lib.id) libCache[lib.id] = lib;
-    });
-    if (Object.keys(libCache).length > 0) {
-      setLibraryDataCache(prev => ({ ...prev, ...libCache }));
-    }
-    setVolumeDataLoading(false);
-    if (librariesData.length > 0) {
-      setSelectedLibraryId(librariesData[0].id);
-      loadExercisesFromLibrary(librariesData[0].id, librariesData);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [librariesData]);
-
-  const loadExercisesFromLibrary = useCallback(async (libraryId, libraries = null) => {
-    if (!libraryId) return;
-    
-    try {
-      const libs = libraries || availableLibraries;
-      const library = libs.find(l => l.id === libraryId);
-      if (!library) return;
-
-      const exercisesList = libraryService.getExercisesFromLibrary(library);
-      
-      // Get exercise IDs that are already in session
-      const sessionExerciseIds = new Set();
-      exercises.forEach(ex => {
-        if (ex.primary) {
-          Object.entries(ex.primary).forEach(([libId, exName]) => {
-            if (libId === libraryId) {
-              sessionExerciseIds.add(`${libId}::${exName}`);
-            }
-          });
-        }
-      });
-
-      // Prepare available exercises with drag IDs and sort by name
-      const available = exercisesList
-        .filter(ex => !sessionExerciseIds.has(`${libraryId}::${ex.name}`))
-        .map(ex => ({
-          ...ex,
-          dragId: `available-${libraryId}-${ex.name}`,
-          libraryId,
-          libraryTitle: library.title,
-          isInSession: false
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      setAvailableExercises(available);
-    } catch (err) {
-      logger.error('Error loading exercises from library:', err);
-    }
-  }, [exercises, availableLibraries]);
-
-  useEffect(() => {
-    if (selectedLibraryId) {
-      loadExercisesFromLibrary(selectedLibraryId);
-    }
-  }, [selectedLibraryId, loadExercisesFromLibrary]);
-
-  // Load library completeness for all session exercises on initial load so "Incompleto" tag shows immediately
-  useEffect(() => {
-    if (!exercises || exercises.length === 0) return;
-    const referenceLibrariesMap = {};
-    exercises.forEach((ex) => {
-      getPrimaryReferences(ex).forEach(({ libraryId, exerciseName }) => {
-        if (!libraryId || !exerciseName) return;
-        if (!referenceLibrariesMap[libraryId]) referenceLibrariesMap[libraryId] = new Set();
-        referenceLibrariesMap[libraryId].add(exerciseName);
-      });
-    });
-    const libraryIds = Object.keys(referenceLibrariesMap);
-    if (libraryIds.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const completenessUpdates = {};
-      await Promise.all(
-        libraryIds.map(async (libraryId) => {
-          try {
-            // Use cached/available library data to avoid redundant fetches
-            const libraryData = libraryDataCacheRef.current[libraryId]
-              || availableLibraries.find(l => l.id === libraryId)
-              || await libraryService.getLibraryById(libraryId);
-            referenceLibrariesMap[libraryId].forEach((exerciseName) => {
-              if (!exerciseName) return;
-              const key = getLibraryExerciseKey(libraryId, exerciseName);
-              completenessUpdates[key] = libraryData ? isLibraryExerciseDataComplete(libraryData[exerciseName]) : false;
-            });
-          } catch (err) {
-            referenceLibrariesMap[libraryId].forEach((exerciseName) => {
-              if (!exerciseName) return;
-              completenessUpdates[getLibraryExerciseKey(libraryId, exerciseName)] = false;
-            });
-          }
-        })
-      );
-      if (!cancelled && Object.keys(completenessUpdates).length > 0) {
-        setLibraryExerciseCompleteness((prev) => ({ ...prev, ...completenessUpdates }));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [exercises, availableLibraries]);
 
   const contentApi = useMemo(() => {
     const effectiveSessionId = effectiveIsClientEdit ? effectiveClientSessionId : sessionId;
@@ -941,6 +674,527 @@ const LibrarySessionDetailScreen = () => {
       }
     };
   }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, effectiveIsProgramPlanEdit, effectiveIsAnyPlanContentEdit, planContentApi, effectiveClientSessionId, sessionId, ensureClientCopy, effectiveClientId, effectiveProgramId, effectiveWeekKey, isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId]);
+
+  const handleCardDeleteAlternative = useCallback((exercise, libraryId, index) => {
+    if (!user || !sessionId) return;
+    const currentAlts = JSON.parse(JSON.stringify(exercise.alternatives || {}));
+    if (!currentAlts[libraryId] || !Array.isArray(currentAlts[libraryId])) return;
+    currentAlts[libraryId] = currentAlts[libraryId].filter((_, i) => i !== index);
+    if (currentAlts[libraryId].length === 0) delete currentAlts[libraryId];
+    setExercises(prev => prev.map(ex => ex.id === exercise.id
+      ? { ...ex, alternatives: currentAlts }
+      : ex
+    ));
+    contentApi.updateExerciseInLibrarySession(user.uid, sessionId, exercise.id, { alternatives: currentAlts })
+      .then(() => setHasMadeChanges(true))
+      .catch((err) => {
+        logger.error('Error deleting alternative:', err);
+        showToast('No pudimos eliminar la alternativa. Intenta de nuevo.', 'error');
+      });
+  }, [user, sessionId, contentApi, showToast]);
+
+  const handlePickerSelect = useCallback((exercise, ex, exerciseName, mode) => {
+    if (!selectedLibraryForExercise || !exerciseName || !user || !sessionId) return;
+    const libId = selectedLibraryForExercise;
+    let apiUpdatePayload = null;
+
+    if (mode === 'primary') {
+      const primaryUpdate = { [libId]: exerciseName };
+      apiUpdatePayload = { primary: primaryUpdate };
+      setExercises(prev => prev.map(e => e.id === exercise.id
+        ? { ...e, primary: primaryUpdate, dragId: e.dragId || `session-${e.id}`, isInSession: true }
+        : e
+      ));
+    } else if (mode === 'add-alternative') {
+      const currentAlts = JSON.parse(JSON.stringify(exercise.alternatives || {}));
+      if (!currentAlts[libId]) currentAlts[libId] = [];
+      if (!currentAlts[libId].includes(exerciseName)) currentAlts[libId].push(exerciseName);
+      apiUpdatePayload = { alternatives: currentAlts };
+      setExercises(prev => prev.map(e => e.id === exercise.id
+        ? { ...e, alternatives: currentAlts, dragId: e.dragId || `session-${e.id}`, isInSession: true }
+        : e
+      ));
+    }
+
+    if (apiUpdatePayload) {
+      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, exercise.id, apiUpdatePayload)
+        .then(() => setHasMadeChanges(true))
+        .catch((err) => {
+          logger.error('Error updating exercise:', err);
+          showToast('No pudimos guardar el cambio. Intenta de nuevo.', 'error');
+        });
+    }
+
+    setPickerActiveExerciseId(null);
+    setPickerMode(null);
+    setSelectedLibraryForExercise(null);
+    setExercisesFromSelectedLibrary([]);
+    setAvailableLibrariesForSelection([]);
+  }, [user, sessionId, selectedLibraryForExercise, contentApi, showToast]);
+
+  const handleOpenPresetSelector = useCallback((ex) => {
+    setSelectedExercise(ex);
+    setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+    setIsPresetSelectorOpen(true);
+  }, []);
+
+  const handleOpenMeasuresEditor = useCallback((ex) => {
+    setSelectedExercise(ex);
+    setExerciseDraft(JSON.parse(JSON.stringify(ex)));
+    setEditorModalMode('exercise');
+    setPresetBeingEditedId(null);
+    setIsMeasuresObjectivesEditorOpen(true);
+  }, []);
+
+  const handleHeaderImageSelect = async (item) => {
+    if (!sessionId || !user) return;
+    try {
+      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
+        await plansService.updateSession(planInstancePlanId, planInstanceModuleId, sessionId, { image_url: item.url });
+      } else if (effectiveIsAnyPlanContentEdit) {
+        await planContentApi.updateSession(effectiveWeekKey, sessionId, { image_url: item.url });
+      } else if (effectiveIsClientEdit) {
+        await clientSessionContentService.updateSession(effectiveClientSessionId, { image_url: item.url });
+      } else {
+        await libraryService.updateLibrarySession(user.uid, sessionId, { image_url: item.url });
+        setHasMadeChanges(true);
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      queryClient.setQueryData(
+        ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
+        (old) => old ? { ...old, session: { ...old.session, image_url: item.url } } : old
+      );
+    } catch (err) {
+      logger.error('Error updating session image:', err);
+      showToast('No pudimos actualizar la imagen. Intenta de nuevo.', 'error');
+    }
+    setIsMediaPickerOpen(false);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: () => ({ x: 0, y: 0 }),
+    })
+  );
+
+  const { data: sessionQueryData, isLoading: loading, error: loadError } = useQuery({
+    queryKey: ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
+    queryFn: async () => {
+      if (!user || !sessionId) return null;
+      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
+        const sessionData = await plansService.getSessionById(planInstancePlanId, planInstanceModuleId, sessionId);
+        if (!sessionData) return null;
+        return { session: sessionData, editMode: 'planInstance' };
+      }
+
+      // Resolve effective client-edit context from ref/sessionStorage
+      const effClientSessionId = effectiveClientSessionId;
+      const effClientId = effectiveClientId;
+      const effProgramId = effectiveProgramId;
+      const effWeekKey = effectiveWeekKey;
+      const effEditScope = effectiveEditScope;
+      const effIsClientEdit = (effEditScope === 'client') && !!effClientSessionId;
+      const effIsClientPlanEdit = (effEditScope === 'client_plan') && !!effClientId && !!effProgramId && !!effWeekKey;
+      const effIsProgramPlanEdit = (effEditScope === 'program_plan') && !!effProgramId && !!effWeekKey;
+      const effIsAnyPlanContentEdit = effIsClientPlanEdit || effIsProgramPlanEdit;
+
+      if (effIsAnyPlanContentEdit) {
+        const planContent = effIsProgramPlanEdit
+          ? await programPlanContentService.getSessionContent(effProgramId, effWeekKey, sessionId)
+          : await clientPlanContentService.getClientPlanSessionContent(effClientId, effProgramId, effWeekKey, sessionId);
+        if (planContent?.session) {
+          let exercises = planContent.exercises || [];
+          const sessionFromPlan = planContent.session;
+          const sourceLibId = sessionFromPlan.source_library_session_id ?? sessionFromPlan.librarySessionRef;
+          let libSession = null;
+          if (sourceLibId && user?.uid) {
+            try {
+              libSession = await libraryService.getLibrarySessionById(user.uid, sourceLibId);
+              if (libSession?.exercises?.length && exercises.length === 0) {
+                exercises = libSession.exercises;
+              }
+            } catch (err) {
+              logger.warn('[LibrarySessionDetail] fallback: could not load exercises from library', sourceLibId, err);
+            }
+          }
+          const clientSession = {
+            ...sessionFromPlan,
+            exercises,
+            image_url: sessionFromPlan.image_url ?? libSession?.image_url ?? null,
+            title: sessionFromPlan.title ?? libSession?.title ?? sessionFromPlan.title
+          };
+          return { session: clientSession, editMode: 'clientPlan' };
+        }
+      }
+
+      if (effIsClientEdit) {
+        const clientContent = await clientSessionContentService.getClientSessionContent(effClientSessionId);
+        if (clientContent) {
+          return { session: clientContent, editMode: 'client', hasCopy: true };
+        }
+      }
+
+      const libSession = await libraryService.getLibrarySessionById(user.uid, sessionId);
+      return { session: libSession, editMode: 'library' };
+    },
+    enabled: !!user && !!sessionId,
+    staleTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 30 * 1000 : 5 * 60 * 1000,
+    gcTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 60 * 1000 : 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: librariesData } = useQuery({
+    queryKey: queryKeys.library.libraries(user?.uid),
+    queryFn: () => libraryService.getLibrariesByCreator(user.uid),
+    enabled: !!user?.uid,
+    ...cacheConfig.libraries,
+  });
+
+  const session = sessionQueryData?.session ?? null;
+  const error = loadError?.message ?? (!loading && sessionQueryData === null ? 'Esta sesión no existe o fue eliminada' : null);
+
+  // Extract accent color from session image
+  useEffect(() => {
+    if (!session?.image_url) { setAccentRgb(null); return; }
+    return extractAccentFromImage(session.image_url, setAccentRgb);
+  }, [session?.image_url]);
+
+  const accentStyle = useMemo(() => {
+    if (!accentRgb) return {};
+    const [r, g, b] = accentRgb;
+    return {
+      '--accent': `rgb(${r},${g},${b})`,
+      '--accent-r': r,
+      '--accent-g': g,
+      '--accent-b': b,
+    };
+  }, [accentRgb]);
+
+  const [localDefaultTemplate, setLocalDefaultTemplate] = useState(null);
+  const sessionDefaultTemplate = localDefaultTemplate ?? session?.defaultDataTemplate ?? null;
+
+  const handleAddObjective = useCallback((ex, key, label, applyToAll) => {
+    if (!user || !sessionId) return;
+    const customLabels = { ...(ex.customObjectiveLabels || sessionDefaultTemplate?.customObjectiveLabels || {}), [key]: label };
+    if (applyToAll) {
+      const tpl = sessionDefaultTemplate || {};
+      const newObjectives = [...(tpl.objectives || []).filter(o => o !== key), key];
+      if (!newObjectives.includes('previous')) newObjectives.push('previous');
+      const templateUpdate = { ...tpl, objectives: newObjectives, customObjectiveLabels: { ...(tpl.customObjectiveLabels || {}), [key]: label } };
+      setLocalDefaultTemplate(templateUpdate);
+      setExercises(prev => prev.map(e => {
+        const exObj = e.objectives?.length > 0 ? e.objectives : (tpl.objectives || []);
+        const updated = [...exObj.filter(o => o !== key), key];
+        if (!updated.includes('previous')) updated.push('previous');
+        return { ...e, objectives: updated, customObjectiveLabels: { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}), [key]: label } };
+      }));
+      contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+      setExercises(prev => {
+        prev.forEach(e => {
+          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { objectives: [...((e.objectives?.length > 0 ? e.objectives : (tpl.objectives || [])).filter(o => o !== key)), key, ...(!((e.objectives?.length > 0 ? e.objectives : (tpl.objectives || [])).filter(o => o !== key)).includes('previous') ? ['previous'] : [])], customObjectiveLabels: { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}), [key]: label } }).catch(() => {});
+        });
+        return prev;
+      });
+    } else {
+      const currentObjectives = ex.objectives?.length > 0 ? ex.objectives : (sessionDefaultTemplate?.objectives || []);
+      const newObjectives = [...currentObjectives.filter(o => o !== key), key];
+      if (!newObjectives.includes('previous')) newObjectives.push('previous');
+      const updates = { objectives: newObjectives, customObjectiveLabels: customLabels };
+      setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
+      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error adding objective:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+    }
+  }, [user, sessionId, sessionDefaultTemplate, contentApi, showToast]);
+
+  const handleRemoveObjective = useCallback((ex, objectiveKey, applyToAll) => {
+    if (!user || !sessionId) return;
+    if (applyToAll) {
+      const tpl = sessionDefaultTemplate || {};
+      const newObjectives = (tpl.objectives || []).filter(o => o !== objectiveKey);
+      const newLabels = { ...(tpl.customObjectiveLabels || {}) };
+      delete newLabels[objectiveKey];
+      const templateUpdate = { ...tpl, objectives: newObjectives, customObjectiveLabels: newLabels };
+      setLocalDefaultTemplate(templateUpdate);
+      setExercises(prev => prev.map(e => {
+        const exObj = e.objectives?.length > 0 ? e.objectives : (tpl.objectives || []);
+        const updated = exObj.filter(o => o !== objectiveKey);
+        const labels = { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}) };
+        delete labels[objectiveKey];
+        return { ...e, objectives: updated, customObjectiveLabels: labels };
+      }));
+      contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+      setExercises(prev => {
+        prev.forEach(e => {
+          const exObj = e.objectives?.length > 0 ? e.objectives : (tpl.objectives || []);
+          const labels = { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}) };
+          delete labels[objectiveKey];
+          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { objectives: exObj.filter(o => o !== objectiveKey), customObjectiveLabels: labels }).catch(() => {});
+        });
+        return prev;
+      });
+    } else {
+      const currentObjectives = ex.objectives?.length > 0 ? ex.objectives : (sessionDefaultTemplate?.objectives || []);
+      const newObjectives = currentObjectives.filter(o => o !== objectiveKey);
+      const newLabels = { ...(ex.customObjectiveLabels || sessionDefaultTemplate?.customObjectiveLabels || {}) };
+      delete newLabels[objectiveKey];
+      const updates = { objectives: newObjectives, customObjectiveLabels: newLabels };
+      setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
+      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error removing objective:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+    }
+  }, [user, sessionId, sessionDefaultTemplate, contentApi, showToast]);
+
+  const handleAddMeasure = useCallback((ex, key, label, applyToAll) => {
+    if (!user || !sessionId) return;
+    const customLabels = { ...(ex.customMeasureLabels || sessionDefaultTemplate?.customMeasureLabels || {}), [key]: label };
+    if (applyToAll) {
+      const tpl = sessionDefaultTemplate || {};
+      const newMeasures = [...(tpl.measures || []).filter(m => m !== key), key];
+      const templateUpdate = { ...tpl, measures: newMeasures, customMeasureLabels: { ...(tpl.customMeasureLabels || {}), [key]: label } };
+      setLocalDefaultTemplate(templateUpdate);
+      setExercises(prev => prev.map(e => {
+        const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
+        return { ...e, measures: [...exMeasures.filter(m => m !== key), key], customMeasureLabels: { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}), [key]: label } };
+      }));
+      contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+      setExercises(prev => {
+        prev.forEach(e => {
+          const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
+          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { measures: [...exMeasures.filter(m => m !== key), key], customMeasureLabels: { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}), [key]: label } }).catch(() => {});
+        });
+        return prev;
+      });
+    } else {
+      const currentMeasures = ex.measures?.length > 0 ? ex.measures : (sessionDefaultTemplate?.measures || []);
+      const newMeasures = [...currentMeasures.filter(m => m !== key), key];
+      const updates = { measures: newMeasures, customMeasureLabels: customLabels };
+      setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
+      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error adding measure:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+    }
+  }, [user, sessionId, sessionDefaultTemplate, contentApi, showToast]);
+
+  const handleRemoveMeasure = useCallback((ex, measureKey, applyToAll) => {
+    if (!user || !sessionId) return;
+    if (applyToAll) {
+      const tpl = sessionDefaultTemplate || {};
+      const newMeasures = (tpl.measures || []).filter(m => m !== measureKey);
+      const newLabels = { ...(tpl.customMeasureLabels || {}) };
+      delete newLabels[measureKey];
+      const templateUpdate = { ...tpl, measures: newMeasures, customMeasureLabels: newLabels };
+      setLocalDefaultTemplate(templateUpdate);
+      setExercises(prev => prev.map(e => {
+        const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
+        const labels = { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}) };
+        delete labels[measureKey];
+        return { ...e, measures: exMeasures.filter(m => m !== measureKey), customMeasureLabels: labels };
+      }));
+      contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+      setExercises(prev => {
+        prev.forEach(e => {
+          const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
+          const labels = { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}) };
+          delete labels[measureKey];
+          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { measures: exMeasures.filter(m => m !== measureKey), customMeasureLabels: labels }).catch(() => {});
+        });
+        return prev;
+      });
+    } else {
+      const currentMeasures = ex.measures?.length > 0 ? ex.measures : (sessionDefaultTemplate?.measures || []);
+      const newMeasures = currentMeasures.filter(m => m !== measureKey);
+      const newLabels = { ...(ex.customMeasureLabels || sessionDefaultTemplate?.customMeasureLabels || {}) };
+      delete newLabels[measureKey];
+      const updates = { measures: newMeasures, customMeasureLabels: newLabels };
+      setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
+      contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
+        .then(() => setHasMadeChanges(true))
+        .catch(err => { logger.error('Error removing measure:', err); showToast('No pudimos guardar los cambios.', 'error'); });
+    }
+  }, [user, sessionId, sessionDefaultTemplate, contentApi, showToast]);
+
+  // Editable session title
+  const [localTitle, setLocalTitle] = useState(null);
+  const titleSaveTimerRef = useRef(null);
+  const effectiveTitle = localTitle ?? session?.title ?? '';
+
+  // Sync localTitle when session data loads for the first time
+  useEffect(() => {
+    if (session?.title && localTitle === null) {
+      setLocalTitle(null); // keep using session.title until user edits
+    }
+  }, [session?.title]);
+
+  // Sync local override when session data loads/changes
+  useEffect(() => {
+    if (session?.defaultDataTemplate) {
+      setLocalDefaultTemplate(null); // clear override, use server data
+    }
+  }, [session?.defaultDataTemplate]);
+
+  const sessionDataSeededRef = useRef(false);
+  useEffect(() => {
+    if (!sessionQueryData || sessionDataSeededRef.current) return;
+    sessionDataSeededRef.current = true;
+    const { session: s, hasCopy } = sessionQueryData;
+    if (!s) return;
+    if (hasCopy !== undefined) {
+      hasClientCopyRef.current = hasCopy;
+      setHasClientCopy(hasCopy);
+    }
+    const seededExercises = (s.exercises || []).map((ex) => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true }));
+    console.log('[seedSession] Seeding', seededExercises.length, 'exercises from', sessionQueryData.editMode, { exercises: seededExercises.map(e => ({ id: e.id, title: e.title || e.name, setsCount: e.sets?.length })) });
+    setExercises(seededExercises);
+    // Mark initial load stagger as done after animation duration
+    setTimeout(() => { initialLoadAnimatedRef.current = true; }, seededExercises.length * 50 + 420);
+    // Seed liveSetsMap from already-loaded sets so volume card is accurate immediately
+    const initialSetsMap = {};
+    seededExercises.forEach(ex => {
+      if (ex.id && Array.isArray(ex.sets) && ex.sets.length > 0) {
+        initialSetsMap[ex.id] = ex.sets;
+      }
+    });
+    if (Object.keys(initialSetsMap).length > 0) {
+      setLiveSetsMap(initialSetsMap);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionQueryData]);
+
+  // Seed libraries from separate query (long-lived cache, independent of session)
+  const librariesSeededRef = useRef(false);
+  useEffect(() => {
+    if (!librariesData || librariesSeededRef.current) return;
+    librariesSeededRef.current = true;
+    setAvailableLibraries(librariesData);
+    const libCache = {};
+    librariesData.forEach(lib => {
+      if (lib.id) libCache[lib.id] = lib;
+    });
+    if (Object.keys(libCache).length > 0) {
+      setLibraryDataCache(prev => ({ ...prev, ...libCache }));
+    }
+    setVolumeDataLoading(false);
+    if (librariesData.length > 0) {
+      setSelectedLibraryId(librariesData[0].id);
+      loadExercisesFromLibrary(librariesData[0].id, librariesData);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [librariesData]);
+
+  const loadExercisesFromLibrary = useCallback((libraryId, libraries = null) => {
+    if (!libraryId) return;
+
+    try {
+      const libs = libraries || availableLibrariesRef.current;
+      const library = libs.find(l => l.id === libraryId);
+      if (!library) return;
+
+      const exercisesList = libraryService.getExercisesFromLibrary(library);
+
+      // Get exercise IDs that are already in session (read from ref to avoid dependency)
+      const currentExercises = exercisesRef.current;
+      const sessionExerciseIds = new Set();
+      currentExercises.forEach(ex => {
+        if (ex.primary) {
+          Object.entries(ex.primary).forEach(([libId, exName]) => {
+            if (libId === libraryId) {
+              sessionExerciseIds.add(`${libId}::${exName}`);
+            }
+          });
+        }
+      });
+
+      // Prepare available exercises with drag IDs and sort by name
+      const available = exercisesList
+        .filter(ex => !sessionExerciseIds.has(`${libraryId}::${ex.name}`))
+        .map(ex => ({
+          ...ex,
+          dragId: `available-${libraryId}-${ex.name}`,
+          libraryId,
+          libraryTitle: library.title,
+          isInSession: false
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setAvailableExercises(available);
+    } catch (err) {
+      logger.error('Error loading exercises from library:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedLibraryId) {
+      loadExercisesFromLibrary(selectedLibraryId);
+    }
+  }, [selectedLibraryId, loadExercisesFromLibrary]);
+
+  // Stable fingerprint of primary references — only changes when exercises are added/removed or primary refs change
+  const exercisePrimaryFingerprint = useMemo(() => {
+    return exercises.map(ex => {
+      const refs = getPrimaryReferences(ex);
+      return refs.map(r => `${r.libraryId}::${r.exerciseName}`).join('|');
+    }).join(',');
+  }, [exercises]);
+
+  // Load library completeness for all session exercises on initial load so "Incompleto" tag shows immediately
+  useEffect(() => {
+    const currentExercises = exercisesRef.current;
+    if (!currentExercises || currentExercises.length === 0) return;
+    const referenceLibrariesMap = {};
+    currentExercises.forEach((ex) => {
+      getPrimaryReferences(ex).forEach(({ libraryId, exerciseName }) => {
+        if (!libraryId || !exerciseName) return;
+        if (!referenceLibrariesMap[libraryId]) referenceLibrariesMap[libraryId] = new Set();
+        referenceLibrariesMap[libraryId].add(exerciseName);
+      });
+    });
+    const libraryIds = Object.keys(referenceLibrariesMap);
+    if (libraryIds.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const completenessUpdates = {};
+      await Promise.all(
+        libraryIds.map(async (libraryId) => {
+          try {
+            // Use cached/available library data to avoid redundant fetches
+            const libraryData = libraryDataCacheRef.current[libraryId]
+              || availableLibrariesRef.current.find(l => l.id === libraryId)
+              || await libraryService.getLibraryById(libraryId);
+            referenceLibrariesMap[libraryId].forEach((exerciseName) => {
+              if (!exerciseName) return;
+              const key = getLibraryExerciseKey(libraryId, exerciseName);
+              completenessUpdates[key] = libraryData ? isLibraryExerciseDataComplete(libraryData[exerciseName]) : false;
+            });
+          } catch (err) {
+            referenceLibrariesMap[libraryId].forEach((exerciseName) => {
+              if (!exerciseName) return;
+              completenessUpdates[getLibraryExerciseKey(libraryId, exerciseName)] = false;
+            });
+          }
+        })
+      );
+      if (!cancelled && Object.keys(completenessUpdates).length > 0) {
+        setLibraryExerciseCompleteness((prev) => ({ ...prev, ...completenessUpdates }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exercisePrimaryFingerprint]);
 
   // Auto-seed session template from first preset when none exists
   const templateSeededRef = useRef(false);
@@ -1102,8 +1356,7 @@ const LibrarySessionDetailScreen = () => {
           await plansService.updateExercise(planInstancePlanId, planInstanceModuleId, sessionId, realExId, newExercisePayload);
         }
       } else if (effectiveIsAnyPlanContentEdit) {
-        await planContentApi.createExercise(effectiveWeekKey, sessionId, newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio', nextOrder);
-        createdExercise = { id: `ex_${Date.now()}` };
+        createdExercise = await planContentApi.createExercise(effectiveWeekKey, sessionId, newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio', nextOrder);
       } else if (effectiveIsClientEdit) {
         await ensureClientCopy();
         createdExercise = await clientSessionContentService.createExercise(effectiveClientSessionId, newExercisePayload, nextOrder);
@@ -1184,8 +1437,8 @@ const LibrarySessionDetailScreen = () => {
         setHasMadeChanges(true);
       }
 
-      // Available exercises refresh automatically via useEffect
-      // (loadExercisesFromLibrary depends on exercises state)
+      // Refresh available exercises since we removed one from the session
+      if (selectedLibraryId) loadExercisesFromLibrary(selectedLibraryId);
     } catch (err) {
       // Rollback: restore previous exercises list
       logger.error('Error deleting exercise:', err);
@@ -1414,6 +1667,7 @@ const LibrarySessionDetailScreen = () => {
           const setsData = cached?.length > 0
             ? cached
             : await contentApi.getSetsByLibraryExercise(user.uid, sessionId, exercise.id);
+          console.log('[openExercise] Sets loaded for', exercise.id, { source: cached?.length > 0 ? 'cache' : 'api', count: setsData.length, sets: setsData.map(s => ({ id: s.id, reps: s.reps, intensity: s.intensity })) });
           setExerciseSets(setsData);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
           setUnsavedSetChanges({});
@@ -1463,6 +1717,7 @@ const LibrarySessionDetailScreen = () => {
       clearTimeout(saveSetTimeoutRef.current);
       saveSetTimeoutRef.current = null;
     }
+    console.log('[closeExercise] Flushing', pendingIds.length, 'pending saves on close:', pendingIds, { currentExerciseId, exerciseSets: exerciseSets.map(s => ({ id: s.id, reps: s.reps, intensity: s.intensity })) });
     pendingIds.forEach((id) => saveSetChangesRef.current?.(id));
 
     // Persist default set values before clearing (for existing exercise only)
@@ -1804,10 +2059,11 @@ const LibrarySessionDetailScreen = () => {
   };
 
   const handleSaveSetChanges = async (setId) => {
-    if (!user || !sessionId) return;
-    if (setId && setId.startsWith('pending-add-')) return;
+    if (!user || !sessionId) { console.log('[saveSet] SKIP: no user or sessionId'); return; }
+    if (setId && setId.startsWith('pending-add-')) { console.log('[saveSet] SKIP: pending-add set', setId); return; }
 
     if (isCreatingExercise) {
+      console.log('[saveSet] SKIP: isCreatingExercise, buffering locally', setId);
       const setIndex = exerciseSets.findIndex(s => s.id === setId);
       if (setIndex !== -1) {
         const updatedOriginalSets = [...originalExerciseSets];
@@ -1822,19 +2078,20 @@ const LibrarySessionDetailScreen = () => {
       return;
     }
 
-    if (!currentExerciseId) return;
+    if (!currentExerciseId) { console.log('[saveSet] SKIP: no currentExerciseId'); return; }
 
     const setIndex = exerciseSets.findIndex(s => s.id === setId);
-    if (setIndex === -1) return;
+    if (setIndex === -1) { console.log('[saveSet] SKIP: set not found in exerciseSets', setId, 'available:', exerciseSets.map(s => s.id)); return; }
 
     const set = exerciseSets[setIndex];
     const originalSet = originalExerciseSets.find(s => s.id === setId);
-    
-    if (!set || !originalSet) return;
+
+    if (!set || !originalSet) { console.log('[saveSet] SKIP: set or originalSet null', { set: !!set, originalSet: !!originalSet }); return; }
 
     const updateData = {};
     let hasChanges = false;
     const fieldsToSave = (draftObjectives || []).filter(o => o !== 'previous').length ? (draftObjectives || []).filter(o => o !== 'previous') : ['reps', 'intensity'];
+    console.log('[saveSet] Diffing set', setId, { fieldsToSave, current: Object.fromEntries(fieldsToSave.map(f => [f, set[f]])), original: Object.fromEntries(fieldsToSave.map(f => [f, originalSet[f]])) });
     for (const field of fieldsToSave) {
       const current = set[field];
       const original = originalSet[field];
@@ -1850,11 +2107,13 @@ const LibrarySessionDetailScreen = () => {
       }
     }
 
-    if (!hasChanges) return;
+    if (!hasChanges) { console.log('[saveSet] SKIP: no changes detected for', setId); return; }
 
     try {
       setIsSavingSetChanges(true);
+      console.log('[saveSet] SAVING', { setId, exerciseId: currentExerciseId, sessionId, updateData, editScope: effectiveEditScope, isClientPlan: effectiveIsClientPlanEdit, isProgramPlan: effectiveIsProgramPlanEdit });
       await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, updateData);
+      console.log('[saveSet] SUCCESS', setId);
       // Optimistic success: update "saved" baseline from current state (no refetch, no notification)
       setOriginalExerciseSets(prev => prev.map(s => s.id === setId ? { ...exerciseSets[setIndex] } : s));
       setUnsavedSetChanges(prev => {
@@ -1863,6 +2122,7 @@ const LibrarySessionDetailScreen = () => {
         return newState;
       });
     } catch (err) {
+      console.error('[saveSet] FAILED', setId, err);
       logger.error('Error saving set changes:', err);
       setUnsavedSetChanges(prev => ({ ...prev, [setId]: true }));
       showToast('Los cambios no se pudieron guardar. Puedes volver a editar para reintentar.', 'error');
@@ -1881,6 +2141,7 @@ const LibrarySessionDetailScreen = () => {
       const ids = Array.from(pendingSetSavesRef.current);
       pendingSetSavesRef.current.clear();
       saveSetTimeoutRef.current = null;
+      console.log('[scheduleSetSave] Flushing', ids.length, 'pending saves:', ids);
       ids.forEach((id) => {
         saveSetChangesRef.current?.(id);
       });
@@ -2782,14 +3043,18 @@ const LibrarySessionDetailScreen = () => {
     return Array.from(implementsSet).sort();
   }, [availableExercises]);
 
+  // Stable exercise IDs string — only changes when exercises are added/removed
+  const exerciseIdsKey = useMemo(() => exercises.map(e => e.id).join(','), [exercises]);
+
   // Load library data for session exercises (for planned volume muscle_activation)
   useEffect(() => {
-    if (!user || !exercises?.length) {
+    const currentExercises = exercisesRef.current;
+    if (!user || !currentExercises?.length) {
       setVolumeDataLoading(false);
       return;
     }
     const libraryIds = new Set();
-    exercises.forEach((ex) => {
+    currentExercises.forEach((ex) => {
       const refs = getPrimaryReferences(ex);
       refs.forEach(({ libraryId }) => {
         if (libraryId) libraryIds.add(libraryId);
@@ -2829,7 +3094,7 @@ const LibrarySessionDetailScreen = () => {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, exercises.map(e => e.id).join(',')]);
+  }, [user, exerciseIdsKey]);
 
   // Planned muscle volume (effective sets per muscle), assuming user completes every set with intensity >= 7
   const plannedMuscleVolumes = useMemo(() => {
@@ -3099,7 +3364,7 @@ const LibrarySessionDetailScreen = () => {
       >
         <FullScreenError
           title="No se pudo cargar la sesion"
-          message={error || 'Sesion no encontrada'}
+          message={error || 'Esta sesión no existe o fue eliminada'}
           onRetry={() => navigate(0)}
         />
       </DashboardLayout>
@@ -3108,6 +3373,7 @@ const LibrarySessionDetailScreen = () => {
 
   return (
     <ErrorBoundary>
+    <ProgressiveRevealProvider screenKey="session-detail">
     <ScrollProgress />
     <DashboardLayout
       screenName={effectiveTitle || session.title}
@@ -3251,6 +3517,7 @@ const LibrarySessionDetailScreen = () => {
           />
 
           {/* Session Settings Card — full width, expandable */}
+          <Revealable step="session-header">
           <div className="lsd-glow-wrap lsd-glow-wrap--settings">
             <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className={`library-session-settings-card ${isSettingsPanelOpen ? 'library-session-settings-card--expanded' : ''} ${(!session.image_url || !sessionDefaultTemplate) && !isSettingsPanelOpen ? 'library-session-settings-card--nudge' : ''}`}>
@@ -3327,6 +3594,7 @@ const LibrarySessionDetailScreen = () => {
                 {/* Card 1: Image */}
                 <div className="lsd-glow-wrap lsd-glow-wrap--card lsd-glow-wrap--image">
                   <GlowingEffect spread={40} proximity={100} borderWidth={1} />
+                <MediaDropZone onSelect={handleHeaderImageSelect} accept="image/*">
                 <div className="lss-card lss-card-image" onClick={() => setIsMediaPickerOpen(true)}>
                   {session.image_url ? (
                     <img src={session.image_url} alt="" className="lss-card-image-img" />
@@ -3341,6 +3609,7 @@ const LibrarySessionDetailScreen = () => {
                     Cambiar
                   </div>
                 </div>
+                </MediaDropZone>
                 </div>
 
                 {/* Card 2: Usage chart */}
@@ -3399,9 +3668,11 @@ const LibrarySessionDetailScreen = () => {
             </div>
           </div>
           </div>
+          </Revealable>
 
           <div className="library-session-detail-body">
           {/* Sidebar - Available Exercises */}
+          <Revealable step="available-exercises">
           <div className="lsd-glow-wrap lsd-glow-wrap--sidebar">
             <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-sidebar">
@@ -3492,8 +3763,10 @@ const LibrarySessionDetailScreen = () => {
             </div>
           </div>
           </div>
+          </Revealable>
 
           {/* Main Area - Session Exercises */}
+          <Revealable step="session-exercises">
           <div className="lsd-glow-wrap lsd-glow-wrap--main">
             <GlowingEffect spread={40} proximity={120} borderWidth={1} />
           <div className="library-session-main">
@@ -3531,238 +3804,25 @@ const LibrarySessionDetailScreen = () => {
                       sessionDefaultTemplate={sessionDefaultTemplate}
                       libraryTitles={libraryTitles}
                       libraryExerciseCompleteness={libraryExerciseCompleteness}
-                      onExerciseUpdated={() => {
-                        setHasMadeChanges(true);
-                        queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
-                      }}
-                      onEditPrimary={(ex) => {
-                        setSelectedExercise(ex);
-                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
-                        setPickerActiveExerciseId(ex.id);
-                        setPickerMode('primary');
-                        setSelectedLibraryForExercise(null);
-                        setExercisesFromSelectedLibrary([]);
-                        setAvailableLibrariesForSelection(availableLibraries);
-                      }}
-                      onAddAlternative={(ex) => {
-                        setSelectedExercise(ex);
-                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
-                        setPickerActiveExerciseId(ex.id);
-                        setPickerMode('add-alternative');
-                        setSelectedLibraryForExercise(null);
-                        setExercisesFromSelectedLibrary([]);
-                        setAvailableLibrariesForSelection(availableLibraries);
-                      }}
-                      onDeleteAlternative={(libraryId, index) => {
-                        if (!user || !sessionId) return;
-                        const currentAlts = JSON.parse(JSON.stringify(exercise.alternatives || {}));
-                        if (!currentAlts[libraryId] || !Array.isArray(currentAlts[libraryId])) return;
-                        currentAlts[libraryId] = currentAlts[libraryId].filter((_, i) => i !== index);
-                        if (currentAlts[libraryId].length === 0) delete currentAlts[libraryId];
-                        setExercises(prev => prev.map(ex => ex.id === exercise.id
-                          ? { ...ex, alternatives: currentAlts }
-                          : ex
-                        ));
-                        contentApi.updateExerciseInLibrarySession(user.uid, sessionId, exercise.id, { alternatives: currentAlts })
-                          .then(() => setHasMadeChanges(true))
-                          .catch((err) => {
-                            logger.error('Error deleting alternative:', err);
-                            showToast('No pudimos eliminar la alternativa. Intenta de nuevo.', 'error');
-                          });
-                      }}
-                      pickerLibraries={pickerActiveExerciseId === exercise.id ? availableLibrariesForSelection : []}
+                      onExerciseUpdated={handleExerciseUpdated}
+                      onEditPrimary={handleCardEditPrimary}
+                      onAddAlternative={handleCardAddAlternative}
+                      onDeleteAlternative={(libraryId, index) => handleCardDeleteAlternative(exercise, libraryId, index)}
+                      pickerLibraries={pickerActiveExerciseId === exercise.id ? availableLibrariesForSelection : EMPTY_ARRAY}
                       pickerIsLoadingLibraries={pickerActiveExerciseId === exercise.id && isLoadingLibrariesForSelection}
                       onPickerSelectLibrary={handleSelectLibrary}
-                      pickerExercises={pickerActiveExerciseId === exercise.id ? exercisesFromSelectedLibrary : []}
+                      pickerExercises={pickerActiveExerciseId === exercise.id ? exercisesFromSelectedLibrary : EMPTY_ARRAY}
                       pickerIsLoadingExercises={pickerActiveExerciseId === exercise.id && isLoadingExercisesFromLibrary}
                       pickerSelectedLibraryId={pickerActiveExerciseId === exercise.id ? selectedLibraryForExercise : null}
-                      onPickerSelect={(ex, exerciseName, mode) => {
-                        if (!selectedLibraryForExercise || !exerciseName || !user || !sessionId) return;
-                        const libId = selectedLibraryForExercise;
-                        let apiUpdatePayload = null;
-
-                        if (mode === 'primary') {
-                          const primaryUpdate = { [libId]: exerciseName };
-                          apiUpdatePayload = { primary: primaryUpdate };
-                          setExercises(prev => prev.map(e => e.id === exercise.id
-                            ? { ...e, primary: primaryUpdate, dragId: e.dragId || `session-${e.id}`, isInSession: true }
-                            : e
-                          ));
-                        } else if (mode === 'add-alternative') {
-                          const currentAlts = JSON.parse(JSON.stringify(exercise.alternatives || {}));
-                          if (!currentAlts[libId]) currentAlts[libId] = [];
-                          if (!currentAlts[libId].includes(exerciseName)) currentAlts[libId].push(exerciseName);
-                          apiUpdatePayload = { alternatives: currentAlts };
-                          setExercises(prev => prev.map(e => e.id === exercise.id
-                            ? { ...e, alternatives: currentAlts, dragId: e.dragId || `session-${e.id}`, isInSession: true }
-                            : e
-                          ));
-                        }
-
-                        if (apiUpdatePayload) {
-                          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, exercise.id, apiUpdatePayload)
-                            .then(() => setHasMadeChanges(true))
-                            .catch((err) => {
-                              logger.error('Error updating exercise:', err);
-                              showToast('No pudimos guardar el cambio. Intenta de nuevo.', 'error');
-                            });
-                        }
-
-                        // Clean up picker state
-                        setPickerActiveExerciseId(null);
-                        setPickerMode(null);
-                        setSelectedLibraryForExercise(null);
-                        setExercisesFromSelectedLibrary([]);
-                        setAvailableLibrariesForSelection([]);
-                      }}
+                      onPickerSelect={(ex, exerciseName, mode) => handlePickerSelect(exercise, ex, exerciseName, mode)}
                       pickerIsSaving={pickerActiveExerciseId === exercise.id && isSavingLibraryExerciseChoice}
                       isLibraryMode={!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit}
-                      onOpenPresetSelector={(ex) => {
-                        setSelectedExercise(ex);
-                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
-                        setIsPresetSelectorOpen(true);
-                      }}
-                      onOpenMeasuresEditor={(ex) => {
-                        setSelectedExercise(ex);
-                        setExerciseDraft(JSON.parse(JSON.stringify(ex)));
-                        setEditorModalMode('exercise');
-                        setPresetBeingEditedId(null);
-                        setIsMeasuresObjectivesEditorOpen(true);
-                      }}
-                      onAddObjective={(ex, key, label, applyToAll) => {
-                        if (!user || !sessionId) return;
-                        const customLabels = { ...(ex.customObjectiveLabels || sessionDefaultTemplate?.customObjectiveLabels || {}), [key]: label };
-                        if (applyToAll) {
-                          const tpl = sessionDefaultTemplate || {};
-                          const newObjectives = [...(tpl.objectives || []).filter(o => o !== key), key];
-                          if (!newObjectives.includes('previous')) newObjectives.push('previous');
-                          const templateUpdate = { ...tpl, objectives: newObjectives, customObjectiveLabels: { ...(tpl.customObjectiveLabels || {}), [key]: label } };
-                          setLocalDefaultTemplate(templateUpdate);
-                          setExercises(prev => prev.map(e => {
-                            const exObj = e.objectives?.length > 0 ? e.objectives : (tpl.objectives || []);
-                            const updated = [...exObj.filter(o => o !== key), key];
-                            if (!updated.includes('previous')) updated.push('previous');
-                            return { ...e, objectives: updated, customObjectiveLabels: { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}), [key]: label } };
-                          }));
-                          contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                          exercises.forEach(e => {
-                            contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { objectives: [...((e.objectives?.length > 0 ? e.objectives : (tpl.objectives || [])).filter(o => o !== key)), key, ...(!((e.objectives?.length > 0 ? e.objectives : (tpl.objectives || [])).filter(o => o !== key)).includes('previous') ? ['previous'] : [])], customObjectiveLabels: { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}), [key]: label } }).catch(() => {});
-                          });
-                        } else {
-                          const currentObjectives = ex.objectives?.length > 0 ? ex.objectives : (sessionDefaultTemplate?.objectives || []);
-                          const newObjectives = [...currentObjectives.filter(o => o !== key), key];
-                          if (!newObjectives.includes('previous')) newObjectives.push('previous');
-                          const updates = { objectives: newObjectives, customObjectiveLabels: customLabels };
-                          setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
-                          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error adding objective:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                        }
-                      }}
-                      onRemoveObjective={(ex, objectiveKey, applyToAll) => {
-                        if (!user || !sessionId) return;
-                        if (applyToAll) {
-                          const tpl = sessionDefaultTemplate || {};
-                          const newObjectives = (tpl.objectives || []).filter(o => o !== objectiveKey);
-                          const newLabels = { ...(tpl.customObjectiveLabels || {}) };
-                          delete newLabels[objectiveKey];
-                          const templateUpdate = { ...tpl, objectives: newObjectives, customObjectiveLabels: newLabels };
-                          setLocalDefaultTemplate(templateUpdate);
-                          setExercises(prev => prev.map(e => {
-                            const exObj = e.objectives?.length > 0 ? e.objectives : (tpl.objectives || []);
-                            const updated = exObj.filter(o => o !== objectiveKey);
-                            const labels = { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}) };
-                            delete labels[objectiveKey];
-                            return { ...e, objectives: updated, customObjectiveLabels: labels };
-                          }));
-                          contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                          exercises.forEach(e => {
-                            const exObj = e.objectives?.length > 0 ? e.objectives : (tpl.objectives || []);
-                            const labels = { ...(e.customObjectiveLabels || tpl.customObjectiveLabels || {}) };
-                            delete labels[objectiveKey];
-                            contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { objectives: exObj.filter(o => o !== objectiveKey), customObjectiveLabels: labels }).catch(() => {});
-                          });
-                        } else {
-                          const currentObjectives = ex.objectives?.length > 0 ? ex.objectives : (sessionDefaultTemplate?.objectives || []);
-                          const newObjectives = currentObjectives.filter(o => o !== objectiveKey);
-                          const newLabels = { ...(ex.customObjectiveLabels || sessionDefaultTemplate?.customObjectiveLabels || {}) };
-                          delete newLabels[objectiveKey];
-                          const updates = { objectives: newObjectives, customObjectiveLabels: newLabels };
-                          setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
-                          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error removing objective:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                        }
-                      }}
-                      onAddMeasure={(ex, key, label, applyToAll) => {
-                        if (!user || !sessionId) return;
-                        const customLabels = { ...(ex.customMeasureLabels || sessionDefaultTemplate?.customMeasureLabels || {}), [key]: label };
-                        if (applyToAll) {
-                          const tpl = sessionDefaultTemplate || {};
-                          const newMeasures = [...(tpl.measures || []).filter(m => m !== key), key];
-                          const templateUpdate = { ...tpl, measures: newMeasures, customMeasureLabels: { ...(tpl.customMeasureLabels || {}), [key]: label } };
-                          setLocalDefaultTemplate(templateUpdate);
-                          setExercises(prev => prev.map(e => {
-                            const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
-                            return { ...e, measures: [...exMeasures.filter(m => m !== key), key], customMeasureLabels: { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}), [key]: label } };
-                          }));
-                          contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                          exercises.forEach(e => {
-                            const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
-                            contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { measures: [...exMeasures.filter(m => m !== key), key], customMeasureLabels: { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}), [key]: label } }).catch(() => {});
-                          });
-                        } else {
-                          const currentMeasures = ex.measures?.length > 0 ? ex.measures : (sessionDefaultTemplate?.measures || []);
-                          const newMeasures = [...currentMeasures.filter(m => m !== key), key];
-                          const updates = { measures: newMeasures, customMeasureLabels: customLabels };
-                          setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
-                          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error adding measure:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                        }
-                      }}
-                      onRemoveMeasure={(ex, measureKey, applyToAll) => {
-                        if (!user || !sessionId) return;
-                        if (applyToAll) {
-                          const tpl = sessionDefaultTemplate || {};
-                          const newMeasures = (tpl.measures || []).filter(m => m !== measureKey);
-                          const newLabels = { ...(tpl.customMeasureLabels || {}) };
-                          delete newLabels[measureKey];
-                          const templateUpdate = { ...tpl, measures: newMeasures, customMeasureLabels: newLabels };
-                          setLocalDefaultTemplate(templateUpdate);
-                          setExercises(prev => prev.map(e => {
-                            const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
-                            const labels = { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}) };
-                            delete labels[measureKey];
-                            return { ...e, measures: exMeasures.filter(m => m !== measureKey), customMeasureLabels: labels };
-                          }));
-                          contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: templateUpdate })
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error updating session template:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                          exercises.forEach(e => {
-                            const exMeasures = e.measures?.length > 0 ? e.measures : (tpl.measures || []);
-                            const labels = { ...(e.customMeasureLabels || tpl.customMeasureLabels || {}) };
-                            delete labels[measureKey];
-                            contentApi.updateExerciseInLibrarySession(user.uid, sessionId, e.id, { measures: exMeasures.filter(m => m !== measureKey), customMeasureLabels: labels }).catch(() => {});
-                          });
-                        } else {
-                          const currentMeasures = ex.measures?.length > 0 ? ex.measures : (sessionDefaultTemplate?.measures || []);
-                          const newMeasures = currentMeasures.filter(m => m !== measureKey);
-                          const newLabels = { ...(ex.customMeasureLabels || sessionDefaultTemplate?.customMeasureLabels || {}) };
-                          delete newLabels[measureKey];
-                          const updates = { measures: newMeasures, customMeasureLabels: newLabels };
-                          setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, ...updates } : e));
-                          contentApi.updateExerciseInLibrarySession(user.uid, sessionId, ex.id, updates)
-                            .then(() => setHasMadeChanges(true))
-                            .catch(err => { logger.error('Error removing measure:', err); showToast('No pudimos guardar los cambios.', 'error'); });
-                        }
-                      }}
+                      onOpenPresetSelector={handleOpenPresetSelector}
+                      onOpenMeasuresEditor={handleOpenMeasuresEditor}
+                      onAddObjective={handleAddObjective}
+                      onRemoveObjective={handleRemoveObjective}
+                      onAddMeasure={handleAddMeasure}
+                      onRemoveMeasure={handleRemoveMeasure}
                       onSetsChanged={handleSetsChanged}
                       isEditMode={isEditMode}
                       onDelete={isEditMode ? handleDeleteExercise : null}
@@ -3778,6 +3838,7 @@ const LibrarySessionDetailScreen = () => {
             </DropZone>
           </div>
           </div>
+          </Revealable>
 
           {/* Volume Panel — always visible right column */}
           <div className="lsd-glow-wrap lsd-glow-wrap--volume">
@@ -4755,8 +4816,10 @@ const objectivesFields = (draftObjectives || []).filter(obj => obj !== 'previous
           </button>
         </div>
       </Modal>
+      <RevealProgressBar />
     </DashboardLayout>
     {ConfirmModal}
+    </ProgressiveRevealProvider>
     </ErrorBoundary>
   );
 };

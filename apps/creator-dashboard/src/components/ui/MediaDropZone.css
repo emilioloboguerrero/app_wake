@@ -1,0 +1,40 @@
+/* ─── Drop zone wrapper ─────────────────────────────────── */
+/* display:contents makes this invisible to CSS layout (grid, flex).
+   The wrapper still receives DOM drag/drop events via bubbling. */
+.mdz-wrap {
+  display: contents;
+}
+
+/* ─── Overlay (portaled to body, positioned via JS) ─────── */
+.mdz-overlay {
+  position: fixed;
+  z-index: 950;
+  border: 2px dashed rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: mdz-enter 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mdz-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.mdz-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.mdz-overlay-content span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}

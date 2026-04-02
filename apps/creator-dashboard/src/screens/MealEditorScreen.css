@@ -377,17 +377,52 @@
 }
 
 .meal-editor-video-preview {
+  position: relative;
   margin-top: 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 9 / 14;
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.meal-editor-video-link {
-  font-size: clamp(13px, 3vw, 14px);
-  color: rgba(255, 255, 255, 0.95);
-  text-decoration: none;
+.meal-editor-video-player {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: none;
 }
 
-.meal-editor-video-link:hover {
-  text-decoration: underline;
+.meal-editor-video-actions {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.meal-editor-video-action-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.meal-editor-video-action-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.meal-editor-video-action-btn--danger:hover {
+  background: rgba(220, 38, 38, 0.7);
 }
 
 /* Empty state (no dropzone graphic) */

@@ -9,11 +9,11 @@ import {
   SkeletonCard,
   TubelightNavBar,
   NumberTicker,
-  SpotlightTutorial,
   MenuDropdown,
   AnimatedList,
   ConfirmDeleteModal,
 } from '../components/ui/index.js';
+import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -35,18 +35,6 @@ const TABS = [
   { id: 'llamadas', label: 'Llamadas' },
 ];
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '.cl-tabs',
-    title: 'Todo en un lugar',
-    body: 'Clientes, programas 1:1 y llamadas. Todo lo relacionado con tus clientes individuales en una sola pantalla.',
-  },
-  {
-    selector: '.cl-group',
-    title: 'Agrupados por programa',
-    body: 'Tus clientes agrupados por programa. El color del borde viene de la imagen del programa.',
-  },
-];
 
 function getInitial(name) {
   return (name || '?').charAt(0).toUpperCase();
@@ -553,9 +541,7 @@ const ClientesScreen = () => {
   const { data: overviewData, isLoading: isLoadingOverview, isError: isClientsError, refetch: refetchClients } = useQuery({
     queryKey: queryKeys.clients.overview(user?.uid, { adherence: needsAdherence }),
     queryFn: async () => {
-      const t0 = performance.now();
       const result = await apiClient.get(`/creator/clients-overview${overviewParams}`).then((r) => r.data);
-      console.log(`[ClientesScreen] clients-overview — ${result?.clients?.length ?? 0} clients — ${Math.round(performance.now() - t0)}ms`);
       return result;
     },
     enabled: !!user?.uid && activeTab !== 'llamadas',
@@ -981,7 +967,7 @@ const ClientesScreen = () => {
         onCreated={handleAsesoriaCreated}
       />
 
-      <SpotlightTutorial screenKey="clientes" steps={TUTORIAL_STEPS} />
+      <ContextualHint screenKey="clientes" />
 
       <ConfirmDeleteModal
         isOpen={!!deleteTarget}

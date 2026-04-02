@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
-import { TubelightNavBar } from '../components/ui';
+import { TubelightNavBar, FullScreenError } from '../components/ui';
 import ClientLabTab from '../components/client/ClientLabTab';
 import ClientPlanTab from '../components/client/ClientPlanTab';
 import ClientNutritionTab from '../components/client/ClientNutritionTab';
@@ -11,6 +11,7 @@ import ClientProfileTab from '../components/client/ClientProfileTab';
 import oneOnOneService from '../services/oneOnOneService';
 import apiClient from '../utils/apiClient';
 import { cacheConfig, queryKeys } from '../config/queryClient';
+import ContextualHint from '../components/hints/ContextualHint';
 import './ClientScreen.css';
 
 const TAB_CONFIG = [
@@ -31,7 +32,6 @@ export default function ClientScreen() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const creatorId = user?.uid;
-  console.log(`[ClientScreen] render — clientId=${clientId}, tab=${location?.state?.tab || 'lab'}`);
 
   // ── Tab state ────────────────────────────────────────────────
   const [currentTab, setCurrentTab] = useState(
@@ -41,8 +41,15 @@ export default function ClientScreen() {
     () => location.state?.subtab || 'entrenamiento'
   );
 
+  // Keep-alive: track which tabs have been visited so we mount once & never unmount
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([location.state?.tab || 'lab']));
+  const [visitedSubtabs, setVisitedSubtabs] = useState(
+    () => new Set([location.state?.subtab || 'entrenamiento'])
+  );
+
   const handleTabChange = useCallback((tabId) => {
     setCurrentTab(tabId);
+    setVisitedTabs(prev => { const next = new Set(prev); next.add(tabId); return next; });
     navigate('.', { replace: true, state: { ...location.state, tab: tabId } });
   }, [navigate, location.state]);
 
@@ -57,6 +64,11 @@ export default function ClientScreen() {
     }
   }, [currentTab, navigate, location.state]);
 
+  const handleSubtabChange = useCallback((subtabId) => {
+    setContenidoSubtab(subtabId);
+    setVisitedSubtabs(prev => { const next = new Set(prev); next.add(subtabId); return next; });
+  }, []);
+
   // ── Shared week state (synced across plan + nutrition) ───────
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
@@ -68,9 +80,7 @@ export default function ClientScreen() {
   const { data: client, isLoading: clientLoading, error: clientError } = useQuery({
     queryKey: queryKeys.clients.detail(clientId),
     queryFn: async () => {
-      const t0 = performance.now();
       const result = await oneOnOneService.getClientById(clientId, { userId: hintClientUserId });
-      console.log(`[ClientScreen] getClientById — ${Math.round(performance.now() - t0)}ms`);
       return result;
     },
     enabled: !!clientId,
@@ -163,12 +173,15 @@ export default function ClientScreen() {
   }
 
   if (clientError || (!clientLoading && !client)) {
+    const isNotFound = clientError?.status === 404 || clientError?.code === 'NOT_FOUND';
     return (
-      <DashboardLayout screenName="Error" showBackButton backPath={backPath} backState={backState}>
-        <div className="cs-error">
-          <p>No se pudo cargar el cliente.</p>
-          <button onClick={() => navigate(backPath)}>Volver</button>
-        </div>
+      <DashboardLayout screenName="Cliente" showBackButton backPath={backPath} backState={backState}>
+        <FullScreenError
+          title={isNotFound ? 'Cliente no encontrado' : 'No pudimos cargar este cliente'}
+          message={isNotFound ? 'Este cliente puede haber sido eliminado o el enlace es incorrecto.' : 'Ocurrio un error inesperado.'}
+          onRetry={() => navigate(backPath, { state: backState })}
+          retryLabel="Volver a clientes"
+        />
       </DashboardLayout>
     );
   }
@@ -190,64 +203,71 @@ export default function ClientScreen() {
           />
         </div>
 
-        {/* ── Tab Content ─────────────────────────────────────── */}
+        {/* ── Tab Content (keep-alive: mount once, toggle via CSS) ── */}
         <div className="cs-content">
-          {currentTab === 'lab' && (
+          <div style={{ display: currentTab === 'lab' ? 'block' : 'none' }}>
             <ClientLabTab
               clientId={clientId}
               clientUserId={clientUserId}
               clientName={clientName}
               creatorId={creatorId}
             />
-          )}
-          {currentTab === 'contenido' && (
-            <>
+          </div>
+          {visitedTabs.has('contenido') && (
+            <div style={{ display: currentTab === 'contenido' ? 'block' : 'none' }}>
               <div className="cs-subtab-bar">
                 <TubelightNavBar
                   items={CONTENIDO_SUBTABS}
                   activeId={contenidoSubtab}
-                  onSelect={setContenidoSubtab}
+                  onSelect={handleSubtabChange}
                 />
               </div>
-              {contenidoSubtab === 'entrenamiento' && (
-                <ClientPlanTab
-                  clientId={clientId}
-                  clientUserId={clientUserId}
-                  clientName={clientName}
-                  creatorId={creatorId}
-                  currentModule={currentModule}
-                  planId={planId}
-                  activeProgram={activeProgram}
-                  programs={programs}
-                  programsLoading={programsLoading}
-                  selectedProgramId={selectedProgramId}
-                  onProgramChange={setSelectedProgramId}
-                />
+              {visitedSubtabs.has('entrenamiento') && (
+                <div style={{ display: contenidoSubtab === 'entrenamiento' ? 'block' : 'none' }}>
+                  <ClientPlanTab
+                    clientId={clientId}
+                    clientUserId={clientUserId}
+                    clientName={clientName}
+                    creatorId={creatorId}
+                    currentModule={currentModule}
+                    planId={planId}
+                    activeProgram={activeProgram}
+                    programs={programs}
+                    programsLoading={programsLoading}
+                    selectedProgramId={selectedProgramId}
+                    onProgramChange={setSelectedProgramId}
+                  />
+                </div>
               )}
-              {contenidoSubtab === 'nutricion' && (
-                <ClientNutritionTab
-                  clientId={clientId}
-                  clientUserId={clientUserId}
-                  clientName={clientName}
-                  creatorId={creatorId}
-                  labData={labData}
-                  nutritionGoal={client?.onboardingData?.nutritionGoal}
-                  dietaryRestrictions={client?.onboardingData?.dietaryRestrictions || []}
-                />
+              {visitedSubtabs.has('nutricion') && (
+                <div style={{ display: contenidoSubtab === 'nutricion' ? 'block' : 'none' }}>
+                  <ClientNutritionTab
+                    clientId={clientId}
+                    clientUserId={clientUserId}
+                    clientName={clientName}
+                    creatorId={creatorId}
+                    labData={labData}
+                    nutritionGoal={client?.onboardingData?.nutritionGoal}
+                    dietaryRestrictions={client?.onboardingData?.dietaryRestrictions || []}
+                  />
+                </div>
               )}
-            </>
+            </div>
           )}
-          {currentTab === 'perfil' && (
-            <ClientProfileTab
-              clientId={clientId}
-              clientUserId={clientUserId}
-              clientName={clientName}
-              creatorId={creatorId}
-              clientDetail={client}
-            />
+          {visitedTabs.has('perfil') && (
+            <div style={{ display: currentTab === 'perfil' ? 'block' : 'none' }}>
+              <ClientProfileTab
+                clientId={clientId}
+                clientUserId={clientUserId}
+                clientName={clientName}
+                creatorId={creatorId}
+                clientDetail={client}
+              />
+            </div>
           )}
         </div>
       </div>
+      <ContextualHint screenKey="client" />
     </DashboardLayout>
   );
 }

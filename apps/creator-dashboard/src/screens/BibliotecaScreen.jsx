@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { TubelightNavBar, SpotlightTutorial, GlowingEffect } from '../components/ui';
+import { TubelightNavBar, GlowingEffect } from '../components/ui';
+import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
+import { Revealable, RevealProgressBar } from '../components/guide';
 import ExercisesPanel from '../components/biblioteca/ExercisesPanel';
 import SessionsPanel from '../components/biblioteca/SessionsPanel';
 import PlansPanel from '../components/biblioteca/PlansPanel';
@@ -103,23 +105,6 @@ function FilterSortPanel({ isOpen, onClose, filters, onFiltersChange }) {
   );
 }
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '.bib-domain-nav',
-    title: 'Dos mundos',
-    body: 'Entrenamiento tiene tus ejercicios, sesiones y planes. Nutricion tiene tus recetas y planes nutricionales.',
-  },
-  {
-    selector: '.bib-sub-nav',
-    title: 'Contenido reutilizable',
-    body: 'Todo lo que creas aca lo puedes usar en cualquier programa o asignar a clientes.',
-  },
-  {
-    selector: '.bib-primary-btn',
-    title: 'Crear',
-    body: 'El boton + cambia segun la pestana activa. Crea sesiones, planes o planes nutricionales.',
-  },
-];
 
 const BibliotecaScreen = () => {
   const navigate = useNavigate();
@@ -143,6 +128,7 @@ const BibliotecaScreen = () => {
   // --- Mutations ---
 
   const createLibraryMutation = useMutation({
+    mutationKey: ['libraries', 'create'],
     mutationFn: (title) => libraryService.createLibrary(title),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.libraries(user?.uid) });
@@ -161,6 +147,7 @@ const BibliotecaScreen = () => {
   });
 
   const createSessionMutation = useMutation({
+    mutationKey: ['library-sessions', 'create'],
     mutationFn: (title) => libraryService.createLibrarySession(user.uid, { title }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
@@ -178,6 +165,7 @@ const BibliotecaScreen = () => {
   });
 
   const createNutriPlanMutation = useMutation({
+    mutationKey: ['nutrition-plans', 'create'],
     mutationFn: (name) => nutritionDb.createPlan(user.uid, { name, description: '', categories: [] }),
     onSuccess: (planId) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(user?.uid) });
@@ -302,70 +290,81 @@ const BibliotecaScreen = () => {
 
   return (
     <ErrorBoundary>
+      <ProgressiveRevealProvider screenKey={`biblioteca-${activeSubTab}`} key={activeSubTab}>
       <DashboardLayout screenName="Biblioteca">
         <div className="bib-container">
           <div className="bib-top-row">
-            <div className="bib-domain-nav">
-              <TubelightNavBar
-                items={DOMAIN_ITEMS}
-                activeId={domain}
-                onSelect={setDomain}
-              />
-            </div>
-            <button className="bib-primary-btn" onClick={handlePrimaryAction}>
-              <span className="bib-primary-btn-plus">+</span>
-              {getPrimaryLabel()}
-            </button>
-          </div>
-
-          <div className="bib-nav-row">
-            <div className="bib-sub-nav">
-              <TubelightNavBar
-                items={subTabs}
-                activeId={activeSubTab}
-                onSelect={setTab}
-              />
-            </div>
-          </div>
-
-          <div className="bib-search-row">
-            <div className="bib-search-field">
-              <SearchIcon />
-              <input
-                type="text"
-                className="bib-search-input"
-                placeholder={getSearchPlaceholder()}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="bib-filter-wrap">
-              <button
-                type="button"
-                className={`bib-filter-btn ${activeFilterCount > 0 ? 'bib-filter-btn--active' : ''}`}
-                onClick={() => setFilterOpen((v) => !v)}
-                aria-label="Filtrar"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Filtrar
-                {activeFilterCount > 0 && (
-                  <span className="bib-filter-btn__badge">{activeFilterCount}</span>
-                )}
+            <Revealable step="domain-nav">
+              <div className="bib-domain-nav">
+                <TubelightNavBar
+                  items={DOMAIN_ITEMS}
+                  activeId={domain}
+                  onSelect={setDomain}
+                />
+              </div>
+            </Revealable>
+            <Revealable step="primary-btn">
+              <button className="bib-primary-btn" onClick={handlePrimaryAction}>
+                <span className="bib-primary-btn-plus">+</span>
+                {getPrimaryLabel()}
               </button>
-              <FilterSortPanel
-                isOpen={filterOpen}
-                onClose={() => setFilterOpen(false)}
-                filters={filters}
-                onFiltersChange={setFilters}
-              />
-            </div>
+            </Revealable>
           </div>
 
-          <div className="bib-content" key={`${domain}-${activeSubTab}`}>
-            {renderContent()}
-          </div>
+          <Revealable step="sub-tabs">
+            <div className="bib-nav-row">
+              <div className="bib-sub-nav">
+                <TubelightNavBar
+                  items={subTabs}
+                  activeId={activeSubTab}
+                  onSelect={setTab}
+                />
+              </div>
+            </div>
+          </Revealable>
+
+          <Revealable step="search-filter">
+            <div className="bib-search-row">
+              <div className="bib-search-field">
+                <SearchIcon />
+                <input
+                  type="text"
+                  className="bib-search-input"
+                  placeholder={getSearchPlaceholder()}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="bib-filter-wrap">
+                <button
+                  type="button"
+                  className={`bib-filter-btn ${activeFilterCount > 0 ? 'bib-filter-btn--active' : ''}`}
+                  onClick={() => setFilterOpen((v) => !v)}
+                  aria-label="Filtrar"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Filtrar
+                  {activeFilterCount > 0 && (
+                    <span className="bib-filter-btn__badge">{activeFilterCount}</span>
+                  )}
+                </button>
+                <FilterSortPanel
+                  isOpen={filterOpen}
+                  onClose={() => setFilterOpen(false)}
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                />
+              </div>
+            </div>
+          </Revealable>
+
+          <Revealable step="content-area">
+            <div className="bib-content" key={`${domain}-${activeSubTab}`}>
+              {renderContent()}
+            </div>
+          </Revealable>
         </div>
 
         <CreatePlanOverlay
@@ -419,8 +418,9 @@ const BibliotecaScreen = () => {
           isSuccess={successFor === 'nutriPlan'}
         />
 
-        <SpotlightTutorial screenKey="biblioteca" steps={TUTORIAL_STEPS} />
+        <RevealProgressBar />
       </DashboardLayout>
+      </ProgressiveRevealProvider>
     </ErrorBoundary>
   );
 };

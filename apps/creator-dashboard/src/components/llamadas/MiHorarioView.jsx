@@ -77,6 +77,7 @@ export default function MiHorarioView() {
   }, [availability, draftTemplate, draftDisabledDates]);
 
   const saveMutation = useMutation({
+    mutationKey: ['availability', 'save-template'],
     mutationFn: () => availabilityService.saveWeeklyTemplate(
       draftTemplate ?? template,
       draftDisabledDates ?? disabledDates,

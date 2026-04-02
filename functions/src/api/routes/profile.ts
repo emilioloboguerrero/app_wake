@@ -9,17 +9,13 @@ const router = Router();
 
 // GET /users/me
 router.get("/users/me", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[/users/me] ${label} — ${Date.now() - t0}ms`);
 
   const auth = await validateAuthAndRateLimit(req);
-  log("auth+rateLimit");
 
   const data = auth.userData;
   if (!data) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
-  log("responding");
 
   res.json({
     data: {
@@ -43,6 +39,8 @@ router.get("/users/me", async (req, res) => {
       profileCompleted: data.profileCompleted ?? false,
       onboardingCompleted: data.onboardingCompleted ?? false,
       courses: data.courses ?? {},
+      bio: data.bio ?? null,
+      creatorNavPreferences: data.creatorNavPreferences ?? null,
     },
   });
 });
@@ -94,6 +92,9 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
     "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
     "howTheyFoundUs", "creatorOnboardingData",
     "goalWeight", "weightUnit",
+    "bio", "creatorNavPreferences",
+    "creatorSpecializations", "creatorExperience", "creatorCertifications",
+    "websiteUrl", "socialLinks", "profilePictureUrl",
   ];
 
   const stringFields = new Set([
@@ -101,11 +102,14 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
     "birthDate", "phoneNumber", "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
     "beholdFeedId",
     "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
-    "howTheyFoundUs", "weightUnit",
+    "howTheyFoundUs", "weightUnit", "bio",
+    "creatorExperience", "creatorCertifications",
   ]);
+  const urlFields = new Set(["websiteUrl", "profilePictureUrl"]);
   const numberFields = new Set(["height", "weight", "goalWeight"]);
   const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted"]);
-  const objectFields = new Set(["creatorOnboardingData", "onboardingData"]);
+  const objectFields = new Set(["creatorOnboardingData", "onboardingData", "creatorNavPreferences", "socialLinks"]);
+  const arrayFields = new Set(["creatorSpecializations"]);
 
   const updates: Record<string, unknown> = {};
   for (const field of allowedFields) {
@@ -118,6 +122,13 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
           throw new WakeApiServerError(
             "VALIDATION_ERROR", 400,
             `${field} debe ser un string de máximo 200 caracteres`, field
+          );
+        }
+      } else if (urlFields.has(field)) {
+        if (typeof value !== "string" || value.length > 2048) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un string de máximo 2048 caracteres`, field
           );
         }
       } else if (numberFields.has(field)) {
@@ -139,6 +150,13 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
           throw new WakeApiServerError(
             "VALIDATION_ERROR", 400,
             `${field} debe ser un objeto`, field
+          );
+        }
+      } else if (arrayFields.has(field)) {
+        if (!Array.isArray(value) || value.length > 20 || !value.every((v: unknown) => typeof v === "string" && v.length <= 100)) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un array de strings (máximo 20 items)`, field
           );
         }
       }

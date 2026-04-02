@@ -90,6 +90,7 @@ export default function ProximasLlamadasView() {
   }, [upcoming]);
 
   const cancelMutation = useMutation({
+    mutationKey: ['bookings', 'cancel'],
     mutationFn: (bookingId) => cancelBookingAsCreator(bookingId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.bookings.byCreator(user?.uid) });

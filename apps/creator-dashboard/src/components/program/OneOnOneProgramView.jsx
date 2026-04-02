@@ -11,10 +11,12 @@ import GlowingEffect from '../ui/GlowingEffect';
 import NumberTicker from '../ui/NumberTicker';
 import AnimatedList from '../ui/AnimatedList';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
+import { detectVideoSource, getEmbedUrl } from '../../utils/videoUtils';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
 import libraryService from '../../services/libraryService';
 import apiClient from '../../utils/apiClient';
 import useProgramEditor from '../../hooks/useProgramEditor';
+import MediaDropZone from '../ui/MediaDropZone';
 import './OneOnOneProgramView.css';
 
 const TUTORIAL_SCREENS = [
@@ -162,6 +164,7 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
           {/* Left -- Program image + status + info */}
           <div className="oo-program-card">
             <GlowingEffect spread={30} proximity={80} />
+            <MediaDropZone onSelect={editor.handleProgramImageSelect} accept="image/*">
             <div className="oo-program-card__image-area" onClick={() => editor.setIsMediaPickerOpen(true)}>
               {program?.image_url ? (
                 <>
@@ -177,6 +180,7 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
                 </div>
               )}
             </div>
+            </MediaDropZone>
 
             <div className="oo-program-card__info">
               <div className="oo-program-card__info-text">
@@ -386,15 +390,23 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
             </BentoCard>
 
             {/* Video intro */}
+            <MediaDropZone onSelect={editor.handleIntroVideoSelect} accept="video/*">
             <BentoCard className="oo-config__card">
               <GlowingEffect spread={24} proximity={60} />
               <h3>Video intro</h3>
               {program?.video_intro_url ? (
                 <div className="oo-config__media-wrap">
-                  <video src={program.video_intro_url} muted playsInline />
-                  <div className="oo-config__media-overlay">
-                    <button type="button" className="oo-config__btn" onClick={() => editor.setIsIntroVideoPickerOpen(true)}>Cambiar</button>
-                    <button type="button" className="oo-config__btn oo-config__btn--danger" onClick={editor.handleIntroVideoDelete}>Eliminar</button>
+                  {(() => {
+                    const source = detectVideoSource(program.video_intro_url);
+                    const isExternal = source === 'youtube' || source === 'vimeo';
+                    if (isExternal) {
+                      return <iframe src={getEmbedUrl(program.video_intro_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video intro" style={{ width: '100%', height: '100%', border: 'none' }} />;
+                    }
+                    return <video src={program.video_intro_url} controls playsInline />;
+                  })()}
+                  <div className="oo-config__media-actions">
+                    <button type="button" className="oo-config__media-action-btn" onClick={() => editor.setIsIntroVideoPickerOpen(true)}>Cambiar</button>
+                    <button type="button" className="oo-config__media-action-btn oo-config__media-action-btn--danger" onClick={editor.handleIntroVideoDelete}>Eliminar</button>
                   </div>
                 </div>
               ) : (
@@ -404,6 +416,7 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
                 </button>
               )}
             </BentoCard>
+            </MediaDropZone>
 
             {/* Mensajes */}
             <BentoCard className="oo-config__card oo-config__card--span-2">

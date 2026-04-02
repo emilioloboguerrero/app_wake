@@ -86,6 +86,7 @@ const PlanningLibrarySidebar = ({
     queryFn: () => libraryService.getSessionLibrarySlim(creatorId),
     enabled: !!creatorId && activeTab === LIBRARY_TAB_SESSIONS,
     ...cacheConfig.librarySessions,
+    refetchOnMount: false,
   });
 
   const { data: plans = [], isLoading: plansLoading, isError: plansError } = useQuery({
@@ -93,6 +94,7 @@ const PlanningLibrarySidebar = ({
     queryFn: () => plansService.getPlansByCreator(creatorId),
     enabled: !!creatorId && activeTab === LIBRARY_TAB_PLANS,
     staleTime: 10 * 60 * 1000,
+    refetchOnMount: false,
   });
 
   const q = (searchQuery || '').trim().toLowerCase();

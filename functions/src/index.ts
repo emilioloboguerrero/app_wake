@@ -2266,16 +2266,32 @@ export const nutritionBarcodeLookup = functions
 // Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
 // Creates the Firestore user doc so all downstream reads have a document to work with.
 export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
-  // Allowlisted fields only — never spread the Firebase Auth user object
-  const userDoc: Record<string, unknown> = {
-    role: "user",
-    email: user.email ?? null,
-    displayName: user.displayName ?? null,
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-  };
-
   try {
-    await db.collection("users").doc(user.uid).set(userDoc, {merge: true});
+    const docRef = db.collection("users").doc(user.uid);
+    const existing = await docRef.get();
+
+    // If the doc already exists (e.g. /creator/register ran first), only fill
+    // in missing fields — never overwrite role or other data set by registration.
+    if (existing.exists) {
+      const data = existing.data() || {};
+      const patch: Record<string, unknown> = {};
+      if (!data.email) patch.email = user.email ?? null;
+      if (!data.displayName) patch.displayName = user.displayName ?? null;
+      if (!data.created_at) patch.created_at = admin.firestore.FieldValue.serverTimestamp();
+      if (Object.keys(patch).length > 0) {
+        await docRef.update(patch);
+      }
+      functions.logger.info("onUserCreated: doc already existed, patched missing fields", {uid: user.uid});
+      return;
+    }
+
+    // No doc yet — bootstrap with role: "user"
+    await docRef.set({
+      role: "user",
+      email: user.email ?? null,
+      displayName: user.displayName ?? null,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
     functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
   } catch (error) {
     functions.logger.error("onUserCreated: failed to bootstrap user doc", {

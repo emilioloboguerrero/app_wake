@@ -1,0 +1,210 @@
+/* ─── Mission Track — Ambient Whisper ────────────────────────── */
+
+.mt-track {
+  margin: 0 8px 8px;
+  padding: 12px;
+  border-radius: var(--radius-md, 10px);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  transform: translateY(10px);
+  animation: mt-enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.5s forwards;
+}
+
+@keyframes mt-enter {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Header ─────────────────────────────────────────────────── */
+
+.mt-header {
+  margin-bottom: 10px;
+}
+
+.mt-header__title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.25);
+  font-weight: 500;
+}
+
+/* ─── Mission item ───────────────────────────────────────────── */
+
+.mt-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  opacity: 0;
+  transform: translateX(-10px);
+  animation: mt-item-slide 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc(0.7s + var(--item-index) * 0.1s);
+}
+
+@keyframes mt-item-slide {
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Check circle */
+
+.mt-item__check {
+  flex-shrink: 0;
+}
+
+.mt-item__check-done {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #1a1a1a;
+  animation: mt-check-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes mt-check-pop {
+  from { transform: scale(0); }
+  50%  { transform: scale(1.15); }
+  to   { transform: scale(1); }
+}
+
+.mt-item__check-empty {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  transition: border-color 0.3s ease;
+}
+
+/* Breathing animation on next item */
+.mt-item__check-empty--next {
+  border-color: rgba(255, 255, 255, 0.35);
+  animation: mt-check-breathe 3s ease-in-out infinite;
+}
+
+@keyframes mt-check-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); border-color: rgba(255, 255, 255, 0.35); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.5); }
+}
+
+/* Title */
+
+.mt-item__title {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+  transition: color 0.3s ease;
+}
+
+.mt-item--done .mt-item__title {
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.mt-item--next .mt-item__title {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+/* Go arrow */
+
+.mt-item__go {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mt-item__go:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  transform: translateX(2px);
+}
+
+/* ─── Celebrating ──────────────────────────────────────────── */
+
+.mt-item--celebrating .mt-item__check-done {
+  animation: mt-celebrate-ring 0.8s ease-out both;
+}
+
+@keyframes mt-celebrate-ring {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.08); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+/* ─── Progress line ──────────────────────────────────────────── */
+
+.mt-progress {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.mt-progress__fill {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.25);
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ─── All complete ───────────────────────────────────────────── */
+
+.mt-complete {
+  padding: 8px 0 0;
+  text-align: center;
+}
+
+.mt-complete__text {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Restore button ─────────────────────────────────────────── */
+
+.mt-restore {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 8px 8px;
+  padding: 8px 12px;
+  width: calc(100% - 16px);
+  border-radius: var(--radius-md, 10px);
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.2);
+  font-family: inherit;
+  font-size: 10px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.mt-restore:hover {
+  color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.mt-restore__label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mt-restore__badge {
+  font-size: 10px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 6px;
+  border-radius: 999px;
+}

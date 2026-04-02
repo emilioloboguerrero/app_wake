@@ -51,17 +51,11 @@ export default function ClientPlanTab({
 
   const { data: calendar, isLoading: calendarLoading, error: calendarError } = useQuery({
     queryKey: calendarKey,
-    queryFn: async () => {
-      const t0 = performance.now();
-      const result = await clientProgramService.getCalendar(clientUserId, programId, monthStr);
-      const weeks = Object.keys(result?.weeks || {}).length;
-      const dateSess = result?.dateSessions?.length || 0;
-      console.log(`[ClientPlanTab] getCalendar(${monthStr}) — ${weeks} weeks, ${dateSess} dateSessions — ${Math.round(performance.now() - t0)}ms`);
-      return result;
-    },
+    queryFn: () => clientProgramService.getCalendar(clientUserId, programId, monthStr),
     enabled: !!clientUserId && !!programId,
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
   });
 
   const planAssignments = calendar?.planAssignments || {};
@@ -92,6 +86,7 @@ export default function ClientPlanTab({
     queryFn: () => plansService.getPlansByCreator(creatorId),
     enabled: !!creatorId,
     staleTime: 10 * 60 * 1000,
+    refetchOnMount: false,
   });
 
   const planWeeksCount = useMemo(() => {
@@ -110,6 +105,7 @@ export default function ClientPlanTab({
   // ── Mutations (React Query handles loading states) ─────────────
 
   const assignPlanMutation = useMutation({
+    mutationKey: ['plans', 'assign'],
     mutationFn: ({ assignPlanId, weekKey }) =>
       clientProgramService.assignPlan(programId, clientUserId, assignPlanId, weekKey),
     onSuccess: () => {
@@ -119,6 +115,7 @@ export default function ClientPlanTab({
   });
 
   const removePlanMutation = useMutation({
+    mutationKey: ['plans', 'remove'],
     mutationFn: ({ removePlanId }) =>
       clientProgramService.removePlan(programId, clientUserId, removePlanId),
     onSuccess: () => {
@@ -128,24 +125,28 @@ export default function ClientPlanTab({
   });
 
   const deleteSessionMutation = useMutation({
+    mutationKey: ['client-sessions', 'delete'],
     mutationFn: ({ weekKey, sessionId }) =>
       clientPlanContentService.deleteSession(clientUserId, programId, weekKey, sessionId),
     onSuccess: () => invalidateCalendar(),
   });
 
   const updateSessionMutation = useMutation({
+    mutationKey: ['client-sessions', 'update'],
     mutationFn: ({ weekKey, sessionId, updates }) =>
       clientPlanContentService.updateSession(clientUserId, programId, weekKey, sessionId, updates),
     onSuccess: () => invalidateCalendar(),
   });
 
   const addLibrarySessionMutation = useMutation({
+    mutationKey: ['client-sessions', 'add-library'],
     mutationFn: ({ weekKey, dayIndex, librarySessionId }) =>
       clientPlanContentService.addLibrarySessionToWeek(clientUserId, programId, weekKey, librarySessionId, dayIndex),
     onSuccess: () => invalidateCalendar(),
   });
 
   const assignDateSessionMutation = useMutation({
+    mutationKey: ['client-sessions', 'assign-date'],
     mutationFn: (sessionData) =>
       clientSessionService.assignSessionToDate(
         clientUserId, programId,
@@ -162,6 +163,7 @@ export default function ClientPlanTab({
   });
 
   const deleteDateSessionMutation = useMutation({
+    mutationKey: ['client-sessions', 'delete-date'],
     mutationFn: ({ date, sessionId }) =>
       clientSessionService.removeSessionFromDate(clientUserId, date, sessionId),
     onSuccess: () => invalidateCalendar(),
@@ -209,7 +211,6 @@ export default function ClientPlanTab({
   // FLOW 5: Edit session within plan week — navigate to editor
   const handleEditPlanSession = useCallback(({ session, weekKey }) => {
     if (!clientUserId || !programId || !session?.id || !weekKey) return;
-    console.log(`[ClientPlanTab] navigating to session editor — sessionId=${session.id}, weekKey=${weekKey}, editScope=client_plan`);
     navigate(`/content/sessions/${session.id}`, {
       state: {
         returnTo: location.pathname,

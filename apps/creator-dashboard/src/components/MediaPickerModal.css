@@ -165,83 +165,87 @@
   color: #fff;
 }
 
-/* ─── Queue strip ─────────────────────────────────────────── */
-.mp-queue-strip {
-  padding: 12px 24px 0;
-  animation: mp-item-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.mp-queue-strip-inner {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: none;
-}
-.mp-queue-strip-inner::-webkit-scrollbar { display: none; }
-
-.mp-queue-chip {
+/* ─── Link button & input ────────────────────────────────── */
+.mp-link-btn {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  padding: 8px 12px;
-  min-width: 180px;
-  flex-shrink: 0;
-  animation: mp-item-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.mp-queue-chip-thumb {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-}
-.mp-queue-chip-thumb img {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  object-fit: cover;
-}
-.mp-queue-chip-placeholder {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-}
-.mp-queue-chip-ring {
-  position: absolute;
-  inset: -2px;
-  width: 40px;
-  height: 40px;
-}
-.mp-queue-chip-ring circle:last-child {
-  transition: stroke-dashoffset 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.mp-queue-chip-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.mp-queue-chip-name {
-  font-size: 0.78rem;
+  padding: 9px 16px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 120px;
+}
+.mp-link-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.85);
+}
+.mp-link-btn--active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 
-.mp-queue-chip-status {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.4);
-  letter-spacing: 0.02em;
+.mp-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px 0;
+  flex-wrap: wrap;
+  animation: mp-item-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.mp-link-input {
+  flex: 1;
+  min-width: 200px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.mp-link-input:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.mp-link-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.mp-link-submit {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 9px 18px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+.mp-link-submit:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+.mp-link-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.mp-link-error {
+  width: 100%;
+  font-size: 0.78rem;
+  color: rgba(220, 38, 38, 0.9);
+  margin: 2px 0 0;
 }
 
 /* ─── Content area ────────────────────────────────────────── */
@@ -565,7 +569,6 @@
   .mp-toolbar { padding: 12px 20px 0; }
   .mp-content { padding: 12px 20px 20px; }
   .mp-footer { padding: 10px 20px 14px; }
-  .mp-queue-strip { padding: 10px 20px 0; }
 
   .mp-grid {
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));

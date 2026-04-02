@@ -11,6 +11,7 @@ import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import propagationService from '../services/propagationService';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import ContextualHint from '../components/hints/ContextualHint';
 import '../components/PropagateChangesModal.css';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import logger from '../utils/logger';
@@ -574,6 +575,7 @@ const PlanDetailScreen = () => {
           }}
         />
       </motion.div>
+      <ContextualHint screenKey="plan-detail" />
     </DashboardLayout>
   );
 };

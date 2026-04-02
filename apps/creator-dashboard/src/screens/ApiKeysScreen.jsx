@@ -10,6 +10,7 @@ const ApiKeysScreen = () => {
   const [requested, setRequested] = useState(false);
 
   const requestMutation = useMutation({
+    mutationKey: ['creator', 'request-api-access'],
     mutationFn: () => apiClient.post('/creator/request-api-access'),
     onSuccess: () => {
       setRequested(true);

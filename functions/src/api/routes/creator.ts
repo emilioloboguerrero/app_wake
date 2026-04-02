@@ -238,11 +238,8 @@ router.get("/creator/clients", async (req, res) => {
 // GET /creator/clients-overview — combined clients + programs + adherence in one call
 // Eliminates duplicate reads across the three individual endpoints
 router.get("/creator/clients-overview", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[creator/clients-overview] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const [clientsSnap, coursesSnap] = await Promise.all([
     db.collection("one_on_one_clients")
@@ -260,7 +257,6 @@ router.get("/creator/clients-overview", async (req, res) => {
   const clientUserIds = [...new Set(
     clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
   )];
-  log(`clients+courses (${clientDocs.length} clients, ${coursesSnap.size} courses)`);
 
   // ── 2. Batch fetch user docs (N reads) ──
   const userDocsMap: Record<string, Record<string, unknown>> = {};
@@ -277,7 +273,6 @@ router.get("/creator/clients-overview", async (req, res) => {
     }
   }
 
-  log(`user docs batch (${Object.keys(userDocsMap).length} fetched)`);
 
   // ── 3. Compute enrollment counts from user docs (0 reads) ──
   const enrollmentCounts: Record<string, number> = {};
@@ -328,7 +323,6 @@ router.get("/creator/clients-overview", async (req, res) => {
     };
   });
 
-  log("build clients+programs");
 
   // ── 6. Compute adherence (only when requested — saves 19 reads) ──
   const includeAdherence = req.query.includeAdherence === "true";
@@ -470,7 +464,6 @@ router.get("/creator/clients-overview", async (req, res) => {
     adherencePayload = { overallAdherence, byProgram, enrollmentHistory };
   }
 
-  log(`done (adherence=${includeAdherence})`);
   res.json({
     data: {
       clients,
@@ -641,14 +634,10 @@ router.post("/creator/clients", async (req, res) => {
 
 // GET /creator/clients/:clientId — single client detail
 router.get("/creator/clients/:clientId", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[creator/clients/:id] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const hintUserId = req.query.userId as string | undefined;
-  log(`hint=${hintUserId ? "yes" : "no"}`);
 
   let doc: FirebaseFirestore.DocumentSnapshot;
   let userDoc: FirebaseFirestore.DocumentSnapshot;
@@ -666,7 +655,6 @@ router.get("/creator/clients/:clientId", async (req, res) => {
       db.collection("one_on_one_clients").doc(req.params.clientId)
         .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
     ]);
-    log("parallel reads (4 docs)");
   } else {
     [doc, creatorPrograms, notesSnap] = await Promise.all([
       db.collection("one_on_one_clients").doc(req.params.clientId).get(),
@@ -677,13 +665,11 @@ router.get("/creator/clients/:clientId", async (req, res) => {
       db.collection("one_on_one_clients").doc(req.params.clientId)
         .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
     ]);
-    log("parallel reads (3 docs)");
     if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
       throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
     }
     const resolvedUserId = doc.data()!.clientUserId ?? doc.data()!.userId;
     userDoc = await db.collection("users").doc(resolvedUserId).get();
-    log("sequential userDoc read");
   }
   if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
@@ -711,7 +697,6 @@ router.get("/creator/clients/:clientId", async (req, res) => {
 
   const notes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  log(`done (${enrolledPrograms.length} programs, ${notes.length} notes)`);
   res.json({
     data: {
       id: doc.id,
@@ -1012,6 +997,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     "access_duration", "discipline", "image_url", "image_path",
     "creatorName", "weight_suggestions", "free_trial", "duration",
     "video_intro_url", "tutorials", "availableLibraries", "content_plan_id",
+    "compare_at_price",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -1270,8 +1256,7 @@ router.get("/creator/instagram-feed", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  const beholdFeedId = userDoc.data()?.beholdFeedId;
+  const beholdFeedId = auth.userData?.beholdFeedId as string | undefined;
 
   if (!beholdFeedId || typeof beholdFeedId !== "string") {
     throw new WakeApiServerError(
@@ -1436,7 +1421,7 @@ router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
   }
 
   // Allowlist meal fields
-  const allowedFields = ["name", "description", "calories", "protein", "carbs", "fat", "items", "category", "video_url"];
+  const allowedFields = ["name", "description", "calories", "protein", "carbs", "fat", "items", "category", "video_url", "video_source"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -1920,6 +1905,52 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
   res.json({ data: { updated: true } });
 });
 
+// PUT /creator/nutrition/assignments/:assignmentId/content — update without clientId (for program assignments)
+router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const assignDoc = await db.collection("nutrition_assignments").doc(req.params.assignmentId).get();
+  if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Asignacion no encontrada");
+  }
+
+  const body = req.body ?? {};
+  await db.collection("client_nutrition_plan_content").doc(req.params.assignmentId).set({
+    source_plan_id: body.source_plan_id ?? null,
+    assignment_id: req.params.assignmentId,
+    name: body.name ?? "",
+    description: body.description ?? "",
+    daily_calories: body.daily_calories ?? null,
+    daily_protein_g: body.daily_protein_g ?? null,
+    daily_carbs_g: body.daily_carbs_g ?? null,
+    daily_fat_g: body.daily_fat_g ?? null,
+    categories: Array.isArray(body.categories) ? body.categories : [],
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { updated: true } });
+});
+
+// GET /creator/nutrition/assignments/:assignmentId/content — read without clientId (for program assignments)
+router.get("/creator/nutrition/assignments/:assignmentId/content", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const assignDoc = await db.collection("nutrition_assignments").doc(req.params.assignmentId).get();
+  if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Asignacion no encontrada");
+  }
+
+  const contentDoc = await db.collection("client_nutrition_plan_content").doc(req.params.assignmentId).get();
+  if (!contentDoc.exists) {
+    res.json({ data: null });
+    return;
+  }
+
+  res.json({ data: contentDoc.data() });
+});
+
 // GET /creator/nutrition/assignments — list all assignments for this creator
 router.get("/creator/nutrition/assignments", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -2185,7 +2216,16 @@ async function ensureClientCopy(
   const planAssignments = (courseEntry?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
   const assignment = planAssignments[weekKey];
   if (!assignment?.planId || !assignment?.moduleId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "No hay plan asignado a esta semana");
+    // No plan assigned — create an empty client_plan_content doc so sessions can be added directly
+    await docRef.set({
+      title: weekKey,
+      order: 0,
+      source_plan_id: null,
+      source_module_id: null,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+    return { docId, alreadyExisted: false };
   }
 
   // Read plan module sessions with exercises and sets
@@ -2342,13 +2382,10 @@ async function deleteClientPlanContentDoc(docId: string): Promise<void> {
 
 // GET /creator/clients/:clientId/plan-content/:weekKey?programId=X
 router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[plan-content GET] ${label} — ${Date.now() - t0}ms`);
 
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
-  log("auth+access");
 
   const programId = req.query.programId as string;
   if (!programId) {
@@ -2357,7 +2394,6 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
 
   let docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
   let doc = await db.collection("client_plan_content").doc(docId).get();
-  log(`doc read (exists=${doc.exists})`);
 
   if (!doc.exists) {
     // Auto-create copy from plan template if a plan is assigned to this week
@@ -2365,10 +2401,8 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
       const result = await ensureClientCopy(req.params.clientId, programId, req.params.weekKey, auth.userId);
       docId = result.docId;
       doc = await db.collection("client_plan_content").doc(docId).get();
-      log("ensureClientCopy done");
     } catch {
       // No plan assigned to this week — return null
-      log("no plan assigned — returning null");
       res.json({ data: null });
       return;
     }
@@ -2382,7 +2416,6 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
 
   // Load sessions subcollection
   const sessionsSnap = await doc.ref.collection("sessions").orderBy("order", "asc").get();
-  log(`sessions query — ${sessionsSnap.size} sessions`);
 
   const sessions = await Promise.all(
     sessionsSnap.docs.map(async (sDoc) => {
@@ -2400,7 +2433,6 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
       return { id: sDoc.id, ...sDoc.data(), exercises };
     })
   );
-  log(`tree loaded — ${sessions.length} sessions, ${sessions.reduce((a, s) => a + (s.exercises?.length || 0), 0)} exercises`);
 
   res.json({ data: { ...docData, programId, sessions } });
 });
@@ -2503,7 +2535,7 @@ router.patch("/creator/clients/:clientId/plan-content/:weekKey/sessions/:session
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id"];
+  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id", "defaultDataTemplate"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -2617,20 +2649,15 @@ router.delete("/creator/clients/:clientId/client-sessions/:clientSessionId", asy
 
 // GET /creator/clients/:clientId/client-sessions/:clientSessionId/content
 router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[client-session-content GET] ${label} — ${Date.now() - t0}ms`);
 
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
-  log("auth+access");
 
   const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
   const doc = await docRef.get();
-  log(`doc read (exists=${doc.exists})`);
 
   if (!doc.exists) {
-    log("returning null — no content");
     res.json({ data: null });
     return;
   }
@@ -3254,7 +3281,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     "name", "order", "title", "libraryId", "primaryMuscles", "notes",
     "programSettings", "defaultSetValues",
     "primary", "alternatives", "objectives", "measures",
-    "description", "video_url", "muscle_activation", "implements",
+    "description", "video_url", "video_source", "muscle_activation", "implements",
     "customMeasureLabels", "customObjectiveLabels",
   ];
   const exData = pickFields(req.body, allowedExFields);
@@ -3294,7 +3321,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     "name", "order", "title", "libraryId", "primaryMuscles", "notes",
     "videoUrl", "thumbnailUrl", "programSettings", "defaultSetValues",
     "primary", "alternatives", "objectives", "measures",
-    "description", "video_url", "muscle_activation", "implements",
+    "description", "video_url", "video_source", "muscle_activation", "implements",
     "customMeasureLabels", "customObjectiveLabels",
   ];
   const updates = pickFields(req.body, allowedFields);
@@ -3699,20 +3726,15 @@ router.patch("/creator/library/sessions/reorder", async (req, res) => {
 
 // GET /creator/library/sessions/:sessionId
 router.get("/creator/library/sessions/:sessionId", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[lib-session GET] ${label} — ${Date.now() - t0}ms`);
 
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const sessionRef = db.collection("creator_libraries").doc(auth.userId).collection("sessions").doc(req.params.sessionId);
   const doc = await sessionRef.get();
-  if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
-  log("session doc");
+  if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Esta sesión no existe o fue eliminada");
 
   const exercisesSnap = await sessionRef.collection("exercises").orderBy("order", "asc").get();
-  log(`exercises query — ${exercisesSnap.size} exercises`);
 
   const exercises = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
@@ -3720,7 +3742,6 @@ router.get("/creator/library/sessions/:sessionId", async (req, res) => {
       return { exerciseId: eDoc.id, id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ setId: s.id, id: s.id, ...s.data() })) };
     })
   );
-  log(`sets loaded — ${exercises.reduce((a, e) => a + (e.sets?.length || 0), 0)} total sets`);
 
   res.json({ data: { sessionId: doc.id, id: doc.id, ...doc.data(), exercises } });
 });
@@ -3860,7 +3881,7 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async
   const allowedFields = [
     "name", "order", "libraryId", "primaryMuscles", "notes", "videoUrl", "thumbnailUrl",
     "primary", "alternatives", "objectives", "measures",
-    "customMeasureLabels", "customObjectiveLabels", "defaultSetValues",
+    "customMeasureLabels", "customObjectiveLabels", "defaultSetValues", "video_source",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -4262,61 +4283,77 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     .get();
 
   if (plansSnap.size >= 100) {
-    console.warn(`Creator ${auth.userId} has 100+ plans; propagation capped.`);
   }
 
   let updatedCount = 0;
   const batchSize = 450;
-  let batch = db.batch();
-  let batchCount = 0;
+
+  // Helper: commit writes in batches of 450
+  const commitInBatches = async (ops: Array<{ type: "set" | "update" | "delete"; ref: FirebaseFirestore.DocumentReference; data?: Record<string, unknown> }>) => {
+    for (let i = 0; i < ops.length; i += batchSize) {
+      const chunk = ops.slice(i, i + batchSize);
+      const batch = db.batch();
+      for (const op of chunk) {
+        if (op.type === "delete") batch.delete(op.ref);
+        else if (op.type === "update") batch.update(op.ref, op.data!);
+        else batch.set(op.ref, op.data!);
+      }
+      await batch.commit();
+    }
+  };
 
   // Helper: replace exercises/sets on a session doc with library content
-  const replaceSessionContent = async (sessionRef: FirebaseFirestore.DocumentReference) => {
-    batch.update(sessionRef, {
-      title: libSessionData.title,
-      source_library_session_id: req.params.sessionId,
-      updated_at: FieldValue.serverTimestamp(),
-    });
-    batchCount++;
-    if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+  const replaceSessionContent = async (sessionRef: FirebaseFirestore.DocumentReference, extraFields?: Record<string, unknown>) => {
+    const ops: Array<{ type: "set" | "update" | "delete"; ref: FirebaseFirestore.DocumentReference; data?: Record<string, unknown> }> = [];
 
+    ops.push({
+      type: "update",
+      ref: sessionRef,
+      data: {
+        title: libSessionData.title,
+        source_library_session_id: req.params.sessionId,
+        updated_at: FieldValue.serverTimestamp(),
+        ...(extraFields ?? {}),
+      },
+    });
+
+    // Read existing exercises + their sets in parallel
     const existingExSnap = await sessionRef.collection("exercises").get();
-    for (const exDoc of existingExSnap.docs) {
-      const existingSetsSnap = await exDoc.ref.collection("sets").get();
-      for (const setDoc of existingSetsSnap.docs) {
-        batch.delete(setDoc.ref);
-        batchCount++;
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+    const allSetSnaps = await Promise.all(
+      existingExSnap.docs.map((exDoc) => exDoc.ref.collection("sets").get())
+    );
+
+    // Queue deletes for all existing sets and exercises
+    for (const setSnap of allSetSnaps) {
+      for (const setDoc of setSnap.docs) {
+        ops.push({ type: "delete", ref: setDoc.ref });
       }
-      batch.delete(exDoc.ref);
-      batchCount++;
-      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+    }
+    for (const exDoc of existingExSnap.docs) {
+      ops.push({ type: "delete", ref: exDoc.ref });
     }
 
+    // Queue creates for library content
     for (const ex of exercises) {
       const newExRef = sessionRef.collection("exercises").doc();
-      batch.set(newExRef, { ...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp() });
-      batchCount++;
-      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      ops.push({ type: "set", ref: newExRef, data: { ...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp() } });
 
       for (const setData of ex.sets) {
         const newSetRef = newExRef.collection("sets").doc();
-        batch.set(newSetRef, { ...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
-        batchCount++;
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        ops.push({ type: "set", ref: newSetRef, data: { ...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp() } });
       }
     }
 
+    await commitInBatches(ops);
     updatedCount++;
   };
 
   // Helper: find sessions referencing this library session (supports both old and new field names)
   const findReferencingSessions = async (parentRef: FirebaseFirestore.CollectionReference) => {
-    // Query new field
-    const newSnap = await parentRef.where("source_library_session_id", "==", req.params.sessionId).get();
-    // Query legacy field
-    const oldSnap = await parentRef.where("librarySessionRef", "==", req.params.sessionId).get();
-    // Deduplicate by doc ID
+    const [newSnap, oldSnap] = await Promise.all([
+      parentRef.where("source_library_session_id", "==", req.params.sessionId).get(),
+      parentRef.where("librarySessionRef", "==", req.params.sessionId).get(),
+    ]);
     const seen = new Set<string>();
     const results: FirebaseFirestore.QueryDocumentSnapshot[] = [];
     for (const doc of [...newSnap.docs, ...oldSnap.docs]) {
@@ -4328,97 +4365,62 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     return results;
   };
 
-  // Phase 1: Update plan template sessions
-  for (const planDoc of plansSnap.docs) {
+  // Phase 1: Update plan template sessions (parallelized per plan)
+  await Promise.all(plansSnap.docs.map(async (planDoc) => {
     const modulesSnap = await planDoc.ref.collection("modules").get();
-    for (const moduleDoc of modulesSnap.docs) {
+    await Promise.all(modulesSnap.docs.map(async (moduleDoc) => {
       const matchingSessions = await findReferencingSessions(moduleDoc.ref.collection("sessions"));
       for (const sessionDoc of matchingSessions) {
         await replaceSessionContent(sessionDoc.ref);
       }
-    }
-  }
+    }));
+  }));
 
-  // Phase 2: Update client_plan_content snapshots
+  // Phase 2: Update client_plan_content snapshots (parallelized per client)
   const clientsSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .get();
 
-  for (const clientDoc of clientsSnap.docs) {
+  await Promise.all(clientsSnap.docs.map(async (clientDoc) => {
     const clientUserId = clientDoc.data().clientUserId as string;
-    // Read planAssignments from user doc (source of truth)
     const userDoc = await db.collection("users").doc(clientUserId).get();
-    if (!userDoc.exists) continue;
+    if (!userDoc.exists) return;
     const courses = userDoc.data()?.courses ?? {};
 
+    const weekTasks: Array<Promise<void>> = [];
     for (const [programId, courseData] of Object.entries(courses) as Array<[string, Record<string, unknown>]>) {
       const assignments = (courseData?.planAssignments ?? {}) as Record<string, { planId: string }>;
 
       for (const weekKey of Object.keys(assignments)) {
-        const contentDocId = `${clientUserId}_${programId}_${weekKey}`;
-        const contentDocRef = db.collection("client_plan_content").doc(contentDocId);
-        const contentDoc = await contentDocRef.get();
-        if (!contentDoc.exists) continue;
+        weekTasks.push((async () => {
+          const contentDocId = `${clientUserId}_${programId}_${weekKey}`;
+          const contentDocRef = db.collection("client_plan_content").doc(contentDocId);
+          const contentDoc = await contentDocRef.get();
+          if (!contentDoc.exists) return;
 
-        const matchingSessions = await findReferencingSessions(contentDocRef.collection("sessions"));
-        for (const sessionDoc of matchingSessions) {
-          await replaceSessionContent(sessionDoc.ref);
-        }
+          const matchingSessions = await findReferencingSessions(contentDocRef.collection("sessions"));
+          for (const sessionDoc of matchingSessions) {
+            await replaceSessionContent(sessionDoc.ref);
+          }
+        })());
       }
     }
-  }
+    await Promise.all(weekTasks);
+  }));
 
-  // Phase 3: Update client_session_content (date-assigned sessions)
+  // Phase 3: Update client_session_content (date-assigned sessions, parallelized)
   const dateSessionsSnap = await db
     .collection("client_session_content")
     .where("source_session_id", "==", req.params.sessionId)
     .where("creator_id", "==", auth.userId)
     .get();
 
-  for (const contentDoc of dateSessionsSnap.docs) {
-    const contentRef = contentDoc.ref;
-    // Delete existing exercises/sets
-    const existingExSnap = await contentRef.collection("exercises").get();
-    for (const exDoc of existingExSnap.docs) {
-      const existingSetsSnap = await exDoc.ref.collection("sets").get();
-      for (const setDoc of existingSetsSnap.docs) {
-        batch.delete(setDoc.ref);
-        batchCount++;
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
-      }
-      batch.delete(exDoc.ref);
-      batchCount++;
-      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
-    }
-
-    // Write library content
-    batch.update(contentRef, {
-      title: libSessionData.title,
+  await Promise.all(dateSessionsSnap.docs.map(async (contentDoc) => {
+    await replaceSessionContent(contentDoc.ref, {
       image_url: libSessionData.image_url ?? null,
-      updated_at: FieldValue.serverTimestamp(),
     });
-    batchCount++;
-    if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
-
-    for (const ex of exercises) {
-      const newExRef = contentRef.collection("exercises").doc();
-      batch.set(newExRef, { ...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp() });
-      batchCount++;
-      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
-
-      for (const setData of ex.sets) {
-        const newSetRef = newExRef.collection("sets").doc();
-        batch.set(newSetRef, { ...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
-        batchCount++;
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
-      }
-    }
-
-    updatedCount++;
-  }
-
-  if (batchCount > 0) await batch.commit();
+  }));
 
   res.json({ data: { updatedCount, mode: "all" } });
 });
@@ -4463,7 +4465,6 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
     .get();
 
   if (plansSnap.size >= 100) {
-    console.warn(`Creator ${auth.userId} has 100+ plans; propagation capped.`);
   }
 
   let updatedCount = 0;
@@ -4686,11 +4687,8 @@ router.delete("/creator/clients/:clientId/programs/:programId/schedule/:weekKey"
 
 // GET /creator/clients/:clientId/programs/:programId/calendar?month=YYYY-MM
 router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req, res) => {
-  const t0 = Date.now();
-  const log = (label: string) => console.log(`[creator/calendar] ${label} — ${Date.now() - t0}ms`);
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  log("auth");
 
   const month = req.query.month as string;
   if (!month || !/^\d{4}-\d{2}$/.test(month)) {
@@ -4704,7 +4702,6 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     verifyClientAccess(auth.userId, clientId),
     db.collection("users").doc(clientId).get(),
   ]);
-  log("access+userDoc");
   const courseEntry = userDoc.data()?.courses?.[programId] as Record<string, unknown> | undefined;
   if (!courseEntry) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no tiene este programa asignado");
@@ -4727,7 +4724,6 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   };
 
-  log(`${weekKeysWithPlans.length} weeks with plans`);
   const [/* weeksDone */, dateSessionsSnap, historySnap] = await Promise.all([
     // 3a. Load week content in parallel
     Promise.all(
@@ -4804,7 +4800,31 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
           sessions: cached.sessions,
         };
       })
-    ),
+    ).then(async () => {
+      // Also check weeks WITHOUT plan assignments for direct client_plan_content docs
+      const weekKeysWithoutPlans = visibleWeekKeys.filter((wk) => !planAssignments[wk]?.planId);
+      if (weekKeysWithoutPlans.length > 0) {
+        const docRefs = weekKeysWithoutPlans.map((wk) =>
+          db.collection("client_plan_content").doc(planContentDocId(clientId, programId, wk))
+        );
+        const docs = await db.getAll(...docRefs);
+        await Promise.all(
+          docs.map(async (docSnap, i) => {
+            if (!docSnap.exists) return;
+            const weekKey = weekKeysWithoutPlans[i];
+            const sessions = await readSessionList(docSnap.ref.collection("sessions"));
+            if (sessions.length === 0) return; // skip empty unplanned weeks
+            weeks[weekKey] = {
+              planId: null,
+              moduleId: null,
+              moduleTitle: docSnap.data()?.title ?? weekKey,
+              isPersonalized: true,
+              sessions,
+            };
+          })
+        );
+      }
+    }),
 
     // 3b. Date-assigned sessions for the month
     db.collection("client_sessions")
@@ -4825,7 +4845,6 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
       .get(),
   ]);
 
-  log(`parallel queries done (${Object.keys(weeks).length} weeks, ${dateSessionsSnap.size} dateSessions, ${historySnap.size} history)`);
 
   const dateSessions: Array<Record<string, unknown>> = dateSessionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
@@ -4859,7 +4878,6 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     completedByDate[dateStr].push({ id: hDoc.id, ...hData });
   }
 
-  log("done");
   res.json({
     data: {
       planAssignments,
@@ -5053,7 +5071,7 @@ router.patch("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sess
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada en esta semana");
   }
 
-  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id"];
+  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id", "defaultDataTemplate"];
   const updates = pickFields(req.body, allowedFields);
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
@@ -5887,7 +5905,7 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const allowedExFields = ["name", "order", "libraryId", "description", "video_url",
+  const allowedExFields = ["name", "order", "libraryId", "description", "video_url", "video_source",
     "muscle_activation", "implements", "primary", "primaryMuscles",
     "alternatives", "objectives", "measures", "customMeasureLabels", "customObjectiveLabels"];
   const exData = pickFields(req.body, allowedExFields);
@@ -5930,7 +5948,7 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
     throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
   }
 
-  const allowedFields = ["name", "order", "libraryId", "description", "video_url",
+  const allowedFields = ["name", "order", "libraryId", "description", "video_url", "video_source",
     "muscle_activation", "implements", "primary", "primaryMuscles",
     "alternatives", "objectives", "measures", "customMeasureLabels", "customObjectiveLabels"];
   const updates = pickFields(req.body, allowedFields);
@@ -6497,6 +6515,9 @@ router.patch("/creator/exercises/libraries/:libraryId/exercises/:name", async (r
   if (body.video_path !== undefined) {
     updates[`${exerciseName}.video_path`] = body.video_path;
   }
+  if (body.video_source !== undefined) {
+    updates[`${exerciseName}.video_source`] = body.video_source;
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No hay campos para actualizar");
@@ -6578,11 +6599,12 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/
   await ref.update({
     [`${exerciseName}.video_url`]: publicUrl,
     [`${exerciseName}.video_path`]: storagePath,
+    [`${exerciseName}.video_source`]: "upload",
     [`${exerciseName}.updated_at`]: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { video_url: publicUrl, video_path: storagePath } });
+  res.json({ data: { video_url: publicUrl, video_path: storagePath, video_source: "upload" } });
 });
 
 // DELETE /creator/exercises/libraries/:libraryId/exercises/:name/video
@@ -6615,6 +6637,7 @@ router.delete("/creator/exercises/libraries/:libraryId/exercises/:name/video", a
   await ref.update({
     [`${exerciseName}.video_url`]: FieldValue.delete(),
     [`${exerciseName}.video_path`]: FieldValue.delete(),
+    [`${exerciseName}.video_source`]: FieldValue.delete(),
     [`${exerciseName}.updated_at`]: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   });
@@ -6782,7 +6805,15 @@ async function ensureProgramCopy(
   const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
   const assignment = planAssignments[weekKey];
   if (!assignment?.planId || !assignment?.moduleId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "No hay plan asignado a esta semana");
+    // No plan assigned — create an empty personalized content doc so sessions can be added directly
+    await docRef.set({
+      courseId,
+      weekKey,
+      title: weekKey,
+      isPersonalized: true,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    return { docId, alreadyExisted: false };
   }
 
   // Read plan module sessions with exercises and sets
@@ -6988,6 +7019,26 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
         moduleTitle: cached.moduleTitle,
         isPersonalized: false,
         sessions: cached.sessions,
+      };
+    })
+  );
+
+  // Also check for personalized content in weeks without plan assignments
+  const weekKeysWithoutPlans = visibleWeekKeys.filter((wk) => !planAssignments[wk]?.planId);
+  await Promise.all(
+    weekKeysWithoutPlans.map(async (weekKey) => {
+      const docId = programContentDocId(programId, weekKey);
+      const docRef = db.collection("client_plan_content").doc(docId);
+      const docSnap = await docRef.get();
+      if (!docSnap.exists) return;
+      const sessions = await readSessionList(docRef.collection("sessions"));
+      if (sessions.length === 0) return;
+      weeks[weekKey] = {
+        planId: null,
+        moduleId: null,
+        moduleTitle: weekKey,
+        isPersonalized: true,
+        sessions,
       };
     })
   );
@@ -7246,7 +7297,7 @@ router.patch("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", 
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada en esta semana");
   }
 
-  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id"];
+  const allowedFields = ["title", "order", "dayIndex", "isRestDay", "image_url", "source_library_session_id", "defaultDataTemplate"];
   const updates = pickFields(req.body, allowedFields);
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
@@ -7460,6 +7511,98 @@ router.post("/creator/request-api-access", async (req, res) => {
   });
 
   res.status(200).json({ data: { sent: true } });
+});
+
+// GET /creator/check-username/:username — check username availability
+router.get("/creator/check-username/:username", async (req, res) => {
+  const username = req.params.username?.toLowerCase();
+  if (!username || !/^[a-z0-9_-]+$/.test(username)) {
+    res.json({ data: { available: false } });
+    return;
+  }
+
+  const existing = await db.collection("users")
+    .where("username", "==", username)
+    .limit(1)
+    .get();
+
+  res.json({ data: { available: existing.empty } });
+});
+
+// POST /creator/register — bootstrap a new creator account
+router.post("/creator/register", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const userRef = db.collection("users").doc(auth.userId);
+  const userDoc = await userRef.get();
+  const currentRole = userDoc.exists ? userDoc.data()?.role : null;
+
+  if (currentRole === "creator" || currentRole === "admin") {
+    res.json({ data: { userId: auth.userId, alreadyCreator: true } });
+    return;
+  }
+
+  const body = validateBody<{
+    displayName: string;
+    username: string;
+    birthDate: string;
+    gender: string;
+    country: string;
+    city: string;
+  }>({
+    displayName: "string",
+    username: "string",
+    birthDate: "string",
+    gender: "string",
+    country: "string",
+    city: "string",
+  }, req.body);
+
+  if (!body.displayName || body.displayName.length > 100) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Nombre es requerido (max 100 caracteres)", "displayName");
+  }
+  if (!body.username || body.username.length > 50) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Username es requerido (max 50 caracteres)", "username");
+  }
+  if (!/^[a-z0-9_-]+$/.test(body.username)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Username solo puede contener letras, numeros, guiones y guiones bajos", "username");
+  }
+  if (!body.birthDate) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Fecha de nacimiento es requerida", "birthDate");
+  }
+  if (!["male", "female", "other"].includes(body.gender)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Genero debe ser male, female u other", "gender");
+  }
+  if (!body.country || body.country.length > 10) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Pais es requerido", "country");
+  }
+  if (!body.city || body.city.length > 100) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Ciudad es requerida", "city");
+  }
+
+  const existingUser = await db.collection("users")
+    .where("username", "==", body.username.toLowerCase())
+    .limit(1)
+    .get();
+
+  if (!existingUser.empty && existingUser.docs[0].id !== auth.userId) {
+    throw new WakeApiServerError("CONFLICT", 409, "Este username ya esta en uso", "username");
+  }
+
+  await userRef.set({
+    role: "creator",
+    displayName: body.displayName,
+    username: body.username.toLowerCase(),
+    birthDate: body.birthDate,
+    gender: body.gender,
+    country: body.country,
+    city: body.city,
+    webOnboardingCompleted: false,
+    profileCompleted: true,
+    updated_at: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  res.status(201).json({ data: { userId: auth.userId, role: "creator" } });
 });
 
 export default router;

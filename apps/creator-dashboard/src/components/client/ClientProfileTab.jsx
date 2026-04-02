@@ -40,6 +40,7 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
   const profile = clientDetail;
 
   const addNote = useMutation({
+    mutationKey: ['clients', 'add-note'],
     mutationFn: (text) => apiClient.post(`/creator/clients/${clientId}/notes`, { text }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
@@ -48,11 +49,13 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
   });
 
   const deleteNote = useMutation({
+    mutationKey: ['clients', 'delete-note'],
     mutationFn: (noteId) => apiClient.delete(`/creator/clients/${clientId}/notes/${noteId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) }),
   });
 
   const updateAccess = useMutation({
+    mutationKey: ['clients', 'update-access'],
     mutationFn: ({ programId, expiresAt }) =>
       apiClient.patch(`/creator/clients/${clientUserId}/programs/${programId}`, { expiresAt }),
     onSuccess: () => {

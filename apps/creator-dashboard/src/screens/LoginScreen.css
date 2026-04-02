@@ -464,6 +464,47 @@
   color: rgba(255,255,255,0.7);
 }
 
+/* ─── Mode Toggle ───────────────────────────────────────── */
+.ln-mode-toggle {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.ln-mode-btn {
+  background: none;
+  border: none;
+  padding: 6px 2px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast) ease;
+  position: relative;
+}
+
+.ln-mode-btn:hover {
+  color: var(--text-secondary);
+}
+
+.ln-mode-btn--active {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ln-mode-btn--active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.6);
+  border-radius: 1px;
+}
+
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (min-width: 768px) {
   .ln-hero-col {

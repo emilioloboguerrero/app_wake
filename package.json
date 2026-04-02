@@ -41,7 +41,10 @@
     "test:api": "node scripts/test-api/runner.js",
     "test:api:staging": "cross-env TEST_ENV=staging node scripts/test-api/runner.js",
     "test:api:local": "cross-env TEST_ENV=local node scripts/test-api/runner.js",
-    "creator:dev": "npm --prefix functions run build && concurrently -n tsc,emu,vite -c blue,magenta,green \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wake-staging\" \"cross-env VITE_FIREBASE_ENV=staging npm run dev --prefix apps/creator-dashboard\""
+    "creator:dev": "npm --prefix functions run build && concurrently -n tsc,emu,vite -c blue,magenta,green \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wake-staging\" \"cross-env VITE_FIREBASE_ENV=staging npm run dev --prefix apps/creator-dashboard\"",
+    "creator:dev:prod": "npm --prefix functions run build && concurrently -n tsc,emu,vite -c blue,magenta,green \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wolf-20b8b\" \"cross-env VITE_FIREBASE_ENV=production npm run dev --prefix apps/creator-dashboard\"",
+    "pwa:dev:prod": "cross-env FIREBASE_PROJECT=wolf-20b8b node scripts/pwa-dev.js",
+    "dev:prod": "npm --prefix functions run build && concurrently -n tsc,emu,creator,pwa -c blue,magenta,green,cyan \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wolf-20b8b\" \"cross-env VITE_FIREBASE_ENV=production npm run dev --prefix apps/creator-dashboard\" \"cross-env FIREBASE_PROJECT=wolf-20b8b node scripts/pwa-dev.js\""
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

@@ -12,6 +12,7 @@ import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import './ProgramDetailScreen.css';
 import './SharedScreenLayout.css';
+import ContextualHint from '../components/hints/ContextualHint';
 import './CreateLibrarySessionScreen.css';
 
 const CreateLibrarySessionScreen = () => {
@@ -187,6 +188,7 @@ const CreateLibrarySessionScreen = () => {
           </div>
         </div>
       </div>
+      <ContextualHint screenKey="create-session" />
     </DashboardLayout>
   );
 };

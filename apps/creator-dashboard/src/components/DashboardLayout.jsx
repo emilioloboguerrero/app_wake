@@ -6,7 +6,10 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import { submitCreatorFeedback } from '../services/creatorFeedbackService';
 import userPreferencesService from '../services/userPreferencesService';
+import apiClient from '../utils/apiClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import Tooltip from './ui/Tooltip';
+import MissionTrack from './missions/MissionTrack';
 import './DashboardLayout.css';
 import CommandPalette from './CommandPalette';
 import {
@@ -42,16 +45,18 @@ const NAV_ITEMS = [
       p.startsWith('/clients/') ||
       p.startsWith('/clientes/') ||
       (p.startsWith('/content/') && (state?.editScope === 'client' || state?.editScope === 'client_plan')) ||
-      (p.startsWith('/nutrition/') && state?.editScope === 'assignment'),
+      (p.startsWith('/nutrition/') && state?.editScope === 'assignment' && !state?.programId),
     icon: <Users size={ICON_SIZE} />,
   },
   {
     key: 'programas',
     label: 'Generales',
     path: '/programas',
-    match: (p) =>
+    match: (p, state) =>
       p === '/programas' ||
-      p.startsWith('/programs/'),
+      p.startsWith('/programs/') ||
+      (p.startsWith('/content/') && state?.editScope === 'program_plan') ||
+      (p.startsWith('/nutrition/') && state?.editScope === 'assignment' && !!state?.programId),
     icon: <Dumbbell size={ICON_SIZE} />,
   },
   {
@@ -114,7 +119,6 @@ const DashboardLayout = ({
   headerIcon = null,
   headerImageIcon = null,
   headerRight = null,
-  tutorialScreenKey = null,
 }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -172,16 +176,16 @@ const DashboardLayout = ({
     }
   }, [sidebarAnimating]);
 
-  // ── Load nav preferences (cached via React Query — no re-fetch per navigation)
-  const { data: navPrefs } = useQuery({
-    queryKey: ['nav-preferences', user?.uid],
-    queryFn: () => userPreferencesService.getNavPreferences(user?.uid),
+  // ── Load nav preferences — derived from user profile query to avoid duplicate /users/me calls
+  const { data: userProfile } = useQuery({
+    queryKey: queryKeys.user.detail(user?.uid),
+    queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!user?.uid,
-    staleTime: 30 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    ...cacheConfig.userProfile,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
+  const navPrefs = userProfile?.creatorNavPreferences ?? null;
 
   useEffect(() => {
     if (!navPrefs) return;
@@ -217,7 +221,7 @@ const DashboardLayout = ({
         eventos: !next.includes('events'),
         disponibilidad: !next.includes('availability'),
       };
-      queryClient.setQueryData(['nav-preferences', user.uid], prefs);
+      queryClient.setQueryData(queryKeys.user.detail(user.uid), prev => prev ? { ...prev, creatorNavPreferences: prefs } : prev);
       userPreferencesService.setNavPreferences(user.uid, prefs).catch(() => {});
     }
   };
@@ -298,11 +302,6 @@ const DashboardLayout = ({
     item => !item.hideable || isNavVisible(item.key)
   );
 
-  const handleTutorialReplay = () => {
-    if (!tutorialScreenKey) return;
-    window.dispatchEvent(new CustomEvent('wake:tutorial-replay', { detail: { screenKey: tutorialScreenKey } }));
-  };
-
   const feedbackSidebarWidth = isMobile ? 0 : 220;
 
   const sidebarClasses = [
@@ -342,6 +341,9 @@ const DashboardLayout = ({
             </button>
           ))}
         </nav>
+
+        {/* Missions */}
+        <MissionTrack />
 
         {/* Developer section */}
         <div className="dl-sidebar__dev">
@@ -437,23 +439,6 @@ const DashboardLayout = ({
         />
         {children}
       </main>
-
-      {/* ── Tutorial replay button ────────────────────────────────── */}
-      {tutorialScreenKey && (
-        <Tooltip label="Repetir tutorial" placement="left">
-          <button
-            type="button"
-            className="dl-tutorial-replay"
-            onClick={handleTutorialReplay}
-            aria-label="Repetir tutorial"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.8"/>
-              <text x="12" y="16.5" textAnchor="middle" fill="currentColor" fontSize="13" fontWeight="600">?</text>
-            </svg>
-          </button>
-        </Tooltip>
-      )}
 
       {/* ── Feedback button ───────────────────────────────────────── */}
       {!feedbackPanelOpen ? (

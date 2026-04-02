@@ -13,11 +13,13 @@ import ProgramPlanTab from './ProgramPlanTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
+import { detectVideoSource, getEmbedUrl } from '../../utils/videoUtils';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
 import libraryService from '../../services/libraryService';
 import plansService from '../../services/plansService';
 import apiClient from '../../utils/apiClient';
 import useProgramEditor from '../../hooks/useProgramEditor';
+import MediaDropZone from '../ui/MediaDropZone';
 import './GroupProgramView.css';
 
 const TAB_ITEMS = [
@@ -44,8 +46,12 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
 
   const editor = useProgramEditor(programId, program);
 
-  const [activeTab, setActiveTab] = useState('programa');
-  const [contenidoSubtab, setContenidoSubtab] = useState('entrenamiento');
+  const [activeTab, setActiveTab] = useState(() =>
+    location.state?.tab || 'programa'
+  );
+  const [contenidoSubtab, setContenidoSubtab] = useState(() =>
+    location.state?.subtab || 'entrenamiento'
+  );
 
   // ── Accent color ──────────────────────────────────────────────
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
@@ -71,14 +77,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
 
   // ── Price & trial state (GroupProgramView-specific) ───────────
   const [priceValue, setPriceValue] = useState(program?.price != null ? String(program.price) : '');
+  const [compareAtPriceValue, setCompareAtPriceValue] = useState(program?.compare_at_price != null ? String(program.compare_at_price) : '');
   const [freeTrialActive, setFreeTrialActive] = useState(!!program?.free_trial?.active);
   const [freeTrialDays, setFreeTrialDays] = useState(String(program?.free_trial?.duration_days ?? 0));
 
   useEffect(() => {
     setPriceValue(program?.price != null ? String(program.price) : '');
+    setCompareAtPriceValue(program?.compare_at_price != null ? String(program.compare_at_price) : '');
     setFreeTrialActive(!!program?.free_trial?.active);
     setFreeTrialDays(String(program?.free_trial?.duration_days ?? 0));
-  }, [program?.price, program?.free_trial]);
+  }, [program?.price, program?.compare_at_price, program?.free_trial]);
 
   // ── Content tab state ─────────────────────────────────────────
   const [mediaPickerContext, setMediaPickerContext] = useState('program');
@@ -144,6 +152,20 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     if (numericPrice === program?.price) return;
     await editor.saveField({ price: numericPrice });
   }, [priceValue, program?.price, editor]);
+
+  const saveCompareAtPrice = useCallback(async () => {
+    const numeric = compareAtPriceValue === '' ? null : parseInt(String(compareAtPriceValue).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 2000) {
+      setCompareAtPriceValue(program?.compare_at_price != null ? String(program.compare_at_price) : '');
+      return;
+    }
+    if (numeric !== null && program?.price && numeric <= program.price) {
+      setCompareAtPriceValue(program?.compare_at_price != null ? String(program.compare_at_price) : '');
+      return;
+    }
+    if (numeric === program?.compare_at_price) return;
+    await editor.saveField({ compare_at_price: numeric });
+  }, [compareAtPriceValue, program?.compare_at_price, program?.price, editor]);
 
   const saveTrialDays = useCallback(async () => {
     const days = Math.max(0, parseInt(freeTrialDays, 10) || 0);
@@ -217,6 +239,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
               {/* Left -- Program image + info */}
               <div className="gp-program-card">
                 <GlowingEffect spread={30} proximity={80} />
+                <MediaDropZone onSelect={editor.handleProgramImageSelect} accept="image/*">
                 <div className="gp-program-card__image-area" onClick={() => { setMediaPickerContext('program'); editor.setIsMediaPickerOpen(true); }}>
                   {program?.image_url ? (
                     <>
@@ -230,6 +253,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     <div className="gp-program-card__image-placeholder">Subir imagen</div>
                   )}
                 </div>
+                </MediaDropZone>
 
                 <div className="gp-program-card__info">
                   <div className="gp-program-card__info-text">
@@ -371,6 +395,25 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                   </div>
                 </BentoCard>
 
+                {/* Compare at price */}
+                <BentoCard className="gp-config__card">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <h3>Precio comparativo</h3>
+                  <div className="gp-price-field">
+                    <span className="gp-price-field__currency">$</span>
+                    <input
+                      className="gp-price-field__input"
+                      type="text"
+                      inputMode="numeric"
+                      value={compareAtPriceValue ? Number(compareAtPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
+                      onChange={(e) => setCompareAtPriceValue(e.target.value.replace(/\D/g, ''))}
+                      onBlur={saveCompareAtPrice}
+                      placeholder="Opcional"
+                    />
+                    <span className="gp-price-field__hint">COP</span>
+                  </div>
+                </BentoCard>
+
                 {/* Free trial */}
                 <BentoCard className="gp-config__card">
                   <GlowingEffect spread={24} proximity={60} />
@@ -452,15 +495,23 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                 </BentoCard>
 
                 {/* Video intro */}
+                <MediaDropZone onSelect={editor.handleIntroVideoSelect} accept="video/*">
                 <BentoCard className="gp-config__card gp-config__card--tall">
                   <GlowingEffect spread={24} proximity={60} />
                   <h3>Video intro</h3>
                   {program?.video_intro_url ? (
                     <div className="gp-config__media-wrap">
-                      <video src={program.video_intro_url} muted playsInline />
-                      <div className="gp-config__media-overlay">
-                        <button type="button" className="gp-config__btn" onClick={() => editor.setIsIntroVideoPickerOpen(true)}>Cambiar</button>
-                        <button type="button" className="gp-config__btn gp-config__btn--danger" onClick={editor.handleIntroVideoDelete}>Eliminar</button>
+                      {(() => {
+                        const source = detectVideoSource(program.video_intro_url);
+                        const isExternal = source === 'youtube' || source === 'vimeo';
+                        if (isExternal) {
+                          return <iframe src={getEmbedUrl(program.video_intro_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video intro" style={{ width: '100%', height: '100%', border: 'none' }} />;
+                        }
+                        return <video src={program.video_intro_url} controls playsInline />;
+                      })()}
+                      <div className="gp-config__media-actions">
+                        <button type="button" className="gp-config__media-action-btn" onClick={() => editor.setIsIntroVideoPickerOpen(true)}>Cambiar</button>
+                        <button type="button" className="gp-config__media-action-btn gp-config__media-action-btn--danger" onClick={editor.handleIntroVideoDelete}>Eliminar</button>
                       </div>
                     </div>
                   ) : (
@@ -470,6 +521,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     </button>
                   )}
                 </BentoCard>
+                </MediaDropZone>
 
                 {/* Mensajes */}
                 <BentoCard className="gp-config__card gp-config__card--span-2">

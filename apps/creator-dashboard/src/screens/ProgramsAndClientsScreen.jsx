@@ -13,10 +13,10 @@ import {
   AnimatedList,
   ProgressRing,
   NumberTicker,
-  SpotlightTutorial,
   Toast,
   VirtualList,
 } from '../components/ui/index.js';
+import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -36,28 +36,6 @@ const PROFILE_TABS = [
   { id: 'llamadas', label: 'Llamadas' },
 ];
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '.clientes-roster',
-    title: 'Tu lista de clientes',
-    body: 'Tu lista de clientes. El punto verde significa que estan activos esta semana.',
-  },
-  {
-    selector: '.clientes-profile-tabs',
-    title: 'Pestanas de detalle',
-    body: 'Planificacion para ver su programa. Nutricion para su plan alimenticio. Lab para sus metricas. Llamadas para agendar.',
-  },
-  {
-    selector: '.clientes-highlights',
-    title: 'Destacados del cliente',
-    body: 'De un vistazo: su ultimo PR, que tan constante es, y como va con la nutricion.',
-  },
-  {
-    selector: '.profile-quick-actions',
-    title: 'Acciones rapidas',
-    body: 'Acciones rapidas para asignar sesiones o agendar llamadas sin salir de la pantalla.',
-  },
-];
 
 const VIRTUAL_ROSTER_THRESHOLD = 50;
 const ROSTER_ITEM_HEIGHT = 50;
@@ -259,6 +237,7 @@ function AccessManagement({ clientDetail, clientName, clientId }) {
   }, [accessEndsAt]);
 
   const updateAccessMutation = useMutation({
+    mutationKey: ['clients', 'update-access'],
     mutationFn: (newDate) =>
       apiClient.patch(`/creator/clients/${clientId}`, { accessEndsAt: newDate }),
     onSuccess: () => {
@@ -1083,7 +1062,7 @@ const ProgramsAndClientsScreen = () => {
         </main>
       </div>
 
-      <SpotlightTutorial screenKey="clients" steps={TUTORIAL_STEPS} />
+      <ContextualHint screenKey="clients" />
 
       <FindUserModal
         isOpen={isFindUserOpen}

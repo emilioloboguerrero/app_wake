@@ -647,4 +647,4 @@ const ExpandableExerciseCard = ({
   );
 };
 
-export default ExpandableExerciseCard;
+export default React.memo(ExpandableExerciseCard);

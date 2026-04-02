@@ -7,7 +7,6 @@ const ProtectedRoute = ({ children, requireOnboarding = true, requireCreator = t
   const location = useLocation();
 
   if (loading || (user && userRole === null)) {
-    console.log(`[boot] ProtectedRoute — waiting (loading=${loading}, userRole=${userRole}) — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
     return (
       <div style={{ 
         minHeight: '100vh', 
@@ -60,7 +59,6 @@ const ProtectedRoute = ({ children, requireOnboarding = true, requireCreator = t
     }
   }
 
-  console.log(`[boot] ProtectedRoute — rendering ${location.pathname} — +${Math.round(performance.now() - (window.__WAKE_BOOT || 0))}ms`);
   return children;
 };
 

@@ -11,9 +11,9 @@ import {
   SkeletonCard,
   ProgressRing,
   AnimatedList,
-  SpotlightTutorial,
   FullScreenError,
 } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import apiClient from '../utils/apiClient';
 import plansService from '../services/plansService';
 import CreateFlowOverlay from '../components/CreateFlowOverlay';
@@ -27,23 +27,6 @@ const TABS = [
   { id: 'individuales', label: 'Planes individuales' },
 ];
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '.ps-nav-wrap',
-    title: 'Tipos de programa',
-    body: 'Los programas grupales son los que vendes a multiples clientes. Los planes individuales se personalizan por persona.',
-  },
-  {
-    selector: '.programs-fab',
-    title: 'Crea un programa',
-    body: 'Empieza con la estructura basica. Despues puedes arrastrar sesiones desde tu biblioteca.',
-  },
-  {
-    selector: '.program-card',
-    title: 'Tu programa',
-    body: 'Cada programa muestra cuantos clientes estan inscritos y su tasa de completitud.',
-  },
-];
 
 // ─── Skeleton states ──────────────────────────────────────────────────────────
 
@@ -279,6 +262,7 @@ const IndividualesTab = ({ userId, isEditing }) => {
   });
 
   const createPlanMutation = useMutation({
+    mutationKey: ['plans', 'create'],
     mutationFn: () => plansService.createPlan(userId, null, { title: 'Nuevo plan' }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(userId) });
@@ -289,6 +273,7 @@ const IndividualesTab = ({ userId, isEditing }) => {
   });
 
   const deletePlanMutation = useMutation({
+    mutationKey: ['plans', 'delete'],
     mutationFn: (planId) => plansService.deletePlan(planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(userId) });
@@ -414,10 +399,7 @@ const ProgramsScreen = () => {
           </div>
         </div>
 
-        <SpotlightTutorial
-          screenKey="programs"
-          steps={TUTORIAL_STEPS}
-        />
+        <ContextualHint screenKey="programs" />
 
         <CreateFlowOverlay
           isOpen={showCreate}

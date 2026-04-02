@@ -32,8 +32,10 @@ class ClientNutritionPlanContentService {
     if (!assignmentId) return null;
     try {
       const cid = clientId ?? await resolveClientId(assignmentId);
-      if (!cid) return null;
-      const res = await apiClient.get(BASE(cid, assignmentId));
+      const url = cid
+        ? BASE(cid, assignmentId)
+        : `/creator/nutrition/assignments/${assignmentId}/content`;
+      const res = await apiClient.get(url);
       return res.data ?? null;
     } catch (err) {
       if (err?.status === 404) return null;
@@ -44,10 +46,7 @@ class ClientNutritionPlanContentService {
 
   async setFromLibrary(assignmentId, sourcePlanId, planData, clientId = null) {
     if (!assignmentId || !sourcePlanId) throw new Error('assignmentId and sourcePlanId required');
-    const cid = clientId ?? await resolveClientId(assignmentId);
-    if (!cid) throw new Error('Could not resolve clientId for assignment');
-
-    await apiClient.put(BASE(cid, assignmentId), {
+    const body = {
       source_plan_id: sourcePlanId,
       name: planData.name ?? '',
       description: planData.description ?? '',
@@ -56,16 +55,26 @@ class ClientNutritionPlanContentService {
       daily_carbs_g: planData.daily_carbs_g ?? null,
       daily_fat_g: planData.daily_fat_g ?? null,
       categories: Array.isArray(planData.categories) ? planData.categories : [],
-    });
+    };
+
+    const cid = clientId ?? await resolveClientId(assignmentId);
+    if (cid) {
+      await apiClient.put(BASE(cid, assignmentId), body);
+    } else {
+      await apiClient.put(`/creator/nutrition/assignments/${assignmentId}/content`, body);
+    }
   }
 
   async update(assignmentId, data, clientId = null) {
     if (!assignmentId) throw new Error('assignmentId required');
-    const cid = clientId ?? await resolveClientId(assignmentId);
-    if (!cid) throw new Error('Could not resolve clientId for assignment');
-
     const { source_plan_id: _spid, assignment_id: _aid, ...rest } = data;
-    await apiClient.put(BASE(cid, assignmentId), rest);
+
+    const cid = clientId ?? await resolveClientId(assignmentId);
+    if (cid) {
+      await apiClient.put(BASE(cid, assignmentId), rest);
+    } else {
+      await apiClient.put(`/creator/nutrition/assignments/${assignmentId}/content`, rest);
+    }
   }
 
   async deleteByAssignmentId(assignmentId, clientId = null) {

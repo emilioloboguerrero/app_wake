@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TubelightNavBar } from '../components/ui';
 import MiHorarioView from '../components/llamadas/MiHorarioView';
+import ContextualHint from '../components/hints/ContextualHint';
 import ProximasLlamadasView from '../components/llamadas/ProximasLlamadasView';
 import './AvailabilityCalendarScreen.css';
 
@@ -23,6 +24,7 @@ export function AvailabilityContent() {
         {activeSubTab === 'horario' && <MiHorarioView />}
         {activeSubTab === 'llamadas' && <ProximasLlamadasView />}
       </div>
+      <ContextualHint screenKey="availability" />
     </div>
   );
 }

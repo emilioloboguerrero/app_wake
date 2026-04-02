@@ -4,16 +4,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
+import { Revealable, RevealProgressBar } from '../components/guide';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import { FullScreenError, GlowingEffect } from '../components/ui';
 import ExerciseListSidebar from '../components/biblioteca/ExerciseListSidebar';
 import ExerciseVideoPanel from '../components/biblioteca/ExerciseVideoPanel';
 import InteractiveMusclePanel from '../components/biblioteca/InteractiveMusclePanel';
+import MediaPickerModal from '../components/MediaPickerModal';
 import libraryService from '../services/libraryService';
 import { cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import useConfirm from '../hooks/useConfirm';
+import { detectVideoSource } from '../utils/videoUtils';
 import './LibraryExercisesScreen.css';
 
 const LibraryExercisesScreen = () => {
@@ -35,16 +39,15 @@ const LibraryExercisesScreen = () => {
   const [newExerciseName, setNewExerciseName] = useState('');
   const addExerciseInputRef = useRef(null);
 
-  // Video upload state (managed here for mutation coordination)
-  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
-  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  // Video state
+  const [showVideoPicker, setShowVideoPicker] = useState(false);
 
   // ─── Data fetching ─────────────────────────────────────────────────────
   const { data: libraryData, isLoading, error: loadError } = useQuery({
     queryKey: ['library', 'detail', libraryId],
     queryFn: () => libraryService.getLibraryById(libraryId),
     enabled: !!user && !!libraryId,
-    ...cacheConfig.programStructure,
+    ...cacheConfig.libraries,
   });
 
   const library = libraryData ?? null;
@@ -109,6 +112,7 @@ const LibraryExercisesScreen = () => {
   );
 
   const createExerciseMutation = useMutation({
+    mutationKey: ['library-exercises', 'create'],
     mutationFn: (name) => libraryService.createExercise(libraryId, name),
     onSuccess: (_data, name) => {
       invalidateLibrary();
@@ -126,6 +130,7 @@ const LibraryExercisesScreen = () => {
   });
 
   const deleteExerciseMutation = useMutation({
+    mutationKey: ['library-exercises', 'delete'],
     mutationFn: (name) => libraryService.deleteExercise(libraryId, name),
     onSuccess: (_data, name) => {
       if (selectedExerciseName === name) setSelectedExerciseName(null);
@@ -138,6 +143,7 @@ const LibraryExercisesScreen = () => {
   });
 
   const saveMusclesMutation = useMutation({
+    mutationKey: ['library-exercises', 'save-muscles'],
     mutationFn: ({ name, muscleActivation }) =>
       libraryService.updateExercise(libraryId, name, { muscle_activation: muscleActivation }),
     onSuccess: async () => {
@@ -231,26 +237,54 @@ const LibraryExercisesScreen = () => {
     }, SAVE_DELAY);
   }, [selectedExerciseName, saveImplementsMutation]);
 
-  const handleVideoUpload = useCallback(async (file) => {
+  const handleVideoSelect = useCallback(async (selected) => {
     if (!selectedExercise || !libraryId) return;
 
-    try {
-      setIsUploadingVideo(true);
-      setVideoUploadProgress(0);
+    // External link (YouTube/Vimeo) selected from MediaPickerModal
+    if (selected.contentType === 'video/external') {
+      try {
+        if (selectedExercise.data?.video_path) {
+          try {
+            await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
+          } catch (_err) {
+            // Storage file may not exist, continue
+          }
+        }
 
-      await libraryService.uploadExerciseVideo(
-        libraryId,
-        selectedExercise.name,
-        file,
-        (progress) => setVideoUploadProgress(Math.round(progress))
-      );
+        await libraryService.updateExercise(libraryId, selectedExercise.name, {
+          video_url: selected.url,
+          video_source: selected.videoSource,
+          video_path: null,
+        });
+
+        await invalidateLibrary();
+      } catch (err) {
+        logger.error('Error saving video link:', err);
+        showToast('No pudimos guardar el enlace. Intenta de nuevo.', 'error');
+      }
+      return;
+    }
+
+    // Internal video from media library — use its URL directly
+    try {
+      if (selectedExercise.data?.video_path) {
+        try {
+          await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
+        } catch (_err) {
+          // Storage file may not exist, continue
+        }
+      }
+
+      await libraryService.updateExercise(libraryId, selectedExercise.name, {
+        video_url: selected.url,
+        video_source: 'upload',
+        video_path: null,
+      });
 
       await invalidateLibrary();
     } catch (err) {
-      logger.error('Error uploading video:', err);
-      showToast('No pudimos subir el video. Intenta de nuevo.', 'error');
-    } finally {
-      setIsUploadingVideo(false);
+      logger.error('Error setting video from library:', err);
+      showToast('No pudimos asignar el video. Intenta de nuevo.', 'error');
     }
   }, [selectedExercise, libraryId, invalidateLibrary, showToast]);
 
@@ -350,9 +384,11 @@ const LibraryExercisesScreen = () => {
   }
 
   const videoUrl = selectedExercise?.data?.video_url || selectedExercise?.data?.video || null;
+  const videoSource = selectedExercise?.data?.video_source || null;
 
   return (
     <ErrorBoundary>
+      <ProgressiveRevealProvider screenKey="library-exercises">
       <DashboardLayout screenName={library.title} showBackButton backPath={backPath} backState={backState}>
         <div className="lex-content">
           <div className="lex-library-actions">
@@ -369,63 +405,65 @@ const LibraryExercisesScreen = () => {
             </button>
           </div>
           <div className="lex-body">
-            {/* Left sidebar */}
-            <ExerciseListSidebar
-              exercises={exercises}
-              selectedName={selectedExerciseName}
-              onSelect={handleSelectExercise}
-              onAdd={handleAddExercise}
-              onDelete={handleDeleteExercise}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-            />
+            <Revealable step="exercise-sidebar">
+              <ExerciseListSidebar
+                exercises={exercises}
+                selectedName={selectedExerciseName}
+                onSelect={handleSelectExercise}
+                onAdd={handleAddExercise}
+                onDelete={handleDeleteExercise}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+              />
+            </Revealable>
 
-            {/* Right workspace */}
-            <div className="lex-workspace">
-              {!selectedExercise ? (
-                <div className="lex-workspace-empty">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M2 17l10 5 10-5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <p className="lex-workspace-empty-text">Selecciona un ejercicio para editar</p>
-                  <button type="button" className="lex-workspace-empty-btn" onClick={handleAddExercise}>
-                    + Nuevo ejercicio
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="lex-workspace-header">
-                    <h2 className="lex-workspace-title">{selectedExercise.name}</h2>
+            <Revealable step="workspace">
+              <div className="lex-workspace">
+                {!selectedExercise ? (
+                  <div className="lex-workspace-empty">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M2 17l10 5 10-5" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p className="lex-workspace-empty-text">Selecciona un ejercicio para editar</p>
+                    <button type="button" className="lex-workspace-empty-btn" onClick={handleAddExercise}>
+                      + Nuevo ejercicio
+                    </button>
                   </div>
-
-                  <div className="lex-workspace-main">
-                    <div className="lex-workspace-columns">
-                      {/* Left: Video full height */}
-                      <ExerciseVideoPanel
-                        videoUrl={videoUrl}
-                        onUpload={handleVideoUpload}
-                        onDelete={handleVideoDelete}
-                        isUploading={isUploadingVideo}
-                        uploadProgress={videoUploadProgress}
-                      />
-
-                      {/* Right: Muscles + Implements in one panel */}
-                      <InteractiveMusclePanel
-                        muscleActivation={currentMuscles}
-                        muscleSortOrder={muscleSortOrder}
-                        onChange={handleMuscleChange}
-                        isSaving={saveMusclesMutation.isPending}
-                        implements={currentImplements}
-                        allCustomImplements={allCustomImplements}
-                        onImplementsChange={handleImplementsChange}
-                        isSavingImplements={saveImplementsMutation.isPending}
-                      />
+                ) : (
+                  <>
+                    <div className="lex-workspace-header">
+                      <h2 className="lex-workspace-title">{selectedExercise.name}</h2>
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
+
+                    <div className="lex-workspace-main">
+                      <div className="lex-workspace-columns">
+                        <Revealable step="video-panel">
+                          <ExerciseVideoPanel
+                            videoUrl={videoUrl}
+                            videoSource={videoSource}
+                            onPickVideo={() => setShowVideoPicker(true)}
+                            onDelete={handleVideoDelete}
+                            onDropSelect={handleVideoSelect}
+                          />
+                        </Revealable>
+
+                        <InteractiveMusclePanel
+                          muscleActivation={currentMuscles}
+                          muscleSortOrder={muscleSortOrder}
+                          onChange={handleMuscleChange}
+                          isSaving={saveMusclesMutation.isPending}
+                          implements={currentImplements}
+                          allCustomImplements={allCustomImplements}
+                          onImplementsChange={handleImplementsChange}
+                          isSavingImplements={saveImplementsMutation.isPending}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </Revealable>
           </div>
         </div>
 
@@ -501,7 +539,16 @@ const LibraryExercisesScreen = () => {
         )}
 
         {ConfirmModal}
+
+        <MediaPickerModal
+          isOpen={showVideoPicker}
+          onClose={() => setShowVideoPicker(false)}
+          onSelect={handleVideoSelect}
+          accept="video/*"
+        />
+        <RevealProgressBar />
       </DashboardLayout>
+      </ProgressiveRevealProvider>
     </ErrorBoundary>
   );
 };

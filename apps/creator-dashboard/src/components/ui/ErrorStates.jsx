@@ -22,7 +22,7 @@ export function InlineError({ message, field }) {
   );
 }
 
-export function FullScreenError({ title = 'Algo salió mal', message, onRetry, icon }) {
+export function FullScreenError({ title = 'Algo salió mal', message, onRetry, retryLabel, icon }) {
   return (
     <div className="fullscreen-error">
       <div className="fullscreen-error-icon">
@@ -32,7 +32,7 @@ export function FullScreenError({ title = 'Algo salió mal', message, onRetry, i
       {message && <p className="fullscreen-error-message">{message}</p>}
       {onRetry && (
         <button className="fullscreen-error-retry" onClick={onRetry}>
-          Intentar de nuevo
+          {retryLabel || 'Intentar de nuevo'}
         </button>
       )}
     </div>

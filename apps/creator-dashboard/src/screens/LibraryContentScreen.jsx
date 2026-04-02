@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
+import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
+import { Revealable, RevealProgressBar } from '../components/guide';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import Modal from '../components/Modal';
@@ -13,6 +15,7 @@ import Input from '../components/Input';
 import MeasuresObjectivesEditorModal from '../components/MeasuresObjectivesEditorModal';
 import libraryService from '../services/libraryService';
 import measureObjectivePresetsService from '../services/measureObjectivePresetsService';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import useConfirm from '../hooks/useConfirm';
 
 import {
@@ -1194,11 +1197,14 @@ const LibraryContentScreen = () => {
               )}
               {exercise.video_url && (
                 <div className="exercise-card-video">
-                  <video
-                    src={exercise.video_url}
-                    controls
-                    className="exercise-card-video-player"
-                  />
+                  {(() => {
+                    const source = detectVideoSource(exercise.video_url, exercise.video_source);
+                    const isExternal = source === 'youtube' || source === 'vimeo';
+                    if (isExternal) {
+                      return <iframe src={getEmbedUrl(exercise.video_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video" className="exercise-card-video-player" />;
+                    }
+                    return <video src={exercise.video_url} controls playsInline className="exercise-card-video-player" />;
+                  })()}
                 </div>
               )}
             </div>
@@ -2769,7 +2775,8 @@ const LibraryContentScreen = () => {
   };
 
   return (
-    <DashboardLayout 
+    <ProgressiveRevealProvider screenKey="library-content">
+    <DashboardLayout
       screenName={getScreenName()}
       headerBackgroundImage={selectedSession?.image_url || null}
       onHeaderEditClick={selectedSession ? handleEditSessionClick : null}
@@ -2846,9 +2853,15 @@ const LibraryContentScreen = () => {
             </div>
           ) : (
             <div className="modules-content">
-              <h2 className="page-section-title">Semanas</h2>
-              {renderModuleActions()}
-              {renderModules()}
+              <Revealable step="content-tabs">
+                <h2 className="page-section-title">Semanas</h2>
+              </Revealable>
+              <Revealable step="edit-actions">
+                {renderModuleActions()}
+              </Revealable>
+              <Revealable step="module-list">
+                {renderModules()}
+              </Revealable>
             </div>
           )}
         </div>
@@ -3687,7 +3700,9 @@ const LibraryContentScreen = () => {
         </div>
       </Modal>
     {ConfirmModal}
+      <RevealProgressBar />
     </DashboardLayout>
+    </ProgressiveRevealProvider>
   );
 };
 

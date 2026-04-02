@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
+import apiClient from '../utils/apiClient';
 import { InlineError } from '../components/ui/ErrorStates';
 import { ASSET_BASE } from '../config/assets';
 import logger from '../utils/logger';
@@ -16,13 +17,13 @@ const TESTIMONIALS = [
     avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
     name: 'Valentina R.',
     handle: '@valfit_co',
-    text: 'Wake me permitió organizar todos mis programas y clientes en un solo lugar. Mis atletas lo aman.',
+    text: 'Wake me permitio organizar todos mis programas y clientes en un solo lugar. Mis atletas lo aman.',
   },
   {
     avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    name: 'Andrés M.',
+    name: 'Andres M.',
     handle: '@andres.coach',
-    text: 'Desde que uso Wake, mis clientes tienen mejor adherencia. La experiencia es increíble.',
+    text: 'Desde que uso Wake, mis clientes tienen mejor adherencia. La experiencia es increible.',
   },
   {
     avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
@@ -69,9 +70,13 @@ const TestimonialCard = ({ testimonial }) => (
 const LoginScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isCreator, webOnboardingCompleted, loading, userRole, authError } = useAuth();
+  const { user, isCreator, webOnboardingCompleted, loading, userRole, authError, refreshUserData } = useAuth();
   const { showToast } = useToast();
 
+  const [mode, setMode] = useState('login');
+  const isSigningUpRef = useRef(false);
+
+  // Login fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -82,10 +87,19 @@ const LoginScreen = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
 
+  // Signup fields
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupShowPassword, setSignupShowPassword] = useState(false);
+  const [signupErrors, setSignupErrors] = useState({});
+
+  // Redirect logic for logged-in users
   useEffect(() => {
     if (loading || !user) return;
     if (userRole === null) return;
     if (location.pathname !== '/login') return;
+    if (isSigningUpRef.current) return;
 
     const urlParams = new URLSearchParams(window.location.search);
     const redirectPath = urlParams.get('redirect');
@@ -140,14 +154,15 @@ const LoginScreen = () => {
     if (formError) setFormError(null);
   };
 
+  // ─── Login ─────────────────────────────────────────────
   const handleContinue = async () => {
     clearErrors();
     setShowForgotPassword(false);
 
     if (!email.trim()) { setEmailError('Ingresa tu correo'); return; }
-    if (!validateEmail(email)) { setEmailError('Correo no válido'); return; }
+    if (!validateEmail(email)) { setEmailError('Correo no valido'); return; }
     if (!password.trim()) { setPasswordError('Ingresa tu contraseña'); return; }
-    if (!validatePassword(password)) { setPasswordError('Mínimo 6 caracteres'); return; }
+    if (!validatePassword(password)) { setPasswordError('Minimo 6 caracteres'); return; }
 
     setIsLoading(true);
     try {
@@ -165,20 +180,20 @@ const LoginScreen = () => {
           setShowForgotPassword(true);
           break;
         case 'auth/invalid-email':
-          setEmailError('Correo no válido');
+          setEmailError('Correo no valido');
           break;
         case 'auth/user-disabled':
           setPasswordError('Esta cuenta ha sido deshabilitada. Contacta soporte.');
           break;
         case 'auth/network-request-failed':
-          showToast('No pudimos conectar con el servidor. Revisa tu conexión.', 'error');
+          showToast('No pudimos conectar con el servidor. Revisa tu conexion.', 'error');
           break;
         case 'auth/too-many-requests':
           setFormError('Demasiados intentos. Espera un momento e intenta de nuevo');
           break;
         default:
           logger.error('[LoginScreen] Unhandled login error:', error?.code, error?.message, error);
-          setFormError('Algo salió mal. Intenta de nuevo');
+          setFormError('Algo salio mal. Intenta de nuevo');
       }
     }
   };
@@ -202,14 +217,8 @@ const LoginScreen = () => {
   };
 
   const handleForgotPassword = async () => {
-    if (!email.trim()) {
-      setEmailError('Ingresa tu correo primero');
-      return;
-    }
-    if (!validateEmail(email)) {
-      setEmailError('Ingresa un correo válido');
-      return;
-    }
+    if (!email.trim()) { setEmailError('Ingresa tu correo primero'); return; }
+    if (!validateEmail(email)) { setEmailError('Ingresa un correo valido'); return; }
 
     setIsLoading(true);
     try {
@@ -225,7 +234,72 @@ const LoginScreen = () => {
     }
   };
 
+  // ─── Signup ────────────────────────────────────────────
+  const handleSignup = async () => {
+    setFormError(null);
+    const errors = {};
+    if (!signupName.trim()) errors.name = 'Nombre es requerido';
+    if (!signupEmail.trim() || !validateEmail(signupEmail)) errors.email = 'Correo no valido';
+    if (!signupPassword || signupPassword.length < 6) errors.password = 'Minimo 6 caracteres';
+    if (Object.keys(errors).length > 0) { setSignupErrors(errors); return; }
+
+    setIsLoading(true);
+    isSigningUpRef.current = true;
+    try {
+      await authService.registerUser(signupEmail, signupPassword, signupName);
+      navigate('/complete-profile', { replace: true });
+    } catch (error) {
+      setIsLoading(false);
+      isSigningUpRef.current = false;
+      if (error.code === 'auth/email-already-in-use') {
+        setSignupErrors({ email: 'Ya existe una cuenta con este correo' });
+      } else {
+        logger.error('[LoginScreen] Signup error:', error);
+        setFormError(error.message || 'Algo salio mal. Intenta de nuevo');
+      }
+    }
+  };
+
+  // ─── Google signup ─────────────────────────────────────
+  const handleGoogleSignup = async () => {
+    setIsLoading(true);
+    clearErrors();
+    setFormError(null);
+    isSigningUpRef.current = true;
+    try {
+      const result = await googleAuthService.signIn();
+      if (result.success) {
+        // Check if already a creator — if so, let normal redirect handle it
+        try {
+          const { data } = await apiClient.get('/users/me');
+          if (data.role === 'creator' || data.role === 'admin') {
+            isSigningUpRef.current = false;
+            await refreshUserData();
+            return;
+          }
+        } catch { /* new user or error, proceed to profile completion */ }
+        navigate('/complete-profile', { replace: true });
+      } else {
+        isSigningUpRef.current = false;
+        setFormError(result.error || 'Error al conectar con Google');
+        setIsLoading(false);
+      }
+    } catch (error) {
+      isSigningUpRef.current = false;
+      logger.error('[LoginScreen] Google Sign-Up Error:', error);
+      setFormError('Error al conectar con Google');
+      setIsLoading(false);
+    }
+  };
+
   const isFormValid = validateEmail(email) && validatePassword(password);
+
+  const switchMode = (newMode) => {
+    setMode(newMode);
+    setFormError(null);
+    setSignupErrors({});
+    clearErrors();
+  };
 
   return (
     <div className="ln-root">
@@ -242,13 +316,31 @@ const LoginScreen = () => {
             <span className="ln-badge">Creadores</span>
           </div>
 
+          {/* Mode toggle */}
+          <div className="ln-mode-toggle ln-animate ln-delay-2">
+            <button
+              className={`ln-mode-btn${mode === 'login' ? ' ln-mode-btn--active' : ''}`}
+              onClick={() => switchMode('login')}
+              disabled={isLoading}
+            >
+              Iniciar sesion
+            </button>
+            <button
+              className={`ln-mode-btn${mode === 'signup' ? ' ln-mode-btn--active' : ''}`}
+              onClick={() => switchMode('signup')}
+              disabled={isLoading}
+            >
+              Crear cuenta
+            </button>
+          </div>
+
           {/* Forgot sent confirmation */}
-          {forgotSent && (
+          {forgotSent && mode === 'login' && (
             <div className="ln-info-banner">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8-2.5a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1zm0-2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" fill="currentColor"/>
               </svg>
-              Revisá tu bandeja (también spam). Te enviamos el enlace.
+              Revisa tu bandeja (tambien spam). Te enviamos el enlace.
             </div>
           )}
 
@@ -262,97 +354,177 @@ const LoginScreen = () => {
             </div>
           )}
 
-          {/* Email */}
-          <div className="ln-field-wrap ln-animate ln-delay-4">
-            <label className="ln-field-label">Email</label>
-            <div className={`ln-glass-input${emailError ? ' ln-glass-input--error' : ''}`}>
-              <input
-                className="ln-glass-field"
-                type="email"
-                placeholder="tu@correo.com"
-                value={email}
-                onChange={handleEmailChange}
-                autoComplete="email"
-                disabled={isLoading}
-              />
-            </div>
-            <InlineError message={emailError} field="email" />
-          </div>
-
-          {/* Password */}
-          <div className="ln-field-wrap ln-animate ln-delay-5">
-            <label className="ln-field-label">Contraseña</label>
-            <div className={`ln-glass-input${passwordError ? ' ln-glass-input--error' : ''}`}>
-              <div className="ln-password-wrap">
-                <input
-                  className="ln-glass-field"
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="Ingresa tu contraseña"
-                  value={password}
-                  onChange={handlePasswordChange}
-                  autoComplete="current-password"
-                  disabled={isLoading}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleContinue(); }}
-                />
-                <button
-                  type="button"
-                  className="ln-eye-btn"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                </button>
+          {/* ─── LOGIN MODE ─── */}
+          {mode === 'login' && (
+            <>
+              <div className="ln-field-wrap ln-animate ln-delay-4">
+                <label className="ln-field-label">Email</label>
+                <div className={`ln-glass-input${emailError ? ' ln-glass-input--error' : ''}`}>
+                  <input
+                    className="ln-glass-field"
+                    type="email"
+                    placeholder="tu@correo.com"
+                    value={email}
+                    onChange={handleEmailChange}
+                    autoComplete="email"
+                    disabled={isLoading}
+                  />
+                </div>
+                <InlineError message={emailError} field="email" />
               </div>
-            </div>
-            <InlineError message={passwordError} field="password" />
-          </div>
 
-          {/* Forgot password */}
-          <div className="ln-row-between ln-animate ln-delay-6">
-            {showForgotPassword ? (
-              <button className="ln-forgot-btn" onClick={handleForgotPassword}>
-                Recuperar contraseña
+              <div className="ln-field-wrap ln-animate ln-delay-5">
+                <label className="ln-field-label">Contraseña</label>
+                <div className={`ln-glass-input${passwordError ? ' ln-glass-input--error' : ''}`}>
+                  <div className="ln-password-wrap">
+                    <input
+                      className="ln-glass-field"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="Ingresa tu contraseña"
+                      value={password}
+                      onChange={handlePasswordChange}
+                      autoComplete="current-password"
+                      disabled={isLoading}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleContinue(); }}
+                    />
+                    <button
+                      type="button"
+                      className="ln-eye-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
+                </div>
+                <InlineError message={passwordError} field="password" />
+              </div>
+
+              <div className="ln-row-between ln-animate ln-delay-6">
+                {showForgotPassword ? (
+                  <button className="ln-forgot-btn" onClick={handleForgotPassword}>
+                    Recuperar contraseña
+                  </button>
+                ) : (
+                  <button className="ln-forgot-btn" onClick={() => {
+                    if (email.trim()) handleForgotPassword();
+                    else setEmailError('Ingresa tu correo primero');
+                  }}>
+                    Olvidaste tu contraseña?
+                  </button>
+                )}
+              </div>
+
+              <button
+                className={`ln-btn-primary ln-animate ln-delay-7${isLoading ? ' ln-btn-primary--loading' : ''}`}
+                onClick={handleContinue}
+                disabled={isLoading || !isFormValid}
+              >
+                {isLoading ? <span className="ln-spinner" /> : 'Entrar'}
               </button>
-            ) : (
-              <button className="ln-forgot-btn" onClick={() => {
-                if (email.trim()) handleForgotPassword();
-                else setEmailError('Ingresa tu correo primero');
-              }}>
-                ¿Olvidaste tu contraseña?
+
+              <div className="ln-divider ln-animate ln-delay-8">
+                <span className="ln-divider-line" />
+                <span className="ln-divider-text">o continua con</span>
+                <span className="ln-divider-line" />
+              </div>
+
+              <button
+                className="ln-btn-google ln-animate ln-delay-9"
+                onClick={handleGoogleLogin}
+                disabled={isLoading}
+              >
+                <GoogleIcon />
+                Continuar con Google
               </button>
-            )}
-          </div>
+            </>
+          )}
 
-          {/* Primary CTA */}
-          <button
-            className={`ln-btn-primary ln-animate ln-delay-7${isLoading ? ' ln-btn-primary--loading' : ''}`}
-            onClick={handleContinue}
-            disabled={isLoading || !isFormValid}
-          >
-            {isLoading ? (
-              <span className="ln-spinner" />
-            ) : (
-              'Entrar'
-            )}
-          </button>
+          {/* ─── SIGNUP MODE ─── */}
+          {mode === 'signup' && (
+            <>
+              <div className="ln-field-wrap ln-animate ln-delay-3">
+                <label className="ln-field-label">Nombre completo</label>
+                <div className={`ln-glass-input${signupErrors.name ? ' ln-glass-input--error' : ''}`}>
+                  <input
+                    className="ln-glass-field"
+                    type="text"
+                    placeholder="Tu nombre"
+                    value={signupName}
+                    onChange={(e) => { setSignupName(e.target.value); setSignupErrors(prev => { const n = { ...prev }; delete n.name; return n; }); }}
+                    disabled={isLoading}
+                  />
+                </div>
+                <InlineError message={signupErrors.name} field="name" />
+              </div>
 
-          {/* Divider */}
-          <div className="ln-divider ln-animate ln-delay-8">
-            <span className="ln-divider-line" />
-            <span className="ln-divider-text">o continúa con</span>
-            <span className="ln-divider-line" />
-          </div>
+              <div className="ln-field-wrap ln-animate ln-delay-4">
+                <label className="ln-field-label">Email</label>
+                <div className={`ln-glass-input${signupErrors.email ? ' ln-glass-input--error' : ''}`}>
+                  <input
+                    className="ln-glass-field"
+                    type="email"
+                    placeholder="tu@correo.com"
+                    value={signupEmail}
+                    onChange={(e) => { setSignupEmail(e.target.value); setSignupErrors(prev => { const n = { ...prev }; delete n.email; return n; }); }}
+                    disabled={isLoading}
+                    autoComplete="email"
+                  />
+                </div>
+                <InlineError message={signupErrors.email} field="signup-email" />
+              </div>
 
-          {/* Google */}
-          <button
-            className="ln-btn-google ln-animate ln-delay-9"
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-          >
-            <GoogleIcon />
-            Continuar con Google
-          </button>
+              <div className="ln-field-wrap ln-animate ln-delay-5">
+                <label className="ln-field-label">Contraseña</label>
+                <div className={`ln-glass-input${signupErrors.password ? ' ln-glass-input--error' : ''}`}>
+                  <div className="ln-password-wrap">
+                    <input
+                      className="ln-glass-field"
+                      type={signupShowPassword ? 'text' : 'password'}
+                      placeholder="Minimo 6 caracteres"
+                      value={signupPassword}
+                      onChange={(e) => { setSignupPassword(e.target.value); setSignupErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
+                      disabled={isLoading}
+                      autoComplete="new-password"
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSignup(); }}
+                    />
+                    <button
+                      type="button"
+                      className="ln-eye-btn"
+                      onClick={() => setSignupShowPassword(!signupShowPassword)}
+                      tabIndex={-1}
+                    >
+                      {signupShowPassword ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                  </div>
+                </div>
+                <InlineError message={signupErrors.password} field="signup-password" />
+              </div>
 
+              <button
+                className={`ln-btn-primary ln-animate ln-delay-6${isLoading ? ' ln-btn-primary--loading' : ''}`}
+                onClick={handleSignup}
+                disabled={isLoading}
+              >
+                {isLoading ? <span className="ln-spinner" /> : 'Crear cuenta'}
+              </button>
+
+              <div className="ln-divider ln-animate ln-delay-7">
+                <span className="ln-divider-line" />
+                <span className="ln-divider-text">o continua con</span>
+                <span className="ln-divider-line" />
+              </div>
+
+              <button
+                className="ln-btn-google ln-animate ln-delay-8"
+                onClick={handleGoogleSignup}
+                disabled={isLoading}
+              >
+                <GoogleIcon />
+                Registrarse con Google
+              </button>
+            </>
+          )}
         </div>
       </section>
 

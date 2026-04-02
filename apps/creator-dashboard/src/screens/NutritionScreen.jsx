@@ -14,10 +14,10 @@ import {
   SkeletonCard,
   NumberTicker,
   ProgressRing,
-  SpotlightTutorial,
   InlineError,
   FullScreenError,
 } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import { useToast } from '../contexts/ToastContext';
 import '../components/PropagateChangesModal.css';
 import './NutritionScreen.css';
@@ -27,23 +27,6 @@ const TAB_ITEMS = [
   { id: 'planes', label: 'Planes' },
 ];
 
-const TUTORIAL_STEPS = [
-  {
-    selector: '.ns-navbar-row .tubelight-navbar',
-    title: 'Recetas y planes',
-    body: 'Recetas son tus comidas individuales. Planes son combinaciones de recetas para una semana.',
-  },
-  {
-    selector: '.ns-add-btn',
-    title: 'Crear contenido',
-    body: 'Crea recetas con busqueda de alimentos integrada. Los macros se calculan automaticamente.',
-  },
-  {
-    selector: '.ns-panel-right',
-    title: 'Asignar planes',
-    body: 'Una vez que tengas un plan, puedes asignarlo directamente a un cliente desde su perfil.',
-  },
-];
 
 function MacroRing({ label, grams, total, color }) {
   const percent = total > 0 ? Math.round((grams / total) * 100) : 0;
@@ -113,6 +96,7 @@ export default function NutritionScreen({ clientId = null }) {
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
     ...nutritionCache,
+    refetchOnMount: true,
   });
 
   const selectedMealQuery = useQuery({
@@ -127,6 +111,7 @@ export default function NutritionScreen({ clientId = null }) {
     queryFn: () => nutritionDb.getPlanById(creatorId, selectedId),
     enabled: activeTab === 'planes' && !!selectedId && !!creatorId,
     ...nutritionCache,
+    refetchOnMount: true,
   });
 
   const clientDiaryQuery = useQuery({
@@ -647,7 +632,7 @@ export default function NutritionScreen({ clientId = null }) {
         </div>
       </Modal>
 
-      <SpotlightTutorial screenKey="nutrition" steps={TUTORIAL_STEPS} />
+      <ContextualHint screenKey="nutrition" />
     </DashboardLayout>
   );
 }

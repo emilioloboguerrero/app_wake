@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+const firebaseProject = process.env.VITE_FIREBASE_ENV === 'staging'
+  ? 'wake-staging'
+  : 'wolf-20b8b';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   test: {
@@ -15,7 +19,7 @@ export default defineConfig({
     open: false,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:5001/wake-staging/us-central1/api',
+        target: `http://127.0.0.1:5001/${firebaseProject}/us-central1/api`,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

@@ -16,6 +16,7 @@ export const useProgramRealtime = (programId, isActive = false) => {
     enabled: !!programId && isActive,
     staleTime: cacheConfig.programStructure.staleTime,
     gcTime: cacheConfig.programStructure.gcTime,
+    refetchOnMount: false,
     refetchInterval: isActive ? ACTIVE_REFETCH_INTERVAL : false,
     refetchOnWindowFocus: isActive,
   });
@@ -26,6 +27,7 @@ export const useProgramRealtime = (programId, isActive = false) => {
     enabled: !!programId && isActive,
     staleTime: cacheConfig.programStructure.staleTime,
     gcTime: cacheConfig.programStructure.gcTime,
+    refetchOnMount: false,
     refetchInterval: isActive ? ACTIVE_REFETCH_INTERVAL : false,
     refetchOnWindowFocus: isActive,
   });

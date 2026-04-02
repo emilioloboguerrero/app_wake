@@ -10,19 +10,14 @@ import {
   GlowingEffect,
   TubelightNavBar,
   FullScreenError,
-  SpotlightTutorial,
 } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import './EventsScreen.css';
 
-const TUTORIAL_STEPS = [
-  { selector: '[data-tutorial="events-list"]', title: 'Tus eventos', body: 'Tus eventos aparecen organizados por estado. Los activos son los que estan abiertos para registro.' },
-  { selector: '[data-tutorial="events-create"]', title: 'Crear evento', body: 'Crea eventos con campos personalizados. Cada registro genera un QR unico para check-in.' },
-  { selector: '[data-tutorial="events-results"]', title: 'Resultados', body: 'Despues del evento, revisa quien asistio y descarga los datos.' },
-];
 
 const NAV_TABS = [
   { id: 'active', label: 'Activos' },
@@ -392,9 +387,7 @@ export default function EventsScreen() {
   const { data: events = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.events.byCreator(user?.uid),
     queryFn: async () => {
-      console.log('[EventsScreen] fetching events...');
       const result = await eventService.getEventsByCreator(user.uid);
-      console.log('[EventsScreen] fetched events:', result.map(e => ({ id: e.id, title: e.title, status: e.status })));
       return result;
     },
     enabled: !!user,
@@ -402,6 +395,7 @@ export default function EventsScreen() {
   });
 
   const deleteMutation = useMutation({
+    mutationKey: ['events', 'delete'],
     mutationFn: (eventId) => eventService.deleteEvent(eventId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) }),
     onError: (err) => {
@@ -411,14 +405,12 @@ export default function EventsScreen() {
   });
 
   const toggleMutation = useMutation({
+    mutationKey: ['events', 'toggle-status'],
     mutationFn: async ({ eventId, nextStatus }) => {
-      console.log('[EventsScreen] toggleStatus calling API', { eventId, nextStatus });
       const result = await eventService.updateEvent(eventId, { status: nextStatus });
-      console.log('[EventsScreen] toggleStatus API response', result);
       return result;
     },
-    onSuccess: (data, variables) => {
-      console.log('[EventsScreen] toggleStatus onSuccess, invalidating queries', { data, variables });
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });
     },
     onError: (err) => {
@@ -453,14 +445,12 @@ export default function EventsScreen() {
 
   async function toggleStatus(ev) {
     const nextStatus = ev.status === 'active' ? 'closed' : 'active';
-    console.log('[EventsScreen] toggleStatus called', { id: ev.id, currentStatus: ev.status, nextStatus });
     setTogglingId(ev.id);
     setMenuOpenId(null);
     try {
       await toggleMutation.mutateAsync({ eventId: ev.id, nextStatus });
-      console.log('[EventsScreen] toggleStatus completed successfully');
     } catch (err) {
-      console.error('[EventsScreen] toggleStatus threw', err);
+      console.error('[EventsScreen] toggleStatus failed', err);
     } finally {
       setTogglingId(null);
     }
@@ -654,7 +644,7 @@ export default function EventsScreen() {
           </AnimatePresence>
           </div>
 
-          <SpotlightTutorial screenKey="events" steps={TUTORIAL_STEPS} />
+          <ContextualHint screenKey="events" />
         </div>
       </DashboardLayout>
     </ErrorBoundary>

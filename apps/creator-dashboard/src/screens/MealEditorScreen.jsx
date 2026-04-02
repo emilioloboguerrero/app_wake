@@ -7,13 +7,16 @@ import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
+import MediaDropZone from '../components/ui/MediaDropZone';
 import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import { FullScreenError } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -461,6 +464,7 @@ export default function MealEditorScreen() {
               <p className="meal-editor-video-card-hint">
                 Pega un enlace (YouTube, Vimeo, etc.) o elige un vídeo de tu carpeta de medios.
               </p>
+              <MediaDropZone onSelect={(item) => setMealFormVideoUrl(item.url ?? '')} accept="video/*">
               <div className="meal-editor-video-link-row">
                 <button
                   type="button"
@@ -470,7 +474,7 @@ export default function MealEditorScreen() {
                   <svg className="meal-editor-video-upload-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span>Subir vídeo</span>
+                  <span>Subir video</span>
                 </button>
                 <input
                   type="url"
@@ -482,11 +486,22 @@ export default function MealEditorScreen() {
               </div>
               {mealFormVideoUrl.trim() && (
                 <div className="meal-editor-video-preview">
-                  <a href={mealFormVideoUrl.trim()} target="_blank" rel="noopener noreferrer" className="meal-editor-video-link">
-                    Ver vídeo
-                  </a>
+                  {(() => {
+                    const url = mealFormVideoUrl.trim();
+                    const source = detectVideoSource(url);
+                    const isExternal = source === 'youtube' || source === 'vimeo';
+                    if (isExternal) {
+                      return <iframe src={getEmbedUrl(url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video receta" className="meal-editor-video-player" />;
+                    }
+                    return <video src={url} controls playsInline className="meal-editor-video-player" />;
+                  })()}
+                  <div className="meal-editor-video-actions">
+                    <button type="button" className="meal-editor-video-action-btn" onClick={() => setVideoMediaPickerOpen(true)}>Cambiar</button>
+                    <button type="button" className="meal-editor-video-action-btn meal-editor-video-action-btn--danger" onClick={() => setMealFormVideoUrl('')}>Eliminar</button>
+                  </div>
                 </div>
               )}
+              </MediaDropZone>
             </div>
             <div
               className={`library-session-exercises-container meal-editor-items-container ${mealFormItems.length === 0 ? 'empty' : ''}`}
@@ -799,6 +814,7 @@ export default function MealEditorScreen() {
         creatorId={creatorId}
         accept="video/*"
       />
+      <ContextualHint screenKey="meal-editor" />
     </DashboardLayout>
   );
 }

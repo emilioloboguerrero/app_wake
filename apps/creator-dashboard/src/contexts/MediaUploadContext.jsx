@@ -7,7 +7,7 @@ import { auth } from '../config/firebase';
 const MediaUploadContext = createContext(null);
 
 const MAX_CONCURRENT = 2;
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const MAX_FILE_SIZE = 300 * 1024 * 1024;
 
 const STATUS = {
   QUEUED: 'queued',
@@ -15,6 +15,7 @@ const STATUS = {
   UPLOADING: 'uploading',
   DONE: 'done',
   ERROR: 'error',
+  CANCELLED: 'cancelled',
 };
 
 function reducer(state, action) {
@@ -39,7 +40,7 @@ function reducer(state, action) {
     case 'CLEAR_DONE':
       return {
         ...state,
-        items: state.items.filter((it) => it.status !== STATUS.DONE),
+        items: state.items.filter((it) => it.status !== STATUS.DONE && it.status !== STATUS.CANCELLED),
       };
     default:
       return state;
@@ -58,6 +59,8 @@ export function MediaUploadProvider({ children }) {
   const activeCount = useRef(0);
   const processingIds = useRef(new Set());
   const listenersRef = useRef(new Map());
+  const xhrRefs = useRef(new Map());
+  const cancelledIds = useRef(new Set());
 
   const processNext = useCallback(() => {
     if (activeCount.current >= MAX_CONCURRENT) return;
@@ -75,6 +78,8 @@ export function MediaUploadProvider({ children }) {
       dispatch({ type: 'UPDATE_ITEM', payload: { queueId: item.queueId, updates } });
 
     try {
+      if (cancelledIds.current.has(item.queueId)) throw new Error('cancelled');
+
       let fileToUpload = item.file;
 
       // 1. Compress
@@ -84,7 +89,7 @@ export function MediaUploadProvider({ children }) {
           fileToUpload = await compressImage(item.file);
           update({ compressedSize: fileToUpload.size });
         } catch {
-          // compression failed — upload original
+          // compression failed - upload original
         }
       } else if (isVideo(item.file)) {
         update({ status: STATUS.COMPRESSING });
@@ -92,9 +97,11 @@ export function MediaUploadProvider({ children }) {
           fileToUpload = await compressVideo(item.file);
           update({ compressedSize: fileToUpload.size });
         } catch {
-          // compression failed — upload original
+          // compression failed - upload original
         }
       }
+
+      if (cancelledIds.current.has(item.queueId)) throw new Error('cancelled');
 
       update({ status: STATUS.UPLOADING, progress: 0 });
 
@@ -108,24 +115,37 @@ export function MediaUploadProvider({ children }) {
       const token = await auth.currentUser.getIdToken();
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        xhrRefs.current.set(item.queueId, xhr);
+
         xhr.open('POST', uploadData.uploadUrl);
         xhr.setRequestHeader('Content-Type', uploadData.contentType);
         xhr.setRequestHeader('Authorization', `Firebase ${token}`);
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 90); // 0-90% for upload
+            const progress = Math.round((e.loaded / e.total) * 90);
             update({ progress });
           }
         };
 
         xhr.onload = () => {
+          xhrRefs.current.delete(item.queueId);
           if (xhr.status >= 200 && xhr.status < 300) resolve();
           else reject(new Error(`Upload failed: ${xhr.status}`));
         };
-        xhr.onerror = () => reject(new Error('Error de red al subir archivo'));
-        xhr.ontimeout = () => reject(new Error('Tiempo de espera agotado'));
-        xhr.timeout = 5 * 60 * 1000; // 5 minutes for large videos
+        xhr.onerror = () => {
+          xhrRefs.current.delete(item.queueId);
+          reject(new Error('Error de red al subir archivo'));
+        };
+        xhr.ontimeout = () => {
+          xhrRefs.current.delete(item.queueId);
+          reject(new Error('Tiempo de espera agotado'));
+        };
+        xhr.onabort = () => {
+          xhrRefs.current.delete(item.queueId);
+          reject(new Error('cancelled'));
+        };
+        xhr.timeout = 5 * 60 * 1000;
 
         xhr.send(fileToUpload);
       });
@@ -159,8 +179,14 @@ export function MediaUploadProvider({ children }) {
 
       showToast(`"${item.file.name}" subido`, 'success');
     } catch (err) {
-      update({ status: STATUS.ERROR, error: err.message });
-      showToast(`Error: ${item.file.name}`, 'error');
+      if (err.message === 'cancelled') {
+        cancelledIds.current.delete(item.queueId);
+        listenersRef.current.delete(item.queueId);
+        update({ status: STATUS.CANCELLED });
+      } else {
+        update({ status: STATUS.ERROR, error: err.message });
+        showToast(`Error: ${item.file.name}`, 'error');
+      }
     } finally {
       activeCount.current--;
       processingIds.current.delete(item.queueId);
@@ -180,7 +206,7 @@ export function MediaUploadProvider({ children }) {
   const enqueue = useCallback(async (files, onComplete) => {
     const validFiles = Array.from(files).filter((f) => {
       if (f.size > MAX_FILE_SIZE) {
-        showToast(`"${f.name}" excede 50MB`, 'error');
+        showToast(`"${f.name}" excede 300MB`, 'error');
         return false;
       }
       return true;
@@ -233,6 +259,19 @@ export function MediaUploadProvider({ children }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast]);
 
+  const cancelItem = useCallback((queueId) => {
+    // Abort active XHR if uploading
+    const xhr = xhrRefs.current.get(queueId);
+    if (xhr) {
+      xhr.abort();
+    } else {
+      // Queued or compressing — mark for cancel
+      cancelledIds.current.add(queueId);
+      listenersRef.current.delete(queueId);
+      dispatch({ type: 'UPDATE_ITEM', payload: { queueId, updates: { status: STATUS.CANCELLED } } });
+    }
+  }, []);
+
   const retryItem = useCallback((queueId) => {
     dispatch({ type: 'UPDATE_ITEM', payload: { queueId, updates: { status: STATUS.QUEUED, progress: 0, error: null } } });
     setTimeout(() => processNextRef.current(), 0);
@@ -247,7 +286,7 @@ export function MediaUploadProvider({ children }) {
     dispatch({ type: 'CLEAR_DONE' });
   }, []);
 
-  const activeItems = state.items.filter((it) => it.status !== STATUS.DONE && it.status !== STATUS.ERROR);
+  const activeItems = state.items.filter((it) => it.status !== STATUS.DONE && it.status !== STATUS.ERROR && it.status !== STATUS.CANCELLED);
   const completedItems = state.items.filter((it) => it.status === STATUS.DONE);
   const errorItems = state.items.filter((it) => it.status === STATUS.ERROR);
   const hasActivity = state.items.length > 0;
@@ -261,6 +300,7 @@ export function MediaUploadProvider({ children }) {
         errorItems,
         hasActivity,
         enqueue,
+        cancelItem,
         retryItem,
         removeItem,
         clearDone,
