@@ -170,7 +170,6 @@ export function useActivityStreak(userId) {
       applyLoaded(result);
     }).catch((e) => {
       if (effectRunIdRef.current !== runId) return;
-      logger.warn?.('🔥 [streak] Initial fetch failed:', e);
       applyLoaded({});
     });
 
@@ -204,7 +203,7 @@ export function useActivityStreak(userId) {
         });
       }, msUntilMidnight);
     } catch (e) {
-      logger.warn?.('🔥 [streak] Failed to schedule midnight refresh:', e);
+      // Failed to schedule midnight refresh
     }
 
     return () => {

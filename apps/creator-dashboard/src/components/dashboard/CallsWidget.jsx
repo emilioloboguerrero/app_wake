@@ -1,16 +1,17 @@
+import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
-export default function CallsWidget({ bookingsQuery, callCountThisWeek, nextCallTime }) {
+function CallsWidget({ isLoading, isError, callCountThisWeek, nextCallTime }) {
   const navigate = useNavigate();
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Llamadas esta semana</p>
-      {bookingsQuery.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : bookingsQuery.isError ? (
+      ) : isError ? (
         <InlineError
           message="No pudimos cargar las llamadas. Toca para reintentar."
           field="calls"
@@ -42,3 +43,5 @@ export default function CallsWidget({ bookingsQuery, callCountThisWeek, nextCall
     </div>
   );
 }
+
+export default memo(CallsWidget);

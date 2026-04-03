@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
@@ -26,20 +27,19 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-export default function ClientTrendWidget({ trendQuery }) {
-  const data = trendQuery?.data?.data;
-  const trend = data?.clientTrend ?? [];
+function ClientTrendWidget({ isLoading, isError, trendData }) {
+  const trend = trendData?.clientTrend ?? [];
   const current = trend.length > 0 ? trend[trend.length - 1].totalClients : 0;
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Tendencia de clientes</p>
-      {trendQuery?.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : trendQuery?.isError ? (
+      ) : isError ? (
         <InlineError message="No pudimos cargar la tendencia." field="client-trend" />
       ) : trend.length === 0 ? (
-        <p className="ds-widget-empty">El gráfico aparecerá cuando tengas tu primer cliente.</p>
+        <p className="ds-widget-empty">El grafico aparecera cuando tengas tu primer cliente.</p>
       ) : (
         <>
           <p className="ds-widget-number">
@@ -74,3 +74,5 @@ export default function ClientTrendWidget({ trendQuery }) {
     </div>
   );
 }
+
+export default memo(ClientTrendWidget);

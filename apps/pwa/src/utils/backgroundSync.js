@@ -48,7 +48,6 @@ export async function processPendingQueue() {
 
     for (const entry of sorted) {
       if (!entry?.id || !entry.method || !entry.path) {
-        logger.warn('[backgroundSync] entrada inválida en la cola, omitiendo');
         continue;
       }
 
@@ -57,14 +56,12 @@ export async function processPendingQueue() {
       // Dead-letter after MAX_RETRIES so one bad entry never blocks the queue.
       if (retryCount >= MAX_RETRIES) {
         remove(entry.id);
-        logger.warn('[backgroundSync] descartado (máximo de reintentos):', entry.id);
         continue;
       }
 
       const enqueuedTime = entry.enqueuedAt ? new Date(entry.enqueuedAt).getTime() : 0;
       if (Date.now() - enqueuedTime > SEVEN_DAYS_MS) {
         remove(entry.id);
-        logger.warn('[backgroundSync] descartado (expirado):', entry.id);
         continue;
       }
 
@@ -94,7 +91,6 @@ export async function processPendingQueue() {
         } else {
           // Unknown method — remove to avoid queue blockage.
           remove(entry.id);
-          logger.warn('[backgroundSync] descartado (método desconocido):', entry.method, entry.id);
           continue;
         }
 
@@ -106,15 +102,12 @@ export async function processPendingQueue() {
           } else if (err.status >= 400 && err.status < 500) {
             // Permanent client-side failure — retrying won't help.
             remove(entry.id);
-            logger.warn('[backgroundSync] descartado (error 4xx permanente):', entry.id, err.status);
           } else {
             // 5xx / network — increment retry counter and leave in queue.
             updateRetryCount(entry.id);
-            logger.warn('[backgroundSync] reintentando después (5xx/red):', entry.id, err.status);
           }
         } else {
           updateRetryCount(entry.id);
-          logger.warn('[backgroundSync] reintentando después (error desconocido):', entry.id, String(err));
         }
       }
     }

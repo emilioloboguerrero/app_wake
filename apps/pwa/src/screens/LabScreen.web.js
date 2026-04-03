@@ -44,6 +44,7 @@ import logger from '../utils/logger';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -1483,21 +1484,27 @@ const LabScreen = () => {
 
   // ─── data loading ──────────────────────────────────────────────────────────
 
+  // Reuse shared user query key so MainScreen's cached /users/me is shared
+  const userQuery = useQuery({
+    queryKey: queryKeys.user.detail(uid),
+    queryFn: () => apiClient.get('/users/me').then(res => res.data),
+    enabled: !!uid,
+    ...cacheConfig.userProfile,
+  });
+
   const mainQuery = useQuery({
     queryKey: ['progress', 'lab-main', uid],
     queryFn: async () => {
       const end = toYYYYMMDD(new Date());
       const startD = new Date(); startD.setDate(startD.getDate() - 56);
       const start = toYYYYMMDD(startD);
-      const [uData, sessionResult, entries, planResult, readinessData] = await Promise.all([
-        apiClient.get('/users/me').then(r => r?.data ?? null),
+      const [sessionResult, entries, planResult, readinessData] = await Promise.all([
         exerciseHistoryService.getSessionHistoryPaginated(uid, 100),
         getDiaryEntriesInRange(uid, start, end),
         getEffectivePlanForUser(uid).catch(() => ({ plan: null, assignment: null })),
         getReadinessInRange(uid, start, end),
       ]);
       return {
-        userData: uData || null,
         sessions: sessionResult?.sessions || {},
         diaryEntries: entries || [],
         plan: planResult?.plan || null,
@@ -1509,24 +1516,21 @@ const LabScreen = () => {
     gcTime: GC_TIMES.exerciseHistory,
   });
 
+  const userData = userQuery.data ?? null;
+
   const topKeys = useMemo(() => {
-    const est = mainQuery.data?.userData?.oneRepMaxEstimates;
+    const est = userData?.oneRepMaxEstimates;
     if (!est) return [];
     return Object.entries(est)
       .filter(([, v]) => v?.current && v?.lastUpdated)
       .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
       .slice(0, 5)
       .map(([k]) => k);
-  }, [mainQuery.data?.userData?.oneRepMaxEstimates]);
+  }, [userData?.oneRepMaxEstimates]);
 
   const oneRmQuery = useQuery({
     queryKey: ['workout', '1rm-histories', uid, topKeys],
-    queryFn: () =>
-      Promise.all(
-        topKeys.map(key =>
-          oneRepMaxService.getHistoryByKey(uid, key).then(records => ({ exerciseKey: key, records }))
-        )
-      ),
+    queryFn: () => oneRepMaxService.getBatchHistory(uid, topKeys),
     enabled: !!uid && topKeys.length > 0,
     staleTime: STALE_TIMES.exerciseHistory,
     gcTime: GC_TIMES.exerciseHistory,
@@ -1540,8 +1544,7 @@ const LabScreen = () => {
     gcTime: GC_TIMES.bodyLog,
   });
 
-  const loading = mainQuery.isLoading;
-  const userData = mainQuery.data?.userData ?? null;
+  const loading = mainQuery.isLoading || userQuery.isLoading;
   const sessions = mainQuery.data?.sessions ?? {};
   const diaryEntries = mainQuery.data?.diaryEntries ?? [];
   const plan = mainQuery.data?.plan ?? null;

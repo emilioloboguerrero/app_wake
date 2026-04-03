@@ -134,6 +134,22 @@ const DashboardLayout = ({
     () => !sessionStorage.getItem('wake_sidebar_entered')
   );
 
+  // ── Video exchange unread badge ───────────────────────────────
+  const { data: videoExchangeUnread = 0 } = useQuery({
+    queryKey: queryKeys.videoExchanges.unreadCount(user?.uid),
+    queryFn: async () => {
+      const res = await apiClient.get('/video-exchanges', { params: { status: 'open' } });
+      const exchanges = res.data || res;
+      if (!Array.isArray(exchanges)) return 0;
+      return exchanges.reduce((sum, ex) => sum + (ex.unreadByCreator || 0), 0);
+    },
+    enabled: !!user?.uid,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+
   // ── Nav visibility settings ───────────────────────────────────
   const [hiddenNav, setHiddenNavState] = useState(getHiddenNav);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -338,6 +354,9 @@ const DashboardLayout = ({
             >
               <span className="dl-nav-item__icon">{item.icon}</span>
               <span className="dl-nav-item__label">{item.label}</span>
+              {item.key === 'clientes' && videoExchangeUnread > 0 && (
+                <span className="dl-nav-item__badge">{videoExchangeUnread}</span>
+              )}
             </button>
           ))}
         </nav>

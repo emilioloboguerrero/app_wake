@@ -8,7 +8,6 @@ import apiService from '../services/apiService';
 // TODO: Phase 3 migration target — replace direct nutritionFirestoreService import with API client
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { TrainingNutritionChoiceModal } from '../components/TrainingNutritionChoiceModal.web';
-import logger from '../utils/logger';
 
 const MainScreenModule = require('./MainScreen.js');
 const MainScreenBase = MainScreenModule.MainScreenBase || MainScreenModule.default;
@@ -65,7 +64,6 @@ const MainScreen = () => {
               goToWorkout(course);
             }
           } catch (e) {
-            logger.warn('[MainScreen.web] program choice check failed', e);
             goToWorkout(course);
           }
         })();

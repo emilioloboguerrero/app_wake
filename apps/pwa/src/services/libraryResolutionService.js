@@ -9,12 +9,11 @@ class LibraryResolutionService {
         const result = await apiClient.get(`/workout/client-programs/${programId}`);
         if (result?.data) clientOverrides = result.data;
       } catch (error) {
-        logger.warn('⚠️ Client program not found or error loading:', error);
+        // Client program not found or error loading
       }
 
       const creatorId = programTemplate.creator_id;
       if (!creatorId) {
-        logger.warn('⚠️ No creator_id in program template, skipping library resolution');
         return this.mergeProgramOverrides(programTemplate, null, clientOverrides);
       }
 
@@ -115,7 +114,7 @@ class LibraryResolutionService {
           modulePromises.push(
             apiClient.get(`/library/modules/${ref}`, { params: { creatorId } })
               .then(result => { if (result?.data) versions.modules[ref] = result.data.version || 0; })
-              .catch(error => logger.warn('Could not fetch library module version:', error))
+              .catch(() => {})
           );
         }
 
@@ -127,7 +126,7 @@ class LibraryResolutionService {
               sessionPromises.push(
                 apiClient.get(`/library/sessions/${ref}`, { params: { creatorId } })
                   .then(result => { if (result?.data) versions.sessions[ref] = result.data.version || 0; })
-                  .catch(error => logger.warn('Could not fetch library session version:', error))
+                  .catch(() => {})
               );
             }
           }
@@ -165,7 +164,7 @@ class LibraryResolutionService {
                   }
                 }
               })
-              .catch(error => logger.warn('Could not check library module version:', error))
+              .catch(() => {})
           );
         }
       }
@@ -182,7 +181,7 @@ class LibraryResolutionService {
                   }
                 }
               })
-              .catch(error => logger.warn('Could not check library session version:', error))
+              .catch(() => {})
           );
         }
       }

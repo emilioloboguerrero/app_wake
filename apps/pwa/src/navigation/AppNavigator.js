@@ -51,7 +51,6 @@ const AppNavigator = () => {
                 cachedAt: Date.now()
               }));
             } catch (cacheError) {
-              logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
               // Continue anyway - not critical
             }
           } else {
@@ -151,5 +150,3 @@ const AppNavigator = () => {
 };
 
 export default AppNavigator;
-
-

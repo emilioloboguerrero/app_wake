@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
@@ -17,20 +18,19 @@ function DaysLeftBadge({ days }) {
   );
 }
 
-export default function ExpiringAccessWidget({ expiringQuery }) {
-  const data = expiringQuery?.data?.data;
-  const expiring = data?.expiring ?? [];
-  const count = data?.count ?? 0;
+function ExpiringAccessWidget({ isLoading, isError, expiringData }) {
+  const expiring = expiringData?.expiring ?? [];
+  const count = expiringData?.count ?? 0;
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Accesos por vencer</p>
-      {expiringQuery?.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : expiringQuery?.isError ? (
+      ) : isError ? (
         <InlineError message="No pudimos cargar los accesos." field="expiring" />
       ) : count === 0 ? (
-        <p className="ds-widget-empty">Ningún cliente tiene acceso por vencer en los próximos 30 días.</p>
+        <p className="ds-widget-empty">Ningun cliente tiene acceso por vencer en los proximos 30 dias.</p>
       ) : (
         <>
           <p className="ds-widget-number">
@@ -48,7 +48,7 @@ export default function ExpiringAccessWidget({ expiringQuery }) {
               </div>
             ))}
             {expiring.length > 4 && (
-              <p className="ds-activity-more">y {expiring.length - 4} más…</p>
+              <p className="ds-activity-more">y {expiring.length - 4} mas...</p>
             )}
           </div>
         </>
@@ -56,3 +56,5 @@ export default function ExpiringAccessWidget({ expiringQuery }) {
     </div>
   );
 }
+
+export default memo(ExpiringAccessWidget);

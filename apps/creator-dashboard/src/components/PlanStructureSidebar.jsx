@@ -104,9 +104,18 @@ const PlanStructureSidebar = ({
                   >
                     <GlowingEffect spread={20} proximity={40} borderWidth={1} />
                     <div className="planning-sidebar-program-content">
-                      <div className="planning-sidebar-program-image-placeholder" style={{ width: 28, height: 28, fontSize: 12 }}>
-                        {session.title?.charAt(0) || 'S'}
-                      </div>
+                      {session.image_url ? (
+                        <img
+                          src={session.image_url}
+                          alt=""
+                          className="planning-sidebar-program-image"
+                          style={{ width: 28, height: 28 }}
+                        />
+                      ) : (
+                        <div className="planning-sidebar-program-image-placeholder" style={{ width: 28, height: 28, fontSize: 12 }}>
+                          {session.title?.charAt(0) || 'S'}
+                        </div>
+                      )}
                       <div className="planning-sidebar-program-info">
                         <span className="planning-sidebar-program-name">
                           {session.title || `Sesión ${session.id?.slice(0, 8)}`}

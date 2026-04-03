@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
@@ -18,20 +19,19 @@ function StatusDot({ status }) {
   );
 }
 
-export default function ClientActivityWidget({ activityQuery }) {
-  const data = activityQuery?.data?.data;
-  const clients = data?.clients ?? [];
-  const summary = data?.summary ?? { activeCount: 0, inactiveCount: 0, ghostCount: 0, total: 0 };
+function ClientActivityWidget({ isLoading, isError, activityData }) {
+  const clients = activityData?.clients ?? [];
+  const summary = activityData?.summary ?? { activeCount: 0, inactiveCount: 0, ghostCount: 0, total: 0 };
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Actividad de clientes</p>
-      {activityQuery?.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : activityQuery?.isError ? (
+      ) : isError ? (
         <InlineError message="No pudimos cargar la actividad." field="client-activity" />
       ) : summary.total === 0 ? (
-        <p className="ds-widget-empty">Cuando tengas clientes, aquí verás quién está entrenando.</p>
+        <p className="ds-widget-empty">Cuando tengas clientes, aqui veras quien esta entrenando.</p>
       ) : (
         <>
           <div className="ds-activity-summary">
@@ -59,7 +59,7 @@ export default function ClientActivityWidget({ activityQuery }) {
               </div>
             ))}
             {clients.length > 5 && (
-              <p className="ds-activity-more">y {clients.length - 5} más…</p>
+              <p className="ds-activity-more">y {clients.length - 5} mas...</p>
             )}
           </div>
         </>
@@ -67,3 +67,5 @@ export default function ClientActivityWidget({ activityQuery }) {
     </div>
   );
 }
+
+export default memo(ClientActivityWidget);

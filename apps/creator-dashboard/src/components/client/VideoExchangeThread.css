@@ -1,0 +1,337 @@
+.vet-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 400px;
+  max-height: 600px;
+}
+
+/* Header */
+.vet-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vet-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.vet-back:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.vet-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vet-header-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.vet-header-status {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.vet-recorder-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Messages area */
+.vet-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vet-loading,
+.vet-empty-messages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+}
+
+.vet-empty-messages p {
+  margin: 0;
+}
+
+/* Individual message */
+.vet-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 75%;
+}
+
+.vet-message--creator {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.vet-message--client {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.vet-message-bubble {
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.vet-message--creator .vet-message-bubble {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.vet-message--client .vet-message-bubble {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vet-message-video {
+  width: 100%;
+  max-width: 400px;
+  display: block;
+  border-radius: 8px;
+  background: #000;
+}
+
+.vet-message-note {
+  padding: 8px 12px;
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+}
+
+.vet-message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px 8px;
+}
+
+.vet-message-time {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.vet-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vet-react-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vet-react-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.vet-save-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.vet-save-btn:hover {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.vet-save-btn--active {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.vet-message-sender {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.25);
+  margin-top: 2px;
+  padding: 0 4px;
+}
+
+/* Pending video */
+.vet-pending {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.vet-pending-video {
+  width: 100%;
+  max-width: 300px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.vet-progress {
+  position: relative;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.vet-progress-bar {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.15);
+  transition: width 0.3s ease;
+}
+
+.vet-progress-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.vet-error {
+  font-size: 12px;
+  color: #ef4444;
+  margin: 4px 0;
+}
+
+.vet-pending-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.vet-pending-cancel,
+.vet-pending-send {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vet-pending-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.vet-pending-send {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a1a;
+}
+
+.vet-pending-cancel:disabled,
+.vet-pending-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Input area */
+.vet-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vet-record-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s ease;
+}
+
+.vet-record-btn:hover {
+  opacity: 0.85;
+}
+
+.vet-text-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  outline: none;
+}
+
+.vet-text-input:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.vet-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.vet-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.vet-send-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.vet-send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

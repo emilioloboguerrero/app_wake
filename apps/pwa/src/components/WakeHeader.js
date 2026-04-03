@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
 import { HeaderStreakBadge } from './HeaderStreakBadge';
 import HeaderStreakInfoModal from './HeaderStreakInfoModal';
-import logger from '../utils/logger';
 // Fixed header container that stays above ScrollView
 export const FixedWakeHeader = ({ 
   showBackButton = false,
@@ -19,14 +18,7 @@ export const FixedWakeHeader = ({
   menuButton = null,
   backgroundColor = '#1a1a1a'
 }) => {
-  const componentStartTime = performance.now();
-  
-  const insetsStartTime = performance.now();
   const insets = useSafeAreaInsets();
-  const insetsDuration = performance.now() - insetsStartTime;
-  if (insetsDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: useSafeAreaInsets took ${insetsDuration.toFixed(2)}ms`);
-  }
   
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -164,18 +156,10 @@ export const FixedWakeHeader = ({
       />
     </View>
   );
-  
-  const componentEndTime = performance.now();
-  const componentDuration = componentEndTime - componentStartTime;
-  if (componentDuration > 50) {
-    logger.warn(`[CHILD] ⚠️ SLOW: FixedWakeHeader render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
 };
 
 // Header spacer component to push content down when using fixed header
 export const WakeHeaderSpacer = () => {
-  const componentStartTime = performance.now();
-  
   const insets = useSafeAreaInsets();
   // Use hook for reactive dimensions that update on orientation change
   const { height: screenHeight } = useWindowDimensions();
@@ -184,12 +168,6 @@ export const WakeHeaderSpacer = () => {
   const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const totalHeight = headerHeight + safeAreaTop;
-  
-  const componentEndTime = performance.now();
-  const componentDuration = componentEndTime - componentStartTime;
-  if (componentDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: WakeHeaderSpacer render took ${componentDuration.toFixed(2)}ms (threshold: 10ms)`);
-  }
   
   return <View style={{ height: totalHeight }} />;
 };

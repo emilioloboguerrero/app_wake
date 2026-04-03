@@ -1,9 +1,9 @@
+import { memo } from 'react';
 import { SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
 function formatTime(str) {
   if (!str) return '';
-  // Handle HH:mm format
   if (str.includes(':') && str.length <= 5) return str;
   try {
     return new Date(str).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
@@ -31,20 +31,19 @@ function TimelineEvent({ event }) {
   );
 }
 
-export default function CalendarPreviewWidget({ calendarQuery }) {
-  const data = calendarQuery?.data?.data;
-  const today = data?.today ?? [];
-  const tomorrow = data?.tomorrow ?? [];
+function CalendarPreviewWidget({ isLoading, isError, calendarData }) {
+  const today = calendarData?.today ?? [];
+  const tomorrow = calendarData?.tomorrow ?? [];
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Agenda de hoy</p>
-      {calendarQuery?.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : calendarQuery?.isError ? (
+      ) : isError ? (
         <InlineError message="No pudimos cargar la agenda." field="calendar" />
       ) : today.length === 0 && tomorrow.length === 0 ? (
-        <p className="ds-widget-empty">No tienes llamadas hoy ni mañana. Disfruta el tiempo libre.</p>
+        <p className="ds-widget-empty">No tienes llamadas hoy ni manana. Disfruta el tiempo libre.</p>
       ) : (
         <div className="ds-timeline">
           {today.length > 0 && (
@@ -55,7 +54,7 @@ export default function CalendarPreviewWidget({ calendarQuery }) {
           )}
           {tomorrow.length > 0 && (
             <>
-              <p className="ds-timeline__section-label">Mañana</p>
+              <p className="ds-timeline__section-label">Manana</p>
               {tomorrow.map(e => <TimelineEvent key={e.id} event={e} />)}
             </>
           )}
@@ -64,3 +63,5 @@ export default function CalendarPreviewWidget({ calendarQuery }) {
     </div>
   );
 }
+
+export default memo(CalendarPreviewWidget);

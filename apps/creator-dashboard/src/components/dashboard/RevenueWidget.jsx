@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { memo, useState, useMemo, useCallback } from 'react';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
@@ -47,11 +47,9 @@ function formatCurrency(amount) {
   }).format(amount);
 }
 
-export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, programs = [] }) {
+function RevenueWidget({ isLoading, isError, lowTicket, oneOnOne, programs = [], grossRevenue = 0, byProgram = [] }) {
   const [expanded, setExpanded] = useState(false);
 
-  const revenueData = revenueQuery.data?.data ?? {};
-  const grossRevenue = revenueData.gross ?? 0;
   const netRevenue = useMemo(() => grossRevenue * (1 - WAKE_FEE), [grossRevenue]);
   const wakeFeeAmount = useMemo(() => grossRevenue * WAKE_FEE, [grossRevenue]);
 
@@ -59,16 +57,16 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
   const hasOneOnOne = programs.some(p => p.deliveryType === 'one_on_one');
 
   const perProgramRevenue = useMemo(() => {
-    if (!revenueData.byProgram) return [];
-    return revenueData.byProgram.map(entry => ({
+    if (!byProgram.length) return [];
+    return byProgram.map(entry => ({
       ...entry,
       net: (entry.gross ?? 0) * (1 - WAKE_FEE),
     }));
-  }, [revenueData.byProgram]);
+  }, [byProgram]);
 
   const toggleExpanded = useCallback(() => setExpanded(prev => !prev), []);
 
-  if (revenueQuery.isLoading) {
+  if (isLoading) {
     return (
       <div className="ds-widget-inner">
         <p className="ds-widget-title">Ingresos netos</p>
@@ -77,7 +75,7 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
     );
   }
 
-  if (revenueQuery.isError) {
+  if (isError) {
     return (
       <div className="ds-widget-inner">
         <p className="ds-widget-title">Ingresos netos</p>
@@ -100,7 +98,6 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
 
   return (
     <div className="revenue-card__inner" onClick={toggleExpanded} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && toggleExpanded()}>
-      {/* Header row */}
       <div className="revenue-card__header">
         <span className="revenue-card__label">
           {hasLowTicket ? 'Ingresos netos' : 'Clientes activos'}
@@ -110,7 +107,6 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
         </span>
       </div>
 
-      {/* Main number */}
       <div className="revenue-card__value">
         {hasLowTicket ? (
           <NumberTicker value={netRevenue} prefix="$" suffix="" decimals={0} />
@@ -133,7 +129,6 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
         )}
       </div>
 
-      {/* One-on-one summary when both types */}
       {hasLowTicket && hasOneOnOne && (
         <div className="revenue-card__secondary">
           {oneOnOne.clientCount} {oneOnOne.clientCount === 1 ? 'cliente' : 'clientes'} 1:1
@@ -141,7 +136,6 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
         </div>
       )}
 
-      {/* Expanded breakdown */}
       {expanded && hasLowTicket && (
         <div className="revenue-card__breakdown">
           <div className="revenue-card__breakdown-row">
@@ -173,3 +167,5 @@ export default function RevenueWidget({ revenueQuery, lowTicket, oneOnOne, progr
     </div>
   );
 }
+
+export default memo(RevenueWidget);

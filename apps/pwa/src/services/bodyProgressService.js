@@ -1,5 +1,4 @@
 import apiClient from '../utils/apiClient';
-import logger from '../utils/logger';
 
 async function compressProgressPhoto(file) {
   return new Promise((resolve, reject) => {
@@ -92,7 +91,6 @@ class BodyProgressService {
 
   async cleanupPhoto(storagePath) {
     // no-op: photo cleanup is now handled server-side via DELETE endpoints
-    logger.warn('[bodyProgress] cleanupPhoto is a no-op; use deletePhoto or deleteEntry');
   }
 
   async deleteEntry(userId, dateStr) {

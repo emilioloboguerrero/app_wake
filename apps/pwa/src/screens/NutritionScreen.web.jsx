@@ -712,7 +712,6 @@ function BarcodeCameraScanner({ onClose, onBarcodeScanned, onFallbackToManual })
               return;
             }
             if (err && !(err instanceof NotFoundException)) {
-              logger.warn('[BarcodeCameraScanner] decode error:', err);
             }
           }
         );
@@ -734,7 +733,6 @@ function BarcodeCameraScanner({ onClose, onBarcodeScanned, onFallbackToManual })
           controlsRef.current.stop();
         }
       } catch (e) {
-        logger.warn('[BarcodeCameraScanner] stop error:', e);
       }
       controlsRef.current = null;
     };
@@ -1257,7 +1255,6 @@ const NutritionScreen = () => {
       const fallback = fullServings.findIndex((s) => !String(s.serving_id).startsWith('derived-'));
       setBuscarServingIndex(oneGIdx >= 0 ? oneGIdx : (fallback >= 0 ? fallback : 0));
     } catch (e) {
-      logger.warn('[NutritionScreen] nutritionFoodGet detail:', e);
     } finally {
       setFdLoadingDetail(false);
     }
@@ -1717,7 +1714,6 @@ const NutritionScreen = () => {
     }, 0);
     return () => clearTimeout(t);
   }, [addModalVisible, addModalCategoryIndex, addModalTab, opcionesScrollX]);
-
 
   const fdOpenKey = selectedFood?.food_id ?? null;
   useEffect(() => {

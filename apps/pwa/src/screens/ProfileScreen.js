@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
+import { queryKeys } from '../config/queryClient';
 import {
   View,
   Text,
@@ -139,7 +140,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   // Debounce timer for username validation
   const usernameDebounceTimer = useRef(null);
 
-
   // Track previous user ID to detect changes
   const previousUserIdRef = useRef(null);
   const profileEntranceAnim = useRef(new Animated.Value(0)).current;
@@ -152,7 +152,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   }, [!!userProfile]);
 
   const { data: profileQueryData, isLoading: profileQueryLoading } = useQuery({
-    queryKey: ['profile', 'me'],
+    queryKey: queryKeys.user.detail(user?.uid),
     queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!user?.uid,
     staleTime: STALE_TIMES.userProfile,
@@ -164,7 +164,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   const profileUpdateMutation = useMutation({
     mutationFn: (updates) => apiClient.patch('/users/me', updates),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['profile', 'me'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
     },
   });
 
@@ -193,7 +193,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     if (userData.profilePictureUrl) {
       setProfilePictureUrl(userData.profilePictureUrl);
     } else {
-      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); }).catch(err => logger.warn('Failed to load profile picture URL', err));
+      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); });
     }
     checkForTutorials();
     setProfileLoading(false);
@@ -259,7 +259,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     setUserProfile(profileData);
     setOriginalProfile({ ...profileData });
   };
-
 
   // Helper function to normalize values for comparison
   const normalizeValue = (value, isNumeric = false) => {
@@ -349,7 +348,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   // Handle profile picture change
   const handleChangeProfilePicture = async () => {
     if (!user?.uid) {
-      logger.warn('Profile picture change skipped: no user');
       Alert.alert('Error', 'No se pudo identificar tu sesión. Intenta cerrar sesión y volver a entrar.');
       return;
     }
@@ -375,8 +373,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       setLoading(false);
     }
   };
-
-
 
   // Show settings modal
   const showSettingsModal = () => {
@@ -508,7 +504,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           });
           await auth.currentUser.reload();
         } catch (profileSyncError) {
-          logger.warn('⚠️ Failed to sync Firebase Auth displayName from profile settings:', profileSyncError);
         }
       }
 
@@ -774,8 +769,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       logger.error('❌ Error marking tutorial as completed:', error);
     }
   };
-
-
 
   const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
@@ -1544,7 +1537,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             </TouchableOpacity>
           </View>
         )}
-
 
         <BottomSpacer />
         </WakeHeaderContent>

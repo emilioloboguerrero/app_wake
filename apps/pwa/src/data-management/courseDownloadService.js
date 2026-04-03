@@ -115,7 +115,6 @@ class CourseDownloadService {
         courseData = await apiService.getCourse(courseId);
         if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
       } catch (error) {
-        logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
       const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';
@@ -125,7 +124,6 @@ class CourseDownloadService {
           const userDoc = await apiService.getUser(userId);
           isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
         } catch (e) {
-          logger.warn('⚠️ Could not check deliveryType:', e);
         }
       }
       if (isOneOnOne) {
@@ -184,7 +182,6 @@ class CourseDownloadService {
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
-        logger.warn('⚠️ Course data validation warning:', validationError);
       }
       return true;
     } catch (error) {
@@ -205,7 +202,6 @@ class CourseDownloadService {
         courseData = await apiService.getCourse(courseId);
         if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
       } catch (error) {
-        logger.warn('⚠️ Error getting course data:', error.message);
         throw error;
       }
 
@@ -229,7 +225,6 @@ class CourseDownloadService {
           const userDoc = await apiService.getUser(userId);
           isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
         } catch (e) {
-          logger.warn('⚠️ Could not check deliveryType:', e);
         }
       }
       
@@ -268,7 +263,6 @@ class CourseDownloadService {
       try {
         modules = await apiService.getCourseModules(courseId, userId);
       } catch (error) {
-        logger.warn('⚠️ Error getting modules:', error.message);
         throw error;
       }
       
@@ -283,7 +277,6 @@ class CourseDownloadService {
           clientProgram = await apiService.getClientProgram(userId, courseId);
           if (clientProgram) clientProgramVersion = clientProgram.version_snapshot || null;
         } catch (error) {
-          logger.warn('⚠️ Could not load client program:', error);
         }
       }
       
@@ -324,7 +317,6 @@ class CourseDownloadService {
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
-        logger.warn('⚠️ Course data validation warning:', validationError);
       }
       return true;
       
@@ -691,7 +683,6 @@ class CourseDownloadService {
     if (courseData.modules && courseData.modules.length > 0) {
       for (const module of courseData.modules) {
         if (!module.id) {
-          logger.warn('⚠️ Module missing ID, but continuing:', module);
         }
       }
     }

@@ -1,7 +1,5 @@
 // Duration helper - Hardcoded access durations
 // Maps access types to number of days
-import logger from './logger';
-
 /**
  * Get access duration in days for a given access type
  * @param {string} accessDuration - "monthly", "yearly", "3-month", "6-month"
@@ -18,7 +16,6 @@ export function getAccessDurationDays(accessDuration) {
   const days = durations[accessDuration];
   
   if (!days) {
-    logger.warn(`⚠️ Unknown access_duration: ${accessDuration}, defaulting to 30 days`);
     return 30; // Default fallback
   }
   

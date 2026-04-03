@@ -42,7 +42,7 @@ function getInitial(name) {
 
 // ─── Client card ─────────────────────────────────────────────────────────────
 
-function ClientCard({ client, onClick }) {
+function ClientCard({ client, onClick, unreadVideos = 0 }) {
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || client.userId || '').slice(0, 8)}`;
   const isActive = client.status !== 'inactive';
 
@@ -53,6 +53,9 @@ function ClientCard({ client, onClick }) {
         {client.avatarUrl
           ? <img src={client.avatarUrl} alt={name} className="cl-card__avatar-img" />
           : <span className="cl-card__avatar-initial">{getInitial(name)}</span>}
+        {unreadVideos > 0 && (
+          <span className="cl-card__video-badge" />
+        )}
       </div>
       <div className="cl-card__info">
         <span className="cl-card__name">{name}</span>
@@ -74,7 +77,7 @@ function ClientCard({ client, onClick }) {
 
 // ─── Color-coded client group ────────────────────────────────────────────────
 
-function ClientGroup({ title, clients, programId, imageUrl, onSelectClient, onConfigClick, defaultExpanded = true }) {
+function ClientGroup({ title, clients, programId, imageUrl, onSelectClient, onConfigClick, defaultExpanded = true, videoUnreadMap = {} }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [accent, setAccent] = useState(null);
 
@@ -131,6 +134,7 @@ function ClientGroup({ title, clients, programId, imageUrl, onSelectClient, onCo
               key={client.id || client.clientUserId}
               client={client}
               onClick={() => onSelectClient(client)}
+              unreadVideos={videoUnreadMap[client.clientUserId] || 0}
             />
           ))}
         </div>
@@ -515,6 +519,26 @@ const ClientesScreen = () => {
     setSearchParams({ tab }, { replace: true });
   }, [setSearchParams]);
 
+  // Video exchange unread counts per client
+  const { data: videoUnreadMap = {} } = useQuery({
+    queryKey: queryKeys.videoExchanges.unreadCount(user?.uid),
+    queryFn: async () => {
+      const res = await apiClient.get('/video-exchanges', { params: { status: 'open' } });
+      const exchanges = res.data || res;
+      if (!Array.isArray(exchanges)) return {};
+      const map = {};
+      for (const ex of exchanges) {
+        if (ex.unreadByCreator > 0 && ex.clientId) {
+          map[ex.clientId] = (map[ex.clientId] || 0) + ex.unreadByCreator;
+        }
+      }
+      return map;
+    },
+    enabled: !!user?.uid,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -595,7 +619,8 @@ const ClientesScreen = () => {
         queryClient.setQueryData(
           queryKeys.analytics.adherence(user.uid, { programId: progAdh.programId }),
           (old) => old ?? {
-            overallAdherence: progAdh.adherence,
+            overallWorkoutAdherence: progAdh.workoutAdherence,
+            overallNutritionAdherence: progAdh.nutritionAdherence,
             byProgram: [progAdh],
             enrollmentHistory: overviewData.adherence.enrollmentHistory,
           }
@@ -881,6 +906,7 @@ const ClientesScreen = () => {
                       imageUrl={programImageMap[group.programId]}
                       onSelectClient={handleSelectClient}
                       onConfigClick={handleConfigClick}
+                      videoUnreadMap={videoUnreadMap}
                     />
                   );
                 })}
@@ -895,6 +921,7 @@ const ClientesScreen = () => {
                       imageUrl={null}
                       onSelectClient={handleSelectClient}
                       onConfigClick={() => {}}
+                      videoUnreadMap={videoUnreadMap}
                     />
                   );
                 })()}

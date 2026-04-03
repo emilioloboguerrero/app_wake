@@ -83,9 +83,9 @@ class PurchaseService {
    * @param {string} courseId
    * @returns {Promise<{ownsCourse: boolean, courseData: Object|null, trialHistory: Object|null}>}
    */
-  async getUserCourseState(userId, courseId) {
+  async getUserCourseState(userId, courseId, cachedUserDoc) {
     try {
-      const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
+      const userDoc = cachedUserDoc || await apiClient.get('/users/me').then(r => r?.data ?? null);
       if (!userDoc) {
         return { ownsCourse: false, courseData: null, trialHistory: null };
       }
@@ -264,7 +264,7 @@ class PurchaseService {
       }
 
       if (courseDetails.access_duration === "monthly") {
-        const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
+        const userDoc = await apiClient.get('/users/me').then(r => r?.data ?? null);
         const payerEmail = userDoc?.email || null;
         return await this.prepareSubscription(userId, courseId, payerEmail);
       } else {
@@ -314,54 +314,40 @@ class PurchaseService {
         return await this.getUserActiveCourses(userId);
       }
 
-      const userDoc = await apiClient.get('/users/me/full').then(r => r?.data ?? null);
+      const userDoc = await apiClient.get('/users/me').then(r => r?.data ?? null);
       if (!userDoc) {
         return [];
       }
 
       const userCourses = userDoc.courses || {};
-
       const now = new Date();
 
-      let coursesWithDetails = [];
-      if (Object.keys(userCourses).length > 0) {
-        coursesWithDetails = await Promise.all(
-          Object.entries(userCourses).map(async ([courseId, courseData]) => {
-            const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
+      // Return flat shape matching getUserActiveCourses
+      return Object.entries(userCourses).map(([courseId, e]) => {
+        const isActive = e.status === 'active';
+        const isNotExpired = e.expires_at ? new Date(e.expires_at) > now : true;
+        const isCancelled = e.status === 'cancelled';
 
-            const isActive = courseData.status === 'active';
-            const isNotExpired = new Date(courseData.expires_at) > now;
-            const isCancelled = courseData.status === 'cancelled';
-
-            return {
-              id: `${userId}-${courseId}`,
-              courseId,
-              courseData,
-              courseDetails: courseDetails || { title: 'Curso no encontrado', id: courseId },
-              isActive: isActive && isNotExpired,
-              isExpired: !isNotExpired && !isCancelled,
-              isCompleted: false,
-              status: courseData.status,
-              paid_at: { toDate: () => new Date(courseData.purchased_at) },
-              expires_at: courseData.expires_at
-            };
-          })
-        );
-      }
-
-      const courseIdsFromUser = new Set(Object.keys(userCourses));
-      try {
-        const orphaned = await apiClient.get('/workout/client-programs', { params: { orphaned: true } }).then(r => r?.data ?? []);
-        if (orphaned.length > 0) {
-          coursesWithDetails = [...coursesWithDetails, ...orphaned];
-        }
-      } catch (err) {
-        logger.warn('⚠️ getUserPurchasedCourses: orphan fallback failed:', err?.message);
-      }
-
-      return coursesWithDetails;
+        return {
+          id: courseId,
+          courseId,
+          title: e.title || 'Curso sin titulo',
+          image_url: e.image_url || '',
+          creatorName: e.creatorName || null,
+          discipline: e.discipline || 'General',
+          status: e.status,
+          access_duration: e.access_duration,
+          expires_at: e.expires_at,
+          purchased_at: e.purchased_at,
+          deliveryType: e.deliveryType,
+          is_trial: e.is_trial,
+          isActive: isActive && isNotExpired,
+          isExpired: !isNotExpired && !isCancelled,
+          isCompleted: false,
+        };
+      });
     } catch (error) {
-      logger.error('❌ Error getting user courses:', error);
+      logger.error('Error getting user courses:', error);
       return [];
     }
   }

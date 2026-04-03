@@ -47,7 +47,7 @@ export default function ClientNutritionTab({
     queryFn: () => nutritionDb.getAssignmentsByUser(clientUserId),
     enabled: !!clientUserId,
     staleTime: 2 * 60 * 1000,
-    refetchOnMount: false,
+    refetchOnMount: true,
   });
 
   // nutritionGoal and dietaryRestrictions are passed as props from ClientScreen
@@ -61,6 +61,7 @@ export default function ClientNutritionTab({
     if (!activeAssignment) return null;
     return plans.find(p => p.id === activeAssignment.planId) || null;
   }, [activeAssignment, plans]);
+
 
   // ── Assign mutation ──────────────────────────────────────────
   const assignMutation = useMutation({
@@ -117,17 +118,17 @@ export default function ClientNutritionTab({
       ? Math.round(macroWithData.reduce((s, d) => s + d.fat, 0) / macroWithData.length)
       : null;
 
-    const target = activeAssignment?.daily_calories || rangeCalories[0]?.target || labData?.nutritionComparison?.targetCalories || 0;
-    const targetProtein = activeAssignment?.daily_protein_g || labData?.nutritionComparison?.targetProtein || 0;
-    const targetCarbs = activeAssignment?.daily_carbs_g || labData?.nutritionComparison?.targetCarbs || 0;
-    const targetFat = activeAssignment?.daily_fat_g || labData?.nutritionComparison?.targetFat || 0;
+    const target = activeAssignment?.daily_calories || activePlan?.daily_calories || rangeCalories[0]?.target || labData?.nutritionComparison?.targetCalories || 0;
+    const targetProtein = activeAssignment?.daily_protein_g || activePlan?.daily_protein_g || labData?.nutritionComparison?.targetProtein || 0;
+    const targetCarbs = activeAssignment?.daily_carbs_g || activePlan?.daily_carbs_g || labData?.nutritionComparison?.targetCarbs || 0;
+    const targetFat = activeAssignment?.daily_fat_g || activePlan?.daily_fat_g || labData?.nutritionComparison?.targetFat || 0;
 
     const adherencePct = target > 0 && avgCalories
       ? Math.round((avgCalories / target) * 100)
       : null;
 
     return { days, avgCalories, avgProtein, avgCarbs, avgFat, target, targetProtein, targetCarbs, targetFat, adherencePct, daysLogged: withData.length };
-  }, [labData, rangeDays, activeAssignment]);
+  }, [labData, rangeDays, activeAssignment, activePlan]);
 
   // ── Pie chart data from assignment ───────────────────────────
   const macroData = useMemo(() => {

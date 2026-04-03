@@ -242,10 +242,16 @@ const useExerciseSets = ({
     }
   }, [isExpanded]);
 
-  // Cleanup timer on unmount
+  // Flush pending saves on unmount (don't lose edits when user navigates away)
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      const ids = Array.from(pendingRef.current);
+      pendingRef.current.clear();
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      ids.forEach(id => saveRef.current?.(id));
     };
   }, []);
 

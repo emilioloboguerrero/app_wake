@@ -81,7 +81,6 @@ const ExerciseDetailContent = ({
 
   const loadHistory = async () => {
     if (!user?.uid) {
-      logger.warn('⚠️ ExerciseDetailContent: Cannot load history - user not available');
       setLoading(false);
       return;
     }
@@ -104,7 +103,6 @@ const ExerciseDetailContent = ({
 
   const loadExerciseHistory = async () => {
     if (!user?.uid) {
-      logger.warn('⚠️ ExerciseDetailContent: Cannot load exercise history - user not available');
       setLoadingHistory(false);
       return;
     }

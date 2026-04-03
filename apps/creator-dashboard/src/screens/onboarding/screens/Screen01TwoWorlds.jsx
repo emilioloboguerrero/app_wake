@@ -54,7 +54,7 @@ function PhoneScreenContent() {
   );
 }
 
-function DashboardScreenContent() {
+export function DashboardScreenContent() {
   const programs = [
     { titleW: '55%', count: '12', imgGrad: 'linear-gradient(135deg, rgba(255,87,168,0.15), rgba(255,255,255,0.03))' },
     { titleW: '70%', count: '48', imgGrad: 'linear-gradient(135deg, rgba(120,180,255,0.12), rgba(255,255,255,0.03))' },
@@ -159,7 +159,7 @@ export default function Screen01TwoWorlds() {
             <div style={{ position: 'relative' }}>
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 2, delay: 1 }}
                 style={{ position: 'absolute', inset: '-20%', background: 'radial-gradient(ellipse, rgba(255,255,255,0.02) 0%, transparent 70%)', pointerEvents: 'none' }} />
-              <MacBookFrame delay={0.5} width={420}><DashboardScreenContent /></MacBookFrame>
+              <MacBookFrame delay={0.5} width={420} layoutId="onboarding-macbook"><DashboardScreenContent /></MacBookFrame>
             </div>
             <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 1 }}
               style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, fontFamily: "'Montserrat'", fontWeight: 500, margin: 0 }}>

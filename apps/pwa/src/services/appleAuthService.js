@@ -180,7 +180,7 @@ class AppleAuthService {
             await updateProfile(firebaseUser, { displayName: fullName });
             await firebaseUser.reload();
           } catch (profileError) {
-            logger.warn('Failed to set Apple displayName:', profileError);
+            // Failed to set Apple displayName (non-fatal)
           }
         }
       }

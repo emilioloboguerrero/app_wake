@@ -43,8 +43,8 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   const error = isError ? 'Error al cargar tus cursos' : null;
 
-  const handleCoursePress = (purchaseData) => {
-    navigation.navigate('CourseDetail', { course: purchaseData.courseDetails });
+  const handleCoursePress = (course) => {
+    navigation.navigate('CourseDetail', { course });
   };
 
   const getStatusBadge = (purchase) => {
@@ -58,17 +58,16 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     return { text: 'Desconocido', style: styles.unknownBadge };
   };
 
-  const renderCourseCard = (purchaseData, index) => {
-    const course = purchaseData.courseDetails;
-    const isOneOnOne = purchaseData.courseData?.deliveryType === 'one_on_one';
+  const renderCourseCard = (course, index) => {
+    const isOneOnOne = course.deliveryType === 'one_on_one';
 
     return (
-      <View key={purchaseData.id || index} style={styles.courseCardWrapper}>
+      <View key={course.id || index} style={styles.courseCardWrapper}>
         <View style={styles.courseCardContainer}>
           <TouchableOpacity
             className="profile-menu-row"
             style={styles.courseCard}
-            onPress={() => handleCoursePress(purchaseData)}
+            onPress={() => handleCoursePress(course)}
           >
             <View style={styles.courseImagePlaceholder}>
               {isOneOnOne && (
@@ -84,23 +83,23 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
                 />
               ) : (
                 <View style={styles.courseImageFallback}>
-                  <Text style={styles.fallbackText}>📚</Text>
+                  <Text style={styles.fallbackText}>W</Text>
                 </View>
               )}
             </View>
             <View style={styles.courseContent}>
               <Text style={styles.courseTitle}>
-                {course.title || 'Curso sin título'}
+                {course.title || 'Curso sin titulo'}
               </Text>
               <Text style={styles.courseInfo}>
                 Por {course.creatorName || 'Creador no especificado'} | {course.discipline || 'General'}
               </Text>
             </View>
-            <SvgChevronRight 
-              width={20} 
-              height={20} 
-              stroke="#ffffff" 
-              strokeWidth={2} 
+            <SvgChevronRight
+              width={20}
+              height={20}
+              stroke="#ffffff"
+              strokeWidth={2}
               style={styles.courseArrow}
             />
           </TouchableOpacity>

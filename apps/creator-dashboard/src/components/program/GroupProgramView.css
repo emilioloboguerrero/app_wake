@@ -387,6 +387,28 @@
   border-color: rgba(var(--gp-accent-r), var(--gp-accent-g), var(--gp-accent-b), 0.2);
 }
 
+.gp-adherence-legend {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.gp-adherence-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.gp-adherence-legend__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    CONFIG BENTO GRID
    ═══════════════════════════════════════════════════════════════ */

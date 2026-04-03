@@ -19,7 +19,6 @@ function urlBase64ToUint8Array(base64String) {
 
 export async function requestNotificationPermission() {
   if (!('Notification' in window)) {
-    logger.warn('[notifications] Navegador no soporta notificaciones');
     return 'unsupported';
   }
 
@@ -32,7 +31,6 @@ export async function requestNotificationPermission() {
 
 export async function subscribeToPush(userId) {
   if (!VAPID_PUBLIC_KEY) {
-    logger.warn('[notifications] VAPID_PUBLIC_KEY no configurada');
     return null;
   }
 
@@ -55,7 +53,6 @@ export async function subscribeToPush(userId) {
       keys: subJson.keys,
       userAgent: navigator.userAgent,
     });
-    logger.debug('[notifications] Suscripción registrada');
   } catch (err) {
     logger.error('[notifications] Error registrando suscripción:', err);
   }
@@ -82,7 +79,6 @@ export async function initializeNotifications(userId) {
   try {
     const permission = await requestNotificationPermission();
     if (permission !== 'granted') {
-      logger.debug('[notifications] Permiso no otorgado:', permission);
       return;
     }
     await subscribeToPush(userId);

@@ -163,6 +163,40 @@
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "endAt", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "video_exchanges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "video_exchanges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "video_exchanges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "clientId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "video_exchanges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "clientId", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageAt", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

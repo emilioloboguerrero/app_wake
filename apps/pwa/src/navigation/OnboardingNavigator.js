@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -35,10 +35,6 @@ const OnboardingNavigator = ({ onComplete }) => {
   const [onboardingAnswers, setOnboardingAnswers] = useState({});
   const effectiveUid = getEffectiveUid(user);
 
-  useEffect(() => {
-    if (!effectiveUid) logger.warn('[ONBOARDING_NAV] No uid in OnboardingNavigator');
-  }, [effectiveUid]);
-
   const handleAnswer = (questionKey, answer) => {
     setOnboardingAnswers(prev => ({ ...prev, [questionKey]: answer }));
   };
@@ -46,7 +42,6 @@ const OnboardingNavigator = ({ onComplete }) => {
   const handleComplete = async () => {
     const uid = effectiveUid;
     if (!uid) {
-      logger.warn('[ONBOARDING_NAV] handleComplete: no uid, skipping save');
       if (onComplete) onComplete();
       return;
     }
@@ -76,7 +71,7 @@ const OnboardingNavigator = ({ onComplete }) => {
           cachedAt: Date.now(),
         }));
       } catch (cacheError) {
-        logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
+        // Continue anyway - not critical
       }
 
       if (Platform.OS === 'web') {
@@ -87,7 +82,7 @@ const OnboardingNavigator = ({ onComplete }) => {
             cachedAt: Date.now(),
           }));
         } catch (e) {
-          logger.warn('[ONBOARDING_NAV] Web cache write failed:', e?.message);
+          // Continue anyway - not critical
         }
       }
 

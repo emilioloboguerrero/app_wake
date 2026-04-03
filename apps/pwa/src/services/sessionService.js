@@ -249,7 +249,7 @@ class SessionService {
             actualSessionData.startTime = currentSession.startTime;
           }
         } catch (error) {
-          logger.warn('Could not get current session for startTime:', error);
+          // Could not get current session for startTime
         }
       }
       
@@ -368,7 +368,6 @@ class SessionService {
         
         // If still no libraryId, skip this exercise (don't default to 'unknown')
         if (!libraryId) {
-          logger.warn('Skipping exercise - no libraryId found:', exercise);
           return null;
         }
         

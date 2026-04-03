@@ -48,6 +48,7 @@ import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 
 import apiService from '../services/apiService';
 import logger from '../utils/logger';
+import DebugScreenTracker from '../components/DebugScreenTracker.web';
 import { isSafariWeb } from '../utils/platform';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import { auth } from '../config/firebase';
@@ -214,10 +215,9 @@ const AuthenticatedLayout = ({ children }) => {
       if (effectiveUidForFetch) {
         setProfileLoading(true);
         checkedUserIdRef.current = effectiveUidForFetch;
-        
+
         timeoutId = setTimeout(() => {
           if (mounted) {
-            logger.warn('[AUTH LAYOUT] Profile fetch timeout (10s), assuming new user. uid:', effectiveUidForFetch);
             setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             setProfileLoading(false);
           }
@@ -269,7 +269,6 @@ const AuthenticatedLayout = ({ children }) => {
             }
           }
         } catch (error) {
-          logger.warn('[AUTH LAYOUT] Profile fetch error. uid:', effectiveUidForFetch, 'error:', error?.message);
           if (mounted) {
             // localStorage cache is untrusted — use as hint only, default to incomplete
             // This prevents a poisoned cache from letting users skip onboarding
@@ -326,15 +325,13 @@ const AuthenticatedLayout = ({ children }) => {
   const shouldShowLoading = loading && !hasFirebaseUser;
   
   // Add timeout to prevent infinite loading. Safari: use 2s (AuthContext gives up at 3s).
-  // Other browsers: 5s to allow IndexedDB restore. (Declare before logger.prod so not used before init.)
+  // Other browsers: 5s to allow IndexedDB restore.
   const loadingTimeoutMs = isSafariWeb() ? 2000 : 5000;
   const [loadingTimeout, setLoadingTimeout] = React.useState(false);
   
-  logger.prod('LAYOUT', { loading, hasFirebaseUser: !!firebaseUser, finalHasUser: !!finalHasUser, shouldShowLoading, loadingTimeoutMs });
   React.useEffect(() => {
     if (shouldShowLoading) {
       const timeout = setTimeout(() => {
-        logger.prod('LAYOUT loading timeout fired', loadingTimeoutMs + 'ms', 'Safari:', isSafariWeb());
         setLoadingTimeout(true);
       }, loadingTimeoutMs);
       return () => clearTimeout(timeout);
@@ -381,27 +378,23 @@ const AuthenticatedLayout = ({ children }) => {
   }, [finalHasUser?.uid, profileLoading, userProfile]);
 
   if (shouldShowLoading && !loadingTimeout) {
-    logger.prod('LAYOUT showing LoadingScreen', 'loading:', loading, 'loadingTimeout:', loadingTimeout);
     return <LoadingScreen />;
   }
 
   // Once we've waited the loading timeout (2s Safari / 5s other) and still have no user, go to login.
   // Don't wait for AuthContext's fallback — Safari may never fire onAuthStateChanged.
   if (loadingTimeout && !finalHasUser) {
-    logger.prod('LAYOUT redirect to /login (loading timeout, no user)');
     return <Navigate to="/login" replace />;
   }
 
   // Use finalHasUser which includes direct Firebase check
   // Redirect to login if not authenticated (after checking both AuthContext and Firebase)
   if (!finalHasUser && !loading) {
-    logger.prod('LAYOUT redirect to /login', 'no user');
     return <Navigate to="/login" replace />;
   }
   
   // If still loading and no user (and we haven't timed out yet), show loading screen
   if (!finalHasUser && loading) {
-    logger.prod('LAYOUT LoadingScreen (no user, loading)', loading);
     return <LoadingScreen />;
   }
   
@@ -409,7 +402,6 @@ const AuthenticatedLayout = ({ children }) => {
   // Wait for profile when we have an authenticated user: either still loading or not yet known
   // Never redirect to onboarding when userProfile is null - we might be a returning user (profile just hasn't loaded yet)
   if (finalHasUser && (profileLoading || userProfile === null)) {
-    logger.prod('LAYOUT LoadingScreen (waiting for profile)', { uid: effectiveUid, profileLoading, hasProfile: !!userProfile });
     return <LoadingScreen />;
   }
 
@@ -540,6 +532,7 @@ const WebAppNavigator = () => {
   // .app-viewport constrains width on desktop so main app layout matches phone (see global.css)
   return (
     <div className="app-viewport" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <DebugScreenTracker />
       <Routes>
 
         {/* Onboarding Routes */}

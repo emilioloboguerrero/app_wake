@@ -186,7 +186,7 @@ export default function ClientLabDetailSections({ data, isLoading, clientName, r
           {nutritionAdherence != null && (
             <div className="clds-nutrition-adherence">
               <span className="clds-nutrition-adherence-value">{Math.round(nutritionAdherence)}%</span>
-              <span className="clds-nutrition-adherence-label">de los días dentro del ±10% del objetivo calórico</span>
+              <span className="clds-nutrition-adherence-label">de los dias dentro del +/-20% del objetivo calorico y proteico</span>
             </div>
           )}
         </div>

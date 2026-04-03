@@ -1,7 +1,6 @@
 import React, { memo } from 'react';
 import { Svg, G, Path } from 'react-native-svg';
 import { getMuscleColor, getMuscleColorEnhanced, getMuscleColorWorkoutExecution, getMuscleSelectionColor } from '../utils/muscleColorUtils';
-import logger from '../utils/logger';
 
 const MuscleSilhouetteSVG = memo(({ 
   muscleVolumes = {}, 
@@ -359,15 +358,8 @@ const MuscleSilhouetteSVG = memo(({
   // Time JSX creation (runs BEFORE return)
   const svgReturnEndTime = performance.now();
   const svgReturnDuration = svgReturnEndTime - svgReturnStartTime;
-  if (svgReturnDuration > 50) {
-    logger.warn(`[SVG] ⚠️ SLOW: SVG JSX creation took ${svgReturnDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
-  
   const componentEndTime = performance.now();
   const componentDuration = componentEndTime - componentStartTime;
-  if (componentDuration > 50) {
-    logger.warn(`[CHILD] ⚠️ SLOW: MuscleSilhouetteSVG render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
   
   return svgJSX;
 }, (prevProps, nextProps) => {

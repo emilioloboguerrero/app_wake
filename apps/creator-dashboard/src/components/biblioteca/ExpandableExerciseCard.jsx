@@ -77,6 +77,7 @@ const ExpandableExerciseCard = ({
   showToast,
   accentRgb,
   onSetsChanged,
+  registerFlush,
   isLibraryMode,
 }) => {
   const {
@@ -170,6 +171,12 @@ const ExpandableExerciseCard = ({
     initialSets: exercise.sets || [],
     isLibraryMode,
   });
+
+  // Register flush callback so parent can flush pending set saves before navigation
+  useEffect(() => {
+    registerFlush?.(exercise.id, setsHook.flushPendingSaves);
+    return () => registerFlush?.(exercise.id, null);
+  }, [exercise.id, registerFlush, setsHook.flushPendingSaves]);
 
   const exerciseName = getExerciseDisplayName(exercise);
   const primaryName = getExercisePrimaryName(exercise);

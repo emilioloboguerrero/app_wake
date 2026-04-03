@@ -1138,9 +1138,13 @@ const ProgramContentTab = ({
           <DragOverlay dropAnimation={{ duration: 350, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
             {activeDragSession ? (
               <div className="library-drag-overlay-card">
-                <div className="library-drag-overlay-avatar">
-                  {activeDragSession.title?.charAt(0) || 'S'}
-                </div>
+                {activeDragSession.image_url ? (
+                  <img src={activeDragSession.image_url} alt="" className="library-drag-overlay-avatar library-drag-overlay-avatar--img" />
+                ) : (
+                  <div className="library-drag-overlay-avatar">
+                    {activeDragSession.title?.charAt(0) || 'S'}
+                  </div>
+                )}
                 <span className="library-drag-overlay-title">
                   {activeDragSession.title || 'Sesion'}
                 </span>

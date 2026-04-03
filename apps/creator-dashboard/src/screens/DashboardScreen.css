@@ -266,9 +266,47 @@
   letter-spacing: 0.02em;
 }
 
-/* ─── Adherence ring ─────────────────────────────────────────────── */
-.ds-adherence-ring {
+/* ─── Adherence rings ────────────────────────────────────────────── */
+.ds-adherence-rings {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
   margin: 8px 0 4px;
+}
+
+.ds-adherence-ring {
+  flex-shrink: 0;
+}
+
+/* ─── Adherence legend ──────────────────────────────────────────── */
+.ds-adherence-legend {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin: 4px 0 0;
+}
+
+.ds-adherence-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.ds-adherence-legend__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ds-adherence-legend__dot--workout {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.ds-adherence-legend__dot--nutrition {
+  background: rgba(129, 140, 248, 0.85);
 }
 
 /* ─── Adherence breakdown ───────────────────────────────────────── */
@@ -301,11 +339,21 @@
   max-width: 70%;
 }
 
+.ds-adherence-breakdown__values {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .ds-adherence-breakdown__value {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
+}
+
+.ds-adherence-breakdown__value--nutrition {
+  color: rgba(129, 140, 248, 0.85);
 }
 
 /* ─── Upcoming calls list ────────────────────────────────────────── */

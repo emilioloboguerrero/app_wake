@@ -1,0 +1,159 @@
+.rpm-modal {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 100;
+  width: 280px;
+  background: rgba(20, 20, 20, 0.95);
+  backdrop-filter: blur(16px);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.rpm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rpm-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.rpm-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+}
+
+.rpm-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Camera preview */
+.rpm-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.rpm-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1);
+}
+
+.rpm-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* Controls */
+.rpm-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rpm-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rpm-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rpm-toggle--on {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.rpm-mic-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rpm-volume-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+}
+
+.rpm-bar {
+  width: 3px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  transition: height 0.1s ease, background 0.1s ease;
+}
+
+.rpm-bar:nth-child(1) { height: 6px; }
+.rpm-bar:nth-child(2) { height: 10px; }
+.rpm-bar:nth-child(3) { height: 14px; }
+.rpm-bar:nth-child(4) { height: 18px; }
+
+.rpm-bar--active {
+  background: #22c55e;
+}
+
+.rpm-error {
+  font-size: 11px;
+  color: #ef4444;
+  margin: 0;
+}
+
+.rpm-start-btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.rpm-start-btn:hover {
+  opacity: 0.9;
+}
+
+.rpm-start-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

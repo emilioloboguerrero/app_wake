@@ -107,7 +107,10 @@ const LibraryExercisesScreen = () => {
 
   // ─── Mutations ─────────────────────────────────────────────────────────
   const invalidateLibrary = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] }),
+    () => {
+      queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
+      queryClient.invalidateQueries({ queryKey: ['library', 'exercises'] });
+    },
     [queryClient, libraryId]
   );
 

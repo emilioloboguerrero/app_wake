@@ -96,7 +96,7 @@ class AuthService {
       try {
         await apiClient.post('/auth/logout', {});
       } catch (logoutErr) {
-        logger.warn('[AUTH] Server-side logout failed (non-fatal):', logoutErr?.message);
+        // Server-side logout failed (non-fatal)
       }
 
       // Check if user signed in with Google and sign out (only if not in Expo Go)
@@ -177,7 +177,7 @@ class AuthService {
             error.message?.includes('does not exist')) {
           // Profile picture does not exist or already deleted
         } else {
-          logger.warn('Failed to delete profile picture (non-critical):', error.message || error);
+          // Failed to delete profile picture (non-critical)
         }
       }
 
@@ -192,7 +192,7 @@ class AuthService {
             await googleAuthService.signOut();
           }
         } catch (error) {
-          logger.warn('Failed to revoke Google token:', error);
+          // Failed to revoke Google token (non-fatal)
         }
       }
 

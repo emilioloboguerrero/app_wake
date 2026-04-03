@@ -16,6 +16,25 @@ function requireCreator(auth: { role: string }): void {
   }
 }
 
+/** Ensure every exercise has a top-level `name` field, falling back to primary.name/title */
+function normalizeExerciseName(exercise: Record<string, unknown>): Record<string, unknown> {
+  if (!exercise.name && !exercise.title) {
+    const primary = exercise.primary as Record<string, unknown> | undefined;
+    if (primary?.name) {
+      exercise.name = primary.name;
+      exercise.title = primary.name;
+    } else if (primary?.title) {
+      exercise.name = primary.title;
+      exercise.title = primary.title;
+    }
+  } else if (exercise.name && !exercise.title) {
+    exercise.title = exercise.name;
+  } else if (exercise.title && !exercise.name) {
+    exercise.name = exercise.title;
+  }
+  return exercise;
+}
+
 // GET /creator/clients — paginated 50/page, optional ?programId=X filter
 router.get("/creator/clients", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -399,13 +418,57 @@ router.get("/creator/clients-overview", async (req, res) => {
     let totalCompleted = 0;
     let totalExpected = 0;
 
-    interface WeeklyPoint { week: string; adherence: number }
+    interface WeeklyPoint { week: string; workoutAdherence: number; nutritionAdherence: number | null }
     interface ProgramAdherence {
       programId: string; title: string;
       completedSessions: number; totalSessions: number;
-      adherence: number; weeklyHistory: WeeklyPoint[];
+      workoutAdherence: number; nutritionAdherence: number | null;
+      weeklyHistory: WeeklyPoint[];
     }
     const byProgram: ProgramAdherence[] = [];
+
+    // Fetch nutrition data for all clients (once, shared across programs)
+    const clientNutritionData: Record<string, { target: { calories: number; protein: number }; dailyTotals: Record<string, { calories: number; protein: number }> }> = {};
+    await Promise.all(clientUserIds.map(async (uid) => {
+      const assignSnap = await db.collection("nutrition_assignments")
+        .where("userId", "==", uid)
+        .where("status", "==", "active")
+        .limit(1).get();
+      if (assignSnap.empty) return;
+      const contentDoc = await db.collection("client_nutrition_plan_content").doc(assignSnap.docs[0].id).get();
+      if (!contentDoc.exists) return;
+      const c = contentDoc.data()!;
+      const tCal = (c.daily_calories ?? 0) as number;
+      const tPro = (c.daily_protein_g ?? 0) as number;
+      if (tCal <= 0 && tPro <= 0) return;
+
+      const diarySnap = await db.collection("users").doc(uid).collection("diary")
+        .where("date", ">=", eightWeeksAgoStr).get();
+      const dailyTotals: Record<string, { calories: number; protein: number }> = {};
+      for (const dd of diarySnap.docs) {
+        const d = dd.data();
+        if (!dailyTotals[d.date]) dailyTotals[d.date] = { calories: 0, protein: 0 };
+        dailyTotals[d.date].calories += d.calories ?? 0;
+        dailyTotals[d.date].protein += d.protein ?? 0;
+      }
+      clientNutritionData[uid] = { target: { calories: tCal, protein: tPro }, dailyTotals };
+    }));
+
+    const hasAnyNutritionPlan = Object.keys(clientNutritionData).length > 0;
+
+    // Compute nutrition adherence across all clients
+    let globalNutrDaysWithin = 0;
+    let globalNutrDaysTotal = 0;
+    for (const nd of Object.values(clientNutritionData)) {
+      for (const n of Object.values(nd.dailyTotals)) {
+        globalNutrDaysTotal++;
+        const calOk = nd.target.calories <= 0 || (n.calories / nd.target.calories >= 0.8 && n.calories / nd.target.calories <= 1.2);
+        const proOk = nd.target.protein <= 0 || (n.protein / nd.target.protein >= 0.8 && n.protein / nd.target.protein <= 1.2);
+        if (calOk && proOk) globalNutrDaysWithin++;
+      }
+    }
+    const globalNutrAdherence = hasAnyNutritionPlan && globalNutrDaysTotal > 0
+      ? Math.round((globalNutrDaysWithin / globalNutrDaysTotal) * 100) : null;
 
     for (const pm of programMetas) {
       const hist = historyByProgram[pm.id];
@@ -415,10 +478,11 @@ router.get("/creator/clients-overview", async (req, res) => {
 
       const weeklyHistory: WeeklyPoint[] = weekStarts.map((ws) => ({
         week: ws,
-        adherence: Math.min(100, Math.round(((hist.weekBuckets[ws] ?? 0) / expectedPerWeek) * 100)),
+        workoutAdherence: Math.min(100, Math.round(((hist.weekBuckets[ws] ?? 0) / expectedPerWeek) * 100)),
+        nutritionAdherence: globalNutrAdherence,
       }));
 
-      const adherence = expectedTotal > 0 ? Math.round((hist.total / expectedTotal) * 100) : 0;
+      const workoutAdh = expectedTotal > 0 ? Math.round((hist.total / expectedTotal) * 100) : 0;
       totalCompleted += hist.total;
       totalExpected += expectedTotal;
 
@@ -427,12 +491,14 @@ router.get("/creator/clients-overview", async (req, res) => {
         title: pm.title,
         completedSessions: hist.total,
         totalSessions: expectedTotal,
-        adherence,
+        workoutAdherence: workoutAdh,
+        nutritionAdherence: globalNutrAdherence,
         weeklyHistory,
       });
     }
 
-    const overallAdherence = totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0;
+    const overallWorkoutAdherence = totalExpected > 0 ? Math.round((totalCompleted / totalExpected) * 100) : 0;
+    const overallNutritionAdherence = globalNutrAdherence;
 
     // Enrollment history (weekly running total from clientsSnap)
     const clientCreatedDates: string[] = [];
@@ -461,7 +527,7 @@ router.get("/creator/clients-overview", async (req, res) => {
       enrollmentHistory.push({ week: ws, clients: count });
     }
 
-    adherencePayload = { overallAdherence, byProgram, enrollmentHistory };
+    adherencePayload = { overallWorkoutAdherence, overallNutritionAdherence, byProgram, enrollmentHistory };
   }
 
   res.json({
@@ -1889,18 +1955,33 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
   }
 
   const body = req.body ?? {};
-  await db.collection("client_nutrition_plan_content").doc(req.params.assignmentId).set({
-    source_plan_id: body.source_plan_id ?? null,
-    assignment_id: req.params.assignmentId,
-    name: body.name ?? "",
-    description: body.description ?? "",
+  const macros = {
     daily_calories: body.daily_calories ?? null,
     daily_protein_g: body.daily_protein_g ?? null,
     daily_carbs_g: body.daily_carbs_g ?? null,
     daily_fat_g: body.daily_fat_g ?? null,
+  };
+
+  const batch = db.batch();
+  batch.set(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId), {
+    source_plan_id: body.source_plan_id ?? null,
+    assignment_id: req.params.assignmentId,
+    name: body.name ?? "",
+    description: body.description ?? "",
+    ...macros,
     categories: Array.isArray(body.categories) ? body.categories : [],
     updated_at: FieldValue.serverTimestamp(),
   });
+  batch.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
+    ...macros,
+    "plan.daily_calories": macros.daily_calories,
+    "plan.daily_protein_g": macros.daily_protein_g,
+    "plan.daily_carbs_g": macros.daily_carbs_g,
+    "plan.daily_fat_g": macros.daily_fat_g,
+    planName: body.name ?? assignDoc.data()?.planName ?? "",
+    updated_at: FieldValue.serverTimestamp(),
+  });
+  await batch.commit();
 
   res.json({ data: { updated: true } });
 });
@@ -1916,18 +1997,33 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
   }
 
   const body = req.body ?? {};
-  await db.collection("client_nutrition_plan_content").doc(req.params.assignmentId).set({
-    source_plan_id: body.source_plan_id ?? null,
-    assignment_id: req.params.assignmentId,
-    name: body.name ?? "",
-    description: body.description ?? "",
+  const macros2 = {
     daily_calories: body.daily_calories ?? null,
     daily_protein_g: body.daily_protein_g ?? null,
     daily_carbs_g: body.daily_carbs_g ?? null,
     daily_fat_g: body.daily_fat_g ?? null,
+  };
+
+  const batch2 = db.batch();
+  batch2.set(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId), {
+    source_plan_id: body.source_plan_id ?? null,
+    assignment_id: req.params.assignmentId,
+    name: body.name ?? "",
+    description: body.description ?? "",
+    ...macros2,
     categories: Array.isArray(body.categories) ? body.categories : [],
     updated_at: FieldValue.serverTimestamp(),
   });
+  batch2.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
+    ...macros2,
+    "plan.daily_calories": macros2.daily_calories,
+    "plan.daily_protein_g": macros2.daily_protein_g,
+    "plan.daily_carbs_g": macros2.daily_carbs_g,
+    "plan.daily_fat_g": macros2.daily_fat_g,
+    planName: body.name ?? assignDoc.data()?.planName ?? "",
+    updated_at: FieldValue.serverTimestamp(),
+  });
+  await batch2.commit();
 
   res.json({ data: { updated: true } });
 });
@@ -2419,8 +2515,9 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
 
   const sessions = await Promise.all(
     sessionsSnap.docs.map(async (sDoc) => {
+      const sData = sDoc.data();
       const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
-      const exercises = await Promise.all(
+      let exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
           return {
@@ -2430,7 +2527,54 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
           };
         })
       );
-      return { id: sDoc.id, ...sDoc.data(), exercises };
+
+      // Backfill: if exercises subcollection is empty but session has a library ref,
+      // deep-copy exercises from the library session
+      if (exercises.length === 0) {
+        const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
+        if (sourceLibId && auth.userId) {
+          const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
+            .collection("sessions").doc(sourceLibId as string);
+          const libDoc = await libSessionRef.get();
+          if (libDoc.exists) {
+            const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+            if (!libExSnap.empty) {
+              let batch = db.batch();
+              let batchCount = 0;
+              const backfilled: typeof exercises = [];
+
+              for (const eDoc of libExSnap.docs) {
+                const exRef = sDoc.ref.collection("exercises").doc();
+                const exData = eDoc.data();
+                batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+                batchCount++;
+
+                const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+                const sets: Array<{ id: string; [key: string]: unknown }> = [];
+                for (const setDoc of setsSnap.docs) {
+                  const setRef = exRef.collection("sets").doc();
+                  batch.set(setRef, { ...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+                  batchCount++;
+                  sets.push({ id: setRef.id, ...setDoc.data() });
+                }
+                if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+                backfilled.push({ id: exRef.id, ...exData, sets });
+              }
+              if (batchCount > 0) await batch.commit();
+
+              if (sData.librarySessionRef && !sData.source_library_session_id) {
+                await sDoc.ref.update({ source_library_session_id: sData.librarySessionRef });
+              }
+
+              exercises = backfilled;
+            }
+          }
+        }
+      }
+
+      exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
+      return { id: sDoc.id, ...sData, exercises };
     })
   );
 
@@ -2452,6 +2596,9 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
   const docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
   const docRef = db.collection("client_plan_content").doc(docId);
 
+  const sessions = Array.isArray(body.sessions) ? body.sessions : [];
+  const deletions = Array.isArray(body.deletions) ? body.deletions as string[] : [];
+
   await docRef.set({
     title: body.title ?? req.params.weekKey,
     order: body.order ?? 0,
@@ -2461,11 +2608,23 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  // If sessions are provided, write them as subcollection docs
-  const sessions = Array.isArray(body.sessions) ? body.sessions : [];
   const batch = db.batch();
   let batchCount = 0;
 
+  // Delete docs the client explicitly removed (paths like "sessions/X/exercises/Y/sets/Z")
+  for (const delPath of deletions) {
+    if (typeof delPath !== "string" || !delPath.startsWith("sessions/")) continue;
+    const segments = delPath.split("/");
+    if (segments.length < 2 || segments.length > 6 || segments.length % 2 !== 0) continue;
+    let ref: FirebaseFirestore.DocumentReference = docRef;
+    for (let i = 0; i < segments.length; i += 2) {
+      ref = ref.collection(segments[i]).doc(segments[i + 1]);
+    }
+    batch.delete(ref);
+    batchCount++;
+  }
+
+  // Write incoming sessions/exercises/sets
   for (const session of sessions) {
     if (!session || typeof session !== "object") continue;
     const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
@@ -2479,7 +2638,6 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
     });
     batchCount++;
 
-    // Write exercises if provided
     if (Array.isArray(exArr)) {
       for (const exercise of exArr) {
         if (!exercise || typeof exercise !== "object") continue;
@@ -2499,10 +2657,7 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
           }
         }
 
-        if (batchCount >= 450) {
-          await batch.commit();
-          batchCount = 0;
-        }
+        if (batchCount >= 450) { await batch.commit(); batchCount = 0; }
       }
     }
   }
@@ -3058,21 +3213,34 @@ router.delete("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
 
   const moduleRef = db.collection("plans").doc(req.params.planId).collection("modules").doc(req.params.moduleId);
   const sessionsSnap = await moduleRef.collection("sessions").get();
+
+  // Read all exercises for all sessions in parallel
+  const exercisesBySession = await Promise.all(
+    sessionsSnap.docs.map((sDoc) => sDoc.ref.collection("exercises").get())
+  );
+
+  // Read all sets for all exercises in parallel
+  const allExerciseDocs = exercisesBySession.flatMap((snap) => snap.docs);
+  const setsByExercise = await Promise.all(
+    allExerciseDocs.map((eDoc) => eDoc.ref.collection("sets").get())
+  );
+
+  // Batch-delete everything
   let batch = db.batch();
   let count = 0;
-  for (const sDoc of sessionsSnap.docs) {
-    const exSnap = await sDoc.ref.collection("exercises").get();
-    for (const eDoc of exSnap.docs) {
-      const setsSnap = await eDoc.ref.collection("sets").get();
-      for (const setDoc of setsSnap.docs) {
-        batch.delete(setDoc.ref);
-        count++;
-        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
-      }
-      batch.delete(eDoc.ref);
+  for (const setsSnap of setsByExercise) {
+    for (const setDoc of setsSnap.docs) {
+      batch.delete(setDoc.ref);
       count++;
       if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
     }
+  }
+  for (const eDoc of allExerciseDocs) {
+    batch.delete(eDoc.ref);
+    count++;
+    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+  }
+  for (const sDoc of sessionsSnap.docs) {
     batch.delete(sDoc.ref);
     count++;
     if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
@@ -3081,6 +3249,92 @@ router.delete("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
   count++;
   await batch.commit();
   res.status(204).send();
+});
+
+// POST /creator/plans/:planId/modules/:moduleId/duplicate
+router.post("/creator/plans/:planId/modules/:moduleId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const planRef = db.collection("plans").doc(req.params.planId);
+  const planDoc = await planRef.get();
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+
+  const sourceModRef = planRef.collection("modules").doc(req.params.moduleId);
+  const sourceModDoc = await sourceModRef.get();
+  if (!sourceModDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
+  }
+
+  // Determine order + read sessions in parallel
+  const [allModulesSnap, modulesCountSnap, sessionsSnap] = await Promise.all([
+    planRef.collection("modules").orderBy("order", "desc").limit(1).get(),
+    planRef.collection("modules").count().get(),
+    sourceModRef.collection("sessions").get(),
+  ]);
+  const maxOrder = allModulesSnap.empty ? -1 : (allModulesSnap.docs[0].data().order ?? 0);
+  const modulesCount = modulesCountSnap.data().count;
+
+  // Read all exercises for all sessions in parallel
+  const exercisesBySession = await Promise.all(
+    sessionsSnap.docs.map((sDoc) => sDoc.ref.collection("exercises").get())
+  );
+
+  // Read all sets for all exercises in parallel
+  const allExerciseDocs = exercisesBySession.flatMap((snap) => snap.docs);
+  const setsByExercise = await Promise.all(
+    allExerciseDocs.map((eDoc) => eDoc.ref.collection("sets").get())
+  );
+
+  // Build a lookup: exerciseDocId → sets snapshot
+  const setsMap = new Map<string, FirebaseFirestore.QuerySnapshot>();
+  allExerciseDocs.forEach((eDoc, i) => setsMap.set(eDoc.ref.path, setsByExercise[i]));
+
+  // Now batch-write everything
+  const sourceModData = sourceModDoc.data()!;
+  const newModRef = planRef.collection("modules").doc();
+  let batch = db.batch();
+  let count = 0;
+
+  batch.set(newModRef, {
+    ...sourceModData,
+    title: `Semana ${modulesCount + 1}`,
+    order: maxOrder + 1,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+  count++;
+
+  for (let si = 0; si < sessionsSnap.docs.length; si++) {
+    const sDoc = sessionsSnap.docs[si];
+    const newSessRef = newModRef.collection("sessions").doc();
+    batch.set(newSessRef, { ...sDoc.data(), created_at: FieldValue.serverTimestamp() });
+    count++;
+    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+    const exSnap = exercisesBySession[si];
+    for (const eDoc of exSnap.docs) {
+      const newExRef = newSessRef.collection("exercises").doc();
+      batch.set(newExRef, { ...eDoc.data(), created_at: FieldValue.serverTimestamp() });
+      count++;
+      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+      const sSnap = setsMap.get(eDoc.ref.path);
+      if (sSnap) {
+        for (const setDoc of sSnap.docs) {
+          const newSetRef = newExRef.collection("sets").doc();
+          batch.set(newSetRef, { ...setDoc.data(), created_at: FieldValue.serverTimestamp() });
+          count++;
+          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+        }
+      }
+    }
+  }
+  if (count > 0) await batch.commit();
+
+  res.status(201).json({ data: { moduleId: newModRef.id } });
 });
 
 // POST /creator/plans/:planId/modules/:moduleId/sessions
@@ -3183,7 +3437,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
   if (!sessionDoc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
 
   // Parallel: all sets for all exercises at once
-  const exercises = await Promise.all(
+  let exercises = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
       return {
@@ -3195,6 +3449,66 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
     })
   );
 
+  // Backfill: if exercises subcollection is empty but session has a library ref,
+  // deep-copy exercises from the library session and return them
+  if (exercises.length === 0) {
+    const sessionData = sessionDoc.data()!;
+    const sourceLibId = sessionData.source_library_session_id ?? sessionData.librarySessionRef ?? null;
+    if (sourceLibId) {
+      console.error("[plans/get-session] backfilling exercises from library", { sourceLibId });
+      const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
+        .collection("sessions").doc(sourceLibId as string);
+      const libDoc = await libSessionRef.get();
+      if (libDoc.exists) {
+        const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+        if (!libExSnap.empty) {
+          // Deep-copy exercises+sets into the plan session (self-healing backfill)
+          let batch = db.batch();
+          let batchCount = 0;
+          const backfilledExercises: typeof exercises = [];
+
+          for (const eDoc of libExSnap.docs) {
+            const exRef = sessionRef.collection("exercises").doc();
+            const exData = eDoc.data();
+            batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+            batchCount++;
+
+            const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+            const sets: Array<{ setId: string; id: string; [key: string]: unknown }> = [];
+            for (const sDoc of setsSnap.docs) {
+              const setRef = exRef.collection("sets").doc();
+              batch.set(setRef, { ...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+              batchCount++;
+              sets.push({ setId: setRef.id, id: setRef.id, ...sDoc.data() });
+            }
+            if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+            backfilledExercises.push({
+              exerciseId: exRef.id,
+              id: exRef.id,
+              ...exData,
+              sets,
+            });
+          }
+          if (batchCount > 0) await batch.commit();
+
+          // Also normalize the field name from librarySessionRef to source_library_session_id
+          if (sessionData.librarySessionRef && !sessionData.source_library_session_id) {
+            await sessionRef.update({
+              source_library_session_id: sessionData.librarySessionRef,
+            });
+          }
+
+          exercises = backfilledExercises;
+          console.error("[plans/get-session] backfill complete", {
+            exerciseCount: exercises.length,
+          });
+        }
+      }
+    }
+  }
+
+  exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
   res.json({ data: { sessionId: sessionDoc.id, id: sessionDoc.id, ...sessionDoc.data(), exercises } });
 });
 
@@ -3557,6 +3871,7 @@ router.get("/creator/library/sessions", async (req, res) => {
       sessionId: d.id,
       id: d.id,
       title: (d.data().title as string) ?? "",
+      image_url: (d.data().image_url as string) ?? null,
     }));
     res.json({ data });
     return;
@@ -7169,17 +7484,68 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   }
 
   const docData = doc.data()!;
+
   const sessionsSnap = await doc.ref.collection("sessions").orderBy("order", "asc").get();
+
   const sessions = await Promise.all(
     sessionsSnap.docs.map(async (sDoc) => {
+      const sData = sDoc.data();
       const exSnap = await sDoc.ref.collection("exercises").orderBy("order", "asc").get();
-      const exercises = await Promise.all(
+
+      let exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
           return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
         })
       );
-      return { id: sDoc.id, ...sDoc.data(), exercises };
+
+      // Backfill: if exercises subcollection is empty but session has a library ref,
+      // deep-copy exercises from the library session
+      if (exercises.length === 0) {
+        const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
+        if (sourceLibId && auth.userId) {
+          const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
+            .collection("sessions").doc(sourceLibId as string);
+          const libDoc = await libSessionRef.get();
+          if (libDoc.exists) {
+            const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+            if (!libExSnap.empty) {
+              let batch = db.batch();
+              let batchCount = 0;
+              const backfilled: Array<Record<string, unknown>> = [];
+
+              for (const eDoc of libExSnap.docs) {
+                const exRef = sDoc.ref.collection("exercises").doc();
+                const exData = eDoc.data();
+                batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+                batchCount++;
+
+                const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+                const sets: Array<Record<string, unknown>> = [];
+                for (const setDoc of setsSnap.docs) {
+                  const setRef = exRef.collection("sets").doc();
+                  batch.set(setRef, { ...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+                  batchCount++;
+                  sets.push({ id: setRef.id, ...setDoc.data() });
+                }
+                if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+
+                backfilled.push({ id: exRef.id, ...exData, sets });
+              }
+              if (batchCount > 0) await batch.commit();
+
+              if (sData.librarySessionRef && !sData.source_library_session_id) {
+                await sDoc.ref.update({ source_library_session_id: sData.librarySessionRef });
+              }
+
+              exercises = backfilled as typeof exercises;
+            }
+          }
+        }
+      }
+
+      exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
+      return { id: sDoc.id, ...sData, exercises };
     })
   );
 
@@ -7197,6 +7563,9 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   const docId = programContentDocId(programId, weekKey);
   const docRef = db.collection("client_plan_content").doc(docId);
 
+  const sessions = Array.isArray(body.sessions) ? body.sessions : [];
+  const deletions = Array.isArray(body.deletions) ? body.deletions as string[] : [];
+
   await docRef.set({
     title: body.title ?? weekKey,
     order: body.order ?? 0,
@@ -7206,10 +7575,23 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  const sessions = Array.isArray(body.sessions) ? body.sessions : [];
-  let batch = db.batch();
+  const batch = db.batch();
   let batchCount = 0;
 
+  // Delete docs the client explicitly removed
+  for (const delPath of deletions) {
+    if (typeof delPath !== "string" || !delPath.startsWith("sessions/")) continue;
+    const segments = delPath.split("/");
+    if (segments.length < 2 || segments.length > 6 || segments.length % 2 !== 0) continue;
+    let ref: FirebaseFirestore.DocumentReference = docRef;
+    for (let i = 0; i < segments.length; i += 2) {
+      ref = ref.collection(segments[i]).doc(segments[i + 1]);
+    }
+    batch.delete(ref);
+    batchCount++;
+  }
+
+  // Write incoming sessions/exercises/sets
   for (const session of sessions) {
     if (!session || typeof session !== "object") continue;
     const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
@@ -7236,7 +7618,7 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
           }
         }
 
-        if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        if (batchCount >= 450) { await batch.commit(); batchCount = 0; }
       }
     }
   }

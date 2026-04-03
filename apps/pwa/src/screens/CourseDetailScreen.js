@@ -45,6 +45,7 @@ import { isWeb } from '../utils/platform';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
+import VideoExchangeTab from '../components/videoExchange/VideoExchangeTab.web';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -52,7 +53,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { isMuted, toggleMute } = useVideo();
-  
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -91,6 +91,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [userCourseEntry, setUserCourseEntry] = useState(null);
   const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
+  const [courseDetailTab, setCourseDetailTab] = useState('programa'); // 'programa' | 'videos'
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [checkoutURL, setCheckoutURL] = useState(null);
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
@@ -99,6 +100,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [emailModalError, setEmailModalError] = useState('');
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
+  const [simulateUserRole, setSimulateUserRole] = useState(false);
 
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
@@ -134,7 +136,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
         isActive = expirationTime > now;
         isExpired = expirationTime <= now;
       } catch (error) {
-        logger.warn('⚠️ Error parsing trial expiration date:', error);
       }
     }
 
@@ -180,18 +181,11 @@ const CourseDetailScreen = ({ navigation, route }) => {
   // Note: handlePostPurchaseFlow needs to be defined first as it's used by checkCourseOwnership
   
   const fetchUserRole = React.useCallback(async () => {
-    const effectiveUser = user || auth.currentUser;
-    if (!effectiveUser?.uid) return;
-
-    try {
-      const userDoc = await firestoreService.getUser(effectiveUser.uid);
-      if (userDoc?.role) {
-        setUserRole(userDoc.role);
-      }
-    } catch (error) {
-      logger.error('Error fetching user role:', error);
+    // Use data already fetched by the useQuery at line 105 instead of a separate API call
+    if (userDocData?.role) {
+      setUserRole(userDocData.role);
     }
-  }, [user?.uid]);
+  }, [userDocData?.role]);
 
   const fetchCourseModules = React.useCallback(async () => {
     try {
@@ -338,19 +332,21 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const checkCourseOwnership = React.useCallback(async () => {
     // Get user from context or Firebase auth as fallback
     const effectiveUser = user || auth.currentUser;
-    
+
     // Fix: Set checkingOwnership to false if user is not available to prevent infinite loading
     if (!effectiveUser?.uid) {
       setCheckingOwnership(false);
       return;
     }
-    
+
     try {
       setCheckingOwnership(true);
-      const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
-      
+      // Use cached user data from queryClient to avoid duplicate /users/me calls
+      const cachedUser = queryClient.getQueryData(['user', effectiveUser.uid]);
+      const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id, cachedUser);
+
       const isProcessing = processingPurchaseRef.current || pendingPostPurchaseRef.current;
-      
+
       // If we're processing a purchase and course is now owned, trigger post-purchase flow
       if (isProcessing && courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
         handlePostPurchaseFlow();
@@ -384,7 +380,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
     } finally {
       setCheckingOwnership(false);
     }
-  }, [user?.uid, course.id, handlePostPurchaseFlow]); // Note: We check auth.currentUser inside the function
+  }, [user?.uid, course.id, handlePostPurchaseFlow, queryClient]);
 
   useEffect(() => {
     fetchCourseModules();
@@ -392,7 +388,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
     
     // Safety timeout: Clear loading states after 10 seconds to prevent infinite loading
     const safetyTimeout = setTimeout(() => {
-      logger.warn('⚠️ Safety timeout: Clearing loading states after 10s');
       setLoading(false);
       setCheckingOwnership(false);
     }, 10000);
@@ -411,29 +406,26 @@ const CourseDetailScreen = ({ navigation, route }) => {
     // Use user from context if available, otherwise fallback to Firebase auth
     const effectiveUser = user || firebaseUser;
     
-    if (effectiveUser?.uid && course.id) {
+    if (effectiveUser?.uid && course.id && userDocData) {
+      // userDocData available — checkCourseOwnership will use it from queryClient cache
       checkCourseOwnership();
-      // Fetch role when we have a user (context or Firebase) so admin/creator see correct button even before context loads
       fetchUserRole();
-    } else if (!authLoading) {
+    } else if (!authLoading && !effectiveUser?.uid) {
       // Auth has finished loading - wait a bit more for IndexedDB restore (up to 2 seconds)
-      // This handles the case where AuthContext delay checks haven't completed yet
-      if (!effectiveUser?.uid) {
-        const timeout = setTimeout(() => {
-          const finalFirebaseUser = auth.currentUser;
-          const finalEffectiveUser = user || finalFirebaseUser;
-          if (!finalEffectiveUser?.uid) {
-            setCheckingOwnership(false);
-          } else {
-            checkCourseOwnership();
-            fetchUserRole();
-          }
-        }, 2000);
-        
-        return () => clearTimeout(timeout);
-      }
+      const timeout = setTimeout(() => {
+        const finalFirebaseUser = auth.currentUser;
+        const finalEffectiveUser = user || finalFirebaseUser;
+        if (!finalEffectiveUser?.uid) {
+          setCheckingOwnership(false);
+        } else {
+          checkCourseOwnership();
+          fetchUserRole();
+        }
+      }, 2000);
+
+      return () => clearTimeout(timeout);
     }
-  }, [user?.uid, course.id, checkCourseOwnership, fetchUserRole, authLoading, checkingOwnership]);
+  }, [user?.uid, course.id, checkCourseOwnership, fetchUserRole, authLoading, userDocData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -448,7 +440,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       }
 
       try {
-        const creatorDoc = await firestoreService.getUser(creatorId);
+        const creatorDoc = await firestoreService.getPublicProfile(creatorId);
         if (!isMounted) {
           return;
         }
@@ -561,12 +553,11 @@ useEffect(() => {
   };
 }, []);
 
-  // Re-check ownership when screen comes into focus (handles expiration case)
-  // On web, use useEffect. On native, useFocusEffect is handled by wrapper
+  // Re-check ownership during purchase processing (handles MP redirect back)
+  // Only runs when actively processing a purchase to avoid duplicating the main ownership check
   React.useEffect(() => {
-    // On web, run the check on mount
     const effectiveUser = user || auth.currentUser;
-    if (isWeb && effectiveUser?.uid) {
+    if (isWeb && effectiveUser?.uid && (processingPurchaseRef.current || pendingPostPurchaseRef.current)) {
       checkCourseOwnership().then(async () => {
         if (processingPurchaseRef.current || pendingPostPurchaseRef.current) {
           const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
@@ -598,7 +589,6 @@ useEffect(() => {
       return () => clearTimeout(safetyCheckTimeout);
     }
   }, [checkingOwnership, userOwnsCourse, user?.uid, course.id, processingPurchase]);
-
 
   // Handle screen focus changes - pause video when screen loses focus
   // Only needed on native - on web, browser handles this
@@ -649,7 +639,6 @@ useEffect(() => {
     }
   }, [isVideoPaused, videoPlayer]);
 
-
   // Video tap handler
   const handleVideoTap = () => {
     setIsVideoPaused(!isVideoPaused);
@@ -673,12 +662,13 @@ useEffect(() => {
     // 1. Program is in draft state (not published) - free for everyone
     // 2. User is admin - free for all programs
     // 3. User is creator AND this is their own program - free for creators' own programs
+    if (simulateUserRole) return false;
     const isDraft = course.status !== 'published';
     const isAdminUser = isAdmin(userRole);
     const isCreatorUser = isCreator(userRole);
     const isOwnProgram = creatorId && effectiveUser?.uid && creatorId === effectiveUser.uid;
     const isCreatorOwnProgram = isCreatorUser && isOwnProgram;
-    
+
     return isDraft || isAdminUser || isCreatorOwnProgram;
   };
 
@@ -691,7 +681,7 @@ useEffect(() => {
       return;
     }
 
-    if (userOwnsCourse) {
+    if (userOwnsCourse && !simulateUserRole) {
       Alert.alert('Ya tienes este curso', 'Este curso ya está en tu biblioteca');
       return;
     }
@@ -782,7 +772,6 @@ useEffect(() => {
       return; // Exit early - free flow handled
     }
 
-
     // Regular purchase flow - open payment modal
     try {
       setPurchasing(true);
@@ -833,7 +822,6 @@ useEffect(() => {
     }
   };
 
-
   // Handle email submission for Mercado Pago subscription
   const handleEmailSubmit = async () => {
     // Get effective user (from context or Firebase auth)
@@ -870,7 +858,6 @@ useEffect(() => {
       readyNotificationSentRef.current = false;
       successAlertShownRef.current = false;
 
-      
       // Call prepareSubscription directly with the provided email
       const subscriptionResult = await purchaseService.prepareSubscription(
         effectiveUser.uid,
@@ -978,8 +965,6 @@ useEffect(() => {
     }
   };
 
-
-
   const schedulePostPurchaseFlow = React.useCallback(() => {
     if (!pendingPostPurchaseRef.current) {
       return;
@@ -998,7 +983,6 @@ useEffect(() => {
       handlePostPurchaseFlow();
     }, 3000);
   }, [handlePostPurchaseFlow]);
-
 
   // Handle payment success
   const handlePaymentSuccess = () => {
@@ -1040,7 +1024,7 @@ useEffect(() => {
 
     // Show "Ya tienes este programa" if user owns course
     // Fix: Check userOwnsCourse first - if true, always show owned button (don't check ownershipReady for display)
-    if (userOwnsCourse) {
+    if (userOwnsCourse && !simulateUserRole) {
       if (!ownershipReady) {
         return (
           <TouchableOpacity style={[styles.primaryButton, styles.disabledButton]} disabled>
@@ -1076,7 +1060,35 @@ useEffect(() => {
       );
     }
 
-    if (canShowTrialCta) return null;
+    if (canShowTrialCta && !simulateUserRole) {
+      const currencyCode = course.currency || course.currency_id || 'COP';
+      const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
+      return (
+        <View>
+          <TouchableOpacity
+            style={[styles.primaryButton, purchasing && styles.disabledButton]}
+            onPress={handleStartTrial}
+            disabled={purchasing}
+          >
+            {purchasing ? (
+              <>
+                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryButtonText}>Activando prueba...</Text>
+              </>
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {`Prueba gratis - ${trialDurationDays} dias`}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {course.price > 0 && (
+            <Text style={styles.trialPriceText}>
+              {`Luego ${formatPrice(course.price)} ${currencyCode}`}
+            </Text>
+          )}
+        </View>
+      );
+    }
 
     if (isOneOnOne) {
       const hasUpcomingBooking = userCallBooking && new Date(userCallBooking.slotEndUtc) > new Date();
@@ -1094,9 +1106,32 @@ useEffect(() => {
     const currencyCode = course.currency || course.currency_id || 'COP';
     const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
     const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
+    const discountPercent = hasCompareAt ? Math.round((1 - course.price / course.compare_at_price) * 100) : 0;
     const purchaseButtonText = course.price
       ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
       : 'Comprar';
+
+    if (hasCompareAt && !purchasing) {
+      return (
+        <View style={styles.discountCtaContainer}>
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountBadgeText}>{`-${discountPercent}%`}</Text>
+          </View>
+          <TouchableOpacity
+            className={isWeb ? 'course-cta-pulse' : undefined}
+            style={styles.primaryButton}
+            onPress={handlePurchaseCourse}
+            disabled={purchasing}
+          >
+            <View style={styles.discountPriceRow}>
+              <Text style={styles.compareAtPriceText}>{formatPrice(course.compare_at_price)}</Text>
+              <Text style={styles.primaryButtonText}>{`${formatPrice(course.price)} ${currencyCode}`}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     return (
       <TouchableOpacity
         className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
@@ -1109,11 +1144,6 @@ useEffect(() => {
             <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
             <Text style={styles.primaryButtonText}>Procesando compra...</Text>
           </>
-        ) : hasCompareAt ? (
-          <View style={styles.priceRow}>
-            <Text style={styles.compareAtPriceText}>{formatPrice(course.compare_at_price)}</Text>
-            <Text style={styles.primaryButtonText}>{`Comprar - ${formatPrice(course.price)} ${currencyCode}`}</Text>
-          </View>
         ) : (
           <Text style={styles.primaryButtonText}>
             {purchaseButtonText}
@@ -1138,7 +1168,6 @@ useEffect(() => {
       </View>
     </View>
   );
-
 
   // Render pagination indicators - MainScreen style (native driver compatible)
   const renderPaginationIndicators = () => {
@@ -1254,6 +1283,33 @@ useEffect(() => {
                 </Text>
           </View>
 
+          {/* One-on-one tab bar */}
+          {isOneOnOne && userOwnsCourse && isWeb && (
+            <View style={styles.videoTabBar}>
+              <TouchableOpacity
+                style={[styles.videoTab, courseDetailTab === 'programa' && styles.videoTabActive]}
+                onPress={() => setCourseDetailTab('programa')}
+              >
+                <Text style={[styles.videoTabText, courseDetailTab === 'programa' && styles.videoTabTextActive]}>Programa</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.videoTab, courseDetailTab === 'videos' && styles.videoTabActive]}
+                onPress={() => setCourseDetailTab('videos')}
+              >
+                <Text style={[styles.videoTabText, courseDetailTab === 'videos' && styles.videoTabTextActive]}>Videos</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Video Exchange Tab (one-on-one only) */}
+          {isOneOnOne && userOwnsCourse && isWeb && courseDetailTab === 'videos' ? (
+            <VideoExchangeTab
+              userId={clientUserId}
+              courseId={course?.id}
+              creatorId={creatorId}
+            />
+          ) : (
+          <>
           {/* Swipeable Cards Container */}
           <View style={styles.swipeableCardsContainer}>
             <ScrollView
@@ -1503,14 +1559,14 @@ useEffect(() => {
             {renderPaginationIndicators()}
           </View>
 
-
-
           {/* Action Buttons */}
           <View style={styles.actionsSection}>
             {renderPurchaseButton()}
           </View>
 
           <BottomSpacer />
+          </>
+          )}
         </WakeHeaderContent>
       </ScrollView>
 
@@ -1639,6 +1695,32 @@ useEffect(() => {
           >
             Ir al programa
           </button>
+        </div>
+      )}
+      {/* Debug: simulate user role toggle (web only) */}
+      {Platform.OS === 'web' && isAdmin(userRole) && (
+        <div
+          onClick={() => setSimulateUserRole(prev => !prev)}
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 10000,
+            background: simulateUserRole ? 'rgba(255,80,80,0.9)' : 'rgba(255,255,255,0.15)',
+            border: `1px solid ${simulateUserRole ? 'rgba(255,80,80,0.5)' : 'rgba(255,255,255,0.2)'}`,
+            borderRadius: 12,
+            padding: '8px 14px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(12px)',
+            fontFamily: 'Montserrat, sans-serif',
+            fontSize: 11,
+            fontWeight: 600,
+            color: '#fff',
+            letterSpacing: 0.5,
+            userSelect: 'none',
+          }}
+        >
+          {simulateUserRole ? 'USER MODE' : 'ADMIN'}
         </div>
       )}
     </SafeAreaView>
@@ -2182,15 +2264,44 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  priceRow: {
+  discountCtaContainer: {
     alignItems: 'center',
+    position: 'relative',
+  },
+  discountBadge: {
+    position: 'absolute',
+    top: -10,
+    right: -8,
+    backgroundColor: '#e53e3e',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    zIndex: 1,
+    shadowColor: '#e53e3e',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  discountBadgeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  discountPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   compareAtPriceText: {
-    color: 'rgba(26, 26, 26, 0.45)',
+    color: 'rgba(26, 26, 26, 0.4)',
     fontSize: 14,
     fontWeight: '500',
     textDecorationLine: 'line-through',
-    marginBottom: 2,
+  },
+  priceRow: {
+    alignItems: 'center',
   },
   buttonPriceText: {
     color: 'rgba(255, 255, 255, 1)',
@@ -2468,6 +2579,32 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '700',
+  },
+  videoTabBar: {
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 16,
+    marginTop: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 8,
+    padding: 3,
+  },
+  videoTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  videoTabActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  videoTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.4)',
+  },
+  videoTabTextActive: {
+    color: 'rgba(255, 255, 255, 0.9)',
   },
 });
 

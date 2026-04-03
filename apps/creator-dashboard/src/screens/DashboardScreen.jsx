@@ -218,70 +218,28 @@ const DashboardScreen = () => {
     setEditingSlot(null);
   }, []);
 
-  // ── Queries (only fetch data for widgets currently in the layout) ─────────
+  // ── Queries ───────────────────────────────────────────────────────────────
 
-  const activeWidgetIds = useMemo(
-    () => new Set(Object.values(slotAssignments).filter(Boolean)),
-    [slotAssignments]
-  );
-
-  const hasWidget = useCallback((...ids) => ids.some(id => activeWidgetIds.has(id)), [activeWidgetIds]);
+  const dashboardQuery = useQuery({
+    queryKey: ['analytics', 'dashboard', user?.uid],
+    queryFn: () => apiClient.get('/analytics/dashboard'),
+    enabled: !!user?.uid,
+    ...cacheConfig.analytics,
+  });
 
   const bookingsQuery = useQuery({
     queryKey: ['bookings', 'creator', user?.uid],
     queryFn: () => apiClient.get('/creator/bookings'),
-    enabled: !!user?.uid && hasWidget('calls', 'upcoming-calls'),
+    enabled: !!user?.uid,
     ...cacheConfig.events,
   });
 
-  const revenueQuery = useQuery({
-    queryKey: ['analytics', 'revenue', user?.uid],
-    queryFn: () => apiClient.get('/analytics/revenue'),
-    enabled: !!user?.uid && hasWidget('revenue', 'clients'),
-    ...cacheConfig.analytics,
-  });
-
-  const adherenceQuery = useQuery({
-    queryKey: ['analytics', 'adherence', user?.uid],
-    queryFn: () => apiClient.get('/analytics/adherence'),
-    enabled: !!user?.uid && hasWidget('adherence', 'sessions'),
-    ...cacheConfig.analytics,
-  });
-
-  const activityQuery = useQuery({
-    queryKey: ['analytics', 'client-activity', user?.uid],
-    queryFn: () => apiClient.get('/analytics/client-activity'),
-    enabled: !!user?.uid && hasWidget('client-activity'),
-    ...cacheConfig.analytics,
-  });
-
-  const trendQuery = useQuery({
-    queryKey: ['analytics', 'client-trend', user?.uid],
-    queryFn: () => apiClient.get('/analytics/client-trend'),
-    enabled: !!user?.uid && hasWidget('client-trend'),
-    ...cacheConfig.analytics,
-  });
-
-  const revenueTrendQuery = useQuery({
-    queryKey: ['analytics', 'revenue-trend', user?.uid],
-    queryFn: () => apiClient.get('/analytics/revenue-trend'),
-    enabled: !!user?.uid && hasWidget('revenue-trend'),
-    ...cacheConfig.analytics,
-  });
-
-  const expiringQuery = useQuery({
-    queryKey: ['analytics', 'expiring-access', user?.uid],
-    queryFn: () => apiClient.get('/analytics/expiring-access'),
-    enabled: !!user?.uid && hasWidget('expiring-access'),
-    ...cacheConfig.analytics,
-  });
-
-  const calendarQuery = useQuery({
-    queryKey: ['analytics', 'calendar-preview', user?.uid],
-    queryFn: () => apiClient.get('/analytics/calendar-preview'),
-    enabled: !!user?.uid && hasWidget('calendar-preview'),
-    ...cacheConfig.events,
-  });
+  const isLoading = dashboardQuery.isLoading;
+  const dashData = dashboardQuery.data?.data;
+  const dashErrors = dashboardQuery.data?.errors ?? {};
+  const isError = dashboardQuery.isError;
+  const bookingsLoading = bookingsQuery.isLoading;
+  const bookingsError = bookingsQuery.isError;
 
   // ── Derived values ────────────────────────────────────────────────────────
 
@@ -301,10 +259,10 @@ const DashboardScreen = () => {
       });
   }, [bookingsQuery.data]);
 
-  // ── Recent activity items for marquee ────────────────────────────────────
+  // Recent activity items for marquee
   const activityItems = useMemo(() => {
     const items = [];
-    const activity = activityQuery.data?.data;
+    const activity = dashData?.clientActivity;
     if (activity?.recentSessions?.length) {
       activity.recentSessions.slice(0, 8).forEach(s => {
         items.push(`${s.clientName || 'Cliente'} completo ${s.sessionTitle || 'una sesion'}`);
@@ -316,7 +274,7 @@ const DashboardScreen = () => {
       });
     }
     return items;
-  }, [activityQuery.data]);
+  }, [dashData?.clientActivity]);
 
   const callCountThisWeek = useMemo(() => {
     const raw = bookingsQuery.data?.data ?? bookingsQuery.data ?? [];
@@ -350,23 +308,38 @@ const DashboardScreen = () => {
   }, [upcomingBookings]);
 
   const lowTicket = useMemo(() => {
-    const lt = revenueQuery.data?.data?.lowTicket;
+    const lt = dashData?.revenue?.lowTicket;
     return { salesCount: lt?.salesCount ?? 0, netRevenue: lt?.netRevenue ?? 0 };
-  }, [revenueQuery.data]);
+  }, [dashData?.revenue]);
 
   const oneOnOne = useMemo(() => {
-    const oo = revenueQuery.data?.data?.oneOnOne;
+    const oo = dashData?.revenue?.oneOnOne;
     return { clientCount: oo?.clientCount ?? 0, callCount: oo?.callCount ?? 0 };
-  }, [revenueQuery.data]);
+  }, [dashData?.revenue]);
 
-  const overallAdherence = useMemo(
-    () => adherenceQuery.data?.data?.overallAdherence ?? 0,
-    [adherenceQuery.data]
+  const revenueGross = useMemo(
+    () => dashData?.revenue?.lowTicket?.grossRevenue ?? 0,
+    [dashData?.revenue]
+  );
+
+  const revenueByProgram = useMemo(
+    () => dashData?.revenue?.byProgram ?? [],
+    [dashData?.revenue]
+  );
+
+  const overallWorkoutAdherence = useMemo(
+    () => dashData?.adherence?.overallWorkoutAdherence ?? dashData?.adherence?.overallAdherence ?? 0,
+    [dashData?.adherence]
+  );
+
+  const overallNutritionAdherence = useMemo(
+    () => dashData?.adherence?.overallNutritionAdherence ?? null,
+    [dashData?.adherence]
   );
 
   const byProgram = useMemo(
-    () => adherenceQuery.data?.data?.byProgram ?? [],
-    [adherenceQuery.data]
+    () => dashData?.adherence?.byProgram ?? [],
+    [dashData?.adherence]
   );
 
   const sessionsCompleted = useMemo(
@@ -375,24 +348,24 @@ const DashboardScreen = () => {
   );
 
   const programs = useMemo(
-    () => revenueQuery.data?.data?.programs ?? [],
-    [revenueQuery.data]
+    () => dashData?.revenue?.programs ?? [],
+    [dashData?.revenue]
   );
+
+  const activityData = useMemo(() => dashData?.clientActivity ?? null, [dashData?.clientActivity]);
+  const trendData = useMemo(() => dashData?.clientTrend ?? null, [dashData?.clientTrend]);
+  const revenueTrendData = useMemo(() => dashData?.revenueTrend ?? null, [dashData?.revenueTrend]);
+  const calendarData = useMemo(() => dashData?.calendarPreview ?? null, [dashData?.calendarPreview]);
+  const expiringData = useMemo(() => dashData?.expiringAccess ?? null, [dashData?.expiringAccess]);
 
   // ── All queries failed → FullScreenError ──────────────────────────────────
 
-  const allFailed = bookingsQuery.isError && revenueQuery.isError && adherenceQuery.isError;
+  const allFailed = bookingsQuery.isError && dashboardQuery.isError;
 
   const handleRetryAll = useCallback(() => {
     bookingsQuery.refetch();
-    revenueQuery.refetch();
-    adherenceQuery.refetch();
-    activityQuery.refetch();
-    trendQuery.refetch();
-    revenueTrendQuery.refetch();
-    expiringQuery.refetch();
-    calendarQuery.refetch();
-  }, [bookingsQuery, revenueQuery, adherenceQuery, activityQuery, trendQuery, revenueTrendQuery, expiringQuery, calendarQuery]);
+    dashboardQuery.refetch();
+  }, [bookingsQuery, dashboardQuery]);
 
   if (allFailed) {
     return (
@@ -411,18 +384,18 @@ const DashboardScreen = () => {
   // ── Widget props ──────────────────────────────────────────────────────────
 
   const widgetProps = {
-    revenue: { revenueQuery, lowTicket, oneOnOne, programs },
-    clients: { revenueQuery, oneOnOne },
-    calls: { bookingsQuery, callCountThisWeek, nextCallTime },
-    adherence: { adherenceQuery, overallAdherence, byProgram },
-    sessions: { adherenceQuery, sessionsCompleted },
-    'upcoming-calls': { bookingsQuery, upcomingBookings },
-    'client-activity': { activityQuery },
-    'client-trend': { trendQuery },
-    'programs-sold': { trendQuery },
-    'revenue-trend': { revenueTrendQuery },
-    'calendar-preview': { calendarQuery },
-    'expiring-access': { expiringQuery },
+    revenue: { isLoading, isError: isError || !!dashErrors.revenue, lowTicket, oneOnOne, programs, grossRevenue: revenueGross, byProgram: revenueByProgram },
+    clients: { isLoading, isError: isError || !!dashErrors.revenue, oneOnOne },
+    calls: { isLoading: bookingsLoading, isError: bookingsError, callCountThisWeek, nextCallTime },
+    adherence: { isLoading, isError: isError || !!dashErrors.adherence, overallWorkoutAdherence, overallNutritionAdherence, byProgram },
+    sessions: { isLoading, isError: isError || !!dashErrors.adherence, sessionsCompleted },
+    'upcoming-calls': { isLoading: bookingsLoading, isError: bookingsError, upcomingBookings },
+    'client-activity': { isLoading, isError: isError || !!dashErrors.clientActivity, activityData },
+    'client-trend': { isLoading, isError: isError || !!dashErrors.clientTrend, trendData },
+    'programs-sold': { isLoading, isError: isError || !!dashErrors.clientTrend, trendData },
+    'revenue-trend': { isLoading, isError: isError || !!dashErrors.revenueTrend, trendData: revenueTrendData },
+    'calendar-preview': { isLoading, isError: isError || !!dashErrors.calendarPreview, calendarData },
+    'expiring-access': { isLoading, isError: isError || !!dashErrors.expiringAccess, expiringData },
   };
 
   // ── Render ────────────────────────────────────────────────────────────────

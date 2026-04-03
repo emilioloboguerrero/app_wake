@@ -149,13 +149,9 @@ const SubscriptionsScreen = ({ navigation }) => {
         maximumFractionDigits: 0,
       }).format(amount);
     } catch (error) {
-      logger.warn('Error formatting currency, falling back to string.', error);
       return `${amount} ${currency}`;
     }
   };
-
-
-
 
   const renderActions = (subscription) => {
     const currentStatus = subscription.status || 'pending';

@@ -29,11 +29,16 @@ export default function useMissions() {
 
   // Reuse the same queries the app already makes — if screens have fetched this
   // data, it comes from cache at zero cost. If not, these are lightweight list calls.
+  // Mission data changes infrequently — long staleTime + no refetch on mount
+  // prevents duplicate queries when navigating between screens.
+  const missionCacheOverrides = { staleTime: 30 * 60 * 1000, refetchOnMount: false };
+
   const { data: profile } = useQuery({
     queryKey: queryKeys.user.detail(uid),
     queryFn: () => apiClient.get('/users/me').then((r) => r.data),
     enabled: !!uid,
     ...cacheConfig.userProfile,
+    ...missionCacheOverrides,
   });
 
   const { data: librarySessions } = useQuery({
@@ -41,6 +46,7 @@ export default function useMissions() {
     queryFn: () => libraryService.getSessionLibraryWithExercises(),
     enabled: !!uid,
     ...cacheConfig.librarySessions,
+    ...missionCacheOverrides,
   });
 
   const { data: programs } = useQuery({
@@ -48,6 +54,7 @@ export default function useMissions() {
     queryFn: () => programService.getProgramsByCreator(),
     enabled: !!uid,
     ...cacheConfig.otherPrograms,
+    ...missionCacheOverrides,
   });
 
   const { data: clients } = useQuery({
@@ -55,6 +62,7 @@ export default function useMissions() {
     queryFn: () => oneOnOneService.getClientsByCreator(),
     enabled: !!uid,
     ...cacheConfig.clientsOverview,
+    ...missionCacheOverrides,
   });
 
   const { data: events } = useQuery({
@@ -62,6 +70,7 @@ export default function useMissions() {
     queryFn: () => eventService.getEventsByCreator(),
     enabled: !!uid,
     ...cacheConfig.events,
+    ...missionCacheOverrides,
   });
 
   // Aggregate all data for mission detection

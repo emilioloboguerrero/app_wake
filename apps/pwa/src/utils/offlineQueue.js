@@ -26,13 +26,11 @@ function readQueue() {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      logger.warn('[offlineQueue] cola corrupta — reiniciando');
       return [];
     }
     // Filter out any entries that don't match the expected shape.
     const valid = parsed.filter(entry => {
       if (!isValidEntry(entry)) {
-        logger.warn('[offlineQueue] descartando entrada malformada:', entry?.id ?? '(sin id)');
         return false;
       }
       return true;
@@ -66,7 +64,6 @@ export function enqueue(operation) {
   const queue = readQueue();
 
   if (queue.length >= MAX_QUEUE_SIZE) {
-    logger.warn('[offlineQueue] cola llena — máximo', MAX_QUEUE_SIZE, 'entradas');
     return null;
   }
 
@@ -108,7 +105,6 @@ export function getAll() {
 
 export function remove(id) {
   if (!id) {
-    logger.warn('[offlineQueue] remove llamado sin id');
     return;
   }
   try {

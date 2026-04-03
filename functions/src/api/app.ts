@@ -18,6 +18,7 @@ import apiKeysRouter from "./routes/apiKeys.js";
 import appResourcesRouter from "./routes/appResources.js";
 import bookingsRouter from "./routes/bookings.js";
 import notificationsRouter from "./routes/notifications.js";
+import videoExchangesRouter from "./routes/videoExchanges.js";
 
 export const app = express();
 
@@ -126,6 +127,7 @@ app.use("/v1", apiKeysRouter);
 app.use("/v1", appResourcesRouter);
 app.use("/v1", bookingsRouter);
 app.use("/v1", notificationsRouter);
+app.use("/v1", videoExchangesRouter);
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

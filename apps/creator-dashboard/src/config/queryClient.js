@@ -129,6 +129,12 @@ export const cacheConfig = {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },
+  videoExchanges: {
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  },
 };
 
 // Query keys factory
@@ -155,6 +161,7 @@ export const queryKeys = {
     all: (programId, moduleId, sessionId, exerciseId) => ['programs', programId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets'],
   },
   analytics: {
+    dashboard: (creatorId) => ['analytics', 'dashboard', creatorId],
     program: (programId) => ['analytics', 'program', programId],
     adherence: (creatorId, opts) => ['analytics', 'adherence', creatorId, opts],
   },
@@ -201,5 +208,11 @@ export const queryKeys = {
   },
   apiKeys: {
     all: () => ['creator', 'api-keys'],
+  },
+  videoExchanges: {
+    byCreator: (creatorId) => ['videoExchanges', 'creator', creatorId],
+    byClient: (clientId) => ['videoExchanges', 'client', clientId],
+    detail: (exchangeId) => ['videoExchanges', exchangeId],
+    unreadCount: (userId) => ['videoExchanges', 'unreadCount', userId],
   },
 };

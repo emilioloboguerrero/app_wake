@@ -1,16 +1,13 @@
 import { QueryClient, QueryCache } from '@tanstack/react-query';
 import { WakeApiError } from '../utils/apiClient';
-import authService from '../services/authService';
 import { STALE_TIMES, GC_TIMES } from './queryConfig';
-import logger from '../utils/logger';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
       if (error instanceof WakeApiError &&
           (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
-        logger.warn('[queryClient] auth error — forcing sign out:', error.code);
-        authService.signOutUser();
+        require('../services/authService').default.signOutUser();
       }
     },
   }),
@@ -71,6 +68,12 @@ export const cacheConfig = {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   },
+  videoExchanges: {
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  },
 };
 
 export const queryKeys = {
@@ -91,5 +94,10 @@ export const queryKeys = {
   prs: {
     all: (userId) => ['prs', userId],
     exercise: (userId, exerciseKey) => ['prs', userId, exerciseKey],
+  },
+  videoExchanges: {
+    byClient: (clientId) => ['videoExchanges', 'client', clientId],
+    detail: (exchangeId) => ['videoExchanges', exchangeId],
+    unreadCount: (userId) => ['videoExchanges', 'unreadCount', userId],
   },
 };

@@ -36,20 +36,17 @@ export const SecurityUtils = {
       
       // Only allow HTTPS in production
       if (currentConfig.environment === 'production' && parsedUrl.protocol !== 'https:') {
-        logger.warn('Blocked non-HTTPS URL in production:', url);
         return false;
       }
       
       // Block dangerous protocols
       const dangerousProtocols = ['javascript:', 'data:', 'vbscript:', 'file:'];
       if (dangerousProtocols.includes(parsedUrl.protocol)) {
-        logger.warn('Blocked dangerous protocol:', url);
         return false;
       }
       
       return true;
     } catch (error) {
-      logger.warn('Invalid URL:', url, error.message);
       return false;
     }
   },
@@ -136,7 +133,6 @@ export const SecurityUtils = {
         .filter(timestamp => timestamp > windowStart).length;
 
       if (currentRequests >= maxRequests) {
-        logger.warn('Rate limit exceeded for:', identifier);
         return false;
       }
 
@@ -236,7 +232,6 @@ export const EncryptionUtils = {
     try {
       return atob(encoded);
     } catch (error) {
-      logger.warn('Failed to base64 decode data:', error.message);
       return encoded;
     }
   },
@@ -271,7 +266,6 @@ export const SecurityMonitor = {
     });
 
     SecurityMonitor._ensureCleanup();
-    logger.warn('Suspicious activity detected:', activity, details);
   },
 
   // Check for repeated suspicious activities

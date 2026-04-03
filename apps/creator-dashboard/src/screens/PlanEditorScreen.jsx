@@ -213,6 +213,7 @@ export default function PlanEditorScreen() {
   const assignmentId = location.state?.assignmentId;
   const assignmentPlanId = location.state?.assignmentPlanId ?? planId;
   const clientName = location.state?.clientName ?? 'Cliente';
+  const assignmentClientId = location.state?.clientId ?? null;
   const returnTo = location.state?.returnTo;
   const returnState = location.state?.returnState;
   const isAssignmentScope = editScope === 'assignment' && assignmentId;
@@ -340,6 +341,7 @@ export default function PlanEditorScreen() {
 
   // When calories or distribution preset change (and not custom), recompute macro grams.
   useEffect(() => {
+    if (justSeededRef.current) return;
     if (distributionPreset === 'custom') return;
     const cal = Number(dailyCalories);
     if (!Number.isFinite(cal) || cal <= 0) return;
@@ -426,6 +428,9 @@ export default function PlanEditorScreen() {
         queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
         if (isAssignmentScope) {
           queryClient.invalidateQueries({ queryKey: ['nutrition', 'plan', 'assignment', assignmentId] });
+          if (assignmentClientId) {
+            queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', assignmentClientId] });
+          }
         } else {
           queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plan(creatorId, planId) });
         }

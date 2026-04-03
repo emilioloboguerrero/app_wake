@@ -221,26 +221,41 @@ class ProfilePictureService {
   // Get profile picture URL for a user
   async getProfilePictureUrl(userId) {
     try {
-      // Check cache first
+      // Check in-memory cache first (only trust after migration fix)
       if (this.cache.has(userId)) {
         return this.cache.get(userId);
       }
 
-      // Check storage
-      let cached;
-      if (isWeb) {
-        try { cached = localStorage.getItem(`profile_${userId}`); } catch (_) { cached = null; }
+      // Determine if this is the current user or someone else
+      const { auth } = require('../config/firebase');
+      const currentUid = auth.currentUser?.uid;
+      const isSelf = !userId || userId === currentUid;
+
+      // Only trust localStorage cache for self — other users' entries were poisoned
+      // by the old code that always called /users/me regardless of userId
+      if (isSelf) {
+        let cached;
+        if (isWeb) {
+          try { cached = localStorage.getItem(`profile_${userId}`); } catch (_) { cached = null; }
+        } else {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          cached = await AsyncStorage.getItem(`profile_${userId}`);
+        }
+        if (cached) {
+          this.cache.set(userId, cached);
+          return cached;
+        }
       } else {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        cached = await AsyncStorage.getItem(`profile_${userId}`);
-      }
-      if (cached) {
-        this.cache.set(userId, cached);
-        return cached;
+        // Clear any poisoned localStorage entry for this other user
+        if (isWeb) {
+          try { localStorage.removeItem(`profile_${userId}`); } catch (_) {}
+        }
       }
 
       // Fetch from API
-      const { data } = await apiClient.get('/profile');
+      const { data } = isSelf
+        ? await apiClient.get('/users/me')
+        : await apiClient.get(`/users/${userId}/public-profile`);
       const profilePictureUrl = data?.profilePictureUrl ?? null;
 
       if (profilePictureUrl) {
@@ -264,10 +279,8 @@ class ProfilePictureService {
   // Delete profile picture
   async deleteProfilePicture(userId) {
     try {
-      await apiClient.patch('/profile', {
+      await apiClient.patch('/users/me', {
         profilePictureUrl: null,
-        profilePicturePath: null,
-        profilePictureUpdatedAt: null,
       });
 
       // Clear cache

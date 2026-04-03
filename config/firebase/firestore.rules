@@ -119,7 +119,29 @@ service cloud.firestore {
         isAdmin()
       );
     }
-    
+
+    // ============================================
+    // VIDEO EXCHANGES
+    // ============================================
+
+    match /video_exchanges/{exchangeId} {
+      allow read: if isSignedIn() && (
+        resource.data.creatorId == request.auth.uid ||
+        resource.data.clientId == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if false; // All writes through API
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (
+          get(/databases/$(database)/documents/video_exchanges/$(exchangeId)).data.creatorId == request.auth.uid ||
+          get(/databases/$(database)/documents/video_exchanges/$(exchangeId)).data.clientId == request.auth.uid ||
+          isAdmin()
+        );
+        allow write: if false; // All writes through API
+      }
+    }
+
     // ============================================
     // COURSE CONTENT
     // ============================================

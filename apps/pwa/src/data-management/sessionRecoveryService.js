@@ -66,7 +66,6 @@ class SessionRecoveryService {
       }
 
       const checkpoint = response.data;
-      logger.warn('🔄 Sesión de entrenamiento activa encontrada en el servidor, restaurando...');
 
       // Write the server checkpoint into AsyncStorage under the key that the
       // existing localStorage recovery path already watches.

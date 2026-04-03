@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AnimatedList, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
@@ -47,13 +48,13 @@ function CallItem({ booking }) {
   );
 }
 
-export default function UpcomingCallsWidget({ bookingsQuery, upcomingBookings }) {
+function UpcomingCallsWidget({ isLoading, isError, upcomingBookings }) {
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Proximas llamadas</p>
-      {bookingsQuery.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : bookingsQuery.isError ? (
+      ) : isError ? (
         <InlineError
           message="No pudimos cargar las llamadas agendadas. Toca para reintentar."
           field="upcoming-calls"
@@ -72,3 +73,5 @@ export default function UpcomingCallsWidget({ bookingsQuery, upcomingBookings })
     </div>
   );
 }
+
+export default memo(UpcomingCallsWidget);

@@ -36,12 +36,13 @@ const DraggableSessionItem = ({ session }) => {
     >
       <GlowingEffect spread={16} proximity={70} borderWidth={1} />
       <div className="planning-sidebar-program-content" style={{ position: 'relative', zIndex: 2 }}>
-        <div
-          className="planning-sidebar-program-image-placeholder"
-          style={{ width: 28, height: 28, fontSize: 12 }}
-        >
-          {session.title?.charAt(0) || 'S'}
-        </div>
+        {session.image_url ? (
+          <img src={session.image_url} alt="" className="planning-sidebar-program-image" style={{ width: 28, height: 28 }} />
+        ) : (
+          <div className="planning-sidebar-program-image-placeholder" style={{ width: 28, height: 28, fontSize: 12 }}>
+            {session.title?.charAt(0) || 'S'}
+          </div>
+        )}
         <div className="planning-sidebar-program-info">
           <span className="planning-sidebar-program-name">
             {session.title || `Sesion ${session.id?.slice(0, 8)}`}

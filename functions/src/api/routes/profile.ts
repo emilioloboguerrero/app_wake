@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as admin from "firebase-admin";
 import { db, FieldValue } from "../firestore.js";
+import type { Query } from "../firestore.js";
 import { validateAuth, validateAuthAndRateLimit } from "../middleware/auth.js";
 import { validateBody, validateStoragePath } from "../middleware/validate.js";
 import { WakeApiServerError } from "../errors.js";
@@ -41,6 +42,13 @@ router.get("/users/me", async (req, res) => {
       courses: data.courses ?? {},
       bio: data.bio ?? null,
       creatorNavPreferences: data.creatorNavPreferences ?? null,
+      // Lab screen fields
+      oneRepMaxEstimates: data.oneRepMaxEstimates ?? null,
+      weeklyMuscleVolume: data.weeklyMuscleVolume ?? null,
+      onboardingData: data.onboardingData ?? null,
+      goalWeight: data.goalWeight ?? null,
+      weightUnit: data.weightUnit ?? null,
+      activityStreak: data.activityStreak ?? null,
     },
   });
 });
@@ -258,8 +266,16 @@ router.get("/users/:userId/public-profile", async (req, res) => {
     data: {
       userId: req.params.userId,
       displayName: data.displayName ?? data.name ?? null,
+      firstName: data.firstName ?? data.first_name ?? null,
+      lastName: data.lastName ?? data.last_name ?? null,
       username: data.username ?? null,
       profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
+      role: data.role ?? "user",
+      bio: data.bio ?? null,
+      birthDate: data.birthDate ?? data.birthdate ?? null,
+      city: data.city ?? null,
+      country: data.country ?? null,
+      cards: data.cards ?? null,
     },
   });
 });
@@ -614,15 +630,22 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
   res.json({ data: { updated: true } });
 });
 
-// GET /courses — course listing
+// GET /courses — course listing, optional ?creatorId=X filter
 router.get("/courses", async (req, res) => {
   await validateAuthAndRateLimit(req);
 
-  const snapshot = await db
+  const creatorId = req.query.creatorId as string | undefined;
+
+  let query: Query = db
     .collection("courses")
     .orderBy("created_at", "desc")
-    .limit(100)
-    .get();
+    .limit(100);
+
+  if (creatorId) {
+    query = query.where("creator_id", "==", creatorId);
+  }
+
+  const snapshot = await query.get();
 
   res.json({
     data: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),

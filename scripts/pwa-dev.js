@@ -91,6 +91,10 @@ function buildPwaHtml(scriptUrl) {
       /(script-src\s+)([^;]+)(;)/,
       (_, pre, list, post) => `${pre}${list} ${expoOrigin}${post}`
     );
+    html = html.replace(
+      /(connect-src\s+)([^;]+)(;)/,
+      (_, pre, list, post) => `${pre}${list} ${expoOrigin}${post}`
+    );
   }
   return html;
 }

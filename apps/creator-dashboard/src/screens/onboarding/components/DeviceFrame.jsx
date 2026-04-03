@@ -53,7 +53,7 @@ export function IPhoneFrame({ children, delay = 0, width = 200 }) {
   );
 }
 
-export function MacBookFrame({ children, delay = 0, width = 480 }) {
+export function MacBookFrame({ children, delay = 0, width = 480, layoutId }) {
   const screenHeight = width * 0.625;
   const baseHeight = width * 0.04;
   const borderRadius = width * 0.02;
@@ -61,6 +61,7 @@ export function MacBookFrame({ children, delay = 0, width = 480 }) {
 
   return (
     <motion.div
+      layoutId={layoutId}
       initial={{ opacity: 0, y: 30, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ ...spring, delay }}

@@ -304,7 +304,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
         setCompletionStats(statsWithDiscipline);
       } else {
-        logger.warn('[WorkoutCompletion] No session data or local stats provided');
         setCompletionStats({ error: 'No session data available' });
       }
       
@@ -1482,7 +1481,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               ));
             })()}
           </View>
-
 
           {/* Session notes card - always show so user sees their notes or an empty card; save on blur when changed */}
           {sessionData?.sessionId != null && (

@@ -471,7 +471,6 @@ const OnboardingFlow = ({ onComplete, initialStep = 0 }) => {
         }));
       }
     } catch (err) {
-      logger.warn('[ONBOARDING_FLOW] photo upload failed:', err);
     }
     setUploadingPhoto(false);
   };

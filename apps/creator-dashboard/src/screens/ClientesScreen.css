@@ -404,11 +404,12 @@
 }
 
 .cl-card__avatar {
+  position: relative;
   width: 40px;
   height: 40px;
   border-radius: 50%;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
   background: rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
@@ -419,6 +420,19 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: 50%;
+}
+
+.cl-card__video-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #1a1a1a;
+  z-index: 1;
 }
 
 .cl-card__avatar-initial {

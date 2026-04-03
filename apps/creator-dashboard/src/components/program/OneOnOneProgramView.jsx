@@ -88,11 +88,8 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
   });
 
   const { data: availableLibraries = [] } = useQuery({
-    queryKey: queryKeys.library.sessionsSlim(user?.uid),
-    queryFn: async () => {
-      const sessions = await libraryService.getSessionLibrarySlim();
-      return sessions.map((s) => ({ id: s.sessionId || s.id, title: s.title }));
-    },
+    queryKey: queryKeys.library.libraries(user?.uid),
+    queryFn: () => libraryService.getLibrariesByCreator(),
     enabled: !!user?.uid,
     ...cacheConfig.otherPrograms,
   });
@@ -122,10 +119,11 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
 
   const adherenceChartData = useMemo(() => {
     if (programAdherence?.weeklyHistory?.length) return programAdherence.weeklyHistory;
-    return Array.from({ length: 8 }, (_, i) => ({ adherence: 0, week: '' }));
+    return Array.from({ length: 8 }, () => ({ workoutAdherence: 0, nutritionAdherence: null, week: '' }));
   }, [programAdherence]);
 
-  const overallAdherence = programAdherence?.adherence ?? 0;
+  const overallAdherence = programAdherence?.workoutAdherence ?? 0;
+  const hasNutrition = programAdherence?.nutritionAdherence != null;
 
   // ── View-specific handler ─────────────────────────────────────
   const handleClientAdded = useCallback(() => {
@@ -277,19 +275,46 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
                       <stop offset="0%" stopColor={`rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0.35)`} />
                       <stop offset="100%" stopColor={`rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0)`} />
                     </linearGradient>
+                    <linearGradient id="adh-nutr-grad-oo" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="rgba(129,140,248,0.25)" />
+                      <stop offset="100%" stopColor="rgba(129,140,248,0)" />
+                    </linearGradient>
                   </defs>
                   <YAxis hide domain={[dataMin => Math.max(0, dataMin - 5), dataMax => Math.min(100, dataMax + Math.max(10, Math.ceil(dataMax * 0.3)))]} />
                   <Area
                     type="monotone"
-                    dataKey="adherence"
+                    dataKey="workoutAdherence"
                     stroke={`rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0.7)`}
                     strokeWidth={1.5}
                     fill="url(#adh-grad-oo)"
                     dot={false}
                     isAnimationActive={false}
                   />
+                  {hasNutrition && (
+                    <Area
+                      type="monotone"
+                      dataKey="nutritionAdherence"
+                      stroke="rgba(129,140,248,0.6)"
+                      strokeWidth={1.5}
+                      fill="url(#adh-nutr-grad-oo)"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  )}
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+            <div className="oo-adherence-legend">
+              <span className="oo-adherence-legend__item">
+                <span className="oo-adherence-legend__dot" style={{ background: `rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0.7)` }} />
+                Entreno
+              </span>
+              {hasNutrition && (
+                <span className="oo-adherence-legend__item">
+                  <span className="oo-adherence-legend__dot" style={{ background: 'rgba(129,140,248,0.7)' }} />
+                  Nutricion
+                </span>
+              )}
             </div>
           </div>
 

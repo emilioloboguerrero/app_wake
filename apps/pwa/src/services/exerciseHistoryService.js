@@ -93,11 +93,12 @@ class ExerciseHistoryService {
       let fetched = 0;
 
       do {
-        const params = { ...(token ? { pageToken: token } : {}) };
+        const params = { limit: pageLimit, ...(token ? { pageToken: token } : {}) };
         const res = await apiClient.get('/workout/sessions', { params });
         const page = res?.data ?? [];
         page.forEach(s => {
-          sessions[s.completionId] = { ...s, id: s.completionId, completionDocId: s.completionId };
+          const key = s.completionId || s.id;
+          sessions[key] = { ...s, id: key, completionDocId: key, completionId: key };
         });
         fetched += page.length;
         token = res?.nextPageToken ?? null;

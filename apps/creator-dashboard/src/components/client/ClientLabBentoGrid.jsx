@@ -77,7 +77,8 @@ function BentoSkeleton({ area }) {
 
 export default function ClientLabBentoGrid({ data, isLoading, range }) {
   // ── Derived values ────────────────────────────────────────────
-  const adherenceRate = data?.adherenceRate ?? data?.completionRate ?? null;
+  const workoutAdherence = data?.workoutAdherence ?? data?.adherenceRate ?? data?.completionRate ?? null;
+  const nutritionAdherence = data?.nutritionAdherence ?? null;
   const recentPRs = data?.recentPRs || [];
   const latestPR = recentPRs[0] || data?.latestPR || null;
   const bodyWeight = data?.bodyWeight ?? null;
@@ -132,12 +133,17 @@ export default function ClientLabBentoGrid({ data, isLoading, range }) {
             <span className="clbg-card-label">Adherencia</span>
           </div>
           <div className="clbg-card-value">
-            {adherenceRate != null ? (
-              <NumberTicker value={Math.round(adherenceRate)} suffix="%" />
+            {workoutAdherence != null ? (
+              <NumberTicker value={Math.round(workoutAdherence)} suffix="%" />
             ) : (
-              <span className="clbg-card-no-data">—</span>
+              <span className="clbg-card-no-data">--</span>
             )}
           </div>
+          {nutritionAdherence != null && (
+            <div className="clbg-card-secondary" style={{ color: 'rgba(129,140,248,0.85)', fontSize: '0.75rem', marginTop: 2 }}>
+              Nutricion: {Math.round(nutritionAdherence)}%
+            </div>
+          )}
           <WeekDots days={latestWeekDots} />
         </div>
       </BentoCard>

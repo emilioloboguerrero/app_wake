@@ -370,13 +370,86 @@ Low. Implement after session notes are shipped and validated.
 
 ---
 
+## 7. RPE (Reported Intensity) Integration (NOT IMPLEMENTED)
+
+Add user-reported intensity (RPE) as a default measure so users can log their perceived exertion per set. When available, use it instead of planned intensity for all 1RM calculations and analytics.
+
+### Current State
+
+- **Measures** (user inputs): `["reps", "weight"]`
+- **Objectives** (coach plans): `["reps", "intensity"]`
+- Intensity is planned by the coach but never reported by the user
+- Client-side 1RM (`oneRepMaxService.js`) uses planned intensity: `weight * (1 + 0.0333 * reps) / (1 - 0.025 * (10 - intensity))`
+- Server-side 1RM (`workout.ts`) ignores intensity entirely: `weight * (1 + 0.0333 * reps)` (pure Epley)
+
+### Locked Decisions
+
+- **Default measures become**: `["reps", "weight", "intensity"]` — intensity appears as a user input field alongside reps and weight
+- **Field naming**: The reported intensity uses the same field name `intensity` in the set's measure data. The planned intensity remains on the set's objective data. No new field name needed — the distinction is positional (measures vs objectives)
+- **1RM priority (client-side)**: Use reported intensity (from measures) when available. Fall back to planned intensity (from objectives). Fall back to pure Epley (no intensity adjustment) when neither exists
+- **Server-side formula**: Update `workout.ts` to use the same intensity-adjusted formula as the client. Use reported > planned > no-adjustment fallback chain
+- **Lab screen (PWA)**: LabRpeChart shows reported RPE when available (more accurate than planned)
+- **Creator dashboard Lab**: Show both planned and reported RPE for comparison — lets creators see if their programming matches client perception
+- **Fallback chain (only giving vs only collecting)**:
+  - Coach sets intensity, user doesn't report → use planned
+  - No planned intensity, user reports → use reported
+  - Neither exists → pure Epley (current server behavior)
+  - Both exist → use reported (user's perception is ground truth)
+
+### Implementation Plan
+
+**Phase 1: Data model + PWA input**
+- [ ] Update default measures to `["reps", "weight", "intensity"]` in `WorkoutExecutionScreen.js` (line 3401)
+- [ ] Ensure the intensity input field renders in the set row during workout execution (same "X/10" format)
+- [ ] Reported intensity gets saved with set data on session completion (`sessionService.js` `convertWorkoutToSession`)
+- [ ] Existing exercises without intensity in measures continue to work (backward compatible — only new defaults change)
+
+**Phase 2: 1RM calculation updates**
+- [ ] Update `oneRepMaxService.js` `calculate1RM` to accept both reported and planned intensity, apply fallback chain
+- [ ] Update `calculateWeightSuggestion` — still uses planned intensity (weight suggestions are about what the coach wants, not what the user felt)
+- [ ] Update server-side 1RM in `workout.ts` (line 690) to use the intensity-adjusted formula with the same fallback chain
+- [ ] Server needs access to planned intensity per set — include in `plannedSnapshot` or pass alongside set data in `POST /workout/complete`
+
+**Phase 3: Lab + analytics**
+- [ ] PWA Lab: LabRpeChart prefers reported intensity over planned
+- [ ] Creator dashboard: show reported vs planned RPE overlay/comparison in client exercise history
+- [ ] RepEstimatesCard: 1RM used for estimates should reflect the intensity-adjusted calculation
+
+### Data Flow After Implementation
+
+```
+Coach sets objectives: { reps: "8-10", intensity: "8/10" }
+                              ↓
+User executes set, inputs measures: { reps: "9", weight: "80", intensity: "7/10" }
+                              ↓
+Session completion sends both:
+  set.reps = "9", set.weight = "80", set.intensity = "7/10"  (reported)
+  planned set: intensity = "8/10"  (from objectives)
+                              ↓
+Server 1RM: uses reported 7/10 → adjusts estimate accordingly
+  (user felt it was 7/10, meaning they had more in the tank than the coach planned)
+                              ↓
+Lab: shows reported RPE trend over time
+Creator dashboard: shows planned 8/10 vs reported 7/10 comparison
+```
+
+### Notes
+
+- The intensity field in measures uses the same "X/10" format and parsing (`parseIntensity`) as objectives
+- Volume calculation threshold (`intensity >= 7` for effective sets in `sessionService.js`) should use reported intensity when available
+- No migration needed for existing data — old sessions without reported intensity continue to use planned or pure Epley
+- Creator dashboard exercise editor (`useExerciseSets.js`) is unaffected — coaches still set planned intensity via objectives
+
+---
+
 ## Priority Order
 
 1. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
-2. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
-3. **Section 4 Phase 1** — Creator email platform: manual campaigns (immediate creator value, lays foundation for sequences)
-4. **Section 3** — Feedback board (self-contained feature, gives users a voice)
-5. **Section 4 Phase 2** — Email templates + scheduling
-6. **Section 5** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
-7. **Section 4 Phase 3** — Automated email sequences (builds on stable campaign infrastructure)
-8. **Section 6** — Video exchange (future)
+2. **Section 7** — RPE integration (core workout accuracy improvement, small surface area, no new collections)
+3. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
+4. **Section 4 Phase 1** — Creator email platform: manual campaigns (immediate creator value, lays foundation for sequences)
+5. **Section 3** — Feedback board (self-contained feature, gives users a voice)
+6. **Section 4 Phase 2** — Email templates + scheduling
+7. **Section 5** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
+8. **Section 4 Phase 3** — Automated email sequences (builds on stable campaign infrastructure)
+9. **Section 6** — Video exchange (future)

@@ -122,10 +122,30 @@ class OneRepMaxService {
    * @param {string} exerciseName - Exercise name
    * @returns {Array} - Array of history entries
    */
+  async getBatchHistory(userId, exerciseKeys) {
+    try {
+      const res = await apiClient.post('/workout/prs/batch-history', { keys: exerciseKeys });
+      const results = res?.data ?? {};
+      return exerciseKeys.map(key => {
+        const records = results[key]?.sessions ?? [];
+        return {
+          exerciseKey: key,
+          records: Array.isArray(records)
+            ? records.map(r => ({ date: r.date, value: r.estimate1RM }))
+            : [],
+        };
+      });
+    } catch (err) {
+      logger.error('[1RM] getBatchHistory error', err?.message);
+      return exerciseKeys.map(key => ({ exerciseKey: key, records: [] }));
+    }
+  }
+
   async getHistoryByKey(userId, exerciseKey) {
     try {
       const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
-      const records = res?.data ?? [];
+      const records = res?.data?.sessions ?? res?.data ?? [];
+      if (!Array.isArray(records)) return [];
       return records.map(r => ({ date: r.date, value: r.estimate1RM }));
     } catch (err) {
       logger.error('[1RM] getHistoryByKey error', exerciseKey, err?.message);
@@ -137,7 +157,8 @@ class OneRepMaxService {
     try {
       const exerciseKey = `${libraryId}_${exerciseName}`;
       const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
-      const records = res?.data ?? [];
+      const records = res?.data?.sessions ?? res?.data ?? [];
+      if (!Array.isArray(records)) return [];
       // PRHistoryChart expects { estimate, date: { seconds } }
       return records.map(r => ({
         id: r.date,

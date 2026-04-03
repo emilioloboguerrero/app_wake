@@ -425,7 +425,6 @@ const MainScreen = ({ navigation, route }) => {
   // Log auth state on mount for diagnostics
   useEffect(() => {
     if (!user?.uid) {
-      logger.warn('[MAIN_SCREEN] No uid available on MainScreen mount');
     }
   }, [user?.uid]);
 
@@ -447,7 +446,6 @@ const MainScreen = ({ navigation, route }) => {
   const [refreshing, setRefreshing] = useState(false);
   // Web: course ids whose card image has loaded — used to force re-render so mix-blend-mode repaints over the image
   const [cardImageLoadedIds, setCardImageLoadedIds] = useState(() => new Set());
-
 
   // Derive user profile from React Query data, falling back to auth state
   const userProfile = useMemo(() => {
@@ -779,7 +777,6 @@ const MainScreen = ({ navigation, route }) => {
     }
   };
 
-
   const getTrialMetadata = (course) => {
     const userCourseData = course?.userCourseData;
     const isTrial = userCourseData?.is_trial === true;
@@ -799,7 +796,6 @@ const MainScreen = ({ navigation, route }) => {
         isExpired = expirationTime <= now;
         isActive = expirationTime > now;
       } catch (error) {
-        logger.warn('⚠️ Error parsing trial expiration:', error);
       }
     }
 
@@ -1031,7 +1027,6 @@ const MainScreen = ({ navigation, route }) => {
       }
       
       if (!imageUrl) {
-        logger.warn(`⚠️ No image URL found for course ${course.id || course.courseId || 'unknown'}`);
       }
 
       // Web: per-pixel text color from image behind (mix-blend-mode: difference).
@@ -1365,7 +1360,6 @@ const MainScreen = ({ navigation, route }) => {
     
     return null;
   };
-
 
   return (
     <Animated.View style={{ flex: 1, opacity: screenAnim }}>

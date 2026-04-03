@@ -25,9 +25,9 @@ registerRoute(
     url.hostname === 'firebasestorage.googleapis.com' ||
     url.hostname.includes('storage.googleapis.com'),
   new CacheFirst({
-    cacheName: 'wake-storage-images',
+    cacheName: 'wake-storage-images-v2',
     plugins: [
-      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new CacheableResponsePlugin({ statuses: [200] }),
       new ExpirationPlugin({
         maxEntries: 200,
         maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
@@ -119,7 +119,7 @@ self.addEventListener('activate', (event) => {
         keys
           .filter((key) =>
             !key.startsWith('workbox-') &&
-            key !== 'wake-storage-images'
+            key !== 'wake-storage-images-v2'
           )
           .map((key) => caches.delete(key))
       )

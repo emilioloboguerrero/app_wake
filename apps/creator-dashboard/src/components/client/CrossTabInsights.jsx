@@ -8,7 +8,7 @@ function evaluateRules(labData) {
   const alerts = [];
 
   const rpe = labData.rpeAverage;
-  const adherence = labData.adherenceRate;
+  const adherence = labData.workoutAdherence ?? labData.adherenceRate;
   const nutritionAdherence = labData.nutritionAdherence;
   const stalledExercises = labData.stalledExercises || [];
   const readinessBreakdown = labData.readinessBreakdown || [];

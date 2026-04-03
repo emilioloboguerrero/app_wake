@@ -358,6 +358,12 @@ body.header-scrolled .program-page--compact-header {
   flex-shrink: 0;
 }
 
+.library-drag-overlay-avatar--img {
+  object-fit: cover;
+  background: none;
+  border: none;
+}
+
 .library-drag-overlay-title {
   font-size: 13px;
   font-weight: 500;

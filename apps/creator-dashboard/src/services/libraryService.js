@@ -214,12 +214,12 @@ class LibraryService {
     return res.data.exercises || [];
   }
 
-  async createExerciseInLibrarySession(_creatorId, sessionId, exerciseName, order = null) {
-    const res = await apiClient.post(`/creator/library/sessions/${sessionId}/exercises`, {
-      name: typeof exerciseName === 'string' ? exerciseName.trim() : (exerciseName?.name || ''),
-      primaryMuscles: exerciseName?.primaryMuscles || [],
-      order: order ?? 0,
-    });
+  async createExerciseInLibrarySession(_creatorId, sessionId, exerciseNameOrData, order = null) {
+    const isObj = exerciseNameOrData && typeof exerciseNameOrData === 'object';
+    const payload = isObj
+      ? { ...exerciseNameOrData, name: exerciseNameOrData.name || exerciseNameOrData.title || '', order: order ?? exerciseNameOrData.order ?? 0 }
+      : { name: (exerciseNameOrData || '').trim(), order: order ?? 0 };
+    const res = await apiClient.post(`/creator/library/sessions/${sessionId}/exercises`, payload);
     return res.data;
   }
 

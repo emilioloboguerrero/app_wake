@@ -1,51 +1,33 @@
-import apiClient from '../utils/apiClient';
-import logger from '../utils/logger.js';
+// Tutorial endpoints not yet migrated to Phase 3 API.
+// Returns empty results to avoid 404s. Re-enable when /users/me/tutorials is implemented.
 
 class TutorialManager {
-  async getTutorialsForScreen(userId, screenName, programId = null) {
-    try {
-      const params = programId ? { screenName, programId } : { screenName };
-      const result = await apiClient.get('/users/me/tutorials', { params });
-      return result?.data ?? [];
-    } catch (error) {
-      logger.error('❌ Error getting tutorials:', error);
-      return [];
-    }
+  async getTutorialsForScreen(_userId, _screenName, _programId = null) {
+    return [];
   }
 
-  async getProgramTutorials(userId, programId, screenName) {
-    return this.getTutorialsForScreen(userId, screenName, programId);
+  async getProgramTutorials(_userId, _programId, _screenName) {
+    return [];
   }
 
-  async getGeneralTutorials(userId, screenName) {
-    return this.getTutorialsForScreen(userId, screenName, null);
+  async getGeneralTutorials(_userId, _screenName) {
+    return [];
   }
 
-  async markTutorialCompleted(userId, screenName, videoUrl, programId = null) {
-    try {
-      const body = programId ? { screenName, videoUrl, programId } : { screenName, videoUrl };
-      await apiClient.post('/users/me/tutorials/complete', body);
-    } catch (error) {
-      logger.error('❌ Error marking tutorial as completed:', error);
-    }
+  async markTutorialCompleted(_userId, _screenName, _videoUrl, _programId = null) {
+    // no-op
   }
 
-  async markProgramTutorialCompleted(userId, programId, screenName, videoUrl) {
-    return this.markTutorialCompleted(userId, screenName, videoUrl, programId);
+  async markProgramTutorialCompleted(_userId, _programId, _screenName, _videoUrl) {
+    // no-op
   }
 
-  async markGeneralTutorialCompleted(userId, screenName) {
-    return this.markTutorialCompleted(userId, screenName, null, null);
+  async markGeneralTutorialCompleted(_userId, _screenName) {
+    // no-op
   }
 
-  async hasCompletedAllTutorials(userId, screenName, programId = null) {
-    try {
-      const tutorials = await this.getTutorialsForScreen(userId, screenName, programId);
-      return tutorials.length === 0;
-    } catch (error) {
-      logger.error('❌ Error checking tutorial completion:', error);
-      return false;
-    }
+  async hasCompletedAllTutorials(_userId, _screenName, _programId = null) {
+    return true;
   }
 }
 

@@ -112,7 +112,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   useEffect(() => {
     if (!effectiveUid) {
-      logger.warn('[ONBOARDING] No uid available — user:', !!user, 'auth.currentUser:', !!auth.currentUser);
     }
   }, [effectiveUid, user?.uid, auth.currentUser?.uid, route?.params, route?.name]);
 
@@ -1269,7 +1268,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
     const uidForSubmit = user?.uid || auth.currentUser?.uid;
     if (!uidForSubmit) {
-      logger.warn('[ONBOARDING] handleSubmit: No uid available — cannot save profile');
       Alert.alert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
       return;
     }
@@ -1358,7 +1356,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           // Reload user to propagate changes to AuthContext
           await auth.currentUser.reload();
         } catch (profileError) {
-          logger.warn('⚠️ Failed to update Firebase Auth displayName:', profileError);
           // Continue anyway, not critical
         }
       }
@@ -1372,7 +1369,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           cachedAt: Date.now()
         }));
       } catch (cacheError) {
-        logger.warn('⚠️ Failed to cache profile completion status:', cacheError);
         // Continue anyway - Firestore update is more important
       }
 
@@ -1479,7 +1475,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           {/* Spacer: clears expanded logo when scroll=0; scrolls away so no huge static padding */}
           <View style={{ height: scrollSpacerHeight }} />
           
-
           {/* Profile Picture and Name/Username Row */}
           <View style={styles.section}>
             <View style={styles.inputContainer}>

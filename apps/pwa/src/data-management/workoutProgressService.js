@@ -264,7 +264,6 @@ class WorkoutProgressService {
             };
           }
         } catch (e) {
-          logger.warn('Could not refresh modules for workout, using cache:', e?.message);
         }
       }
       // One-on-one: attach planned session id for selected date (or today)
@@ -352,7 +351,6 @@ class WorkoutProgressService {
             };
             return returnPayload;
           }
-          logger.warn('📦 [getCourseDataForWorkout] Course not found in Firestore either:', courseId);
         } catch (error) {
           logger.error('❌ Error in hybrid/Firestore path:', error);
         }
@@ -476,7 +474,7 @@ class WorkoutProgressService {
             });
           }
         } catch (parseError) {
-          logger.warn('⚠️ Failed to parse completion data for key:', key);
+          // Skip corrupted completion data
         }
       }
       

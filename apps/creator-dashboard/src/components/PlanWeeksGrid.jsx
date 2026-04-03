@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
@@ -74,6 +75,7 @@ const PlanWeeksGrid = ({
 }) => {
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
 
   // ─── Add session overlay state ──────────────────────────────────────────
   const [showCreateSession, setShowCreateSession] = useState(false);
@@ -392,7 +394,7 @@ const PlanWeeksGrid = ({
     setIsDuplicatingWeek(true);
     try {
       await plansService.duplicateModule(planId, mod.id);
-      await refreshModules();
+      await queryClient.invalidateQueries({ queryKey: ['plans', planId] });
       showToast('Semana duplicada', 'success');
     } catch (err) {
       logger.error('Error duplicating week:', err);
@@ -408,7 +410,40 @@ const PlanWeeksGrid = ({
   const handleConfirmDelete = async () => {
     if (!deleteConfirmTarget) return;
     const { type, mod, session, moduleId } = deleteConfirmTarget;
-    setIsDeleting(true);
+
+    // Optimistic update: remove from cache immediately
+    const planKey = ['plans', planId];
+    const modulesKey = ['plans', planId, 'modules'];
+    const prevPlan = queryClient.getQueryData(planKey);
+    const prevModules = queryClient.getQueryData(modulesKey);
+
+    if (type === 'week') {
+      queryClient.setQueryData(planKey, (old) => {
+        if (!old?.modules) return old;
+        return { ...old, modules: old.modules.filter((m) => (m.id ?? m.moduleId) !== mod.id) };
+      });
+      queryClient.setQueryData(modulesKey, (old) => {
+        if (!Array.isArray(old)) return old;
+        return old.filter((m) => (m.id ?? m.moduleId) !== mod.id);
+      });
+    } else if (type === 'session' && session && moduleId) {
+      const removeSession = (mods) => mods?.map((m) => {
+        if ((m.id ?? m.moduleId) !== moduleId) return m;
+        return { ...m, sessions: (m.sessions ?? []).filter((s) => (s.id ?? s.sessionId) !== session.id) };
+      });
+      queryClient.setQueryData(planKey, (old) => {
+        if (!old?.modules) return old;
+        return { ...old, modules: removeSession(old.modules) };
+      });
+      queryClient.setQueryData(modulesKey, (old) => {
+        if (!Array.isArray(old)) return old;
+        return removeSession(old);
+      });
+    }
+
+    setDeleteConfirmTarget(null);
+    showToast(type === 'week' ? 'Semana eliminada' : 'Sesion eliminada', 'success');
+
     try {
       if (type === 'week') {
         await plansService.deleteModule(planId, mod.id);
@@ -416,13 +451,11 @@ const PlanWeeksGrid = ({
       } else if (type === 'session' && session && moduleId) {
         await plansService.deleteSession(planId, moduleId, session.id);
       }
-      await refreshModules();
-      setDeleteConfirmTarget(null);
-      showToast(type === 'week' ? 'Semana eliminada' : 'Sesión eliminada', 'success');
     } catch (err) {
-      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesión'), 'error');
-    } finally {
-      setIsDeleting(false);
+      // Rollback on failure
+      queryClient.setQueryData(planKey, prevPlan);
+      queryClient.setQueryData(modulesKey, prevModules);
+      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesion'), 'error');
     }
   };
 

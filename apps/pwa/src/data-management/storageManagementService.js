@@ -46,7 +46,7 @@ class StorageManagementService {
           }
           
         } catch (error) {
-          logger.warn('⚠️ Failed to analyze key:', key);
+          // Skip unanalyzable keys
         }
       }
       

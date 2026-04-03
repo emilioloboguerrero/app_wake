@@ -1,16 +1,17 @@
+import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
 
-export default function ClientsWidget({ revenueQuery, oneOnOne }) {
+function ClientsWidget({ isLoading, isError, oneOnOne }) {
   const navigate = useNavigate();
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Clientes activos</p>
-      {revenueQuery.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : revenueQuery.isError ? (
+      ) : isError ? (
         <InlineError
           message="No pudimos cargar tus clientes. Toca para reintentar."
           field="clients"
@@ -36,3 +37,5 @@ export default function ClientsWidget({ revenueQuery, oneOnOne }) {
     </div>
   );
 }
+
+export default memo(ClientsWidget);

@@ -818,13 +818,14 @@ router.get("/workout/sessions", async (req, res) => {
 
   const courseId = req.query.courseId as string | undefined;
   const pageToken = req.query.pageToken as string | undefined;
-  const limit = 20;
+  const rawLimit = parseInt(req.query.limit as string, 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
 
   let query: Query = db
     .collection("users")
     .doc(auth.userId)
     .collection("sessionHistory")
-    .orderBy("completed_at", "desc")
+    .orderBy("completedAt", "desc")
     .limit(limit + 1);
 
   if (courseId) {
@@ -1181,6 +1182,39 @@ router.delete("/workout/checkpoint", async (req, res) => {
   }
 });
 
+// POST /workout/prs/batch-history — fetch multiple exercise histories in one call
+router.post("/workout/prs/batch-history", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { keys } = req.body;
+  if (!Array.isArray(keys) || keys.length === 0 || keys.length > 20) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "keys debe ser un array de 1 a 20 exercise keys", "keys"
+    );
+  }
+
+  const docs = await Promise.all(
+    keys.map((key: string) =>
+      db
+        .collection("users")
+        .doc(auth.userId)
+        .collection("exerciseHistory")
+        .doc(key)
+        .get()
+    )
+  );
+
+  const results: Record<string, unknown> = {};
+  for (let i = 0; i < keys.length; i++) {
+    const doc = docs[i];
+    results[keys[i]] = doc.exists ? doc.data() : { sessions: [] };
+  }
+
+  res.json({ data: results });
+});
+
 // GET /workout/prs/:exerciseKey/history
 router.get("/workout/prs/:exerciseKey/history", async (req, res) => {
   const auth = await validateAuth(req);
@@ -1449,8 +1483,11 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const isCreator = courseDoc.data()?.creator_id === auth.userId;
-  if (!hasAccess && !isCreator) {
+  const courseData_ = courseDoc.data()!;
+  const isCreator = courseData_.creator_id === auth.userId;
+  const isAdmin = auth.role === "admin";
+  const isPublished = courseData_.status === "published" || courseData_.status === "publicado";
+  if (!hasAccess && !isCreator && !isAdmin && !isPublished) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 

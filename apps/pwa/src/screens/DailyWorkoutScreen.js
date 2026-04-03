@@ -309,7 +309,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
               selectedSessionIndex: undefined
             });
           } else {
-            logger.warn('⚠️ Pre-selected session not found in allSessions, loading normally');
             // Clear params and load normally
             navigation.setParams({ 
               selectedSessionId: undefined,
@@ -370,16 +369,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         options
       );
 
-      logger.prod('[DailyWorkout] loadSessionState result:', {
-        targetDate: options.targetDate ?? 'none',
-        emptyReason: newState.emptyReason ?? 'none',
-        sessionTitle: newState.session?.title ?? 'null',
-        sessionId: newState.session?.id ?? newState.session?.sessionId ?? 'null',
-        workoutExercises: newState.workout?.exercises?.length ?? 0,
-        allSessionsCount: newState.allSessions?.length ?? 0,
-        error: newState.error ?? 'none',
-      });
-
       if (options.targetDate && newState.workout) {
         lastLoadedForDateRef.current = options.targetDate;
       }
@@ -430,7 +419,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       logger.error('❌ Error preloading images:', error);
     }
   };
-
 
   const handleStartWorkout = async () => {
     if (!sessionState.workout) return;
@@ -483,15 +471,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         session.sessionId || session.id,
         sessionIndex
       );
-
-      logger.prod('[DailyWorkout] selectSession result:', {
-        requestedId: session.sessionId || session.id,
-        sessionTitle: newState.session?.title ?? 'null',
-        sessionId: newState.session?.id ?? newState.session?.sessionId ?? 'null',
-        workoutExercises: newState.workout?.exercises?.length ?? 0,
-        emptyReason: newState.emptyReason ?? 'none',
-        error: newState.error ?? 'none',
-      });
 
       setSessionState(newState);
 
@@ -638,7 +617,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           </Text>
         </View>
         
-        
         {/* Current Session Indicator - "Actual" badge (gradient + glass, creator planificación style) */}
         {isCurrentSession && (
           <TouchableOpacity
@@ -763,8 +741,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       logger.error('❌ Error marking tutorial as completed:', error);
     }
   };
-
-
 
     return (
       <SafeAreaView style={styles.container}>

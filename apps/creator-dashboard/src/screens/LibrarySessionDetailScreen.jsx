@@ -480,6 +480,16 @@ const LibrarySessionDetailScreen = () => {
   const [newlyAddedIds, setNewlyAddedIds] = useState(new Set());
   const initialLoadAnimatedRef = useRef(false);
 
+  // Registry of flush callbacks from ExpandableExerciseCard instances (for flushing pending set saves before navigation)
+  const exerciseFlushRegistryRef = useRef(new Map());
+  const registerExerciseFlush = useCallback((exerciseId, flushFn) => {
+    if (flushFn) {
+      exerciseFlushRegistryRef.current.set(exerciseId, flushFn);
+    } else {
+      exerciseFlushRegistryRef.current.delete(exerciseId);
+    }
+  }, []);
+
   // Live sets map: exerciseId -> sets[] — fed by ExpandableExerciseCard children AND bulk preload for volume
   const [liveSetsMap, setLiveSetsMap] = useState({});
   const [volumeDataLoading, setVolumeDataLoading] = useState(true);
@@ -603,12 +613,14 @@ const LibrarySessionDetailScreen = () => {
         markLibraryChanged();
         return result;
       },
-      async createExerciseInLibrarySession(uid, sessId, exerciseName, order) {
+      async createExerciseInLibrarySession(uid, sessId, exerciseNameOrData, order) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.createExercise(planId, moduleId, sessId, exerciseName?.trim?.() || exerciseName || 'Ejercicio', order); setHasMadeChanges(true); return r; }
-        if (effectiveIsAnyPlanContentEdit) return planContentApi.createExercise(effectiveWeekKey, sessId, exerciseName?.trim?.() || exerciseName || 'Ejercicio', order ?? undefined);
-        if (effectiveIsClientEdit) return clientSessionContentService.createExercise(effectiveSessionId, { title: exerciseName?.trim?.() || exerciseName, name: exerciseName?.trim?.() || exerciseName }, order ?? 0);
-        const result = await libraryService.createExerciseInLibrarySession(uid, sessId, exerciseName, order);
+        const isObj = exerciseNameOrData && typeof exerciseNameOrData === 'object';
+        const nameStr = isObj ? (exerciseNameOrData.name || exerciseNameOrData.title || 'Ejercicio') : (exerciseNameOrData?.trim?.() || exerciseNameOrData || 'Ejercicio');
+        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.createExercise(planId, moduleId, sessId, nameStr, order); setHasMadeChanges(true); return r; }
+        if (effectiveIsAnyPlanContentEdit) return planContentApi.createExercise(effectiveWeekKey, sessId, isObj ? exerciseNameOrData : nameStr, order ?? undefined);
+        if (effectiveIsClientEdit) return clientSessionContentService.createExercise(effectiveSessionId, isObj ? exerciseNameOrData : { title: nameStr, name: nameStr }, order ?? 0);
+        const result = await libraryService.createExerciseInLibrarySession(uid, sessId, isObj ? exerciseNameOrData : { name: nameStr }, order);
         markLibraryChanged();
         return result;
       },
@@ -786,6 +798,7 @@ const LibrarySessionDetailScreen = () => {
     queryKey: ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
     queryFn: async () => {
       if (!user || !sessionId) return null;
+
       if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
         const sessionData = await plansService.getSessionById(planInstancePlanId, planInstanceModuleId, sessionId);
         if (!sessionData) return null;
@@ -807,6 +820,7 @@ const LibrarySessionDetailScreen = () => {
         const planContent = effIsProgramPlanEdit
           ? await programPlanContentService.getSessionContent(effProgramId, effWeekKey, sessionId)
           : await clientPlanContentService.getClientPlanSessionContent(effClientId, effProgramId, effWeekKey, sessionId);
+
         if (planContent?.session) {
           let exercises = planContent.exercises || [];
           const sessionFromPlan = planContent.session;
@@ -819,7 +833,7 @@ const LibrarySessionDetailScreen = () => {
                 exercises = libSession.exercises;
               }
             } catch (err) {
-              logger.warn('[LibrarySessionDetail] fallback: could not load exercises from library', sourceLibId, err);
+              console.error('[SessionDetail:queryFn] fallback: could not load exercises from library', sourceLibId, err);
             }
           }
           const clientSession = {
@@ -843,8 +857,8 @@ const LibrarySessionDetailScreen = () => {
       return { session: libSession, editMode: 'library' };
     },
     enabled: !!user && !!sessionId,
-    staleTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 30 * 1000 : 5 * 60 * 1000,
-    gcTime: (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 60 * 1000 : 10 * 60 * 1000,
+    staleTime: effectiveIsAnyPlanContentEdit ? 0 : (effectiveIsClientEdit || isPlanInstanceEdit) ? 30 * 1000 : 5 * 60 * 1000,
+    gcTime: effectiveIsAnyPlanContentEdit ? 0 : (effectiveIsClientEdit || isPlanInstanceEdit) ? 60 * 1000 : 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
@@ -1053,12 +1067,12 @@ const LibrarySessionDetailScreen = () => {
     sessionDataSeededRef.current = true;
     const { session: s, hasCopy } = sessionQueryData;
     if (!s) return;
+
     if (hasCopy !== undefined) {
       hasClientCopyRef.current = hasCopy;
       setHasClientCopy(hasCopy);
     }
     const seededExercises = (s.exercises || []).map((ex) => ({ ...ex, dragId: `session-${ex.id}`, isInSession: true }));
-    console.log('[seedSession] Seeding', seededExercises.length, 'exercises from', sessionQueryData.editMode, { exercises: seededExercises.map(e => ({ id: e.id, title: e.title || e.name, setsCount: e.sets?.length })) });
     setExercises(seededExercises);
     // Mark initial load stagger as done after animation duration
     setTimeout(() => { initialLoadAnimatedRef.current = true; }, seededExercises.length * 50 + 420);
@@ -1080,6 +1094,7 @@ const LibrarySessionDetailScreen = () => {
   useEffect(() => {
     if (!librariesData || librariesSeededRef.current) return;
     librariesSeededRef.current = true;
+
     setAvailableLibraries(librariesData);
     const libCache = {};
     librariesData.forEach(lib => {
@@ -1141,7 +1156,7 @@ const LibrarySessionDetailScreen = () => {
     if (selectedLibraryId) {
       loadExercisesFromLibrary(selectedLibraryId);
     }
-  }, [selectedLibraryId, loadExercisesFromLibrary]);
+  }, [selectedLibraryId, loadExercisesFromLibrary, exercises]);
 
   // Stable fingerprint of primary references — only changes when exercises are added/removed or primary refs change
   const exercisePrimaryFingerprint = useMemo(() => {
@@ -1350,19 +1365,27 @@ const LibrarySessionDetailScreen = () => {
     try {
       let createdExercise;
       if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-        createdExercise = await plansService.createExercise(planInstancePlanId, planInstanceModuleId, sessionId, newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio', nextOrder);
+        const name = newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio';
+        createdExercise = await plansService.createExercise(planInstancePlanId, planInstanceModuleId, sessionId, name, nextOrder);
         const realExId = createdExercise?.id || createdExercise?.exerciseId;
         if (realExId) {
           await plansService.updateExercise(planInstancePlanId, planInstanceModuleId, sessionId, realExId, newExercisePayload);
         }
       } else if (effectiveIsAnyPlanContentEdit) {
-        createdExercise = await planContentApi.createExercise(effectiveWeekKey, sessionId, newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio', nextOrder);
+        createdExercise = await planContentApi.createExercise(effectiveWeekKey, sessionId, newExercisePayload, nextOrder);
       } else if (effectiveIsClientEdit) {
         await ensureClientCopy();
         createdExercise = await clientSessionContentService.createExercise(effectiveClientSessionId, newExercisePayload, nextOrder);
       } else {
         createdExercise = await libraryService.addExerciseToLibrarySession(user.uid, sessionId, newExercisePayload);
         setHasMadeChanges(true);
+        queryClient.setQueryData(queryKeys.library.sessions(user.uid), (old) => {
+          if (!Array.isArray(old)) return old;
+          return old.map(s => s.id === sessionId
+            ? { ...s, exercises: [...(s.exercises || []), { id: createdExercise?.id || createdExercise?.exerciseId, name: newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : '', order: nextOrder }] }
+            : s
+          );
+        });
       }
 
       // Replace placeholder with real ID and transfer expanded state
@@ -1435,6 +1458,14 @@ const LibrarySessionDetailScreen = () => {
       } else {
         await libraryService.deleteLibrarySessionExercise(user.uid, sessionId, deletedId);
         setHasMadeChanges(true);
+        // Optimistically patch the sessions list cache so exercise count is correct on navigate-back
+        queryClient.setQueryData(queryKeys.library.sessions(user.uid), (old) => {
+          if (!Array.isArray(old)) return old;
+          return old.map(s => s.id === sessionId
+            ? { ...s, exercises: (s.exercises || []).filter(e => e.id !== deletedId && e.exerciseId !== deletedId) }
+            : s
+          );
+        });
       }
 
       // Refresh available exercises since we removed one from the session
@@ -1667,7 +1698,6 @@ const LibrarySessionDetailScreen = () => {
           const setsData = cached?.length > 0
             ? cached
             : await contentApi.getSetsByLibraryExercise(user.uid, sessionId, exercise.id);
-          console.log('[openExercise] Sets loaded for', exercise.id, { source: cached?.length > 0 ? 'cache' : 'api', count: setsData.length, sets: setsData.map(s => ({ id: s.id, reps: s.reps, intensity: s.intensity })) });
           setExerciseSets(setsData);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
           setUnsavedSetChanges({});
@@ -1717,7 +1747,6 @@ const LibrarySessionDetailScreen = () => {
       clearTimeout(saveSetTimeoutRef.current);
       saveSetTimeoutRef.current = null;
     }
-    console.log('[closeExercise] Flushing', pendingIds.length, 'pending saves on close:', pendingIds, { currentExerciseId, exerciseSets: exerciseSets.map(s => ({ id: s.id, reps: s.reps, intensity: s.intensity })) });
     pendingIds.forEach((id) => saveSetChangesRef.current?.(id));
 
     // Persist default set values before clearing (for existing exercise only)
@@ -2059,11 +2088,10 @@ const LibrarySessionDetailScreen = () => {
   };
 
   const handleSaveSetChanges = async (setId) => {
-    if (!user || !sessionId) { console.log('[saveSet] SKIP: no user or sessionId'); return; }
-    if (setId && setId.startsWith('pending-add-')) { console.log('[saveSet] SKIP: pending-add set', setId); return; }
+    if (!user || !sessionId) { return; }
+    if (setId && setId.startsWith('pending-add-')) { return; }
 
     if (isCreatingExercise) {
-      console.log('[saveSet] SKIP: isCreatingExercise, buffering locally', setId);
       const setIndex = exerciseSets.findIndex(s => s.id === setId);
       if (setIndex !== -1) {
         const updatedOriginalSets = [...originalExerciseSets];
@@ -2078,20 +2106,19 @@ const LibrarySessionDetailScreen = () => {
       return;
     }
 
-    if (!currentExerciseId) { console.log('[saveSet] SKIP: no currentExerciseId'); return; }
+    if (!currentExerciseId) { return; }
 
     const setIndex = exerciseSets.findIndex(s => s.id === setId);
-    if (setIndex === -1) { console.log('[saveSet] SKIP: set not found in exerciseSets', setId, 'available:', exerciseSets.map(s => s.id)); return; }
+    if (setIndex === -1) { return; }
 
     const set = exerciseSets[setIndex];
     const originalSet = originalExerciseSets.find(s => s.id === setId);
 
-    if (!set || !originalSet) { console.log('[saveSet] SKIP: set or originalSet null', { set: !!set, originalSet: !!originalSet }); return; }
+    if (!set || !originalSet) { return; }
 
     const updateData = {};
     let hasChanges = false;
     const fieldsToSave = (draftObjectives || []).filter(o => o !== 'previous').length ? (draftObjectives || []).filter(o => o !== 'previous') : ['reps', 'intensity'];
-    console.log('[saveSet] Diffing set', setId, { fieldsToSave, current: Object.fromEntries(fieldsToSave.map(f => [f, set[f]])), original: Object.fromEntries(fieldsToSave.map(f => [f, originalSet[f]])) });
     for (const field of fieldsToSave) {
       const current = set[field];
       const original = originalSet[field];
@@ -2107,13 +2134,11 @@ const LibrarySessionDetailScreen = () => {
       }
     }
 
-    if (!hasChanges) { console.log('[saveSet] SKIP: no changes detected for', setId); return; }
+    if (!hasChanges) { return; }
 
     try {
       setIsSavingSetChanges(true);
-      console.log('[saveSet] SAVING', { setId, exerciseId: currentExerciseId, sessionId, updateData, editScope: effectiveEditScope, isClientPlan: effectiveIsClientPlanEdit, isProgramPlan: effectiveIsProgramPlanEdit });
       await contentApi.updateSetInLibraryExercise(user.uid, sessionId, currentExerciseId, setId, updateData);
-      console.log('[saveSet] SUCCESS', setId);
       // Optimistic success: update "saved" baseline from current state (no refetch, no notification)
       setOriginalExerciseSets(prev => prev.map(s => s.id === setId ? { ...exerciseSets[setIndex] } : s));
       setUnsavedSetChanges(prev => {
@@ -2141,7 +2166,6 @@ const LibrarySessionDetailScreen = () => {
       const ids = Array.from(pendingSetSavesRef.current);
       pendingSetSavesRef.current.clear();
       saveSetTimeoutRef.current = null;
-      console.log('[scheduleSetSave] Flushing', ids.length, 'pending saves:', ids);
       ids.forEach((id) => {
         saveSetChangesRef.current?.(id);
       });
@@ -2585,40 +2609,38 @@ const LibrarySessionDetailScreen = () => {
     }
   };
 
-  // Fetch library usage count + affected count only after first mutation (deferred — saves ~67 Firestore reads on view-only visits)
+  // Refs to prevent duplicate propagation fetches
+  const propagationFetchedRef = useRef(false);
+  const detailsFetchedRef = useRef(false);
+
+  // Fetch library affected details (count + users + programs) after first mutation — single call replaces two separate fetches
   useEffect(() => {
     if (!hasMadeChanges) return;
     if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) return;
-    propagationService.findAffectedByLibrarySession(user.uid, sessionId)
-      .then(({ affectedUserIds, programCount }) => {
-        setLibraryUsageCount(programCount || affectedUserIds.length);
-        setPropagateAffectedCount(affectedUserIds.length);
+    if (propagationFetchedRef.current) return;
+    propagationFetchedRef.current = true;
+    propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId)
+      .then(({ users, programs, programCount }) => {
+        setLibraryUsageCount(programCount || users.length);
+        setPropagateAffectedCount(users.length);
+        setPropagateAffectedUsers(users);
+        setPropagateAffectedPrograms(programs);
+        detailsFetchedRef.current = true;
       })
       .catch((err) => console.error('[Propagation] Error fetching affected:', err));
   }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges]);
 
-  // Fetch plan affected count on mount (plan instance edit only)
-  const [planAffectedCount, setPlanAffectedCount] = useState(0);
-  useEffect(() => {
-    if (!isPlanInstanceEdit || !planInstancePlanId) return;
-    propagationService.findAffectedByPlan(planInstancePlanId)
-      .then(({ affectedUserIds }) => setPlanAffectedCount(affectedUserIds?.length ?? 0))
-      .catch(() => {});
-  }, [isPlanInstanceEdit, planInstancePlanId]);
-
-  // Eagerly fetch affected details (users + programs) once changes are made and references exist
-  const detailsFetchedRef = useRef(false);
-  useEffect(() => {
-    if (!hasMadeChanges || libraryUsageCount === 0 || !user?.uid || !sessionId) return;
-    if (detailsFetchedRef.current) return;
-    detailsFetchedRef.current = true;
-    propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId)
-      .then(({ users, programs }) => {
-        setPropagateAffectedUsers(users);
-        setPropagateAffectedPrograms(programs);
-      })
-      .catch((err) => logger.warn('Error fetching affected details:', err));
-  }, [hasMadeChanges, libraryUsageCount, user?.uid, sessionId]);
+  // Fetch plan affected count on mount (plan instance edit only) — React Query deduplicates in StrictMode
+  const { data: planAffectedCount = 0 } = useQuery({
+    queryKey: ['propagation', 'planAffected', planInstancePlanId],
+    queryFn: async () => {
+      const { affectedUserIds } = await propagationService.findAffectedByPlan(planInstancePlanId);
+      return affectedUserIds?.length ?? 0;
+    },
+    enabled: isPlanInstanceEdit && !!planInstancePlanId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
   // Block browser close/refresh when unpropagated changes
   useEffect(() => {
@@ -2635,7 +2657,56 @@ const LibrarySessionDetailScreen = () => {
     return () => window.removeEventListener('beforeunload', handler);
   }, [effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges, libraryUsageCount]);
 
-  const handleBack = () => {
+  // Flush plan content cache on tab hide / browser close
+  useEffect(() => {
+    if (!effectiveIsAnyPlanContentEdit) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (effectiveIsClientPlanEdit) {
+          clientPlanContentService.flushWeek(effectiveClientId, effectiveWeekKey);
+        } else if (effectiveIsProgramPlanEdit) {
+          programPlanContentService.flushWeek(effectiveProgramId, effectiveWeekKey);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [effectiveIsAnyPlanContentEdit, effectiveIsClientPlanEdit, effectiveIsProgramPlanEdit, effectiveClientId, effectiveProgramId, effectiveWeekKey]);
+
+  // Flush + invalidate plan content cache on unmount
+  useEffect(() => {
+    const cId = effectiveClientId;
+    const pId = effectiveProgramId;
+    const wk = effectiveWeekKey;
+    const isClientPlan = effectiveIsClientPlanEdit;
+    const isProgramPlan = effectiveIsProgramPlanEdit;
+    return () => {
+      if (isClientPlan && cId && wk) {
+        clientPlanContentService.flushWeek(cId, wk)
+          .catch(() => {})
+          .then(() => clientPlanContentService.invalidateWeek(cId, wk));
+      } else if (isProgramPlan && pId && wk) {
+        programPlanContentService.flushWeek(pId, wk)
+          .catch(() => {})
+          .then(() => programPlanContentService.invalidateWeek(pId, wk));
+      }
+    };
+  }, [effectiveIsClientPlanEdit, effectiveIsProgramPlanEdit, effectiveClientId, effectiveProgramId, effectiveWeekKey]);
+
+  const handleBack = async () => {
+    // Flush pending per-exercise set saves (debounced in useExerciseSets) — synchronously modifies the PlanContentCache
+    exerciseFlushRegistryRef.current.forEach((flushFn) => { try { flushFn(); } catch {} });
+
+    // Fire-and-forget: flush cache to server, then invalidate so next visit gets fresh data
+    if (effectiveIsClientPlanEdit) {
+      clientPlanContentService.flushWeek(effectiveClientId, effectiveWeekKey)
+        .catch(() => {})
+        .finally(() => clientPlanContentService.invalidateWeek(effectiveClientId, effectiveWeekKey));
+    } else if (effectiveIsProgramPlanEdit) {
+      programPlanContentService.flushWeek(effectiveProgramId, effectiveWeekKey)
+        .catch(() => {})
+        .finally(() => programPlanContentService.invalidateWeek(effectiveProgramId, effectiveWeekKey));
+    }
     const navState = hasMadeChanges ? { ...backState, sessionChanged: true } : backState;
     if (effectiveIsClientEdit || effectiveIsAnyPlanContentEdit) {
       if (sessionId) setStoredClientEditContext(sessionId, null);
@@ -3115,7 +3186,6 @@ const LibrarySessionDetailScreen = () => {
       const exerciseData = library?.[primary.exerciseName];
       const muscleActivation = exerciseData?.muscle_activation;
       if (!muscleActivation || typeof muscleActivation !== 'object') return;
-      // Use live sets from children if available, fall back to exercise.sets from initial load
       const sets = liveSetsMap[exercise.id] || exercise.sets || [];
       let effectiveSets = 0;
       sets.forEach((set) => {
@@ -3824,6 +3894,7 @@ const LibrarySessionDetailScreen = () => {
                       onAddMeasure={handleAddMeasure}
                       onRemoveMeasure={handleRemoveMeasure}
                       onSetsChanged={handleSetsChanged}
+                      registerFlush={registerExerciseFlush}
                       isEditMode={isEditMode}
                       onDelete={isEditMode ? handleDeleteExercise : null}
                       isIncomplete={isSessionExerciseIncomplete(exercise)}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { cacheConfig } from '../config/queryClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { cacheConfig, queryKeys } from '../config/queryClient';
+import videoExchangeService from '../services/videoExchangeService';
 import { View, StyleSheet, useWindowDimensions, TouchableOpacity, Animated, Linking, FlatList, Modal, Pressable, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
 import { ImageBackground, Image as ExpoImage } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
@@ -289,6 +290,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const { user: contextUser } = useAuth();
   const effectiveViewer = contextUser || auth.currentUser;
   const viewerUid = effectiveViewer?.uid || null;
+  const queryClient = useQueryClient();
   const [currentTabIndex, setCurrentTabIndex] = useState(0);
   
   // Calculate story card dimensions based on screen size
@@ -325,21 +327,32 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const storyScrollX = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
 
+  // Video exchange unread count for badge on program cards
+  const { data: videoExchangeUnread = 0 } = useQuery({
+    queryKey: queryKeys.videoExchanges.unreadCount(viewerUid),
+    queryFn: async () => {
+      try {
+        const exchanges = await videoExchangeService.getThreads({ status: 'open' });
+        if (!Array.isArray(exchanges)) return 0;
+        return exchanges.reduce((sum, ex) => sum + (ex.unreadByClient || 0), 0);
+      } catch { return 0; }
+    },
+    enabled: !!viewerUid,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   const { data: creatorData, isLoading: creatorLoading, isError: creatorFetchError } = useQuery({
     queryKey: ['creator', creatorId, 'viewer', viewerUid],
     queryFn: async () => {
       if (!creatorId) return null;
 
-      let viewerRole = 'user';
-      if (viewerUid) {
-        try {
-          const viewerDoc = await apiService.getUser(viewerUid);
-          viewerRole = viewerDoc?.role || 'user';
-        } catch { viewerRole = 'user'; }
-      }
+      // Get viewer role from cache instead of an extra /users/me call
+      const cachedUser = viewerUid ? queryClient.getQueryData(queryKeys.user.detail(viewerUid)) : null;
+      const viewerRole = cachedUser?.role || 'user';
 
       const [creatorDocResult, programsResult] = await Promise.all([
-        apiService.getUser(creatorId),
+        apiService.getPublicProfile(creatorId),
         apiService.getCoursesByCreatorId(creatorId),
       ]);
 
@@ -1423,6 +1436,9 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                 {program.discipline || 'Disciplina general'}
               </Text>
             </TouchableOpacity>
+            {videoExchangeUnread > 0 && (
+              <View style={styles.videoExchangeBadge} />
+            )}
           </View>
         </Animated.View>
       );
@@ -1438,6 +1454,9 @@ const CreatorProfileScreen = ({ navigation, route }) => {
             {program.discipline || 'Disciplina general'}
           </Text>
         </TouchableOpacity>
+        {videoExchangeUnread > 0 && (
+          <View style={styles.videoExchangeBadge} />
+        )}
       </Animated.View>
     );
   };
@@ -3328,6 +3347,18 @@ const createStyles = (screenWidth, screenHeight, STORY_CARD_WIDTH, STORY_CARD_HE
     textAlign: 'center',
     paddingVertical: Math.max(20, screenHeight * 0.025),
     lineHeight: Math.max(20, screenHeight * 0.025),
+  },
+  videoExchangeBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#1a1a1a',
+    zIndex: 20,
   },
 });
 

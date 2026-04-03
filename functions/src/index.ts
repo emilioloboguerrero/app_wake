@@ -2952,3 +2952,86 @@ export const sendCallReminders = onSchedule(
     functions.logger.info("sendCallReminders: done", {total: snapshot.size, sent24h, sent1h});
   }
 );
+
+// ─── Scheduled: cleanup old video exchange messages (30-day retention) ────
+
+export const cleanupVideoExchanges = onSchedule(
+  {
+    schedule: "every day 04:00",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const cutoff = admin.firestore.Timestamp.fromMillis(
+      Date.now() - 30 * 24 * 60 * 60 * 1000
+    );
+    const bucket = admin.storage().bucket();
+
+    const exchangesSnap = await db
+      .collection("video_exchanges")
+      .where("lastMessageAt", "<", cutoff)
+      .get();
+
+    if (exchangesSnap.empty) {
+      functions.logger.info("cleanupVideoExchanges: nothing to clean");
+      return;
+    }
+
+    let messagesDeleted = 0;
+    let messagesSaved = 0;
+    let exchangesDeleted = 0;
+
+    for (const exchangeDoc of exchangesSnap.docs) {
+      const messagesSnap = await exchangeDoc.ref.collection("messages").get();
+
+      let savedCount = 0;
+      let latestSavedAt: FirebaseFirestore.Timestamp | null = null;
+
+      for (const msgDoc of messagesSnap.docs) {
+        const msg = msgDoc.data();
+
+        if (msg.savedByCreator === true) {
+          savedCount++;
+          messagesSaved++;
+          const msgCreatedAt = msg.createdAt as FirebaseFirestore.Timestamp | undefined;
+          if (msgCreatedAt && (!latestSavedAt || msgCreatedAt.toMillis() > latestSavedAt.toMillis())) {
+            latestSavedAt = msgCreatedAt;
+          }
+          continue;
+        }
+
+        // Delete storage files
+        if (msg.videoPath) {
+          try { await bucket.file(msg.videoPath).delete(); } catch (_e) { /* file may already be gone */ }
+        }
+        if (msg.thumbnailPath) {
+          try { await bucket.file(msg.thumbnailPath).delete(); } catch (_e) { /* file may already be gone */ }
+        }
+
+        await msgDoc.ref.delete();
+        messagesDeleted++;
+      }
+
+      if (savedCount === 0) {
+        // No saved messages — delete the exchange doc
+        await exchangeDoc.ref.delete();
+        exchangesDeleted++;
+      } else {
+        // Some saved — update exchange
+        const updates: Record<string, unknown> = { status: "closed" };
+        if (latestSavedAt) {
+          updates.lastMessageAt = latestSavedAt;
+        }
+        await exchangeDoc.ref.update(updates);
+      }
+    }
+
+    functions.logger.info("cleanupVideoExchanges: done", {
+      exchangesProcessed: exchangesSnap.size,
+      exchangesDeleted,
+      messagesDeleted,
+      messagesSaved,
+    });
+  }
+);

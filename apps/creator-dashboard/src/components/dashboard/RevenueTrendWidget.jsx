@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
@@ -33,19 +34,19 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-export default function RevenueTrendWidget({ revenueTrendQuery }) {
-  const trend = revenueTrendQuery?.data?.data?.trend ?? [];
+function RevenueTrendWidget({ isLoading, isError, trendData }) {
+  const trend = trendData?.trend ?? [];
   const totalNet = trend.reduce((sum, m) => sum + m.net, 0);
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Tendencia de ingresos</p>
-      {revenueTrendQuery?.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : revenueTrendQuery?.isError ? (
+      ) : isError ? (
         <InlineError message="No pudimos cargar la tendencia." field="revenue-trend" />
       ) : trend.length === 0 ? (
-        <p className="ds-widget-empty">Cuando tengas tu primera venta, aquí verás la evolución de tus ingresos.</p>
+        <p className="ds-widget-empty">Cuando tengas tu primera venta, aqui veras la evolucion de tus ingresos.</p>
       ) : (
         <>
           <p className="ds-widget-number ds-widget-number--revenue">
@@ -80,3 +81,5 @@ export default function RevenueTrendWidget({ revenueTrendQuery }) {
     </div>
   );
 }
+
+export default memo(RevenueTrendWidget);

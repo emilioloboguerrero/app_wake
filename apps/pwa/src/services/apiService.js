@@ -18,7 +18,7 @@ class FirestoreService {
 
   async getUser(userId) {
     try {
-      const result = await apiClient.get('/users/me/full');
+      const result = await apiClient.get('/users/me');
       return result?.data ?? null;
     } catch (error) {
       if (error?.code === 'UNAUTHENTICATED') throw error;
@@ -27,8 +27,18 @@ class FirestoreService {
     }
   }
 
+  async getPublicProfile(userId) {
+    try {
+      const result = await apiClient.get(`/users/${userId}/public-profile`);
+      return result?.data ?? null;
+    } catch (error) {
+      logger.error('[getPublicProfile] error:', error);
+      return null;
+    }
+  }
+
   async updateUser(userId, userData) {
-    await apiClient.patch('/users/me/full', userData);
+    await apiClient.patch('/users/me', userData);
   }
 
   async getPinnedTrainingCourseId(userId) {
@@ -144,7 +154,6 @@ class FirestoreService {
       const result = await apiClient.get('/workout/calendar/completed', { params: { courseId, startDate, endDate } });
       return result?.data ?? [];
     } catch (error) {
-      logger.warn('[getDatesWithCompletedPlannedSessions] error:', error?.message);
       return [];
     }
   }
@@ -175,19 +184,7 @@ class FirestoreService {
           if (!personalizedSession) {
             const weekKey = clientSession.week_key
               || getMondayWeek(date_timestamp?.toDate?.() || (date_timestamp ? new Date(date_timestamp) : new Date()));
-            logger.prod('[firestoreService] resolvePlannedSessionContent client_plan_content lookup:', {
-              session_id,
-              weekKey,
-              weekKeySource: clientSession.week_key ? 'week_key_field' : 'computed_from_date',
-              docId: `${client_id}_${program_id}_${weekKey}`,
-            });
             const clientCopy = await this.getClientPlanContentCopy(client_id, program_id, weekKey, options);
-            logger.prod('[firestoreService] resolvePlannedSessionContent clientCopy result:', {
-              hasCopy: !!clientCopy,
-              sessionCount: clientCopy?.sessions?.length ?? 0,
-              sessionIds: clientCopy?.sessions?.map((s) => s.id) ?? [],
-              lookingFor: session_id,
-            });
             personalizedSession = clientCopy?.sessions?.find((s) => s.id === session_id) ?? null;
           }
           if (personalizedSession) {
@@ -213,7 +210,7 @@ class FirestoreService {
           const fromLib = await this._resolvePlannedSessionFromLibrary(effectiveCreatorId, session_id, options);
           if (fromLib) return fromLib;
         }
-        logger.warn('resolvePlannedSessionContent: library_session_ref but no creator_id');
+        // library_session_ref but no creator_id
       }
       return null;
     } catch (error) {
@@ -284,16 +281,11 @@ class FirestoreService {
    */
   async getClientPlanContentCopy(userId, programId, weekKey, options = {}) {
     try {
-      logger.prod('[firestoreService] getClientPlanContentCopy:', { userId, programId, weekKey, minimal: !!options.minimal });
       const result = await apiClient.get(`/workout/client-plan-content/${userId}/${programId}/${weekKey}`);
       const data = result?.data ?? null;
       if (data && options.minimal && data.sessions) {
         data.sessions = data.sessions.map((s) => ({ ...s, exercises: [] }));
       }
-      logger.prod('[firestoreService] getClientPlanContentCopy sessions loaded:', {
-        sessionCount: data?.sessions?.length ?? 0,
-        minimal: !!options.minimal,
-      });
       return data;
     } catch (error) {
       return null;
@@ -427,7 +419,7 @@ class FirestoreService {
 
   async getUserActiveCourses(userId) {
     try {
-      const result = await apiClient.get('/users/me/full');
+      const result = await apiClient.get('/users/me');
       const userData = result?.data;
       if (!userData?.courses) return [];
       const now = new Date();
@@ -440,28 +432,25 @@ class FirestoreService {
             ? (expiresAt && new Date(expiresAt) > now ? 'active' : 'expired')
             : null;
           return {
+            id: courseId,
             courseId,
-            courseData: {
-              status: e.status,
-              access_duration: e.access_duration,
-              expires_at: e.expires_at,
-              purchased_at: e.purchased_at,
-              deliveryType: e.deliveryType,
-              title: e.title,
-              image_url: e.image_url,
+            title: e.title || 'Curso sin título',
+            image_url: e.image_url || '',
+            creatorName: e.creatorName || null,
+            discipline: e.discipline || 'General',
+            status: e.status,
+            access_duration: e.access_duration,
+            expires_at: e.expires_at,
+            purchased_at: e.purchased_at,
+            deliveryType: e.deliveryType,
+            is_trial: e.is_trial,
+            trial_consumed: e.trial_consumed,
+            userCourseData: {
               is_trial: e.is_trial,
-              trial_consumed: e.trial_consumed,
+              trial_expires_at: e.trial_expires_at || null,
+              expires_at: e.expires_at || null,
             },
             purchasedAt: e.purchased_at || null,
-            courseDetails: {
-              id: courseId,
-              title: e.title || 'Curso sin título',
-              image_url: e.image_url || '',
-              discipline: e.discipline || 'General',
-              creatorName: e.creatorName || null,
-            },
-            trialInfo: isTrial ? { state: trialState, expiresAt } : null,
-            trialHistory: null,
             isTrialCourse: isTrial,
           };
         });
@@ -552,7 +541,7 @@ class FirestoreService {
    */
   async getUserCourseVersion(userId, courseId) {
     try {
-      const result = await apiClient.get('/users/me/full');
+      const result = await apiClient.get('/users/me');
       return result?.data?.courses?.[courseId] ?? null;
     } catch (error) {
       logger.error('❌ Error getting user course version:', error);
@@ -602,7 +591,7 @@ class FirestoreService {
   // ============ COURSES ============
 
   async getCoursesByCreatorId(creatorId) {
-    const result = await apiClient.get('/creator/courses');
+    const result = await apiClient.get(`/courses?creatorId=${encodeURIComponent(creatorId)}`);
     return result?.data ?? [];
   }
 

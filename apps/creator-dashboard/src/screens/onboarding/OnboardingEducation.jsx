@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
 import apiClient from '../../utils/apiClient';
 import { ASSET_BASE } from '../../config/assets';
@@ -168,7 +168,8 @@ function EdgeZone({ side, onClick, visible }) {
 
 export default function OnboardingEducation() {
   const navigate = useNavigate();
-  const { refreshUserData } = useAuth();
+  const { refreshUserData, user } = useAuth();
+  const firstName = user?.displayName?.split(' ')[0] || '';
   const [phase, setPhase] = useState('welcome');
   const [current, setCurrent] = useState(0);
   const prevRef = useRef(0);
@@ -181,12 +182,6 @@ export default function OnboardingEducation() {
     setTitleVisible(false);
     setTimeout(() => setPhase('screens'), 1400);
   }, [phase]);
-
-  useEffect(() => {
-    if (phase !== 'welcome') return;
-    const timer = setTimeout(startTransition, 2000);
-    return () => clearTimeout(timer);
-  }, [phase, startTransition]);
 
   const Screen = screens[current];
   const t = transitions[current] || transitions[0];
@@ -236,7 +231,7 @@ export default function OnboardingEducation() {
   // Compute pixel sizes from viewport so motion can interpolate numbers
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
-  const welcomeSize = Math.min(vh * 0.4, vw * 0.4);
+  const welcomeSize = 96;
   const watermarkSize = Math.min(vh * 0.8, vw * 0.8);
 
   return (
@@ -244,16 +239,18 @@ export default function OnboardingEducation() {
       <AuroraBackground />
       <div className="ob-grid" />
 
-      {/* Persistent isotipo — centered wrapper, motion only animates width/height/opacity */}
+      {/* Persistent isotipo — small top during welcome, large centered watermark during screens */}
       <div className="ob-isotipo-anchor">
         <motion.img
           src={`${ASSET_BASE}wake-isotipo-negativo.png`}
           alt=""
-          initial={{ opacity: 0, width: welcomeSize, height: welcomeSize }}
+          initial={{ opacity: 0, width: welcomeSize, height: welcomeSize, x: '-50%', top: 180 }}
           animate={{
-            opacity: showIsotipo ? (isWelcome ? 0.9 : 0.035) : 0,
+            opacity: showIsotipo ? (isWelcome ? 0.7 : 0.035) : 0,
             width: isWelcome ? welcomeSize : watermarkSize,
             height: isWelcome ? welcomeSize : watermarkSize,
+            top: isWelcome ? 180 : (vh - watermarkSize) / 2,
+            x: '-50%',
           }}
           transition={{ duration: 1.2, ease: springEase }}
         />
@@ -268,17 +265,36 @@ export default function OnboardingEducation() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.6, ease: springEase }}
-            onClick={startTransition}
           >
-            <div className="ob-welcome-spacer" />
+            {firstName && (
+              <motion.p
+                className="ob-welcome-greeting"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7, ease: springEase, delay: 0.2 }}
+              >
+                Bienvenido, <span className="ob-welcome-name">{firstName}</span>
+              </motion.p>
+            )}
             <motion.h1
               className="ob-welcome-title"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: springEase, delay: 0.3 }}
+              transition={{ duration: 0.8, ease: springEase, delay: firstName ? 0.5 : 0.3 }}
             >
-              Esto es Wake
+              Te vamos a mostrar<br /><span className="ob-welcome-bold">como funciona todo</span>
             </motion.h1>
+            <motion.button
+              className="ob-welcome-cta"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.6, ease: springEase, delay: firstName ? 0.9 : 0.7 }}
+              onClick={startTransition}
+            >
+              Comenzar
+            </motion.button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -289,10 +305,6 @@ export default function OnboardingEducation() {
           {!isLastScreen && <div className="ob-separator" />}
           <PlatformTree step={current + 1} prevStep={prevRef.current + 1} />
 
-          <div className="ob-counter">
-            {String(current + 1).padStart(2, '0')} / {String(screens.length).padStart(2, '0')}
-          </div>
-
           {!isLastScreen && (
             <>
               <EdgeZone side="left" onClick={goPrev} visible={current > 0} />
@@ -300,18 +312,20 @@ export default function OnboardingEducation() {
             </>
           )}
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={current}
-              initial={t.enter}
-              animate={t.animate}
-              exit={t.exit}
-              transition={t.transition}
-              className="ob-screen-wrap"
-            >
-              <Screen onNext={goNext} onPrev={goPrev} onFinish={handleFinish} />
-            </motion.div>
-          </AnimatePresence>
+          <LayoutGroup>
+            <AnimatePresence mode="popLayout">
+              <motion.div
+                key={current}
+                initial={t.enter}
+                animate={t.animate}
+                exit={t.exit}
+                transition={t.transition}
+                className="ob-screen-wrap"
+              >
+                <Screen onNext={goNext} onPrev={goPrev} onFinish={handleFinish} />
+              </motion.div>
+            </AnimatePresence>
+          </LayoutGroup>
 
           <AnimatePresence>
             {hintVisible && (
@@ -337,7 +351,7 @@ export default function OnboardingEducation() {
             )}
           </AnimatePresence>
 
-          <div className="ob-progress-track" style={{ width: isLastScreen ? '100%' : '62%' }}>
+          <div className="ob-progress-track">
             <motion.div
               animate={{ width: `${((current + 1) / screens.length) * 100}%` }}
               transition={{ duration: 0.6, ease: springEase }}

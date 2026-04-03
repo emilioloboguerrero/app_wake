@@ -8,6 +8,8 @@ import { queryClient } from './config/queryClient';
 import LoginScreen from './screens/LoginScreen.web';
 import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
+import wakeDebug from './utils/wakeDebug';
+import apiClient from './utils/apiClient';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
@@ -34,6 +36,17 @@ const AuthProvider = require('./contexts/AuthContext').AuthProvider;
 const ActivityStreakProvider = require('./contexts/ActivityStreakContext').ActivityStreakProvider;
 const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
+// Wake Debug instrumentation — activate with localStorage.WAKE_DEBUG = '1'
+wakeDebug.patchApiClient(apiClient);
+wakeDebug.patchQueryClient(queryClient);
+wakeDebug.startMemoryTracking();
+if (wakeDebug.IS_ENABLED) {
+  try {
+    const firestoreModule = require('firebase/firestore');
+    wakeDebug.patchFirestore(firestoreModule);
+  } catch { /* firestore not available */ }
+}
+
 // CRITICAL: DO NOT import useMontserratFonts from './config/fonts'
 // That file conditionally calls useFonts from expo-google-fonts, which violates Rules of Hooks
 // Instead, define it inline here to ensure consistent hook order on web
@@ -58,9 +71,6 @@ const useMontserratFontsWeb = () => {
 };
 
 // Verify this is the web version (safety check)
-if (typeof window === 'undefined' || typeof document === 'undefined') {
-  logger.warn('[APP] WARNING: useMontserratFonts is being used in non-web environment!');
-}
 
 // Inject Montserrat font link at runtime – ensures font loads in dev (Expo dev server
 // doesn't use web/index.html) and production (backup if index.html link is missing)
@@ -216,12 +226,6 @@ export default function App() {
   const fontsLoaded = fontsLoadedFromHook;
 
   // Production debug: log on mount so we see something in console (Safari etc.)
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const { isSafariWeb } = require('./utils/platform');
-      logger.prod('App.web mounted', window.location.pathname, 'Safari:', isSafariWeb());
-    }
-  }, []);
 
   // Service worker management (for both login and non-login routes)
   React.useEffect(() => {
@@ -263,14 +267,11 @@ export default function App() {
             if (!res) return null;
             const ct = res && res.headers ? res.headers.get('content-type') || '' : '';
             if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
-              safeLog('log', '[WAKE] Skipping SW registration: ' + swPath + ' not served as JavaScript');
               return null;
             }
             return navigator.serviceWorker.register(swPath);
           })
-            .then((registration) => {
-              if (registration) safeLog('log', '✅ Service Worker registered:', registration);
-            })
+            .then(() => {})
             .catch((error) => {
               safeLog('error', '❌ Service Worker registration failed:', error);
             });
@@ -439,7 +440,6 @@ export default function App() {
           const { initQueryPersistence } = require('./config/queryPersistence.web');
           initQueryPersistence(queryClient);
         } catch (persistError) {
-          safeLog('warn', 'React Query IndexedDB persistence failed to initialize (non-critical):', persistError);
         }
 
         // Request persistent storage for better quota (non-blocking with timeout)
@@ -449,7 +449,6 @@ export default function App() {
             navigator.storage.persist(),
             new Promise(resolve => setTimeout(resolve, 1000)) // 1 second timeout
           ]).catch((error) => {
-            if (mounted) safeLog('warn', '⚠️ Persistent storage request failed:', error);
           });
         }
 

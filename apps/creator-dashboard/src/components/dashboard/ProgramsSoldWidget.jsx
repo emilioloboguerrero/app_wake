@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { NumberTicker, SkeletonCard } from '../ui';
 import { InlineError } from '../ui/ErrorStates';
@@ -23,21 +24,20 @@ function CustomTooltip({ active, payload }) {
   );
 }
 
-export default function ProgramsSoldWidget({ trendQuery }) {
-  const data = trendQuery?.data?.data;
-  const salesTrend = data?.salesTrend ?? [];
-  const totalOneOnOne = data?.totalOneOnOne ?? 0;
-  const totalProgramsSold = data?.totalProgramsSold ?? 0;
+function ProgramsSoldWidget({ isLoading, isError, trendData }) {
+  const salesTrend = trendData?.salesTrend ?? [];
+  const totalOneOnOne = trendData?.totalOneOnOne ?? 0;
+  const totalProgramsSold = trendData?.totalProgramsSold ?? 0;
 
   return (
     <div className="ds-widget-inner">
       <p className="ds-widget-title">Programas vendidos</p>
-      {trendQuery?.isLoading ? (
+      {isLoading ? (
         <SkeletonCard />
-      ) : trendQuery?.isError ? (
+      ) : isError ? (
         <InlineError message="No pudimos cargar las ventas." field="programs-sold" />
       ) : totalProgramsSold === 0 && totalOneOnOne === 0 ? (
-        <p className="ds-widget-empty">Aquí verás cuántos programas has vendido y clientes 1:1 tienes.</p>
+        <p className="ds-widget-empty">Aqui veras cuantos programas has vendido y clientes 1:1 tienes.</p>
       ) : (
         <>
           <div className="ds-programs-stats">
@@ -73,3 +73,5 @@ export default function ProgramsSoldWidget({ trendQuery }) {
     </div>
   );
 }
+
+export default memo(ProgramsSoldWidget);

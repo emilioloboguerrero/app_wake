@@ -5,6 +5,7 @@ import { cacheConfig } from '../../config/queryClient';
 import TimeRangeSelector from '../ui/TimeRangeSelector';
 import ClientLabBentoGrid from './ClientLabBentoGrid';
 import ClientLabDetailSections from './ClientLabDetailSections';
+import VideoExchangeSection from './VideoExchangeSection';
 import './ClientLabTab.css';
 
 const RANGES = [
@@ -68,6 +69,14 @@ export default function ClientLabTab({ clientId, clientUserId, clientName, creat
         isLoading={detailLoading}
         clientName={clientName}
         range={range}
+      />
+
+      {/* ── Video Exchanges ────────────────────────────────────── */}
+      <VideoExchangeSection
+        clientId={clientId}
+        clientUserId={clientUserId}
+        creatorId={creatorId}
+        oneOnOneClientId={clientId}
       />
     </div>
   );

@@ -326,9 +326,6 @@ class LocalCourseCache {
             };
             
             coursesWithContent.push(courseForDisplay);
-          } else {
-            logger.warn('⚠️ Course content not found locally, skipping:', courseInfo.courseId);
-            // Skip courses that don't have downloaded content
           }
         } catch (error) {
           logger.error('❌ Failed to load content for course:', courseInfo.courseId, error);

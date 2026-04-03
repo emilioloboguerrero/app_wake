@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import logger from '../utils/logger';
 import { isSafariWeb, isWeb } from '../utils/platform';
 
 const AuthContext = createContext({});
@@ -20,7 +19,6 @@ export const AuthProvider = ({ children }) => {
     if (initialized) return;
 
     const safari = isSafariWeb();
-    logger.prod('AUTH init', { safari, fallbackMs: safari ? 3000 : 10000 });
     setInitialized(true);
     resolvedRef.current = false;
 
@@ -32,10 +30,8 @@ export const AuthProvider = ({ children }) => {
     };
 
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
-      logger.prod('AUTH onAuthStateChanged', resolvedRef.current ? 'SUBSEQUENT' : 'INITIAL', authUser ? authUser.uid : null);
       resolve(authUser);
-    }, (error) => {
-      logger.prod('AUTH onAuthStateChanged ERROR', String(error?.message || error));
+    }, () => {
       resolve(null);
     });
 
@@ -43,10 +39,7 @@ export const AuthProvider = ({ children }) => {
     const fallbackMs = safari ? 3000 : 10000;
     const timeout = setTimeout(() => {
       if (!resolvedRef.current) {
-        logger.prod('AUTH TIMEOUT FALLBACK', fallbackMs + 'ms');
-        const currentUser = auth.currentUser;
-        logger.prod('AUTH TIMEOUT FALLBACK currentUser', currentUser ? currentUser.uid : null);
-        resolve(currentUser);
+        resolve(auth.currentUser);
       }
     }, fallbackMs);
 
