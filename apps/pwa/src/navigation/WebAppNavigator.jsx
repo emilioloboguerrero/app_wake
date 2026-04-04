@@ -41,7 +41,7 @@ import PRsScreen from '../screens/PRsScreen.web';
 import SessionDetailScreen from '../screens/SessionDetailScreen.web';
 import PRDetailScreen from '../screens/PRDetailScreen.web';
 import LabScreen from '../screens/LabScreen.web';
-import OnboardingFlow from '../screens/onboarding/OnboardingFlow.web';
+import OnboardingEducation from '../screens/onboarding/education/OnboardingEducation.web';
 import EventsManagementScreen from '../screens/EventsManagementScreen.web';
 import EventCheckinScreen from '../screens/EventCheckinScreen.web';
 import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
@@ -69,11 +69,11 @@ const CreatorRouteGuard = ({ children }) => {
   return children;
 };
 
-// Memoized error boundary wrapper — avoids creating a new component type on every render
-const OnboardingFlowWithBoundary = withErrorBoundary(OnboardingFlow, 'OnboardingFlow');
+// Memoized error boundary wrapper for onboarding
+const OnboardingEducationWithBoundary = withErrorBoundary(OnboardingEducation, 'OnboardingEducation');
 
-// Unified onboarding flow (profile + questions in one component)
-const OnboardingFlowRoute = ({ initialStep = 0 }) => {
+// Onboarding route wrapper — passes onComplete that refreshes profile and navigates home
+const OnboardingRoute = () => {
   const ctx = useContext(RefreshProfileContext);
   const navigate = useNavigate();
   const refreshUserProfile = ctx?.refreshUserProfile;
@@ -84,7 +84,7 @@ const OnboardingFlowRoute = ({ initialStep = 0 }) => {
     }
     navigate('/', { replace: true });
   }, [refreshUserProfile, navigate]);
-  return <OnboardingFlowWithBoundary initialStep={initialStep} onComplete={onComplete} />;
+  return <OnboardingEducationWithBoundary onComplete={onComplete} />;
 };
 
 // Derive the CSS transition class for a navigation event.
@@ -540,7 +540,7 @@ const WebAppNavigator = () => {
         path="/onboarding"
         element={
           <AuthenticatedLayout>
-            <OnboardingFlowRoute initialStep={0} />
+            <OnboardingRoute />
           </AuthenticatedLayout>
         }
       />
@@ -548,7 +548,7 @@ const WebAppNavigator = () => {
         path="/onboarding/questions"
         element={
           <AuthenticatedLayout>
-            <OnboardingFlowRoute initialStep={4} />
+            <OnboardingRoute />
           </AuthenticatedLayout>
         }
       />

@@ -168,21 +168,6 @@ const getExerciseLibraryService = () => {
   }
 };
 
-const getExerciseHistoryService = () => {
-  const startTime = performance.now();
-  try {
-    const service = require('../services/exerciseHistoryService').default;
-    const duration = performance.now() - startTime;
-    if (duration > 50) {
-    }
-    return service;
-  } catch (error) {
-    const duration = performance.now() - startTime;
-    logger.error(`[TIMING] [ERROR] exerciseHistoryService failed after ${duration.toFixed(2)}ms:`, error);
-    throw error;
-  }
-};
-
 const getOneRepMaxService = () => {
   const startTime = performance.now();
   try {
@@ -774,7 +759,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const objectivesInfoService = getObjectivesInfoService();
   const tutorialManager = getTutorialManager();
   const exerciseLibraryService = getExerciseLibraryService();
-  const exerciseHistoryService = getExerciseHistoryService();
   const oneRepMaxService = getOneRepMaxService();
   
   // programMediaService - Skip on web, lazy load on native
@@ -3578,14 +3562,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         try {
           const libraryData = await exerciseLibraryService.getLibraryDocument(libraryId);
           if (libraryData) {
-            Object.entries(libraryData).forEach(([exerciseName, exerciseData]) => {
-              if (exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at' && exerciseName !== 'id') {
+            // API returns { id, creator_name, title, exercises: { name: data } }
+            const exercises = libraryData.exercises || libraryData;
+            Object.entries(exercises).forEach(([exerciseName, exerciseData]) => {
+              if (typeof exerciseData === 'object' && exerciseData !== null && exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at' && exerciseName !== 'id') {
                 exerciseEntries.push({
                   name: exerciseName,
                   description: exerciseData.description || '',
                   video_url: exerciseData.video_url || '',
                   muscle_activation: exerciseData.muscle_activation || {},
-                  implements: exerciseData.implements || [],
+                  implements: Array.isArray(exerciseData.implements) ? exerciseData.implements : [],
                   libraryId: libraryId
                 });
               }
@@ -3861,18 +3847,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                    const currentUser = user || auth.currentUser;
                    
                    if (currentUser?.uid && course?.courseId) {
-                     // Save all current exercise data before completing
+                     // Save only exercises that have actual user data before completing
                      for (let exerciseIndex = 0; exerciseIndex < workout.exercises.length; exerciseIndex++) {
                        const exercise = workout.exercises[exerciseIndex];
                        const allSets = [];
-                       
+                       let hasAnyData = false;
+
                        for (let setIndex = 0; setIndex < exercise.sets.length; setIndex++) {
                          const setKey = `${exerciseIndex}_${setIndex}`;
                          const currentSetData = setData[setKey] || {};
                          allSets.push(currentSetData);
+                         const hasReps = currentSetData.reps && currentSetData.reps !== '' && !isNaN(parseFloat(currentSetData.reps));
+                         const hasWeight = currentSetData.weight && currentSetData.weight !== '' && !isNaN(parseFloat(currentSetData.weight));
+                         if (hasReps || hasWeight) hasAnyData = true;
                        }
-                       
-                       await sessionManager.addExerciseData(exercise.id, exercise.name, allSets);
+
+                       if (hasAnyData) {
+                         await sessionManager.addExerciseData(exercise.id, exercise.name, allSets);
+                       }
                      }
                      
                      // Complete the session using new session manager
@@ -3880,20 +3872,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     
                     const workoutWithSetData = {
                       ...workout,
-                      exercises: workout.exercises.map((exercise, exerciseIndex) => ({
-                        ...exercise,
-                        sets: exercise.sets.map((set, setIndex) => {
+                      exercises: workout.exercises.map((exercise, exerciseIndex) => {
+                        const setsWithData = exercise.sets.map((set, setIndex) => {
                           const key = `${exerciseIndex}_${setIndex}`;
                           const actualSetData = setData[key] || {};
-                          
+
                           return {
                             ...set,
-                            // Use actual user data, but preserve template values for intensity
                             weight: actualSetData.weight || '',
                             reps: actualSetData.reps || '',
-                            intensity: actualSetData.intensity || set.intensity || '', // ✅ Preserve template intensity
-                            rir: actualSetData.rir || '', // ✅ Add RIR if available
-                            // Add any other fields that might be present
+                            intensity: actualSetData.intensity || set.intensity || '',
+                            rir: actualSetData.rir || '',
                             time: actualSetData.time || '',
                             distance: actualSetData.distance || '',
                             pace: actualSetData.pace || '',
@@ -3902,8 +3891,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             rest_time: actualSetData.rest_time || '',
                             duration: actualSetData.duration || ''
                           };
-                        })
-                      }))
+                        });
+                        return { ...exercise, sets: setsWithData };
+                      }).filter((exercise) => {
+                        // Only include exercises where at least one set has actual data
+                        return exercise.sets.some(s => {
+                          const hasReps = s.reps && s.reps !== '' && !isNaN(parseFloat(s.reps));
+                          const hasWeight = s.weight && s.weight !== '' && !isNaN(parseFloat(s.weight));
+                          const hasTime = s.time && s.time !== '' && !isNaN(parseFloat(s.time));
+                          const hasDistance = s.distance && s.distance !== '' && !isNaN(parseFloat(s.distance));
+                          return hasReps || hasWeight || hasTime || hasDistance;
+                        });
+                      })
                     };
                     
                     const result = await sessionService.completeSession(
@@ -4411,167 +4410,107 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const initializeWorkout = async () => {
-    const initStartTime = performance.now();
     try {
       setLoading(true);
-      
-      // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
+
       const currentUser = user || auth.currentUser;
 
-      // Load previous session data
-      const loadDataStartTime = performance.now();
-      await loadPreviousSessionData(currentUser);
-      const loadDataDuration = performance.now() - loadDataStartTime;
-      
-      // Load 1RM estimates for weight suggestions
-      if (currentUser?.uid) {
-        const oneRmStartTime = performance.now();
-        const estimates = await oneRepMaxService.getEstimatesForUser(currentUser.uid);
-        const oneRmDuration = performance.now() - oneRmStartTime;
-        if (oneRmDuration > 2000) {
-        }
-        setOneRepMaxEstimates(estimates);
-      }
-      
-      // Start workout session
-      const sessionStartTime = performance.now();
-      await startWorkoutSession();
-      const sessionDuration = performance.now() - sessionStartTime;
-      if (sessionDuration > 2000) {
-      }
-      
-      async function startWorkoutSession() {
-      // Check if there's already an active session
+      // Run all initialization in parallel: previousData, 1RM estimates, session start, tutorials
+      // Each promise catches independently so one failure doesn't break the others
+      const [, estimates, , ] = await Promise.all([
+        enrichPreviousData().catch(() => {}),
+        currentUser?.uid
+          ? oneRepMaxService.getEstimatesForUser(currentUser.uid).catch(() => ({}))
+          : Promise.resolve({}),
+        startWorkoutSession(currentUser).catch(err => {
+          logger.error('Error starting workout session:', err);
+        }),
+        checkForTutorials().catch(() => {}),
+      ]);
+      setOneRepMaxEstimates(estimates || {});
+
+      async function startWorkoutSession(resolvedUser) {
         let session = await sessionManager.getCurrentSession();
-      
+
         if (!session) {
-        // Start a new workout session if none exists
-          const currentUserForSession = currentUser || user || auth.currentUser;
-          if (!currentUserForSession?.uid) {
-            return;
-          }
+          const currentUserForSession = resolvedUser || user || auth.currentUser;
+          if (!currentUserForSession?.uid) return;
           const sessionIdValue = workout.sessionId || sessionId;
-          
+
           session = await sessionManager.startSession(
             currentUserForSession.uid,
-            course.courseId, 
+            course.courseId,
             sessionIdValue,
             workout.title || 'Workout Session'
-        );
-      } else {
+          );
+        }
+
+        setSessionData(session);
       }
-      
-      setSessionData(session);
-      }
-      
-      // Check for tutorials after workout initializes
-      await checkForTutorials();
-      
+
     } catch (error) {
-      const totalInitDuration = performance.now() - initStartTime;
-      logger.error(`[ASYNC] [ERROR] initializeWorkout() failed after ${totalInitDuration.toFixed(2)}ms:`, error);
-      logger.error('❌ Error initializing workout:', error);
+      logger.error('Error initializing workout:', error);
     } finally {
       setLoading(false);
-      const totalInitDuration = performance.now() - initStartTime;
-      if (totalInitDuration > 10000) {
-      }
     }
   };
 
-  const loadPreviousSessionData = async (resolvedUser = null) => {
-    const asyncStartTime = performance.now();
-    try {
-      
-      // Resolve user with fallback to Firebase auth.currentUser (same pattern as other screens)
-      const currentUser = resolvedUser || user || auth.currentUser;
-      
-      // Check if user exists before proceeding
-      if (!currentUser?.uid) {
-        const duration = performance.now() - asyncStartTime;
-        return;
-      }
-      
-      if (!workout?.exercises || workout.exercises.length === 0) {
-        const duration = performance.now() - asyncStartTime;
-        return;
-      }
-      
-      const exercisesCount = workout.exercises.length;
-      
-      // Load previous data for each exercise from last performance cache
-      const exerciseHistoryPromises = workout.exercises.map(async (exercise, index) => {
-        const exerciseStartTime = performance.now();
-        try {
-          // Generate exercise key using libraryId and exercise name (same format as exercise history)
-          const libraryId = Object.keys(exercise.primary)[0];
-          const exerciseName = exercise.primary[libraryId];
-          const exerciseKey = `${libraryId}_${exerciseName}`;
-          
-          // Double-check user exists before making the call
-          if (!currentUser?.uid) {
-            return; // Skip this exercise
-          }
-          
-          // Get last exercise performance with timeout protection
-          const historyStartTime = performance.now();
-          let timeoutId = null;
-          const lastPerformanceData = await Promise.race([
-            exerciseHistoryService.getLastExercisePerformance(currentUser.uid, exerciseKey),
-            new Promise((_, reject) => {
-              timeoutId = setTimeout(() => {
-                if (isMountedRef.current) {
-                  reject(new Error('Last exercise performance request timeout'));
-                }
-              }, 10000);
-              allTimeoutIdsRef.current.push(timeoutId);
-            })
-          ]).finally(() => {
-            // Clear timeout if promise resolved/rejected before timeout
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-              allTimeoutIdsRef.current = allTimeoutIdsRef.current.filter(id => id !== timeoutId);
-            }
-          });
-          const historyDuration = performance.now() - historyStartTime;
+  // Fetch previousData from exerciseHistory via a single batch call, then
+  // attach to exercises via setWorkout so React re-renders with the data.
+  const enrichPreviousData = async () => {
+    if (!workout?.exercises?.length) return;
 
-          if (lastPerformanceData && lastPerformanceData.bestSet) {
-            // Attach previous data (best set of last session) to exercise
-            exercise.previousData = {
-              bestSet: lastPerformanceData.bestSet,
-              totalSets: lastPerformanceData.totalSets,
-              exerciseName: exerciseName,
-              lastPerformed: lastPerformanceData.lastPerformedAt
-            };
-          } else {
-          }
-          
-          const exerciseDuration = performance.now() - exerciseStartTime;
-          if (exerciseDuration > 2000) {
-          }
-        } catch (error) {
-          const exerciseDuration = performance.now() - exerciseStartTime;
-          logger.error(`[ASYNC] [ERROR] Last performance ${index + 1}/${exercisesCount} failed after ${exerciseDuration.toFixed(2)}ms:`, error);
-          logger.error(`❌ Error loading last performance for exercise:`, error);
-        }
+    // Build exercise keys from primary map
+    const keys = workout.exercises.map(ex => {
+      const libraryId = ex.primary ? Object.keys(ex.primary)[0] : null;
+      const exName = libraryId ? ex.primary[libraryId] : ex.name;
+      return libraryId && exName ? `${libraryId}_${exName}` : null;
+    });
+
+    const validKeys = keys.filter(Boolean);
+    if (validKeys.length === 0) return;
+
+    try {
+      const apiClient = require('../utils/apiClient').default;
+      const res = await apiClient.post('/workout/prs/batch-history', { keys: validKeys });
+      const historyMap = res?.data ?? {};
+
+      let changed = false;
+      const updated = workout.exercises.map((exercise, i) => {
+        const key = keys[i];
+        if (!key) return exercise;
+
+        const history = historyMap[key];
+        const sessions = history?.sessions ?? history?.entries ?? [];
+        if (sessions.length === 0) return exercise;
+
+        // arrayUnion appends, so last element is the most recent session
+        const latest = sessions[sessions.length - 1];
+        const sets = latest?.sets ?? [];
+        const bestSet = sets.reduce((best, s) => {
+          const w = Number(s?.weight) || 0;
+          return w > (Number(best?.weight) || 0) ? s : best;
+        }, null);
+
+        if (!bestSet) return exercise;
+
+        changed = true;
+        return {
+          ...exercise,
+          previousData: {
+            bestSet,
+            totalSets: sets.length,
+            exerciseName: exercise.name,
+            lastPerformed: latest.date ?? null,
+          },
+        };
       });
-      
-      // Wait for all exercise history queries to complete
-      const promiseAllStartTime = performance.now();
-      await Promise.all(exerciseHistoryPromises);
-      const promiseAllDuration = performance.now() - promiseAllStartTime;
-      if (promiseAllDuration > 5000) {
+
+      if (changed) {
+        setWorkout(prev => ({ ...prev, exercises: updated }));
       }
-      
-      const totalDuration = performance.now() - asyncStartTime;
-      if (totalDuration > 10000) {
-      }
-      
     } catch (error) {
-      const totalDuration = performance.now() - asyncStartTime;
-      logger.error(`[ASYNC] [ERROR] loadPreviousSessionData() failed after ${totalDuration.toFixed(2)}ms:`, error);
-      logger.error('❌ Error loading previous session data:', error);
-      // Continue without previous data - not critical
+      logger.error('Error fetching exercise history for previousData:', error);
     }
   };
 
@@ -4612,10 +4551,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Get metric value for display cards (handles "previous" specially)
   const getMetricValueForCard = (metricName) => {
     if (!metricName) return '--';
-    
+
     const currentExercise = workout?.exercises?.[currentExerciseIndex];
     if (!currentExercise) return '--';
-    
+
     // Special handling for "previous"
     if (metricName.toLowerCase() === 'previous') {
       const previousData = workout.exercises[currentExerciseIndex]?.previousData;
@@ -4666,55 +4605,32 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Get weight suggestion for current set (if available)
   const getWeightSuggestion = () => {
+    if (!course.weight_suggestions) return null;
 
-    // Check 1: Program has weight suggestions enabled
-    if (!course.weight_suggestions) {
-      return null;
-    }
-
-    // Defensive checks for workout/indices
     const exercise = workout?.exercises?.[currentExerciseIndex];
-    if (!exercise || !exercise.sets || exercise.sets.length === 0) {
-      return null;
-    }
+    if (!exercise || !exercise.sets || exercise.sets.length === 0) return null;
     const set = exercise.sets[currentSetIndex];
 
-    // Check 2: Set has reps and intensity objectives
-    if (!set?.reps || !set?.intensity) {
-      return null;
-    }
+    if (!set?.reps || !set?.intensity) return null;
 
-    // Parse objectives
     const objectiveReps = oneRepMaxService.parseReps(set.reps);
     const objectiveIntensity = oneRepMaxService.parseIntensity(set.intensity);
+    if (!objectiveIntensity) return null;
 
-    if (!objectiveIntensity) {
-      return null;
-    }
-
-    // Get 1RM estimate for this exercise
-    if (!exercise.primary || Object.keys(exercise.primary).length === 0) {
-      return null;
-    }
+    if (!exercise.primary || Object.keys(exercise.primary).length === 0) return null;
     const libraryId = Object.keys(exercise.primary)[0];
     const exerciseName = exercise.primary[libraryId];
     const exerciseKey = `${libraryId}_${exerciseName}`;
 
     const estimate = oneRepMaxEstimates?.[exerciseKey]?.current;
+    if (!estimate) return null;
 
-    if (!estimate) {
-      return null;
-    }
-
-    // Calculate suggestion
-    const suggestion = oneRepMaxService.calculateWeightSuggestion(
+    return oneRepMaxService.calculateWeightSuggestion(
       estimate,
       objectiveReps,
       objectiveIntensity,
       exercise.muscle_activation
     );
-
-    return suggestion;
   };
 
   // Simple validation - just check if it's a valid number
@@ -4995,7 +4911,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // TEST MODE: Original code below (disabled via conditional above)
   // TEST VERSION 1: Everything below is disabled - Minimal test
   // To re-enable, set TEST_MODE_ENABLED to false above
-  
+
   return (
     <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
       {(() => {

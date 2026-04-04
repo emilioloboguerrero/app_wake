@@ -93,15 +93,28 @@ class OneRepMaxService {
       const prs = res?.data ?? [];
       const estimates = {};
       prs.forEach(pr => {
-        estimates[pr.exerciseKey] = {
-          current: pr.estimate1RM,
-          lastUpdated: pr.lastUpdated,
-          achievedWith: pr.achievedWith,
-        };
+        // The /workout/prs endpoint returns raw exerciseLastPerformance docs.
+        // Compute 1RM from bestSet if available, using a default intensity of 8.
+        const bestSet = pr.bestSet ?? (pr.sets ?? []).reduce((best, s) => {
+          const w = Number(s?.weight) || 0;
+          return w > (Number(best?.weight) || 0) ? s : best;
+        }, null);
+
+        const weight = Number(bestSet?.weight) || 0;
+        const reps = Number(bestSet?.reps) || 0;
+
+        if (weight > 0 && reps > 0) {
+          const estimated1RM = this.calculate1RM(weight, reps, 8);
+          estimates[pr.exerciseKey] = {
+            current: estimated1RM,
+            lastUpdated: pr.date ?? null,
+            achievedWith: bestSet,
+          };
+        }
       });
       return estimates;
     } catch (error) {
-      logger.error('❌ getEstimatesForUser: Error fetching estimates:', error);
+      logger.error('Error fetching 1RM estimates:', error);
       return {};
     }
   }
@@ -131,7 +144,22 @@ class OneRepMaxService {
         return {
           exerciseKey: key,
           records: Array.isArray(records)
-            ? records.map(r => ({ date: r.date, value: r.estimate1RM }))
+            ? records
+                .map(r => {
+                  let bestEstimate = 0;
+                  const sets = r.sets ?? [];
+                  for (const s of sets) {
+                    const weight = parseFloat(s.weight);
+                    const reps = parseFloat(s.reps);
+                    if (weight > 0 && reps > 0) {
+                      const estimate = weight * (1 + 0.0333 * reps);
+                      if (estimate > bestEstimate) bestEstimate = estimate;
+                    }
+                  }
+                  if (bestEstimate <= 0) return null;
+                  return { date: r.date, value: Math.round(bestEstimate * 10) / 10 };
+                })
+                .filter(Boolean)
             : [],
         };
       });
@@ -146,7 +174,22 @@ class OneRepMaxService {
       const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
       const records = res?.data?.sessions ?? res?.data ?? [];
       if (!Array.isArray(records)) return [];
-      return records.map(r => ({ date: r.date, value: r.estimate1RM }));
+      return records
+        .map(r => {
+          let bestEstimate = 0;
+          const sets = r.sets ?? [];
+          for (const s of sets) {
+            const weight = parseFloat(s.weight);
+            const reps = parseFloat(s.reps);
+            if (weight > 0 && reps > 0) {
+              const estimate = weight * (1 + 0.0333 * reps);
+              if (estimate > bestEstimate) bestEstimate = estimate;
+            }
+          }
+          if (bestEstimate <= 0) return null;
+          return { date: r.date, value: Math.round(bestEstimate * 10) / 10 };
+        })
+        .filter(Boolean);
     } catch (err) {
       logger.error('[1RM] getHistoryByKey error', exerciseKey, err?.message);
       return [];
@@ -160,13 +203,32 @@ class OneRepMaxService {
       const records = res?.data?.sessions ?? res?.data ?? [];
       if (!Array.isArray(records)) return [];
       // PRHistoryChart expects { estimate, date: { seconds } }
-      return records.map(r => ({
-        id: r.date,
-        estimate: r.estimate1RM,
-        date: { seconds: new Date(r.date).getTime() / 1000 },
-      }));
+      // Sessions store { date, sessionId, sets } — compute best 1RM from sets
+      return records
+        .map(r => {
+          let bestEstimate = 0;
+          const sets = r.sets ?? [];
+          for (const s of sets) {
+            const weight = parseFloat(s.weight);
+            const reps = parseFloat(s.reps);
+            if (weight > 0 && reps > 0) {
+              const estimate = weight * (1 + 0.0333 * reps);
+              if (estimate > bestEstimate) bestEstimate = estimate;
+            }
+          }
+          if (bestEstimate <= 0) return null;
+          const dateMs = r.date?._seconds
+            ? r.date._seconds * 1000
+            : new Date(r.date).getTime();
+          return {
+            id: r.date,
+            estimate: Math.round(bestEstimate * 10) / 10,
+            date: { seconds: dateMs / 1000 },
+          };
+        })
+        .filter(Boolean);
     } catch (error) {
-      logger.error('❌ getHistoryForExercise: Error:', error);
+      logger.error('getHistoryForExercise: Error:', error);
       return [];
     }
   }

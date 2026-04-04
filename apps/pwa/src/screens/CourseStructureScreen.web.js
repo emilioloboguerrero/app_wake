@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import LoadingScreen from './LoadingScreen';
 import firestoreService from '../services/apiService';
+import { useAuth } from '../contexts/AuthContext';
 // Import the base component
 const CourseStructureScreenModule = require('./CourseStructureScreen.js');
 const CourseStructureScreenBase = CourseStructureScreenModule.default;
@@ -13,19 +14,20 @@ const CourseStructureScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { courseId } = useParams();
+  const { user, loading: authLoading } = useAuth();
   const courseFromState = location.state?.course;
 
   const { data: course, isLoading: loading } = useQuery({
     queryKey: ['programs', courseId],
     queryFn: async () => {
-      if (courseFromState) return courseFromState;
+      if (courseFromState) return { ...courseFromState, courseId: courseFromState.courseId || courseFromState.id || courseId, id: courseFromState.id || courseFromState.courseId || courseId };
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) return null;
       return {
+        ...courseData,
         id: courseData.id || courseId,
         courseId: courseData.id || courseId,
         title: courseData.title || 'Programa sin título',
-        ...courseData,
       };
     },
     enabled: !!courseId || !!courseFromState,
@@ -67,10 +69,10 @@ const CourseStructureScreen = () => {
     }
   };
   
-  if (loading) {
+  if (loading || authLoading || !user) {
     return <LoadingScreen />;
   }
-  
+
   if (!course) {
     return (
       <div style={{ 

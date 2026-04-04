@@ -26,6 +26,6 @@ export function initQueryPersistence(queryClient) {
     queryClient,
     persister: idbPersister,
     maxAge: MAX_AGE_MS,
-    buster: 'api-migration-v4', // bumped: sessions orderBy fix + 1RM history shape fix
+    buster: 'api-migration-v7', // bumped: workout execution data shape debugging
   });
 }

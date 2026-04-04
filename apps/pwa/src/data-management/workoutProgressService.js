@@ -248,7 +248,7 @@ class WorkoutProgressService {
       if (courseData?.courseData?.isOneOnOne === true && (!courseData.courseData.modules || courseData.courseData.modules.length === 0) && effectiveUserId) {
         const moduleOpts = { cacheInMemory: true, ttlMs: 5 * 60 * 1000 };
         if (weekKeyForTarget) moduleOpts.weekKey = weekKeyForTarget;
-        const modules = await apiService.getCourseModules(courseId, effectiveUserId, moduleOpts);
+        const modules = await apiService.getCourseModules(courseId, { includeSessions: true });
         if (modules) {
           courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
         }
@@ -256,7 +256,7 @@ class WorkoutProgressService {
       // For non-one-on-one programs, merge fresh modules from Firestore so creator dashboard changes (reorder, move sessions) are visible without re-downloading
       if (!courseData?.courseData?.isOneOnOne && courseData?.courseData) {
         try {
-          const freshModules = await apiService.getCourseModules(courseId, effectiveUserId);
+          const freshModules = await apiService.getCourseModules(courseId, { includeSessions: true });
           if (freshModules && Array.isArray(freshModules)) {
             courseData = {
               ...courseData,
@@ -264,6 +264,7 @@ class WorkoutProgressService {
             };
           }
         } catch (e) {
+          // fresh modules fetch failed, continue with cached data
         }
       }
       // One-on-one: attach planned session id for selected date (or today)
@@ -290,7 +291,7 @@ class WorkoutProgressService {
           
           if (hybridCourse) {
             const moduleOptsHybrid = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
-            const modulesToUse = await apiService.getCourseModules(courseId, effectiveUserId, moduleOptsHybrid);
+            const modulesToUse = await apiService.getCourseModules(courseId, { includeSessions: true });
             const plannedHybrid = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = hybridCourse.deliveryType === 'one_on_one' || hybridCourse.isOneOnOne === true;
             const plannedIdHybrid = isOneOnOne && plannedHybrid
@@ -322,7 +323,7 @@ class WorkoutProgressService {
           const firestoreModuleOpts = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
           const [firestoreCourse, modules] = await Promise.all([
             apiService.getCourse(courseId),
-            apiService.getCourseModules(courseId, effectiveUserId, firestoreModuleOpts)
+            apiService.getCourseModules(courseId, { includeSessions: true })
           ]);
           if (firestoreCourse) {
             courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {

@@ -90,8 +90,9 @@ class FirestoreService {
     }
   }
 
-  async getCourseModules(courseId) {
-    return apiClient.get(`/workout/programs/${courseId}/modules`).then(r => r?.data ?? []);
+  async getCourseModules(courseId, { includeSessions = false } = {}) {
+    const params = includeSessions ? { include: 'sessions' } : undefined;
+    return apiClient.get(`/workout/programs/${courseId}/modules`, { params }).then(r => r?.data ?? []);
   }
 
   async getSessionOverrides(programId, moduleId, sessionId) {

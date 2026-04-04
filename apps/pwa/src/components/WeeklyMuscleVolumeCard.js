@@ -30,15 +30,20 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
       apiClient.get('/analytics/weekly-volume', {
         params: { startDate: toYMD(start), endDate: toYMD(end) },
       }),
-    enabled: !!userId && !sessionMuscleVolumes,
+    enabled: !!userId,
     ...cacheConfig.analytics,
   });
 
   const weeklyVolumes = useMemo(() => {
-    if (sessionMuscleVolumes) return sessionMuscleVolumes;
     const weeks = volumeData?.data || [];
     const weekEntry = weeks.find((w) => w.weekKey === targetWeek);
-    return weekEntry?.muscleBreakdown || {};
+    const apiVolumes = weekEntry?.muscleVolumes || weekEntry?.muscleBreakdown || {};
+
+    // If we have API data, use it (already includes all sessions this week)
+    if (Object.keys(apiVolumes).length > 0) return apiVolumes;
+
+    // Fall back to session volumes if API returned nothing
+    return sessionMuscleVolumes || {};
   }, [sessionMuscleVolumes, volumeData, targetWeek]);
 
   const getSubtitle = () => {

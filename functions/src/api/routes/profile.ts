@@ -39,6 +39,7 @@ router.get("/users/me", async (req, res) => {
       webOnboardingCompleted: data.webOnboardingCompleted ?? false,
       profileCompleted: data.profileCompleted ?? false,
       onboardingCompleted: data.onboardingCompleted ?? false,
+      bibliotecaGuideCompleted: data.bibliotecaGuideCompleted ?? false,
       courses: data.courses ?? {},
       bio: data.bio ?? null,
       creatorNavPreferences: data.creatorNavPreferences ?? null,
@@ -95,7 +96,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
     "height", "weight", "birthDate", "phoneNumber",
     "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
     "beholdFeedId",
-    "webOnboardingCompleted", "profileCompleted", "onboardingCompleted",
+    "webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted",
     "onboardingData",
     "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
     "howTheyFoundUs", "creatorOnboardingData",
@@ -115,7 +116,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   ]);
   const urlFields = new Set(["websiteUrl", "profilePictureUrl"]);
   const numberFields = new Set(["height", "weight", "goalWeight"]);
-  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted"]);
+  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted"]);
   const objectFields = new Set(["creatorOnboardingData", "onboardingData", "creatorNavPreferences", "socialLinks"]);
   const arrayFields = new Set(["creatorSpecializations"]);
 

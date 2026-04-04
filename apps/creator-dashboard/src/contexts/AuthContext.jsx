@@ -70,6 +70,7 @@ export const AuthProvider = ({ children }) => {
   const [webOnboardingCompleted, setWebOnboardingCompleted] = useState(null);
   const [profileCompleted, setProfileCompleted] = useState(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState(null);
+  const [bibliotecaGuideCompleted, setBibliotecaGuideCompleted] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authenticating, setAuthenticating] = useState(false);
 
@@ -86,6 +87,7 @@ export const AuthProvider = ({ children }) => {
           setWebOnboardingCompleted(data.webOnboardingCompleted ?? false);
           setProfileCompleted(data.profileCompleted ?? false);
           setOnboardingCompleted(data.onboardingCompleted ?? false);
+          setBibliotecaGuideCompleted(data.bibliotecaGuideCompleted ?? false);
         } catch (error) {
           console.error('[AuthContext] Error fetching user data:', error);
           const message = error?.status === 0
@@ -96,12 +98,14 @@ export const AuthProvider = ({ children }) => {
           setWebOnboardingCompleted(false);
           setProfileCompleted(false);
           setOnboardingCompleted(false);
+          setBibliotecaGuideCompleted(false);
         }
       } else {
         setUserRole(null);
         setWebOnboardingCompleted(null);
         setProfileCompleted(null);
         setOnboardingCompleted(null);
+        setBibliotecaGuideCompleted(null);
       }
   };
 
@@ -139,13 +143,14 @@ export const AuthProvider = ({ children }) => {
     webOnboardingCompleted,
     profileCompleted,
     onboardingCompleted,
+    bibliotecaGuideCompleted,
     isCreator: isCreatorValue,
     isAdmin: isAdminValue,
     authError,
     refreshUserData
   }), [user, userRole, loading, authenticating, webOnboardingCompleted,
-       profileCompleted, onboardingCompleted, isCreatorValue, isAdminValue,
-       authError, refreshUserData]);
+       profileCompleted, onboardingCompleted, bibliotecaGuideCompleted,
+       isCreatorValue, isAdminValue, authError, refreshUserData]);
 
   return (
     <AuthContext.Provider value={value}>

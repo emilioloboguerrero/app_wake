@@ -31,7 +31,7 @@ import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
-import { getMondayWeek } from '../utils/weekCalculation';
+import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { auth } from '../config/firebase';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
@@ -53,30 +53,51 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     queryKey: ['user', userId],
     queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
     enabled: !!userId,
-    staleTime: STALE_TIMES.userProfile,
+    staleTime: 0,
     gcTime: GC_TIMES.userProfile,
+  });
+
+  // Fetch weekly volume from analytics (computed from sessionHistory — always up to date)
+  const currentWeek = useMemo(() => getMondayWeek(), []);
+  const weekDates = useMemo(() => getWeekDates(currentWeek), [currentWeek]);
+  const toYMD = (d) => d.toISOString().split('T')[0];
+
+  const { data: analyticsVolumeData } = useQuery({
+    queryKey: ['analytics', 'weekly-volume', userId, currentWeek],
+    queryFn: () => apiClient.get('/analytics/weekly-volume', {
+      params: { startDate: toYMD(weekDates.start), endDate: toYMD(weekDates.end) },
+    }),
+    enabled: !!userId,
+    staleTime: 0,
+    gcTime: STALE_TIMES.exerciseHistory,
   });
 
   const userDisplayName = userData?.displayName || '';
   const username = userData?.username || userData?.displayName || '';
 
+  // Weekly muscle volumes: prefer user doc, fall back to analytics endpoint
   const weeklyMuscleVolumes = useMemo(() => {
-    if (!userData?.weeklyMuscleVolume) return null;
-    const currentWeek = getMondayWeek();
-    return userData.weeklyMuscleVolume[currentWeek] || null;
-  }, [userData]);
+    // Try user doc first
+    if (userData?.weeklyMuscleVolume?.[currentWeek]) {
+      const vol = userData.weeklyMuscleVolume[currentWeek];
+      if (Object.keys(vol).length > 0) return vol;
+    }
+    // Fall back to analytics endpoint (computed from sessionHistory)
+    const weeks = analyticsVolumeData?.data || [];
+    const weekEntry = weeks.find((w) => w.weekKey === currentWeek);
+    return weekEntry?.muscleVolumes || null;
+  }, [userData, analyticsVolumeData, currentWeek]);
 
   const lastWeekMuscleVolumes = useMemo(() => {
     if (!userData?.weeklyMuscleVolume) return null;
     const allWeeks = Object.keys(userData.weeklyMuscleVolume);
     if (allWeeks.length === 0) return null;
-    const currentWeek = getMondayWeek();
     const sorted = allWeeks.slice().sort();
     const currentIndex = sorted.indexOf(currentWeek);
     const prevIndex = currentIndex > 0 ? currentIndex - 1 : (currentIndex === -1 && sorted.length >= 2 ? sorted.length - 2 : -1);
     if (prevIndex < 0) return null;
     return userData.weeklyMuscleVolume[sorted[prevIndex]] || null;
-  }, [userData]);
+  }, [userData, currentWeek]);
 
   const [loading, setLoading] = useState(true);
   const [completionNotes, setCompletionNotes] = useState(route.params?.sessionData?.userNotes ?? '');
@@ -1354,26 +1375,23 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           )}
 
             {/* Muscle Volume Section (show if discipline supports it) */}
-            {/* Muscle Volume Section (show if discipline supports it) */}
             {(() => {
               const shouldShow = shouldTrackMuscleVolume(course?.discipline);
               const hasWeeklyVolumes = !!weeklyMuscleVolumes && Object.keys(weeklyMuscleVolumes).length > 0;
               const hasSessionVolumes = !!sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0;
-              
-              // Show if discipline supports it AND we have either weekly volumes OR session volumes
-              // The WeeklyMuscleVolumeCard can work with just sessionMuscleVolumes
-              // MuscleSilhouette needs weeklyMuscleVolumes, but we can still show WeeklyMuscleVolumeCard
+
+              // Use weekly volumes for SVG if available, otherwise fall back to session volumes
+              const svgVolumes = hasWeeklyVolumes ? weeklyMuscleVolumes : (hasSessionVolumes ? sessionMuscleVolumes : null);
+              const hasSvgVolumes = !!svgVolumes && Object.keys(svgVolumes).length > 0;
+
               if (!shouldShow) return null;
-              if (!hasWeeklyVolumes && !hasSessionVolumes) return null;
-              
-              // Calculate card width to match MainScreen pattern
-              // Card width = screenWidth - (padding on both sides)
-              // paddingHorizontal in muscleCardsScrollContainer is Math.max(20, screenWidth * 0.05) on each side
-              const containerPadding = Math.max(20, screenWidth * 0.05) * 2; // Both sides
-              const cardWidth = screenWidth - containerPadding; // Actual card width
-              const cardSpacing = 15; // marginRight between cards
-              const snapInterval = cardWidth + cardSpacing; // Card width + spacing
-              
+              if (!hasSvgVolumes && !hasSessionVolumes) return null;
+
+              const containerPadding = Math.max(20, screenWidth * 0.05) * 2;
+              const cardWidth = screenWidth - containerPadding;
+              const cardSpacing = 15;
+              const snapInterval = cardWidth + cardSpacing;
+
               return (
               <View style={styles.muscleVolumeSectionWrapper}>
                 <ScrollView
@@ -1387,28 +1405,28 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   onScroll={onMuscleScroll}
                   scrollEventThrottle={16}
                 >
-                  {/* CARD 1: Muscle Silhouette - Only show if we have weekly volumes */}
-                  {hasWeeklyVolumes && (
+                  {/* CARD 1: Muscle Silhouette SVG - weekly volumes preferred, session volumes as fallback */}
+                  {hasSvgVolumes && (
                     <View style={styles.muscleCardFirst}>
-                      <MuscleSilhouette 
-                        muscleVolumes={weeklyMuscleVolumes} 
-                        showCurrentWeekLabel={true}
-                        availableWeeks={[getMondayWeek()]}
-                        selectedWeek={getMondayWeek()}
-                        currentWeek={getMondayWeek()}
+                      <MuscleSilhouette
+                        muscleVolumes={svgVolumes}
+                        showCurrentWeekLabel={hasWeeklyVolumes}
+                        availableWeeks={hasWeeklyVolumes ? [getMondayWeek()] : []}
+                        selectedWeek={hasWeeklyVolumes ? getMondayWeek() : undefined}
+                        currentWeek={hasWeeklyVolumes ? getMondayWeek() : undefined}
                         onWeekChange={() => {}}
                         isReadOnly={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
                       />
                     </View>
                   )}
-                  
+
                   {/* CARD 2: Weekly Sets List - Show if we have session volumes */}
                   {hasSessionVolumes && (
                     <View style={styles.muscleCardSecond}>
-                      <WeeklyMuscleVolumeCard 
-                        userId={(user || auth.currentUser)?.uid} 
-                        sessionMuscleVolumes={sessionMuscleVolumes} 
+                      <WeeklyMuscleVolumeCard
+                        userId={(user || auth.currentUser)?.uid}
+                        sessionMuscleVolumes={sessionMuscleVolumes}
                         showCurrentWeekLabel={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
                       />

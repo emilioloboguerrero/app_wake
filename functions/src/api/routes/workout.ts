@@ -19,6 +19,7 @@ router.get("/workout/daily", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const courseId = req.query.courseId as string;
+  const requestedSessionId = req.query.sessionId as string | undefined;
 
   if (!courseId) {
     throw new WakeApiServerError(
@@ -26,17 +27,17 @@ router.get("/workout/daily", async (req, res) => {
     );
   }
 
-  // Verify user owns the course
-  const userDoc = await db.collection("users").doc(auth.userId).get();
+  // Parallel: verify user access + load course structure
+  const [userDoc, courseDoc] = await Promise.all([
+    db.collection("users").doc(auth.userId).get(),
+    db.collection("courses").doc(courseId).get(),
+  ]);
+
   const courses = userDoc.data()?.courses ?? {};
   const courseAccess = courses[courseId];
-
   if (!courseAccess || courseAccess.status !== "active") {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
-
-  // Load course to determine delivery type and structure
-  const courseDoc = await db.collection("courses").doc(courseId).get();
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
@@ -51,6 +52,8 @@ router.get("/workout/daily", async (req, res) => {
   // For one-on-one, exercises live in plans/ subcollections, not courses/
   let sessionCollection: string = "courses";
   let sessionCollectionId: string = courseId;
+  // Hoisted so we can include it in the response
+  let resolvedAllSessions: Array<{ sessionId: string; title: string; moduleId: string; moduleTitle: string; order: number; image_url: string | null }> = [];
 
   if (deliveryType === "one_on_one") {
     // One-on-one: check plans assigned to this user for the current week
@@ -70,6 +73,7 @@ router.get("/workout/daily", async (req, res) => {
           emptyReason: "no_planning_this_week",
           session: null,
           progress: { completed: 0, total: null },
+          allSessions: [],
         },
       });
       return;
@@ -90,52 +94,63 @@ router.get("/workout/daily", async (req, res) => {
       // Sort week keys to determine module order
       planAssignmentKeys.sort();
 
-      // Gather all sessions from client_plan_content (program copies) or plan templates
-      const allSessions: Array<{ moduleId: string; sessionId: string; order: number; moduleOrder: number; weekKey: string }> = [];
-      for (let weekIdx = 0; weekIdx < planAssignmentKeys.length; weekIdx++) {
-        const weekKey = planAssignmentKeys[weekIdx];
-        const assignment = planAssignments[weekKey];
-        const docId = `program_${courseId}_${weekKey}`;
-        const contentDoc = await db.collection("client_plan_content").doc(docId).get();
+      // Parallel: gather all week sessions + fetch sessionHistory simultaneously
+      const [weekResults, completedSnap] = await Promise.all([
+        Promise.all(
+          planAssignmentKeys.map(async (weekKey, weekIdx) => {
+            const assignment = planAssignments[weekKey];
+            const docId = `program_${courseId}_${weekKey}`;
+            const contentDoc = await db.collection("client_plan_content").doc(docId).get();
 
-        let sessionsSnap: FirebaseFirestore.QuerySnapshot;
-        if (contentDoc.exists) {
-          sessionsSnap = await contentDoc.ref.collection("sessions")
-            .orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
-        } else {
-          sessionsSnap = await db.collection("plans").doc(assignment.planId)
-            .collection("modules").doc(assignment.moduleId)
-            .collection("sessions").orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
-        }
+            let sessionsSnap: FirebaseFirestore.QuerySnapshot;
+            let modTitle = "";
+            if (contentDoc.exists) {
+              sessionsSnap = await contentDoc.ref.collection("sessions")
+                .orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
+              modTitle = (contentDoc.data()?.title as string) ?? "";
+            } else {
+              const modDoc = await db.collection("plans").doc(assignment.planId)
+                .collection("modules").doc(assignment.moduleId).get();
+              modTitle = modDoc.exists ? ((modDoc.data()?.title as string) ?? "") : "";
+              sessionsSnap = await db.collection("plans").doc(assignment.planId)
+                .collection("modules").doc(assignment.moduleId)
+                .collection("sessions").orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
+            }
 
-        for (const sess of sessionsSnap.docs) {
-          allSessions.push({
-            moduleId: contentDoc.exists ? docId : assignment.moduleId,
-            sessionId: sess.id,
-            order: sess.data().order ?? 0,
-            moduleOrder: weekIdx,
-            weekKey,
-          });
-        }
-      }
+            return sessionsSnap.docs.map((sess) => ({
+              moduleId: contentDoc.exists ? docId : assignment.moduleId,
+              sessionId: sess.id,
+              order: sess.data().order ?? 0,
+              moduleOrder: weekIdx,
+              weekKey,
+              title: (sess.data().title as string) ?? "",
+              moduleTitle: modTitle,
+              image_url: (sess.data().image_url as string) ?? null,
+            }));
+          })
+        ),
+        db.collection("users").doc(auth.userId)
+          .collection("sessionHistory").where("courseId", "==", courseId).get(),
+      ]);
+      const allSessions = weekResults.flat();
+      completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
+      resolvedAllSessions = allSessions.map((s) => ({ sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url }));
 
       if (allSessions.length === 0) {
         res.json({
-          data: { hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: { completed: 0, total: null } },
+          data: { hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: { completed: 0, total: null }, allSessions: [] },
         });
         return;
       }
 
-      const completedSnap = await db.collection("users").doc(auth.userId)
-        .collection("sessionHistory").where("courseId", "==", courseId).get();
-      completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
-
-      const nextSession = allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+      const nextSession = requestedSessionId
+        ? allSessions.find((s) => s.sessionId === requestedSessionId)
+        : allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
       if (!nextSession) {
         res.json({
-          data: { hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: { completed: completedSessionIds.size, total: allSessions.length } },
+          data: { hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: { completed: completedSessionIds.size, total: allSessions.length }, allSessions: resolvedAllSessions },
         });
         return;
       }
@@ -175,34 +190,42 @@ router.get("/workout/daily", async (req, res) => {
             emptyReason: "no_planning_this_week",
             session: null,
             progress: { completed: 0, total: null },
+            allSessions: [],
           },
         });
         return;
       }
 
-      const allSessions: Array<{ moduleId: string; sessionId: string; order: number; moduleOrder: number }> = [];
-      for (const mod of modulesSnap.docs) {
-        const sessionsSnap = await db
-          .collection("courses")
-          .doc(courseId)
-          .collection("modules")
-          .doc(mod.id)
-          .collection("sessions")
-          .orderBy("order", "asc")
-          .limit(MAX_SESSIONS_PER_MODULE)
-          .get();
+      // Parallel: fetch sessions for all modules + sessionHistory simultaneously
+      const [moduleResults, legacyCompletedSnap] = await Promise.all([
+        Promise.all(
+          modulesSnap.docs.map(async (mod) => {
+            const modTitle = (mod.data().title as string) ?? "";
+            const sessionsSnap = await db
+              .collection("courses").doc(courseId)
+              .collection("modules").doc(mod.id)
+              .collection("sessions").orderBy("order", "asc")
+              .limit(MAX_SESSIONS_PER_MODULE).get();
 
-        for (const sess of sessionsSnap.docs) {
-          allSessions.push({
-            moduleId: mod.id,
-            sessionId: sess.id,
-            order: sess.data().order ?? 0,
-            moduleOrder: mod.data().order ?? 0,
-          });
-        }
-      }
+            return sessionsSnap.docs.map((sess) => ({
+              moduleId: mod.id,
+              sessionId: sess.id,
+              order: sess.data().order ?? 0,
+              moduleOrder: mod.data().order ?? 0,
+              title: (sess.data().title as string) ?? "",
+              moduleTitle: modTitle,
+              image_url: (sess.data().image_url as string) ?? null,
+            }));
+          })
+        ),
+        db.collection("users").doc(auth.userId)
+          .collection("sessionHistory").where("courseId", "==", courseId).get(),
+      ]);
+      const allSessions = moduleResults.flat();
+      completedSessionIds = new Set(legacyCompletedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
+      resolvedAllSessions = allSessions.map((s) => ({ sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url }));
 
       if (allSessions.length === 0) {
         res.json({
@@ -212,21 +235,15 @@ router.get("/workout/daily", async (req, res) => {
             emptyReason: "no_planning_this_week",
             session: null,
             progress: { completed: 0, total: null },
+            allSessions: [],
           },
         });
         return;
       }
 
-      const completedSnap = await db
-        .collection("users")
-        .doc(auth.userId)
-        .collection("sessionHistory")
-        .where("courseId", "==", courseId)
-        .get();
-
-      completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
-
-      const nextSession = allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+      const nextSession = requestedSessionId
+        ? allSessions.find((s) => s.sessionId === requestedSessionId)
+        : allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
 
       if (!nextSession) {
         res.json({
@@ -236,6 +253,7 @@ router.get("/workout/daily", async (req, res) => {
             emptyReason: "all_sessions_completed",
             session: null,
             progress: { completed: completedSessionIds.size, total: allSessions.length },
+            allSessions: resolvedAllSessions,
           },
         });
         return;
@@ -254,6 +272,7 @@ router.get("/workout/daily", async (req, res) => {
         emptyReason: "no_planning_this_week",
         session: null,
         progress: { completed: 0, total: null },
+        allSessions: resolvedAllSessions,
       },
     });
     return;
@@ -281,6 +300,7 @@ router.get("/workout/daily", async (req, res) => {
         emptyReason: "no_planning_this_week",
         session: null,
         progress: { completed: 0, total: null },
+        allSessions: resolvedAllSessions,
       },
     });
     return;
@@ -302,10 +322,16 @@ router.get("/workout/daily", async (req, res) => {
         .orderBy("order", "asc")
         .get();
 
+      // Derive libraryId and name from primary map when not stored directly
+      const primaryMap = exData.primary as Record<string, string> | undefined;
+      const primaryLibraryId = primaryMap ? Object.keys(primaryMap)[0] : null;
+      const resolvedLibraryId = exData.libraryId ?? primaryLibraryId ?? null;
+      const resolvedName = exData.name || (primaryLibraryId ? primaryMap![primaryLibraryId] : "");
+
       return {
         exerciseId: exDoc.id,
-        libraryId: exData.libraryId ?? null,
-        name: exData.name ?? "",
+        libraryId: resolvedLibraryId,
+        name: resolvedName,
         description: exData.description ?? null,
         video_url: exData.video_url ?? null,
         muscle_activation: exData.muscle_activation ?? null,
@@ -330,37 +356,59 @@ router.get("/workout/daily", async (req, res) => {
             order: setData.order ?? 0,
           };
         }),
-        exerciseKey: exData.libraryId
-          ? `${exData.libraryId}_${exData.name}`
+        exerciseKey: resolvedLibraryId && resolvedName
+          ? `${resolvedLibraryId}_${resolvedName}`
           : exDoc.id,
       };
     })
   );
 
-  // Batch-fetch lastPerformance for all exercises
+  // Batch-fetch library metadata and lastPerformance in parallel
   const exerciseKeys = exercisesWithSets
     .map((ex) => ex.exerciseKey)
     .filter(Boolean);
 
+  // Unique library IDs to fetch exercise metadata (video_url, muscle_activation, implements)
+  const uniqueLibraryIds = [
+    ...new Set(exercisesWithSets.map((ex) => ex.libraryId).filter(Boolean)),
+  ] as string[];
+
+  const [lastPerfDocs, libraryDocs] = await Promise.all([
+    // Fetch lastPerformance docs
+    exerciseKeys.length > 0
+      ? Promise.all(
+          exerciseKeys.map((key) =>
+            db.collection("users").doc(auth.userId)
+              .collection("exerciseLastPerformance").doc(key).get()
+          )
+        )
+      : Promise.resolve([]),
+    // Fetch exercise library docs (each doc contains all exercises as fields)
+    uniqueLibraryIds.length > 0
+      ? Promise.all(
+          uniqueLibraryIds.map((libId) =>
+            db.collection("exercises_library").doc(libId).get()
+          )
+        )
+      : Promise.resolve([]),
+  ]);
+
   const lastPerfMap: Record<string, Record<string, unknown>> = {};
-  if (exerciseKeys.length > 0) {
-    const lastPerfPromises = exerciseKeys.map((key) =>
-      db
-        .collection("users")
-        .doc(auth.userId)
-        .collection("exerciseLastPerformance")
-        .doc(key)
-        .get()
-    );
-    const lastPerfDocs = await Promise.all(lastPerfPromises);
-    for (const doc of lastPerfDocs) {
-      if (doc.exists) {
-        lastPerfMap[doc.id] = doc.data()!;
-      }
+  for (const doc of lastPerfDocs) {
+    if (doc.exists) {
+      lastPerfMap[doc.id] = doc.data()!;
     }
   }
 
-  // Assemble exercises with lastPerformance
+  // Build library lookup: libraryId -> { exerciseName -> { video_url, muscle_activation, implements, ... } }
+  const libraryMap: Record<string, Record<string, unknown>> = {};
+  for (const doc of libraryDocs) {
+    if (doc.exists) {
+      libraryMap[doc.id] = doc.data()!;
+    }
+  }
+
+  // Assemble exercises with lastPerformance and library metadata
   const exercises = exercisesWithSets.map((ex) => {
     const lastPerf = lastPerfMap[ex.exerciseKey] ?? null;
     let lastPerformance: Record<string, unknown> | null = null;
@@ -387,14 +435,18 @@ router.get("/workout/daily", async (req, res) => {
       };
     }
 
+    // Enrich from exercise library when session doc has no metadata
+    const libData = ex.libraryId ? (libraryMap[ex.libraryId] ?? {}) : {};
+    const libExercise = (libData[ex.name] ?? {}) as Record<string, unknown>;
+
     return {
       exerciseId: ex.exerciseId,
       libraryId: ex.libraryId,
       name: ex.name,
-      description: ex.description,
-      video_url: ex.video_url,
-      muscle_activation: ex.muscle_activation,
-      implements: ex.implements,
+      description: ex.description || (libExercise.description as string) || null,
+      video_url: ex.video_url || (libExercise.video_url as string) || null,
+      muscle_activation: ex.muscle_activation || (libExercise.muscle_activation as Record<string, unknown>) || null,
+      implements: (ex.implements?.length ? ex.implements : (libExercise.implements as string[])) ?? [],
       primary: ex.primary,
       alternatives: ex.alternatives,
       objectives: ex.objectives,
@@ -452,7 +504,226 @@ router.get("/workout/daily", async (req, res) => {
       },
       progress: {
         completed: completedCount,
-        total: null,
+        total: resolvedAllSessions.length || null,
+      },
+      allSessions: resolvedAllSessions,
+      availableLibraries: Array.isArray(course.availableLibraries) ? course.availableLibraries : [],
+    },
+  });
+});
+
+// GET /workout/session-exercises — lightweight endpoint for session switching
+// Only fetches a single session's exercises/sets/lastPerformance.
+// Skips allSessions computation entirely (~4s savings vs /workout/daily).
+router.get("/workout/session-exercises", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courseId = req.query.courseId as string;
+  const sessionId = req.query.sessionId as string;
+  const moduleId = req.query.moduleId as string | undefined;
+
+  if (!courseId || !sessionId) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId y sessionId son requeridos", "courseId");
+  }
+
+  // Parallel: verify access + load course structure
+  const [userDoc, courseDoc] = await Promise.all([
+    db.collection("users").doc(auth.userId).get(),
+    db.collection("courses").doc(courseId).get(),
+  ]);
+
+  const courses = userDoc.data()?.courses ?? {};
+  const courseAccess = courses[courseId] as Record<string, unknown> | undefined;
+  if (!courseAccess || courseAccess.status !== "active") {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const course = courseDoc.data()!;
+  const deliveryType = course.deliveryType ?? "low_ticket";
+
+  // Resolve session doc reference based on delivery type and moduleId
+  let sessionDocRef: FirebaseFirestore.DocumentReference;
+  let moduleTitle = "";
+
+  if (deliveryType === "one_on_one") {
+    const plansSnap = await db.collection("plans")
+      .where("courseId", "==", courseId)
+      .where("userId", "==", auth.userId)
+      .where("status", "==", "active")
+      .limit(1).get();
+    if (plansSnap.empty) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+    }
+    sessionDocRef = db.collection("plans").doc(plansSnap.docs[0].id)
+      .collection("modules").doc(moduleId!)
+      .collection("sessions").doc(sessionId);
+    const modDoc = await db.collection("plans").doc(plansSnap.docs[0].id)
+      .collection("modules").doc(moduleId!).get();
+    moduleTitle = modDoc.exists ? ((modDoc.data()!.title as string) ?? "") : "";
+  } else {
+    const planAssignments = (course.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
+    const hasPlanAssignments = Object.keys(planAssignments).some((k) => planAssignments[k]?.planId);
+
+    if (hasPlanAssignments && moduleId) {
+      // Plan-based: moduleId is either a client_plan_content doc ID or a plan module ID
+      const contentDoc = await db.collection("client_plan_content").doc(moduleId).get();
+      if (contentDoc.exists) {
+        sessionDocRef = contentDoc.ref.collection("sessions").doc(sessionId);
+        moduleTitle = (contentDoc.data()!.title as string) ?? "";
+      } else {
+        const matchingWeek = Object.keys(planAssignments).find((k) => planAssignments[k].moduleId === moduleId);
+        if (!matchingWeek) {
+          throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada en el plan");
+        }
+        const planId = planAssignments[matchingWeek].planId;
+        sessionDocRef = db.collection("plans").doc(planId)
+          .collection("modules").doc(moduleId)
+          .collection("sessions").doc(sessionId);
+        const modDoc = await db.collection("plans").doc(planId)
+          .collection("modules").doc(moduleId).get();
+        moduleTitle = modDoc.exists ? ((modDoc.data()!.title as string) ?? "") : "";
+      }
+    } else if (hasPlanAssignments && !moduleId) {
+      // Plan-based but no moduleId — search client_plan_content for the session
+      let found = false;
+      for (const weekKey of Object.keys(planAssignments)) {
+        const docId = `program_${courseId}_${weekKey}`;
+        const sessionDoc = await db.collection("client_plan_content").doc(docId)
+          .collection("sessions").doc(sessionId).get();
+        if (sessionDoc.exists) {
+          sessionDocRef = sessionDoc.ref;
+          const contentDoc = await db.collection("client_plan_content").doc(docId).get();
+          moduleTitle = contentDoc.exists ? ((contentDoc.data()!.title as string) ?? "") : "";
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada");
+      }
+    } else {
+      if (!moduleId) {
+        throw new WakeApiServerError("VALIDATION_ERROR", 400, "moduleId es requerido");
+      }
+      sessionDocRef = db.collection("courses").doc(courseId)
+        .collection("modules").doc(moduleId)
+        .collection("sessions").doc(sessionId);
+      const modDoc = await db.collection("courses").doc(courseId)
+        .collection("modules").doc(moduleId).get();
+      moduleTitle = modDoc.exists ? ((modDoc.data()!.title as string) ?? "") : "";
+    }
+  }
+
+  const sessionDoc = await sessionDocRef!.get();
+  if (!sessionDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada");
+  }
+  const sessionInfo = sessionDoc.data()!;
+
+  // Load exercises + sets in parallel
+  const exercisesSnap = await sessionDocRef!.collection("exercises").orderBy("order", "asc").get();
+  const exercisesWithSets = await Promise.all(
+    exercisesSnap.docs.map(async (exDoc) => {
+      const exData = exDoc.data();
+      const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
+
+      // Derive libraryId and name from primary map when not stored directly
+      const primaryMap = exData.primary as Record<string, string> | undefined;
+      const primaryLibraryId = primaryMap ? Object.keys(primaryMap)[0] : null;
+      const resolvedLibraryId = exData.libraryId ?? primaryLibraryId ?? null;
+      const resolvedName = exData.name || (primaryLibraryId ? primaryMap![primaryLibraryId] : "");
+
+      return {
+        exerciseId: exDoc.id,
+        libraryId: resolvedLibraryId,
+        name: resolvedName,
+        description: exData.description ?? null,
+        video_url: exData.video_url ?? null,
+        muscle_activation: exData.muscle_activation ?? null,
+        implements: exData.implements ?? [],
+        primary: exData.primary ?? exData.primaryMuscles ?? [],
+        alternatives: exData.alternatives ?? {},
+        objectives: exData.objectives ?? [],
+        measures: exData.measures ?? [],
+        customMeasureLabels: exData.customMeasureLabels ?? {},
+        customObjectiveLabels: exData.customObjectiveLabels ?? {},
+        order: exData.order ?? 0,
+        primaryMuscles: exData.primaryMuscles ?? [],
+        sets: setsSnap.docs.map((setDoc) => {
+          const setData = setDoc.data();
+          return { setId: setDoc.id, reps: setData.reps ?? null, weight: setData.weight ?? null, intensity: setData.intensity ?? null, rir: setData.rir ?? null, title: setData.title ?? null, order: setData.order ?? 0 };
+        }),
+        exerciseKey: resolvedLibraryId && resolvedName
+          ? `${resolvedLibraryId}_${resolvedName}`
+          : exDoc.id,
+      };
+    })
+  );
+
+  // Batch-fetch lastPerformance and library metadata in parallel
+  const exerciseKeys = exercisesWithSets.map((ex) => ex.exerciseKey).filter(Boolean);
+  const uniqueLibIds = [...new Set(exercisesWithSets.map((ex) => ex.libraryId).filter(Boolean))] as string[];
+
+  const [lastPerfDocs2, libraryDocs2] = await Promise.all([
+    exerciseKeys.length > 0
+      ? Promise.all(exerciseKeys.map((key) =>
+          db.collection("users").doc(auth.userId).collection("exerciseLastPerformance").doc(key).get()))
+      : Promise.resolve([]),
+    uniqueLibIds.length > 0
+      ? Promise.all(uniqueLibIds.map((libId) =>
+          db.collection("exercises_library").doc(libId).get()))
+      : Promise.resolve([]),
+  ]);
+
+  const lastPerfMap2: Record<string, Record<string, unknown>> = {};
+  for (const doc of lastPerfDocs2) {
+    if (doc.exists) lastPerfMap2[doc.id] = doc.data()!;
+  }
+  const libraryMap2: Record<string, Record<string, unknown>> = {};
+  for (const doc of libraryDocs2) {
+    if (doc.exists) libraryMap2[doc.id] = doc.data()!;
+  }
+
+  const exercises = exercisesWithSets.map((ex) => {
+    const lastPerf = lastPerfMap2[ex.exerciseKey] ?? null;
+    let lastPerformance: Record<string, unknown> | null = null;
+    if (lastPerf) {
+      const sets = (lastPerf.sets ?? []) as Array<{ weight?: number; reps?: number }>;
+      const bestSet = sets.reduce(
+        (best: { weight: number; reps: number } | null, s) => {
+          const w = s.weight ?? 0; const r = s.reps ?? 0;
+          if (!best || w > best.weight || (w === best.weight && r > best.reps)) return { weight: w, reps: r };
+          return best;
+        }, null);
+      lastPerformance = { sessionId: lastPerf.completionId ?? null, date: lastPerf.date ?? null, sets, bestSet };
+    }
+
+    // Enrich from exercise library when session doc has no metadata
+    const libData2 = ex.libraryId ? (libraryMap2[ex.libraryId] ?? {}) : {};
+    const libEx = (libData2[ex.name] ?? {}) as Record<string, unknown>;
+
+    return {
+      exerciseId: ex.exerciseId, libraryId: ex.libraryId, name: ex.name,
+      description: ex.description || (libEx.description as string) || null,
+      video_url: ex.video_url || (libEx.video_url as string) || null,
+      muscle_activation: ex.muscle_activation || (libEx.muscle_activation as Record<string, unknown>) || null,
+      implements: (ex.implements?.length ? ex.implements : (libEx.implements as string[])) ?? [],
+      primary: ex.primary, alternatives: ex.alternatives, objectives: ex.objectives, measures: ex.measures,
+      customMeasureLabels: ex.customMeasureLabels, customObjectiveLabels: ex.customObjectiveLabels,
+      order: ex.order, primaryMuscles: ex.primaryMuscles, sets: ex.sets, lastPerformance,
+    };
+  });
+
+  res.json({
+    data: {
+      session: {
+        sessionId, moduleId: moduleId ?? null, moduleTitle,
+        title: sessionInfo.title ?? "", image_url: sessionInfo.image_url ?? null,
+        order: sessionInfo.order ?? 0, deliveryType, exercises,
       },
     },
   });
@@ -545,21 +816,11 @@ router.post("/workout/complete", async (req, res) => {
     { maxArrayLength: 50 }
   );
 
-  // Extract date from completedAt for idempotency key
+  // Extract date from completedAt
   const completionDate = body.completedAt.slice(0, 10);
 
-  // Idempotency check
-  const completionId = `${auth.userId}_${body.sessionId}_${completionDate}`;
-  const existingCompletion = await db
-    .collection("users")
-    .doc(auth.userId)
-    .collection("sessionHistory")
-    .doc(completionId)
-    .get();
-
-  if (existingCompletion.exists) {
-    throw new WakeApiServerError("CONFLICT", 409, "Esta sesión ya fue completada hoy");
-  }
+  // Unique completion ID — allows the same session to be completed multiple times per day
+  const completionId = `${auth.userId}_${body.sessionId}_${completionDate}_${Date.now()}`;
 
   const exercises = body.exercises as Array<{
     exerciseKey?: string;
@@ -698,7 +959,8 @@ router.post("/workout/complete", async (req, res) => {
     const existingPr = existingPrMap[exerciseKey];
     const existingEstimate = existingPr?.estimate1RM ?? 0;
 
-    if (bestEstimate1RM > existingEstimate && bestSet) {
+    // Only count as PR if there's a previous record to beat (not first-time exercises)
+    if (existingPr && bestEstimate1RM > existingEstimate && bestSet) {
       personalRecords.push({
         exerciseKey,
         exerciseName: exercise.exerciseName ?? exercise.exerciseKey ?? exerciseKey,
@@ -765,6 +1027,32 @@ router.post("/workout/complete", async (req, res) => {
     }
   }
 
+  // 3b. Compute week key for weeklyMuscleVolume persistence
+  // Must match client-side getMondayWeek() in apps/pwa/src/utils/weekCalculation.js
+  const completionDateObj = new Date(completionDate);
+  completionDateObj.setHours(0, 0, 0, 0);
+  const dayOfWeek = completionDateObj.getDay();
+  const mondayOffset = completionDateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+  const monday = new Date(completionDateObj);
+  monday.setDate(mondayOffset);
+  const year = monday.getFullYear();
+  const jan1 = new Date(year, 0, 1);
+  const jan1Day = jan1.getDay();
+  const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
+  const firstMonday = new Date(jan1.getTime());
+  firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
+  const daysDiff = Math.floor((monday.getTime() - firstMonday.getTime()) / (24 * 60 * 60 * 1000));
+  const weekNumber = Math.floor(daysDiff / 7) + 1;
+  const weekKey = `${year}-W${String(weekNumber).padStart(2, "0")}`;
+
+  // Merge session volumes into existing weekly volumes (additive)
+  const weeklyVolumeUpdate: Record<string, unknown> = {};
+  const existingWeeklyVolume = userData.weeklyMuscleVolume?.[weekKey] ?? {};
+  for (const [muscle, sets] of Object.entries(muscleVolumes)) {
+    const existing = (existingWeeklyVolume as Record<string, number>)[muscle] ?? 0;
+    weeklyVolumeUpdate[`weeklyMuscleVolume.${weekKey}.${muscle}`] = existing + sets;
+  }
+
   // 4. Update user streak + last session (dot notation preserves existing fields like streakStartDate)
   const streakStartDate = newStreak === 1 ? completionDate : (activityStreak.streakStartDate ?? completionDate);
   const userRef = db.collection("users").doc(auth.userId);
@@ -781,6 +1069,7 @@ router.post("/workout/complete", async (req, res) => {
           "activityStreak.longestStreakEndDate": completionDate,
         }
       : {}),
+    ...weeklyVolumeUpdate,
     updated_at: FieldValue.serverTimestamp(),
   });
 
@@ -1496,6 +1785,8 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   const planAssignments = (courseData.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; moduleIndex?: number }>;
   const planWeekKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId);
 
+  const includeSessions = req.query.include === "sessions";
+
   if (planWeekKeys.length > 0) {
     // Plan-based: return virtual modules from planAssignments, sorted by week key
     planWeekKeys.sort();
@@ -1518,13 +1809,28 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
         } catch { /* best-effort */ }
       }
 
-      modules.push({
+      const moduleEntry: Record<string, unknown> = {
         id: assignment.moduleId,
         title,
         order: i,
         weekKey,
         planId: assignment.planId,
-      });
+      };
+
+      if (includeSessions) {
+        const moduleRef = db.collection("plans").doc(assignment.planId)
+          .collection("modules").doc(assignment.moduleId);
+        const sessionsSnap = await moduleRef
+          .collection("sessions").orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
+        moduleEntry.sessions = await Promise.all(
+          sessionsSnap.docs.map(async (sDoc) => {
+            const exercises = await loadExerciseTree(sDoc.ref);
+            return { id: sDoc.id, ...sDoc.data(), exercises };
+          })
+        );
+      }
+
+      modules.push(moduleEntry);
     }
     res.json({ data: modules });
     return;
@@ -1539,7 +1845,29 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     .limit(MAX_MODULES_PER_COURSE)
     .get();
 
-  const modules = modulesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  if (!includeSessions) {
+    const modules = modulesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    res.json({ data: modules });
+    return;
+  }
+
+  // Full tree: modules -> sessions -> exercises -> sets
+  const modules = await Promise.all(
+    modulesSnap.docs.map(async (mDoc) => {
+      const sessionsSnap = await mDoc.ref
+        .collection("sessions")
+        .orderBy("order", "asc")
+        .limit(MAX_SESSIONS_PER_MODULE)
+        .get();
+      const sessions = await Promise.all(
+        sessionsSnap.docs.map(async (sDoc) => {
+          const exercises = await loadExerciseTree(sDoc.ref);
+          return { id: sDoc.id, ...sDoc.data(), exercises };
+        })
+      );
+      return { id: mDoc.id, ...mDoc.data(), sessions };
+    })
+  );
   res.json({ data: modules });
 });
 
@@ -1893,17 +2221,47 @@ router.get("/workout/calendar", async (req, res) => {
   validateDateFormat(startDate, "startDate");
   validateDateFormat(endDate, "endDate");
 
+  console.log("[CALENDAR] query", { userId: auth.userId, courseId, startDate, endDate });
+
+  // Debug: check total docs in sessionHistory (no filter)
+  const debugSnap = await db.collection("users").doc(auth.userId).collection("sessionHistory").limit(5).get();
+  console.log("[CALENDAR] debug: total sessionHistory docs (first 5)", debugSnap.docs.map((d) => ({ id: d.id, courseId: d.data().courseId, date: d.data().date })));
+
   const snap = await db
     .collection("users")
     .doc(auth.userId)
     .collection("sessionHistory")
     .where("courseId", "==", courseId)
-    .where("date", ">=", startDate)
-    .where("date", "<=", endDate)
-    .limit(200)
+    .limit(500)
     .get();
 
-  const dates = [...new Set(snap.docs.map((d) => d.data().date as string))];
+  const allDates = snap.docs.map((d) => {
+    const data = d.data();
+    // Derive date: prefer explicit `date` field, fall back to extracting from `completedAt`
+    let dateStr: string | null = data.date ?? null;
+    if (!dateStr && data.completedAt) {
+      if (typeof data.completedAt === "string") {
+        dateStr = data.completedAt.slice(0, 10);
+      } else if (data.completedAt.toDate) {
+        dateStr = data.completedAt.toDate().toISOString().slice(0, 10);
+      }
+    }
+    // Last resort: extract from doc ID (format: userId_sessionId_YYYY-MM-DD)
+    if (!dateStr) {
+      const idParts = d.id.split("_");
+      const lastPart = idParts[idParts.length - 1];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) dateStr = lastPart;
+    }
+    return { id: d.id, date: dateStr, courseId: data.courseId, completedAt: data.completedAt };
+  });
+  console.log("[CALENDAR] sessionHistory docs", { count: snap.docs.length, allDates: allDates.slice(0, 20) });
+
+  const dates = [...new Set(
+    allDates
+      .map((d) => d.date as string)
+      .filter((date) => date && date >= startDate && date <= endDate)
+  )];
+  console.log("[CALENDAR] filtered dates", { dates, startDate, endDate });
   res.json({ data: dates });
 });
 

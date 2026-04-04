@@ -2,7 +2,7 @@
 // Reuses the same Firebase project as the mobile app
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, connectAuthEmulator, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
@@ -52,6 +52,9 @@ const appCheck = (RECAPTCHA_SITE_KEY && !isDev)
 
 // Initialize Firebase services (web version - no AsyncStorage needed)
 const auth = getAuth(app);
+
+// Use localStorage persistence so Playwright storageState can capture auth tokens
+setPersistence(auth, browserLocalPersistence);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
 

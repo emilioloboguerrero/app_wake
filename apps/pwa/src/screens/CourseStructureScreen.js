@@ -13,7 +13,6 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
-import exerciseLibraryService from '../services/exerciseLibraryService';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
@@ -22,34 +21,17 @@ import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
 
 const ExerciseList = ({ exercises, styles }) => {
-  const exerciseIds = exercises.map(e => e.id).join(',');
-
-  const { data: resolvedExercises = [], isLoading: loading } = useQuery({
-    queryKey: ['programs', 'exercises', exerciseIds],
-    queryFn: () =>
-      Promise.all(
-        exercises.map(async (exercise, exerciseIndex) => {
-          try {
-            const primaryExerciseData = await exerciseLibraryService.resolvePrimaryExercise(exercise.primary);
-            return { id: exercise.id, title: primaryExerciseData.title, index: exerciseIndex };
-          } catch (error) {
-            logger.error(`❌ Error resolving exercise ${exercise.id}:`, error);
-            return { id: exercise.id, title: `Exercise ${exercise.id}`, index: exerciseIndex };
-          }
-        })
-      ),
-    enabled: exercises.length > 0,
-    staleTime: STALE_TIMES.programStructure,
-    gcTime: GC_TIMES.programStructure,
-  });
-
-  if (loading) {
-    return (
-      <View style={styles.exerciseItem}>
-        <Text style={styles.exerciseText}>• Cargando ejercicios...</Text>
-      </View>
-    );
-  }
+  const resolvedExercises = useMemo(() =>
+    exercises.map((exercise, index) => {
+      let title = exercise.name || `Exercise ${exercise.id}`;
+      if (!exercise.name && exercise.primary && typeof exercise.primary === 'object') {
+        const firstKey = Object.keys(exercise.primary)[0];
+        if (firstKey) title = exercise.primary[firstKey];
+      }
+      return { id: exercise.id, title, index };
+    }),
+    [exercises]
+  );
 
   return (
     <>
@@ -246,10 +228,11 @@ const CourseStructureScreen = ({ navigation, route }) => {
     },
   }), [screenWidth, screenHeight]);
 
+  const structureEnabled = !!course.courseId && !!user?.uid;
   const { data: courseQueryData, isLoading: loading, isError, refetch } = useQuery({
     queryKey: ['programs', 'structure', course.courseId, user?.uid],
     queryFn: () => workoutProgressService.getCourseDataForWorkout(course.courseId, user?.uid),
-    enabled: !!course.courseId,
+    enabled: structureEnabled,
     staleTime: STALE_TIMES.programStructure,
     gcTime: GC_TIMES.programStructure,
   });

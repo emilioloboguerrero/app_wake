@@ -8,6 +8,7 @@ import logger from '../utils/logger.js';
 class SessionService {
   constructor() {
     this.cache = new Map();
+    this.inflight = new Map();
     this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
   }
 
@@ -39,7 +40,37 @@ class SessionService {
       if (targetDate) params.date = targetDate;
       if (manualSessionId) params.sessionId = manualSessionId;
 
-      const t0 = Date.now();
+      // Deduplicate in-flight requests with the same key
+      const inflightKey = manualSessionId ? `${cacheKey}|${manualSessionId}` : cacheKey;
+      if (this.inflight.has(inflightKey)) {
+        return this.inflight.get(inflightKey);
+      }
+
+      const fetchPromise = this._fetchDaily(params, cacheKey, manualSessionId, manualSessionIndex);
+      this.inflight.set(inflightKey, fetchPromise);
+      try {
+        return await fetchPromise;
+      } finally {
+        this.inflight.delete(inflightKey);
+      }
+
+    } catch (error) {
+      logger.error('Error getting current session:', error);
+      return {
+        session: null,
+        workout: null,
+        index: 0,
+        isManual: false,
+        allSessions: [],
+        progress: null,
+        isLoading: false,
+        error: error.message,
+        emptyReason: null
+      };
+    }
+  }
+
+  async _fetchDaily(params, cacheKey, manualSessionId, manualSessionIndex) {
       const res = await apiClient.get('/workout/daily', { params });
 
       const d = res?.data;
@@ -66,12 +97,12 @@ class SessionService {
       // Map API exercises to internal workout exercise shape
       const workoutExercises = (apiSession.exercises ?? []).map(ex => ({
         id: ex.exerciseId,
-        name: ex.name,
+        name: ex.name || (ex.primary && typeof ex.primary === 'object' ? Object.values(ex.primary)[0] : '') || '',
         description: ex.description,
         video_url: ex.video_url,
         muscle_activation: ex.muscle_activation,
         implements: ex.implements ?? [],
-        libraryId: ex.libraryId,
+        libraryId: ex.libraryId || (ex.primary && typeof ex.primary === 'object' ? Object.keys(ex.primary)[0] : null),
         order: ex.order,
         primary: ex.primary,
         alternatives: ex.alternatives ?? {},
@@ -141,6 +172,7 @@ class SessionService {
         moduleTitle: s.moduleTitle,
         order: s.order,
         plannedDate: s.plannedDate ?? null,
+        image_url: s.image_url ?? null,
       }));
 
       const currentIndex = allSessions.findIndex(s => s.sessionId === apiSession.sessionId);
@@ -156,47 +188,117 @@ class SessionService {
         error: null,
         emptyReason: null,
         todaySessionAlreadyCompleted: d.todaySessionAlreadyCompleted ?? false,
+        availableLibraries: d.availableLibraries ?? [],
       };
 
       this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
       return sessionState;
-
-    } catch (error) {
-      logger.error('Error getting current session:', error);
-      return {
-        session: null,
-        workout: null,
-        index: 0,
-        isManual: false,
-        allSessions: [],
-        progress: null,
-        isLoading: false,
-        error: error.message,
-        emptyReason: null
-      };
-    }
   }
 
   /**
-   * Select a session manually
+   * Select a session manually — uses lightweight endpoint (skips allSessions rebuild)
+   * @param {string} userId
+   * @param {string} courseId
+   * @param {string} sessionId
+   * @param {number} sessionIndex
+   * @param {Object} [existingState] - current sessionState with allSessions/progress to reuse
    */
-  async selectSession(userId, courseId, sessionId, sessionIndex) {
-    const tSelectStart = Date.now();
+  async selectSession(userId, courseId, sessionId, sessionIndex, existingState = null) {
     try {
+      // Find moduleId from existing allSessions for the lightweight endpoint
+      const allSessions = existingState?.allSessions ?? [];
+      const targetSession = allSessions.find(s => s.sessionId === sessionId || s.id === sessionId);
+      const moduleId = targetSession?.moduleId ?? null;
 
-      // Clear cache first (forces full re-fetch: course data, progress, and workout build)
-      this.clearCache(userId, courseId);
-
-      // Get new state with manual selection (no progress update)
-      const newState = await this.getCurrentSession(userId, courseId, {
-        forceRefresh: true,
-        manualSessionId: sessionId,
-        manualSessionIndex: sessionIndex
+      const res = await apiClient.get('/workout/session-exercises', {
+        params: { courseId, sessionId, moduleId }
       });
 
-      
-      return newState;
-      
+      const apiSession = res?.data?.session;
+      if (!apiSession) {
+        throw new Error('No session data returned');
+      }
+
+      // Map API exercises to internal workout exercise shape (same as getCurrentSession)
+      const workoutExercises = (apiSession.exercises ?? []).map(ex => ({
+        id: ex.exerciseId,
+        name: ex.name || (ex.primary && typeof ex.primary === 'object' ? Object.values(ex.primary)[0] : '') || '',
+        description: ex.description,
+        video_url: ex.video_url,
+        muscle_activation: ex.muscle_activation,
+        implements: ex.implements ?? [],
+        libraryId: ex.libraryId || (ex.primary && typeof ex.primary === 'object' ? Object.keys(ex.primary)[0] : null),
+        order: ex.order,
+        primary: ex.primary,
+        alternatives: ex.alternatives ?? {},
+        objectives: ex.objectives ?? [],
+        measures: ex.measures ?? [],
+        customMeasureLabels: ex.customMeasureLabels ?? {},
+        customObjectiveLabels: ex.customObjectiveLabels ?? {},
+        sets: (ex.sets ?? []).map(s => ({
+          id: s.setId,
+          reps: s.reps,
+          weight: s.weight,
+          intensity: s.intensity,
+          rir: s.rir,
+          title: s.title,
+          order: s.order,
+        })),
+        lastPerformance: ex.lastPerformance ?? null,
+      }));
+
+      const workout = {
+        id: apiSession.sessionId,
+        title: apiSession.title,
+        description: '',
+        moduleId: apiSession.moduleId,
+        moduleTitle: apiSession.moduleTitle,
+        sessionId: apiSession.sessionId,
+        image_url: apiSession.image_url,
+        exercises: workoutExercises,
+      };
+
+      const session = {
+        id: apiSession.sessionId,
+        sessionId: apiSession.sessionId,
+        title: apiSession.title,
+        image_url: apiSession.image_url,
+        moduleId: apiSession.moduleId,
+        moduleTitle: apiSession.moduleTitle,
+        exercises: (apiSession.exercises ?? []).map(ex => ({
+          id: ex.exerciseId,
+          primary: ex.primary,
+          order: ex.order,
+          objectives: ex.objectives ?? [],
+          measures: ex.measures ?? [],
+          alternatives: ex.alternatives ?? {},
+          customMeasureLabels: ex.customMeasureLabels ?? {},
+          customObjectiveLabels: ex.customObjectiveLabels ?? {},
+          sets: (ex.sets ?? []).map(s => ({
+            id: s.setId, reps: s.reps, weight: s.weight, intensity: s.intensity,
+            rir: s.rir, title: s.title, order: s.order,
+          })),
+        })),
+      };
+
+      const sessionState = {
+        session,
+        workout,
+        index: sessionIndex ?? 0,
+        isManual: true,
+        allSessions,
+        progress: existingState?.progress ?? null,
+        isLoading: false,
+        error: null,
+        emptyReason: null,
+        todaySessionAlreadyCompleted: false,
+      };
+
+      // Update cache with the new session state
+      const cacheKey = `${userId}|${courseId}`;
+      this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
+
+      return sessionState;
     } catch (error) {
       logger.error('Error selecting session:', error);
       throw error;
@@ -387,11 +489,17 @@ class SessionService {
             return hasReps || hasWeight;
           }) : [];
         
+        // Extract primary muscle names from muscle_activation map
+        const primaryMuscles = exercise.muscle_activation
+          ? Object.keys(exercise.muscle_activation)
+          : [];
+
         const processedExercise = {
           exerciseId: exercise.id || exercise.exerciseId || `exercise_${Date.now()}_${index}`,
           exerciseName: exercise.name || exercise.exerciseName || 'Unknown Exercise',
-          libraryId: libraryId, // Now properly resolved
-          primary: exercise.primary, // CRITICAL: Include primary field for exercise resolution
+          libraryId: libraryId,
+          primary: exercise.primary,
+          primaryMuscles,
           sets: processedSets
         };
         

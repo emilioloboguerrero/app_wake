@@ -157,6 +157,14 @@
       ]
     },
     {
+      "collectionGroup": "sessionHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "courseId", "order": "ASCENDING"},
+        {"fieldPath": "date", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "workout_timers",
       "queryScope": "COLLECTION",
       "fields": [

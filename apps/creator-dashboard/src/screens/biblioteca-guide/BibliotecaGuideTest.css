@@ -1,0 +1,184 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+/* ── Layout ────────────────────────────────────────────────────────── */
+.bgt-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  background: #1a1a1a;
+  font-family: 'Montserrat', sans-serif;
+  overflow: hidden;
+}
+
+/* ── Mock sidebar ──────────────────────────────────────────────────── */
+.bgt-sidebar {
+  width: 220px;
+  min-width: 220px;
+  height: 100vh;
+  background: #1a1a1a;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px;
+  opacity: 0.4;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.bgt-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 24px;
+}
+
+.bgt-logo-text {
+  color: rgba(255,255,255,0.8);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.bgt-logo-sub {
+  color: rgba(255,255,255,0.25);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.bgt-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.bgt-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.bgt-nav-item--active {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.85);
+}
+
+/* ── Mock sidebar footer ──────────────────────────────────────────── */
+.bgt-sidebar-footer {
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.bgt-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.bgt-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.5);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.bgt-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.bgt-user-name {
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.bgt-user-sub {
+  color: rgba(255,255,255,0.25);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+/* ── Main content ──────────────────────────────────────────────────── */
+.bgt-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+}
+
+.bgt-header {
+  height: 56px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.bgt-header-title {
+  color: rgba(255,255,255,0.8);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.bgt-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Guide complete state ──────────────────────────────────────────── */
+.bgt-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+}
+
+.bgt-done-text {
+  color: rgba(255,255,255,0.4);
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.bgt-done-replay {
+  padding: 10px 28px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.bgt-done-replay:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.2);
+}

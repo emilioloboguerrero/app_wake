@@ -9,7 +9,6 @@ import logger from '../utils/logger';
 import firestoreService from '../services/apiService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAuth } from '../contexts/AuthContext';
-import { auth } from '../config/firebase';
 import WeekDateSelector, { toYYYYMMDD } from '../components/WeekDateSelector.web';
 import RecoveryModal from '../components/workout/RecoveryModal';
 import { extractAccentColor, applyAccentToElement } from '../utils/accentExtractor';
@@ -31,17 +30,7 @@ const DailyWorkoutScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { courseId } = useParams();
-  const { user: contextUser } = useAuth();
-  const [fallbackUser, setFallbackUser] = useState(null);
-  const user = contextUser || fallbackUser;
-
-  React.useEffect(() => {
-    if (!contextUser && auth?.currentUser) {
-      setFallbackUser(auth.currentUser);
-    } else if (contextUser) {
-      setFallbackUser(null);
-    }
-  }, [contextUser]);
+  const { user, loading: authLoading } = useAuth();
 
   const [selectedDate, setSelectedDate] = useState(() => toYYYYMMDD(new Date()));
   const [dateTransitioning, setDateTransitioning] = useState(false);
@@ -65,7 +54,9 @@ const DailyWorkoutScreen = () => {
     const y = now.getFullYear();
     const m = now.getMonth();
     const key = `${y}-${String(m + 1).padStart(2, '0')}`;
-    const start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+    // Extend start 7 days before month to cover week boundary (e.g. Mar 30 when April starts)
+    const extStart = new Date(y, m, 1 - 7);
+    const start = `${extStart.getFullYear()}-${String(extStart.getMonth() + 1).padStart(2, '0')}-${String(extStart.getDate()).padStart(2, '0')}`;
     const lastDay = new Date(y, m + 1, 0).getDate();
     const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     return { key, start, end };
@@ -101,19 +92,19 @@ const DailyWorkoutScreen = () => {
       if (courseFromState) {
         const rawCourse = courseFromState;
         return {
+          ...rawCourse,
           id: rawCourse.id || rawCourse.courseId || courseId,
           courseId: rawCourse.courseId || rawCourse.id || courseId,
           title: rawCourse.title || 'Programa sin título',
-          ...rawCourse,
         };
       }
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) return null;
       return {
+        ...courseData,
         id: courseData.id || courseId,
         courseId: courseData.id || courseId,
         title: courseData.title || 'Programa sin título',
-        ...courseData,
       };
     },
     staleTime: STALE_TIMES.programStructure,
@@ -181,7 +172,7 @@ const DailyWorkoutScreen = () => {
   const [recoveryCheckpoint, setRecoveryCheckpoint] = useState(null);
 
   useEffect(() => {
-    const currentUser = contextUser || auth?.currentUser;
+    const currentUser = user;
     if (!currentUser?.uid || !courseId) return;
 
     // 1. Check localStorage
@@ -212,7 +203,7 @@ const DailyWorkoutScreen = () => {
         setRecoveryCheckpoint(serverCp);
       });
     });
-  }, [contextUser, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRecoveryResume = useCallback(() => {
     if (!recoveryCheckpoint || !course) return;
@@ -289,7 +280,7 @@ const DailyWorkoutScreen = () => {
     }
   };
 
-  if (loading) {
+  if (loading || authLoading || !user) {
     return <LoadingScreen />;
   }
 

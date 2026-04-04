@@ -151,7 +151,7 @@ class ExerciseHistoryService {
       const res = await apiClient.get('/workout/calendar', { params: { courseId, startDate: start, endDate: end } });
       return res?.data ?? [];
     } catch (error) {
-      logger.error('❌ getDatesWithCompletedSessionsForCourse:', error);
+      logger.error('getDatesWithCompletedSessionsForCourse:', error);
       return [];
     }
   }

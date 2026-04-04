@@ -1,0 +1,313 @@
+/* ── Root ──────────────────────────────────────────────────────────── */
+.bg-root {
+  width: 100%;
+  height: 100%;
+  background: #1a1a1a;
+  overflow: hidden;
+  position: relative;
+  font-family: 'Montserrat', sans-serif;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+}
+
+.bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Intro ─────────────────────────────────────────────────────────── */
+.bg-intro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  z-index: 10;
+  padding: 40px;
+}
+
+.bg-intro-title {
+  color: rgba(255,255,255,0.85);
+  font-size: clamp(26px, 2.8vw, 42px);
+  font-weight: 300;
+  text-align: center;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  margin: 0;
+  max-width: 500px;
+}
+
+.bg-intro-bold {
+  font-weight: 700;
+  color: rgba(255,255,255,1);
+}
+
+.bg-intro-sub {
+  color: rgba(255,255,255,0.28);
+  font-size: 14px;
+  font-weight: 400;
+  margin: 16px 0 0 0;
+  text-align: center;
+}
+
+.bg-intro-cta {
+  margin-top: 28px;
+  padding: 14px 48px;
+  background: rgba(255,87,168,0.12);
+  border: 1px solid rgba(255,87,168,0.3);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.85);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.bg-intro-cta:hover {
+  background: rgba(255,87,168,0.18);
+  border-color: rgba(255,87,168,0.45);
+}
+
+/* ── Steps layout ──────────────────────────────────────────────────── */
+
+/* Wrapper: title + visual stacked vertically, centered as a unit */
+.bg-content-area {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  padding: 0 40px;
+}
+
+.bg-title-area {
+  flex-shrink: 0;
+  height: 72px;
+  width: 100%;
+  position: relative;
+}
+
+.bg-title-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 8px;
+}
+
+.bg-title {
+  color: rgba(255,255,255,0.85);
+  font-size: clamp(22px, 2.6vw, 36px);
+  font-weight: 300;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: -0.02em;
+  line-height: 1.4;
+  margin: 0;
+  max-width: 620px;
+  text-align: center;
+}
+
+.bg-phrase-bold {
+  font-weight: 700;
+  color: rgba(255,255,255,1);
+}
+
+.bg-visual-area {
+  flex-shrink: 0;
+  width: 100%;
+  height: 340px;
+  position: relative;
+  z-index: 1;
+}
+
+.bg-visual-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+/* ── Bottom nav ────────────────────────────────────────────────────── */
+.bg-bottom {
+  flex-shrink: 0;
+  padding: 8px 48px 20px;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  z-index: 3;
+}
+
+.bg-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.bg-nav-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.bg-nav-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.2);
+}
+
+.bg-nav-btn:disabled {
+  cursor: default;
+}
+
+.bg-nav-btn--finish {
+  width: auto;
+  border-radius: 12px;
+  padding: 0 28px;
+  height: 44px;
+  background: rgba(255,87,168,0.12);
+  border-color: rgba(255,87,168,0.3);
+  color: rgba(255,255,255,0.85);
+}
+
+.bg-nav-btn--finish:hover {
+  background: rgba(255,87,168,0.18) !important;
+  border-color: rgba(255,87,168,0.45) !important;
+}
+
+.bg-nav-finish-text {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+.bg-nav-count {
+  color: rgba(255,255,255,0.2);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Progress bar ──────────────────────────────────────────────────── */
+.bg-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.04);
+  z-index: 10;
+}
+
+.bg-progress-fill {
+  height: 100%;
+  background: rgba(255,87,168,0.4);
+}
+
+/* ── Hint ──────────────────────────────────────────────────────────── */
+.bg-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: rgba(255,255,255,0.18);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  pointer-events: none;
+  z-index: 12;
+  margin: 0;
+}
+
+/* ── Completion screen ─────────────────────────────────────────────── */
+.bg-complete {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  z-index: 10;
+  padding: 40px;
+}
+
+.bg-complete-title {
+  color: rgba(255,255,255,0.9);
+  font-size: clamp(24px, 2.8vw, 40px);
+  font-weight: 300;
+  text-align: center;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  margin: 0;
+  max-width: 440px;
+}
+
+.bg-complete-bold {
+  font-weight: 700;
+  color: rgba(255,255,255,1);
+}
+
+.bg-complete-sub {
+  color: rgba(255,255,255,0.28);
+  font-size: 13px;
+  font-weight: 400;
+  margin: 12px 0 0 0;
+  text-align: center;
+  max-width: 380px;
+  line-height: 1.5;
+}
+
+.bg-complete-diagram {
+  margin: 32px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bg-complete-cta {
+  margin-top: 32px;
+  padding: 14px 48px;
+  background: rgba(255,87,168,0.12);
+  border: 1px solid rgba(255,87,168,0.3);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.85);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.bg-complete-cta:hover {
+  background: rgba(255,87,168,0.18);
+  border-color: rgba(255,87,168,0.45);
+}

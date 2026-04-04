@@ -44,9 +44,13 @@
     "creator:dev": "npm --prefix functions run build && concurrently -n tsc,emu,vite -c blue,magenta,green \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wake-staging\" \"cross-env VITE_FIREBASE_ENV=staging npm run dev --prefix apps/creator-dashboard\"",
     "creator:dev:prod": "npm --prefix functions run build && concurrently -n tsc,emu,vite -c blue,magenta,green \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wolf-20b8b\" \"cross-env VITE_FIREBASE_ENV=production npm run dev --prefix apps/creator-dashboard\"",
     "pwa:dev:prod": "cross-env FIREBASE_PROJECT=wolf-20b8b node scripts/pwa-dev.js",
-    "dev:prod": "npm --prefix functions run build && concurrently -n tsc,emu,creator,pwa -c blue,magenta,green,cyan \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wolf-20b8b\" \"cross-env VITE_FIREBASE_ENV=production npm run dev --prefix apps/creator-dashboard\" \"cross-env FIREBASE_PROJECT=wolf-20b8b node scripts/pwa-dev.js\""
+    "dev:prod": "npm --prefix functions run build && concurrently -n tsc,emu,creator,pwa -c blue,magenta,green,cyan \"npm --prefix functions run build:watch\" \"firebase emulators:start --only functions --project wolf-20b8b\" \"cross-env VITE_FIREBASE_ENV=production npm run dev --prefix apps/creator-dashboard\" \"cross-env FIREBASE_PROJECT=wolf-20b8b node scripts/pwa-dev.js\"",
+    "test:e2e": "npx playwright test --config=tests/e2e/playwright.config.js",
+    "test:e2e:ui": "npx playwright test --config=tests/e2e/playwright.config.js --project=setup && npx playwright test --config=tests/e2e/playwright.config.js --ui",
+    "test:e2e:headed": "npx playwright test --config=tests/e2e/playwright.config.js --headed"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "concurrently": "^9.2.1",
     "cross-env": "^7.0.3",
     "firebase-tools": "^15.5.1",

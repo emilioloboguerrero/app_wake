@@ -12,14 +12,10 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
   const resolvedRef = useRef(false);
 
   useEffect(() => {
-    if (initialized) return;
-
     const safari = isSafariWeb();
-    setInitialized(true);
     resolvedRef.current = false;
 
     const resolve = (authUser) => {
@@ -44,11 +40,10 @@ export const AuthProvider = ({ children }) => {
     }, fallbackMs);
 
     return () => {
-      resolvedRef.current = true;
       clearTimeout(timeout);
       unsubscribe();
     };
-  }, [initialized]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize web push notifications on login (web only)
   useEffect(() => {

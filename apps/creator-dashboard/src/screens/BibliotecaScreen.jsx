@@ -15,6 +15,7 @@ import SimpleCreateOverlay from '../components/biblioteca/SimpleCreateOverlay';
 import libraryService from '../services/libraryService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import apiClient from '../utils/apiClient';
+import BibliotecaGuide from './biblioteca-guide/BibliotecaGuide';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { queryKeys, cacheConfig } from '../config/queryClient';
@@ -110,7 +111,7 @@ const BibliotecaScreen = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, bibliotecaGuideCompleted, refreshUserData } = useAuth();
   const { showToast } = useToast();
 
   const domain = searchParams.get('domain') || 'entrenamiento';
@@ -237,6 +238,15 @@ const BibliotecaScreen = () => {
     if (id) navigate(`/plans/${id}`);
   }, [navigate]);
 
+  const handleGuideComplete = useCallback(async () => {
+    try {
+      await apiClient.patch('/users/me', { bibliotecaGuideCompleted: true });
+      await refreshUserData();
+    } catch (err) {
+      console.error('[BibliotecaScreen] Error completing guide:', err);
+    }
+  }, [refreshUserData]);
+
   // --- Cross-tab prefetching ---
 
   useEffect(() => {
@@ -287,6 +297,14 @@ const BibliotecaScreen = () => {
         return null;
     }
   };
+
+  if (!bibliotecaGuideCompleted) {
+    return (
+      <DashboardLayout screenName="Biblioteca">
+        <BibliotecaGuide onComplete={handleGuideComplete} />
+      </DashboardLayout>
+    );
+  }
 
   return (
     <ErrorBoundary>

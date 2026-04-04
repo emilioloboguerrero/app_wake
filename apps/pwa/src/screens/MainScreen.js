@@ -16,7 +16,6 @@ import { Image as ExpoImage } from 'expo-image';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { isWeb } from '../utils/platform';
-import { auth } from '../config/firebase';
 import courseDownloadService from '../data-management/courseDownloadService';
 import apiClient from '../utils/apiClient';
 import purchaseEventManager from '../services/purchaseEventManager';
@@ -398,9 +397,7 @@ const MainScreen = ({ navigation, route }) => {
     // Navigation buttons
   }), [screenWidth, screenHeight, CARD_WIDTH, CARD_HEIGHT, heightForBottomPadding]);
   
-  // Auth — prefer context; fall back to Firebase singleton for cases where context lags
-  const { user: contextUser } = useAuth();
-  const user = contextUser || auth.currentUser;
+  const { user } = useAuth();
   const queryClientHook = useQueryClient();
 
   const { courses: purchasedCoursesFromHook, isLoading: coursesQueryLoading, error: coursesQueryError, refetch: refetchCourses } = useUserCourses(user?.uid);
@@ -447,22 +444,21 @@ const MainScreen = ({ navigation, route }) => {
   // Web: course ids whose card image has loaded — used to force re-render so mix-blend-mode repaints over the image
   const [cardImageLoadedIds, setCardImageLoadedIds] = useState(() => new Set());
 
-  // Derive user profile from React Query data, falling back to auth state
+  // Derive user profile from React Query data, falling back to auth user
   const userProfile = useMemo(() => {
-    const currentUser = auth.currentUser;
     if (profileQueryData) {
       return {
-        displayName: profileQueryData.displayName || currentUser?.displayName || user?.displayName || '',
+        displayName: profileQueryData.displayName || user?.displayName || '',
         username: profileQueryData.username || '',
-        email: profileQueryData.email || currentUser?.email || user?.email || '',
+        email: profileQueryData.email || user?.email || '',
         phoneNumber: profileQueryData.phoneNumber || '',
         gender: profileQueryData.gender || '',
       };
     }
     return {
-      displayName: currentUser?.displayName || user?.displayName || '',
+      displayName: user?.displayName || '',
       username: '',
-      email: currentUser?.email || user?.email || '',
+      email: user?.email || '',
       phoneNumber: '',
       gender: '',
     };
@@ -470,8 +466,7 @@ const MainScreen = ({ navigation, route }) => {
 
   // First name derived from profile data — stable across renders
   const firstName = useMemo(() => {
-    const currentUser = auth.currentUser;
-    const displayName = currentUser?.displayName || userProfile?.displayName || user?.displayName;
+    const displayName = userProfile?.displayName || user?.displayName;
     if (displayName && displayName.trim()) {
       return displayName.split(' ')[0];
     }

@@ -32,6 +32,7 @@ import BibliotecaScreen from './screens/BibliotecaScreen';
 import ProgramasScreen from './screens/ProgramasScreen';
 import ClientesScreen from './screens/ClientesScreen';
 
+import BibliotecaGuideTest from './screens/biblioteca-guide/BibliotecaGuideTest';
 import DebugScreenTracker from './components/DebugScreenTracker';
 import './App.css';
 
@@ -317,6 +318,8 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
+            {/* ── Test routes ─────────────────────────────────── */}
+            <Route path="/test/biblioteca-guide" element={<BibliotecaGuideTest />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>

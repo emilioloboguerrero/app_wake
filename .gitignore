@@ -125,6 +125,13 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 
+# Playwright
+tests/e2e/.auth/
+tests/e2e/.env.test
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/blob-report/
+
 # ============================================
 # Temporary files
 # ============================================

@@ -27,17 +27,23 @@ class SessionManager {
    */
   async startSession(userId, courseId, sessionId, sessionName) {
     try {
+      const now = new Date().toISOString();
       const sessionData = {
         sessionId,
         userId,
         courseId,
         sessionName,
-        startTime: new Date().toISOString(),
-        exercises: []
+        startedAt: now,
+        startTime: now,
+        currentExerciseIndex: 0,
+        currentSetIndex: 0,
+        exercises: [],
+        completedSets: {},
+        elapsedSeconds: 0
       };
-      
+
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
-      apiClient.put('/workout/checkpoint', sessionData).catch(e => logger.error('⚠️ Checkpoint save failed (start):', e));
+      apiClient.put('/workout/checkpoint', sessionData).catch(e => logger.error('Checkpoint save failed (start):', e));
       return sessionData;
     } catch (error) {
       logger.error('❌ Error starting session:', error);

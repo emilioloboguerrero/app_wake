@@ -72,35 +72,23 @@ const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
 
 const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp, onDateChange, showSessionsList = true, renderBeforeContent }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { course } = route.params;
-  const { user: contextUser } = useAuth();
+  const rawCourse = route.params?.course;
+  const course = rawCourse ? { ...rawCourse, courseId: rawCourse.courseId || rawCourse.id } : null;
+  const { user } = useAuth();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   const [failedImages, setFailedImages] = React.useState(new Set());
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
-
-  const [fallbackUser, setFallbackUser] = React.useState(null);
-  React.useEffect(() => {
-    if (!contextUser) {
-      import('../config/firebase').then(({ auth }) => {
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          setFallbackUser(firebaseUser);
-        }
-      });
-    }
-  }, [contextUser]);
-
-  const user = contextUser || fallbackUser;
   const queryClientHook = useQueryClient();
   const { streakNumber, flameLevel, isLoading: streakLoading } = useActivityStreakContext();
 
   // React Query: default session load (no specific date, no pre-selected session)
   const defaultSessionQueryKey = queryKeys.programs.dailySession(user?.uid, course?.courseId, 'default');
+  const defaultQueryEnabled = !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId;
   const { data: defaultSessionData } = useQuery({
     queryKey: defaultSessionQueryKey,
     queryFn: () => sessionService.getCurrentSession(user.uid, course.courseId, {}),
-    enabled: !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId,
+    enabled: defaultQueryEnabled,
     ...cacheConfig.activeSession,
   });
 
@@ -125,8 +113,10 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   }, [defaultSessionData]);
 
   // React Query: user profile for course metadata (creator name)
+  const userDetailKey = queryKeys.user.detail(user?.uid);
+  const existingUserCache = queryClientHook.getQueryData(userDetailKey);
   const { data: userMeData } = useQuery({
-    queryKey: ['user', 'me', user?.uid],
+    queryKey: userDetailKey,
     queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
     enabled: !!user?.uid,
     ...cacheConfig.userProfile,
@@ -244,29 +234,26 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   };
 
   useEffect(() => {
-    // Only load normal session state if no session is pre-selected
-    // Skip if user is not yet available
-    if (!route.params?.selectedSessionId) {
+    // Only load via imperative call for one-on-one with a specific date.
+    // Low-ticket default load is handled by React Query (defaultSessionData).
+    if (!route.params?.selectedSessionId && isOneOnOne && selectedDateProp) {
       if (user?.uid) {
-        const opts = isOneOnOne && selectedDateProp ? { targetDate: selectedDateProp } : {};
-        loadSessionState(opts);
+        loadSessionState({ targetDate: selectedDateProp });
       }
     }
   }, [user?.uid]); // Re-run when user becomes available
 
-  // When selectedDate changes (web date picker), reload session for that day (skip initial mount to avoid double load)
+  // When selectedDate changes (web date picker), reload session for that day
+  // Only one-on-one programs are date-based. Low-ticket sessions are sequential — no reload needed on date change.
   const prevSelectedDateRef = useRef(selectedDateProp);
   useEffect(() => {
+    if (!isOneOnOne) return;
     if (!user?.uid || !course?.courseId || !selectedDateProp) return;
     if (prevSelectedDateRef.current === selectedDateProp) return;
     prevSelectedDateRef.current = selectedDateProp;
     pendingStartAfterLoadRef.current = false;
     setShowLoadingOverlayForStart(false);
-    if (isOneOnOne) {
-      loadSessionState({ targetDate: selectedDateProp });
-    } else {
-      loadSessionState({ forceRefresh: true });
-    }
+    loadSessionState({ targetDate: selectedDateProp });
   }, [selectedDateProp, isOneOnOne, user?.uid, course?.courseId]);
 
   // Handle pre-selected session from CourseStructureScreen
@@ -274,101 +261,79 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (route.params?.selectedSessionId && user?.uid) {
       const { selectedSessionId, selectedModuleId, selectedSessionIndex } = route.params;
       
-      // Find the session object from allSessions or load it
+      // Load allSessions from cache/API, then call lightweight session-exercises endpoint
       const handlePreSelectedSession = async () => {
         try {
-          // If we already have allSessions loaded, use them
-          let allSessions = sessionState.allSessions;
-          
-          if (!allSessions || allSessions.length === 0) {
-            const initialState = await sessionService.getCurrentSession(
-              user.uid,
-              course.courseId
-            );
-            allSessions = initialState.allSessions || [];
-            // Update state with loaded sessions (but don't select yet)
-            setSessionState(prev => ({
-              ...prev,
-              allSessions: allSessions,
-              isLoading: false
-            }));
-          }
-          
-          // Find the selected session
-          const selectedSession = allSessions.find(s => 
+          setIsChangingSession(true);
+          setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
+
+          // Get allSessions from cache or fetch
+          const initialState = await sessionService.getCurrentSession(user.uid, course.courseId);
+          const allSessions = initialState.allSessions || [];
+
+          const selectedSession = allSessions.find(s =>
             (s.id === selectedSessionId) || (s.sessionId === selectedSessionId)
           );
-          
+
           if (selectedSession) {
-            await handleSelectSession(selectedSession, selectedSessionIndex);
-            
-            // Clear params after successful selection to prevent re-selection on back navigation
-            navigation.setParams({ 
-              selectedSessionId: undefined,
-              selectedModuleId: undefined,
-              selectedSessionIndex: undefined
-            });
+            // Call selectSession directly with the loaded state (not component sessionState which may be stale)
+            const newState = await sessionService.selectSession(
+              user.uid,
+              course.courseId,
+              selectedSession.sessionId || selectedSession.id,
+              selectedSessionIndex,
+              initialState
+            );
+            setSessionState(newState);
+            setPreviewSessionId(null);
           } else {
-            // Clear params and load normally
-            navigation.setParams({ 
-              selectedSessionId: undefined,
-              selectedModuleId: undefined,
-              selectedSessionIndex: undefined
-            });
-            loadSessionState();
+            // Session not found in allSessions — fall back to default load
+            setSessionState(initialState);
           }
+
+          navigation.setParams({
+            selectedSessionId: undefined,
+            selectedModuleId: undefined,
+            selectedSessionIndex: undefined
+          });
         } catch (error) {
-          logger.error('❌ Error handling pre-selected session:', error);
-          // Clear params and fallback to normal load
-          navigation.setParams({ 
+          logger.error('Error handling pre-selected session:', error);
+          navigation.setParams({
             selectedSessionId: undefined,
             selectedModuleId: undefined,
             selectedSessionIndex: undefined
           });
           loadSessionState();
+        } finally {
+          setIsChangingSession(false);
         }
       };
-      
+
       handlePreSelectedSession();
     }
   }, [route.params?.selectedSessionId, user?.uid]);
-
-  // Refresh data when screen comes into focus
-  // On web, this runs on mount since there's no focus event.
-  // Skip when one-on-one: the user/selectedDate effects already load with targetDate.
-  const webLoadCalledRef = React.useRef(false);
-  
-  React.useEffect(() => {
-    if (isWeb && !webLoadCalledRef.current && !isOneOnOne) {
-      if (!sessionState.isManual && user?.uid && course?.courseId) {
-        webLoadCalledRef.current = true;
-        loadSessionState();
-      }
-    }
-  }, [isWeb, isOneOnOne, user?.uid, course?.courseId, sessionState.isManual]);
 
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
     try {
       // Safety check: ensure user and course are available
       if (!user?.uid) {
-        logger.error('❌ Cannot load session state: user not available');
+        logger.error('Cannot load session state: user not available');
         return;
       }
-      
+
       if (!course?.courseId) {
-        logger.error('❌ Cannot load session state: course not available');
+        logger.error('Cannot load session state: course not available');
         return;
       }
-      
+
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
-      
+
       const newState = await sessionService.getCurrentSession(
         user.uid,
         course.courseId,
         options
       );
-
       if (options.targetDate && newState.workout) {
         lastLoadedForDateRef.current = options.targetDate;
       }
@@ -432,7 +397,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         sessionState.workout.title
       );
       navigation.navigate('Warmup', {
-        course: course,
+        course: { ...course, availableLibraries: sessionState.availableLibraries || course.availableLibraries || [] },
         workout: sessionState.workout,
         sessionId: session.sessionId
       });
@@ -464,12 +429,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       // Show loading state immediately
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      // Use single service to select session
+      // Use lightweight endpoint — pass existing state to reuse allSessions/progress
       const newState = await sessionService.selectSession(
         user.uid,
         course.courseId,
         session.sessionId || session.id,
-        sessionIndex
+        sessionIndex,
+        sessionState
       );
 
       setSessionState(newState);

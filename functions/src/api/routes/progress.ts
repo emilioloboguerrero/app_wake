@@ -305,11 +305,7 @@ router.get("/progress/readiness/:date", async (req, res) => {
     .doc(req.params.date)
     .get();
 
-  if (!doc.exists) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Registro de readiness no encontrado");
-  }
-
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: doc.exists ? { id: doc.id, ...doc.data() } : null });
 });
 
 // PUT /progress/readiness/:date (idempotent)
