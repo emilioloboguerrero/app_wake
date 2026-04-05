@@ -1,19 +1,7 @@
-import { vi, describe, it, expect } from 'vitest';
-
-vi.mock('../config/firebase', () => ({ firestore: {} }));
-vi.mock('firebase/firestore', () => ({
-  doc: vi.fn(), getDoc: vi.fn(), getDocFromServer: vi.fn(),
-  updateDoc: vi.fn(),
-}));
-vi.mock('react', () => ({
-  useState: vi.fn(), useRef: vi.fn(), useEffect: vi.fn(),
-}));
-vi.mock('../utils/logger.js', () => ({
-  default: { log: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
+import { describe, it, expect } from 'vitest';
 
 import {
-  computeStreakStateFromDates,
+  computeStreakState,
   calendarDaysBetween,
   toYYYYMMDD,
   getLocalDateString,
@@ -82,71 +70,86 @@ describe('toYYYYMMDD', () => {
   });
 });
 
-// ─── computeStreakStateFromDates ──────────────────────────────────────────────
+// ─── computeStreakState ─────────────────────────────────────────────────────
 
-describe('computeStreakStateFromDates', () => {
+describe('computeStreakState', () => {
   const TODAY = '2026-03-12';
 
   it('returns zero state when lastActivityDate is null', () => {
-    expect(computeStreakStateFromDates('2026-03-10', null, TODAY))
-      .toEqual({ streakNumber: 0, flameLevel: 0 });
+    const result = computeStreakState({ streakStartDate: '2026-03-10', lastActivityDate: null }, TODAY);
+    expect(result.streakNumber).toBe(0);
+    expect(result.flameLevel).toBe(0);
   });
 
   it('returns zero state when streakStartDate is null', () => {
-    expect(computeStreakStateFromDates(null, '2026-03-10', TODAY))
-      .toEqual({ streakNumber: 0, flameLevel: 0 });
+    const result = computeStreakState({ streakStartDate: null, lastActivityDate: '2026-03-10' }, TODAY);
+    expect(result.streakNumber).toBe(0);
+    expect(result.flameLevel).toBe(0);
   });
 
-  it('returns zero state when both dates are null', () => {
-    expect(computeStreakStateFromDates(null, null, TODAY))
-      .toEqual({ streakNumber: 0, flameLevel: 0 });
+  it('returns zero state when input is null', () => {
+    const result = computeStreakState(null, TODAY);
+    expect(result.streakNumber).toBe(0);
+    expect(result.flameLevel).toBe(0);
   });
 
   it('streak is alive when last activity was today (0 days ago)', () => {
-    const result = computeStreakStateFromDates('2026-03-10', TODAY, TODAY);
+    const result = computeStreakState({ streakStartDate: '2026-03-10', lastActivityDate: TODAY }, TODAY);
     expect(result.streakNumber).toBeGreaterThan(0);
     expect(result.flameLevel).toBe(3);
   });
 
   it('streak is alive when last activity was yesterday (1 day ago)', () => {
-    const result = computeStreakStateFromDates('2026-03-10', '2026-03-11', TODAY);
+    const result = computeStreakState({ streakStartDate: '2026-03-10', lastActivityDate: '2026-03-11' }, TODAY);
     expect(result.streakNumber).toBeGreaterThan(0);
     expect(result.flameLevel).toBe(3);
   });
 
   it('flameLevel drops to 2 when last activity was 2 days ago', () => {
-    const result = computeStreakStateFromDates('2026-03-08', '2026-03-10', TODAY);
+    const result = computeStreakState({ streakStartDate: '2026-03-08', lastActivityDate: '2026-03-10' }, TODAY);
     expect(result.flameLevel).toBe(2);
   });
 
   it('flameLevel drops to 1 when last activity was 3 days ago', () => {
-    const result = computeStreakStateFromDates('2026-03-07', '2026-03-09', TODAY);
+    const result = computeStreakState({ streakStartDate: '2026-03-07', lastActivityDate: '2026-03-09' }, TODAY);
     expect(result.flameLevel).toBe(1);
   });
 
   it('streak dies (returns zero) when last activity was 4 days ago', () => {
-    const result = computeStreakStateFromDates('2026-03-01', '2026-03-08', TODAY);
-    expect(result).toEqual({ streakNumber: 0, flameLevel: 0 });
+    const result = computeStreakState({ streakStartDate: '2026-03-01', lastActivityDate: '2026-03-08' }, TODAY);
+    expect(result.streakNumber).toBe(0);
+    expect(result.flameLevel).toBe(0);
   });
 
   it('streak dies when last activity was more than 4 days ago', () => {
-    const result = computeStreakStateFromDates('2026-02-01', '2026-03-01', TODAY);
-    expect(result).toEqual({ streakNumber: 0, flameLevel: 0 });
+    const result = computeStreakState({ streakStartDate: '2026-02-01', lastActivityDate: '2026-03-01' }, TODAY);
+    expect(result.streakNumber).toBe(0);
+    expect(result.flameLevel).toBe(0);
   });
 
   it('calculates streakNumber as days from start to today inclusive', () => {
-    // start 2026-03-10, today 2026-03-12 → 2 days between + 1 = 3
-    const result = computeStreakStateFromDates('2026-03-10', TODAY, TODAY);
+    // start 2026-03-10, today 2026-03-12 -> 2 days between + 1 = 3
+    const result = computeStreakState({ streakStartDate: '2026-03-10', lastActivityDate: TODAY }, TODAY);
     expect(result.streakNumber).toBe(3);
   });
 
   it('streakNumber is 1 when streak started today', () => {
-    const result = computeStreakStateFromDates(TODAY, TODAY, TODAY);
+    const result = computeStreakState({ streakStartDate: TODAY, lastActivityDate: TODAY }, TODAY);
     expect(result.streakNumber).toBe(1);
   });
 
   it('flameLevel is at least 1 even on the last alive day (3 days since last)', () => {
-    const result = computeStreakStateFromDates('2026-03-07', '2026-03-09', TODAY);
+    const result = computeStreakState({ streakStartDate: '2026-03-07', lastActivityDate: '2026-03-09' }, TODAY);
     expect(result.flameLevel).toBeGreaterThanOrEqual(1);
+  });
+
+  it('longestStreak is max of current streak and stored longestStreak', () => {
+    const result = computeStreakState({ streakStartDate: '2026-03-10', lastActivityDate: TODAY, longestStreak: 50 }, TODAY);
+    expect(result.longestStreak).toBe(50);
+  });
+
+  it('longestStreak updates if current streak exceeds it', () => {
+    const result = computeStreakState({ streakStartDate: '2026-02-10', lastActivityDate: TODAY, longestStreak: 2 }, TODAY);
+    expect(result.longestStreak).toBeGreaterThan(2);
   });
 });

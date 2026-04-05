@@ -5,6 +5,7 @@ import { validateAuth } from "../middleware/auth.js";
 import { validateBody, pickFields, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
+import { updateStreak } from "../streak.js";
 
 const router = Router();
 
@@ -65,6 +66,7 @@ router.post("/nutrition/diary", async (req, res) => {
     serving_unit?: string;
     grams_per_unit?: number;
     servings?: unknown[];
+    lastKnownActivityDate?: string;
   }>(
     {
       date: "string",
@@ -81,6 +83,7 @@ router.post("/nutrition/diary", async (req, res) => {
       serving_unit: "optional_string",
       grams_per_unit: "optional_number",
       servings: "optional_array",
+      lastKnownActivityDate: "optional_string",
     },
     req.body,
     { maxArrayLength: 100 }
@@ -89,17 +92,71 @@ router.post("/nutrition/diary", async (req, res) => {
   // Validate date format
   validateDateFormat(body.date, "date");
 
+  const { lastKnownActivityDate, ...diaryFields } = body;
+
   const docRef = await db
     .collection("users")
     .doc(auth.userId)
     .collection("diary")
     .add({
-      ...body,
+      ...diaryFields,
       userId: auth.userId,
       createdAt: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id, entryId: docRef.id } });
+  const streakResult = await updateStreak(auth.userId, body.date, lastKnownActivityDate);
+
+  res.status(201).json({ data: { id: docRef.id, entryId: docRef.id, streakUpdated: streakResult.updated } });
+});
+
+// POST /nutrition/diary/batch — add multiple diary entries at once
+router.post("/nutrition/diary/batch", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const { entries } = req.body;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "entries debe ser un array no vacío", "entries");
+  }
+  if (entries.length > 30) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Máximo 30 entradas por lote", "entries");
+  }
+
+  const batch = db.batch();
+  const ids: string[] = [];
+
+  for (const entry of entries) {
+    if (!entry.date || !entry.meal) continue;
+    const ref = db.collection("users").doc(auth.userId).collection("diary").doc();
+    batch.set(ref, {
+      date: entry.date,
+      meal: entry.meal,
+      food_id: entry.food_id ?? null,
+      serving_id: entry.serving_id ?? null,
+      number_of_units: entry.number_of_units ?? 1,
+      name: entry.name ?? "",
+      food_category: entry.food_category ?? null,
+      calories: entry.calories ?? null,
+      protein: entry.protein ?? null,
+      carbs: entry.carbs ?? null,
+      fat: entry.fat ?? null,
+      serving_unit: entry.serving_unit ?? null,
+      grams_per_unit: entry.grams_per_unit ?? null,
+      ...(Array.isArray(entry.servings) ? { servings: entry.servings } : {}),
+      userId: auth.userId,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    ids.push(ref.id);
+  }
+
+  await batch.commit();
+
+  // Use date from first entry for streak
+  const streakDate = entries[0]?.date;
+  const lastKnownActivityDate = req.body.lastKnownActivityDate as string | undefined;
+  const streakResult = streakDate ? await updateStreak(auth.userId, streakDate, lastKnownActivityDate) : null;
+
+  res.status(201).json({ data: { entryIds: ids, streakUpdated: streakResult?.updated ?? false } });
 });
 
 // PATCH /nutrition/diary/:entryId
@@ -119,7 +176,7 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
   }
 
   // Allowlist fields instead of spreading req.body
-  const allowedFields = ["date", "meal", "food_id", "serving_id", "number_of_units", "name", "calories", "protein", "carbs", "fat", "serving_unit", "grams_per_unit"];
+  const allowedFields = ["date", "meal", "food_id", "serving_id", "number_of_units", "name", "calories", "protein", "carbs", "fat", "serving_unit", "grams_per_unit", "servings"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -575,20 +632,26 @@ router.get("/nutrition/assignment", async (req, res) => {
           if (opt.items && Array.isArray(opt.items)) {
             for (const item of opt.items) {
               items.push({
-                foodId: item.foodId ?? null,
+                food_id: item.food_id ?? item.foodId ?? null,
                 name: item.name ?? "",
-                numberOfUnits: item.numberOfUnits ?? 1,
-                servingUnit: item.servingUnit ?? null,
+                number_of_units: item.number_of_units ?? item.numberOfUnits ?? 1,
+                serving_unit: item.serving_unit ?? item.servingUnit ?? null,
+                serving_id: item.serving_id ?? item.servingId ?? null,
+                grams_per_unit: item.grams_per_unit ?? item.gramsPerUnit ?? null,
+                food_category: item.food_category ?? item.foodCategory ?? null,
                 calories: item.calories ?? null,
                 protein: item.protein ?? null,
                 carbs: item.carbs ?? null,
                 fat: item.fat ?? null,
+                servings: Array.isArray(item.servings) ? item.servings : null,
               });
             }
           }
           options.push({
             id: opt.id ?? null,
             label: opt.label ?? "",
+            recipe_name: opt.recipe_name ?? null,
+            recipe_video_url: opt.recipe_video_url ?? null,
             items,
           });
         }

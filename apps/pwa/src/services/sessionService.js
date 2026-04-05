@@ -4,6 +4,7 @@ import oneRepMaxService from './oneRepMaxService';
 import exerciseHistoryService from './exerciseHistoryService';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
+import { queryClient } from '../config/queryClient';
 
 class SessionService {
   constructor() {
@@ -25,14 +26,31 @@ class SessionService {
 
     const cacheKey = targetDate ? `${userId}|${courseId}|${targetDate}` : `${userId}|${courseId}`;
 
+    logger.debug('[SessionService.getCurrentSession] called', {
+      userId, courseId, options: { forceRefresh, manualSessionId, manualSessionIndex, targetDate },
+      cacheKey,
+    });
+
     try {
 
       // Check cache first (unless force refresh) - 5 minute cache
       if (!forceRefresh) {
         const cached = this.cache.get(cacheKey);
         if (cached && (Date.now() - cached.timestamp) < 300000) {
+          const ageMs = Date.now() - cached.timestamp;
+          logger.debug('[SessionService.getCurrentSession] CACHE HIT', {
+            cacheKey, ageMs, hasSession: !!cached.data?.session, emptyReason: cached.data?.emptyReason,
+            allSessionsCount: cached.data?.allSessions?.length,
+          });
           return cached.data;
         }
+        if (cached) {
+          logger.debug('[SessionService.getCurrentSession] CACHE EXPIRED', { cacheKey, ageMs: Date.now() - cached.timestamp });
+        } else {
+          logger.debug('[SessionService.getCurrentSession] CACHE MISS', { cacheKey });
+        }
+      } else {
+        logger.debug('[SessionService.getCurrentSession] FORCE REFRESH - skipping cache');
       }
 
       // Build query params
@@ -40,9 +58,12 @@ class SessionService {
       if (targetDate) params.date = targetDate;
       if (manualSessionId) params.sessionId = manualSessionId;
 
+      logger.debug('[SessionService.getCurrentSession] API params', params);
+
       // Deduplicate in-flight requests with the same key
       const inflightKey = manualSessionId ? `${cacheKey}|${manualSessionId}` : cacheKey;
       if (this.inflight.has(inflightKey)) {
+        logger.debug('[SessionService.getCurrentSession] INFLIGHT DEDUP - reusing pending request', { inflightKey });
         return this.inflight.get(inflightKey);
       }
 
@@ -71,11 +92,29 @@ class SessionService {
   }
 
   async _fetchDaily(params, cacheKey, manualSessionId, manualSessionIndex) {
+      logger.debug('[SessionService._fetchDaily] requesting GET /workout/daily', { params });
       const res = await apiClient.get('/workout/daily', { params });
 
       const d = res?.data;
+      logger.debug('[SessionService._fetchDaily] raw API response', {
+        hasSession: d?.hasSession,
+        isRestDay: d?.isRestDay,
+        emptyReason: d?.emptyReason,
+        allSessionsCount: d?.allSessions?.length,
+        allSessions: d?.allSessions?.map(s => ({ sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, plannedDate: s.plannedDate, order: s.order })),
+        sessionId: d?.session?.sessionId,
+        sessionTitle: d?.session?.title,
+        sessionModuleId: d?.session?.moduleId,
+        sessionPlannedDate: d?.session?.plannedDate,
+        exerciseCount: d?.session?.exercises?.length,
+        progress: d?.progress,
+        todaySessionAlreadyCompleted: d?.todaySessionAlreadyCompleted,
+      });
 
       if (!d?.hasSession) {
+        logger.debug('[SessionService._fetchDaily] NO SESSION returned', {
+          emptyReason: d?.emptyReason, progress: d?.progress,
+        });
         const sessionState = {
           session: null,
           workout: null,
@@ -190,6 +229,19 @@ class SessionService {
         todaySessionAlreadyCompleted: d.todaySessionAlreadyCompleted ?? false,
         availableLibraries: d.availableLibraries ?? [],
       };
+
+      logger.debug('[SessionService._fetchDaily] MAPPED session state', {
+        sessionId: session.id,
+        sessionTitle: session.title,
+        workoutId: workout.id,
+        workoutExerciseCount: workout.exercises?.length,
+        workoutExercises: workout.exercises?.map(e => ({ id: e.id, name: e.name, setsCount: e.sets?.length })),
+        allSessionsCount: allSessions.length,
+        allSessions: allSessions.map(s => ({ id: s.sessionId, title: s.title, moduleId: s.moduleId, plannedDate: s.plannedDate })),
+        currentIndex,
+        isManual: !!manualSessionId,
+        progress: d.progress,
+      });
 
       this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
       return sessionState;
@@ -381,8 +433,9 @@ class SessionService {
         logger.error('Error calculating muscle volumes:', error);
       }
 
-      // Clear cache to force refresh
+      // Clear caches to force refresh
       this.clearCache(userId, courseId);
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
 
 
       return {

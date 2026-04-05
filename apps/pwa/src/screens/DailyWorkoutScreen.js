@@ -82,9 +82,23 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   const queryClientHook = useQueryClient();
   const { streakNumber, flameLevel, isLoading: streakLoading } = useActivityStreakContext();
 
+  logger.debug('[DailyWorkout] RENDER', {
+    courseId: course?.courseId,
+    deliveryType: course?.deliveryType,
+    isOneOnOne,
+    userId: user?.uid,
+    selectedDateProp,
+    hasSelectedSessionId: !!route.params?.selectedSessionId,
+    courseTitle: course?.title,
+  });
+
   // React Query: default session load (no specific date, no pre-selected session)
   const defaultSessionQueryKey = queryKeys.programs.dailySession(user?.uid, course?.courseId, 'default');
-  const defaultQueryEnabled = !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId;
+  const defaultQueryEnabled = !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId && !isOneOnOne;
+  logger.debug('[DailyWorkout] defaultQuery config', {
+    queryKey: defaultSessionQueryKey,
+    enabled: defaultQueryEnabled,
+  });
   const { data: defaultSessionData } = useQuery({
     queryKey: defaultSessionQueryKey,
     queryFn: () => sessionService.getCurrentSession(user.uid, course.courseId, {}),
@@ -107,6 +121,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
 
   // Sync React Query default session result into sessionState (initial load only)
   useEffect(() => {
+    logger.debug('[DailyWorkout] EFFECT: sync defaultSessionData', {
+      hasData: !!defaultSessionData,
+      hasSelectedSessionId: !!route.params?.selectedSessionId,
+      emptyReason: defaultSessionData?.emptyReason,
+      hasSession: !!defaultSessionData?.session,
+      allSessionsCount: defaultSessionData?.allSessions?.length,
+    });
     if (defaultSessionData && !route.params?.selectedSessionId) {
       setSessionState(defaultSessionData);
     }
@@ -236,8 +257,16 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   useEffect(() => {
     // Only load via imperative call for one-on-one with a specific date.
     // Low-ticket default load is handled by React Query (defaultSessionData).
+    logger.debug('[DailyWorkout] EFFECT: initial one-on-one load check', {
+      hasSelectedSessionId: !!route.params?.selectedSessionId,
+      isOneOnOne,
+      selectedDateProp,
+      userId: user?.uid,
+      willLoad: !route.params?.selectedSessionId && isOneOnOne && selectedDateProp && !!user?.uid,
+    });
     if (!route.params?.selectedSessionId && isOneOnOne && selectedDateProp) {
       if (user?.uid) {
+        logger.debug('[DailyWorkout] EFFECT: triggering loadSessionState for one-on-one initial', { targetDate: selectedDateProp });
         loadSessionState({ targetDate: selectedDateProp });
       }
     }
@@ -247,12 +276,18 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   // Only one-on-one programs are date-based. Low-ticket sessions are sequential — no reload needed on date change.
   const prevSelectedDateRef = useRef(selectedDateProp);
   useEffect(() => {
+    logger.debug('[DailyWorkout] EFFECT: selectedDate change check', {
+      isOneOnOne, selectedDateProp, prevDate: prevSelectedDateRef.current,
+      userId: user?.uid, courseId: course?.courseId,
+      dateChanged: prevSelectedDateRef.current !== selectedDateProp,
+    });
     if (!isOneOnOne) return;
     if (!user?.uid || !course?.courseId || !selectedDateProp) return;
     if (prevSelectedDateRef.current === selectedDateProp) return;
     prevSelectedDateRef.current = selectedDateProp;
     pendingStartAfterLoadRef.current = false;
     setShowLoadingOverlayForStart(false);
+    logger.debug('[DailyWorkout] EFFECT: date changed, loading session for new date', { targetDate: selectedDateProp });
     loadSessionState({ targetDate: selectedDateProp });
   }, [selectedDateProp, isOneOnOne, user?.uid, course?.courseId]);
 
@@ -316,6 +351,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
     try {
+      logger.debug('[DailyWorkout] loadSessionState CALLED', {
+        options,
+        userId: user?.uid,
+        courseId: course?.courseId,
+        isOneOnOne,
+      });
+
       // Safety check: ensure user and course are available
       if (!user?.uid) {
         logger.error('Cannot load session state: user not available');
@@ -334,6 +376,16 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         course.courseId,
         options
       );
+      logger.debug('[DailyWorkout] loadSessionState RESULT', {
+        hasSession: !!newState.session,
+        hasWorkout: !!newState.workout,
+        emptyReason: newState.emptyReason,
+        allSessionsCount: newState.allSessions?.length,
+        exerciseCount: newState.workout?.exercises?.length,
+        progress: newState.progress,
+        error: newState.error,
+        targetDate: options.targetDate,
+      });
       if (options.targetDate && newState.workout) {
         lastLoadedForDateRef.current = options.targetDate;
       }
@@ -798,6 +850,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
                       </View>
                     </View>
                   </View>
+                  <TouchableOpacity
+                    style={styles.noSessionRefreshButton}
+                    onPress={() => loadSessionState({ forceRefresh: true })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.noSessionRefreshButtonText}>Buscar de nuevo</Text>
+                  </TouchableOpacity>
                 </View>
             ) : sessionState.emptyReason === 'no_planning_this_week' ? (
                 <View style={styles.placeholderCardContainer}>
@@ -1911,6 +1970,22 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     maxWidth: 280,
+  },
+  noSessionRefreshButton: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  noSessionRefreshButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   alreadyCompletedOverlay: {
     ...StyleSheet.absoluteFillObject,

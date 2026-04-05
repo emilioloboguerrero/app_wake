@@ -33,9 +33,10 @@ const MainScreen = () => {
 
   const handleTapCourse = useCallback(
     (course) => {
-      // Check cached /users/me for active nutrition assignment (zero API calls)
       const profile = user?.uid ? queryClient.getQueryData(queryKeys.user.detail(user.uid)) : null;
-      if (profile?.pinnedNutritionAssignmentId) {
+      const hasNutritionFallback = user?.uid ? queryClient.getQueryData(['nutrition', 'has-assignment', user.uid]) : false;
+      const hasNutrition = !!profile?.pinnedNutritionAssignmentId || hasNutritionFallback === true;
+      if (hasNutrition) {
         setProgramChoiceCourse(course);
         setProgramChoiceVisible(true);
       } else {

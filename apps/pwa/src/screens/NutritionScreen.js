@@ -18,7 +18,6 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../utils/apiClient';
 import * as nutritionApi from '../services/nutritionApiService';
-import activityStreakService from '../services/activityStreakService';
 import WakeLoader from '../components/WakeLoader';
 import logger from '../utils/logger';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
@@ -154,9 +153,15 @@ export function NutritionScreenBase({ navigation }) {
   });
 
   const addDiaryMutation = useMutation({
-    mutationFn: (entry) => apiClient.post('/nutrition/diary', entry),
+    mutationFn: (entry) => {
+      const profile = queryClient.getQueryData(['user', userId]);
+      return apiClient.post('/nutrition/diary', {
+        ...entry,
+        lastKnownActivityDate: profile?.activityStreak?.lastActivityDate ?? null,
+      });
+    },
     onSuccess: () => {
-      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
       closeLogModal();
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
     },

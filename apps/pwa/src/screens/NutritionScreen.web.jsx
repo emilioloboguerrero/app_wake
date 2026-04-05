@@ -25,7 +25,6 @@ import BottomSpacer from '../components/BottomSpacer';
 import WakeModalOverlay from '../components/WakeModalOverlay.web';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
-import activityStreakService from '../services/activityStreakService';
 import logger from '../utils/logger';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
@@ -787,6 +786,8 @@ const NutritionScreen = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
 
+  const [addModalVisible, setAddModalVisible] = useState(false);
+
   const planQuery = useQuery({
     queryKey: ['nutrition', 'plan', userId, selectedDate, preferredAssignmentId],
     queryFn: async () => {
@@ -814,7 +815,7 @@ const NutritionScreen = () => {
   const savedFoodsQuery = useQuery({
     queryKey: ['nutrition', 'saved-foods', userId],
     queryFn: () => nutritionDb.getSavedFoods(userId),
-    enabled: !!userId,
+    enabled: !!userId && addModalVisible,
     staleTime: STALE_TIMES.userProfile,
     gcTime: GC_TIMES.userProfile,
   });
@@ -822,7 +823,7 @@ const NutritionScreen = () => {
   const userMealsQuery = useQuery({
     queryKey: ['nutrition', 'user-meals', userId],
     queryFn: () => nutritionDb.getUserMeals(userId),
-    enabled: !!userId,
+    enabled: !!userId && addModalVisible,
     staleTime: STALE_TIMES.userProfile,
     gcTime: GC_TIMES.userProfile,
   });
@@ -839,7 +840,6 @@ const NutritionScreen = () => {
   const hasLoaded = hasInitialData || (planQuery.isSuccess && diaryQuery.isSuccess);
 
   const [macroShowLeft, setMacroShowLeft] = useState(true);
-  const [addModalVisible, setAddModalVisible] = useState(false);
   const [addModalTab, setAddModalTab] = useState('opciones');
   const [addModalCategoryIndex, setAddModalCategoryIndex] = useState(0);
   const [addModalCategoryDropdownOpen, setAddModalCategoryDropdownOpen] = useState(false);
@@ -1090,9 +1090,9 @@ const NutritionScreen = () => {
       const meal = getMealIdForCategory(category);
       setAddOptionLoading(true);
       try {
-        for (const it of toAdd) {
+        const entries = toAdd.map((it) => {
           const number_of_units = it.number_of_units ?? it.units ?? it.amount ?? 1;
-          await nutritionDb.addDiaryEntry(userId, {
+          return {
             date: selectedDate,
             meal,
             food_id: it.food_id ?? `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1101,38 +1101,22 @@ const NutritionScreen = () => {
             name: it.name ?? 'Alimento',
             food_category: it.food_category ?? null,
             calories: it.calories != null ? Number(it.calories) : null,
-            protein:
-              it.protein != null
-                ? Number(it.protein)
-                : it.protein_g != null
-                  ? Number(it.protein_g)
-                  : null,
-            carbs:
-              it.carbs != null
-                ? Number(it.carbs)
-                : it.carbs_g != null
-                  ? Number(it.carbs_g)
-                  : it.carbohydrate != null
-                    ? Number(it.carbohydrate)
-                    : null,
-            fat:
-              it.fat != null
-                ? Number(it.fat)
-                : it.fat_g != null
-                  ? Number(it.fat_g)
-                  : null,
+            protein: it.protein != null ? Number(it.protein) : it.protein_g != null ? Number(it.protein_g) : null,
+            carbs: it.carbs != null ? Number(it.carbs) : it.carbs_g != null ? Number(it.carbs_g) : it.carbohydrate != null ? Number(it.carbohydrate) : null,
+            fat: it.fat != null ? Number(it.fat) : it.fat_g != null ? Number(it.fat_g) : null,
             serving_unit: it.serving_unit ?? null,
             grams_per_unit: it.grams_per_unit ?? null,
             servings: it.servings ?? null,
-          });
-        }
-        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+          };
+        });
+        await nutritionDb.addDiaryEntries(userId, entries);
+        queryClient.invalidateQueries({ queryKey: ['user', userId] });
         trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
         setAddModalVisible(false);
       } catch (e) {
         logger.error('[NutritionScreen] handleAddOptionToMeal error:', e);
-        showToast('No se pudo añadir el alimento. Inténtalo de nuevo.', 'error');
+        showToast('No se pudo anadir el alimento. Intentalo de nuevo.', 'error');
       } finally {
         setAddOptionLoading(false);
       }
@@ -1156,9 +1140,9 @@ const NutritionScreen = () => {
                 .filter((it) => it && it.recipe !== true)
             : items.filter((it) => it && it.recipe !== true);
         if (toAdd.length === 0) return;
-        for (const it of toAdd) {
+        const entries = toAdd.map((it) => {
           const number_of_units = it.number_of_units ?? it.units ?? it.amount ?? 1;
-          await nutritionDb.addDiaryEntry(userId, {
+          return {
             date: selectedDate,
             meal: mealId,
             food_id: it.food_id ?? `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1167,38 +1151,22 @@ const NutritionScreen = () => {
             name: it.name ?? 'Alimento',
             food_category: it.food_category ?? null,
             calories: it.calories != null ? Number(it.calories) : null,
-            protein:
-              it.protein != null
-                ? Number(it.protein)
-                : it.protein_g != null
-                  ? Number(it.protein_g)
-                  : null,
-            carbs:
-              it.carbs != null
-                ? Number(it.carbs)
-                : it.carbs_g != null
-                  ? Number(it.carbs_g)
-                  : it.carbohydrate != null
-                    ? Number(it.carbohydrate)
-                    : null,
-            fat:
-              it.fat != null
-                ? Number(it.fat)
-                : it.fat_g != null
-                  ? Number(it.fat_g)
-                  : null,
+            protein: it.protein != null ? Number(it.protein) : it.protein_g != null ? Number(it.protein_g) : null,
+            carbs: it.carbs != null ? Number(it.carbs) : it.carbs_g != null ? Number(it.carbs_g) : it.carbohydrate != null ? Number(it.carbohydrate) : null,
+            fat: it.fat != null ? Number(it.fat) : it.fat_g != null ? Number(it.fat_g) : null,
             serving_unit: it.serving_unit ?? null,
             grams_per_unit: it.grams_per_unit ?? null,
             servings: it.servings ?? null,
-          });
-        }
-        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+          };
+        });
+        await nutritionDb.addDiaryEntries(userId, entries);
+        queryClient.invalidateQueries({ queryKey: ['user', userId] });
         trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
         setAddModalVisible(false);
       } catch (e) {
         logger.error('[NutritionScreen] handleAddUserMealToDiary error:', e);
-        showToast('No se pudo añadir la comida. Inténtalo de nuevo.', 'error');
+        showToast('No se pudo anadir la comida. Intentalo de nuevo.', 'error');
       } finally {
         setAddOptionLoading(false);
       }
@@ -1521,7 +1489,7 @@ const NutritionScreen = () => {
           grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
           servings: selectedFood.servings ?? null,
         });
-        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ['user', userId] });
         const addedCals = Math.round((Number(serving.calories) || 0) * qty);
         const addedProtein = Math.round((Number(serving.protein) || 0) * qty * 10) / 10;
         const addedCarbs = Math.round((Number(serving.carbohydrate) || 0) * qty * 10) / 10;

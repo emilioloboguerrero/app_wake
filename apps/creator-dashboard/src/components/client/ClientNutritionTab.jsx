@@ -193,12 +193,15 @@ export default function ClientNutritionTab({
         <div className="cnt-stats-card">
           <div className="cnt-stats-inner">
             <div className="cnt-stats-header">
-              <ShimmerSkeleton style={{ width: 140, height: 11, borderRadius: 4 }} />
-              <ShimmerSkeleton style={{ width: 32, height: 18, borderRadius: 4 }} />
+              <ShimmerSkeleton width={140} height={11} borderRadius={4} />
+              <div className="cnt-range-toggle">
+                <ShimmerSkeleton width={32} height={18} borderRadius={4} />
+                <ShimmerSkeleton width={32} height={18} borderRadius={4} />
+              </div>
             </div>
             <div className="cnt-profile-chips">
-              <ShimmerSkeleton style={{ width: 64, height: 18, borderRadius: 6 }} />
-              <ShimmerSkeleton style={{ width: 52, height: 18, borderRadius: 6 }} />
+              <ShimmerSkeleton width={64} height={18} borderRadius={6} />
+              <ShimmerSkeleton width={52} height={18} borderRadius={6} />
             </div>
             <div className="dcb-container">
               <div className="dcb-chart">
@@ -206,54 +209,54 @@ export default function ClientNutritionTab({
                   {[65, 40, 80, 55, 30, 70, 45].map((h, i) => (
                     <div key={i} className="dcb-bar-col">
                       <div className="dcb-bar-track">
-                        <ShimmerSkeleton style={{ width: '100%', height: `${h}%`, borderRadius: '4px 4px 2px 2px' }} />
+                        <ShimmerSkeleton width="100%" height={`${h}%`} borderRadius="4px 4px 2px 2px" />
                       </div>
-                      <ShimmerSkeleton style={{ width: 8, height: 10, borderRadius: 2 }} />
+                      <ShimmerSkeleton width={8} height={10} borderRadius={2} />
                     </div>
                   ))}
                 </div>
               </div>
             </div>
             <div className="cnt-summary">
-              <ShimmerSkeleton style={{ width: 90, height: 13, borderRadius: 4 }} />
-              <ShimmerSkeleton style={{ width: 40, height: 13, borderRadius: 4 }} />
-              <ShimmerSkeleton style={{ width: 40, height: 13, borderRadius: 4 }} />
-              <ShimmerSkeleton style={{ width: 40, height: 13, borderRadius: 4 }} />
+              <ShimmerSkeleton width={90} height={13} borderRadius={4} />
+              <ShimmerSkeleton width={40} height={13} borderRadius={4} />
+              <ShimmerSkeleton width={40} height={13} borderRadius={4} />
+              <ShimmerSkeleton width={40} height={13} borderRadius={4} />
             </div>
           </div>
         </div>
         {/* Plan card skeleton */}
         <div className="cnt-plan-card">
           <div className="cnt-plan-card-inner">
-            <ShimmerSkeleton style={{ width: 90, height: 11, borderRadius: 4 }} />
+            <ShimmerSkeleton width={90} height={11} borderRadius={4} />
             <div className="cnt-plan-display">
               <div className="cnt-plan-info">
-                <ShimmerSkeleton style={{ width: '60%', height: 15, borderRadius: 5 }} />
+                <ShimmerSkeleton width="60%" height={15} borderRadius={5} />
                 <div className="cnt-plan-dates">
-                  <ShimmerSkeleton style={{ width: 80, height: 11, borderRadius: 4 }} />
-                  <ShimmerSkeleton style={{ width: 70, height: 11, borderRadius: 4 }} />
+                  <ShimmerSkeleton width={80} height={11} borderRadius={4} />
+                  <ShimmerSkeleton width={70} height={11} borderRadius={4} />
                 </div>
                 <div className="cnt-plan-cal">
-                  <ShimmerSkeleton style={{ width: 50, height: 24, borderRadius: 6 }} />
-                  <ShimmerSkeleton style={{ width: 36, height: 11, borderRadius: 4 }} />
+                  <ShimmerSkeleton width={50} height={24} borderRadius={6} />
+                  <ShimmerSkeleton width={36} height={11} borderRadius={4} />
                 </div>
               </div>
               <div className="cnt-plan-pie">
-                <ShimmerSkeleton style={{ width: 80, height: 80, borderRadius: '50%' }} />
+                <ShimmerSkeleton width={90} height={90} borderRadius="50%" />
                 <div className="cnt-plan-macros">
                   {[48, 44, 40].map((w, i) => (
                     <div key={i} className="cnt-plan-macro-row">
-                      <ShimmerSkeleton style={{ width: 7, height: 7, borderRadius: '50%' }} />
-                      <ShimmerSkeleton style={{ width: w, height: 10, borderRadius: 3 }} />
-                      <ShimmerSkeleton style={{ width: 22, height: 11, borderRadius: 3 }} />
+                      <ShimmerSkeleton width={7} height={7} borderRadius="50%" />
+                      <ShimmerSkeleton width={w} height={10} borderRadius={3} />
+                      <ShimmerSkeleton width={22} height={11} borderRadius={3} />
                     </div>
                   ))}
                 </div>
               </div>
             </div>
             <div className="cnt-plan-actions">
-              <ShimmerSkeleton style={{ width: 90, height: 30, borderRadius: 8 }} />
-              <ShimmerSkeleton style={{ width: 60, height: 30, borderRadius: 8 }} />
+              <ShimmerSkeleton width={90} height={30} borderRadius={8} />
+              <ShimmerSkeleton width={60} height={30} borderRadius={8} />
             </div>
           </div>
         </div>

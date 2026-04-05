@@ -6,7 +6,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import type {Request, Response} from "express";
-import {MercadoPagoConfig, Preference, Payment, PreApproval} from "mercadopago";
+import {Preference, Payment, PreApproval} from "mercadopago";
 import {Resend} from "resend";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
@@ -14,6 +14,17 @@ import {defineSecret} from "firebase-functions/params";
 import * as webpush from "web-push";
 import "./init.js";
 import {app} from "./api/app.js";
+import {
+  type ParsedReference,
+  type MercadoPagoPreapproval,
+  buildExternalReference as sharedBuildExternalReference,
+  parseExternalReference as sharedParseExternalReference,
+  calculateExpirationDate as sharedCalculateExpirationDate,
+  classifyError as sharedClassifyError,
+  getClient as sharedGetClient,
+  toErrorMessage as sharedToErrorMessage,
+} from "./api/services/paymentHelpers.js";
+import {assignCourseToUser} from "./api/services/courseAssignment.js";
 
 const db = admin.firestore();
 
@@ -76,66 +87,19 @@ function isValidBarcode(v: unknown): v is string {
   return typeof v === "string" && BARCODE_RE.test(v);
 }
 
-// ISO date formats: YYYY-MM-DD or full ISO 8601 (e.g. 2024-03-18T14:30:00.000Z)
-const DATE_YYYY_MM_DD_RE = /^\d{4}-\d{2}-\d{2}$/;
-const ISO_8601_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
-
-interface DateValidationError {
-  statusCode: number;
-  body: { error: { code: string; message: string; field: string } };
+// ─── Shared helpers (delegated to api/services/) ─────────────────────────────
+const getClient = () => sharedGetClient(mercadopagoAccessToken.value());
+const buildExternalReference = sharedBuildExternalReference;
+const parseExternalReference = sharedParseExternalReference;
+const classifyError = sharedClassifyError;
+const toErrorMessage = sharedToErrorMessage;
+function calculateExpirationDate(
+  accessDuration: string,
+  options: {from?: string} = {}
+): string {
+  return sharedCalculateExpirationDate(accessDuration, options.from);
 }
 
-function validateDateParam(value: unknown, fieldName: string): string {
-  if (typeof value !== "string" || !value) {
-    throw {
-      statusCode: 400,
-      body: {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: `${fieldName} debe ser una fecha válida en formato YYYY-MM-DD o ISO 8601`,
-          field: fieldName,
-        },
-      },
-    } as DateValidationError;
-  }
-  const trimmed = value.trim();
-  if (!DATE_YYYY_MM_DD_RE.test(trimmed) && !ISO_8601_RE.test(trimmed)) {
-    throw {
-      statusCode: 400,
-      body: {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: `${fieldName} debe ser una fecha válida en formato YYYY-MM-DD o ISO 8601`,
-          field: fieldName,
-        },
-      },
-    } as DateValidationError;
-  }
-  const parsed = new Date(trimmed);
-  if (isNaN(parsed.getTime())) {
-    throw {
-      statusCode: 400,
-      body: {
-        error: {
-          code: "VALIDATION_ERROR",
-          message: `${fieldName} contiene una fecha inválida`,
-          field: fieldName,
-        },
-      },
-    } as DateValidationError;
-  }
-  return trimmed;
-}
-
-function isDateValidationError(err: unknown): err is DateValidationError {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "statusCode" in err &&
-    "body" in err &&
-    (err as DateValidationError).statusCode === 400
-  );
-}
 
 // ─── App Check helper ─────────────────────────────────────────────────────────
 // Note: Gen1 functions **require** App Check (verifyAppCheck returns false when
@@ -188,227 +152,6 @@ function sendRateLimitError(res: Response): void {
   });
 }
 
-// Simple Mercado Pago client
-const getClient = () => {
-  const token = mercadopagoAccessToken.value();
-
-  if (!token) {
-    throw new Error(
-      "Mercado Pago access token missing; configure MERCADOPAGO_ACCESS_TOKEN secret"
-    );
-  }
-
-  return new MercadoPagoConfig({accessToken: token});
-};
-
-type PaymentKind = "otp" | "sub";
-
-interface ParsedReference {
-  version: string;
-  userId: string;
-  courseId: string;
-  paymentType: PaymentKind;
-  raw: string;
-}
-
-interface MercadoPagoPreapproval {
-  external_reference?: string | null;
-  next_payment_date?: string | null;
-  auto_recurring?: {
-    next_payment_date?: string | null;
-    start_date?: string | null;
-    transaction_amount?: number | null;
-    currency_id?: string | null;
-  };
-  reason?: string | null;
-  status?: string | null;
-  payer_email?: string | null;
-  payer?: {
-    email?: string | null;
-  };
-}
-
-const REFERENCE_VERSION = "v1";
-const REFERENCE_DELIMITER = "|";
-const REFERENCE_MAX_LENGTH = 256;
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch (stringifyError) {
-    functions.logger.error("Failed to stringify error", stringifyError);
-    return "Unknown error";
-  }
-}
-
-function buildExternalReference(
-  userId: string,
-  courseId: string,
-  paymentType: PaymentKind
-): string {
-  if (!userId || !courseId) {
-    throw new Error("Missing userId or courseId for external reference");
-  }
-
-  if (userId.includes(REFERENCE_DELIMITER) || courseId.includes(REFERENCE_DELIMITER)) {
-    throw new Error("Identifiers cannot contain the reference delimiter '|'");
-  }
-
-  const reference = [REFERENCE_VERSION, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
-
-  if (reference.length > REFERENCE_MAX_LENGTH) {
-    throw new Error("external_reference exceeds Mercado Pago length limit");
-  }
-
-  return reference;
-}
-
-function parseExternalReference(reference: string): ParsedReference {
-  if (!reference) {
-    throw new Error("external_reference is empty");
-  }
-
-  const parts = reference.split(REFERENCE_DELIMITER);
-
-  if (parts.length !== 4) {
-    throw new Error(`Unexpected external_reference format: ${reference}`);
-  }
-
-  const [version, userId, courseId, paymentTypeRaw] = parts;
-
-  if (version !== REFERENCE_VERSION) {
-    throw new Error(`Unsupported external_reference version: ${version}`);
-  }
-
-  if (!userId || !courseId) {
-    throw new Error("external_reference missing userId or courseId");
-  }
-
-  if (paymentTypeRaw !== "otp" && paymentTypeRaw !== "sub") {
-    throw new Error(`Unsupported payment type in external_reference: ${paymentTypeRaw}`);
-  }
-
-  const paymentType = paymentTypeRaw as PaymentKind;
-
-  return {
-    version,
-    userId,
-    courseId,
-    paymentType,
-    raw: reference,
-  };
-}
-
-
-// Helper: Calculate expiration date from access duration (same as app)
-function calculateExpirationDate(
-  accessDuration: string,
-  options: {from?: string} = {}
-): string {
-  const durations: {[key: string]: number} = {
-    "monthly": 30,
-    "3-month": 90,
-    "6-month": 180,
-    "yearly": 365,
-  };
-
-  const days = durations[accessDuration] || 30;
-  const now = new Date();
-  let base: Date;
-
-  if (options.from) {
-    validateDateParam(options.from, "from");
-    base = new Date(options.from);
-    if (base < now) {
-      base = now;
-    }
-  } else {
-    base = now;
-  }
-
-  const expirationDate = new Date(
-    base.getTime() + (days * 24 * 60 * 60 * 1000)
-  );
-
-  return expirationDate.toISOString();
-}
-
-// Helper: Check if user already owns course (same as app)
-async function checkUserOwnsCourse(
-  userId: string,
-  courseId: string
-): Promise<boolean> {
-  try {
-    const userDoc = await db.collection("users").doc(userId).get();
-
-    if (!userDoc.exists) {
-      return false;
-    }
-
-    const userData = userDoc.data();
-    const userCourses = userData?.courses || {};
-    const courseData = userCourses[courseId];
-
-    if (!courseData) {
-      return false;
-    }
-
-    // Check: active status and not expired
-    const isActive = courseData.status === "active";
-    const isNotExpired = new Date(courseData.expires_at) > new Date();
-
-    return isActive && isNotExpired;
-  } catch (error) {
-    functions.logger.error("Error checking course ownership:", error);
-    return false;
-  }
-}
-
-// Helper: Classify errors for proper handling
-function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
-  if (!error || typeof error !== "object") {
-    return "RETRYABLE";
-  }
-
-  const err = error as {code?: string; message?: string};
-
-  // Network errors
-  if (
-    err.code === "ECONNRESET" ||
-    err.code === "ETIMEDOUT" ||
-    err.code === "ENOTFOUND" ||
-    err.message?.includes("network") ||
-    err.message?.includes("timeout")
-  ) {
-    return "RETRYABLE";
-  }
-
-  // Validation errors
-  if (
-    err.message?.includes("not found") ||
-    err.message?.includes("missing") ||
-    err.message?.includes("invalid") ||
-    err.message?.includes("required")
-  ) {
-    return "NON_RETRYABLE";
-  }
-
-  // Firestore errors
-  if (err.code === "permission-denied" || err.code === "not-found") {
-    return "NON_RETRYABLE";
-  }
-
-  // Default to retryable for unknown errors
-  return "RETRYABLE";
-}
 
 // Create unique payment preference
 export const createPaymentPreference = functions
@@ -473,6 +216,12 @@ export const createPaymentPreference = functions
             unit_price: course.price,
           }],
           external_reference: externalReference,
+          back_urls: {
+            success: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+            failure: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+            pending: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+          },
+          auto_return: "approved",
         },
       });
 
@@ -1254,7 +1003,7 @@ export const processPaymentWebhook = functions
         userId,
         courseId,
         isSubscription,
-        paymentType: parsedReference.version,
+        paymentType,
       });
 
       // Validate user exists - Fix #5: Return 200 to prevent retries
@@ -1300,240 +1049,101 @@ export const processPaymentWebhook = functions
       const courseTitle = courseDetails?.title || "Untitled Course";
       const courseAccessDuration = courseDetails?.access_duration;
 
-      // Check if user already owns course (same as app logic)
-      const existingPurchase = await checkUserOwnsCourse(userId, courseId);
-
-      // Determine if this is a subscription renewal
+      // Check if user already owns course
+      const userCourses = userData?.courses || {};
+      const existingCourseData = userCourses[courseId];
+      const existingPurchase =
+        existingCourseData?.status === "active" &&
+        new Date(existingCourseData.expires_at) > new Date();
       const isRenewal = existingPurchase && isSubscription;
-
-      if (isRenewal) {
-        functions.logger.info("Subscription renewal detected:", userId, courseId);
-
-        const currentCourse = existingPurchase ? (userData?.courses || {})[courseId] : null;
-        const currentExpiration = currentCourse?.expires_at ?? null;
-        let expirationDate: string;
-        try {
-          expirationDate = calculateExpirationDate(courseAccessDuration, {
-            from: currentExpiration ?? undefined,
-          });
-        } catch (dateErr: unknown) {
-          if (isDateValidationError(dateErr)) {
-            functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
-              userId, courseId, currentExpiration,
-            });
-            expirationDate = calculateExpirationDate(courseAccessDuration);
-          } else {
-            throw dateErr;
-          }
-        }
-
-        const userRef = db.collection("users").doc(userId);
-        const existingCourseData = (userData?.courses || {})[courseId] || {};
-
-        // Allowlist renewal fields — no spread of arbitrary data
-        await userRef.update({
-          [`courses.${courseId}`]: {
-            access_duration: existingCourseData.access_duration ?? courseAccessDuration,
-            expires_at: expirationDate,
-            status: "active",
-            purchased_at: existingCourseData.purchased_at ?? new Date().toISOString(),
-            deliveryType: existingCourseData.deliveryType ?? courseDetails?.deliveryType ?? "low_ticket",
-            title: existingCourseData.title ?? courseTitle,
-            image_url: existingCourseData.image_url ?? courseDetails?.image_url ?? null,
-            discipline: existingCourseData.discipline ?? courseDetails?.discipline ?? "General",
-            creatorName: existingCourseData.creatorName ?? courseDetails?.creatorName ?? courseDetails?.creator_name ?? "Unknown Creator",
-            completedTutorials: existingCourseData.completedTutorials ?? {
-              dailyWorkout: [],
-              warmup: [],
-              workoutExecution: [],
-              workoutCompletion: [],
-            },
-          },
-        });
-
-        functions.logger.info("Subscription renewed successfully:", paymentId, "New expiration:", expirationDate);
-
-        const subscriptionId =
-          paymentData.subscription_id || paymentData.preapproval_id;
-
-        if (isSubscription && subscriptionId) {
-          await db
-            .collection("users")
-            .doc(userId)
-            .collection("subscriptions")
-            .doc(subscriptionId)
-            .set(
-              {
-                status: "authorized",
-                last_payment_id: paymentId,
-                last_payment_date:
-                  paymentData.date_approved ||
-                  paymentData.date_created ||
-                  new Date().toISOString(),
-                updated_at: admin.firestore.FieldValue.serverTimestamp(),
-              },
-              {merge: true}
-            );
-        }
-
-        // Mark payment as processed
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "approved",
-          userId: userId,
-          courseId: courseId,
-          isSubscription: true,
-          isRenewal: true,
-          payment_type: paymentType,
-          userEmail,
-          userName,
-          courseTitle,
-          state: "completed",
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      if (existingPurchase && !isSubscription) {
-        // User already owns course (not a subscription renewal)
-        functions.logger.info(
-          "User already owns course, skipping assignment:",
-          userId,
-          courseId
-        );
-        // Mark as processed
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "already_owned",
-          userId,
-          courseId,
-          userEmail,
-          userName,
-          courseTitle,
-          state: "already_owned",
-          payment_type: paymentType,
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      // Initial purchase (one-time or subscription)
-      // Validate course has access_duration - Fix #5: Return 200 to prevent retries
-      if (!courseAccessDuration) {
-        functions.logger.error(
-          "Course missing access_duration:",
-          courseId
-        );
-        // Mark as processed with error status to prevent retries
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error",
-          error_type: "missing_access_duration",
-          error_message: "Course missing access_duration",
-          userId,
-          courseId,
-          userEmail,
-          userName,
-          courseTitle,
-          state: "failed",
-          payment_type: paymentType,
-        });
-        response.status(200).send("OK");
-        return;
-      }
 
       const subscriptionId =
         paymentData?.subscription_id || paymentData?.preapproval_id || null;
 
-      const expirationDate = calculateExpirationDate(courseAccessDuration);
-      functions.logger.info(
-        "Using calculated expiration date for new purchase:",
-        expirationDate
-      );
+      // ── Renewal ──
+      if (isRenewal) {
+        functions.logger.info("Subscription renewal detected:", userId, courseId);
 
-      // Fix #3: Use Firestore transaction for atomic course assignment
-      await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
-        const userRef = db.collection("users").doc(userId);
-        const freshUserDoc = await transaction.get(userRef);
-
-        if (!freshUserDoc.exists) {
-          throw new Error("User not found");
+        const currentExpiration = existingCourseData?.expires_at ?? undefined;
+        let expirationDate: string;
+        try {
+          expirationDate = calculateExpirationDate(courseAccessDuration, {
+            from: currentExpiration,
+          });
+        } catch {
+          functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
+            userId, courseId, currentExpiration,
+          });
+          expirationDate = calculateExpirationDate(courseAccessDuration);
         }
 
-        const freshUserData = freshUserDoc.data();
-        const courses = freshUserData?.courses || {};
-
-        // Check if course already assigned (atomic check)
-        if (courses[courseId]) {
-          const courseData = courses[courseId];
-          const isActive = courseData.status === "active";
-          const isNotExpired = new Date(courseData.expires_at) > new Date();
-
-          if (isActive && isNotExpired) {
-            // Already assigned - skip
-            functions.logger.info(
-              "Course already assigned, skipping:",
-              userId,
-              courseId
-            );
-            return; // Exit transaction
-          }
-        }
-
-        // Add course to user (atomic write)
-        courses[courseId] = {
-          // Access control
-          access_duration: courseAccessDuration,
-          expires_at: expirationDate,
-          status: "active",
-          purchased_at: new Date().toISOString(),
-
-          // Delivery type: PWA uses this for one_on_one vs low_ticket (version/load path)
-          deliveryType: courseDetails?.deliveryType ?? "low_ticket",
-
-          // Minimal cached data for display
-          title: courseDetails?.title || "Untitled Course",
-          image_url: courseDetails?.image_url || null,
-          discipline: courseDetails?.discipline || "General",
-          creatorName: courseDetails?.creatorName ||
-            courseDetails?.creator_name ||
-            "Unknown Creator",
-
-          // Tutorial completion tracking
-          completedTutorials: {
-            dailyWorkout: [],
-            warmup: [],
-            workoutExecution: [],
-            workoutCompletion: [],
-          },
-        };
-
-        // Update user document (atomic write)
-        transaction.update(userRef, {
-          courses,
-          purchased_courses: [
-            ...new Set([...(freshUserData?.purchased_courses || []), courseId]),
-          ],
+        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
+          isRenewal: true,
+          existingCourseData,
         });
 
         if (isSubscription && subscriptionId) {
-          const subscriptionRef = db
-            .collection("users")
-            .doc(userId)
-            .collection("subscriptions")
-            .doc(subscriptionId);
+          await db
+            .collection("users").doc(userId)
+            .collection("subscriptions").doc(subscriptionId)
+            .set({
+              status: "authorized",
+              last_payment_id: paymentId,
+              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            }, {merge: true});
+        }
 
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
+          payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+        });
+
+        response.status(200).send("OK");
+        return;
+      }
+
+      // ── Already owned (one-time duplicate) ──
+      if (existingPurchase && !isSubscription) {
+        functions.logger.info("User already owns course, skipping:", userId, courseId);
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "already_owned", userId, courseId, userEmail, userName,
+          courseTitle, state: "already_owned", payment_type: paymentType,
+        });
+        response.status(200).send("OK");
+        return;
+      }
+
+      // ── New purchase ──
+      if (!courseAccessDuration) {
+        functions.logger.error("Course missing access_duration:", courseId);
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "error", error_type: "missing_access_duration",
+          error_message: "Course missing access_duration",
+          userId, courseId, userEmail, userName, courseTitle,
+          state: "failed", payment_type: paymentType,
+        });
+        response.status(200).send("OK");
+        return;
+      }
+
+      const expirationDate = calculateExpirationDate(courseAccessDuration);
+
+      await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
+        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
+          transaction,
+        });
+
+        if (isSubscription && subscriptionId) {
           transaction.set(
-            subscriptionRef,
+            db.collection("users").doc(userId).collection("subscriptions").doc(subscriptionId),
             {
               status: "authorized",
               last_payment_id: paymentId,
-              last_payment_date:
-                paymentData.date_approved ||
-                paymentData.date_created ||
-                new Date().toISOString(),
+              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
               transaction_amount: paymentData.transaction_amount || null,
               currency_id: paymentData.currency_id || null,
               management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
@@ -1543,32 +1153,14 @@ export const processPaymentWebhook = functions
           );
         }
 
-        // Mark payment as processed (atomic write)
         transaction.set(
           processedPaymentsRef,
           {
             processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved",
-            userId: userId,
-            courseId: courseId,
-            isSubscription: isSubscription,
-            isRenewal: false,
-            payment_type: paymentType,
-            userEmail,
-            userName,
-            courseTitle,
-            state: "completed",
+            status: "approved", userId, courseId, isSubscription, isRenewal: false,
+            payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
           },
           {merge: true}
-        );
-
-        functions.logger.info(
-          "✅ Payment processed successfully:",
-          paymentId,
-          "Course assigned to user:",
-          userId,
-          "Is Subscription:",
-          isSubscription
         );
       });
 

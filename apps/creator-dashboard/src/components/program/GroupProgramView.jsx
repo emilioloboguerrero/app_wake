@@ -9,7 +9,7 @@ import { BentoCard } from '../ui/BentoGrid';
 import GlowingEffect from '../ui/GlowingEffect';
 import NumberTicker from '../ui/NumberTicker';
 import DemographicsCard from './DemographicsCard';
-import ProgramPlanTab from './ProgramPlanTab';
+import ProgramTrainingTab from './ProgramTrainingTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
@@ -593,11 +593,9 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
             </div>
             {contenidoSubtab === 'entrenamiento' && (
               <div className="gp-content-wrap">
-                <ProgramPlanTab
+                <ProgramTrainingTab
                   programId={programId}
-                  programName={program?.title}
                   creatorId={user.uid}
-                  programAccentColor={programAccentColor}
                 />
               </div>
             )}

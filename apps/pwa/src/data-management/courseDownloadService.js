@@ -108,24 +108,15 @@ class CourseDownloadService {
   /**
    * Internal download method that skips week check (to prevent recursion)
    */
-  async downloadCourseInternal(courseId, userId) {
+  async downloadCourseInternal(courseId, userId, options = {}) {
     try {
-      let courseData = null;
-      try {
+      let courseData = options.cachedCourseData || null;
+      if (!courseData) {
         courseData = await apiService.getCourse(courseId);
         if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
-      } catch (error) {
-        throw error;
       }
       const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';
-      let isOneOnOne = false;
-      if (userId) {
-        try {
-          const userDoc = await apiService.getUser(userId);
-          isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
-        } catch (e) {
-        }
-      }
+      const isOneOnOne = options.isOneOnOne === true;
       if (isOneOnOne) {
         const minimalCourseData = {
           courseId,
@@ -148,8 +139,10 @@ class CourseDownloadService {
         }
         return true;
       }
-      let modules = [];
-      modules = await apiService.getCourseModules(courseId, userId);
+      let modules = options.cachedModules || [];
+      if (!modules.length) {
+        modules = await apiService.getCourseModules(courseId, userId);
+      }
       const currentWeek = courseData?.weekly === true ? getMondayWeek() : null;
       const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
       const basicCourseData = {
@@ -193,16 +186,18 @@ class CourseDownloadService {
    * Download course content when purchased
    * @param {string} courseId - Course ID to download
    * @param {string} userId - User ID for tracking
+   * @param {Object} [options] - Cached data to avoid redundant API calls
+   * @param {Object} [options.cachedCourseData] - Already-fetched course data
+   * @param {Array}  [options.cachedModules] - Already-fetched modules
+   * @param {boolean} [options.isOneOnOne] - Whether this is a one-on-one program (avoids /users/me call)
    */
-  async downloadCourse(courseId, userId) {
+  async downloadCourse(courseId, userId, options = {}) {
+    let courseData = null;
     try {
-      // Fetch course data once and reuse
-      let courseData = null;
-      try {
+      courseData = options.cachedCourseData || null;
+      if (!courseData) {
         courseData = await apiService.getCourse(courseId);
         if (!courseData) throw new Error(`Course ${courseId} not found in Firestore`);
-      } catch (error) {
-        throw error;
       }
 
       // Check if week changed (only for weekly programs)
@@ -212,22 +207,15 @@ class CourseDownloadService {
 
         if (storedWeek && storedWeek !== currentWeek) {
           await this.deleteCourse(courseId);
-          await this.downloadCourseInternal(courseId, userId);
+          await this.downloadCourseInternal(courseId, userId, { cachedCourseData: courseData, isOneOnOne: options.isOneOnOne === true });
           await this.updateStoredWeek(courseId, currentWeek);
           return true;
         }
       }
 
       const publishedVersion = courseData.published_version ?? courseData.version ?? '1.0';
-      let isOneOnOne = false;
-      if (userId) {
-        try {
-          const userDoc = await apiService.getUser(userId);
-          isOneOnOne = userDoc?.courses?.[courseId]?.deliveryType === 'one_on_one';
-        } catch (e) {
-        }
-      }
-      
+      const isOneOnOne = options.isOneOnOne === true;
+
       if (isOneOnOne) {
         const minimalCourseData = {
           courseId,
@@ -254,32 +242,24 @@ class CourseDownloadService {
             });
           }
         } catch (storeError) {
-          logger.error('❌ Failed to store one-on-one minimal:', storeError);
+          logger.error('Failed to store one-on-one minimal:', storeError);
         }
         return true;
       }
-      
-      let modules = [];
-      try {
+
+      let modules = options.cachedModules || [];
+      if (!modules.length) {
         modules = await apiService.getCourseModules(courseId, userId);
-      } catch (error) {
-        throw error;
       }
-      
-      let imageUrl = courseData.image_url || null;
+
       let currentWeek = null;
       if (courseData?.weekly === true) currentWeek = getMondayWeek();
       const libraryVersions = await this.extractLibraryVersions(courseData.creator_id, modules);
+
+      // Only fetch client program for one-on-one programs (general programs never have one)
       let clientProgram = null;
       let clientProgramVersion = null;
-      if (userId) {
-        try {
-          clientProgram = await apiService.getClientProgram(userId, courseId);
-          if (clientProgram) clientProgramVersion = clientProgram.version_snapshot || null;
-        } catch (error) {
-        }
-      }
-      
+
       const basicCourseData = {
         courseId,
         downloadedAt: new Date().toISOString(),
@@ -297,7 +277,7 @@ class CourseDownloadService {
         },
         clientProgram: clientProgram || null
       };
-      
+
       try {
         await this.storeCourseLocally(courseId, {
           ...basicCourseData,
@@ -312,18 +292,17 @@ class CourseDownloadService {
           });
         }
       } catch (storeError) {
-        logger.error('❌ Failed to store basic course data:', storeError);
+        logger.error('Failed to store basic course data:', storeError);
       }
       try {
         await this.validateCourseData({ ...courseData, modules });
       } catch (validationError) {
       }
       return true;
-      
+
     } catch (error) {
-      logger.error('❌ Course download failed:', error);
-      
-      // FIX: Even on error, try to store basic data so course shows up
+      logger.error('Course download failed:', error);
+
       try {
         const fallbackData = {
           courseId,
@@ -338,9 +317,9 @@ class CourseDownloadService {
         };
         await this.storeCourseLocally(courseId, fallbackData);
       } catch (fallbackError) {
-        logger.error('❌ Failed to store fallback data:', fallbackError);
+        logger.error('Failed to store fallback data:', fallbackError);
       }
-      
+
       throw error;
     }
   }

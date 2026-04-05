@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import WakeLoader from './WakeLoader';
 
 const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const DAY_NAMES_DISPLAY = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -99,6 +100,7 @@ export default function WeekDateSelector({
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(selected.getFullYear(), selected.getMonth(), 1));
   const [datesWithEntries, setDatesWithEntries] = useState([]);
   const [datesWithPlanned, setDatesWithPlanned] = useState([]);
+  const [calendarFetching, setCalendarFetching] = useState(false);
   const pillRef = useRef(null);
   const dropdownRef = useRef(null);
   const calendarMonthRef = useRef(calendarMonth);
@@ -135,6 +137,7 @@ export default function WeekDateSelector({
       fetchCacheRef.current[key] = { planned: initialDatesWithPlanned, entries: initialDatesWithEntries };
       setDatesWithPlanned(initialDatesWithPlanned);
       setDatesWithEntries(initialDatesWithEntries);
+      setCalendarFetching(false);
       return;
     }
 
@@ -142,12 +145,14 @@ export default function WeekDateSelector({
     if (fetchCacheRef.current[key]) {
       setDatesWithPlanned(fetchCacheRef.current[key].planned);
       setDatesWithEntries(fetchCacheRef.current[key].entries);
+      setCalendarFetching(false);
       return;
     }
 
     // 3. Live fetch — both queries in parallel
     setDatesWithPlanned([]);
     setDatesWithEntries([]);
+    setCalendarFetching(true);
     Promise.all([
       fetchDatesWithPlanned ? fetchDatesWithPlanned(start, end) : Promise.resolve([]),
       fetchDatesWithEntries ? fetchDatesWithEntries(start, end) : Promise.resolve([]),
@@ -159,6 +164,7 @@ export default function WeekDateSelector({
         setDatesWithPlanned(plannedList);
         setDatesWithEntries(entriesList);
       }
+      setCalendarFetching(false);
     });
   }, [dropdownOpen, calendarMonth, fetchDatesWithEntries, fetchDatesWithPlanned, initialMonthKey, initialDatesWithPlanned, initialDatesWithEntries]);
 
@@ -250,7 +256,13 @@ export default function WeekDateSelector({
                 </Text>
               ))}
             </View>
-            <View style={styles.grid}>
+            <View style={styles.gridWrapper}>
+              {calendarFetching && (
+                <View style={styles.gridLoadingOverlay}>
+                  <WakeLoader size={36} />
+                </View>
+              )}
+              <View style={[styles.grid, calendarFetching && styles.gridFetching]}>
               {gridCells.map((cell, i) => {
                 const ymd = toYYYYMMDD(cell.date);
                 const selectedCell = selectedDate === ymd;
@@ -287,6 +299,7 @@ export default function WeekDateSelector({
                   </TouchableOpacity>
                 );
               })}
+              </View>
             </View>
           </View>
         </View>
@@ -466,12 +479,28 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
   },
+  gridWrapper: {
+    position: 'relative',
+  },
+  gridLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     width: '100%',
     gap: 5,
     justifyContent: 'flex-start',
+  },
+  gridFetching: {
+    opacity: 0.3,
   },
   gridCell: {
     position: 'relative',

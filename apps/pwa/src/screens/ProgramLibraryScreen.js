@@ -831,16 +831,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   libraryPage: {
     width: undefined,
-    flexGrow: 0,
-    minHeight: screenHeight,
+    flex: 1,
   },
   libraryPageContent: {
     paddingBottom: 20,
     flexGrow: 1,
-    minHeight: screenHeight,
   },
   content: {
-    paddingBottom: 20, // Normal padding
+    paddingBottom: 20,
+    flex: 1,
   },
   titleSection: {
     paddingTop: 0,

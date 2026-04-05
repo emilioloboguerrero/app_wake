@@ -410,6 +410,22 @@ const MainScreen = ({ navigation, route }) => {
     ...cacheConfig.userProfile,
   });
 
+  // Pre-fetch nutrition assignment existence (fallback when pinnedNutritionAssignmentId is null)
+  useQuery({
+    queryKey: ['nutrition', 'has-assignment', user?.uid],
+    queryFn: async () => {
+      try {
+        await apiClient.get('/nutrition/assignment', { params: { date: new Date().toISOString().slice(0, 10) } });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    enabled: !!user?.uid && !profileQueryData?.pinnedNutritionAssignmentId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
   // React Query: upcoming call bookings
   const { data: upcomingBookingsData } = useQuery({
     queryKey: ['bookings', 'upcoming', user?.uid],

@@ -123,31 +123,31 @@ export default function ProgramNutritionTab({ programId, creatorId }) {
       <div className="pnt-root">
         <div className="pnt-plan-card">
           <div className="pnt-plan-card-inner">
-            <ShimmerSkeleton style={{ width: 90, height: 11, borderRadius: 4 }} />
+            <ShimmerSkeleton width={90} height={11} borderRadius={4} />
             <div className="pnt-plan-display">
               <div className="pnt-plan-info">
-                <ShimmerSkeleton style={{ width: '60%', height: 15, borderRadius: 5 }} />
+                <ShimmerSkeleton width="60%" height={15} borderRadius={5} />
                 <div className="pnt-plan-cal">
-                  <ShimmerSkeleton style={{ width: 50, height: 24, borderRadius: 6 }} />
-                  <ShimmerSkeleton style={{ width: 36, height: 11, borderRadius: 4 }} />
+                  <ShimmerSkeleton width={50} height={24} borderRadius={6} />
+                  <ShimmerSkeleton width={36} height={11} borderRadius={4} />
                 </div>
               </div>
               <div className="pnt-plan-pie">
-                <ShimmerSkeleton style={{ width: 80, height: 80, borderRadius: '50%' }} />
+                <ShimmerSkeleton width={90} height={90} borderRadius="50%" />
                 <div className="pnt-plan-macros">
                   {[48, 44, 40].map((w, i) => (
                     <div key={i} className="pnt-plan-macro-row">
-                      <ShimmerSkeleton style={{ width: 7, height: 7, borderRadius: '50%' }} />
-                      <ShimmerSkeleton style={{ width: w, height: 10, borderRadius: 3 }} />
-                      <ShimmerSkeleton style={{ width: 22, height: 11, borderRadius: 3 }} />
+                      <ShimmerSkeleton width={7} height={7} borderRadius="50%" />
+                      <ShimmerSkeleton width={w} height={10} borderRadius={3} />
+                      <ShimmerSkeleton width={22} height={11} borderRadius={3} />
                     </div>
                   ))}
                 </div>
               </div>
             </div>
             <div className="pnt-plan-actions">
-              <ShimmerSkeleton style={{ width: 90, height: 30, borderRadius: 8 }} />
-              <ShimmerSkeleton style={{ width: 60, height: 30, borderRadius: 8 }} />
+              <ShimmerSkeleton width={90} height={30} borderRadius={8} />
+              <ShimmerSkeleton width={60} height={30} borderRadius={8} />
             </div>
           </div>
         </div>

@@ -21,6 +21,7 @@ import clientSessionContentService from '../services/clientSessionContentService
 import clientPlanContentService from '../services/clientPlanContentService';
 import programPlanContentService from '../services/programPlanContentService';
 import plansService from '../services/plansService';
+import programService from '../services/programService';
 import propagationService from '../services/propagationService';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
@@ -264,7 +265,7 @@ function setStoredClientEditContext(sessId, ctx) {
 
 const LibrarySessionDetailScreen = () => {
   const params = useParams();
-  const { sessionId, planId: planInstancePlanId, moduleId: planInstanceModuleId } = params;
+  const { sessionId, planId: planInstancePlanId, moduleId: planInstanceModuleId, programId: programInstanceProgramId } = params;
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
@@ -272,7 +273,12 @@ const LibrarySessionDetailScreen = () => {
   const { confirm, ConfirmModal } = useConfirm();
   const queryClient = useQueryClient();
   const isPlanInstanceEdit = Boolean(planInstancePlanId && planInstanceModuleId && sessionId && location.pathname.includes('/plans/') && location.pathname.includes('/edit'));
-  const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : (location.state?.returnTo || '/biblioteca?domain=entrenamiento&tab=sesiones');
+  const isProgramInstanceEdit = Boolean(programInstanceProgramId && planInstanceModuleId && sessionId && location.pathname.includes('/programs/') && location.pathname.includes('/edit'));
+  const isAnyInstanceEdit = isPlanInstanceEdit || isProgramInstanceEdit;
+  const instanceId = isPlanInstanceEdit ? planInstancePlanId : programInstanceProgramId;
+  const instanceModuleId = planInstanceModuleId;
+  const instanceService = isPlanInstanceEdit ? plansService : isProgramInstanceEdit ? programService : null;
+  const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : isProgramInstanceEdit ? `/programs/${programInstanceProgramId}` : (location.state?.returnTo || '/biblioteca?domain=entrenamiento&tab=sesiones');
   const backState = location.state?.returnState ?? {};
   const editScope = location.state?.editScope;
   const clientSessionId = location.state?.clientSessionId;
@@ -556,15 +562,16 @@ const LibrarySessionDetailScreen = () => {
   const contentApi = useMemo(() => {
     const effectiveSessionId = effectiveIsClientEdit ? effectiveClientSessionId : sessionId;
     const markLibraryChanged = () => setHasMadeChanges(true);
-    const planId = planInstancePlanId;
-    const moduleId = planInstanceModuleId;
+    const iid = instanceId;
+    const imid = instanceModuleId;
+    const svc = instanceService;
     return {
       async ensureCopy() {
         if (effectiveIsClientEdit) await ensureClientCopy();
       },
       async updateSetInLibraryExercise(uid, sessId, exId, setId, data) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.updateSet(planId, moduleId, sessId, exId, setId, data); setHasMadeChanges(true); return r; }
+        if (isAnyInstanceEdit && svc && iid && imid) { const r = await svc.updateSet(iid, imid, sessId, exId, setId, data); setHasMadeChanges(true); return r; }
         if (effectiveIsAnyPlanContentEdit) return planContentApi.updateSet(effectiveWeekKey, sessId, exId, setId, data);
         if (effectiveIsClientEdit) return clientSessionContentService.updateSetInExercise(effectiveSessionId, exId, setId, data);
         const result = await libraryService.updateSetInLibraryExercise(uid, sessId, exId, setId, data);
@@ -573,7 +580,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async createSetInLibraryExercise(uid, sessId, exId, order = null) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.createSet(planId, moduleId, sessId, exId, order); setHasMadeChanges(true); return r; }
+        if (isAnyInstanceEdit && svc && iid && imid) { const r = await svc.createSet(iid, imid, sessId, exId, order); setHasMadeChanges(true); return r; }
         if (effectiveIsAnyPlanContentEdit) return planContentApi.addSetToExercise(effectiveWeekKey, sessId, exId, order ?? undefined);
         if (effectiveIsClientEdit) return clientSessionContentService.addSetToExercise(effectiveSessionId, exId, { order: order ?? 0, title: `Serie ${(order ?? 0) + 1}` });
         const result = await libraryService.createSetInLibraryExercise(uid, sessId, exId, order);
@@ -582,7 +589,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async deleteSetFromLibraryExercise(uid, sessId, exId, setId) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.deleteSet(planId, moduleId, sessId, exId, setId); setHasMadeChanges(true); return r; }
+        if (isAnyInstanceEdit && svc && iid && imid) { const r = await svc.deleteSet(iid, imid, sessId, exId, setId); setHasMadeChanges(true); return r; }
         if (effectiveIsAnyPlanContentEdit) return planContentApi.deleteSet(effectiveWeekKey, sessId, exId, setId);
         if (effectiveIsClientEdit) return clientSessionContentService.deleteSet(effectiveSessionId, exId, setId);
         const result = await libraryService.deleteSetFromLibraryExercise(uid, sessId, exId, setId);
@@ -590,14 +597,14 @@ const LibrarySessionDetailScreen = () => {
         return result;
       },
       async getSetsByLibraryExercise(uid, sessId, exId) {
-        if (isPlanInstanceEdit && planId && moduleId) return plansService.getSetsByExercise(planId, moduleId, sessId, exId);
+        if (isAnyInstanceEdit && svc && iid && imid) return svc.getSetsByExercise(iid, imid, sessId, exId);
         if (effectiveIsAnyPlanContentEdit) return planContentApi.getSetsByExercise(effectiveWeekKey, sessId, exId);
         if (effectiveIsClientEdit) return clientSessionContentService.getSetsForExercise(effectiveSessionId, exId);
         return libraryService.getSetsByLibraryExercise(uid, sessId, exId);
       },
       async updateLibrarySession(uid, sessId, updates) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.updateSession(planId, moduleId, sessId, updates); setHasMadeChanges(true); return r; }
+        if (isAnyInstanceEdit && svc && iid && imid) { const r = await svc.updateSession(iid, imid, sessId, updates); setHasMadeChanges(true); return r; }
         if (effectiveIsAnyPlanContentEdit) return planContentApi.updateSession(effectiveWeekKey, sessId, updates);
         if (effectiveIsClientEdit) return clientSessionContentService.updateSession(effectiveSessionId, updates);
         const result = await libraryService.updateLibrarySession(uid, sessId, updates);
@@ -606,7 +613,7 @@ const LibrarySessionDetailScreen = () => {
       },
       async updateExerciseInLibrarySession(uid, sessId, exId, updates) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.updateExercise(planId, moduleId, sessId, exId, updates); setHasMadeChanges(true); return r; }
+        if (isAnyInstanceEdit && svc && iid && imid) { const r = await svc.updateExercise(iid, imid, sessId, exId, updates); setHasMadeChanges(true); return r; }
         if (effectiveIsAnyPlanContentEdit) return planContentApi.updateExercise(effectiveWeekKey, sessId, exId, updates);
         if (effectiveIsClientEdit) return clientSessionContentService.updateExercise(effectiveSessionId, exId, updates);
         const result = await libraryService.updateExerciseInLibrarySession(uid, sessId, exId, updates);
@@ -617,7 +624,7 @@ const LibrarySessionDetailScreen = () => {
         await this.ensureCopy();
         const isObj = exerciseNameOrData && typeof exerciseNameOrData === 'object';
         const nameStr = isObj ? (exerciseNameOrData.name || exerciseNameOrData.title || 'Ejercicio') : (exerciseNameOrData?.trim?.() || exerciseNameOrData || 'Ejercicio');
-        if (isPlanInstanceEdit && planId && moduleId) { const r = await plansService.createExercise(planId, moduleId, sessId, nameStr, order); setHasMadeChanges(true); return r; }
+        if (isAnyInstanceEdit && svc && iid && imid) { const r = await svc.createExercise(iid, imid, sessId, nameStr, order); setHasMadeChanges(true); return r; }
         if (effectiveIsAnyPlanContentEdit) return planContentApi.createExercise(effectiveWeekKey, sessId, isObj ? exerciseNameOrData : nameStr, order ?? undefined);
         if (effectiveIsClientEdit) return clientSessionContentService.createExercise(effectiveSessionId, isObj ? exerciseNameOrData : { title: nameStr, name: nameStr }, order ?? 0);
         const result = await libraryService.createExerciseInLibrarySession(uid, sessId, isObj ? exerciseNameOrData : { name: nameStr }, order);
@@ -625,14 +632,14 @@ const LibrarySessionDetailScreen = () => {
         return result;
       },
       async getLibrarySessionById(uid, sessId) {
-        if (isPlanInstanceEdit && planId && moduleId) {
-          const sessions = await plansService.getSessionsByModule(planId, moduleId);
+        if (isAnyInstanceEdit && svc && iid && imid) {
+          const sessions = await svc.getSessionsByModule(iid, imid);
           const sessionDoc = sessions.find((s) => s.id === sessId) || null;
           if (!sessionDoc) return null;
-          const planExercises = await plansService.getExercisesBySession(planId, moduleId, sessId);
+          const instanceExercises = await svc.getExercisesBySession(iid, imid, sessId);
           const exercisesWithSets = await Promise.all(
-            planExercises.map(async (ex) => {
-              const sets = await plansService.getSetsByExercise(planId, moduleId, sessId, ex.id);
+            instanceExercises.map(async (ex) => {
+              const sets = await svc.getSetsByExercise(iid, imid, sessId, ex.id);
               return { ...ex, sets: sets || [] };
             })
           );
@@ -666,9 +673,9 @@ const LibrarySessionDetailScreen = () => {
       },
       async updateLibrarySessionExerciseOrder(uid, sessId, orders) {
         await this.ensureCopy();
-        if (isPlanInstanceEdit && planId && moduleId) {
+        if (isAnyInstanceEdit && svc && iid && imid) {
           for (const { exerciseId, order } of orders) {
-            await plansService.updateExercise(planId, moduleId, sessId, exerciseId, { order });
+            await svc.updateExercise(iid, imid, sessId, exerciseId, { order });
           }
           setHasMadeChanges(true);
           return;
@@ -685,7 +692,7 @@ const LibrarySessionDetailScreen = () => {
         return result;
       }
     };
-  }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, effectiveIsProgramPlanEdit, effectiveIsAnyPlanContentEdit, planContentApi, effectiveClientSessionId, sessionId, ensureClientCopy, effectiveClientId, effectiveProgramId, effectiveWeekKey, isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId]);
+  }, [effectiveIsClientEdit, effectiveIsClientPlanEdit, effectiveIsProgramPlanEdit, effectiveIsAnyPlanContentEdit, planContentApi, effectiveClientSessionId, sessionId, ensureClientCopy, effectiveClientId, effectiveProgramId, effectiveWeekKey, isAnyInstanceEdit, instanceId, instanceModuleId, instanceService]);
 
   const handleCardDeleteAlternative = useCallback((exercise, libraryId, index) => {
     if (!user || !sessionId) return;
@@ -761,8 +768,8 @@ const LibrarySessionDetailScreen = () => {
   const handleHeaderImageSelect = async (item) => {
     if (!sessionId || !user) return;
     try {
-      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-        await plansService.updateSession(planInstancePlanId, planInstanceModuleId, sessionId, { image_url: item.url });
+      if (isAnyInstanceEdit && instanceService && instanceId && instanceModuleId) {
+        await instanceService.updateSession(instanceId, instanceModuleId, sessionId, { image_url: item.url });
       } else if (effectiveIsAnyPlanContentEdit) {
         await planContentApi.updateSession(effectiveWeekKey, sessionId, { image_url: item.url });
       } else if (effectiveIsClientEdit) {
@@ -773,7 +780,7 @@ const LibrarySessionDetailScreen = () => {
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
       queryClient.setQueryData(
-        ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
+        ['library', 'session', sessionId, { isAnyInstanceEdit, instanceId, instanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
         (old) => old ? { ...old, session: { ...old.session, image_url: item.url } } : old
       );
     } catch (err) {
@@ -795,14 +802,16 @@ const LibrarySessionDetailScreen = () => {
   );
 
   const { data: sessionQueryData, isLoading: loading, error: loadError } = useQuery({
-    queryKey: ['library', 'session', sessionId, { isPlanInstanceEdit, planInstancePlanId, planInstanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
+    queryKey: ['library', 'session', sessionId, { isAnyInstanceEdit, instanceId, instanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
     queryFn: async () => {
       if (!user || !sessionId) return null;
 
-      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-        const sessionData = await plansService.getSessionById(planInstancePlanId, planInstanceModuleId, sessionId);
+      if (isAnyInstanceEdit && instanceService && instanceId && instanceModuleId) {
+        const sessionData = isPlanInstanceEdit
+          ? await plansService.getSessionById(instanceId, instanceModuleId, sessionId)
+          : await programService.getSessionById(instanceId, instanceModuleId, sessionId);
         if (!sessionData) return null;
-        return { session: sessionData, editMode: 'planInstance' };
+        return { session: sessionData, editMode: isPlanInstanceEdit ? 'planInstance' : 'programInstance' };
       }
 
       // Resolve effective client-edit context from ref/sessionStorage
@@ -857,8 +866,8 @@ const LibrarySessionDetailScreen = () => {
       return { session: libSession, editMode: 'library' };
     },
     enabled: !!user && !!sessionId,
-    staleTime: effectiveIsAnyPlanContentEdit ? 0 : (effectiveIsClientEdit || isPlanInstanceEdit) ? 30 * 1000 : 5 * 60 * 1000,
-    gcTime: effectiveIsAnyPlanContentEdit ? 0 : (effectiveIsClientEdit || isPlanInstanceEdit) ? 60 * 1000 : 10 * 60 * 1000,
+    staleTime: effectiveIsAnyPlanContentEdit ? 0 : (effectiveIsClientEdit || isAnyInstanceEdit) ? 30 * 1000 : 5 * 60 * 1000,
+    gcTime: effectiveIsAnyPlanContentEdit ? 0 : (effectiveIsClientEdit || isAnyInstanceEdit) ? 60 * 1000 : 10 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
@@ -1364,12 +1373,12 @@ const LibrarySessionDetailScreen = () => {
 
     try {
       let createdExercise;
-      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
+      if (isAnyInstanceEdit && instanceService && instanceId && instanceModuleId) {
         const name = newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio';
-        createdExercise = await plansService.createExercise(planInstancePlanId, planInstanceModuleId, sessionId, name, nextOrder);
+        createdExercise = await instanceService.createExercise(instanceId, instanceModuleId, sessionId, name, nextOrder);
         const realExId = createdExercise?.id || createdExercise?.exerciseId;
         if (realExId) {
-          await plansService.updateExercise(planInstancePlanId, planInstanceModuleId, sessionId, realExId, newExercisePayload);
+          await instanceService.updateExercise(instanceId, instanceModuleId, sessionId, realExId, newExercisePayload);
         }
       } else if (effectiveIsAnyPlanContentEdit) {
         createdExercise = await planContentApi.createExercise(effectiveWeekKey, sessionId, newExercisePayload, nextOrder);
@@ -1449,8 +1458,8 @@ const LibrarySessionDetailScreen = () => {
     setExerciseToDelete(null);
 
     try {
-      if (isPlanInstanceEdit && planInstancePlanId && planInstanceModuleId) {
-        await plansService.deleteExercise(planInstancePlanId, planInstanceModuleId, sessionId, deletedId);
+      if (isAnyInstanceEdit && instanceService && instanceId && instanceModuleId) {
+        await instanceService.deleteExercise(instanceId, instanceModuleId, sessionId, deletedId);
       } else if (effectiveIsAnyPlanContentEdit) {
         await planContentApi.deleteExercise(effectiveWeekKey, sessionId, deletedId);
       } else if (effectiveIsClientEdit) {
@@ -2404,7 +2413,7 @@ const LibrarySessionDetailScreen = () => {
 
       await contentApi.updateExerciseInLibrarySession(user.uid, sessionId, realId, updateData);
 
-      const isLibMode = !effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit;
+      const isLibMode = !effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit;
       if (isLibMode && setsToCreate.length > 0) {
         // Parallel: create all sets, then update all with values
         const createdSets = await Promise.all(
@@ -2616,7 +2625,7 @@ const LibrarySessionDetailScreen = () => {
   // Fetch library affected details (count + users + programs) after first mutation — single call replaces two separate fetches
   useEffect(() => {
     if (!hasMadeChanges) return;
-    if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) return;
+    if (!user?.uid || !sessionId || effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isAnyInstanceEdit) return;
     if (propagationFetchedRef.current) return;
     propagationFetchedRef.current = true;
     propagationService.getAffectedDetailsForLibrarySession(user.uid, sessionId)
@@ -2628,7 +2637,7 @@ const LibrarySessionDetailScreen = () => {
         detailsFetchedRef.current = true;
       })
       .catch((err) => console.error('[Propagation] Error fetching affected:', err));
-  }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges]);
+  }, [user?.uid, sessionId, effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isAnyInstanceEdit, hasMadeChanges]);
 
   // Fetch plan affected count on mount (plan instance edit only) — React Query deduplicates in StrictMode
   const { data: planAffectedCount = 0 } = useQuery({
@@ -2644,7 +2653,7 @@ const LibrarySessionDetailScreen = () => {
 
   // Block browser close/refresh when unpropagated changes
   useEffect(() => {
-    const shouldBlock = !effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit && hasMadeChanges && libraryUsageCount > 0;
+    const shouldBlock = !effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit && hasMadeChanges && libraryUsageCount > 0;
     const handler = (e) => {
       if (shouldBlock) {
         e.preventDefault();
@@ -2655,7 +2664,7 @@ const LibrarySessionDetailScreen = () => {
       window.addEventListener('beforeunload', handler);
     }
     return () => window.removeEventListener('beforeunload', handler);
-  }, [effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isPlanInstanceEdit, hasMadeChanges, libraryUsageCount]);
+  }, [effectiveIsClientEdit, effectiveIsAnyPlanContentEdit, isAnyInstanceEdit, hasMadeChanges, libraryUsageCount]);
 
   // Flush plan content cache on tab hide / browser close
   useEffect(() => {
@@ -2713,7 +2722,7 @@ const LibrarySessionDetailScreen = () => {
       navigate(backPath, { state: navState });
       return;
     }
-    if (isPlanInstanceEdit && hasMadeChanges) {
+    if (isAnyInstanceEdit && hasMadeChanges) {
       navigate(backPath, { state: { ...backState, planHasChanges: true, sessionChanged: true } });
       return;
     }
@@ -3452,7 +3461,7 @@ const LibrarySessionDetailScreen = () => {
       backState={backState}
       onBack={handleBack}
       headerRight={hasMadeChanges && (
-        (!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit && libraryUsageCount > 0) ||
+        (!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit && libraryUsageCount > 0) ||
         (isPlanInstanceEdit && planAffectedCount > 0)
       ) ? (
         <div className="library-session-propagate-group">
@@ -3531,19 +3540,21 @@ const LibrarySessionDetailScreen = () => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className={`library-session-detail-container ${(effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isPlanInstanceEdit) ? 'library-session-detail-container-has-banner' : ''} ${accentRgb ? 'has-accent' : ''}`} style={accentStyle}>
-          {isPlanInstanceEdit && (
+        <div className={`library-session-detail-container ${(effectiveIsClientEdit || effectiveIsAnyPlanContentEdit || isAnyInstanceEdit) ? 'library-session-detail-container-has-banner' : ''} ${accentRgb ? 'has-accent' : ''}`} style={accentStyle}>
+          {isAnyInstanceEdit && (
             <div className="library-session-client-edit-banner esim-clickable" role="button" tabIndex={0} onClick={() => setShowScopeInfo(true)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowScopeInfo(true); }}>
               <svg className="library-session-client-only-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                 <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
               <span className="library-session-client-edit-banner-text">
-                Editando solo esta semana del plan. Los cambios no afectan la biblioteca ni otras semanas.
+                {isProgramInstanceEdit
+                  ? 'Editando esta sesion del programa. Los cambios no afectan la biblioteca.'
+                  : 'Editando solo esta semana del plan. Los cambios no afectan la biblioteca ni otras semanas.'}
               </span>
             </div>
           )}
-          {(effectiveIsClientEdit || effectiveIsAnyPlanContentEdit) && !isPlanInstanceEdit && (
+          {(effectiveIsClientEdit || effectiveIsAnyPlanContentEdit) && !isAnyInstanceEdit && (
             <div className="library-session-client-only-banner esim-clickable" role="button" tabIndex={0} onClick={(e) => { if (!e.target.closest('.library-session-client-edit-revert')) setShowScopeInfo(true); }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowScopeInfo(true); }}>
               <svg className="library-session-client-only-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
@@ -3582,7 +3593,7 @@ const LibrarySessionDetailScreen = () => {
           <EditScopeInfoModal
             isOpen={showScopeInfo}
             onClose={() => setShowScopeInfo(false)}
-            scope={isPlanInstanceEdit ? 'plan-instance' : effectiveIsAnyPlanContentEdit ? 'session-client-plan' : 'session-client'}
+            scope={isAnyInstanceEdit ? (isProgramInstanceEdit ? 'program-instance' : 'plan-instance') : effectiveIsAnyPlanContentEdit ? 'session-client-plan' : 'session-client'}
             clientName={clientName}
           />
 
@@ -3631,7 +3642,7 @@ const LibrarySessionDetailScreen = () => {
                         {exercises.length > 0 && (
                           <span className="library-session-settings-card-pill">{exercises.length} {exercises.length === 1 ? 'ejercicio' : 'ejercicios'}</span>
                         )}
-                        {!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit && libraryUsageCount > 0 && (
+                        {!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit && libraryUsageCount > 0 && (
                           <span className="library-session-settings-card-pill">
                             {libraryUsageCount} {libraryUsageCount === 1 ? 'programa' : 'programas'}
                           </span>
@@ -3886,7 +3897,7 @@ const LibrarySessionDetailScreen = () => {
                       pickerSelectedLibraryId={pickerActiveExerciseId === exercise.id ? selectedLibraryForExercise : null}
                       onPickerSelect={(ex, exerciseName, mode) => handlePickerSelect(exercise, ex, exerciseName, mode)}
                       pickerIsSaving={pickerActiveExerciseId === exercise.id && isSavingLibraryExerciseChoice}
-                      isLibraryMode={!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isPlanInstanceEdit}
+                      isLibraryMode={!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit}
                       onOpenPresetSelector={handleOpenPresetSelector}
                       onOpenMeasuresEditor={handleOpenMeasuresEditor}
                       onAddObjective={handleAddObjective}

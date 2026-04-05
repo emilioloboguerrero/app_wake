@@ -8,6 +8,12 @@ import { queryClient } from '../config/queryClient';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Read lastActivityDate from cached user profile to skip server-side streak reads. */
+function getLastKnownActivityDate(userId) {
+  const profile = queryClient.getQueryData(['user', userId]);
+  return profile?.activityStreak?.lastActivityDate ?? null;
+}
+
 function toDateStr(value) {
   if (!value) return new Date().toISOString().split('T')[0];
   if (value instanceof Date) return value.toISOString().split('T')[0];
@@ -156,6 +162,7 @@ export async function addDiaryEntry(_userId, data) {
     serving_unit: data.serving_unit ?? null,
     grams_per_unit: data.grams_per_unit ?? null,
     ...(data.servings ? { servings: data.servings } : {}),
+    lastKnownActivityDate: getLastKnownActivityDate(_userId),
   };
   const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const result = await apiClient.post('/nutrition/diary', body, { idempotent: false, tempId });
@@ -183,7 +190,36 @@ export async function updateDiaryEntry(_userId, entryId, data) {
   if (data.protein != null) update.protein = data.protein;
   if (data.carbs != null) update.carbs = data.carbs;
   if (data.fat != null) update.fat = data.fat;
+  if (Array.isArray(data.servings)) update.servings = data.servings;
   return apiClient.patch(`/nutrition/diary/${entryId}`, update);
+}
+
+export async function addDiaryEntries(_userId, entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+  if (entries.length === 1) {
+    const id = await addDiaryEntry(_userId, entries[0]);
+    return [id];
+  }
+  const result = await apiClient.post('/nutrition/diary/batch', {
+    entries: entries.map((data) => ({
+      date: data.date,
+      meal: data.meal ?? '',
+      food_id: data.food_id,
+      serving_id: data.serving_id ?? '0',
+      number_of_units: data.number_of_units ?? 1,
+      name: data.name ?? '',
+      food_category: data.food_category ?? null,
+      calories: data.calories ?? null,
+      protein: data.protein ?? null,
+      carbs: data.carbs ?? null,
+      fat: data.fat ?? null,
+      serving_unit: data.serving_unit ?? null,
+      grams_per_unit: data.grams_per_unit ?? null,
+      ...(data.servings ? { servings: data.servings } : {}),
+    })),
+    lastKnownActivityDate: getLastKnownActivityDate(_userId),
+  }, { idempotent: false });
+  return result?.data?.entryIds ?? [];
 }
 
 export async function deleteDiaryEntry(_userId, entryId) {
@@ -266,6 +302,7 @@ export default {
   getDiaryEntriesInRange,
   getDatesWithEntries,
   addDiaryEntry,
+  addDiaryEntries,
   updateDiaryEntry,
   deleteDiaryEntry,
   getUserMeals,

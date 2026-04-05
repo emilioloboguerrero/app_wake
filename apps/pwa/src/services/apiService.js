@@ -132,10 +132,12 @@ class FirestoreService {
    */
   async getDatesWithPlannedSessions(userId, courseId, startDate, endDate) {
     try {
+      logger.debug('[apiService.getDatesWithPlannedSessions] requesting', { courseId, startDate, endDate });
       const result = await apiClient.get('/workout/calendar/planned', { params: { courseId, startDate, endDate } });
+      logger.debug('[apiService.getDatesWithPlannedSessions] response', { data: result?.data, count: result?.data?.length });
       return result?.data ?? [];
     } catch (error) {
-      logger.error('[getDatesWithPlannedSessions] error:', error);
+      logger.error('[getDatesWithPlannedSessions] error:', error?.message, error?.response?.status);
       return [];
     }
   }
@@ -152,9 +154,12 @@ class FirestoreService {
    */
   async getDatesWithCompletedPlannedSessions(userId, courseId, startDate, endDate) {
     try {
+      logger.debug('[apiService.getDatesWithCompletedPlannedSessions] requesting', { courseId, startDate, endDate });
       const result = await apiClient.get('/workout/calendar/completed', { params: { courseId, startDate, endDate } });
+      logger.debug('[apiService.getDatesWithCompletedPlannedSessions] response', { data: result?.data, count: result?.data?.length });
       return result?.data ?? [];
     } catch (error) {
+      logger.error('[getDatesWithCompletedPlannedSessions] error:', error?.message, error?.response?.status);
       return [];
     }
   }

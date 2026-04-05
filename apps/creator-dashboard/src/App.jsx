@@ -107,6 +107,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/programs/:programId/modules/:moduleId/sessions/:sessionId/edit"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ProgramSessionEditScreen"><LibrarySessionDetailScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/plans/:planId/modules/:moduleId/sessions/:sessionId"
               element={
                 <ProtectedRoute>

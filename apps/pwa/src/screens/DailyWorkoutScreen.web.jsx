@@ -66,12 +66,19 @@ const DailyWorkoutScreen = () => {
     queryKey: ['daily-prefetch', user?.uid, courseId, currentMonthMeta.key],
     queryFn: async () => {
       const { start, end, key } = currentMonthMeta;
+      logger.debug('[DailyWorkout.web] prefetchQuery FETCHING', { start, end, key, courseId, userId: user.uid, isOneOnOne });
       const [planned, entries] = await Promise.all([
         firestoreService.getDatesWithPlannedSessions(user.uid, courseId, start, end),
         exerciseHistoryService.getDatesWithCompletedSessionsForCourse(user.uid, courseId, start, end),
       ]);
       const plannedArr = Array.isArray(planned) ? planned : [];
       const entriesArr = Array.isArray(entries) ? entries : [];
+      logger.debug('[DailyWorkout.web] prefetchQuery RESULT', {
+        plannedDates: plannedArr,
+        completedDates: entriesArr,
+        plannedCount: plannedArr.length,
+        completedCount: entriesArr.length,
+      });
       return { planned: plannedArr, entries: entriesArr };
     },
     staleTime: STALE_TIMES.userProfile,
@@ -113,6 +120,16 @@ const DailyWorkoutScreen = () => {
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
 
+  logger.debug('[DailyWorkout.web] RENDER', {
+    courseId,
+    isOneOnOne,
+    deliveryType: course?.deliveryType,
+    selectedDate,
+    userId: user?.uid,
+    courseTitle: course?.title,
+    courseFromState: !!courseFromState,
+  });
+
   // Extract accent color from course image
   useEffect(() => {
     const imageUrl = course?.image_url || course?.imageUrl;
@@ -126,22 +143,31 @@ const DailyWorkoutScreen = () => {
 
   const fetchDatesWithEntries = useCallback(
     async (startDate, endDate) => {
+      logger.debug('[DailyWorkout.web] fetchDatesWithEntries CALLED', {
+        startDate, endDate, isOneOnOne, userId: user?.uid, courseId,
+      });
       if (!user?.uid || !courseId) return [];
       try {
+        let result;
         if (isOneOnOne) {
-          return await firestoreService.getDatesWithCompletedPlannedSessions(
+          result = await firestoreService.getDatesWithCompletedPlannedSessions(
+            user.uid,
+            courseId,
+            startDate,
+            endDate
+          );
+        } else {
+          result = await exerciseHistoryService.getDatesWithCompletedSessionsForCourse(
             user.uid,
             courseId,
             startDate,
             endDate
           );
         }
-        return await exerciseHistoryService.getDatesWithCompletedSessionsForCourse(
-          user.uid,
-          courseId,
-          startDate,
-          endDate
-        );
+        logger.debug('[DailyWorkout.web] fetchDatesWithEntries RESULT', {
+          isOneOnOne, dates: result, count: result?.length,
+        });
+        return result;
       } catch (e) {
         logger.error('[DailyWorkoutScreen] fetchDatesWithEntries error:', e);
         return [];
@@ -152,14 +178,21 @@ const DailyWorkoutScreen = () => {
 
   const fetchDatesWithPlanned = useCallback(
     async (startDate, endDate) => {
+      logger.debug('[DailyWorkout.web] fetchDatesWithPlanned CALLED', {
+        startDate, endDate, isOneOnOne, userId: user?.uid, courseId,
+      });
       if (!isOneOnOne || !user?.uid || !courseId) return [];
       try {
-        return await firestoreService.getDatesWithPlannedSessions(
+        const result = await firestoreService.getDatesWithPlannedSessions(
           user.uid,
           courseId,
           startDate,
           endDate
         );
+        logger.debug('[DailyWorkout.web] fetchDatesWithPlanned RESULT', {
+          dates: result, count: result?.length,
+        });
+        return result;
       } catch (e) {
         logger.error('[DailyWorkoutScreen] getDatesWithPlannedSessions error:', e);
         return [];
@@ -324,7 +357,7 @@ const DailyWorkoutScreen = () => {
     <div
       ref={wrapperRef}
       className={dateTransitioning ? 'wake-date-transition' : undefined}
-      style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}
+      style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'clip' }}
     >
       <div className="w-orb w-orb-1" />
       <div className="w-orb w-orb-2" />

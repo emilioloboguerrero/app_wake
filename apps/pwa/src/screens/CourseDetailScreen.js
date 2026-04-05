@@ -247,11 +247,15 @@ const CourseDetailScreen = ({ navigation, route }) => {
       // Notify MainScreen about the purchase
       purchaseEventManager.notifyPurchaseComplete(course.id);
       
-      // Download the purchased course data
+      // Download the purchased course data using cached data to avoid redundant API calls
       try {
-        await courseDownloadService.downloadCourse(course.id, effectiveUser.uid);
+        await courseDownloadService.downloadCourse(course.id, effectiveUser.uid, {
+          cachedCourseData: course,
+          cachedModules: modules,
+          isOneOnOne,
+        });
       } catch (downloadError) {
-        logger.error('❌ Error downloading course:', downloadError);
+        logger.error('Error downloading course:', downloadError);
       }
 
       // Set ownership state
@@ -313,7 +317,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
         ]
       );
     }
-  }, [user, course.id, navigation]);
+  }, [user, course.id, course, modules, isOneOnOne, navigation]);
 
   useEffect(() => {
     if (!userDocData || !course.id || !processingPurchase) return;
@@ -560,35 +564,34 @@ useEffect(() => {
     if (isWeb && effectiveUser?.uid && (processingPurchaseRef.current || pendingPostPurchaseRef.current)) {
       checkCourseOwnership().then(async () => {
         if (processingPurchaseRef.current || pendingPostPurchaseRef.current) {
-          const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
+          const cachedUser = queryClient.getQueryData(['user', effectiveUser.uid]) || userDocData;
+          const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id, cachedUser);
           if (courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
             handlePostPurchaseFlow();
           }
         }
       });
     }
-  }, [user?.uid, course.id, checkCourseOwnership, handlePostPurchaseFlow]);
+  }, [user?.uid, course.id, checkCourseOwnership, handlePostPurchaseFlow, queryClient, userDocData]);
 
-  // Safety check: Re-verify ownership after initial check completes
+  // Safety check: Re-verify ownership using already-cached userDocData
   // This catches cases where the initial check might have failed or been skipped
   React.useEffect(() => {
-    const effectiveUser = user || auth.currentUser;
-    if (!checkingOwnership && !userOwnsCourse && effectiveUser?.uid && course.id && !processingPurchase) {
-      // Double-check ownership after a delay to catch any missed updates
-      const safetyCheckTimeout = setTimeout(async () => {
-        try {
-          const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
-          if (courseState.ownsCourse && !userOwnsCourse) {
+    if (!checkingOwnership && !userOwnsCourse && userDocData && course.id && !processingPurchase) {
+      const safetyCheckTimeout = setTimeout(() => {
+        const courseState = purchaseService.getUserCourseState(null, course.id, userDocData);
+        // getUserCourseState with cachedUserDoc is sync-like (no API call), but returns a Promise
+        courseState.then(state => {
+          if (state.ownsCourse && !userOwnsCourse) {
             setUserOwnsCourse(true);
             setOwnershipReady(true);
           }
-        } catch (error) {
-        }
-      }, 3000); // Check after 3 seconds
-      
+        }).catch(() => {});
+      }, 3000);
+
       return () => clearTimeout(safetyCheckTimeout);
     }
-  }, [checkingOwnership, userOwnsCourse, user?.uid, course.id, processingPurchase]);
+  }, [checkingOwnership, userOwnsCourse, userDocData, course.id, processingPurchase]);
 
   // Handle screen focus changes - pause video when screen loses focus
   // Only needed on native - on web, browser handles this
@@ -713,21 +716,25 @@ useEffect(() => {
         const isOwnProgram = creatorId && effectiveUser?.uid && creatorId === effectiveUser.uid;
         const isCreatorOwnProgram = isCreatorUser && isOwnProgram;
         
-        const result = await purchaseService.grantFreeAccess(effectiveUser.uid, course.id);
-        
+        const result = await purchaseService.grantFreeAccess(effectiveUser.uid, course.id, userDocData);
+
         if (result.success) {
-          
+
           // Invalidate course queries so React Query refetches fresh data
           await queryClient.invalidateQueries({ queryKey: ['programs'] });
           await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
 
           // Notify MainScreen about the purchase
           purchaseEventManager.notifyPurchaseComplete(course.id);
-          
+
           try {
-            await courseDownloadService.downloadCourse(course.id, effectiveUser.uid);
+            await courseDownloadService.downloadCourse(course.id, effectiveUser.uid, {
+              cachedCourseData: course,
+              cachedModules: modules,
+              isOneOnOne,
+            });
           } catch (downloadError) {
-            logger.error('❌ Error downloading course:', downloadError);
+            logger.error('Error downloading course:', downloadError);
           }
           
           // Show appropriate message based on who got access
@@ -936,9 +943,13 @@ useEffect(() => {
       purchaseEventManager.notifyPurchaseComplete(course.id);
 
       try {
-        await courseDownloadService.downloadCourse(course.id);
+        await courseDownloadService.downloadCourse(course.id, user?.uid, {
+          cachedCourseData: course,
+          cachedModules: modules,
+          isOneOnOne,
+        });
       } catch (downloadError) {
-        logger.error('❌ Error downloading course after starting trial:', downloadError);
+        logger.error('Error downloading course after starting trial:', downloadError);
       }
 
       await checkCourseOwnership();

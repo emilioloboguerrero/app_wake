@@ -2,82 +2,29 @@ import { Router } from "express";
 import type { Request } from "express";
 import * as crypto from "node:crypto";
 import * as functions from "firebase-functions";
-import { MercadoPagoConfig, Preference, Payment, PreApproval } from "mercadopago";
+import { Preference, Payment, PreApproval } from "mercadopago";
 import { db, FieldValue } from "../firestore.js";
 import { validateAuth } from "../middleware/auth.js";
 import { validateBody } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
+import {
+  type ParsedReference,
+  type MercadoPagoPreapproval,
+  EMAIL_RE, COURSE_ID_RE,
+  buildExternalReference, parseExternalReference,
+  calculateExpirationDate, classifyError, getClient,
+} from "../services/paymentHelpers.js";
+import { assignCourseToUser } from "../services/courseAssignment.js";
 
 const router = Router();
 
-// ─── Helpers ──────────────────────────────────────────────────────────────
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const COURSE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
-const REFERENCE_VERSION = "v1";
-const REFERENCE_DELIMITER = "|";
-
-type PaymentKind = "otp" | "sub";
-
-interface ParsedReference {
-  userId: string;
-  courseId: string;
-  paymentType: PaymentKind;
-}
-
-function getClient(): MercadoPagoConfig {
+function getMPClient() {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
   if (!token) {
-    throw new WakeApiServerError(
-      "SERVICE_UNAVAILABLE", 503,
-      "Servicio de pagos no configurado"
-    );
+    throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Servicio de pagos no configurado");
   }
-  return new MercadoPagoConfig({ accessToken: token });
-}
-
-function buildExternalReference(
-  userId: string,
-  courseId: string,
-  paymentType: PaymentKind
-): string {
-  return [REFERENCE_VERSION, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
-}
-
-function parseExternalReference(reference: string): ParsedReference {
-  const parts = reference.split(REFERENCE_DELIMITER);
-  if (parts.length !== 4 || parts[0] !== REFERENCE_VERSION) {
-    throw new Error("Invalid external reference format");
-  }
-  const [, userId, courseId, paymentTypeRaw] = parts;
-  if (paymentTypeRaw !== "otp" && paymentTypeRaw !== "sub") {
-    throw new Error(`Invalid payment type: ${paymentTypeRaw}`);
-  }
-  return { userId, courseId, paymentType: paymentTypeRaw };
-}
-
-function calculateExpirationDate(accessDuration: string, fromDate?: string): string {
-  const durations: Record<string, number> = {
-    monthly: 30, "3-month": 90, "6-month": 180, yearly: 365,
-  };
-  const days = durations[accessDuration] || 30;
-  const now = new Date();
-  let base = now;
-  if (fromDate) {
-    const parsed = new Date(fromDate);
-    if (!isNaN(parsed.getTime()) && parsed > now) base = parsed;
-  }
-  return new Date(base.getTime() + days * 86400000).toISOString();
-}
-
-function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
-  if (!error || typeof error !== "object") return "RETRYABLE";
-  const err = error as { code?: string; message?: string };
-  if (err.code === "ECONNRESET" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND") return "RETRYABLE";
-  if (err.code === "permission-denied" || err.code === "not-found") return "NON_RETRYABLE";
-  if (err.message?.includes("not found") || err.message?.includes("invalid")) return "NON_RETRYABLE";
-  return "RETRYABLE";
+  return getClient(token);
 }
 
 // ─── GET /users/me/subscriptions ──────────────────────────────────────────
@@ -98,7 +45,7 @@ router.get("/users/me/subscriptions", async (req, res) => {
   });
 });
 
-// ─── POST /payments/preference ────────────────────────────────────────────
+// ─��─ POST /payments/preference ────────────────��───────────────────────────
 
 router.post("/payments/preference", async (req, res) => {
   const auth = await validateAuth(req);
@@ -121,7 +68,7 @@ router.post("/payments/preference", async (req, res) => {
   const course = courseDoc.data()!;
   const externalReference = buildExternalReference(auth.userId, courseId, "otp");
 
-  const client = getClient();
+  const client = getMPClient();
   const preference = new Preference(client);
   const result = await preference.create({
     body: {
@@ -133,13 +80,19 @@ router.post("/payments/preference", async (req, res) => {
         unit_price: course.price,
       }],
       external_reference: externalReference,
+      back_urls: {
+        success: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+        failure: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+        pending: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+      },
+      auto_return: "approved",
     },
   });
 
   res.json({ data: { init_point: result.init_point } });
 });
 
-// ─── POST /payments/subscription ──────────────────────────────────────────
+// ─── POST /payments/subscription ──────────���───────────────────────────────
 
 router.post("/payments/subscription", async (req, res) => {
   const auth = await validateAuth(req);
@@ -151,7 +104,7 @@ router.post("/payments/subscription", async (req, res) => {
   );
 
   if (!COURSE_ID_RE.test(body.courseId)) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inv��lido", "courseId");
   }
   if (!EMAIL_RE.test(body.payer_email)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email de pago inválido", "payer_email");
@@ -172,7 +125,7 @@ router.post("/payments/subscription", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  const client = getClient();
+  const client = getMPClient();
   const preapproval = new PreApproval(client);
   const startDate = new Date(Date.now() + 5 * 60 * 1000);
   const externalRef = buildExternalReference(auth.userId, body.courseId, "sub");
@@ -217,7 +170,6 @@ router.post("/payments/subscription", async (req, res) => {
     throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
   }
 
-  // Fetch next billing date
   interface PreapprovalDetails {
     next_payment_date?: string | null;
     auto_recurring?: { next_payment_date?: string | null; start_date?: string | null };
@@ -234,7 +186,6 @@ router.post("/payments/subscription", async (req, res) => {
 
   if (!nextBillingDate) nextBillingDate = startDate.toISOString();
 
-  // Store subscription record
   await db
     .collection("users")
     .doc(auth.userId)
@@ -258,7 +209,7 @@ router.post("/payments/subscription", async (req, res) => {
   res.json({ data: { init_point: result.init_point, subscription_id: result.id } });
 });
 
-// ─── POST /payments/webhook ───────────────────────────────────────────────
+// ─���─ POST /payments/webhook ──────────────────────────────────────────���────
 
 router.post("/payments/webhook", async (req: Request, res) => {
   const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
@@ -266,7 +217,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Webhook secret no configurado");
   }
 
-  // Validate signature
+  // ── Validate signature ──
   const signatureHeaderNew = req.get("x-signature");
   const signatureHeaderLegacy =
     req.get("x-hmac-signature") ||
@@ -276,7 +227,6 @@ router.post("/payments/webhook", async (req: Request, res) => {
   let signatureIsValid = false;
 
   if (signatureHeaderNew) {
-    // New MP signature format: ts=...,v1=...
     const parsed: Record<string, string> = {};
     for (const part of signatureHeaderNew.split(",")) {
       const [key, value] = part.split("=");
@@ -288,7 +238,6 @@ router.post("/payments/webhook", async (req: Request, res) => {
     const dataId = req.body?.data?.id;
 
     if (ts && sig && requestId && dataId) {
-      // Reject replayed webhooks: timestamp must be within 5 minutes of now
       const tsMs = Number(ts) * 1000;
       if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
         res.status(403).json({
@@ -348,10 +297,10 @@ router.post("/payments/webhook", async (req: Request, res) => {
       return;
     }
     try {
-      const client = getClient();
+      const client = getMPClient();
       const preapproval = new PreApproval(client);
-      const preapprovalData = await preapproval.get({ id: preapprovalId }) as unknown as Record<string, unknown>;
-      const externalReference = preapprovalData?.external_reference as string | undefined;
+      const preapprovalData = await preapproval.get({ id: preapprovalId }) as unknown as MercadoPagoPreapproval;
+      const externalReference = preapprovalData?.external_reference;
       if (!externalReference) {
         res.status(200).send("OK");
         return;
@@ -360,27 +309,24 @@ router.post("/payments/webhook", async (req: Request, res) => {
       try { parsed = parseExternalReference(externalReference); }
       catch { res.status(200).send("OK"); return; }
 
-      const autoRecurring = preapprovalData?.auto_recurring as Record<string, unknown> | undefined;
+      const autoRecurring = preapprovalData?.auto_recurring;
       const nextPaymentDate =
-        (preapprovalData?.next_payment_date as string | null) ||
-        (autoRecurring?.next_payment_date as string | null) ||
+        preapprovalData?.next_payment_date ||
+        autoRecurring?.next_payment_date ||
         null;
 
       const updateData: Record<string, unknown> = {
-        status: (preapprovalData?.status as string) || "pending",
+        status: preapprovalData?.status || "pending",
         transaction_amount: autoRecurring?.transaction_amount ?? null,
         currency_id: autoRecurring?.currency_id ?? null,
-        reason: (preapprovalData?.reason as string | null) ?? null,
+        reason: preapprovalData?.reason ?? null,
         management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${preapprovalId}`,
         next_billing_date: nextPaymentDate,
         updated_at: FieldValue.serverTimestamp(),
         last_action: webhookAction,
       };
 
-      const payerEmail =
-        (preapprovalData?.payer_email as string | null) ??
-        ((preapprovalData?.payer as Record<string, unknown> | undefined)?.email as string | null) ??
-        null;
+      const payerEmail = preapprovalData?.payer_email ?? preapprovalData?.payer?.email ?? null;
       if (payerEmail) updateData.payer_email = payerEmail;
 
       if (preapprovalData?.status === "cancelled") {
@@ -456,13 +402,8 @@ router.post("/payments/webhook", async (req: Request, res) => {
     date_created?: string;
     transaction_amount?: number;
     currency_id?: string;
-    preapproval?: {
-      id?: string;
-      external_reference?: string;
-    };
-    payment?: {
-      status?: string;
-    };
+    preapproval?: { id?: string; external_reference?: string };
+    payment?: { status?: string };
   }
 
   let paymentData: MercadoPagoPaymentData | null = null;
@@ -485,7 +426,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       }
       paymentData = rawData;
     } else {
-      const client = getClient();
+      const client = getMPClient();
       const payment = new Payment(client);
       paymentData = (await payment.get({ id: paymentId }) as MercadoPagoPaymentData) || {};
     }
@@ -598,26 +539,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   const subscriptionId = paymentData.subscription_id || paymentData.preapproval_id || null;
 
+  // ── Renewal ─��
   if (isRenewal) {
-    // Subscription renewal — extend expiration
     const currentExpiration = existingCourseData?.expires_at ?? undefined;
     const expirationDate = calculateExpirationDate(courseAccessDuration, currentExpiration);
 
-    await db.collection("users").doc(userId).update({
-      [`courses.${courseId}`]: {
-        access_duration: existingCourseData.access_duration ?? courseAccessDuration,
-        expires_at: expirationDate,
-        status: "active",
-        purchased_at: existingCourseData.purchased_at ?? new Date().toISOString(),
-        deliveryType: existingCourseData.deliveryType ?? courseDetails.deliveryType ?? "low_ticket",
-        title: existingCourseData.title ?? courseTitle,
-        image_url: existingCourseData.image_url ?? courseDetails.image_url ?? null,
-        discipline: existingCourseData.discipline ?? courseDetails.discipline ?? "General",
-        creatorName: existingCourseData.creatorName ?? courseDetails.creatorName ?? courseDetails.creator_name ?? "Unknown Creator",
-        completedTutorials: existingCourseData.completedTutorials ?? {
-          dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [],
-        },
-      },
+    await assignCourseToUser(userId, courseId, courseDetails, expirationDate, {
+      isRenewal: true,
+      existingCourseData,
     });
 
     if (isSubscription && subscriptionId) {
@@ -639,6 +568,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
+  // ── Already owned (one-time duplicate) ──
   if (existingPurchase && !isSubscription) {
     await processedRef.set({
       processed_at: FieldValue.serverTimestamp(),
@@ -648,7 +578,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
-  // New purchase
+  // ─��� New purchase ──
   if (!courseAccessDuration) {
     await processedRef.set({
       processed_at: FieldValue.serverTimestamp(),
@@ -661,33 +591,8 @@ router.post("/payments/webhook", async (req: Request, res) => {
   const expirationDate = calculateExpirationDate(courseAccessDuration);
 
   await db.runTransaction(async (tx) => {
-    const userRef = db.collection("users").doc(userId);
-    const freshUserDoc = await tx.get(userRef);
-    if (!freshUserDoc.exists) throw new Error("User not found");
-
-    const freshData = freshUserDoc.data()!;
-    const courses = freshData.courses ?? {};
-
-    if (courses[courseId]?.status === "active" && new Date(courses[courseId].expires_at) > new Date()) {
-      return; // Already assigned
-    }
-
-    courses[courseId] = {
-      access_duration: courseAccessDuration,
-      expires_at: expirationDate,
-      status: "active",
-      purchased_at: new Date().toISOString(),
-      deliveryType: courseDetails.deliveryType ?? "low_ticket",
-      title: courseTitle,
-      image_url: courseDetails.image_url || null,
-      discipline: courseDetails.discipline || "General",
-      creatorName: courseDetails.creatorName || courseDetails.creator_name || "Unknown Creator",
-      completedTutorials: { dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [] },
-    };
-
-    tx.update(userRef, {
-      courses,
-      purchased_courses: [...new Set([...(freshData.purchased_courses || []), courseId])],
+    await assignCourseToUser(userId, courseId, courseDetails, expirationDate, {
+      transaction: tx,
     });
 
     if (isSubscription && subscriptionId) {
@@ -716,7 +621,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
   res.status(200).send("OK");
 });
 
-// ─── POST /payments/subscriptions/:subscriptionId/cancel ──────────────────
+// ─── POST /payments/subscriptions/:subscriptionId/cancel ���─────────────────
 
 router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) => {
   const auth = await validateAuth(req);
@@ -738,12 +643,10 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
 
   const subscriptionData = subscriptionDoc.data() ?? {};
 
-  // Cancel in MercadoPago
-  const client = getClient();
+  const client = getMPClient();
   const preapproval = new PreApproval(client);
   await preapproval.update({ id: subscriptionId, body: { status: "cancelled" } });
 
-  // Update Firestore
   await subscriptionRef.set({
     status: "cancelled",
     last_action: "cancel",
@@ -751,10 +654,8 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
     updated_at: FieldValue.serverTimestamp(),
   }, { merge: true });
 
-  // Record cancellation feedback if provided (validate size)
   if (survey?.answers) {
     try {
-      // Validate survey answers: must be array, max 20 entries, each max 500 chars
       const answers = survey.answers;
       if (!Array.isArray(answers) || answers.length > 20) {
         throw new Error("Invalid survey answers");
@@ -774,19 +675,13 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
         submittedAt: FieldValue.serverTimestamp(),
       };
 
-      const courseId =
-        (survey.courseId as string | undefined) ??
-        subscriptionData.course_id;
+      const courseId = (survey.courseId as string | undefined) ?? subscriptionData.course_id;
       if (courseId) surveyRecord.courseId = courseId;
 
-      const courseTitle =
-        (survey.courseTitle as string | undefined) ??
-        subscriptionData.course_title;
+      const courseTitle = (survey.courseTitle as string | undefined) ?? subscriptionData.course_title;
       if (courseTitle) surveyRecord.courseTitle = courseTitle;
 
-      const statusBefore =
-        (survey.subscriptionStatusBefore as string | undefined) ??
-        subscriptionData.status;
+      const statusBefore = (survey.subscriptionStatusBefore as string | undefined) ?? subscriptionData.status;
       if (statusBefore) surveyRecord.statusBefore = statusBefore;
 
       const payerEmail = subscriptionData.payer_email ?? (survey.payerEmail as string | undefined);

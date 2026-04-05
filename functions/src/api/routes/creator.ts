@@ -3455,7 +3455,6 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
     const sessionData = sessionDoc.data()!;
     const sourceLibId = sessionData.source_library_session_id ?? sessionData.librarySessionRef ?? null;
     if (sourceLibId) {
-      console.error("[plans/get-session] backfilling exercises from library", { sourceLibId });
       const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
         .collection("sessions").doc(sourceLibId as string);
       const libDoc = await libSessionRef.get();
@@ -3500,9 +3499,6 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
           }
 
           exercises = backfilledExercises;
-          console.error("[plans/get-session] backfill complete", {
-            exerciseCount: exercises.length,
-          });
         }
       }
     }
@@ -6113,6 +6109,37 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
       ...(body.image_url !== undefined && { image_url: body.image_url }),
       created_at: FieldValue.serverTimestamp(),
     });
+
+  // Deep-copy exercises+sets from library session when librarySessionRef is provided
+  if (body.librarySessionRef) {
+    const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
+      .collection("sessions").doc(body.librarySessionRef);
+    const libDoc = await libSessionRef.get();
+    if (libDoc.exists) {
+      const libData = libDoc.data()!;
+      const metaUpdate: Record<string, unknown> = {};
+      if (!body.image_url && libData.image_url) metaUpdate.image_url = libData.image_url;
+      if (Object.keys(metaUpdate).length > 0) await ref.update(metaUpdate);
+
+      const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
+      let batch = db.batch();
+      let batchCount = 0;
+      for (const eDoc of libExSnap.docs) {
+        const exRef = ref.collection("exercises").doc();
+        const { ...exData } = eDoc.data();
+        batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+        batchCount++;
+        const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
+        for (const sDoc of setsSnap.docs) {
+          const setRef = exRef.collection("sets").doc();
+          batch.set(setRef, { ...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+          batchCount++;
+        }
+        if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      }
+      if (batchCount > 0) await batch.commit();
+    }
+  }
 
   res.status(201).json({ data: { sessionId: ref.id, id: ref.id } });
 });

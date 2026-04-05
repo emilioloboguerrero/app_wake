@@ -6,12 +6,55 @@ import { validateAuth } from "../middleware/auth.js";
 import { validateBody, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
+import { updateStreak } from "../streak.js";
 
 const router = Router();
 
 // Max guards for unbounded reads
 const MAX_MODULES_PER_COURSE = 20;
 const MAX_SESSIONS_PER_MODULE = 50;
+
+// ─── Week helpers (must match creator.ts and client-side getMondayWeek) ──────
+function getMondayWeek(date: Date = new Date()): string {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  const monday = new Date(d.setDate(diff));
+  const year = monday.getFullYear();
+  const jan1 = new Date(year, 0, 1);
+  const jan1Day = jan1.getDay();
+  const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
+  const firstMonday = new Date(jan1);
+  firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
+  const daysDiff = Math.floor((monday.getTime() - firstMonday.getTime()) / (24 * 60 * 60 * 1000));
+  const weekNumber = Math.floor(daysDiff / 7) + 1;
+  return `${year}-W${String(weekNumber).padStart(2, "0")}`;
+}
+
+function getWeekDates(weekKey: string): { start: Date; end: Date } {
+  const [yearStr, weekWithW] = weekKey.split("-");
+  const week = parseInt(weekWithW.replace("W", ""), 10);
+  const year = parseInt(yearStr, 10);
+  const jan1 = new Date(year, 0, 1);
+  const jan1Day = jan1.getDay();
+  const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
+  const firstMonday = new Date(jan1);
+  firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
+  const weekStart = new Date(firstMonday);
+  weekStart.setDate(firstMonday.getDate() + (week - 1) * 7);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  return { start: weekStart, end: weekEnd };
+}
+
+function planContentDocId(clientId: string, programId: string, weekKey: string): string {
+  return `${clientId}_${programId}_${weekKey}`;
+}
+
+function toLocalDateISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // GET /workout/daily
 router.get("/workout/daily", async (req, res) => {
@@ -53,37 +96,280 @@ router.get("/workout/daily", async (req, res) => {
   let sessionCollection: string = "courses";
   let sessionCollectionId: string = courseId;
   // Hoisted so we can include it in the response
-  let resolvedAllSessions: Array<{ sessionId: string; title: string; moduleId: string; moduleTitle: string; order: number; image_url: string | null }> = [];
+  let resolvedAllSessions: Array<{ sessionId: string; title: string; moduleId: string; moduleTitle: string; order: number; image_url: string | null; plannedDate?: string | null }> = [];
 
   if (deliveryType === "one_on_one") {
-    // One-on-one: check plans assigned to this user for the current week
-    const plansSnap = await db
-      .collection("plans")
-      .where("courseId", "==", courseId)
-      .where("userId", "==", auth.userId)
-      .where("status", "==", "active")
-      .limit(1)
-      .get();
+    // One-on-one: two parallel content systems
+    // Path A: plan-based weeks — planAssignments on user doc → client_plan_content/{id}/sessions
+    // Path B: date-based individual sessions — client_sessions → client_session_content
+    const requestedDate = (req.query.date as string) ?? null;
+    const targetDate = requestedDate ?? new Date().toISOString().slice(0, 10);
 
-    if (plansSnap.empty) {
+    // Read planAssignments from user doc (already fetched above)
+    const planAssignments = (courses[courseId]?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
+
+    // Parallel: date-based sessions + completed history
+    const [clientSessionsSnap, completedSnap] = await Promise.all([
+      db.collection("client_sessions")
+        .where("client_id", "==", auth.userId)
+        .where("program_id", "==", courseId)
+        .orderBy("date", "asc").limit(200).get(),
+      db.collection("users").doc(auth.userId)
+        .collection("sessionHistory")
+        .where("courseId", "==", courseId).limit(500).get(),
+    ]);
+    completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
+
+    // ── Build allSessions from BOTH systems ──
+
+    // A) Plan-based week sessions (from client_plan_content or plan template)
+    const planWeekKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId).sort();
+
+    // Also check for client_plan_content docs WITHOUT planAssignments (direct library drops)
+    // Scan 8 weeks around the target date (4 before, 4 after)
+    const scanWeekKeys: string[] = [];
+    const scanBase = new Date(targetDate + "T12:00:00");
+    for (let w = -4; w <= 4; w++) {
+      const d = new Date(scanBase);
+      d.setDate(d.getDate() + w * 7);
+      const wk = getMondayWeek(d);
+      if (!planWeekKeys.includes(wk)) scanWeekKeys.push(wk);
+    }
+    // Batch-check existence of unplanned client_plan_content docs
+    const unplannedDocRefs = scanWeekKeys.map((wk) =>
+      db.collection("client_plan_content").doc(planContentDocId(auth.userId, courseId, wk))
+    );
+    const unplannedDocs = unplannedDocRefs.length > 0
+      ? await db.getAll(...unplannedDocRefs)
+      : [];
+    const unplannedWeekKeys = scanWeekKeys.filter((_, i) => unplannedDocs[i].exists);
+
+    const allWeekKeys = [...planWeekKeys, ...unplannedWeekKeys].sort();
+
+    const planSessions: Array<{
+      sessionId: string; title: string; moduleId: string; moduleTitle: string;
+      order: number; image_url: string | null; plannedDate: string | null;
+      contentPath: { collection: string; docId: string; moduleId: string; sessionId: string };
+    }> = [];
+
+    for (const weekKey of allWeekKeys) {
+      const assignment = planAssignments[weekKey] ?? null;
+      const docId = planContentDocId(auth.userId, courseId, weekKey);
+      const docRef = db.collection("client_plan_content").doc(docId);
+      // For unplanned weeks we already fetched the doc; for planned weeks fetch now
+      const docSnap = unplannedWeekKeys.includes(weekKey)
+        ? unplannedDocs[scanWeekKeys.indexOf(weekKey)]
+        : await docRef.get();
+
+      const { start: weekStart } = getWeekDates(weekKey);
+
+      if (docSnap.exists) {
+        // Personalized copy or direct content exists
+        const sessionsSnap = await docRef.collection("sessions").orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get();
+        for (const sDoc of sessionsSnap.docs) {
+          const sData = sDoc.data();
+          const dayIdx = typeof sData.dayIndex === "number" ? sData.dayIndex : null;
+          const sessionDate = dayIdx !== null ? toLocalDateISO(new Date(weekStart.getTime() + dayIdx * 86400000)) : null;
+          planSessions.push({
+            sessionId: sDoc.id,
+            title: (sData.title as string) ?? "",
+            moduleId: docId,
+            moduleTitle: (docSnap.data()?.title as string) ?? weekKey,
+            order: sData.order ?? 0,
+            image_url: (sData.image_url as string) ?? null,
+            plannedDate: sessionDate,
+            contentPath: { collection: "client_plan_content", docId, moduleId: "__direct__", sessionId: sDoc.id },
+          });
+        }
+      } else if (assignment) {
+        // Read from plan template
+        const modRef = db.collection("plans").doc(assignment.planId).collection("modules").doc(assignment.moduleId);
+        const [modDoc, sessionsSnap] = await Promise.all([
+          modRef.get(),
+          modRef.collection("sessions").orderBy("order", "asc").limit(MAX_SESSIONS_PER_MODULE).get(),
+        ]);
+        const modTitle = modDoc.exists ? ((modDoc.data()?.title as string) ?? weekKey) : weekKey;
+        for (const sDoc of sessionsSnap.docs) {
+          const sData = sDoc.data();
+          const dayIdx = typeof sData.dayIndex === "number" ? sData.dayIndex : null;
+          const sessionDate = dayIdx !== null ? toLocalDateISO(new Date(weekStart.getTime() + dayIdx * 86400000)) : null;
+          planSessions.push({
+            sessionId: sDoc.id,
+            title: (sData.title as string) ?? "",
+            moduleId: assignment.moduleId,
+            moduleTitle: modTitle,
+            order: sData.order ?? 0,
+            image_url: (sData.image_url as string) ?? null,
+            plannedDate: sessionDate,
+            contentPath: { collection: "plans", docId: assignment.planId, moduleId: assignment.moduleId, sessionId: sDoc.id },
+          });
+        }
+      }
+    }
+
+    // B) Date-based sessions from client_sessions
+    const dateSessions = clientSessionsSnap.docs.map((d, idx) => {
+      const data = d.data();
+      return {
+        clientSessionId: d.id,
+        sessionId: d.id,
+        date: (data.date as string) ?? null,
+        session_id: (data.session_id as string) ?? null,
+        module_id: (data.module_id as string) ?? null,
+        plan_id: (data.plan_id as string) ?? null,
+        title: (data.session_name as string) ?? (data.title as string) ?? "",
+        image_url: (data.image_url as string) ?? null,
+        order: 1000 + idx, // After plan sessions in ordering
+      };
+    });
+
+    // Enrich titles for date sessions missing session_name by reading plan session docs
+    // Build a unique set of plan session references to batch-fetch
+    const sessionsNeedingTitle = dateSessions.filter((s) => !s.title && s.plan_id && s.module_id && s.session_id);
+    if (sessionsNeedingTitle.length > 0) {
+      const uniqueRefs = new Map<string, { plan_id: string; module_id: string; session_id: string }>();
+      for (const s of sessionsNeedingTitle) {
+        const key = `${s.plan_id}|${s.module_id}|${s.session_id}`;
+        if (!uniqueRefs.has(key)) uniqueRefs.set(key, { plan_id: s.plan_id!, module_id: s.module_id!, session_id: s.session_id! });
+      }
+      const refEntries = [...uniqueRefs.entries()];
+      const titleDocs = await db.getAll(
+        ...refEntries.map(([, ref]) =>
+          db.collection("plans").doc(ref.plan_id).collection("modules").doc(ref.module_id).collection("sessions").doc(ref.session_id)
+        )
+      );
+      const titleMap = new Map<string, { title: string; image_url: string | null }>();
+      for (let i = 0; i < refEntries.length; i++) {
+        if (titleDocs[i].exists) {
+          const data = titleDocs[i].data()!;
+          titleMap.set(refEntries[i][0], {
+            title: (data.title as string) ?? "",
+            image_url: (data.image_url as string) ?? null,
+          });
+        }
+      }
+      // Apply resolved titles
+      for (const s of dateSessions) {
+        if (!s.title && s.plan_id && s.module_id && s.session_id) {
+          const key = `${s.plan_id}|${s.module_id}|${s.session_id}`;
+          const resolved = titleMap.get(key);
+          if (resolved) {
+            s.title = resolved.title;
+            if (!s.image_url && resolved.image_url) s.image_url = resolved.image_url;
+          }
+        }
+      }
+    }
+
+    // Merge: plan sessions + date sessions, sorted by plannedDate/date
+    type MergedSession = {
+      sessionId: string; title: string; moduleId: string; moduleTitle: string;
+      order: number; image_url: string | null; plannedDate: string | null;
+      source: "plan" | "date";
+      contentPath?: { collection: string; docId: string; moduleId: string; sessionId: string };
+      clientSessionId?: string; session_id?: string; plan_id?: string;
+    };
+
+    const merged: MergedSession[] = [
+      ...planSessions.map((s) => ({ ...s, source: "plan" as const })),
+      ...dateSessions.map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title,
+        moduleId: s.module_id ?? "",
+        moduleTitle: "",
+        order: s.order,
+        image_url: s.image_url,
+        plannedDate: s.date,
+        source: "date" as const,
+        clientSessionId: s.clientSessionId,
+        session_id: s.session_id,
+        plan_id: s.plan_id,
+      })),
+    ];
+    merged.sort((a, b) => (a.plannedDate ?? "9999").localeCompare(b.plannedDate ?? "9999") || a.order - b.order);
+
+    resolvedAllSessions = merged.map((s) => ({
+      sessionId: s.sessionId,
+      title: s.title,
+      moduleId: s.moduleId,
+      moduleTitle: s.moduleTitle,
+      order: s.order,
+      image_url: s.image_url,
+      plannedDate: s.plannedDate,
+    }));
+
+    if (merged.length === 0) {
       res.json({
         data: {
-          hasSession: false,
-          isRestDay: false,
-          emptyReason: "no_planning_this_week",
-          session: null,
-          progress: { completed: 0, total: null },
-          allSessions: [],
+          hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week",
+          session: null, progress: { completed: 0, total: null }, allSessions: [],
         },
       });
       return;
     }
 
-    const planData = plansSnap.docs[0].data();
-    targetModuleId = planData.currentModuleId ?? null;
-    targetSessionId = planData.currentSessionId ?? null;
-    sessionCollection = "plans";
-    sessionCollectionId = plansSnap.docs[0].id;
+    // Find target session
+    let target: MergedSession | undefined;
+    if (requestedSessionId) {
+      target = merged.find((s) => s.sessionId === requestedSessionId);
+    } else if (requestedDate) {
+      // Date-based sessions take priority for exact date match
+      target = merged.find((s) => s.source === "date" && s.plannedDate === requestedDate)
+        ?? merged.find((s) => s.plannedDate === requestedDate);
+    } else {
+      // Default: first incomplete session from today onwards
+      target = merged.find((s) => !completedSessionIds!.has(s.sessionId) && s.plannedDate && s.plannedDate >= targetDate)
+        ?? merged.find((s) => s.plannedDate === targetDate);
+    }
+
+    if (!target) {
+      res.json({
+        data: {
+          hasSession: false, isRestDay: false,
+          emptyReason: requestedDate ? "no_session_today" : "no_planning_this_week",
+          session: null,
+          progress: { completed: completedSessionIds.size, total: merged.length },
+          allSessions: resolvedAllSessions,
+        },
+      });
+      return;
+    }
+
+    // Resolve content path for the target session
+    if (target.source === "plan" && target.contentPath) {
+      const cp = target.contentPath;
+      sessionCollection = cp.collection;
+      sessionCollectionId = cp.docId;
+      targetModuleId = cp.moduleId;
+      targetSessionId = cp.sessionId;
+    } else if (target.source === "date") {
+      // Check client_session_content first
+      const cscDocRef = db.collection("client_session_content").doc(target.clientSessionId!);
+      const cscDoc = await cscDocRef.get();
+      if (cscDoc.exists) {
+        sessionCollection = "client_session_content";
+        sessionCollectionId = target.clientSessionId!;
+        targetModuleId = "__content_root__";
+        targetSessionId = target.clientSessionId!;
+      } else if (target.plan_id && target.moduleId && target.session_id) {
+        sessionCollection = "plans";
+        sessionCollectionId = target.plan_id;
+        targetModuleId = target.moduleId;
+        targetSessionId = target.session_id;
+      } else if (target.session_id) {
+        // Library session reference — try to find in creator's library
+        const courseCreator = course.creatorId ?? course.creator_id ?? null;
+        if (courseCreator) {
+          sessionCollection = "creator_libraries";
+          sessionCollectionId = courseCreator as string;
+          targetModuleId = "__library__";
+          targetSessionId = target.session_id;
+        } else {
+        }
+      } else {
+      }
+    }
+
   } else {
     // Low-ticket: check for plan-based content first, fall back to legacy course modules
     const planAssignments = (course.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
@@ -279,16 +565,28 @@ router.get("/workout/daily", async (req, res) => {
   }
 
   // Read the full session tree: session → exercises → sets
-  // For plan-based programs with content copies, sessions are directly under
-  // client_plan_content/{docId}/sessions (no modules level).
-  // For all other paths, the standard collection/modules/sessions hierarchy applies.
+  // Possible paths:
+  // 1. __content_root__: client_session_content/{id} — exercises are direct subcollection
+  // 2. __direct__: .../sessions/{sessionId} — sessions are direct subcollection (no modules)
+  // 3. __library__: creator_libraries/{creatorId}/sessions/{sessionId}
+  // 4. Standard: collection/{id}/modules/{moduleId}/sessions/{sessionId}
+  const isContentRoot = targetModuleId === "__content_root__";
   const isDirect = targetModuleId === "__direct__";
-  const sessionDocRef = isDirect
-    ? db.collection(sessionCollection).doc(sessionCollectionId)
-        .collection("sessions").doc(targetSessionId)
-    : db.collection(sessionCollection).doc(sessionCollectionId)
-        .collection("modules").doc(targetModuleId)
-        .collection("sessions").doc(targetSessionId);
+  const isLibrary = targetModuleId === "__library__";
+  let sessionDocRef: FirebaseFirestore.DocumentReference;
+  if (isContentRoot) {
+    sessionDocRef = db.collection(sessionCollection).doc(sessionCollectionId);
+  } else if (isDirect) {
+    sessionDocRef = db.collection(sessionCollection).doc(sessionCollectionId)
+      .collection("sessions").doc(targetSessionId);
+  } else if (isLibrary) {
+    sessionDocRef = db.collection(sessionCollection).doc(sessionCollectionId)
+      .collection("sessions").doc(targetSessionId);
+  } else {
+    sessionDocRef = db.collection(sessionCollection).doc(sessionCollectionId)
+      .collection("modules").doc(targetModuleId)
+      .collection("sessions").doc(targetSessionId);
+  }
 
   const sessionDoc = await sessionDocRef.get();
 
@@ -307,11 +605,30 @@ router.get("/workout/daily", async (req, res) => {
   }
 
   const sessionInfo = sessionDoc.data()!;
-
   // Load exercises
-  const exercisesSnap = await sessionDocRef.collection("exercises")
+  let exercisesSnap = await sessionDocRef.collection("exercises")
     .orderBy("order", "asc")
     .get();
+
+  // Fallback: if session doc has no inline exercises but references a library session,
+  // read exercises from the creator's library instead
+  const libSessionRef = (sessionInfo.source_library_session_id ?? sessionInfo.librarySessionRef) as string | undefined;
+  if (exercisesSnap.empty && libSessionRef) {
+    const courseCreator = (course.creator_id ?? course.creatorId) as string | undefined;
+    if (courseCreator) {
+      const libSessionDocRef = db.collection("creator_libraries").doc(courseCreator)
+        .collection("sessions").doc(libSessionRef);
+      const libSessionDoc = await libSessionDocRef.get();
+      if (libSessionDoc.exists) {
+        // Use library session metadata if session doc fields are missing
+        const libData = libSessionDoc.data()!;
+        if (!sessionInfo.title && libData.title) sessionInfo.title = libData.title;
+        if (!sessionInfo.image_url && libData.image_url) sessionInfo.image_url = libData.image_url;
+      }
+      exercisesSnap = await libSessionDocRef.collection("exercises")
+        .orderBy("order", "asc").get();
+    }
+  }
 
   // Load sets for each exercise in parallel
   const exercisesWithSets = await Promise.all(
@@ -473,7 +790,14 @@ router.get("/workout/daily", async (req, res) => {
 
   // Read module title for context
   let moduleTitle = "";
-  if (!isDirect) {
+  if (isContentRoot || isLibrary) {
+    // For client_session_content or library, use session doc title
+    moduleTitle = (sessionInfo.title as string) ?? (sessionInfo.session_title as string) ?? "";
+  } else if (isDirect) {
+    // For plan-based programs, the "module" is the client_plan_content doc itself
+    const contentDocForTitle = await db.collection(sessionCollection).doc(sessionCollectionId).get();
+    moduleTitle = contentDocForTitle.exists ? (contentDocForTitle.data()!.title ?? "") : "";
+  } else {
     const moduleDoc = await db
       .collection(sessionCollection)
       .doc(sessionCollectionId)
@@ -481,10 +805,6 @@ router.get("/workout/daily", async (req, res) => {
       .doc(targetModuleId!)
       .get();
     moduleTitle = moduleDoc.exists ? (moduleDoc.data()!.title ?? "") : "";
-  } else {
-    // For plan-based programs, the "module" is the client_plan_content doc itself
-    const contentDoc = await db.collection(sessionCollection).doc(sessionCollectionId).get();
-    moduleTitle = contentDoc.exists ? (contentDoc.data()!.title ?? "") : "";
   }
 
   res.json({
@@ -496,9 +816,10 @@ router.get("/workout/daily", async (req, res) => {
         sessionId: targetSessionId,
         moduleId: targetModuleId,
         moduleTitle,
-        title: sessionInfo.title ?? "",
+        title: sessionInfo.title ?? sessionInfo.session_title ?? "",
         image_url: sessionInfo.image_url ?? null,
         order: sessionInfo.order ?? 0,
+        plannedDate: sessionInfo.plannedDate ?? null,
         deliveryType,
         exercises,
       },
@@ -871,37 +1192,13 @@ router.post("/workout/complete", async (req, res) => {
     }
   }
 
-  // Read user doc for streak computation
+  // Read user doc for weekly volume + streak
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const userData = userDoc.data() ?? {};
-  const activityStreak = userData.activityStreak ?? {};
-  const previousStreak = activityStreak.currentStreak ?? activityStreak.longestStreak ?? 0;
-  const previousLongest = activityStreak.longestStreak ?? 0;
-  const lastSessionDate = activityStreak.lastActivityDate ?? userData.lastSessionDate ?? null;
 
-  // Compute streak
-  let newStreak = 1;
-  if (lastSessionDate) {
-    const lastDate = new Date(lastSessionDate);
-    const currentDate = new Date(completionDate);
-    const diffMs = currentDate.getTime() - lastDate.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) {
-      newStreak = previousStreak + 1;
-    } else if (diffDays === 0) {
-      newStreak = previousStreak;
-    } else {
-      newStreak = 1;
-    }
-  }
-
-  const newLongest = Math.max(newStreak, previousLongest);
-
-  let flameLevel = 0;
-  if (newStreak >= 14) flameLevel = 3;
-  else if (newStreak >= 7) flameLevel = 2;
-  else if (newStreak >= 3) flameLevel = 1;
+  // Update streak via shared function (full read already done, pass lastKnown to avoid re-read)
+  const storedLastActivity = userData.activityStreak?.lastActivityDate ?? userData.lastSessionDate ?? null;
+  const streakResult = await updateStreak(auth.userId, completionDate, storedLastActivity);
 
   // Compute 1RM per exercise and detect PRs
   const personalRecords: Array<{
@@ -1053,22 +1350,10 @@ router.post("/workout/complete", async (req, res) => {
     weeklyVolumeUpdate[`weeklyMuscleVolume.${weekKey}.${muscle}`] = existing + sets;
   }
 
-  // 4. Update user streak + last session (dot notation preserves existing fields like streakStartDate)
-  const streakStartDate = newStreak === 1 ? completionDate : (activityStreak.streakStartDate ?? completionDate);
+  // 4. Update user last session + weekly volume (streak already updated by updateStreak above)
   const userRef = db.collection("users").doc(auth.userId);
   batch.update(userRef, {
     lastSessionDate: completionDate,
-    "activityStreak.currentStreak": newStreak,
-    "activityStreak.longestStreak": newLongest,
-    "activityStreak.lastActivityDate": completionDate,
-    "activityStreak.flameLevel": flameLevel,
-    "activityStreak.streakStartDate": streakStartDate,
-    ...(newLongest > previousLongest
-      ? {
-          "activityStreak.longestStreakStartDate": streakStartDate,
-          "activityStreak.longestStreakEndDate": completionDate,
-        }
-      : {}),
     ...weeklyVolumeUpdate,
     updated_at: FieldValue.serverTimestamp(),
   });
@@ -1089,12 +1374,7 @@ router.post("/workout/complete", async (req, res) => {
     data: {
       completionId,
       personalRecords,
-      streak: {
-        currentStreak: newStreak,
-        longestStreak: newLongest,
-        lastActivityDate: completionDate,
-        flameLevel,
-      },
+      streakUpdated: streakResult.updated,
       muscleVolumes,
     },
   });
@@ -1226,28 +1506,6 @@ router.get("/workout/exercises/:exerciseKey/history", async (req, res) => {
     data: slice,
     nextPageToken: pageToken + limit < sessions.length ? String(pageToken + limit) : null,
     hasMore: pageToken + limit < sessions.length,
-  });
-});
-
-// GET /workout/streak
-router.get("/workout/streak", async (req, res) => {
-  const auth = await validateAuth(req);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  const data = userDoc.data() ?? {};
-  const streak = data.activityStreak ?? {};
-
-  res.json({
-    data: {
-      currentStreak: streak.currentStreak ?? streak.longestStreak ?? 0,
-      longestStreak: streak.longestStreak ?? 0,
-      lastActivityDate: streak.lastActivityDate ?? data.lastSessionDate ?? null,
-      flameLevel: streak.flameLevel ?? 0,
-      streakStartDate: streak.streakStartDate ?? null,
-      longestStreakStartDate: streak.longestStreakStartDate ?? null,
-      longestStreakEndDate: streak.longestStreakEndDate ?? null,
-    },
   });
 });
 
@@ -2150,6 +2408,7 @@ router.get("/workout/planned-session", async (req, res) => {
 });
 
 // GET /workout/calendar/planned — planned session dates in range
+// Merges: plan-based week sessions (from planAssignments + client_plan_content) + date-based client_sessions
 router.get("/workout/calendar/planned", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2164,17 +2423,87 @@ router.get("/workout/calendar/planned", async (req, res) => {
   validateDateFormat(startDate, "startDate");
   validateDateFormat(endDate, "endDate");
 
-  const snap = await db
-    .collection("client_sessions")
-    .where("client_id", "==", auth.userId)
-    .where("program_id", "==", courseId)
-    .where("date", ">=", startDate)
-    .where("date", "<=", endDate)
-    .orderBy("date", "asc")
-    .limit(100)
-    .get();
+  // Parallel: date-based sessions + user doc for planAssignments
+  const [clientSessionsSnap, userDoc] = await Promise.all([
+    db.collection("client_sessions")
+      .where("client_id", "==", auth.userId)
+      .where("program_id", "==", courseId)
+      .where("date", ">=", startDate)
+      .where("date", "<=", endDate)
+      .orderBy("date", "asc").limit(100).get(),
+    db.collection("users").doc(auth.userId).get(),
+  ]);
 
-  res.json({ data: snap.docs.map((d) => d.data().date as string) });
+  // Date-based session dates
+  const dateDates = clientSessionsSnap.docs.map((d) => d.data().date as string);
+
+  // Plan-based session dates (from planAssignments + unplanned client_plan_content)
+  const courseEntry = userDoc.data()?.courses?.[courseId] as Record<string, unknown> | undefined;
+  const planAssignments = (courseEntry?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
+  const planWeekKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId);
+
+  // Also check for client_plan_content docs WITHOUT planAssignments
+  // Compute all week keys that overlap the date range
+  const rangeStart = new Date(startDate + "T12:00:00");
+  const rangeEnd = new Date(endDate + "T12:00:00");
+  const scanWeeks: string[] = [];
+  const cursor = new Date(rangeStart);
+  cursor.setDate(cursor.getDate() - 7); // extend 1 week before
+  while (cursor <= rangeEnd) {
+    const wk = getMondayWeek(cursor);
+    if (!planWeekKeys.includes(wk) && !scanWeeks.includes(wk)) scanWeeks.push(wk);
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  // Batch check
+  const unplannedRefs = scanWeeks.map((wk) =>
+    db.collection("client_plan_content").doc(planContentDocId(auth.userId, courseId, wk))
+  );
+  const unplannedSnapshots = unplannedRefs.length > 0 ? await db.getAll(...unplannedRefs) : [];
+  const unplannedFound = scanWeeks.filter((_, i) => unplannedSnapshots[i].exists);
+
+  const allWeekKeys = [...planWeekKeys, ...unplannedFound].sort();
+
+  const planDates: string[] = [];
+  for (const weekKey of allWeekKeys) {
+    const assignment = planAssignments[weekKey] ?? null;
+    const { start: weekStart, end: weekEnd } = getWeekDates(weekKey);
+    const weekStartStr = toLocalDateISO(weekStart);
+    const weekEndStr = toLocalDateISO(weekEnd);
+    if (weekEndStr < startDate || weekStartStr > endDate) continue;
+
+    const docId = planContentDocId(auth.userId, courseId, weekKey);
+    const docRef = db.collection("client_plan_content").doc(docId);
+    // Reuse already-fetched snapshot for unplanned weeks
+    const docSnap = unplannedFound.includes(weekKey)
+      ? unplannedSnapshots[scanWeeks.indexOf(weekKey)]
+      : await docRef.get();
+
+    let sessions: FirebaseFirestore.QueryDocumentSnapshot[];
+    if (docSnap.exists) {
+      const snap = await docRef.collection("sessions").orderBy("order", "asc").get();
+      sessions = snap.docs;
+    } else if (assignment) {
+      const snap = await db.collection("plans").doc(assignment.planId)
+        .collection("modules").doc(assignment.moduleId)
+        .collection("sessions").orderBy("order", "asc").get();
+      sessions = snap.docs;
+    } else {
+      continue;
+    }
+
+    for (const sDoc of sessions) {
+      const dayIdx = sDoc.data().dayIndex;
+      if (typeof dayIdx === "number") {
+        const sessionDate = toLocalDateISO(new Date(weekStart.getTime() + dayIdx * 86400000));
+        if (sessionDate >= startDate && sessionDate <= endDate) {
+          planDates.push(sessionDate);
+        }
+      }
+    }
+  }
+
+  const allDates = [...new Set([...dateDates, ...planDates])].sort();
+  res.json({ data: allDates });
 });
 
 // GET /workout/calendar/completed — completed session dates in range
@@ -2192,17 +2521,38 @@ router.get("/workout/calendar/completed", async (req, res) => {
   validateDateFormat(startDate, "startDate");
   validateDateFormat(endDate, "endDate");
 
-  // Cross-reference with sessionHistory for completed dates
+  // Fetch all sessionHistory for this course, then filter date range in memory
+  // (avoids needing a composite index on courseId + date)
   const snap = await db
     .collection("users")
     .doc(auth.userId)
     .collection("sessionHistory")
     .where("courseId", "==", courseId)
-    .where("date", ">=", startDate)
-    .where("date", "<=", endDate)
+    .limit(500)
     .get();
 
-  const dates = [...new Set(snap.docs.map((d) => d.data().date as string))];
+  const allDates = snap.docs.map((d) => {
+    const data = d.data();
+    let dateStr: string | null = data.date ?? null;
+    if (!dateStr && data.completedAt) {
+      if (typeof data.completedAt === "string") {
+        dateStr = data.completedAt.slice(0, 10);
+      } else if (data.completedAt.toDate) {
+        dateStr = data.completedAt.toDate().toISOString().slice(0, 10);
+      }
+    }
+    if (!dateStr) {
+      const idParts = d.id.split("_");
+      const lastPart = idParts[idParts.length - 1];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) dateStr = lastPart;
+    }
+    return dateStr;
+  });
+
+  const dates = [...new Set(
+    allDates.filter((date): date is string => !!date && date >= startDate && date <= endDate)
+  )];
+
   res.json({ data: dates });
 });
 
@@ -2220,12 +2570,6 @@ router.get("/workout/calendar", async (req, res) => {
   }
   validateDateFormat(startDate, "startDate");
   validateDateFormat(endDate, "endDate");
-
-  console.log("[CALENDAR] query", { userId: auth.userId, courseId, startDate, endDate });
-
-  // Debug: check total docs in sessionHistory (no filter)
-  const debugSnap = await db.collection("users").doc(auth.userId).collection("sessionHistory").limit(5).get();
-  console.log("[CALENDAR] debug: total sessionHistory docs (first 5)", debugSnap.docs.map((d) => ({ id: d.id, courseId: d.data().courseId, date: d.data().date })));
 
   const snap = await db
     .collection("users")
@@ -2252,16 +2596,11 @@ router.get("/workout/calendar", async (req, res) => {
       const lastPart = idParts[idParts.length - 1];
       if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) dateStr = lastPart;
     }
-    return { id: d.id, date: dateStr, courseId: data.courseId, completedAt: data.completedAt };
+    return dateStr;
   });
-  console.log("[CALENDAR] sessionHistory docs", { count: snap.docs.length, allDates: allDates.slice(0, 20) });
-
   const dates = [...new Set(
-    allDates
-      .map((d) => d.date as string)
-      .filter((date) => date && date >= startDate && date <= endDate)
+    allDates.filter((date): date is string => !!date && date >= startDate && date <= endDate)
   )];
-  console.log("[CALENDAR] filtered dates", { dates, startDate, endDate });
   res.json({ data: dates });
 });
 

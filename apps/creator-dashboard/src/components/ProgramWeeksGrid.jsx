@@ -9,6 +9,7 @@ import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySide
 import programService from '../services/programService';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
+import { GlowingEffect } from './ui';
 import '../screens/ProgramDetailScreen.css';
 import '../screens/SharedScreenLayout.css';
 import './PlanWeeksGrid.css';
@@ -539,6 +540,7 @@ const ProgramWeeksGrid = ({
         ) : (
           modules.map((mod, modIndex) => (
             <div key={mod.id} className="plan-weeks-week-block">
+              <GlowingEffect spread={25} proximity={80} borderWidth={1} />
               <div
                 className={`plan-weeks-week-header ${dragOverWeekId === mod.id ? 'plan-weeks-week-header--drag-over' : ''}`}
                 onDragOver={(e) => handleDragOverWeek(e, mod.id)}
@@ -629,7 +631,15 @@ const ProgramWeeksGrid = ({
                       onNativeDrop={handleCellDrop}
                     >
                       {session ? (
-                        <div className="plan-weeks-session-card">
+                        <div
+                          className="plan-weeks-session-card"
+                          style={session.image_url ? {
+                            backgroundImage: `linear-gradient(to bottom, rgba(26,26,26,0.55), rgba(26,26,26,0.85)), url(${session.image_url})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          } : undefined}
+                        >
+                          <GlowingEffect spread={30} proximity={60} borderWidth={1} />
                           <div
                             className="plan-weeks-session-card-body"
                             draggable

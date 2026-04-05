@@ -1,6 +1,4 @@
 import apiClient from '../utils/apiClient';
-import { createError } from '../utils/errorHandler';
-import { calculateExpirationDate } from '../utils/durationHelper';
 import apiService from './apiService';
 import logger from '../utils/logger';
 
@@ -108,11 +106,12 @@ class PurchaseService {
    * Check if user already owns a specific course
    * @param {string} userId - User ID
    * @param {string} courseId - Course ID
+   * @param {Object} [cachedUserDoc] - Cached user doc to avoid /users/me call
    * @returns {Promise<boolean>} True if user owns the course
    */
-  async checkUserOwnsCourse(userId, courseId) {
+  async checkUserOwnsCourse(userId, courseId, cachedUserDoc) {
     try {
-      const { ownsCourse } = await this.getUserCourseState(userId, courseId);
+      const { ownsCourse } = await this.getUserCourseState(userId, courseId, cachedUserDoc);
       return ownsCourse;
     } catch (error) {
       logger.error('Error checking course ownership:', error);
@@ -124,11 +123,12 @@ class PurchaseService {
    * Grant free access to a course (for draft programs or admin users)
    * @param {string} userId - User ID
    * @param {string} courseId - Course ID
+   * @param {Object} [cachedUserDoc] - Cached user doc to avoid /users/me call
    * @returns {Promise<Object>} Free access result
    */
-  async grantFreeAccess(userId, courseId) {
+  async grantFreeAccess(userId, courseId, cachedUserDoc) {
     try {
-      const existingPurchase = await this.checkUserOwnsCourse(userId, courseId);
+      const existingPurchase = await this.checkUserOwnsCourse(userId, courseId, cachedUserDoc);
 
       if (existingPurchase) {
         return {
@@ -138,33 +138,15 @@ class PurchaseService {
         };
       }
 
-      const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
-
-      if (!courseDetails) {
-        throw createError('firebase/not-found', 'El programa no fue encontrado');
-      }
-
-      if (!courseDetails.access_duration) {
-        throw createError('validation/invalid-input', 'Programa sin duración de acceso');
-      }
-
-      const expirationDate = calculateExpirationDate(courseDetails.access_duration);
-
-      await apiClient.post('/users/me/move-course', {
-        courseId,
-        expirationDate,
-        accessDuration: courseDetails.access_duration,
-        courseDetails,
-      });
+      await apiClient.post('/users/me/move-course', { courseId });
 
       return {
         success: true,
         message: 'Acceso gratuito otorgado exitosamente',
-        expirationDate
       };
 
     } catch (error) {
-      logger.error('❌ Error granting free access:', error);
+      logger.error('Error granting free access:', error);
       return {
         success: false,
         error: error.message || 'Error al otorgar acceso gratuito',

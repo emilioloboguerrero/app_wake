@@ -5,6 +5,8 @@ import type { Query } from "../firestore.js";
 import { validateAuth, validateAuthAndRateLimit } from "../middleware/auth.js";
 import { validateBody, validateStoragePath } from "../middleware/validate.js";
 import { WakeApiServerError } from "../errors.js";
+import { calculateExpirationDate } from "../services/paymentHelpers.js";
+import { assignCourseToUser } from "../services/courseAssignment.js";
 
 const router = Router();
 
@@ -16,6 +18,26 @@ router.get("/users/me", async (req, res) => {
   const data = auth.userData;
   if (!data) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  // Auto-heal: if no pinned nutrition assignment, check for active ones
+  let pinnedNutritionAssignmentId = data.pinnedNutritionAssignmentId ?? null;
+  if (!pinnedNutritionAssignmentId) {
+    const assignSnap = await db
+      .collection("nutrition_assignments")
+      .where("userId", "==", auth.userId)
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+    const activeDoc = assignSnap.docs.find((d) => {
+      const s = d.data().status;
+      return !s || s === "active";
+    });
+    if (activeDoc) {
+      pinnedNutritionAssignmentId = activeDoc.id;
+      // Persist so future calls skip the extra query
+      db.collection("users").doc(auth.userId).update({ pinnedNutritionAssignmentId }).catch(() => {});
+    }
   }
 
   res.json({
@@ -34,7 +56,7 @@ router.get("/users/me", async (req, res) => {
       profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
       phoneNumber: data.phoneNumber ?? null,
       pinnedTrainingCourseId: data.pinnedTrainingCourseId ?? null,
-      pinnedNutritionAssignmentId: data.pinnedNutritionAssignmentId ?? null,
+      pinnedNutritionAssignmentId,
       createdAt: data.created_at ?? null,
       webOnboardingCompleted: data.webOnboardingCompleted ?? false,
       profileCompleted: data.profileCompleted ?? false,
@@ -333,41 +355,23 @@ router.post("/users/me/courses/:courseId/trial", async (req, res) => {
 router.post("/users/me/move-course", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
-  const body = validateBody<{
-    courseId: string;
-    expirationDate?: string;
-    accessDuration: string;
-    courseDetails: Record<string, unknown>;
-  }>(
-    {
-      courseId: "string",
-      expirationDate: "optional_string",
-      accessDuration: "string",
-      courseDetails: "object",
-    },
+  const body = validateBody<{ courseId: string }>(
+    { courseId: "string" },
     req.body
   );
 
-  // Verify course exists
   const courseDoc = await db.collection("courses").doc(body.courseId).get();
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  await db.collection("users").doc(auth.userId).update({
-    [`courses.${body.courseId}`]: {
-      status: "active",
-      title: body.courseDetails.title ?? "",
-      image_url: body.courseDetails.image_url ?? "",
-      deliveryType: body.courseDetails.deliveryType ?? "low_ticket",
-      discipline: body.courseDetails.discipline ?? "General",
-      creatorName: body.courseDetails.creatorName ?? "",
-      purchased_at: new Date().toISOString(),
-      expires_at: body.expirationDate ?? null,
-      access_duration: body.accessDuration,
-    },
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  const course = courseDoc.data()!;
+  if (!course.access_duration) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Programa sin duración de acceso");
+  }
+
+  const expiresAt = calculateExpirationDate(course.access_duration);
+  await assignCourseToUser(auth.userId, body.courseId, course, expiresAt);
 
   res.json({ data: { success: true } });
 });

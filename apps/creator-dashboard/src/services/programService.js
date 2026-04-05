@@ -85,8 +85,17 @@ class ProgramService {
   }
 
   async getModulesByProgram(programId) {
-    const res = await apiClient.get(`/creator/programs/${programId}`);
-    return res.data.modules || [];
+    const res = await apiClient.get(`/creator/programs/${programId}/modules`);
+    const modules = res.data || [];
+    const withSessions = await Promise.all(
+      modules.map(async (mod) => {
+        const sessRes = await apiClient.get(
+          `/creator/programs/${programId}/modules/${mod.id}/sessions`
+        );
+        return { ...mod, sessions: sessRes.data || [] };
+      })
+    );
+    return withSessions;
   }
 
   async createModule(programId, moduleName) {
@@ -119,21 +128,33 @@ class ProgramService {
     return res.data;
   }
 
-  async createSession(programId, moduleId, sessionName) {
-    const res = await apiClient.post(`/creator/programs/${programId}/modules/${moduleId}/sessions`, {
-      title: sessionName || 'Sesión',
-      order: 0,
-      librarySessionRef: null,
-    });
+  async createSession(programId, moduleId, sessionName, order = null, imageUrl = null, librarySessionRef = null, dayIndex = null) {
+    const body = {
+      title: sessionName || 'Sesion',
+      order: order ?? 0,
+    };
+    if (librarySessionRef) body.librarySessionRef = librarySessionRef;
+    if (imageUrl) body.image_url = imageUrl;
+    if (dayIndex != null) body.dayIndex = dayIndex;
+    const res = await apiClient.post(
+      `/creator/programs/${programId}/modules/${moduleId}/sessions`,
+      body
+    );
     return res.data;
   }
 
-  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null) {
-    const res = await apiClient.post(`/creator/programs/${programId}/modules/${moduleId}/sessions`, {
-      title: 'Sesión',
+  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null, imageUrl = null, dayIndex = null) {
+    const body = {
+      title: 'Sesion',
       order: order ?? 0,
       librarySessionRef,
-    });
+    };
+    if (imageUrl) body.image_url = imageUrl;
+    if (dayIndex != null) body.dayIndex = dayIndex;
+    const res = await apiClient.post(
+      `/creator/programs/${programId}/modules/${moduleId}/sessions`,
+      body
+    );
     return res.data;
   }
 
@@ -158,24 +179,37 @@ class ProgramService {
   }
 
   async moveSession(programId, fromModuleId, toModuleId, sessionId, toSlotIndex) {
-    const sessionRes = await apiClient.get(
-      `/creator/programs/${programId}/modules/${fromModuleId}/sessions/${sessionId}`
-    );
-    const session = sessionRes.data;
-    const created = await apiClient.post(`/creator/programs/${programId}/modules/${toModuleId}/sessions`, {
+    const sessions = await this.getSessionsByModule(programId, fromModuleId);
+    const session = sessions.find((s) => s.id === sessionId);
+    if (!session) throw new Error('Sesion no encontrada');
+    const body = {
       title: session.title,
       order: toSlotIndex,
-      librarySessionRef: session.librarySessionRef ?? null,
-    });
+    };
+    if (session.librarySessionRef) body.librarySessionRef = session.librarySessionRef;
+    if (session.image_url) body.image_url = session.image_url;
+    if (toSlotIndex != null) body.dayIndex = toSlotIndex;
+    const created = await apiClient.post(
+      `/creator/programs/${programId}/modules/${toModuleId}/sessions`,
+      body
+    );
     await apiClient.delete(`/creator/programs/${programId}/modules/${fromModuleId}/sessions/${sessionId}`);
     return created.data;
   }
 
   async getExercisesBySession(programId, moduleId, sessionId) {
     const res = await apiClient.get(
-      `/creator/programs/${programId}/modules/${moduleId}/sessions/${sessionId}`
+      `/creator/programs/${programId}/modules/${moduleId}/sessions/${sessionId}/exercises`
     );
-    return res.data.exercises || [];
+    return res.data || [];
+  }
+
+  async getSessionById(programId, moduleId, sessionId) {
+    const sessions = await this.getSessionsByModule(programId, moduleId);
+    const session = sessions.find((s) => s.id === sessionId) || null;
+    if (!session) return null;
+    const exercises = await this.getExercisesBySession(programId, moduleId, sessionId);
+    return { ...session, exercises };
   }
 
   async createExercise(programId, moduleId, sessionId, exerciseName, order = null) {
@@ -216,10 +250,8 @@ class ProgramService {
   }
 
   async getSetsByExercise(programId, moduleId, sessionId, exerciseId) {
-    const res = await apiClient.get(
-      `/creator/programs/${programId}/modules/${moduleId}/sessions/${sessionId}`
-    );
-    const exercise = (res.data.exercises || []).find((e) => e.exerciseId === exerciseId);
+    const exercises = await this.getExercisesBySession(programId, moduleId, sessionId);
+    const exercise = exercises.find((e) => e.exerciseId === exerciseId || e.id === exerciseId);
     return exercise?.sets || [];
   }
 
