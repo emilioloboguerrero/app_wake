@@ -1154,6 +1154,21 @@ export default function EventResultsScreen() {
                   {registrations.length} registros
                   {event?.max_registrations != null && ` · ${event.max_registrations} cupos`}
                   {waitlist.length > 0 && ` · ${waitlist.length} en lista de espera`}
+                  <button
+                    className="er-refresh-btn"
+                    title="Buscar nuevos registros"
+                    onClick={() => {
+                      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+                      queryClient.invalidateQueries({ queryKey: queryKeys.events.waitlist(eventId) });
+                      queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10" />
+                      <polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                    </svg>
+                  </button>
                 </span>
                 {event?.max_registrations != null && (
                   <div className="er-capacity-bar-outer">
