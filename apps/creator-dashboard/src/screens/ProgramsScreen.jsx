@@ -12,6 +12,7 @@ import {
   ProgressRing,
   AnimatedList,
   FullScreenError,
+  KeepAlivePane,
 } from '../components/ui';
 import ContextualHint from '../components/hints/ContextualHint';
 import apiClient from '../utils/apiClient';
@@ -334,12 +335,19 @@ const ProgramsScreen = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('grupales');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['grupales']));
   const [isEditing, setIsEditing] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
   const handleTabChange = useCallback((tab) => {
     setActiveTab(tab);
     setIsEditing(false);
+    setVisitedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
   }, []);
 
   const handleCreated = useCallback(({ id, type }) => {
@@ -389,12 +397,17 @@ const ProgramsScreen = () => {
           </div>
 
           <div className="ps-content">
-            {activeTab === 'grupales' ? (
-              <GrupalesTab userId={user?.uid} />
-            ) : (
-              <div className="tab-planes">
-                <IndividualesTab userId={user?.uid} isEditing={isEditing} />
-              </div>
+            {visitedTabs.has('grupales') && (
+              <KeepAlivePane active={activeTab === 'grupales'}>
+                <GrupalesTab userId={user?.uid} />
+              </KeepAlivePane>
+            )}
+            {visitedTabs.has('individuales') && (
+              <KeepAlivePane active={activeTab === 'individuales'}>
+                <div className="tab-planes">
+                  <IndividualesTab userId={user?.uid} isEditing={isEditing} />
+                </div>
+              </KeepAlivePane>
             )}
           </div>
         </div>

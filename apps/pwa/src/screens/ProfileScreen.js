@@ -44,6 +44,7 @@ import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
 import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
+import SvgArrowReload from '../components/icons/SvgArrowReload';
 
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
@@ -99,6 +100,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   const [defaultTrainingOptions, setDefaultTrainingOptions] = useState([]);
   const [defaultNutritionOptions, setDefaultNutritionOptions] = useState([]);
   const [loadingPinned, setLoadingPinned] = useState(false);
+  const [syncingPrograms, setSyncingPrograms] = useState(false);
 
   // Legal documents WebView state
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
@@ -167,6 +169,18 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
     },
   });
+
+  const handleSyncPrograms = async () => {
+    if (!user?.uid || syncingPrograms) return;
+    setSyncingPrograms(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+    } catch (err) {
+      logger.error('Error syncing programs:', err);
+    } finally {
+      setSyncingPrograms(false);
+    }
+  };
 
   // Sync query data into form state and derived state
   useEffect(() => {
@@ -315,14 +329,25 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
   };
 
-  // Check if username is available (server validates on save — client only checks length)
-  const checkUsernameAvailability = (username) => {
+  const checkUsernameAvailability = async (username) => {
     if (!username || username.length < 3) {
       setUsernameError('El usuario debe tener al menos 3 caracteres');
+      setIsCheckingUsername(false);
       return;
     }
-    setUsernameError('');
-    setIsCheckingUsername(false);
+    setIsCheckingUsername(true);
+    try {
+      const taken = await apiService.isUsernameTaken(username);
+      if (taken) {
+        setUsernameError('Este nombre de usuario ya esta en uso');
+      } else {
+        setUsernameError('');
+      }
+    } catch {
+      setUsernameError('');
+    } finally {
+      setIsCheckingUsername(false);
+    }
   };
 
   // Debounced username validation
@@ -1516,6 +1541,19 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           </TouchableOpacity>
         </View>
 
+        {/* Sync programs button */}
+        <TouchableOpacity
+          style={styles.syncProgramsButton}
+          onPress={handleSyncPrograms}
+          disabled={syncingPrograms}
+          activeOpacity={0.7}
+        >
+          <SvgArrowReload width={16} height={16} color={syncingPrograms ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'} />
+          <Text style={[styles.syncProgramsText, syncingPrograms && { opacity: 0.5 }]}>
+            {syncingPrograms ? 'Sincronizando...' : 'Sincronizar programas'}
+          </Text>
+        </TouchableOpacity>
+
         {/* Creator section */}
         {(userRole === 'creator' || userRole === 'admin') && (
           <View style={styles.creatorSectionContainer}>
@@ -2486,6 +2524,20 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   bodyweightHeightField: {
     flex: 1,
+  },
+  syncProgramsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    marginBottom: Math.max(8, screenHeight * 0.01),
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  syncProgramsText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 14,
+    fontWeight: '500',
   },
   creatorSectionContainer: {
     marginBottom: Math.max(15, screenHeight * 0.02),

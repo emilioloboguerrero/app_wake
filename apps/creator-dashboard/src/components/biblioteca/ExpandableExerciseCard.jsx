@@ -78,6 +78,7 @@ const ExpandableExerciseCard = ({
   accentRgb,
   onSetsChanged,
   registerFlush,
+  globalActivityRef,
   isLibraryMode,
 }) => {
   const {
@@ -170,6 +171,7 @@ const ExpandableExerciseCard = ({
     initialDefaults: exercise.defaultSetValues,
     initialSets: exercise.sets || [],
     isLibraryMode,
+    globalActivityRef,
   });
 
   // Register flush callback so parent can flush pending set saves before navigation

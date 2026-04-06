@@ -74,51 +74,6 @@
   .er-skel-actions { display: none; }
 }
 
-/* ── Ambient orbs ── */
-.er-orbs {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  pointer-events: none;
-  overflow: visible;
-  z-index: 0;
-  margin-bottom: -100vh;
-}
-
-.er-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.09);
-}
-
-.er-orb-1 {
-  width: 400px;
-  height: 400px;
-  top: -120px;
-  right: -80px;
-  animation: erDrift1 15s ease-in-out infinite alternate;
-}
-
-.er-orb-2 {
-  width: 300px;
-  height: 300px;
-  bottom: 0;
-  left: -60px;
-  opacity: 0.7;
-  animation: erDrift2 19s ease-in-out infinite alternate;
-}
-
-@keyframes erDrift1 {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(-30px, 40px) scale(1.06); }
-}
-
-@keyframes erDrift2 {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(30px, -30px) scale(0.94); }
-}
-
 .event-results-header {
   display: flex;
   align-items: flex-start;

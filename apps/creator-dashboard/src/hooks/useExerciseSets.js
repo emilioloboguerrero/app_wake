@@ -64,6 +64,7 @@ const useExerciseSets = ({
   initialDefaults,
   initialSets,
   isLibraryMode = false,
+  globalActivityRef,
 }) => {
   const [sets, setSets] = useState([]);
   const [originalSets, setOriginalSets] = useState([]);
@@ -302,14 +303,23 @@ const useExerciseSets = ({
   const scheduleSave = useCallback((setId) => {
     if (!setId) return;
     pendingRef.current.add(setId);
+    if (globalActivityRef) globalActivityRef.current = Date.now();
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
+    const tryFlush = () => {
+      if (globalActivityRef) {
+        const elapsed = Date.now() - globalActivityRef.current;
+        if (elapsed < DEBOUNCE_MS) {
+          timerRef.current = setTimeout(tryFlush, DEBOUNCE_MS - elapsed);
+          return;
+        }
+      }
       const ids = Array.from(pendingRef.current);
       pendingRef.current.clear();
       timerRef.current = null;
       ids.forEach(id => saveRef.current?.(id));
-    }, DEBOUNCE_MS);
-  }, []);
+    };
+    timerRef.current = setTimeout(tryFlush, DEBOUNCE_MS);
+  }, [globalActivityRef]);
 
   const flushPendingSaves = useCallback(() => {
     const ids = Array.from(pendingRef.current);

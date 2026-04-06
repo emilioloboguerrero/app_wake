@@ -279,7 +279,7 @@ const LibrarySessionDetailScreen = () => {
   const instanceModuleId = planInstanceModuleId;
   const instanceService = isPlanInstanceEdit ? plansService : isProgramInstanceEdit ? programService : null;
   const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : isProgramInstanceEdit ? `/programs/${programInstanceProgramId}` : (location.state?.returnTo || '/biblioteca?domain=entrenamiento&tab=sesiones');
-  const backState = location.state?.returnState ?? {};
+  const backState = location.state?.returnState ?? (isProgramInstanceEdit ? { tab: 'contenido', subtab: 'entrenamiento' } : {});
   const editScope = location.state?.editScope;
   const clientSessionId = location.state?.clientSessionId;
   const clientId = location.state?.clientId;
@@ -495,6 +495,10 @@ const LibrarySessionDetailScreen = () => {
       exerciseFlushRegistryRef.current.delete(exerciseId);
     }
   }, []);
+
+  // Shared activity timestamp: each exercise checks this before firing its save timer.
+  // If any exercise was edited within the last 600ms, all exercises postpone their saves.
+  const globalActivityRef = useRef(0);
 
   // Live sets map: exerciseId -> sets[] — fed by ExpandableExerciseCard children AND bulk preload for volume
   const [liveSetsMap, setLiveSetsMap] = useState({});
@@ -779,6 +783,7 @@ const LibrarySessionDetailScreen = () => {
         setHasMadeChanges(true);
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
       queryClient.setQueryData(
         ['library', 'session', sessionId, { isAnyInstanceEdit, instanceId, instanceModuleId, effectiveEditScope, effectiveClientSessionId, effectiveClientId, effectiveProgramId, effectiveWeekKey }],
         (old) => old ? { ...old, session: { ...old.session, image_url: item.url } } : old
@@ -1265,6 +1270,7 @@ const LibrarySessionDetailScreen = () => {
         .then(() => {
           setHasMadeChanges(true);
           queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
         })
         .catch((err) => {
           logger.error('Error saving session title:', err);
@@ -2723,6 +2729,8 @@ const LibrarySessionDetailScreen = () => {
       return;
     }
     if (isAnyInstanceEdit && hasMadeChanges) {
+      queryClient.removeQueries({ queryKey: ['library', 'session', sessionId] });
+      queryClient.invalidateQueries({ queryKey: ['plans', instanceId] });
       navigate(backPath, { state: { ...backState, planHasChanges: true, sessionChanged: true } });
       return;
     }
@@ -3579,6 +3587,7 @@ const LibrarySessionDetailScreen = () => {
                       if (sessionId) setStoredClientEditContext(sessionId, null);
                       sessionDataSeededRef.current = false;
                       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+                      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
                     } catch (err) {
                       logger.error('Error reverting to library:', err);
                       showToast('No pudimos restablecer la sesion. Intenta de nuevo.', 'error');
@@ -3906,6 +3915,7 @@ const LibrarySessionDetailScreen = () => {
                       onRemoveMeasure={handleRemoveMeasure}
                       onSetsChanged={handleSetsChanged}
                       registerFlush={registerExerciseFlush}
+                      globalActivityRef={globalActivityRef}
                       isEditMode={isEditMode}
                       onDelete={isEditMode ? handleDeleteExercise : null}
                       isIncomplete={isSessionExerciseIncomplete(exercise)}

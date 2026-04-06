@@ -114,7 +114,7 @@ const ProfileScreen = () => {
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
   });
-  const usernameAvailable = shouldCheckUsername ? (usernameCheckData?.available ?? null) : null;
+  const usernameAvailable = shouldCheckUsername ? (usernameCheckData?.data?.available ?? null) : null;
 
   // Nav prefs from profile
   useEffect(() => {
@@ -176,14 +176,18 @@ const ProfileScreen = () => {
     const updateData = {};
 
     if (snapshot.name.trim() !== (userData?.displayName || '')) updateData.displayName = snapshot.name.trim();
-    if (snapshot.username.trim() !== (userData?.username || '')) updateData.username = snapshot.username.trim().toLowerCase();
+    const newUsername = snapshot.username.trim().toLowerCase();
+    if (newUsername !== (userData?.username || '')) {
+      if (usernameAvailable === false || isCheckingUsername) return;
+      updateData.username = newUsername;
+    }
     if (snapshot.country.trim() !== (userData?.country || '')) updateData.country = snapshot.country.trim();
     if (snapshot.city.trim() !== (userData?.city || '')) updateData.city = snapshot.city.trim();
 
     if (Object.keys(updateData).length === 0) return;
     await apiClient.patch('/users/me', updateData);
     await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
-  }, [user, userData, queryClientHook]);
+  }, [user, userData, queryClientHook, usernameAvailable, isCheckingUsername]);
 
   const { trigger: autoSaveTrigger, isSaving: isAutoSaving } = useAutoSave(
     saveProfile,

@@ -446,6 +446,7 @@ const MainScreen = ({ navigation, route }) => {
     Animated.timing(greetAnim, { toValue: 1, duration: 420, delay: 100, useNativeDriver: true }).start();
   }, []);
 
+
   // Screen state
   const purchasedCourses = purchasedCoursesFromHook;
   const loading = coursesQueryLoading;
@@ -488,6 +489,7 @@ const MainScreen = ({ navigation, route }) => {
     }
     return user?.email?.split('@')[0] || 'Usuario';
   }, [userProfile?.displayName, user?.displayName, user?.email]);
+  const scrollViewRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const flatListRef = useRef(null);
   const cardEntranceAnim = useRef(new Animated.Value(0)).current;
@@ -770,10 +772,12 @@ const MainScreen = ({ navigation, route }) => {
     if (!user?.uid) return;
     setRefreshing(true);
     try {
-      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.courses(user.uid) });
-      await queryClientHook.invalidateQueries({ queryKey: ['bookings', 'upcoming', user.uid] });
+      await Promise.all([
+        queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) }),
+        queryClientHook.invalidateQueries({ queryKey: ['bookings', 'upcoming', user.uid] }),
+      ]);
     } catch (err) {
-      logger.error('❌ Error refreshing courses (pull-to-refresh):', err);
+      logger.error('Error refreshing courses (pull-to-refresh):', err);
     } finally {
       setRefreshing(false);
     }
@@ -782,9 +786,9 @@ const MainScreen = ({ navigation, route }) => {
   // Force refresh — used after purchases, updates, and manual retry
   const refreshCoursesFromDatabase = async () => {
     try {
-      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.courses(user.uid) });
+      await queryClientHook.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
     } catch (err) {
-      logger.error('❌ Error refreshing courses:', err);
+      logger.error('Error refreshing courses:', err);
     }
   };
 
@@ -1378,6 +1382,7 @@ const MainScreen = ({ navigation, route }) => {
       <FixedWakeHeader />
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.content}
         contentContainerStyle={styles.scrollContent}
         refreshControl={

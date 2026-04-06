@@ -59,6 +59,7 @@ export default function useProgramEditor(programId, program) {
     onSettled: (_data, _error, updates) => {
       if (user?.uid && Object.keys(updates).some((k) => LISTING_FIELDS.includes(k))) {
         queryClient.invalidateQueries({ queryKey: queryKeys.programs.byCreator(user.uid) });
+        queryClient.invalidateQueries({ queryKey: ['clients', 'overview'] });
       }
     },
   });
@@ -79,6 +80,7 @@ export default function useProgramEditor(programId, program) {
     onSettled: () => {
       if (user?.uid) {
         queryClient.invalidateQueries({ queryKey: queryKeys.programs.byCreator(user.uid) });
+        queryClient.invalidateQueries({ queryKey: ['clients', 'overview'] });
       }
     },
   });
@@ -132,6 +134,7 @@ export default function useProgramEditor(programId, program) {
       queryClient.setQueryData(detailKey, (old) => ({ ...old, image_url: item.url, image_path: null }));
       if (user?.uid) {
         queryClient.invalidateQueries({ queryKey: queryKeys.programs.byCreator(user.uid) });
+        queryClient.invalidateQueries({ queryKey: ['clients', 'overview'] });
       }
     } catch {
       showToast('No pudimos subir la imagen. Revisa tu conexion e intenta de nuevo.', 'error');
@@ -148,6 +151,7 @@ export default function useProgramEditor(programId, program) {
       queryClient.setQueryData(detailKey, (old) => ({ ...old, image_url: null, image_path: null }));
       if (user?.uid) {
         queryClient.invalidateQueries({ queryKey: queryKeys.programs.byCreator(user.uid) });
+        queryClient.invalidateQueries({ queryKey: ['clients', 'overview'] });
       }
     } catch (err) {
       logger.error(err);

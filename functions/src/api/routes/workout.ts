@@ -1994,23 +1994,15 @@ router.post("/workout/courses/:courseId/progress/last-session", async (req, res)
 
 // Aliases: /workout/programs/:courseId → /workout/courses/:courseId
 // PWA apiService.js and purchaseService.js call /workout/programs/ paths
+// Any authenticated user can read course metadata (needed for purchase flow).
+// Actual workout content is in subcollections, gated separately.
 router.get("/workout/programs/:courseId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const userDoc = await db.collection("users").doc(auth.userId).get();
-  const courses = userDoc.data()?.courses ?? {};
-  const hasAccess = courses[req.params.courseId];
-
   const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
-  }
-
-  const isCreator = courseDoc.data()?.creator_id === auth.userId;
-
-  if (!hasAccess && !isCreator) {
-    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
   res.json({ data: { id: courseDoc.id, ...courseDoc.data() } });

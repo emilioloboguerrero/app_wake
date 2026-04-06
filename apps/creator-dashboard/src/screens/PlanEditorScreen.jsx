@@ -1250,7 +1250,7 @@ export default function PlanEditorScreen() {
                 <div className="pe-controls-strip">
                   <div className="pe-ctrl-cell pe-ctrl-cell--obj">
                     <span className="pe-ctrl-label">Objetivo</span>
-                    <input className="pe-ctrl-obj-input" type="number" min={0} value={dailyCalories} onChange={(e) => setDailyCalories(e.target.value)} />
+                    <input className={`pe-ctrl-obj-input${!dailyCalories ? ' pe-input-empty' : ''}`} type="number" min={0} value={dailyCalories} onChange={(e) => setDailyCalories(e.target.value)} />
                     <span className="pe-ctrl-unit">kcal</span>
                   </div>
                   <div className="pe-ctrl-cell pe-ctrl-cell--dist">
@@ -1277,7 +1277,7 @@ export default function PlanEditorScreen() {
                           <span className="pe-macro-current">{m.current.toFixed(0)}</span>
                           <span className="pe-macro-slash">/</span>
                           <input
-                            className="pe-macro-obj-input"
+                            className={`pe-macro-obj-input${!m.value ? ' pe-input-empty' : ''}`}
                             type="number"
                             min={0}
                             value={m.value}

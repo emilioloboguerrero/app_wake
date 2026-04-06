@@ -206,6 +206,20 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
     );
   }
 
+  if (updates.username) {
+    const normalized = (updates.username as string).toLowerCase().trim();
+    updates.username = normalized;
+    const existing = await db.collection("users")
+      .where("username", "==", normalized)
+      .limit(1)
+      .get();
+    if (!existing.empty && existing.docs[0].id !== auth.userId) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409, "Este username ya esta en uso", "username"
+      );
+    }
+  }
+
   updates.updated_at = FieldValue.serverTimestamp();
   await db.collection("users").doc(auth.userId).update(updates);
 

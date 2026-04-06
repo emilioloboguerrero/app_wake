@@ -107,10 +107,11 @@ const LibraryExercisesScreen = () => {
 
   // ─── Mutations ─────────────────────────────────────────────────────────
   const invalidateLibrary = useCallback(
-    () => {
-      queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] });
-      queryClient.invalidateQueries({ queryKey: ['library', 'exercises'] });
-    },
+    () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['library', 'detail', libraryId] }),
+      queryClient.invalidateQueries({ queryKey: ['library', 'exercises'] }),
+      queryClient.invalidateQueries({ queryKey: ['library', 'libraries'] }),
+    ]),
     [queryClient, libraryId]
   );
 
@@ -135,13 +136,29 @@ const LibraryExercisesScreen = () => {
   const deleteExerciseMutation = useMutation({
     mutationKey: ['library-exercises', 'delete'],
     mutationFn: (name) => libraryService.deleteExercise(libraryId, name),
-    onSuccess: (_data, name) => {
+    onMutate: async (name) => {
+      const queryKey = ['library', 'detail', libraryId];
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData(queryKey, (old) => {
+        if (!old) return old;
+        const next = { ...old };
+        delete next[name];
+        return next;
+      });
       if (selectedExerciseName === name) setSelectedExerciseName(null);
-      invalidateLibrary();
+      return { previous, wasSelected: selectedExerciseName === name ? name : null };
     },
-    onError: (err) => {
+    onError: (err, _name, context) => {
       logger.error('Error deleting exercise:', err);
+      if (context?.previous) {
+        queryClient.setQueryData(['library', 'detail', libraryId], context.previous);
+      }
+      if (context?.wasSelected) setSelectedExerciseName(context.wasSelected);
       showToast('No pudimos eliminar el ejercicio. Intenta de nuevo.', 'error');
+    },
+    onSettled: () => {
+      invalidateLibrary();
     },
   });
 

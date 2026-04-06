@@ -19,7 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import { GlowingEffect, TubelightNavBar, FullScreenError, InlineError } from '../components/ui';
+import { GlowingEffect, TubelightNavBar, FullScreenError, InlineError, KeepAlivePane } from '../components/ui';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
@@ -688,6 +688,7 @@ export default function EventResultsScreen() {
   const [selectedReg, setSelectedReg] = useState(null);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([defaultTab]));
 
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
 
@@ -1063,11 +1064,6 @@ export default function EventResultsScreen() {
       backPath="/events"
     >
       <div className="event-results-screen" style={cssVars}>
-        <div className="er-orbs" aria-hidden="true">
-          <div className="er-orb er-orb-1" />
-          <div className="er-orb er-orb-2" />
-        </div>
-
         {isLoading ? (
           <div className="er-skeleton-wrap">
             {/* Header */}
@@ -1264,12 +1260,15 @@ export default function EventResultsScreen() {
                 { id: 'editar', label: 'Editar' },
               ]}
               activeId={activeTab}
-              onSelect={setActiveTab}
+              onSelect={(tab) => {
+                setActiveTab(tab);
+                setVisitedTabs(prev => prev.has(tab) ? prev : new Set(prev).add(tab));
+              }}
             />
 
             {/* ── Registros tab ── */}
-            {activeTab === 'registros' && (
-              <>
+            {visitedTabs.has('registros') && (
+              <KeepAlivePane active={activeTab === 'registros'}>
                 {registrations.length > 0 && (
                   <div className="er-search-row">
                     <div className="er-search-wrap">
@@ -1382,11 +1381,12 @@ export default function EventResultsScreen() {
                     </div>
                   </div>
                 )}
-              </>
+              </KeepAlivePane>
             )}
 
             {/* ── Analytics tab ── */}
-            {activeTab === 'analytics' && (
+            {visitedTabs.has('analytics') && (
+              <KeepAlivePane active={activeTab === 'analytics'}>
               <div className="er-analytics">
                 {total === 0 ? (
                   <div className="er-analytics-empty er-fade-in">
@@ -1731,10 +1731,12 @@ export default function EventResultsScreen() {
                   </>
                 )}
               </div>
+              </KeepAlivePane>
             )}
 
             {/* ── Editar tab ── */}
-            {activeTab === 'editar' && (
+            {visitedTabs.has('editar') && (
+              <KeepAlivePane active={activeTab === 'editar'}>
               <div style={{ paddingBottom: 48 }}>
                 {/* Status pills */}
                 <div className="ee-status-pills" style={{ marginBottom: 16 }}>
@@ -1966,6 +1968,7 @@ export default function EventResultsScreen() {
                   </div>
                 </div>
               </div>
+              </KeepAlivePane>
             )}
           </>
         )}

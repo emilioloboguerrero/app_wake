@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
@@ -12,6 +12,7 @@ import {
   FullScreenError,
 } from '../components/ui';
 import ContextualHint from '../components/hints/ContextualHint';
+import SimpleCreateOverlay from '../components/biblioteca/SimpleCreateOverlay';
 import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
@@ -379,6 +380,8 @@ export default function EventsScreen() {
   const [togglingId, setTogglingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createSuccess, setCreateSuccess] = useState(false);
 
   useEffect(() => {
     return () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); };
@@ -416,6 +419,46 @@ export default function EventsScreen() {
     onError: (err) => {
       console.error('[EventsScreen] toggle status failed', err);
       showToast('No pudimos cambiar el estado del evento', 'error');
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationKey: ['events', 'create'],
+    mutationFn: async (title) => {
+      const eventData = {
+        title,
+        description: '',
+        date: null,
+        location: '',
+        access: 'public',
+        max_registrations: null,
+        settings: {
+          confirmation_message: '',
+          send_confirmation_email: false,
+          enable_qr_checkin: false,
+          show_registration_count: false,
+        },
+        status: 'draft',
+        fields: [],
+        image_url: '',
+        creator_id: user.uid,
+        registration_count: 0,
+      };
+      return eventService.createEvent(null, eventData);
+    },
+    onSuccess: (data) => {
+      setCreateSuccess(true);
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });
+      const eventId = data?.eventId || data?.id;
+      setTimeout(() => {
+        setShowCreateModal(false);
+        setCreateSuccess(false);
+        navigate(`/events/${eventId}/edit`);
+      }, 1200);
+    },
+    onError: (err) => {
+      logger.error('[EventsScreen] create failed', err);
+      showToast('No pudimos crear el evento', 'error');
     },
   });
 
@@ -458,6 +501,12 @@ export default function EventsScreen() {
 
   const filtered = events.filter((ev) => ev.status === activeFilter);
 
+  const navTabs = useMemo(() => {
+    const counts = { active: 0, draft: 0, closed: 0 };
+    events.forEach((ev) => { if (counts[ev.status] != null) counts[ev.status]++; });
+    return NAV_TABS.map((tab) => ({ ...tab, badge: counts[tab.id] }));
+  }, [events]);
+
   const spring = { type: 'spring', stiffness: 400, damping: 30 };
 
   return (
@@ -478,7 +527,7 @@ export default function EventsScreen() {
             <motion.button
               className="es-primary-btn"
               data-tutorial="events-create"
-              onClick={() => navigate('/events/new')}
+              onClick={() => setShowCreateModal(true)}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               transition={spring}
@@ -500,7 +549,7 @@ export default function EventsScreen() {
             transition={{ ...spring, delay: 0.05 }}
           >
             <TubelightNavBar
-              items={NAV_TABS}
+              items={navTabs}
               activeId={activeFilter}
               onSelect={setActiveFilter}
             />
@@ -594,7 +643,7 @@ export default function EventsScreen() {
                 {activeFilter === 'active' && (
                   <motion.button
                     className="es-primary-btn"
-                    onClick={() => navigate('/events/new')}
+                    onClick={() => setShowCreateModal(true)}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     whileHover={{ scale: 1.03 }}
@@ -645,6 +694,21 @@ export default function EventsScreen() {
           </div>
 
           <ContextualHint screenKey="events" />
+
+          <SimpleCreateOverlay
+            isOpen={showCreateModal}
+            onClose={() => { if (!createMutation.isPending) setShowCreateModal(false); }}
+            title="Nuevo evento"
+            description="Dale un nombre a tu evento. Podras editar todos los detalles despues."
+            placeholder="Ej. Run Club Marzo 2026"
+            ctaLabel="Crear evento"
+            creatingText="Creando evento"
+            successTitle="Evento creado"
+            successDesc="Ahora configura los detalles de tu evento."
+            onSubmit={(name) => createMutation.mutate(name)}
+            isPending={createMutation.isPending}
+            isSuccess={createSuccess}
+          />
         </div>
       </DashboardLayout>
     </ErrorBoundary>

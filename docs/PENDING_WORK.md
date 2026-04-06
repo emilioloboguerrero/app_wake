@@ -335,29 +335,11 @@ Cross-platform function that takes an audience definition and returns `{ email, 
 
 ---
 
-## 5. Creator Dashboard Rebuild (NOT STARTED)
-
-Full visual and UX rebuild of `apps/creator-dashboard`. Design direction is locked — see memory file `project_creator_dashboard_rebuild.md` for complete spec including nav architecture, screen briefs, onboarding flow, copy/propagation system, and revenue display logic.
-
-### Key Points
-- Editorial/premium dark aesthetic with 21st.dev components
-- Optimistic UI + debounced auto-save everywhere
-- Contextual spotlight tutorial system
-- Adaptive navigation (creators show/hide sections)
-- All screens rebuilt: Inicio, Clientes, Programas, Biblioteca, Nutrición, Eventos, Disponibilidad, Perfil
-- New creator onboarding (7-step immersive flow)
-
-### Depends On
-- Stable, tested API (Section 1)
-- PostHog in place to measure creator engagement (Section 2)
-
----
-
-## 6. Video Exchange System (NOT IMPLEMENTED — Future)
+## 5. Video Exchange System (IMPLEMENTED — NOT TESTED)
 
 One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
 
-### Data Model (when built)
+### Data Model
 - Storage: `users/{userId}/session_videos/{sessionId}/{videoId}.mp4`
 - Firestore: `users/{userId}/sessionHistory/{sessionId}/sessionVideos/{videoId}`
   - Required: `storagePath`, `url`, `createdAt`, `uploadedBy`
@@ -365,12 +347,9 @@ One-on-one only. Client uploads form-check videos, creator responds with feedbac
 - Use Firebase Storage resumable uploads (`uploadBytesResumable`)
 - Client-side compression to 720p before upload
 
-### Priority
-Low. Implement after session notes are shipped and validated.
-
 ---
 
-## 7. RPE (Reported Intensity) Integration (NOT IMPLEMENTED)
+## 6. RPE (Reported Intensity) Integration (NOT IMPLEMENTED)
 
 Add user-reported intensity (RPE) as a default measure so users can log their perceived exertion per set. When available, use it instead of planned intensity for all 1RM calculations and analytics.
 
@@ -445,11 +424,10 @@ Creator dashboard: shows planned 8/10 vs reported 7/10 comparison
 ## Priority Order
 
 1. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
-2. **Section 7** — RPE integration (core workout accuracy improvement, small surface area, no new collections)
-3. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
-4. **Section 4 Phase 1** — Creator email platform: manual campaigns (immediate creator value, lays foundation for sequences)
-5. **Section 3** — Feedback board (self-contained feature, gives users a voice)
-6. **Section 4 Phase 2** — Email templates + scheduling
-7. **Section 5** — Creator dashboard rebuild (largest effort, benefits from data + stable API)
+2. **Section 5** — Test video exchange end-to-end
+3. **Section 6** — RPE integration (core workout accuracy improvement, small surface area, no new collections)
+4. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
+5. **Section 4 Phase 1** — Creator email platform: manual campaigns (immediate creator value, lays foundation for sequences)
+6. **Section 3** — Feedback board (self-contained feature, gives users a voice)
+7. **Section 4 Phase 2** — Email templates + scheduling
 8. **Section 4 Phase 3** — Automated email sequences (builds on stable campaign infrastructure)
-9. **Section 6** — Video exchange (future)

@@ -66,3 +66,6 @@ export { default as TextAnimate } from './TextAnimate';
 
 // 1W — File Tree (Magic UI)
 export { Tree, TreeFolder, TreeFile, CollapseButton } from './FileTree';
+
+// 1X — Keep-alive tab pane (strips entry animations after first play)
+export { default as KeepAlivePane } from './KeepAlivePane';

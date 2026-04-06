@@ -284,6 +284,7 @@ const CompleteProfileScreen = () => {
               </div>
               {errors.city && <span className="cp-inline-error">{errors.city}</span>}
             </motion.div>
+
           </div>
 
           {/* CTA */}

@@ -70,7 +70,7 @@ const TestimonialCard = ({ testimonial }) => (
 const LoginScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isCreator, webOnboardingCompleted, loading, userRole, authError, refreshUserData } = useAuth();
+  const { user, isCreator, webOnboardingCompleted, profileCompleted, loading, userRole, authError, refreshUserData } = useAuth();
   const { showToast } = useToast();
 
   const [mode, setMode] = useState('login');
@@ -127,11 +127,15 @@ const LoginScreen = () => {
         navigate('/lab', { replace: true });
       }
     } else if (user && userRole && !isCreator) {
-      setFormError('Esta cuenta no tiene permisos de creador.');
-      setIsLoading(false);
-      authService.signOutUser().catch(() => {});
+      if (!profileCompleted) {
+        navigate('/complete-profile', { replace: true });
+      } else {
+        setFormError('Esta cuenta no tiene permisos de creador.');
+        setIsLoading(false);
+        authService.signOutUser().catch(() => {});
+      }
     }
-  }, [user, loading, userRole, isCreator, webOnboardingCompleted, authError, navigate, location.pathname]);
+  }, [user, loading, userRole, isCreator, profileCompleted, webOnboardingCompleted, authError, navigate, location.pathname]);
 
   const validateEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const validatePassword = (v) => v.length >= 6;

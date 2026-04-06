@@ -3,7 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
-import { TubelightNavBar, FullScreenError } from '../components/ui';
+import { TubelightNavBar, FullScreenError, KeepAlivePane } from '../components/ui';
 import ClientLabTab from '../components/client/ClientLabTab';
 import ClientPlanTab from '../components/client/ClientPlanTab';
 import ClientNutritionTab from '../components/client/ClientNutritionTab';
@@ -205,16 +205,16 @@ export default function ClientScreen() {
 
         {/* ── Tab Content (keep-alive: mount once, toggle via CSS) ── */}
         <div className="cs-content">
-          <div style={{ display: currentTab === 'lab' ? 'block' : 'none' }}>
+          <KeepAlivePane active={currentTab === 'lab'}>
             <ClientLabTab
               clientId={clientId}
               clientUserId={clientUserId}
               clientName={clientName}
               creatorId={creatorId}
             />
-          </div>
+          </KeepAlivePane>
           {visitedTabs.has('contenido') && (
-            <div style={{ display: currentTab === 'contenido' ? 'block' : 'none' }}>
+            <KeepAlivePane active={currentTab === 'contenido'}>
               <div className="cs-subtab-bar">
                 <TubelightNavBar
                   items={CONTENIDO_SUBTABS}
@@ -223,7 +223,7 @@ export default function ClientScreen() {
                 />
               </div>
               {visitedSubtabs.has('entrenamiento') && (
-                <div style={{ display: contenidoSubtab === 'entrenamiento' ? 'block' : 'none' }}>
+                <KeepAlivePane active={contenidoSubtab === 'entrenamiento'}>
                   <ClientPlanTab
                     clientId={clientId}
                     clientUserId={clientUserId}
@@ -237,10 +237,10 @@ export default function ClientScreen() {
                     selectedProgramId={selectedProgramId}
                     onProgramChange={setSelectedProgramId}
                   />
-                </div>
+                </KeepAlivePane>
               )}
               {visitedSubtabs.has('nutricion') && (
-                <div style={{ display: contenidoSubtab === 'nutricion' ? 'block' : 'none' }}>
+                <KeepAlivePane active={contenidoSubtab === 'nutricion'}>
                   <ClientNutritionTab
                     clientId={clientId}
                     clientUserId={clientUserId}
@@ -250,12 +250,12 @@ export default function ClientScreen() {
                     nutritionGoal={client?.onboardingData?.nutritionGoal}
                     dietaryRestrictions={client?.onboardingData?.dietaryRestrictions || []}
                   />
-                </div>
+                </KeepAlivePane>
               )}
-            </div>
+            </KeepAlivePane>
           )}
           {visitedTabs.has('perfil') && (
-            <div style={{ display: currentTab === 'perfil' ? 'block' : 'none' }}>
+            <KeepAlivePane active={currentTab === 'perfil'}>
               <ClientProfileTab
                 clientId={clientId}
                 clientUserId={clientUserId}
@@ -263,7 +263,7 @@ export default function ClientScreen() {
                 creatorId={creatorId}
                 clientDetail={client}
               />
-            </div>
+            </KeepAlivePane>
           )}
         </div>
       </div>

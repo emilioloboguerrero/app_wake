@@ -22,6 +22,7 @@ import logger from '../../utils/logger';
 import Modal from '../Modal';
 import Button from '../Button';
 import Input from '../Input';
+import './ProgramContentTab.css';
 import debounce from 'lodash/debounce';
 import {
   DndContext,

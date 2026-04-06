@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
@@ -24,6 +24,7 @@ import {
 } from '../components/events/eventFieldComponents';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
+import MediaPickerModal from '../components/MediaPickerModal';
 import ContextualHint from '../components/hints/ContextualHint';
 import './EventEditorScreen.css';
 
@@ -67,10 +68,10 @@ export default function EventEditorScreen() {
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentEventId, setCurrentEventId] = useState(eventId || null);
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
-  const imageInputRef = useRef(null);
 
   const accentCss = `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})`;
   const cssVars = {
@@ -160,13 +161,10 @@ export default function EventEditorScreen() {
     setFields(prev => prev.filter(f => f.id !== id));
   }
 
-  function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result);
-    reader.readAsDataURL(file);
+  function handleMediaSelect(media) {
+    setImageFile(null);
+    setImageUrl(media.url);
+    setImagePreview(media.url);
   }
 
   async function uploadImageForEvent(evId) {
@@ -291,12 +289,6 @@ export default function EventEditorScreen() {
       backPath="/events"
     >
       <div className="ee-screen" style={{ ...cssVars, '--ee-accent-text': accentText }}>
-        {/* Ambient orbs */}
-        <div className="ee-orbs" aria-hidden="true">
-          <div className="ee-orb ee-orb-1" />
-          <div className="ee-orb ee-orb-2" />
-        </div>
-
         {/* Top action bar */}
         <div className="ee-top-bar">
           <div className="ee-status-pills">
@@ -371,23 +363,16 @@ export default function EventEditorScreen() {
               ) : (
                 <button
                   className="ee-image-upload-area"
-                  onClick={() => imageInputRef.current?.click()}
+                  onClick={() => setShowMediaPicker(true)}
                 >
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <rect x="3" y="3" width="18" height="18" rx="2" />
                     <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" strokeWidth="0" />
                     <polyline points="21 15 16 10 5 21" />
                   </svg>
-                  <span>Subir imagen</span>
+                  <span>Seleccionar imagen</span>
                 </button>
               )}
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                className="ee-input-hidden"
-                onChange={handleImageChange}
-              />
             </div>
 
             {/* Title */}
@@ -564,6 +549,13 @@ export default function EventEditorScreen() {
             onClose={() => setShowFieldPicker(false)}
           />
         )}
+
+        <MediaPickerModal
+          isOpen={showMediaPicker}
+          onClose={() => setShowMediaPicker(false)}
+          onSelect={handleMediaSelect}
+          accept="image/*"
+        />
 
         {lightboxOpen && imagePreview && (
           <div className="ee-lightbox" onClick={() => setLightboxOpen(false)}>

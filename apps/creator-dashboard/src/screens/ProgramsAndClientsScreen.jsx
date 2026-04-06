@@ -15,6 +15,7 @@ import {
   NumberTicker,
   Toast,
   VirtualList,
+  KeepAlivePane,
 } from '../components/ui/index.js';
 import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
@@ -621,8 +622,19 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail, isDetailError, re
   const { user } = useAuth();
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('plan');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['plan']));
   const [showSessionModal, setShowSessionModal] = useState(false);
   const tabBodyRef = useRef(null);
+
+  const handleTabChange = useCallback((tabId) => {
+    setActiveTab(tabId);
+    setVisitedTabs(prev => {
+      if (prev.has(tabId)) return prev;
+      const next = new Set(prev);
+      next.add(tabId);
+      return next;
+    });
+  }, []);
 
   const clientId = client.id || client.clientUserId;
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
@@ -755,21 +767,35 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail, isDetailError, re
         <TubelightNavBar
           items={PROFILE_TABS}
           activeId={activeTab}
-          onSelect={setActiveTab}
+          onSelect={handleTabChange}
         />
       </div>
 
       <div className="profile-tab-body" ref={tabBodyRef}>
-        {activeTab === 'plan' && (
-          <PlanTab
-            clientDetail={isLoadingDetail ? null : clientDetail}
-            clientName={name}
-            clientId={clientId}
-          />
+        {visitedTabs.has('plan') && (
+          <KeepAlivePane active={activeTab === 'plan'}>
+            <PlanTab
+              clientDetail={isLoadingDetail ? null : clientDetail}
+              clientName={name}
+              clientId={clientId}
+            />
+          </KeepAlivePane>
         )}
-        {activeTab === 'nutricion' && <NutricionTab clientDetail={isLoadingDetail ? null : clientDetail} />}
-        {activeTab === 'lab' && <LabTab client={client} clientDetail={isLoadingDetail ? null : clientDetail} />}
-        {activeTab === 'llamadas' && <LlamadasTab clientDetail={isLoadingDetail ? null : clientDetail} />}
+        {visitedTabs.has('nutricion') && (
+          <KeepAlivePane active={activeTab === 'nutricion'}>
+            <NutricionTab clientDetail={isLoadingDetail ? null : clientDetail} />
+          </KeepAlivePane>
+        )}
+        {visitedTabs.has('lab') && (
+          <KeepAlivePane active={activeTab === 'lab'}>
+            <LabTab client={client} clientDetail={isLoadingDetail ? null : clientDetail} />
+          </KeepAlivePane>
+        )}
+        {visitedTabs.has('llamadas') && (
+          <KeepAlivePane active={activeTab === 'llamadas'}>
+            <LlamadasTab clientDetail={isLoadingDetail ? null : clientDetail} />
+          </KeepAlivePane>
+        )}
       </div>
 
       <SessionAssignmentModal

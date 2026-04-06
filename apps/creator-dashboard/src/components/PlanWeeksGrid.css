@@ -222,7 +222,19 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
-/* (week-menu removed — replaced by MenuDropdown) */
+.plan-weeks-week-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 120px;
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  overflow: hidden;
+}
 
 .plan-weeks-week-header--drag-over {
   background: rgba(255, 255, 255, 0.12);
@@ -391,7 +403,42 @@
 }
 
 /* Session menu rendered via portal - floats above everything */
-/* (session-menu-portal + session-menu-item removed — replaced by MenuDropdown) */
+.plan-weeks-session-menu-portal {
+  position: fixed;
+  min-width: 120px;
+  background: var(--surface-3, #2a2a2a);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.plan-weeks-session-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.plan-weeks-session-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.plan-weeks-session-menu-item.plan-weeks-week-menu-item-delete {
+  color: #ef4444;
+}
+
+.plan-weeks-session-menu-item.plan-weeks-week-menu-item-delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
 
 .plan-weeks-cell-add {
   width: 100%;

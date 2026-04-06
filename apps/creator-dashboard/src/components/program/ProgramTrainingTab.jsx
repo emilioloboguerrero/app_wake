@@ -15,7 +15,7 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
   const [sidebarSearch, setSidebarSearch] = useState('');
   const autoCreatedRef = useRef(false);
 
-  const { data: modules = [], isSuccess } = useQuery({
+  const { data: modules = [], isLoading: isLoadingModules, isSuccess } = useQuery({
     queryKey: queryKeys.modules.all(programId),
     queryFn: () => programService.getModulesByProgram(programId),
     enabled: !!programId,
@@ -54,15 +54,15 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
   }, [navigate, programId]);
 
   return (
-    <div className="plan-structure-layout client-program-planning-layout">
-      <div className="plan-structure-sidebars client-program-planning-left">
+    <div className="plan-structure-layout">
+      <div className="plan-structure-sidebars">
         <PlanningLibrarySidebar
           creatorId={creatorId}
           searchQuery={sidebarSearch}
           onSearchChange={setSidebarSearch}
         />
       </div>
-      <div className="plan-structure-main client-program-planning-main">
+      <div className="plan-structure-main">
         <ProgramWeeksGrid
           programId={programId}
           modules={modules}
@@ -73,6 +73,7 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
           libraryService={libraryService}
           plansService={plansService}
           creatorId={creatorId}
+          isLoading={isLoadingModules}
           isAddingWeek={isAddingWeek}
           queryClient={queryClient}
           queryKeys={queryKeys}

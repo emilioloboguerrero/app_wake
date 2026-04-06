@@ -25,7 +25,7 @@ import apiClient from '../utils/apiClient';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ScreenSkeleton from '../components/ScreenSkeleton';
 import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
-import { GlowingEffect, ProgressRing, NumberTicker } from '../components/ui';
+import { GlowingEffect, ProgressRing, NumberTicker, KeepAlivePane } from '../components/ui';
 import TubelightNavBar from '../components/ui/TubelightNavBar';
 import ContextualHint from '../components/hints/ContextualHint';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
@@ -116,6 +116,7 @@ const ClientProgramScreen = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [currentTabKey, setCurrentTabKey] = useState('lab');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['lab']));
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
   const [selectedProgramId, setSelectedProgramId] = useState(null); // Selected program (container/bin)
@@ -748,6 +749,12 @@ const ClientProgramScreen = () => {
 
   const handleTabClick = (tabId) => {
     setCurrentTabKey(tabId);
+    setVisitedTabs((prev) => {
+      if (prev.has(tabId)) return prev;
+      const next = new Set(prev);
+      next.add(tabId);
+      return next;
+    });
   };
 
   const handleSessionAssigned = async (sessionData) => {
@@ -1364,9 +1371,7 @@ const ClientProgramScreen = () => {
     }
   };
 
-  const renderTabContent = () => {
-    switch (currentTabKey) {
-      case 'lab': {
+  const renderLabTab = () => {
         if (isLabLoading) {
           return (
             <div className="tab-content tab-lab" data-tutorial="client-program-lab">
@@ -1507,8 +1512,9 @@ const ClientProgramScreen = () => {
             </div>
           </div>
         );
-      }
-      case 'planificacion':
+  };
+
+  const renderPlanificacionTab = () => {
         return (
           <div className="client-program-planning-content" data-tutorial="client-program-week">
             {/* Layout: left (library - sessions/plans only), right (calendar). Program is chosen in Info tab. */}
@@ -1648,7 +1654,9 @@ const ClientProgramScreen = () => {
             </div>
           </div>
         );
-      case 'nutricion': {
+  };
+
+  const renderNutricionTab = () => {
         const nutritionTabError = nutritionPlansError || nutritionAssignmentsError;
         if (nutritionTabError) {
           return (
@@ -2107,8 +2115,9 @@ const ClientProgramScreen = () => {
             })()}
           </div>
         );
-      }
-      case 'perfil':
+  };
+
+  const renderPerfilTab = () => {
         const assignedForInfo = assignedPrograms.filter((p) => p.isAssigned) || [];
         const currentExpiresAt = infoProgramId && clientUserDoc?.courses?.[infoProgramId]?.expires_at;
         const currentStatusText = (() => {
@@ -2306,9 +2315,6 @@ const ClientProgramScreen = () => {
             )}
           </div>
         );
-      default:
-        return null;
-    }
   };
 
   if (loading) {
@@ -2385,7 +2391,26 @@ const ClientProgramScreen = () => {
 
         {/* Tab Content */}
         <div className="client-program-content">
-          {renderTabContent()}
+          {visitedTabs.has('lab') && (
+            <KeepAlivePane active={currentTabKey === 'lab'}>
+              {renderLabTab()}
+            </KeepAlivePane>
+          )}
+          {visitedTabs.has('planificacion') && (
+            <KeepAlivePane active={currentTabKey === 'planificacion'}>
+              {renderPlanificacionTab()}
+            </KeepAlivePane>
+          )}
+          {visitedTabs.has('nutricion') && (
+            <KeepAlivePane active={currentTabKey === 'nutricion'}>
+              {renderNutricionTab()}
+            </KeepAlivePane>
+          )}
+          {visitedTabs.has('perfil') && (
+            <KeepAlivePane active={currentTabKey === 'perfil'}>
+              {renderPerfilTab()}
+            </KeepAlivePane>
+          )}
         </div>
 
         <ContextualHint screenKey="client-detail" />

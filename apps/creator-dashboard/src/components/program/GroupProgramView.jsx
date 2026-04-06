@@ -5,6 +5,7 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import DashboardLayout from '../DashboardLayout';
 import MediaPickerModal from '../MediaPickerModal';
 import TubelightNavBar from '../ui/TubelightNavBar';
+import KeepAlivePane from '../ui/KeepAlivePane';
 import { BentoCard } from '../ui/BentoGrid';
 import GlowingEffect from '../ui/GlowingEffect';
 import NumberTicker from '../ui/NumberTicker';
@@ -190,6 +191,10 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     setActiveTab(tabId);
   }, [activeTab]);
 
+  const handleSubtabChange = useCallback((subtabId) => {
+    setContenidoSubtab(subtabId);
+  }, []);
+
   const getScreenName = () => program?.title || 'Programa';
   const getBackPath = () => backTo || location.state?.returnTo || '/programas';
 
@@ -229,10 +234,9 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
           />
         </div>
 
-        {activeTab === 'programa' && (
-          <>
-            {/* TOP: Overview Bento */}
-            <div className="gp-overview">
+        <KeepAlivePane active={activeTab === 'programa'}>
+          {/* TOP: Overview Bento */}
+          <div className="gp-overview">
 
               {/* Left -- Program image + info */}
               <div className="gp-program-card">
@@ -579,36 +583,29 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
 
               </div>
             </div>
-          </>
-        )}
+        </KeepAlivePane>
 
-        {activeTab === 'contenido' && (
-          <>
+        <KeepAlivePane active={activeTab === 'contenido'}>
             <div className="gp-subtab-bar">
               <TubelightNavBar
                 items={CONTENIDO_SUBTABS}
                 activeId={contenidoSubtab}
-                onSelect={setContenidoSubtab}
+                onSelect={handleSubtabChange}
               />
             </div>
-            {contenidoSubtab === 'entrenamiento' && (
-              <div className="gp-content-wrap">
+            <KeepAlivePane active={contenidoSubtab === 'entrenamiento'}>
                 <ProgramTrainingTab
                   programId={programId}
                   creatorId={user.uid}
                 />
-              </div>
-            )}
-            {contenidoSubtab === 'nutricion' && (
-              <div className="gp-content-wrap">
+            </KeepAlivePane>
+            <KeepAlivePane active={contenidoSubtab === 'nutricion'}>
                 <ProgramNutritionTab
                   programId={programId}
                   creatorId={user.uid}
                 />
-              </div>
-            )}
-          </>
-        )}
+            </KeepAlivePane>
+        </KeepAlivePane>
 
       </div>
 

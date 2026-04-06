@@ -934,20 +934,15 @@
   display: inline-flex;
 }
 
-/* ── Content tab container ───────────────────────────────────── */
-.gp-content-wrap {
-  animation: gp-enter 0.4s var(--gp-spring) both;
-}
-
 /* ── Training tab: weeks grid + library sidebar ─────────────── */
-.gp-content-wrap .plan-structure-layout {
+.gp-root .plan-structure-layout {
   display: flex;
   flex-direction: row;
   gap: 0;
   min-height: calc(100vh - 300px);
 }
 
-.gp-content-wrap .plan-structure-sidebars {
+.gp-root .plan-structure-sidebars {
   width: 300px;
   min-width: 300px;
   flex-shrink: 0;
@@ -956,22 +951,22 @@
   overflow: hidden;
 }
 
-.gp-content-wrap .plan-structure-sidebars .planning-library-sidebar {
+.gp-root .plan-structure-sidebars .planning-library-sidebar {
   border-right: none;
   box-sizing: border-box;
   width: 100%;
   overflow: hidden;
 }
 
-.gp-content-wrap .planning-library-sidebar .plan-structure-search {
+.gp-root .planning-library-sidebar .plan-structure-search {
   padding: 10px 16px;
 }
 
-.gp-content-wrap .planning-library-sidebar .planning-sidebar-content {
+.gp-root .planning-library-sidebar .planning-sidebar-content {
   padding: 16px;
 }
 
-.gp-content-wrap .plan-structure-main {
+.gp-root .plan-structure-main {
   flex: 1;
   padding: 0 0 0 24px;
   min-width: 0;
@@ -1002,19 +997,19 @@
     grid-column: span 2;
   }
 
-  .gp-content-wrap .plan-structure-layout {
+  .gp-root .plan-structure-layout {
     flex-direction: column;
     gap: 16px;
     min-height: auto;
   }
 
-  .gp-content-wrap .plan-structure-sidebars {
+  .gp-root .plan-structure-sidebars {
     width: 100%;
     min-width: 0;
     max-height: 220px;
   }
 
-  .gp-content-wrap .plan-structure-main {
+  .gp-root .plan-structure-main {
     padding: 0;
   }
 }

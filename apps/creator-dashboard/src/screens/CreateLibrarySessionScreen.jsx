@@ -70,6 +70,7 @@ const CreateLibrarySessionScreen = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
       navigate(backPath, { state: backState });
     },
     onError: (err) => {

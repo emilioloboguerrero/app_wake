@@ -1077,6 +1077,29 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
+  // Sync updated fields to enrolled users' course entries
+  const syncFields: Record<string, string> = { image_url: "image_url", title: "title" };
+  const userUpdates: Record<string, unknown> = {};
+  for (const [field, courseField] of Object.entries(syncFields)) {
+    if (updates[field] !== undefined) {
+      userUpdates[`courses.${req.params.programId}.${courseField}`] = updates[field];
+    }
+  }
+  if (Object.keys(userUpdates).length > 0) {
+    const enrolledUsers = await db
+      .collection("users")
+      .where(`courses.${req.params.programId}.status`, "==", "active")
+      .limit(200)
+      .get();
+    const batch = db.batch();
+    for (const userDoc of enrolledUsers.docs) {
+      batch.update(userDoc.ref, userUpdates);
+    }
+    if (!enrolledUsers.empty) {
+      await batch.commit();
+    }
+  }
+
   res.json({ data: { updated: true } });
 });
 
@@ -1266,6 +1289,23 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
     image_path: storagePath,
     updated_at: FieldValue.serverTimestamp(),
   });
+
+  // Sync image_url to all enrolled users' course entries
+  const enrolledUsers = await db
+    .collection("users")
+    .where(`courses.${req.params.programId}.status`, "==", "active")
+    .limit(200)
+    .get();
+
+  const batch = db.batch();
+  for (const userDoc of enrolledUsers.docs) {
+    batch.update(userDoc.ref, {
+      [`courses.${req.params.programId}.image_url`]: publicUrl,
+    });
+  }
+  if (!enrolledUsers.empty) {
+    await batch.commit();
+  }
 
   res.json({ data: { image_url: publicUrl, image_path: storagePath } });
 });
@@ -6166,7 +6206,7 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  const updates = pickFields(req.body, ["title", "order", "image_url", "librarySessionRef", "dayIndex"]);
+  const updates = pickFields(req.body, ["title", "order", "image_url", "librarySessionRef", "dayIndex", "defaultDataTemplate"]);
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }

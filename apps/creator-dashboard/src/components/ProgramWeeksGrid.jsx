@@ -5,6 +5,7 @@ import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
 import Button from './Button';
+import ShimmerSkeleton from './ui/ShimmerSkeleton';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
 import programService from '../services/programService';
 import { useToast } from '../contexts/ToastContext';
@@ -52,6 +53,7 @@ const ProgramWeeksGrid = ({
   libraryService = null,
   plansService = null,
   creatorId = null,
+  isLoading = false,
   isAddingWeek = false,
   queryClient = null,
   queryKeys = null,
@@ -480,6 +482,41 @@ const ProgramWeeksGrid = ({
       : isMovingOrAddingItem
         ? 'Moviendo sesión...'
         : null;
+
+  if (isLoading) {
+    return (
+      <div className="plan-weeks-grid">
+        <div className="plan-weeks-grid-header">
+          <ShimmerSkeleton width="140px" height="36px" borderRadius="8px" />
+        </div>
+        <div className="plan-weeks-list-wrap">
+          <div className="plan-weeks-days-header">
+            {SLOTS.map((d) => (
+              <div key={d} className="plan-weeks-days-header-cell">
+                <ShimmerSkeleton width="32px" height="14px" borderRadius="4px" />
+              </div>
+            ))}
+          </div>
+          {[0, 1].map((i) => (
+            <div key={i} className="plan-weeks-week-block">
+              <div className="plan-weeks-week-header">
+                <ShimmerSkeleton width="90px" height="16px" borderRadius="4px" />
+              </div>
+              <div className="plan-weeks-week-days">
+                {SLOTS.map((_, j) => (
+                  <div key={j} className="plan-weeks-day-cell">
+                    {j % 2 === 0 && (
+                      <ShimmerSkeleton width="100%" height="44px" borderRadius="8px" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="plan-weeks-grid">

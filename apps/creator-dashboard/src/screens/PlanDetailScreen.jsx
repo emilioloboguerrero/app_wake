@@ -125,7 +125,9 @@ const PlanDetailScreen = () => {
     queryKey: ['plans', planId],
     queryFn: () => plansService.getPlanById(planId),
     enabled: !!user && !!planId && planId !== 'new',
-    ...cacheConfig.activeProgram,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: modulesData, isLoading: modulesLoading } = useQuery({
@@ -136,14 +138,15 @@ const PlanDetailScreen = () => {
         await plansService.createModule(planId, 'Semana 1', 0);
         mods = await plansService.getModulesByPlan(planId);
       }
-      // Sessions are already embedded in modules from getPlanById — no need to re-fetch
       return mods.map((m) => ({
         ...m,
         sessions: (m.sessions ?? []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
       }));
     },
     enabled: !!user && !!planId && planId !== 'new',
-    ...cacheConfig.programStructure,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const loading = planLoading || modulesLoading;
@@ -451,7 +454,6 @@ const PlanDetailScreen = () => {
             <GlowingEffect spread={30} proximity={100} borderWidth={1} />
             <PlanStructureSidebar
               creatorId={user.uid}
-              libraryService={libraryService}
               searchQuery={structureSearchQuery}
               onSearchChange={setStructureSearchQuery}
             />

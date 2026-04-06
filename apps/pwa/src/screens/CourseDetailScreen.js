@@ -101,6 +101,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
   const [simulateUserRole, setSimulateUserRole] = useState(false);
+  const [refreshingOwnership, setRefreshingOwnership] = useState(false);
 
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
@@ -385,6 +386,20 @@ const CourseDetailScreen = ({ navigation, route }) => {
       setCheckingOwnership(false);
     }
   }, [user?.uid, course.id, handlePostPurchaseFlow, queryClient]);
+
+  const handleRefreshOwnership = React.useCallback(async () => {
+    const effectiveUser = user || auth.currentUser;
+    if (!effectiveUser?.uid) return;
+    setRefreshingOwnership(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
+      await checkCourseOwnership();
+    } catch (err) {
+      logger.error('Error refreshing ownership:', err);
+    } finally {
+      setRefreshingOwnership(false);
+    }
+  }, [user, queryClient, checkCourseOwnership]);
 
   useEffect(() => {
     fetchCourseModules();
@@ -1575,6 +1590,22 @@ useEffect(() => {
             {renderPurchaseButton()}
           </View>
 
+          {/* Refresh ownership button */}
+          <TouchableOpacity
+            style={styles.refreshOwnershipButton}
+            onPress={handleRefreshOwnership}
+            disabled={refreshingOwnership || checkingOwnership}
+          >
+            {refreshingOwnership ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
+            ) : (
+              <SvgArrowReload width={16} height={16} color="rgba(255,255,255,0.5)" />
+            )}
+            <Text style={styles.refreshOwnershipText}>
+              {refreshingOwnership ? 'Verificando...' : 'Verificar acceso'}
+            </Text>
+          </TouchableOpacity>
+
           <BottomSpacer />
           </>
           )}
@@ -2336,6 +2367,19 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   ownedButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
     opacity: 0.45,
+  },
+  refreshOwnershipButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    alignSelf: 'center',
+  },
+  refreshOwnershipText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 13,
+    fontWeight: '500',
   },
   secondaryButton: {
     backgroundColor: 'transparent',

@@ -4,33 +4,11 @@ import apiClient from '../../utils/apiClient';
 import { queryKeys } from '../../config/queryClient';
 import { ShimmerSkeleton, GlowingEffect } from '../ui';
 import {
-  MapPin, Mail, User, Target, Dumbbell, Clock, Apple, Moon, Brain,
-  Plus, Trash2, Calendar, ShieldCheck, Info, X, Zap, Utensils,
+  MapPin, Mail, User, Dumbbell,
+  Plus, Trash2, Calendar, ShieldCheck, Info, X,
   Send,
 } from 'lucide-react';
 import './ClientProfileTab.css';
-
-const GOAL_LABELS = {
-  fat_loss: 'Perder grasa', muscle: 'Ganar masa muscular',
-  performance: 'Mejorar rendimiento', health: 'Mejorar salud general', event: 'Preparar evento',
-};
-const EXPERIENCE_LABELS = {
-  beginner: 'Principiante', less_1yr: 'Menos de 1 ano',
-  '1_3yrs': '1-3 anos', over_3yrs: 'Mas de 3 anos',
-};
-const DURATION_LABELS = {
-  under_45: '< 45 min', '45_60': '45-60 min', '60_90': '60-90 min', over_90: '90+ min',
-};
-const EQUIPMENT_LABELS = {
-  full_gym: 'Gimnasio completo', home_gym: 'Casa', bodyweight: 'Cuerpo', mixed: 'Mixto',
-};
-const NUTRITION_LABELS = {
-  cut: 'Deficit', bulk: 'Superavit', maintain: 'Mantenimiento', energy: 'Energia', unsure: 'Sin definir',
-};
-const SLEEP_LABELS = { under_6: '< 6h', '6_7': '6-7h', '7_8': '7-8h', over_8: '8h+' };
-const STRESS_LABELS = { low: 'Bajo', medium: 'Medio', high: 'Alto', very_high: 'Muy alto' };
-
-const STRESS_COLORS = { low: 'var(--cprt-green)', medium: 'var(--cprt-amber)', high: 'var(--cprt-red)', very_high: 'var(--cprt-red)' };
 
 export default function ClientProfileTab({ clientId, clientUserId, clientName, creatorId, clientDetail }) {
   const queryClient = useQueryClient();
@@ -77,7 +55,6 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
   const country = profile?.country;
   const city = profile?.city;
   const gender = profile?.gender;
-  const ob = profile?.onboardingData;
   const enrolledPrograms = profile?.enrolledPrograms || [];
   const notes = profile?.notes || [];
 
@@ -112,56 +89,6 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
 
         {/* ── Left column ───────────────────────────────────── */}
         <div className="cprt-col-left">
-
-          {/* Onboarding snapshot */}
-          <div className="cprt-panel cprt-panel--stagger-1">
-            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
-            <div className="cprt-panel-inner">
-              <h3 className="cprt-panel-title">Perfil de entrenamiento</h3>
-              {ob ? (
-                <>
-                  {/* Primary goal - featured */}
-                  {ob.primaryGoal && (
-                    <div className="cprt-goal-feature">
-                      <Target size={18} className="cprt-goal-icon" />
-                      <div>
-                        <span className="cprt-goal-label">Objetivo principal</span>
-                        <span className="cprt-goal-value">{GOAL_LABELS[ob.primaryGoal] || ob.primaryGoal}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Stats row */}
-                  <div className="cprt-stats-row">
-                    <StatPill icon={<Dumbbell size={12} />} value={EXPERIENCE_LABELS[ob.trainingExperience] || ob.trainingExperience} />
-                    <StatPill icon={<Calendar size={12} />} value={`${ob.trainingDaysPerWeek || '?'}d/sem`} />
-                    <StatPill icon={<Clock size={12} />} value={DURATION_LABELS[ob.sessionDuration] || ob.sessionDuration} />
-                    <StatPill icon={<Zap size={12} />} value={EQUIPMENT_LABELS[ob.equipment] || ob.equipment} />
-                  </div>
-
-                  {/* Lifestyle row */}
-                  <div className="cprt-lifestyle">
-                    <LifestyleBar icon={<Utensils size={12} />} label="Nutricion" value={NUTRITION_LABELS[ob.nutritionGoal] || ob.nutritionGoal} />
-                    <LifestyleBar icon={<Moon size={12} />} label="Sueno" value={SLEEP_LABELS[ob.sleepHours] || ob.sleepHours} />
-                    <LifestyleBar icon={<Brain size={12} />} label="Estres" value={STRESS_LABELS[ob.stressLevel] || ob.stressLevel} color={STRESS_COLORS[ob.stressLevel]} />
-                  </div>
-
-                  {ob.dietaryRestrictions?.length > 0 && ob.dietaryRestrictions[0] !== 'none' && (
-                    <div className="cprt-restrictions">
-                      <span className="cprt-restrictions-label">Restricciones:</span>
-                      {ob.dietaryRestrictions.map((r, i) => (
-                        <span key={i} className="cprt-restriction-tag">{r}</span>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="cprt-ob-empty">
-                  <p>Este cliente no ha completado el onboarding</p>
-                </div>
-              )}
-            </div>
-          </div>
 
           {/* Programs */}
           {enrolledPrograms.length > 0 && (
@@ -319,27 +246,6 @@ function ProfileSkeleton() {
 }
 
 /* ── Sub-components ────────────────────────────────────────────── */
-function StatPill({ icon, value }) {
-  if (!value) return null;
-  return (
-    <div className="cprt-stat-pill">
-      <span className="cprt-stat-pill-icon">{icon}</span>
-      <span className="cprt-stat-pill-val">{value}</span>
-    </div>
-  );
-}
-
-function LifestyleBar({ icon, label, value, color }) {
-  if (!value) return null;
-  return (
-    <div className="cprt-ls-bar">
-      <span className="cprt-ls-icon">{icon}</span>
-      <span className="cprt-ls-label">{label}</span>
-      <span className="cprt-ls-value" style={color ? { color } : undefined}>{value}</span>
-    </div>
-  );
-}
-
 function AccessDateModal({ title, currentExpiry, isPending, onSave, onClose }) {
   const [date, setDate] = useState(currentExpiry || '');
   const [noEndDate, setNoEndDate] = useState(!currentExpiry);

@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Input from './Input';
 import { AnimatedList, ShimmerSkeleton, GlowingEffect } from './ui';
-import logger from '../utils/logger';
+import libraryService from '../services/libraryService';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import './PlanStructureSidebar.css';
 
 const DRAG_TYPE_LIBRARY_SESSION = 'plan-structure/library-session';
@@ -12,32 +14,15 @@ const DRAG_TYPE_LIBRARY_SESSION = 'plan-structure/library-session';
  */
 const PlanStructureSidebar = ({
   creatorId,
-  libraryService,
   searchQuery = '',
   onSearchChange,
 }) => {
-  const [librarySessions, setLibrarySessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!creatorId || !libraryService) {
-      setLoading(false);
-      return;
-    }
-    const load = async () => {
-      try {
-        setLoading(true);
-        const sessions = await libraryService.getSessionLibrary(creatorId);
-        setLibrarySessions(sessions || []);
-      } catch (err) {
-        logger.error('Error loading library sessions:', err);
-        setLibrarySessions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [creatorId, libraryService]);
+  const { data: librarySessions = [], isLoading: loading } = useQuery({
+    queryKey: queryKeys.library.sessionsSlim(creatorId),
+    queryFn: () => libraryService.getSessionLibrarySlim(creatorId),
+    enabled: !!creatorId,
+    ...cacheConfig.librarySessions,
+  });
 
   const q = (searchQuery || '').trim().toLowerCase();
   const filtered = q
@@ -118,7 +103,7 @@ const PlanStructureSidebar = ({
                       )}
                       <div className="planning-sidebar-program-info">
                         <span className="planning-sidebar-program-name">
-                          {session.title || `Sesión ${session.id?.slice(0, 8)}`}
+                          {session.title || `Sesion ${session.id?.slice(0, 8)}`}
                         </span>
                       </div>
                     </div>

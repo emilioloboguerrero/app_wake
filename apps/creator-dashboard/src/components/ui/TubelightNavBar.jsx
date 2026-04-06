@@ -29,6 +29,10 @@ export default function TubelightNavBar({ items, activeId, onSelect, orientation
               )}
               <span className="tubelight-item-label">{item.label}</span>
 
+              {!isActive && item.badge != null && item.badge > 0 && (
+                <span className="tubelight-badge">{item.badge}</span>
+              )}
+
               {isActive && (
                 <motion.div
                   layoutId="tubelight-indicator"

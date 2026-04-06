@@ -12,6 +12,7 @@ import {
   MenuDropdown,
   AnimatedList,
   ConfirmDeleteModal,
+  KeepAlivePane,
 } from '../components/ui/index.js';
 import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError } from '../components/ui/ErrorStates';
@@ -515,8 +516,15 @@ const ClientesScreen = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') || 'clientes';
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([searchParams.get('tab') || 'clientes']));
   const setActiveTab = useCallback((tab) => {
     setSearchParams({ tab }, { replace: true });
+    setVisitedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
   }, [setSearchParams]);
 
   // Video exchange unread counts per client
@@ -845,8 +853,9 @@ const ClientesScreen = () => {
           )}
         </div>
 
-        <div className="cl-body" key={activeTab}>
-          {activeTab === 'clientes' && (
+        <div className="cl-body">
+          <KeepAlivePane active={activeTab === 'clientes'}>
+          {visitedTabs.has('clientes') && (
             <div className="cl-search-row">
               <div className="cl-search cl-search--full">
                 <svg className="cl-search__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -886,7 +895,7 @@ const ClientesScreen = () => {
             </div>
           )}
           {/* ── Clientes tab ─────────────────────────────────── */}
-          {activeTab === 'clientes' && (
+          {visitedTabs.has('clientes') && (
             isLoadingClients ? (
               <ListSkeleton />
             ) : clients.length === 0 ? (
@@ -928,9 +937,11 @@ const ClientesScreen = () => {
               </div>
             )
           )}
+          </KeepAlivePane>
 
           {/* ── Asesorías tab ────────────────────────────────── */}
-          {activeTab === 'asesorias' && (
+          <KeepAlivePane active={activeTab === 'asesorias'}>
+          {visitedTabs.has('asesorias') && (
             isLoadingPrograms ? (
               <AsesoriasSkeleton />
             ) : oneOnOnePrograms.length === 0 ? (
@@ -958,13 +969,16 @@ const ClientesScreen = () => {
               </div>
             )
           )}
+          </KeepAlivePane>
 
           {/* ── Llamadas tab ─────────────────────────────────── */}
-          {activeTab === 'llamadas' && (
+          <KeepAlivePane active={activeTab === 'llamadas'}>
+          {visitedTabs.has('llamadas') && (
             <div className="cl-llamadas-wrap">
               <AvailabilityContent />
             </div>
           )}
+          </KeepAlivePane>
         </div>
       </div>
 

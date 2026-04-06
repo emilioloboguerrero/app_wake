@@ -743,6 +743,11 @@
   margin: 0;
 }
 
+.pe-ctrl-obj-input.pe-input-empty {
+  border-color: rgba(255, 140, 50, 0.55);
+  background: rgba(255, 140, 50, 0.10);
+}
+
 .pe-ctrl-obj-input:focus {
   border-color: rgba(255, 255, 255, 0.35);
 }
@@ -856,6 +861,10 @@
   -webkit-appearance: none;
   appearance: none;
   margin: 0;
+}
+
+.pe-macro-obj-input.pe-input-empty {
+  border-bottom-color: rgba(255, 140, 50, 0.55);
 }
 
 .pe-macro-obj-input:focus {

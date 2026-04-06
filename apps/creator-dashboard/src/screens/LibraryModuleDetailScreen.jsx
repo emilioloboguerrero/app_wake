@@ -257,6 +257,7 @@ const LibraryModuleDetailScreen = () => {
 
       await queryClient.invalidateQueries({ queryKey: ['library', 'module', moduleId] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
     } catch (err) {
       logger.error('Error adding session:', err);
       showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
@@ -310,6 +311,7 @@ const LibraryModuleDetailScreen = () => {
 
       await queryClient.invalidateQueries({ queryKey: ['library', 'module', moduleId] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
 
       setIsDeleteModalOpen(false);
       setSessionToDelete(null);

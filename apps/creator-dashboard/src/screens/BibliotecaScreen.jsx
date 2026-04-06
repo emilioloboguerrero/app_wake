@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
-import { TubelightNavBar, GlowingEffect } from '../components/ui';
+import { TubelightNavBar, GlowingEffect, KeepAlivePane } from '../components/ui';
 import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
 import { Revealable, RevealProgressBar } from '../components/guide';
 import ExercisesPanel from '../components/biblioteca/ExercisesPanel';
@@ -125,6 +125,7 @@ const BibliotecaScreen = () => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [successFor, setSuccessFor] = useState(null);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([tab]));
 
   // --- Mutations ---
 
@@ -152,6 +153,7 @@ const BibliotecaScreen = () => {
     mutationFn: (title) => libraryService.createLibrarySession(user.uid, { title }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user?.uid) });
       const sessionId = result?.sessionId || result?.data?.sessionId;
       setSuccessFor('session');
       setTimeout(() => {
@@ -190,11 +192,21 @@ const BibliotecaScreen = () => {
     const defaultTab = d === 'entrenamiento' ? 'ejercicios' : 'planes_nutri';
     setSearchParams({ domain: d, tab: defaultTab }, { replace: true });
     setSearchQuery('');
+    setVisitedTabs((prev) => {
+      const next = new Set(prev);
+      next.add(defaultTab);
+      return next;
+    });
   }, [setSearchParams]);
 
   const setTab = useCallback((t) => {
     setSearchParams({ domain, tab: t }, { replace: true });
     setSearchQuery('');
+    setVisitedTabs((prev) => {
+      const next = new Set(prev);
+      next.add(t);
+      return next;
+    });
   }, [domain, setSearchParams]);
 
   const subTabs = domain === 'entrenamiento' ? TRAINING_TABS : NUTRITION_TABS;
@@ -283,21 +295,6 @@ const BibliotecaScreen = () => {
 
   // --- Render ---
 
-  const renderContent = () => {
-    switch (activeSubTab) {
-      case 'ejercicios':
-        return <ExercisesPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateLibrary={openCreateLibrary} />;
-      case 'sesiones':
-        return <SessionsPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateSession={openCreateSession} />;
-      case 'planes':
-        return <PlansPanel searchQuery={searchQuery} sortKey={filters.sort} />;
-      case 'planes_nutri':
-        return <NutritionPlansPanel searchQuery={searchQuery} sortKey={filters.sort} onCreatePlan={openCreateNutriPlan} />;
-      default:
-        return null;
-    }
-  };
-
   if (!bibliotecaGuideCompleted) {
     return (
       <DashboardLayout screenName="Biblioteca">
@@ -308,7 +305,7 @@ const BibliotecaScreen = () => {
 
   return (
     <ErrorBoundary>
-      <ProgressiveRevealProvider screenKey={`biblioteca-${activeSubTab}`} key={activeSubTab}>
+      <ProgressiveRevealProvider screenKey={`biblioteca-${activeSubTab}`}>
       <DashboardLayout screenName="Biblioteca">
         <div className="bib-container">
           <div className="bib-top-row">
@@ -379,8 +376,27 @@ const BibliotecaScreen = () => {
           </Revealable>
 
           <Revealable step="content-area">
-            <div className="bib-content" key={`${domain}-${activeSubTab}`}>
-              {renderContent()}
+            <div className="bib-content">
+              {visitedTabs.has('ejercicios') && (
+                <KeepAlivePane active={activeSubTab === 'ejercicios'}>
+                  <ExercisesPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateLibrary={openCreateLibrary} />
+                </KeepAlivePane>
+              )}
+              {visitedTabs.has('sesiones') && (
+                <KeepAlivePane active={activeSubTab === 'sesiones'}>
+                  <SessionsPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateSession={openCreateSession} />
+                </KeepAlivePane>
+              )}
+              {visitedTabs.has('planes') && (
+                <KeepAlivePane active={activeSubTab === 'planes'}>
+                  <PlansPanel searchQuery={searchQuery} sortKey={filters.sort} />
+                </KeepAlivePane>
+              )}
+              {visitedTabs.has('planes_nutri') && (
+                <KeepAlivePane active={activeSubTab === 'planes_nutri'}>
+                  <NutritionPlansPanel searchQuery={searchQuery} sortKey={filters.sort} onCreatePlan={openCreateNutriPlan} />
+                </KeepAlivePane>
+              )}
             </div>
           </Revealable>
         </div>

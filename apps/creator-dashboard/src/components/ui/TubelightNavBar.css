@@ -55,6 +55,23 @@
   z-index: 2;
 }
 
+/* Badge — small count on inactive tabs */
+.tubelight-badge {
+  position: relative;
+  z-index: 2;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.50);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 /* The sliding underline/highlight */
 .tubelight-indicator {
   position: absolute;

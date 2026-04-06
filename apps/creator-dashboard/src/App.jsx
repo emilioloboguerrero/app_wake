@@ -21,7 +21,6 @@ import PlanEditorScreen from './screens/PlanEditorScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import EventsScreen from './screens/EventsScreen';
 import EventResultsScreen from './screens/EventResultsScreen';
-import EventEditorScreen from './screens/EventEditorScreen';
 import EventCheckinScreen from './screens/EventCheckinScreen';
 import ApiKeysScreen from './screens/ApiKeysScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -291,14 +290,6 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <DebugScreenTracker name="EventsScreen"><EventsScreen /></DebugScreenTracker>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/events/new"
-              element={
-                <ProtectedRoute>
-                  <DebugScreenTracker name="EventEditorScreen"><EventEditorScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
