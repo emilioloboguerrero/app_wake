@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
-import Button from '../components/Button';
+import { FullScreenError } from '../components/ui';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import libraryService from '../services/libraryService';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 
 import {
   DndContext,
@@ -28,6 +30,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import './LibrarySessionDetailScreen.css';
+import './LibraryModuleDetailScreen.css';
 
 // Drop Zone Component
 const DropZone = ({ id, children, className }) => {
@@ -94,9 +97,9 @@ const DraggableSession = ({ session, isInModule = false, onDelete, isEditMode, o
           </div>
         )}
         <div className="draggable-exercise-info">
-          <div className="draggable-exercise-name">{session.title || 'Sesión sin nombre'}</div>
+          <div className="draggable-exercise-name lmd-session-title">{session.title || 'Sesión sin nombre'}</div>
           {session.exercises && (
-            <div className="draggable-exercise-meta">
+            <div className="draggable-exercise-meta lmd-session-meta">
               {session.exercises.length} ejercicio{session.exercises.length !== 1 ? 's' : ''}
             </div>
           )}
@@ -122,8 +125,10 @@ const DraggableSession = ({ session, isInModule = false, onDelete, isEditMode, o
 const LibraryModuleDetailScreen = () => {
   const { moduleId } = useParams();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const location = useLocation();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [sessions, setSessions] = useState([]);
@@ -164,12 +169,14 @@ const LibraryModuleDetailScreen = () => {
       return { module: mod, sessions: validSessions };
     },
     enabled: !!user && !!moduleId,
+    ...cacheConfig.programStructure,
   });
 
   const { data: allSessionsData } = useQuery({
     queryKey: queryKeys.library.sessions(user?.uid),
     queryFn: () => libraryService.getSessionLibrary(user.uid),
     enabled: !!user && !!moduleQueryData?.module,
+    ...cacheConfig.librarySessions,
   });
 
   const module = moduleQueryData?.module ?? null;
@@ -202,7 +209,12 @@ const LibraryModuleDetailScreen = () => {
     const overId = over.id.toString();
 
     if (activeId.startsWith('available-') && overId === 'module-list') {
-      await addSessionToModule(active.data.current.session);
+      try {
+        await addSessionToModule(active.data.current.session);
+      } catch (err) {
+        logger.error('Error in drag-add session:', err);
+        showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
+      }
       return;
     }
 
@@ -213,7 +225,12 @@ const LibraryModuleDetailScreen = () => {
       if (activeIndex !== -1 && overIndex !== -1 && activeIndex !== overIndex) {
         const newSessions = arrayMove(sessions, activeIndex, overIndex);
         setSessions(newSessions);
-        await updateSessionOrder(newSessions);
+        try {
+          await updateSessionOrder(newSessions);
+        } catch (err) {
+          logger.error('Error in drag-reorder sessions:', err);
+          showToast('No pudimos reordenar las sesiones. Intenta de nuevo.', 'error');
+        }
       }
     }
   };
@@ -240,9 +257,10 @@ const LibraryModuleDetailScreen = () => {
 
       await queryClient.invalidateQueries({ queryKey: ['library', 'module', moduleId] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
     } catch (err) {
       logger.error('Error adding session:', err);
-      alert('Error al agregar la sesión');
+      showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -260,7 +278,7 @@ const LibraryModuleDetailScreen = () => {
       });
     } catch (err) {
       logger.error('Error updating session order:', err);
-      alert('Error al actualizar el orden');
+      showToast('No pudimos actualizar el orden. Intenta de nuevo.', 'error');
     }
   };
 
@@ -293,13 +311,14 @@ const LibraryModuleDetailScreen = () => {
 
       await queryClient.invalidateQueries({ queryKey: ['library', 'module', moduleId] });
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
 
       setIsDeleteModalOpen(false);
       setSessionToDelete(null);
       setDeleteConfirmation('');
     } catch (err) {
       logger.error('Error removing session:', err);
-      alert('Error al remover la sesión');
+      showToast('No pudimos remover la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -317,8 +336,47 @@ const LibraryModuleDetailScreen = () => {
         backPath={backPath}
         backState={backState}
       >
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-loading">Cargando...</div>
+        <div className="lmd-page">
+          <div className="lmd-inner">
+            <div className="library-session-detail-container">
+              <div className="library-session-sidebar">
+                <div className="library-session-sidebar-header">
+                  <ShimmerSkeleton width="160px" height="18px" borderRadius="6px" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 16px' }}>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <ShimmerSkeleton width="60px" height="60px" borderRadius="8px" />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <ShimmerSkeleton width="70%" height="14px" borderRadius="4px" />
+                        <ShimmerSkeleton width="40%" height="12px" borderRadius="4px" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="library-session-main">
+                <div className="library-session-main-header">
+                  <div>
+                    <ShimmerSkeleton width="200px" height="20px" borderRadius="6px" />
+                    <ShimmerSkeleton width="300px" height="14px" borderRadius="4px" />
+                  </div>
+                  <ShimmerSkeleton width="120px" height="36px" borderRadius="8px" />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 0' }}>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <ShimmerSkeleton width="60px" height="60px" borderRadius="8px" />
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <ShimmerSkeleton width="60%" height="14px" borderRadius="4px" />
+                        <ShimmerSkeleton width="30%" height="12px" borderRadius="4px" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -326,31 +384,30 @@ const LibraryModuleDetailScreen = () => {
 
   if (error || !module) {
     return (
-      <DashboardLayout 
+      <DashboardLayout
         screenName="Módulo"
         showBackButton={true}
         backPath={backPath}
         backState={backState}
       >
-        <div className="library-session-detail-container">
-          <div className="library-session-detail-error">
-            <p>{error || 'Módulo no encontrado'}</p>
-            <button onClick={() => navigate(backPath, { state: backState })} className="back-button">
-              Volver a Contenido
-            </button>
-          </div>
-        </div>
+        <FullScreenError
+          title="No se pudo cargar el modulo"
+          message={error || 'Modulo no encontrado'}
+          onRetry={() => navigate(0)}
+        />
       </DashboardLayout>
     );
   }
 
   return (
-    <DashboardLayout 
+    <DashboardLayout
       screenName={module.title}
       showBackButton={true}
       backPath={backPath}
       backState={backState}
     >
+      <div className="lmd-page">
+      <div className="lmd-inner">
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -361,7 +418,7 @@ const LibraryModuleDetailScreen = () => {
           {/* Sidebar - Available Sessions */}
           <div className="library-session-sidebar">
             <div className="library-session-sidebar-header">
-              <h3 className="library-session-sidebar-title">Sesiones Disponibles</h3>
+              <h3 className="library-session-sidebar-title lmd-section-label">Sesiones Disponibles</h3>
             </div>
             
             <div className="library-session-sidebar-content">
@@ -394,13 +451,13 @@ const LibraryModuleDetailScreen = () => {
           <div className="library-session-main">
             <div className="library-session-main-header">
               <div>
-                <h2 className="library-session-main-title">Sesiones en el Módulo</h2>
-                <p className="library-session-main-subtitle">
+                <h2 className="library-session-main-title lmd-title">Sesiones en el Módulo</h2>
+                <p className="library-session-main-subtitle lmd-subtitle">
                   Arrastra sesiones desde el panel izquierdo o reorganiza las existentes
                 </p>
               </div>
               <button
-                className={`library-session-edit-button ${isEditMode ? 'active' : ''}`}
+                className={`library-session-edit-button lmd-btn-outline ${isEditMode ? 'active' : ''}`}
                 onClick={() => setIsEditMode(!isEditMode)}
               >
                 {isEditMode ? 'Guardar Orden' : 'Editar Orden'}
@@ -424,15 +481,16 @@ const LibraryModuleDetailScreen = () => {
                   items={sessions.map(s => s.dragId)}
                   strategy={verticalListSortingStrategy}
                 >
-                  {sessions.map((session) => (
-                    <DraggableSession
-                      key={session.dragId}
-                      session={session}
-                      isInModule={true}
-                      onDelete={isEditMode ? handleDeleteSession : null}
-                      isEditMode={isEditMode}
-                      onClick={(s) => navigate(`/content/sessions/${s.id}`, { state: { returnTo: location.pathname, returnState: {} } })}
-                    />
+                  {sessions.map((session, index) => (
+                    <div key={session.dragId} style={{ '--index': index }}>
+                      <DraggableSession
+                        session={session}
+                        isInModule={true}
+                        onDelete={isEditMode ? handleDeleteSession : null}
+                        isEditMode={isEditMode}
+                        onClick={(s) => navigate(`/content/sessions/${s.id}`, { state: { returnTo: location.pathname, returnState: {} } })}
+                      />
+                    </div>
                   ))}
                 </SortableContext>
               )}
@@ -474,6 +532,8 @@ const LibraryModuleDetailScreen = () => {
           ) : null}
         </DragOverlay>
       </DndContext>
+      </div>
+      </div>
 
       {/* Delete Modal */}
       <Modal

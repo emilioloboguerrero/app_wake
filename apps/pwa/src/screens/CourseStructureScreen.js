@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,59 +10,28 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import workoutProgressService from '../data-management/workoutProgressService';
-import exerciseLibraryService from '../services/exerciseLibraryService';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
-// Component to handle async exercise resolution
+
 const ExerciseList = ({ exercises, styles }) => {
-  const [resolvedExercises, setResolvedExercises] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const resolveExercises = async () => {
-      try {
-        const resolved = await Promise.all(
-          exercises.map(async (exercise, exerciseIndex) => {
-            try {
-              const primaryExerciseData = await exerciseLibraryService.resolvePrimaryExercise(exercise.primary);
-              return {
-                id: exercise.id,
-                title: primaryExerciseData.title,
-                index: exerciseIndex
-              };
-            } catch (error) {
-              logger.error(`❌ Error resolving exercise ${exercise.id}:`, error);
-              return {
-                id: exercise.id,
-                title: `Exercise ${exercise.id}`,
-                index: exerciseIndex
-              };
-            }
-          })
-        );
-        setResolvedExercises(resolved);
-      } catch (error) {
-        logger.error('❌ Error resolving exercises:', error);
-      } finally {
-        setLoading(false);
+  const resolvedExercises = useMemo(() =>
+    exercises.map((exercise, index) => {
+      let title = exercise.name || `Exercise ${exercise.id}`;
+      if (!exercise.name && exercise.primary && typeof exercise.primary === 'object') {
+        const firstKey = Object.keys(exercise.primary)[0];
+        if (firstKey) title = exercise.primary[firstKey];
       }
-    };
-
-    resolveExercises();
-  }, [exercises]);
-
-  if (loading) {
-    return (
-      <View style={styles.exerciseItem}>
-        <Text style={styles.exerciseText}>• Cargando ejercicios...</Text>
-      </View>
-    );
-  }
+      return { id: exercise.id, title, index };
+    }),
+    [exercises]
+  );
 
   return (
     <>
@@ -79,9 +48,6 @@ const CourseStructureScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user } = useAuth();
-  const [courseData, setCourseData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [expandedModules, setExpandedModules] = useState({});
   const [expandedSessions, setExpandedSessions] = useState({});
   const moduleAnimsRef = useRef(new Map());
@@ -262,25 +228,17 @@ const CourseStructureScreen = ({ navigation, route }) => {
     },
   }), [screenWidth, screenHeight]);
 
-  useEffect(() => {
-    fetchCourseData();
-  }, []);
+  const structureEnabled = !!course.courseId && !!user?.uid;
+  const { data: courseQueryData, isLoading: loading, isError, refetch } = useQuery({
+    queryKey: ['programs', 'structure', course.courseId, user?.uid],
+    queryFn: () => workoutProgressService.getCourseDataForWorkout(course.courseId, user?.uid),
+    enabled: structureEnabled,
+    staleTime: STALE_TIMES.programStructure,
+    gcTime: GC_TIMES.programStructure,
+  });
 
-  const fetchCourseData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const data = await workoutProgressService.getCourseDataForWorkout(course.courseId, user?.uid);
-      setCourseData(data?.courseData);
-      
-    } catch (error) {
-      logger.error('❌ Error fetching course data:', error);
-      setError('Error al cargar la estructura del curso');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const courseData = courseQueryData?.courseData ?? null;
+  const error = isError ? 'Error al cargar la estructura del curso' : null;
 
   const toggleModule = (moduleId) => {
     setExpandedModules(prev => {
@@ -321,13 +279,6 @@ const CourseStructureScreen = ({ navigation, route }) => {
   const handleSessionPress = (session, sessionIndex, moduleId) => {
     // Calculate global session index across all modules
     const globalSessionIndex = calculateGlobalSessionIndex(moduleId, sessionIndex);
-    
-    logger.log('📍 Navigating to session:', {
-      sessionTitle: session.title,
-      sessionId: session.id || session.sessionId,
-      moduleId: moduleId,
-      globalIndex: globalSessionIndex
-    });
     
     // Navigate to DailyWorkout with session pre-selected
     navigation.navigate('DailyWorkout', {
@@ -421,7 +372,6 @@ const CourseStructureScreen = ({ navigation, route }) => {
           <WakeHeaderSpacer />
           <View style={styles.loadingContainer}>
             <WakeLoader size={80} />
-            <Text style={styles.loadingText}>Cargando estructura...</Text>
           </View>
         </WakeHeaderContent>
       </SafeAreaView>
@@ -440,7 +390,7 @@ const CourseStructureScreen = ({ navigation, route }) => {
           <WakeHeaderSpacer />
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={fetchCourseData}>
+            <TouchableOpacity style={styles.retryButton} onPress={refetch}>
               <Text style={styles.retryButtonText}>Reintentar</Text>
             </TouchableOpacity>
           </View>

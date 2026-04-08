@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import eventService from '../services/eventService';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,7 +31,7 @@ export default function EventCheckinScreen() {
     queryKey: ['events', eventId],
     queryFn: () => eventService.getEvent(eventId),
     enabled: !!user && !!eventId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
   });
 
   const event = eventData ?? null;

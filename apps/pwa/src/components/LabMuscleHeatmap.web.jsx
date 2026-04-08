@@ -1,8 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Asset } from 'expo-asset';
+import DOMPurify from 'dompurify';
 
 const svgModule = require('../assets/icons/vectors_fig/porfin.svg');
+
+const sanitizeSvg = (svg) => {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['style'],
+  });
+};
 
 const MUSCLE_KEYS = [
   'pecs', 'triceps', 'front_delts', 'lats', 'rhomboids', 'biceps', 'rear_delts',
@@ -18,7 +26,7 @@ function getFetchableSvgUrl(moduleOrUrl) {
   return asset.uri;
 }
 
-// White → gold → red scale matching muscleColorUtils.js
+// White (low opacity) → white (high opacity) → red scale matching muscleColorUtils.js
 function getVolumeStyle(sets) {
   const n = sets || 0;
   if (n === 0) return { fill: 'rgba(255,255,255,0.09)', stroke: 'rgba(255,255,255,0.12)' };
@@ -33,7 +41,7 @@ function getVolumeStyle(sets) {
   return { fill: 'rgba(139,0,0,0.85)', stroke: 'rgba(139,0,0,0.55)' };
 }
 
-// Gold (low opacity) = increased, white = similar, red = decreased vs previous week
+// White (low opacity) = increased, white (medium opacity) = similar, red = decreased vs previous week
 function getTrendStyle(current, previous) {
   const cur = current || 0;
   const prev = previous || 0;
@@ -98,7 +106,8 @@ export default function LabMuscleHeatmap({ weekVolume = {}, previousWeekVolume =
         const res = await fetch(url);
         if (!res.ok) { setFetchFailed(true); return; }
         const text = await res.text();
-        const sized = text
+        const sanitized = sanitizeSvg(text);
+        const sized = sanitized
           .replace(/width="7996"/, 'width="100%"')
           .replace(/height="8819"/, 'style="height:auto;display:block;"');
         setRawSvg(sized);

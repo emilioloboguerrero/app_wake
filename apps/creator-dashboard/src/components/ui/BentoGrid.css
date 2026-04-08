@@ -1,0 +1,110 @@
+/* ─── Bento Grid base ────────────────────────────────────────── */
+.bento-grid {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+/* ─── 5-panel layout (3 col × 3 row) ────────────────────────── */
+/*  A = col1 rows1-2  |  B = col2 row1     |  E = col3 rows1-3  */
+/*  D = col1 row3     |  C = col2 rows2-3   |                    */
+.bento-grid--5-panel {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, minmax(160px, auto));
+  grid-template-areas:
+    "A B E"
+    "A C E"
+    "D C E";
+}
+
+/* ─── 7-panel layout (3 col × 3 row) ────────────────────────── */
+/*  A = col1 row1     |  B = cols2-3 row1   |                    */
+/*  E = col1 row2     |  C = col2 row2      |  D = col3 rows2-3  */
+/*  G = col1 row3     |  F = col2 row3      |                    */
+.bento-grid--7-panel {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, minmax(160px, auto));
+  grid-template-areas:
+    "A B B"
+    "E C D"
+    "G F D";
+}
+
+/* ─── Legacy span variants (used by standalone cards) ────────── */
+.bento-card--2x1 { grid-column: span 2; }
+
+/* ─── Card base ──────────────────────────────────────────────── */
+.bento-card {
+  position: relative;
+  background: var(--surface-1, #222);
+  border: 1px solid var(--border-default, rgba(255,255,255,0.10));
+  border-radius: var(--radius-lg, 16px);
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.4),
+    0 0 0 1px rgba(255,255,255,0.04);
+  animation: bento-enter 0.5s var(--spring, cubic-bezier(0.22,1,0.36,1)) both;
+  transition: border-color 200ms var(--spring, cubic-bezier(0.22,1,0.36,1)),
+              box-shadow 200ms var(--spring, cubic-bezier(0.22,1,0.36,1));
+}
+
+.bento-card[role="button"] {
+  cursor: pointer;
+}
+
+.bento-card[role="button"]:hover {
+  border-color: var(--border-strong, rgba(255,255,255,0.18));
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.bento-card[role="button"]:active {
+  transform: scale(0.99);
+}
+
+@keyframes bento-enter {
+  from { opacity: 0; transform: translateY(16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── One-on-one view layout (3 col × 2 row) ─────────────────── */
+/*  A = col1 row1  |  B = cols2-3 row1                            */
+/*  C = cols1-3 row2  (full-width adherence chart)                */
+.bento-grid--one-on-one {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 210px 1fr;
+  grid-template-areas:
+    "A B B"
+    "C C C";
+}
+
+/* ─── Programs view layout (3 col × 2 row) ───────────────────── */
+/*  A = col1 row1  |  B = cols2-3 row1                            */
+/*  C = cols1-2 row2  |  D = col3 row2                            */
+.bento-grid--programs {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 210px 1fr;
+  grid-template-areas:
+    "A B B"
+    "C C D";
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .bento-grid--5-panel,
+  .bento-grid--7-panel,
+  .bento-grid--one-on-one,
+  .bento-grid--programs {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .bento-grid--5-panel > *,
+  .bento-grid--7-panel > *,
+  .bento-grid--one-on-one > *,
+  .bento-grid--programs > * {
+    grid-area: unset !important;
+    min-height: 140px;
+  }
+}

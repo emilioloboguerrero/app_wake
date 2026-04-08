@@ -1,49 +1,33 @@
-import { collection, getDocs } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 
-/**
- * Fetches the main_hero_landing image URLs from the app_resources collection.
- * Finds the first document that has a main_hero_landing array.
- * @returns {Promise<string[]>} Array of image URLs
- */
+let cachedData = null;
+let cachedAt = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getAppResources() {
+  if (cachedData && Date.now() - cachedAt < CACHE_TTL) return cachedData;
+  try {
+    const { data } = await apiClient.get('/app-resources');
+    cachedData = data;
+    cachedAt = Date.now();
+    return data;
+  } catch (err) {
+    if (cachedData) return cachedData;
+    return {};
+  }
+}
+
 export async function getMainHeroLandingImages() {
-  const snapshot = await getDocs(collection(firestore, 'app_resources'));
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    if (data.main_hero_landing && Array.isArray(data.main_hero_landing)) {
-      return data.main_hero_landing;
-    }
-  }
-  return [];
+  const data = await getAppResources();
+  return Array.isArray(data.mainHeroLanding) ? data.mainHeroLanding : [];
 }
 
-/**
- * Fetches the cards array (image URLs) from the app_resources collection.
- * Same document as main_hero_landing. cards[0] = first card image, etc.
- * @returns {Promise<string[]>} Array of card image URLs
- */
 export async function getLandingCards() {
-  const snapshot = await getDocs(collection(firestore, 'app_resources'));
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    if (data.cards && Array.isArray(data.cards)) {
-      return data.cards;
-    }
-  }
-  return [];
+  const data = await getAppResources();
+  return Array.isArray(data.cards) ? data.cards : [];
 }
 
-/**
- * Fetches the dos_formas image URL (string) from the app_resources collection.
- * @returns {Promise<string|null>} Image URL or null
- */
 export async function getDosFormasImage() {
-  const snapshot = await getDocs(collection(firestore, 'app_resources'));
-  for (const doc of snapshot.docs) {
-    const data = doc.data();
-    if (data.dos_formas && typeof data.dos_formas === 'string') {
-      return data.dos_formas;
-    }
-  }
-  return null;
+  const data = await getAppResources();
+  return typeof data.dosFormas === 'string' ? data.dosFormas : null;
 }

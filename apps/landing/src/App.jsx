@@ -6,6 +6,8 @@ import SupportScreen from './screens/SupportScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import CreatorsPage from './screens/CreatorsPage';
 import EventSignupScreen from './screens/EventSignupScreen';
+import LandingDesignScreen from './screens/LandingDesignScreen';
+import HeroShell from './screens/heroes/HeroShell';
 import { getMainHeroLandingImages, getLandingCards, getDosFormasImage } from './services/heroImagesService';
 import heroLogo from './assets/hero-logo.svg';
 import heroFallback from './assets/hero-fallback.png';
@@ -33,7 +35,7 @@ function Home() {
   const dosFormasRef = useRef(null);
 
   useEffect(() => {
-    getMainHeroLandingImages().then(setHeroImages);
+    getMainHeroLandingImages().then(setHeroImages).catch(() => {});
   }, []);
 
   const [dbImagesReady, setDbImagesReady] = useState(false);
@@ -53,11 +55,11 @@ function Home() {
   }, [heroImages]);
 
   useEffect(() => {
-    getLandingCards().then(setCards);
+    getLandingCards().then(setCards).catch(() => {});
   }, []);
 
   useEffect(() => {
-    getDosFormasImage().then(setDosFormasImage);
+    getDosFormasImage().then(setDosFormasImage).catch(() => {});
   }, []);
 
   const allHeroImages = [HERO_PLACEHOLDER, ...heroImages];
@@ -137,7 +139,7 @@ function Home() {
         >
           {allHeroImages.map((url, i) => (
               <img
-                key={i}
+                key={url}
                 src={url}
                 alt=""
                 width={16}
@@ -290,14 +292,14 @@ function Home() {
                     <p className="section-card-back-text">
                       Programas diseñados por entrenadores y referentes <strong>en los que confías</strong>. Rutinas <strong>estructuradas y adaptables</strong> a tu nivel para que entrenes con quien <strong>te inspira</strong>.
                     </p>
-                    <button
-                      type="button"
+                    <a
+                      href="/creators"
                       className="section-card-back-cta"
-                      onClick={(e) => { e.stopPropagation(); /* TODO: navegar a página de creadores */ }}
+                      onClick={(e) => { e.stopPropagation(); }}
                       aria-label="Ver entrenadores en la plataforma"
                     >
                       Ver entrenadores
-                    </button>
+                    </a>
                   </div>
                 </div>
               </div>
@@ -396,6 +398,23 @@ function AppContent() {
       window.removeEventListener('scroll', check);
     };
   }, [location.pathname]);
+
+  if (location.pathname === '/design') {
+    return (
+      <Routes>
+        <Route path="/design" element={<LandingDesignScreen />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith('/heroes')) {
+    return (
+      <Routes>
+        <Route path="/heroes/:heroId" element={<HeroShell />} />
+        <Route path="/heroes" element={<Navigate to="/heroes/main" replace />} />
+      </Routes>
+    );
+  }
 
   if (location.pathname.startsWith('/e/')) {
     return (

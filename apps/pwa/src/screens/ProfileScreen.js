@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { queryKeys, cacheConfig } from '../config/queryClient';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
+import { queryKeys } from '../config/queryClient';
 import {
   View,
   Text,
@@ -22,17 +23,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
-import { CommonActions } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { auth } from '../config/firebase';
-import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { updateProfile, EmailAuthProvider, GoogleAuthProvider, reauthenticateWithPopup } from 'firebase/auth';
+import { isWeb } from '../utils/platform';
 import googleAuthService from '../services/googleAuthService';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import tutorialManager from '../services/tutorialManager';
 import profilePictureService from '../services/profilePictureService';
 import TutorialOverlay from '../components/TutorialOverlay';
@@ -45,11 +45,11 @@ import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
 import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
+import SvgArrowReload from '../components/icons/SvgArrowReload';
 
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
-import { calculateExpirationDate } from '../utils/durationHelper';
 import { getAverageColorFromImageUrl } from '../utils/imageColorUtils';
 
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
@@ -61,6 +61,8 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
+  const queryClient = useQueryClient();
+  // TODO: Consolidate dual loading state into a single loading state or use React Query's built-in isLoading
   const [loading, setLoading] = useState(true); // Start with true for initial profile load
   const [profileLoading, setProfileLoading] = useState(true); // Separate state for profile data loading
   
@@ -99,6 +101,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   const [defaultTrainingOptions, setDefaultTrainingOptions] = useState([]);
   const [defaultNutritionOptions, setDefaultNutritionOptions] = useState([]);
   const [loadingPinned, setLoadingPinned] = useState(false);
+  const [syncingPrograms, setSyncingPrograms] = useState(false);
 
   // Legal documents WebView state
   const [isLegalWebViewVisible, setIsLegalWebViewVisible] = useState(false);
@@ -140,7 +143,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   // Debounce timer for username validation
   const usernameDebounceTimer = useRef(null);
 
-
   // Track previous user ID to detect changes
   const previousUserIdRef = useRef(null);
   const profileEntranceAnim = useRef(new Animated.Value(0)).current;
@@ -154,10 +156,32 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
   const { data: profileQueryData, isLoading: profileQueryLoading } = useQuery({
     queryKey: queryKeys.user.detail(user?.uid),
-    queryFn: () => hybridDataService.loadUserProfile(user.uid),
+    queryFn: () => apiClient.get('/users/me').then(r => r.data),
     enabled: !!user?.uid,
-    ...cacheConfig.userProfile,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
+
+  const profileUpdateMutation = useMutation({
+    mutationFn: (updates) => apiClient.patch('/users/me', updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
+    },
+  });
+
+  const handleSyncPrograms = async () => {
+    if (!user?.uid || syncingPrograms) return;
+    setSyncingPrograms(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+    } catch (err) {
+      logger.error('Error syncing programs:', err);
+    } finally {
+      setSyncingPrograms(false);
+    }
+  };
 
   // Sync query data into form state and derived state
   useEffect(() => {
@@ -171,25 +195,20 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       return;
     }
     const userData = profileQueryData;
-    logger.log('✅ Profile loaded successfully');
-    if (userData.role) {
-      setUserRole(userData.role);
-    } else {
-      firestoreService.getUser(user.uid).then(doc => setUserRole(doc?.role || 'user')).catch(() => setUserRole('user'));
-    }
+    setUserRole(userData.role || 'user');
     setUserProfile({
       displayName: userData.displayName || '',
       username: userData.username || '',
       email: currentUser?.email || '',
       phoneNumber: userData.phoneNumber || '',
       gender: userData.gender || '',
-      bodyweight: userData.bodyweight || null,
+      bodyweight: userData.weight || null,
       height: userData.height || null,
     });
     if (userData.profilePictureUrl) {
       setProfilePictureUrl(userData.profilePictureUrl);
     } else {
-      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); }).catch(() => {});
+      profilePictureService.getProfilePictureUrl(user.uid).then(url => { if (url) setProfilePictureUrl(url); });
     }
     checkForTutorials();
     setProfileLoading(false);
@@ -239,40 +258,22 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     return user?.email?.split('@')[0] || 'usuario';
   };
 
-  // Load user's current interests and profile from hybrid system - ONLY when modals are opened
-  const loadUserData = async () => {
-    if (user?.uid) {
-      try {
-        const userData = await hybridDataService.loadUserProfile(user.uid);
-        
-        // Load profile data - normalize types for consistent comparison
-        const profileData = {
-          displayName: (userData?.displayName || '').trim(),
-          username: (userData?.username || user?.email?.split('@')[0] || '').trim(),
-          email: (user?.email || '').trim(),
-          phoneNumber: (userData?.phoneNumber || '').trim(),
-          gender: (userData?.gender || '').trim(),
-          // Normalize bodyweight and height - convert to numbers or null
-          bodyweight: userData?.bodyweight ? (typeof userData.bodyweight === 'string' ? parseFloat(userData.bodyweight) : userData.bodyweight) : null,
-          height: userData?.height ? (typeof userData.height === 'string' ? parseFloat(userData.height) : userData.height) : null,
-        };
-        setUserProfile(profileData);
-        // Set originalProfile to match exactly - this is the baseline for change detection
-        setOriginalProfile({
-          displayName: profileData.displayName,
-          username: profileData.username,
-          email: profileData.email,
-          phoneNumber: profileData.phoneNumber,
-          gender: profileData.gender,
-          bodyweight: profileData.bodyweight,
-          height: profileData.height,
-        });
-      } catch (error) {
-        logger.error('Error loading user data:', error);
-      }
-    }
+  // Sync profile form with cached query data — called when settings modal opens
+  const syncProfileFromQueryData = () => {
+    if (!profileQueryData) return;
+    const userData = profileQueryData;
+    const profileData = {
+      displayName: (userData?.displayName || '').trim(),
+      username: (userData?.username || user?.email?.split('@')[0] || '').trim(),
+      email: (user?.email || '').trim(),
+      phoneNumber: (userData?.phoneNumber || '').trim(),
+      gender: (userData?.gender || '').trim(),
+      bodyweight: userData?.weight ? (typeof userData.weight === 'number' ? userData.weight : parseFloat(userData.weight)) : null,
+      height: userData?.height ? (typeof userData.height === 'number' ? userData.height : parseFloat(userData.height)) : null,
+    };
+    setUserProfile(profileData);
+    setOriginalProfile({ ...profileData });
   };
-
 
   // Helper function to normalize values for comparison
   const normalizeValue = (value, isNumeric = false) => {
@@ -329,27 +330,22 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
   };
 
-  // Check if username is available
   const checkUsernameAvailability = async (username) => {
     if (!username || username.length < 3) {
       setUsernameError('El usuario debe tener al menos 3 caracteres');
+      setIsCheckingUsername(false);
       return;
     }
-    
     setIsCheckingUsername(true);
-    setUsernameError('');
-    
     try {
-      const currentUserId = auth.currentUser?.uid || user?.uid;
-      const taken = await firestoreService.isUsernameTaken(username, currentUserId);
-      if (!taken) {
-        setUsernameError(''); // Username is available
+      const taken = await apiService.isUsernameTaken(username);
+      if (taken) {
+        setUsernameError('Este nombre de usuario ya esta en uso');
       } else {
-        setUsernameError('Este usuario ya está en uso');
+        setUsernameError('');
       }
-    } catch (error) {
-      logger.error('Error checking username:', error);
-      setUsernameError('Error al verificar disponibilidad');
+    } catch {
+      setUsernameError('');
     } finally {
       setIsCheckingUsername(false);
     }
@@ -378,7 +374,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   // Handle profile picture change
   const handleChangeProfilePicture = async () => {
     if (!user?.uid) {
-      logger.warn('Profile picture change skipped: no user');
       Alert.alert('Error', 'No se pudo identificar tu sesión. Intenta cerrar sesión y volver a entrar.');
       return;
     }
@@ -388,7 +383,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       
       if (newPictureUrl) {
         setProfilePictureUrl(newPictureUrl);
-        hybridDataService.patchUserProfileCache(user.uid, { profilePictureUrl: newPictureUrl });
         Alert.alert('Éxito', 'Tu foto de perfil se ha actualizado correctamente.');
       }
     } catch (error) {
@@ -406,26 +400,9 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
   };
 
-
-
   // Show settings modal
-  const showSettingsModal = async () => {
-    // Load data when modal opens
-    await loadUserData();
-    // After loading, ensure originalProfile matches current userProfile exactly
-    // This prevents false positives when comparing for changes
-    setOriginalProfile(prev => {
-      const normalized = {
-        displayName: (userProfile.displayName || '').trim(),
-        username: (userProfile.username || '').trim(),
-        email: (userProfile.email || '').trim(),
-        phoneNumber: (userProfile.phoneNumber || '').trim(),
-        gender: (userProfile.gender || '').trim(),
-        bodyweight: userProfile.bodyweight ? (typeof userProfile.bodyweight === 'string' ? parseFloat(userProfile.bodyweight) : userProfile.bodyweight) : null,
-        height: userProfile.height ? (typeof userProfile.height === 'string' ? parseFloat(userProfile.height) : userProfile.height) : null,
-      };
-      return normalized;
-    });
+  const showSettingsModal = () => {
+    syncProfileFromQueryData();
     setIsSettingsModalVisible(true);
   };
 
@@ -434,22 +411,15 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     setIsSettingsModalVisible(false);
   };
 
-  // Load pinned default program ids when settings modal opens
+  // Load pinned default program ids when settings modal opens (read from cached profile query data)
   useEffect(() => {
-    if (!isSettingsModalVisible || !user?.uid) return;
-    let cancelled = false;
-    setLoadingPinned(true);
-    Promise.all([
-      firestoreService.getPinnedTrainingCourseId(user.uid),
-      firestoreService.getPinnedNutritionAssignmentId(user.uid),
-    ]).then(([trainingId, nutritionId]) => {
-      if (!cancelled) {
-        setPinnedTrainingCourseId(trainingId || null);
-        setPinnedNutritionAssignmentId(nutritionId || null);
-      }
-    }).finally(() => { if (!cancelled) setLoadingPinned(false); });
-    return () => { cancelled = true; };
-  }, [isSettingsModalVisible, user?.uid]);
+    if (!isSettingsModalVisible) return;
+    if (profileQueryData) {
+      setPinnedTrainingCourseId(profileQueryData.pinnedTrainingCourseId || null);
+      setPinnedNutritionAssignmentId(profileQueryData.pinnedNutritionAssignmentId || null);
+    }
+    setLoadingPinned(false);
+  }, [isSettingsModalVisible, profileQueryData]);
 
   const openDefaultTrainingPicker = async () => {
     if (!user?.uid) return;
@@ -503,11 +473,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     const id = item?.courseId ?? item?.id ?? null;
     const title = id ? (item?.title ?? '') : '';
     try {
-      await firestoreService.setPinnedTrainingCourseId(user.uid, id);
+      await apiClient.patch('/users/me', { pinnedTrainingCourseId: id });
       setPinnedTrainingCourseId(id);
       setPinnedTrainingTitle(title);
     } catch (e) {
-      logger.error('[Profile] setPinnedTrainingCourseId failed', e);
+      logger.error('[Profile] pinnedTrainingCourseId update failed', e);
       Alert.alert('Error', 'No se pudo guardar la preferencia.');
     }
   };
@@ -518,39 +488,37 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     const id = item?.assignmentId ?? item?.id ?? null;
     const title = id ? (item?.title ?? '') : '';
     try {
-      await firestoreService.setPinnedNutritionAssignmentId(user.uid, id);
+      await apiClient.patch('/users/me', { pinnedNutritionAssignmentId: id });
       setPinnedNutritionAssignmentId(id);
       setPinnedNutritionTitle(title);
     } catch (e) {
-      logger.error('[Profile] setPinnedNutritionAssignmentId failed', e);
+      logger.error('[Profile] pinnedNutritionAssignmentId update failed', e);
       Alert.alert('Error', 'No se pudo guardar la preferencia.');
     }
   };
 
-  // Save profile using hybrid system
+  // Save profile
   const saveProfile = async () => {
+    // Validate inputs before saving
     try {
-      setSettingsLoading(true);
-      
-      // Validate inputs before saving
-      try {
-        validateDisplayName(userProfile.displayName);
-        validateUsernameFormat(userProfile.username);
-        if (userProfile.phoneNumber?.trim()) {
-          validatePhoneNumber(userProfile.phoneNumber);
-        }
-      } catch (validationError) {
-        Alert.alert('Error de Validación', validationError.message);
-        setSettingsLoading(false);
-        return;
+      validateDisplayName(userProfile.displayName);
+      validateUsernameFormat(userProfile.username);
+      if (userProfile.phoneNumber?.trim()) {
+        validatePhoneNumber(userProfile.phoneNumber);
       }
-      
-      await hybridDataService.updateUserProfile(user.uid, {
-        displayName: userProfile.displayName,
-        username: userProfile.username,
-        phoneNumber: userProfile.phoneNumber,
-        gender: userProfile.gender,
-        bodyweight: userProfile.bodyweight ? parseFloat(userProfile.bodyweight) : null,
+    } catch (validationError) {
+      Alert.alert('Error de Validación', validationError.message);
+      return;
+    }
+
+    setSettingsLoading(true);
+    try {
+      await profileUpdateMutation.mutateAsync({
+        displayName: (userProfile.displayName || '').trim(),
+        username: (userProfile.username || '').trim(),
+        phoneNumber: (userProfile.phoneNumber || '').trim(),
+        gender: (userProfile.gender || '').trim(),
+        weight: userProfile.bodyweight ? parseFloat(userProfile.bodyweight) : null,
         height: userProfile.height ? parseFloat(userProfile.height) : null,
       });
 
@@ -561,36 +529,35 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             displayName: userProfile.displayName.trim()
           });
           await auth.currentUser.reload();
-          logger.log('✅ Firebase Auth displayName synced from profile settings');
         } catch (profileSyncError) {
-          logger.warn('⚠️ Failed to sync Firebase Auth displayName from profile settings:', profileSyncError);
         }
       }
 
-      setOriginalProfile({...userProfile}); // Update original to match current
+      setOriginalProfile({...userProfile});
       if (Platform.OS !== 'web') Alert.alert('Éxito', 'Tu perfil ha sido actualizado');
       hideSettingsModal();
-      
-      // Navigate back to Main tab to refresh profile data
+
       navigation.reset({
         index: 0,
         routes: [{ name: 'Main' }],
       });
     } catch (error) {
       logger.error('Error saving profile:', error);
-      Alert.alert('Error', 'No se pudo guardar el perfil');
+      if (error?.code === 'CONFLICT' || error?.response?.status === 409) {
+        Alert.alert('Error', 'Ese nombre de usuario ya está en uso.');
+      } else {
+        Alert.alert('Error', 'No se pudo guardar el perfil');
+      }
     } finally {
       setSettingsLoading(false);
     }
   };
 
   const handleSignOut = () => {
-    logger.log('🔐 handleSignOut called - showing confirmation modal');
     setIsSignOutConfirmModalVisible(true);
   };
 
   const handleSignOutConfirm = async () => {
-    logger.log('🔐 User confirmed sign out');
     try {
       setIsSignOutConfirmModalVisible(false);
       // Close the settings modal first
@@ -598,12 +565,10 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       
       // Sign out user
       await authService.signOutUser();
-      logger.log('🔐 Sign out successful');
-      
+
       // On web/PWA, force full reload to /login so the app always shows the login screen
       if (typeof window !== 'undefined') {
         const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
-        logger.log('🌐 Web: reloading to /login');
         window.location.replace(loginPath);
         return;
       }
@@ -615,13 +580,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   };
 
   const handleSignOutCancel = () => {
-    logger.log('🔐 Sign out cancelled');
     setIsSignOutConfirmModalVisible(false);
   };
 
   // Handle delete account request
   const handleDeleteAccountRequest = () => {
-    logger.debug('🗑️ Delete account button pressed');
     // Remember that settings modal was open
     setWasSettingsModalOpen(isSettingsModalVisible);
     // Close settings modal and open delete account modal
@@ -687,10 +650,9 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     try {
       setDeleteAccountLoading(true);
       
-      // Save feedback to Firestore before deletion
-      await firestoreService.saveAccountDeletionFeedback(
+      await apiService.saveAccountDeletionFeedback(
         auth.currentUser.uid,
-        feedbackToSave
+        { reason: selectedDeleteReason, details: selectedDeleteReason === 'Otros' ? feedbackToSave : null }
       );
 
       // Show final delete button
@@ -736,16 +698,27 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       } else if (providerId === 'google.com') {
         // Google authentication - reauthenticate with Google
         try {
-          const GoogleSigninModule = await googleAuthService.loadGoogleSignIn();
-          await GoogleSigninModule.hasPlayServices({ showPlayServicesUpdateDialog: true });
-          const signInResult = await GoogleSigninModule.signIn();
-          const idToken = signInResult.data?.idToken || signInResult.idToken;
-          if (idToken) {
-            credential = GoogleAuthProvider.credential(idToken);
+          if (isWeb) {
+            const provider = new GoogleAuthProvider();
+            await reauthenticateWithPopup(auth.currentUser, provider);
+            // reauthenticateWithPopup handles the credential internally — no separate credential needed
+            credential = null;
           } else {
-            throw new Error('No se obtuvo el token de Google');
+            const GoogleSigninModule = await googleAuthService.loadGoogleSignIn();
+            await GoogleSigninModule.hasPlayServices({ showPlayServicesUpdateDialog: true });
+            const signInResult = await GoogleSigninModule.signIn();
+            const idToken = signInResult.data?.idToken || signInResult.idToken;
+            if (idToken) {
+              credential = GoogleAuthProvider.credential(idToken);
+            } else {
+              throw new Error('No se obtuvo el token de Google');
+            }
           }
         } catch (error) {
+          if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+            setDeleteAccountLoading(false);
+            return;
+          }
           logger.error('Google reauthentication error:', error);
           throw new Error('No se pudo reautenticar con Google. Por favor intenta de nuevo.');
         }
@@ -803,16 +776,12 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     if (!user?.uid) return;
 
     try {
-      logger.log('🎬 Checking for profile screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'profile');
-      
+
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.log('✅ No tutorials to show for profile screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -831,14 +800,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           'profile', 
           currentTutorial.videoUrl
         );
-        logger.log('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
     }
   };
-
-
 
   const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
@@ -1430,23 +1396,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                         styles.deleteAccountButtonInModal,
                         (deleteAccountLoading || (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim())) && styles.deleteAccountButtonDisabled
                       ]}
-                      onPress={() => {
-                        Alert.alert(
-                          'Última confirmación',
-                          '¿Estás seguro de que deseas eliminar tu cuenta permanentemente? Esta acción no se puede deshacer.',
-                          [
-                            {
-                              text: 'Cancelar',
-                              style: 'cancel'
-                            },
-                            {
-                              text: 'Eliminar',
-                              style: 'destructive',
-                              onPress: handleDeleteAccountConfirm
-                            }
-                          ]
-                        );
-                      }}
+                      onPress={handleDeleteAccountConfirm}
                       disabled={deleteAccountLoading || (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim())}
                     >
                       <Text style={[
@@ -1586,8 +1536,20 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           </TouchableOpacity>
         </View>
 
+        {/* Sync programs button */}
+        <TouchableOpacity
+          style={styles.syncProgramsButton}
+          onPress={handleSyncPrograms}
+          disabled={syncingPrograms}
+          activeOpacity={0.7}
+        >
+          <SvgArrowReload width={16} height={16} color={syncingPrograms ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)'} />
+          <Text style={[styles.syncProgramsText, syncingPrograms && { opacity: 0.5 }]}>
+            {syncingPrograms ? 'Sincronizando...' : 'Sincronizar programas'}
+          </Text>
+        </TouchableOpacity>
+
         {/* Creator section */}
-        {logger.log('[ProfileScreen] render: userRole =', userRole) || null}
         {(userRole === 'creator' || userRole === 'admin') && (
           <View style={styles.creatorSectionContainer}>
             <TouchableOpacity
@@ -1608,7 +1570,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             </TouchableOpacity>
           </View>
         )}
-
 
         <BottomSpacer />
         </WakeHeaderContent>
@@ -2220,7 +2181,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
-    backgroundColor: '#ff4444',
+    backgroundColor: 'rgba(224, 84, 84, 0.9)',
   },
   signOutConfirmButtonText: {
     color: '#ffffff',
@@ -2448,7 +2409,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   // Username validation styles
   textInputError: {
-    borderColor: '#ff4444',
+    borderColor: 'rgba(224, 84, 84, 0.9)',
     borderWidth: 1,
   },
   textInputChanged: {
@@ -2458,7 +2419,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     marginTop: 4,
   },
   successText: {
@@ -2558,6 +2519,20 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   bodyweightHeightField: {
     flex: 1,
+  },
+  syncProgramsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    marginBottom: Math.max(8, screenHeight * 0.01),
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  syncProgramsText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 14,
+    fontWeight: '500',
   },
   creatorSectionContainer: {
     marginBottom: Math.max(15, screenHeight * 0.02),

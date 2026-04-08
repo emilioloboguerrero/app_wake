@@ -1,58 +1,410 @@
-.dashboard-content {
+/* ─── Canvas ─────────────────────────────────────────────────────── */
+.ds-canvas {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: 1200px;
+  height: calc(100vh - 144px); /* StickyHeader text: 80px logo + 2×16px inner padding + 2×16px outer padding */
+  padding: 20px 24px 60px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
-.dashboard-welcome {
-  margin-top: 32px;
-  margin-bottom: 40px;
+/* ─── View nav ───────────────────────────────────────────────────── */
+.ds-view-nav {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
-.welcome-text {
-  font-size: 1.5rem;
+/* ─── View body ──────────────────────────────────────────────────── */
+.ds-view-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Bento wrapper (fills remaining height) ─────────────────────── */
+.ds-bento-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-bento-wrapper .bento-grid--one-on-one,
+.ds-bento-wrapper .bento-grid--programs {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── Card inner layouts ─────────────────────────────────────────── */
+.ds-card-inner {
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  gap: 10px;
+}
+
+.ds-card-inner--chart {
+  gap: 8px;
+}
+
+.ds-card-inner--revenue {
+  justify-content: center;
+  gap: 6px;
+}
+
+/* ─── Card header ────────────────────────────────────────────────── */
+.ds-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* ─── Card typography ────────────────────────────────────────────── */
+.ds-card-label {
+  font-size: 0.68rem;
   font-weight: 600;
-  color: #ffffff;
-  margin: 0 0 8px 0;
-}
-
-.welcome-subtext {
-  font-size: 1rem;
-  color: #cccccc;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, rgba(255,255,255,0.4));
   margin: 0;
 }
 
-.dashboard-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 24px;
-  margin-top: 32px;
+.ds-card-sublabel {
+  font-size: 0.7rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.35));
+  margin: 2px 0 0;
 }
 
-.stat-card {
-  background-color: #2a2a2a;
-  border: 1px solid #333;
-  border-radius: 12px;
-  padding: 24px;
-  text-align: center;
-  transition: all 0.2s ease;
+.ds-card-empty {
+  font-size: 0.82rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.35));
+  margin: 0;
+  line-height: 1.5;
 }
 
-.stat-card:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
+.ds-card-empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
 }
 
-.stat-number {
-  font-size: 2.5rem;
+.ds-card-empty-state svg {
+  opacity: 0.5;
+}
+
+.ds-card-empty-state span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ─── Revenue number ─────────────────────────────────────────────── */
+.ds-revenue-number {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 800;
+  color: var(--text-primary, rgba(255,255,255,0.95));
+  margin: 4px 0 0;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── % change badge ─────────────────────────────────────────────── */
+.ds-pct-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 1);
-  margin: 0 0 8px 0;
+  letter-spacing: 0.02em;
+  border: 1px solid;
+  width: fit-content;
+  font-variant-numeric: tabular-nums;
 }
 
-.stat-label {
+.ds-pct-badge--up {
+  color: rgba(100,225,150,0.95);
+  background: rgba(100,225,150,0.08);
+  border-color: rgba(100,225,150,0.18);
+}
+
+.ds-pct-badge--down {
+  color: rgba(255,115,100,0.95);
+  background: rgba(255,115,100,0.08);
+  border-color: rgba(255,115,100,0.18);
+}
+
+/* ─── Video exchange badge ───────────────────────────────────────── */
+.ds-video-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255,195,70,0.95);
+  background: rgba(255,195,70,0.08);
+  border: 1px solid rgba(255,195,70,0.18);
+  flex-shrink: 0;
+}
+
+/* ─── Calls list ─────────────────────────────────────────────────── */
+.ds-calls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.ds-call-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.05));
+}
+
+.ds-call-row:last-child {
+  border-bottom: none;
+}
+
+.ds-call-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface-3, #2e2e2e);
+  border: 1px solid var(--border-default, rgba(255,255,255,0.10));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-secondary, rgba(255,255,255,0.65));
+  flex-shrink: 0;
+}
+
+.ds-call-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ds-call-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-primary, rgba(255,255,255,0.95));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-call-time {
+  font-size: 0.72rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.4));
+}
+
+.ds-today-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255,255,255,0.9);
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* ─── Plan stats row (client count card) ─────────────────────────── */
+.ds-plan-stats {
+  display: flex;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.ds-plan-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.ds-plan-stat__num {
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-plan-stat__label {
+  font-size: 0.68rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.35));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+/* ─── Enrollment summary stats ───────────────────────────────────── */
+.ds-enrollment-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.ds-enrollment-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.ds-enrollment-stat__num {
   font-size: 1rem;
-  color: #cccccc;
-  margin: 0;
-  font-weight: 400;
+  font-weight: 800;
+  color: var(--text-primary, rgba(255,255,255,0.95));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 
+.ds-enrollment-stat__label {
+  font-size: 0.62rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.35));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.ds-enrollment-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border-subtle, rgba(255,255,255,0.06));
+  flex-shrink: 0;
+}
+
+/* ─── Legend ─────────────────────────────────────────────────────── */
+.ds-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ds-legend-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ds-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ds-legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ds-legend-name {
+  font-size: 0.7rem;
+  color: var(--text-secondary, rgba(255,255,255,0.55));
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Chart area ─────────────────────────────────────────────────── */
+.ds-chart-area {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.ds-chart-area--tall {
+  flex: 1;
+  min-height: 120px;
+}
+
+/* ─── Chart tooltip ──────────────────────────────────────────────── */
+.ds-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  background: rgba(22, 22, 22, 0.96);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  color: var(--text-secondary, rgba(255,255,255,0.6));
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.ds-chart-tooltip__date {
+  color: var(--text-tertiary, rgba(255,255,255,0.4));
+  font-size: 0.68rem;
+  margin-bottom: 2px;
+}
+
+.ds-tooltip-up { color: rgba(100,225,150,0.9); }
+.ds-tooltip-down { color: rgba(255,115,100,0.9); }
+
+/* ─── Stagger animation ──────────────────────────────────────────── */
+.ds-widget-stagger {
+  animation: ds-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ds-enter {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .ds-canvas {
+    height: auto;
+    overflow: visible;
+    padding: 16px 16px 32px;
+  }
+
+  .ds-view-body {
+    flex: none;
+  }
+
+  .ds-bento-wrapper {
+    flex: none;
+  }
+
+  .ds-enrollment-summary {
+    display: none;
+  }
+}

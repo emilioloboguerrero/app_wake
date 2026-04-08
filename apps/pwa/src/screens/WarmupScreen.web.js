@@ -1,7 +1,6 @@
 // Web wrapper for WarmupScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import logger from '../utils/logger';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from './LoadingScreen';
 
@@ -22,8 +21,6 @@ const WarmupScreen = () => {
   // Create navigation adapter
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [Warmup Web] Navigating to:', routeName, params);
-      
       const routeMap = {
         'WorkoutExecution': () => {
           const courseId = params?.course?.courseId || params?.course?.id;
@@ -50,7 +47,6 @@ const WarmupScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.log('🧭 [Warmup Web] setParams:', params);
     },
   };
   

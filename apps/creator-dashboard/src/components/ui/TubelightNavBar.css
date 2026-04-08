@@ -1,0 +1,95 @@
+/* ─── Tubelight Nav Bar ───────────────────────────────────────── */
+.tubelight-nav {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-1, #222);
+  border: 1px solid var(--border-default, rgba(255,255,255,0.10));
+  border-radius: var(--radius-pill, 999px);
+  padding: 4px;
+}
+
+.tubelight-nav--vertical {
+  flex-direction: column;
+  border-radius: var(--radius-lg, 16px);
+}
+
+.tubelight-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  color: var(--text-secondary, rgba(255,255,255,0.55));
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 500;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  cursor: pointer;
+  transition: color 200ms var(--spring, cubic-bezier(0.22,1,0.36,1));
+  white-space: nowrap;
+  overflow: visible;
+  z-index: 1;
+}
+
+.tubelight-nav--vertical .tubelight-item {
+  border-radius: var(--radius-md, 10px);
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.tubelight-item--active {
+  color: var(--text-primary, rgba(255,255,255,0.95));
+}
+
+.tubelight-item-icon {
+  display: flex;
+  align-items: center;
+  font-size: clamp(14px, 3.5vw, 16px);
+  flex-shrink: 0;
+}
+
+.tubelight-item-label {
+  position: relative;
+  z-index: 2;
+}
+
+/* Badge — small count on inactive tabs */
+.tubelight-badge {
+  position: relative;
+  z-index: 2;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.50);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* The sliding underline/highlight */
+.tubelight-indicator {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--surface-3, #333);
+  border: 1px solid var(--border-strong, rgba(255,255,255,0.18));
+  z-index: -1;
+}
+
+/* The tubelight glow — soft bloom above the indicator */
+.tubelight-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255,255,255,0.04);
+  z-index: -2;
+  filter: blur(6px);
+  transform: scaleX(1.2) scaleY(1.8) translateY(-2px);
+  pointer-events: none;
+}

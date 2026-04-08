@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import {
   View,
   ScrollView,
@@ -24,7 +25,6 @@ import BottomSpacer from '../components/BottomSpacer';
 import WakeModalOverlay from '../components/WakeModalOverlay.web';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
-import activityStreakService from '../services/activityStreakService';
 import logger from '../utils/logger';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
@@ -45,7 +45,7 @@ import { NotFoundException } from '@zxing/library';
 const ICON_WHITE = 'rgba(255,255,255,0.95)';
 const REMAINING_GRAY = 'rgba(255, 255, 255, 0.12)';
 const WHITE_FILL = 'rgba(255, 255, 255, 0.75)';
-const OVER_LIMIT_RED = 'rgba(255, 68, 68, 0.3)';
+const OVER_LIMIT_RED = 'rgba(224, 84, 84, 0.3)';
 
 const NUTRITION_SPACER_SAFE_TOP_FALLBACK = 59;
 const NUTRITION_SPACER_MIN_TOP = 40;
@@ -711,7 +711,6 @@ function BarcodeCameraScanner({ onClose, onBarcodeScanned, onFallbackToManual })
               return;
             }
             if (err && !(err instanceof NotFoundException)) {
-              logger.warn('[BarcodeCameraScanner] decode error:', err);
             }
           }
         );
@@ -733,7 +732,6 @@ function BarcodeCameraScanner({ onClose, onBarcodeScanned, onFallbackToManual })
           controlsRef.current.stop();
         }
       } catch (e) {
-        logger.warn('[BarcodeCameraScanner] stop error:', e);
       }
       controlsRef.current = null;
     };
@@ -788,6 +786,8 @@ const NutritionScreen = () => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
 
+  const [addModalVisible, setAddModalVisible] = useState(false);
+
   const planQuery = useQuery({
     queryKey: ['nutrition', 'plan', userId, selectedDate, preferredAssignmentId],
     queryFn: async () => {
@@ -812,6 +812,26 @@ const NutritionScreen = () => {
     ...cacheConfig.nutrition,
   });
 
+  const savedFoodsQuery = useQuery({
+    queryKey: ['nutrition', 'saved-foods', userId],
+    queryFn: () => nutritionDb.getSavedFoods(userId),
+    enabled: !!userId && addModalVisible,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
+  });
+
+  const userMealsQuery = useQuery({
+    queryKey: ['nutrition', 'user-meals', userId],
+    queryFn: () => nutritionDb.getUserMeals(userId),
+    enabled: !!userId && addModalVisible,
+    staleTime: STALE_TIMES.userProfile,
+    gcTime: GC_TIMES.userProfile,
+  });
+
+  const savedFoods = savedFoodsQuery.data ?? [];
+  const userMeals = userMealsQuery.data ?? [];
+  const userMealsLoading = userMealsQuery.isLoading;
+
   const assignment = planQuery.data?.assignment ?? null;
   const plan = planQuery.data?.plan ?? null;
   const diaryEntries = diaryQuery.data ?? [];
@@ -820,7 +840,6 @@ const NutritionScreen = () => {
   const hasLoaded = hasInitialData || (planQuery.isSuccess && diaryQuery.isSuccess);
 
   const [macroShowLeft, setMacroShowLeft] = useState(true);
-  const [addModalVisible, setAddModalVisible] = useState(false);
   const [addModalTab, setAddModalTab] = useState('opciones');
   const [addModalCategoryIndex, setAddModalCategoryIndex] = useState(0);
   const [addModalCategoryDropdownOpen, setAddModalCategoryDropdownOpen] = useState(false);
@@ -836,8 +855,6 @@ const NutritionScreen = () => {
   const [buscarResults, setBuscarResults] = useState([]);
   const [buscarLoading, setBuscarLoading] = useState(false);
   const [buscarShowSaved, setBuscarShowSaved] = useState(false);
-  const [savedFoods, setSavedFoods] = useState([]);
-  const [savedFoodsLoaded, setSavedFoodsLoaded] = useState(false);
   const [selectedFood, setSelectedFood] = useState(null);
   const [buscarServingIndex, setBuscarServingIndex] = useState(0);
   const [buscarAmount, setBuscarAmount] = useState('1');
@@ -860,8 +877,6 @@ const NutritionScreen = () => {
   const [menuAnchor, setMenuAnchor] = useState({ pageY: 0 });
 
   // Mis comidas (user-created meals)
-  const [userMeals, setUserMeals] = useState([]);
-  const [userMealsLoading, setUserMealsLoading] = useState(false);
   const [misComidasSelectedByCard, setMisComidasSelectedByCard] = useState({});
   const [misComidasQuery, setMisComidasQuery] = useState('');
   const [misComidasSubTab, setMisComidasSubTab] = useState('meals');
@@ -1075,9 +1090,9 @@ const NutritionScreen = () => {
       const meal = getMealIdForCategory(category);
       setAddOptionLoading(true);
       try {
-        for (const it of toAdd) {
+        const entries = toAdd.map((it) => {
           const number_of_units = it.number_of_units ?? it.units ?? it.amount ?? 1;
-          await nutritionDb.addDiaryEntry(userId, {
+          return {
             date: selectedDate,
             meal,
             food_id: it.food_id ?? `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1086,42 +1101,27 @@ const NutritionScreen = () => {
             name: it.name ?? 'Alimento',
             food_category: it.food_category ?? null,
             calories: it.calories != null ? Number(it.calories) : null,
-            protein:
-              it.protein != null
-                ? Number(it.protein)
-                : it.protein_g != null
-                  ? Number(it.protein_g)
-                  : null,
-            carbs:
-              it.carbs != null
-                ? Number(it.carbs)
-                : it.carbs_g != null
-                  ? Number(it.carbs_g)
-                  : it.carbohydrate != null
-                    ? Number(it.carbohydrate)
-                    : null,
-            fat:
-              it.fat != null
-                ? Number(it.fat)
-                : it.fat_g != null
-                  ? Number(it.fat_g)
-                  : null,
+            protein: it.protein != null ? Number(it.protein) : it.protein_g != null ? Number(it.protein_g) : null,
+            carbs: it.carbs != null ? Number(it.carbs) : it.carbs_g != null ? Number(it.carbs_g) : it.carbohydrate != null ? Number(it.carbohydrate) : null,
+            fat: it.fat != null ? Number(it.fat) : it.fat_g != null ? Number(it.fat_g) : null,
             serving_unit: it.serving_unit ?? null,
             grams_per_unit: it.grams_per_unit ?? null,
             servings: it.servings ?? null,
-          });
-        }
-        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+          };
+        });
+        await nutritionDb.addDiaryEntries(userId, entries);
+        queryClient.invalidateQueries({ queryKey: ['user', userId] });
         trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
         setAddModalVisible(false);
       } catch (e) {
         logger.error('[NutritionScreen] handleAddOptionToMeal error:', e);
+        showToast('No se pudo anadir el alimento. Intentalo de nuevo.', 'error');
       } finally {
         setAddOptionLoading(false);
       }
     },
-    [userId, selectedDate, queryClient]
+    [userId, selectedDate, diaryEntries, queryClient, showToast]
   );
 
   const handleAddUserMealToDiary = useCallback(
@@ -1140,9 +1140,9 @@ const NutritionScreen = () => {
                 .filter((it) => it && it.recipe !== true)
             : items.filter((it) => it && it.recipe !== true);
         if (toAdd.length === 0) return;
-        for (const it of toAdd) {
+        const entries = toAdd.map((it) => {
           const number_of_units = it.number_of_units ?? it.units ?? it.amount ?? 1;
-          await nutritionDb.addDiaryEntry(userId, {
+          return {
             date: selectedDate,
             meal: mealId,
             food_id: it.food_id ?? `manual-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1151,55 +1151,28 @@ const NutritionScreen = () => {
             name: it.name ?? 'Alimento',
             food_category: it.food_category ?? null,
             calories: it.calories != null ? Number(it.calories) : null,
-            protein:
-              it.protein != null
-                ? Number(it.protein)
-                : it.protein_g != null
-                  ? Number(it.protein_g)
-                  : null,
-            carbs:
-              it.carbs != null
-                ? Number(it.carbs)
-                : it.carbs_g != null
-                  ? Number(it.carbs_g)
-                  : it.carbohydrate != null
-                    ? Number(it.carbohydrate)
-                    : null,
-            fat:
-              it.fat != null
-                ? Number(it.fat)
-                : it.fat_g != null
-                  ? Number(it.fat_g)
-                  : null,
+            protein: it.protein != null ? Number(it.protein) : it.protein_g != null ? Number(it.protein_g) : null,
+            carbs: it.carbs != null ? Number(it.carbs) : it.carbs_g != null ? Number(it.carbs_g) : it.carbohydrate != null ? Number(it.carbohydrate) : null,
+            fat: it.fat != null ? Number(it.fat) : it.fat_g != null ? Number(it.fat_g) : null,
             serving_unit: it.serving_unit ?? null,
             grams_per_unit: it.grams_per_unit ?? null,
             servings: it.servings ?? null,
-          });
-        }
-        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+          };
+        });
+        await nutritionDb.addDiaryEntries(userId, entries);
+        queryClient.invalidateQueries({ queryKey: ['user', userId] });
         trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
         setAddModalVisible(false);
       } catch (e) {
         logger.error('[NutritionScreen] handleAddUserMealToDiary error:', e);
+        showToast('No se pudo anadir la comida. Intentalo de nuevo.', 'error');
       } finally {
         setAddOptionLoading(false);
       }
     },
-    [userId, selectedDate, misComidasSelectedByCard, queryClient]
+    [userId, selectedDate, diaryEntries, misComidasSelectedByCard, queryClient, showToast]
   );
-
-  const loadSavedFoods = useCallback(async () => {
-    if (!userId || savedFoodsLoaded) return;
-    try {
-      const foods = await nutritionDb.getSavedFoods(userId);
-      setSavedFoods(foods);
-    } catch (e) {
-      logger.error('[NutritionScreen] loadSavedFoods:', e);
-    } finally {
-      setSavedFoodsLoaded(true);
-    }
-  }, [userId, savedFoodsLoaded]);
 
   const runSearch = useCallback(async (term) => {
     if (!term.trim()) return;
@@ -1214,10 +1187,11 @@ const NutritionScreen = () => {
     } catch (e) {
       logger.error('[NutritionScreen] buscar search:', e);
       setBuscarResults([]);
+      showToast('No se pudo buscar alimentos. Inténtalo de nuevo.', 'error');
     } finally {
       setBuscarLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   const handleBuscarSearch = useCallback(() => runSearch(buscarQuery), [runSearch, buscarQuery]);
 
@@ -1249,7 +1223,6 @@ const NutritionScreen = () => {
       const fallback = fullServings.findIndex((s) => !String(s.serving_id).startsWith('derived-'));
       setBuscarServingIndex(oneGIdx >= 0 ? oneGIdx : (fallback >= 0 ? fallback : 0));
     } catch (e) {
-      logger.warn('[NutritionScreen] nutritionFoodGet detail:', e);
     } finally {
       setFdLoadingDetail(false);
     }
@@ -1411,12 +1384,14 @@ const NutritionScreen = () => {
             await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
           } catch (err) {
             logger.error('[NutritionScreen] undo delete error:', err);
+            showToast('No se pudo deshacer la eliminación.', 'error');
           }
         },
         duration: 5000,
       });
     } catch (err) {
       logger.error('[NutritionScreen] deleteDiaryEntry error:', err);
+      showToast('No se pudo eliminar el alimento. Inténtalo de nuevo.', 'error');
     }
   }, [userId, selectedDate, showToast, queryClient]);
 
@@ -1514,7 +1489,7 @@ const NutritionScreen = () => {
           grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
           servings: selectedFood.servings ?? null,
         });
-        activityStreakService.updateActivityStreak(userId, selectedDate).catch(() => {});
+        queryClient.invalidateQueries({ queryKey: ['user', userId] });
         const addedCals = Math.round((Number(serving.calories) || 0) * qty);
         const addedProtein = Math.round((Number(serving.protein) || 0) * qty * 10) / 10;
         const addedCarbs = Math.round((Number(serving.carbohydrate) || 0) * qty * 10) / 10;
@@ -1544,6 +1519,7 @@ const NutritionScreen = () => {
       }
     } catch (e) {
       logger.error('[NutritionScreen] handleBuscarLog:', e);
+      showToast('No se pudo guardar el alimento. Inténtalo de nuevo.', 'error');
     } finally {
       setBuscarAddLoading(false);
     }
@@ -1557,14 +1533,15 @@ const NutritionScreen = () => {
     if (existing) {
       try {
         await nutritionDb.deleteSavedFood(userId, existing.id);
-        setSavedFoods((prev) => prev.filter((f) => f.id !== existing.id));
+        queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
       } catch (e) {
         logger.error('[NutritionScreen] deleteSavedFood:', e);
+        showToast('No se pudo eliminar el alimento guardado.', 'error');
       }
       return;
     }
     try {
-      const id = await nutritionDb.saveFood(userId, {
+      await nutritionDb.saveFood(userId, {
         food_id: selectedFood.food_id,
         name: selectedFood.food_name,
         food_category: selectedFood.food_category ?? null,
@@ -1578,14 +1555,12 @@ const NutritionScreen = () => {
         grams_per_unit: serving.metric_serving_amount != null ? Number(serving.metric_serving_amount) : null,
         servings: selectedFood.servings,
       });
-      setSavedFoods((prev) => [
-        { id, food_id: selectedFood.food_id, name: selectedFood.food_name, food_category: selectedFood.food_category, serving_id: serving.serving_id, serving_description: serving.serving_description, number_of_units: Number(buscarAmount) || 1, calories_per_unit: Number(serving.calories), servings: selectedFood.servings },
-        ...prev,
-      ]);
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
     } catch (e) {
       logger.error('[NutritionScreen] saveFood:', e);
+      showToast('No se pudo guardar el alimento.', 'error');
     }
-  }, [userId, selectedFood, buscarServingIndex, buscarAmount, savedFoods]);
+  }, [userId, selectedFood, buscarServingIndex, buscarAmount, queryClient, showToast]);
 
   const faltanOpacity = useRef(new Animated.Value(1)).current;
   const llevasOpacity = useRef(new Animated.Value(0)).current;
@@ -1708,32 +1683,6 @@ const NutritionScreen = () => {
     return () => clearTimeout(t);
   }, [addModalVisible, addModalCategoryIndex, addModalTab, opcionesScrollX]);
 
-  useEffect(() => {
-    if (addModalVisible && (addModalTab === 'buscar' || addModalTab === 'mis_comidas')) {
-      loadSavedFoods();
-    }
-  }, [addModalVisible, addModalTab, loadSavedFoods]);
-
-  useEffect(() => {
-    if (createMealSearchOpen) {
-      loadSavedFoods();
-    }
-  }, [createMealSearchOpen, loadSavedFoods]);
-
-  const loadUserMeals = useCallback(async () => {
-    if (!userId) return;
-    setUserMealsLoading(true);
-    try {
-      const meals = await nutritionDb.getUserMeals(userId);
-      setUserMeals(meals ?? []);
-    } catch (e) {
-      logger.error('[NutritionScreen] loadUserMeals:', e);
-      setUserMeals([]);
-    } finally {
-      setUserMealsLoading(false);
-    }
-  }, [userId]);
-
   const fdOpenKey = selectedFood?.food_id ?? null;
   useEffect(() => {
     if (fdOpenKey) {
@@ -1794,13 +1743,6 @@ const NutritionScreen = () => {
 
   useEffect(() => {
     if (addModalVisible && addModalTab === 'mis_comidas') {
-      loadUserMeals();
-      setMisComidasSelectedByCard({});
-    }
-  }, [addModalVisible, addModalTab, loadUserMeals]);
-
-  useEffect(() => {
-    if (addModalVisible && addModalTab === 'mis_comidas') {
       setMisComidasSelectedByCard({});
       setMisComidasQuery('');
     }
@@ -1817,10 +1759,11 @@ const NutritionScreen = () => {
     } catch (e) {
       logger.error('[NutritionScreen] createMeal search:', e);
       setCreateMealSearchResults([]);
+      showToast('No se pudo buscar alimentos. Inténtalo de nuevo.', 'error');
     } finally {
       setCreateMealSearchLoading(false);
     }
-  }, [createMealSearchQuery]);
+  }, [createMealSearchQuery, showToast]);
 
   const createMealSearchSortedResults = useMemo(() => {
     const list = [...createMealSearchResults];
@@ -2003,13 +1946,14 @@ const NutritionScreen = () => {
       setCreateMealName('');
       setCreateMealItems([]);
       setCreateMealSelectedFood(null);
-      loadUserMeals();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'user-meals', userId] });
     } catch (e) {
       logger.error('[NutritionScreen] saveCreateMeal:', e);
+      showToast('No se pudo guardar la comida. Inténtalo de nuevo.', 'error');
     } finally {
       setCreateMealSaving(false);
     }
-  }, [userId, createMealName, createMealItems, loadUserMeals]);
+  }, [userId, createMealName, createMealItems, queryClient, showToast]);
 
   const handleSaveCustomFood = useCallback(async () => {
     if (!userId) return;
@@ -2034,21 +1978,15 @@ const NutritionScreen = () => {
           food_category: category,
           servings: servingsPayload,
         });
-        const updated = {
-          ...editingSavedFood,
-          name: nameRaw,
-          food_category: category,
-          servings: servingsPayload,
-        };
-        setSavedFoods((prev) => prev.map((f) => (f.id === editingSavedFood.id ? updated : f)));
+        queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
         setSelectedFood((prev) => (prev && prev.food_id === editingSavedFood.food_id ? { ...prev, food_name: nameRaw, food_category: category, servings: servingsPayload } : prev));
-        setSelectedSavedFoodForEdit((prev) => (prev && prev.id === editingSavedFood.id ? updated : prev));
+        setSelectedSavedFoodForEdit(null);
         setEditingSavedFood(null);
         setCreateFoodModalOpen(false);
       } else {
         const syntheticFoodId = `custom-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const first = servingsPayload[0];
-        const id = await nutritionDb.saveFood(userId, {
+        await nutritionDb.saveFood(userId, {
           food_id: syntheticFoodId,
           name: nameRaw,
           food_category: category,
@@ -2062,24 +2000,7 @@ const NutritionScreen = () => {
           grams_per_unit: first.metric_serving_amount,
           servings: servingsPayload,
         });
-        setSavedFoods((prev) => [
-          {
-            id,
-            food_id: syntheticFoodId,
-            name: nameRaw,
-            food_category: category,
-            serving_id: first.serving_id,
-            serving_description: first.serving_description,
-            number_of_units: 1,
-            calories_per_unit: first.calories,
-            protein_per_unit: first.protein,
-            carbs_per_unit: first.carbohydrate,
-            fat_per_unit: first.fat,
-            grams_per_unit: first.metric_serving_amount,
-            servings: servingsPayload,
-          },
-          ...prev,
-        ]);
+        queryClient.invalidateQueries({ queryKey: ['nutrition', 'saved-foods', userId] });
         setCreateFoodName('');
         setCreateFoodCategory('');
         setCreateFoodServings([
@@ -2090,6 +2011,7 @@ const NutritionScreen = () => {
       }
     } catch (e) {
       logger.error('[NutritionScreen] handleSaveCustomFood:', e);
+      showToast('No se pudo guardar el alimento. Inténtalo de nuevo.', 'error');
     } finally {
       setCreateFoodSaving(false);
     }
@@ -2099,6 +2021,8 @@ const NutritionScreen = () => {
     createFoodCategory,
     createFoodServings,
     editingSavedFood,
+    queryClient,
+    showToast,
   ]);
 
   useEffect(() => {
@@ -2161,6 +2085,7 @@ const NutritionScreen = () => {
   const opcionesCardViewHeight = 540;
 
   const isInitialLoading = !userId || loading || !hasLoaded;
+  const isError = planQuery.isError || diaryQuery.isError;
 
   if (isInitialLoading) {
     return (
@@ -2168,6 +2093,28 @@ const NutritionScreen = () => {
         <FixedWakeHeader showBackButton onBackPress={() => navigate('/')} />
         <View style={styles.loadingFullScreen}>
           <WakeLoader />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
+        <FixedWakeHeader showBackButton onBackPress={() => navigate('/')} />
+        <View style={styles.loadingFullScreen}>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, textAlign: 'center', paddingHorizontal: 32 }}>
+            No se pudo cargar tu plan de nutrición. Inténtalo de nuevo.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              planQuery.refetch();
+              diaryQuery.refetch();
+            }}
+            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10 }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>Reintentar</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

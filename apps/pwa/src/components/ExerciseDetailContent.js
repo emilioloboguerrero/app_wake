@@ -22,7 +22,7 @@ import RepEstimatesCard from '../components/RepEstimatesCard';
 import ExerciseHistoryCard from '../components/ExerciseHistoryCard';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import SvgInfo from '../components/icons/SvgInfo';
-import { filterSessionsByPeriod, getSessionDateAsDate } from '../utils/sessionFilter';
+import { filterSessionsByPeriod } from '../utils/sessionFilter';
 import { getGapAfterHeader } from './WakeHeader';
 import logger from '../utils/logger.js';
 import WakeLoader from './WakeLoader';
@@ -40,39 +40,16 @@ const ExerciseDetailContent = ({
   showTitle = true,
   headerSpacerHeight = 0
 }) => {
-  const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailContent render started - ${componentStartTime.toFixed(2)}ms`);
-  
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  
-  // Create styles with dimensions
-  const stylesStartTime = performance.now();
+
   const styles = createStyles(screenWidth, screenHeight);
-  const stylesDuration = performance.now() - stylesStartTime;
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
-  if (stylesDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent createStyles took ${stylesDuration.toFixed(2)}ms`);
-  }
   
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
   const [history, setHistory] = useState([]);
   const [exerciseHistory, setExerciseHistory] = useState([]);
   
-  // Debug: Log when exerciseHistory changes
-  useEffect(() => {
-    logger.log('📊 ExerciseDetailContent: exerciseHistory state changed:', {
-      length: exerciseHistory.length,
-      isArray: Array.isArray(exerciseHistory),
-      firstSession: exerciseHistory[0] ? {
-        hasDate: !!exerciseHistory[0].date,
-        date: exerciseHistory[0].date,
-        hasCompletedAt: !!exerciseHistory[0].completedAt,
-        completedAt: exerciseHistory[0].completedAt
-      } : null
-    });
-  }, [exerciseHistory]);
   const [loading, setLoading] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
@@ -87,15 +64,6 @@ const ExerciseDetailContent = ({
   };
 
   useEffect(() => {
-    logger.log('🔍 ExerciseDetailContent useEffect triggered:', {
-      exerciseKey,
-      libraryId,
-      exerciseName,
-      hasUser: !!user,
-      userUid: user?.uid,
-      shouldLoad: !!(exerciseKey && libraryId && exerciseName && user?.uid)
-    });
-    
     // Reset loading states when exercise changes
     setLoading(true);
     setLoadingHistory(true);
@@ -103,17 +71,9 @@ const ExerciseDetailContent = ({
     setExerciseHistory([]);
     
     if (exerciseKey && libraryId && exerciseName && user?.uid) {
-      logger.log('🔍 Calling loadHistory() and loadExerciseHistory()');
       loadHistory();
       loadExerciseHistory();
     } else {
-      logger.warn('⚠️ ExerciseDetailContent: Cannot load history - missing required data:', {
-        hasExerciseKey: !!exerciseKey,
-        hasLibraryId: !!libraryId,
-        hasExerciseName: !!exerciseName,
-        hasUserUid: !!user?.uid
-      });
-      // Set loading to false if we can't load (to avoid infinite loading)
       setLoading(false);
       setLoadingHistory(false);
     }
@@ -121,21 +81,18 @@ const ExerciseDetailContent = ({
 
   const loadHistory = async () => {
     if (!user?.uid) {
-      logger.warn('⚠️ ExerciseDetailContent: Cannot load history - user not available');
       setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      logger.log('📊 Loading PR history for:', { exerciseKey, libraryId, exerciseName });
       const data = await oneRepMaxService.getHistoryForExercise(
         user.uid,
         libraryId,
         exerciseName
       );
       setHistory(data || []);
-      logger.log('✅ PR history loaded:', (data || []).length, 'entries for', exerciseName);
     } catch (error) {
       logger.error('❌ Error loading PR history:', error);
       setHistory([]);
@@ -146,27 +103,14 @@ const ExerciseDetailContent = ({
 
   const loadExerciseHistory = async () => {
     if (!user?.uid) {
-      logger.warn('⚠️ ExerciseDetailContent: Cannot load exercise history - user not available');
       setLoadingHistory(false);
       return;
     }
     
     try {
       setLoadingHistory(true);
-      logger.log('📊 Loading exercise history for:', exerciseKey);
       const data = await exerciseHistoryService.getExerciseHistory(user.uid, exerciseKey);
       const sessions = data?.sessions || [];
-      logger.log('✅ Exercise history loaded:', sessions.length, 'sessions for', exerciseKey);
-      logger.log('📊 Exercise history data structure:', {
-        hasSessions: !!sessions,
-        sessionsLength: sessions.length,
-        firstSession: sessions[0] ? {
-          hasDate: !!sessions[0].date,
-          date: sessions[0].date,
-          hasSets: !!sessions[0].sets,
-          setsLength: sessions[0].sets?.length || 0
-        } : null
-      });
       setExerciseHistory(sessions);
     } catch (error) {
       logger.error('❌ Error loading exercise history:', error);
@@ -189,43 +133,7 @@ const ExerciseDetailContent = ({
   };
 
   const filteredSessions = useMemo(() => {
-    logger.log('📊 ExerciseDetailContent: Calculating filteredSessions:', {
-      exerciseHistoryLength: exerciseHistory.length,
-      selectedPeriod,
-      exerciseHistoryType: Array.isArray(exerciseHistory) ? 'array' : typeof exerciseHistory
-    });
-    const filtered = filterSessionsByPeriod(exerciseHistory, selectedPeriod);
-    logger.log('📊 ExerciseDetailContent: Filtered sessions result:', {
-      totalSessions: exerciseHistory.length,
-      filteredCount: filtered.length,
-      period: selectedPeriod,
-      filteredType: Array.isArray(filtered) ? 'array' : typeof filtered
-    });
-    if (filtered.length > 0) {
-      const first = filtered[0];
-      const dateRaw = first.date || first.completedAt;
-      logger.log('📊 ExerciseDetailContent: First filtered session debug:', {
-        hasDate: !!dateRaw,
-        dateType: dateRaw == null ? 'null' : typeof dateRaw,
-        dateSeconds: dateRaw?.seconds,
-        hasSets: !!first.sets,
-        setsLength: first.sets?.length ?? 0,
-        firstSetKeys: first.sets?.[0] ? Object.keys(first.sets[0]) : [],
-        firstSetSample: first.sets?.[0] ? { reps: first.sets[0].reps, weight: first.sets[0].weight } : null
-      });
-    } else if (exerciseHistory.length > 0) {
-      const first = exerciseHistory[0];
-      const dateRaw = first.date || first.completedAt;
-      const parsed = getSessionDateAsDate(dateRaw);
-      logger.log('📊 ExerciseDetailContent: All sessions filtered out – date debug:', {
-        period: selectedPeriod,
-        totalSessions: exerciseHistory.length,
-        firstSessionDateRaw: dateRaw,
-        firstSessionDateParsed: parsed ? parsed.toISOString() : null,
-        hasDateSeconds: typeof dateRaw?.seconds === 'number'
-      });
-    }
-    return filtered;
+    return filterSessionsByPeriod(exerciseHistory, selectedPeriod);
   }, [exerciseHistory, selectedPeriod]);
 
   const renderPaginationIndicators = () => {
@@ -270,16 +178,8 @@ const ExerciseDetailContent = ({
     );
   };
 
-  const jsxStartTime = performance.now();
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailContent JSX return starting - ${jsxStartTime.toFixed(2)}ms`);
-  
   return (
     <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-      {(() => {
-        const contentStartTime = performance.now();
-        logger.debug(`[CHILD] [TIMING] ExerciseDetailContent JSX content starting - ${contentStartTime.toFixed(2)}ms`);
-        return null;
-      })()}
       <View style={styles.content}>
         {/* Spacer for fixed header - matches header height */}
         {headerSpacerHeight > 0 && <View style={{ height: headerSpacerHeight }} />}
@@ -463,27 +363,8 @@ const ExerciseDetailContent = ({
           </View>
         </Modal>
       )}
-      {(() => {
-        const jsxEndTime = performance.now();
-        const jsxDuration = jsxEndTime - jsxStartTime;
-        logger.debug(`[CHILD] [TIMING] ExerciseDetailContent JSX return completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
-        if (jsxDuration > 50) {
-          logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent JSX creation took ${jsxDuration.toFixed(2)}ms`);
-        }
-        return null;
-      })()}
     </ScrollView>
   );
-  
-  // Track component render completion using useEffect
-  useEffect(() => {
-    const componentEndTime = performance.now();
-    const componentDuration = componentEndTime - componentStartTime;
-    logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailContent render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-    if (componentDuration > 50) {
-      logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailContent total render took ${componentDuration.toFixed(2)}ms`);
-    }
-  });
 };
 
 // Styles function - takes screenWidth and screenHeight as parameters

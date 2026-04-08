@@ -11,7 +11,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    // Could log to a service here
+    console.error('[ErrorBoundary]', error, info?.componentStack);
   }
 
   render() {
@@ -27,8 +27,8 @@ class ErrorBoundary extends React.Component {
             }}
             style={{
               padding: '0.5rem 1.25rem',
-              background: 'var(--accent, #BFA84D)',
-              color: '#111',
+              background: 'rgba(255,255,255,0.15)',
+              color: '#fff',
               border: 'none',
               borderRadius: '6px',
               cursor: 'pointer',

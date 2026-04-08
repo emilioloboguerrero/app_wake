@@ -24,7 +24,7 @@ const Footer = () => (
       </div>
       <p className="footer-copy">© {new Date().getFullYear()} Wake</p>
       <div className="footer-fatsecret">
-        <a href="https://www.fatsecret.com">Powered by fatsecret</a>
+        <a href="https://www.fatsecret.com" target="_blank" rel="noopener noreferrer">Powered by fatsecret</a>
       </div>
       </div>
     </div>

@@ -30,9 +30,8 @@ import { useNavigate } from 'react-router-dom';
 import { consumePendingOpenBodyEntry } from '../navigation/openBodyEntryFlag';
 import bodyProgressService from '../services/bodyProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import firestoreService from '../services/firestoreService';
 import oneRepMaxService from '../services/oneRepMaxService';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import { getReadinessInRange } from '../services/readinessService';
 import { getDiaryEntriesInRange, getEffectivePlanForUser } from '../services/nutritionFirestoreService';
 import {
@@ -44,7 +43,8 @@ import {
 import logger from '../utils/logger';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { cacheConfig } from '../config/queryClient';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 
@@ -321,7 +321,7 @@ function PhotoLightbox({ photo, onClose, onDelete }) {
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
           style={{
-            background: 'rgba(255,68,68,0.15)', border: '1px solid rgba(255,68,68,0.3)',
+            background: 'rgba(224,84,84,0.15)', border: '1px solid rgba(224,84,84,0.3)',
             borderRadius: 20, color: 'rgba(255,100,100,0.9)', fontSize: 14, fontWeight: '600',
             padding: '8px 16px', cursor: 'pointer',
           }}
@@ -1484,21 +1484,27 @@ const LabScreen = () => {
 
   // ─── data loading ──────────────────────────────────────────────────────────
 
+  // Reuse shared user query key so MainScreen's cached /users/me is shared
+  const userQuery = useQuery({
+    queryKey: queryKeys.user.detail(uid),
+    queryFn: () => apiClient.get('/users/me').then(res => res.data),
+    enabled: !!uid,
+    ...cacheConfig.userProfile,
+  });
+
   const mainQuery = useQuery({
-    queryKey: ['lab', 'main', uid],
+    queryKey: ['progress', 'lab-main', uid],
     queryFn: async () => {
       const end = toYYYYMMDD(new Date());
       const startD = new Date(); startD.setDate(startD.getDate() - 56);
       const start = toYYYYMMDD(startD);
-      const [uData, sessionResult, entries, planResult, readinessData] = await Promise.all([
-        firestoreService.getUser(uid),
+      const [sessionResult, entries, planResult, readinessData] = await Promise.all([
         exerciseHistoryService.getSessionHistoryPaginated(uid, 100),
         getDiaryEntriesInRange(uid, start, end),
         getEffectivePlanForUser(uid).catch(() => ({ plan: null, assignment: null })),
         getReadinessInRange(uid, start, end),
       ]);
       return {
-        userData: uData || null,
         sessions: sessionResult?.sessions || {},
         diaryEntries: entries || [],
         plan: planResult?.plan || null,
@@ -1506,40 +1512,39 @@ const LabScreen = () => {
       };
     },
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
   });
 
+  const userData = userQuery.data ?? null;
+
   const topKeys = useMemo(() => {
-    const est = mainQuery.data?.userData?.oneRepMaxEstimates;
+    const est = userData?.oneRepMaxEstimates;
     if (!est) return [];
     return Object.entries(est)
       .filter(([, v]) => v?.current && v?.lastUpdated)
       .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
       .slice(0, 5)
       .map(([k]) => k);
-  }, [mainQuery.data?.userData?.oneRepMaxEstimates]);
+  }, [userData?.oneRepMaxEstimates]);
 
   const oneRmQuery = useQuery({
-    queryKey: ['lab', '1rm', uid, topKeys],
-    queryFn: () =>
-      Promise.all(
-        topKeys.map(key =>
-          oneRepMaxService.getHistoryByKey(uid, key).then(records => ({ exerciseKey: key, records }))
-        )
-      ),
+    queryKey: ['workout', '1rm-histories', uid, topKeys],
+    queryFn: () => oneRepMaxService.getBatchHistory(uid, topKeys),
     enabled: !!uid && topKeys.length > 0,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
   });
 
   const bodyQuery = useQuery({
-    queryKey: ['lab', 'body', uid],
+    queryKey: ['progress', 'body-log', uid],
     queryFn: () => bodyProgressService.getEntries(uid),
     enabled: !!uid,
-    ...cacheConfig.analytics,
+    staleTime: STALE_TIMES.bodyLog,
+    gcTime: GC_TIMES.bodyLog,
   });
 
-  const loading = mainQuery.isLoading;
-  const userData = mainQuery.data?.userData ?? null;
+  const loading = mainQuery.isLoading || userQuery.isLoading;
   const sessions = mainQuery.data?.sessions ?? {};
   const diaryEntries = mainQuery.data?.diaryEntries ?? [];
   const plan = mainQuery.data?.plan ?? null;
@@ -1577,13 +1582,13 @@ const LabScreen = () => {
   const openEditEntry = (entry) => { setEditingEntry(entry); setEntryModalVisible(true); };
 
   const handleEntrySaved = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ['lab', 'body', uid] });
+    queryClient.invalidateQueries({ queryKey: ['progress', 'body-log', uid] });
   }, [queryClient, uid]);
 
   const handleWeightUnitChange = (u) => {
     setWeightUnit(u);
     const uid = user?.uid || auth.currentUser?.uid;
-    if (uid) hybridDataService.updateUserProfile(uid, { weightUnit: u }).catch(() => {});
+    if (uid) apiClient.patch('/users/me', { weightUnit: u }).catch(() => {});
   };
 
   const handleDeletePhoto = async (photo) => {
@@ -2604,7 +2609,7 @@ const LabScreen = () => {
           )}
           <LabReadinessChart data={readinessChartData} />
           <View style={styles.readinessLegend}>
-            {[{ color:'rgba(74,222,128,0.8)', label:'Energía' }, { color:'rgba(147,197,253,0.8)', label:'Sueño' }, { color:'rgba(251,191,36,0.8)', label:'Frescura' }].map(({ color, label })=>(
+            {[{ color:'rgba(74,222,128,0.8)', label:'Energía' }, { color:'rgba(147,197,253,0.8)', label:'Sueño' }, { color:'rgba(255,255,255,0.7)', label:'Frescura' }].map(({ color, label })=>(
               <View key={label} style={styles.legendItem}>
                 <View style={[styles.legendDot, { backgroundColor:color }]} />
                 <Text style={styles.legendLabel}>{label}</Text>

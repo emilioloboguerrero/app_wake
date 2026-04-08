@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
+import { ProgressiveRevealProvider } from '../contexts/ProgressiveRevealContext';
+import { Revealable, RevealProgressBar } from '../components/guide';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
@@ -12,6 +15,8 @@ import Input from '../components/Input';
 import MeasuresObjectivesEditorModal from '../components/MeasuresObjectivesEditorModal';
 import libraryService from '../services/libraryService';
 import measureObjectivePresetsService from '../services/measureObjectivePresetsService';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
+import useConfirm from '../hooks/useConfirm';
 
 import {
   DndContext,
@@ -30,6 +35,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import './ProgramDetailScreen.css';
+import './SharedScreenLayout.css';
+import './LibraryContentScreen.css';
 
 // Helper functions
 const getLibraryExerciseKey = (libraryId, exerciseName) => `${libraryId || ''}::${exerciseName || ''}`;
@@ -65,7 +72,7 @@ const getMeasureDisplayNameDefault = (measure) => {
 
 const getObjectiveDisplayNameDefault = (objective) => {
   if (objective === 'reps') return 'Repeticiones';
-  if (objective === 'intensity') return 'Intensidad';
+  if (objective === 'intensity') return 'RPE';
   if (objective === 'previous') return 'Anterior';
   return objective;
 };
@@ -265,7 +272,10 @@ const LibraryContentScreen = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  
+  const { showToast } = useToast();
+  const { confirm, ConfirmModal } = useConfirm();
+  const queryClient = useQueryClient();
+
   // Get the tab from URL params, default to 'modules' if viewing a module, 'sessions' if viewing a session
   const getTabFromContext = () => {
     const tabParam = searchParams.get('tab');
@@ -384,7 +394,7 @@ const LibraryContentScreen = () => {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [dataEditMenuOpen]);
 
-  const { data: modulesData, isLoading: modulesLoading } = useQuery({
+  const { data: modulesData, isLoading: modulesLoading, error: modulesError } = useQuery({
     queryKey: queryKeys.library.modules(user?.uid),
     queryFn: async () => {
       const modules = await libraryService.getModuleLibrary(user.uid);
@@ -397,7 +407,7 @@ const LibraryContentScreen = () => {
     enabled: !!user && !moduleId && !sessionId,
   });
 
-  const { data: moduleSessionsData, isLoading: moduleLoading } = useQuery({
+  const { data: moduleSessionsData, isLoading: moduleLoading, error: moduleSessionsError } = useQuery({
     queryKey: ['library', 'module', moduleId, 'sessions'],
     queryFn: async () => {
       const mod = await libraryService.getLibraryModuleById(user.uid, moduleId);
@@ -408,7 +418,7 @@ const LibraryContentScreen = () => {
     enabled: !!user && !!moduleId,
   });
 
-  const { data: sessionExercisesData, isLoading: sessionLoading } = useQuery({
+  const { data: sessionExercisesData, isLoading: sessionLoading, error: sessionExercisesError } = useQuery({
     queryKey: ['library', 'session', sessionId, 'exercises'],
     queryFn: async () => {
       const session = await libraryService.getLibrarySessionById(user.uid, sessionId);
@@ -418,7 +428,7 @@ const LibraryContentScreen = () => {
   });
 
   const loading = modulesLoading || moduleLoading || sessionLoading;
-  const error = null;
+  const error = modulesError?.message || moduleSessionsError?.message || sessionExercisesError?.message || null;
 
   useEffect(() => {
     if (modulesData) setLibraryModules(modulesData);
@@ -492,7 +502,7 @@ const LibraryContentScreen = () => {
       handleCloseModuleModal();
     } catch (err) {
       logger.error('Error creating module:', err);
-      alert('Error al crear la semana. Por favor, intenta de nuevo.');
+      showToast('No pudimos crear la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingModule(false);
     }
@@ -532,7 +542,7 @@ const LibraryContentScreen = () => {
       if (originalModulesOrder.length > 0) {
         setLibraryModules([...originalModulesOrder]);
       }
-      alert('Error al actualizar el orden de las semanas. Por favor, intenta de nuevo.');
+      showToast('No pudimos actualizar el orden de las semanas. Intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingModuleOrder(false);
     }
@@ -564,11 +574,7 @@ const LibraryContentScreen = () => {
       const usageCheck = await libraryService.checkLibraryModuleUsage(user.uid, module.id);
       
       if (usageCheck.inUse) {
-        alert(
-          `⚠️ No se puede eliminar esta semana de la biblioteca.\n\n` +
-          `Está siendo usada en ${usageCheck.count} programa(s).\n\n` +
-          `Primero debes eliminar o reemplazar todas las referencias en los programas.`
-        );
+        showToast(`No se puede eliminar esta semana. Está siendo usada en ${usageCheck.count} programa(s). Primero debes eliminar o reemplazar todas las referencias.`, 'error');
         return;
       }
       
@@ -623,7 +629,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting module:', err);
-      alert('Error al eliminar la semana. Por favor, intenta de nuevo.');
+      showToast('No pudimos eliminar la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsDeletingModule(false);
     }
@@ -681,14 +687,14 @@ const LibraryContentScreen = () => {
 
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
+      showToast('Selecciona un archivo de imagen válido', 'error');
       return;
     }
 
     // Validate file size (e.g., max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
+      showToast('El archivo es demasiado grande. El tamaño máximo es 10MB', 'error');
       return;
     }
 
@@ -715,7 +721,7 @@ const LibraryContentScreen = () => {
         setSelectedSession(prev => (prev ? { ...prev, image_url: item.url } : null));
       } catch (err) {
         logger.error('Error updating session image:', err);
-        alert('Error al actualizar la imagen.');
+        showToast('No pudimos actualizar la imagen.', 'error');
       }
       setIsMediaPickerOpen(false);
       return;
@@ -748,7 +754,7 @@ const LibraryContentScreen = () => {
           );
         } catch (uploadError) {
           logger.error('Error uploading session image:', uploadError);
-          alert(`Error al subir la imagen: ${uploadError.message || 'Por favor, intenta de nuevo.'}`);
+          showToast(`No pudimos subir la imagen: ${uploadError.message || 'Intenta de nuevo.'}`, 'error');
           setIsUpdatingSession(false);
           setIsUploadingSessionImage(false);
           return;
@@ -781,7 +787,7 @@ const LibraryContentScreen = () => {
       handleCloseSessionModal();
     } catch (err) {
       logger.error('Error updating session:', err);
-      alert(`Error al actualizar la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
+      showToast(`No pudimos actualizar la sesión: ${err.message || 'Intenta de nuevo.'}`, 'error');
     } finally {
       setIsUpdatingSession(false);
       setIsUploadingSessionImage(false);
@@ -811,7 +817,7 @@ const LibraryContentScreen = () => {
       setAvailableLibrarySessions(availableSessions);
     } catch (err) {
       logger.error('Error loading library sessions:', err);
-      alert('Error al cargar las sesiones de la biblioteca');
+      showToast('No pudimos cargar las sesiones de la biblioteca', 'error');
     } finally {
       setIsLoadingLibrarySessions(false);
     }
@@ -829,7 +835,7 @@ const LibraryContentScreen = () => {
       handleCloseCopySessionModal();
     } catch (err) {
       logger.error('Error adding session to module:', err);
-      alert('Error al agregar la sesión. Por favor, intenta de nuevo.');
+      showToast('No pudimos agregar la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -866,7 +872,7 @@ const LibraryContentScreen = () => {
       if (originalSessionsOrder.length > 0) {
         setLibrarySessions([...originalSessionsOrder]);
       }
-      alert('Error al actualizar el orden de las sesiones. Por favor, intenta de nuevo.');
+      showToast('No pudimos actualizar el orden de las sesiones. Intenta de nuevo.', 'error');
     } finally {
       setIsUpdatingSessionOrder(false);
     }
@@ -938,7 +944,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error deleting session:', err);
-      alert('Error al eliminar la sesión. Por favor, intenta de nuevo.');
+      showToast('No pudimos eliminar la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsDeletingSession(false);
     }
@@ -1191,11 +1197,14 @@ const LibraryContentScreen = () => {
               )}
               {exercise.video_url && (
                 <div className="exercise-card-video">
-                  <video
-                    src={exercise.video_url}
-                    controls
-                    className="exercise-card-video-player"
-                  />
+                  {(() => {
+                    const source = detectVideoSource(exercise.video_url, exercise.video_source);
+                    const isExternal = source === 'youtube' || source === 'vimeo';
+                    if (isExternal) {
+                      return <iframe src={getEmbedUrl(exercise.video_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video" className="exercise-card-video-player" />;
+                    }
+                    return <video src={exercise.video_url} controls playsInline className="exercise-card-video-player" />;
+                  })()}
                 </div>
               )}
             </div>
@@ -1375,7 +1384,7 @@ const LibraryContentScreen = () => {
       setExpandedSeries({});
     } catch (error) {
       logger.error('Error opening exercise modal:', error);
-      alert('Error al abrir el ejercicio. Por favor, intenta de nuevo.');
+      showToast('No pudimos abrir el ejercicio. Intenta de nuevo.', 'error');
     }
   };
 
@@ -1425,7 +1434,7 @@ const LibraryContentScreen = () => {
       setSelectedExercise(prev => prev ? { ...prev, measures: updatedMeasures, customMeasureLabels: updatedCustomMeasureLabels } : null);
     } catch (err) {
       logger.error('Error adding custom measure:', err);
-      alert('Error al agregar la medida. Por favor, intenta de nuevo.');
+      showToast('No pudimos agregar la medida. Intenta de nuevo.', 'error');
     }
   };
   
@@ -1448,7 +1457,7 @@ const LibraryContentScreen = () => {
       setSelectedExercise(prev => prev ? { ...prev, objectives: updatedObjectives, customObjectiveLabels: updatedCustomObjectiveLabels } : null);
     } catch (err) {
       logger.error('Error adding custom objective:', err);
-      alert('Error al agregar el objetivo. Por favor, intenta de nuevo.');
+      showToast('No pudimos agregar el objetivo. Intenta de nuevo.', 'error');
     }
   };
   
@@ -1464,9 +1473,10 @@ const LibraryContentScreen = () => {
   };
 
   // Exercise modal handlers (adapted from ProgramDetailScreen)
-  const handleCloseExerciseModal = () => {
+  const handleCloseExerciseModal = async () => {
     if (isCreatingExercise && canSaveCreatingExercise()) {
-      if (window.confirm('¿Guardar ejercicio antes de cerrar?')) {
+      const ok = await confirm('¿Guardar ejercicio antes de cerrar?');
+      if (ok) {
         handleSaveCreatingExercise();
         return;
       }
@@ -1522,7 +1532,7 @@ const LibraryContentScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('No pudimos cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1547,7 +1557,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error loading exercises from library:', err);
-      alert('Error al cargar los ejercicios');
+      showToast('No pudimos cargar los ejercicios', 'error');
     } finally {
       setIsLoadingExercisesFromLibrary(false);
     }
@@ -1621,7 +1631,7 @@ const LibraryContentScreen = () => {
         }
         
         if (exerciseExists) {
-          alert('Esta alternativa ya está agregada.');
+          showToast('Esta alternativa ya está agregada.', 'error');
           handleCloseLibraryExerciseModal();
           return;
         }
@@ -1688,7 +1698,7 @@ const LibraryContentScreen = () => {
           }
           
           if (exerciseExists) {
-            alert('Esta alternativa ya está agregada.');
+            showToast('Esta alternativa ya está agregada.', 'error');
             handleCloseLibraryExerciseModal();
             return;
           }
@@ -1729,7 +1739,7 @@ const LibraryContentScreen = () => {
       handleCloseLibraryExerciseModal();
     } catch (err) {
       logger.error('Error updating exercise:', err);
-      alert('Error al actualizar el ejercicio. Por favor, intenta de nuevo.');
+      showToast('No pudimos actualizar el ejercicio. Intenta de nuevo.', 'error');
     }
   };
 
@@ -1757,7 +1767,7 @@ const LibraryContentScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('No pudimos cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1803,7 +1813,7 @@ const LibraryContentScreen = () => {
           }));
         } catch (err) {
           logger.error('Error deleting alternative:', err);
-          alert('Error al eliminar la alternativa. Por favor, intenta de nuevo.');
+          showToast('No pudimos eliminar la alternativa. Intenta de nuevo.', 'error');
         }
       }
     }
@@ -1824,7 +1834,7 @@ const LibraryContentScreen = () => {
       setIsLibraryExerciseModalOpen(true);
     } catch (err) {
       logger.error('Error loading libraries:', err);
-      alert('Error al cargar las bibliotecas');
+      showToast('No pudimos cargar las bibliotecas', 'error');
     } finally {
       setIsLoadingLibrariesForSelection(false);
     }
@@ -1860,7 +1870,7 @@ const LibraryContentScreen = () => {
       setIsPresetSelectorOpen(false);
     } catch (err) {
       logger.error('Error applying preset:', err);
-      alert('Error al aplicar la plantilla. Por favor, intenta de nuevo.');
+      showToast('No pudimos aplicar la plantilla. Intenta de nuevo.', 'error');
     }
   };
 
@@ -1879,7 +1889,7 @@ const LibraryContentScreen = () => {
         applyPresetToExercise({ id, name: data.name, ...updates });
       } catch (err) {
         logger.error('Error creating preset:', err);
-        alert('Error al crear la plantilla. Por favor, intenta de nuevo.');
+        showToast('No pudimos crear la plantilla. Intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'edit_preset' && presetBeingEditedId && data.name) {
@@ -1895,7 +1905,7 @@ const LibraryContentScreen = () => {
         }
       } catch (err) {
         logger.error('Error updating preset:', err);
-        alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
+        showToast('No pudimos guardar la plantilla. Intenta de nuevo.', 'error');
         return;
       }
     } else if (editorModalMode === 'exercise') {
@@ -1913,7 +1923,7 @@ const LibraryContentScreen = () => {
           }
         } catch (err) {
           logger.error('Error updating exercise:', err);
-          alert('Error al guardar. Por favor, intenta de nuevo.');
+          showToast('No pudimos guardar. Intenta de nuevo.', 'error');
           return;
         }
       }
@@ -1983,7 +1993,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error creating set:', err);
-      alert('Error al crear la serie. Por favor, intenta de nuevo.');
+      showToast('No pudimos crear la serie. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSet(false);
     }
@@ -2179,7 +2189,7 @@ const LibraryContentScreen = () => {
           setExerciseSets(exerciseSets);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(originalExerciseSets)));
           setUnsavedSetChanges(unsavedSetChanges);
-          alert('Error al añadir series. Por favor, intenta de nuevo.');
+          showToast('No pudimos añadir series. Intenta de nuevo.', 'error');
         } finally {
           setOptimisticSetsCount(null);
         }
@@ -2204,7 +2214,7 @@ const LibraryContentScreen = () => {
           setExerciseSets(refetched);
           setOriginalExerciseSets(JSON.parse(JSON.stringify(refetched)));
           setUnsavedSetChanges({});
-          alert('Error al eliminar series. Por favor, intenta de nuevo.');
+          showToast('No pudimos eliminar series. Intenta de nuevo.', 'error');
         }
       })();
     }
@@ -2336,7 +2346,7 @@ const LibraryContentScreen = () => {
       }));
     } catch (err) {
       logger.error('Error saving set changes:', err);
-      alert('Error al guardar los cambios. Por favor, intenta de nuevo.');
+      showToast('No pudimos guardar los cambios. Intenta de nuevo.', 'error');
     } finally {
       setIsSavingSetChanges(false);
     }
@@ -2370,7 +2380,7 @@ const LibraryContentScreen = () => {
       setExerciseSets(setsData);
       setOriginalExerciseSets(JSON.parse(JSON.stringify(setsData)));
       setUnsavedSetChanges({});
-      alert('Error al eliminar la serie. Por favor, intenta de nuevo.');
+      showToast('No pudimos eliminar la serie. Intenta de nuevo.', 'error');
     }
   };
 
@@ -2435,7 +2445,7 @@ const LibraryContentScreen = () => {
       }
     } catch (err) {
       logger.error('Error duplicating set:', err);
-      alert('Error al duplicar la serie. Por favor, intenta de nuevo.');
+      showToast('No pudimos duplicar la serie. Intenta de nuevo.', 'error');
     }
   };
 
@@ -2646,7 +2656,7 @@ const LibraryContentScreen = () => {
         }
       } catch (err) {
         logger.error('Error updating set order:', err);
-        alert('Error al actualizar el orden. Por favor, intenta de nuevo.');
+        showToast('No pudimos actualizar el orden. Intenta de nuevo.', 'error');
         // Revert on error
         setExerciseSets(originalSeriesOrder);
       } finally {
@@ -2695,8 +2705,6 @@ const LibraryContentScreen = () => {
         alternatives: exerciseDraft.alternatives || {},
         measures: exerciseDraft.measures || [],
         objectives: exerciseDraft.objectives || [],
-        name: libraryService.deleteFieldSentinel(),
-        title: libraryService.deleteFieldSentinel()
       };
       
       await libraryService.updateExerciseInLibrarySession(
@@ -2760,14 +2768,15 @@ const LibraryContentScreen = () => {
       handleCloseExerciseModal();
     } catch (err) {
       logger.error('Error creating exercise:', err);
-      alert('Error al crear el ejercicio. Por favor, intenta de nuevo.');
+      showToast('No pudimos crear el ejercicio. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingNewExercise(false);
     }
   };
 
   return (
-    <DashboardLayout 
+    <ProgressiveRevealProvider screenKey="library-content">
+    <DashboardLayout
       screenName={getScreenName()}
       headerBackgroundImage={selectedSession?.image_url || null}
       onHeaderEditClick={selectedSession ? handleEditSessionClick : null}
@@ -2844,9 +2853,15 @@ const LibraryContentScreen = () => {
             </div>
           ) : (
             <div className="modules-content">
-              <h2 className="page-section-title">Semanas</h2>
-              {renderModuleActions()}
-              {renderModules()}
+              <Revealable step="content-tabs">
+                <h2 className="page-section-title">Semanas</h2>
+              </Revealable>
+              <Revealable step="edit-actions">
+                {renderModuleActions()}
+              </Revealable>
+              <Revealable step="module-list">
+                {renderModules()}
+              </Revealable>
             </div>
           )}
         </div>
@@ -3541,11 +3556,11 @@ const LibraryContentScreen = () => {
       >
         <div className="modal-library-content" style={{ minHeight: '400px', maxHeight: '600px', overflowY: 'auto' }}>
           {isLoadingLibrarySessions ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#cccccc' }}>
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <p>Cargando sesiones...</p>
             </div>
           ) : availableLibrarySessions.length === 0 ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: '#cccccc' }}>
+            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
               <p>No hay sesiones disponibles en la biblioteca.</p>
             </div>
           ) : (
@@ -3553,7 +3568,7 @@ const LibraryContentScreen = () => {
               {availableLibrarySessions.map((session) => (
                 <div key={session.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
                   <div>
-                    <h4 style={{ margin: 0, color: '#ffffff', fontSize: '16px', fontWeight: 600 }}>
+                    <h4 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '16px', fontWeight: 600 }}>
                       {session.title || `Sesión ${session.id.slice(0, 8)}`}
                     </h4>
                   </div>
@@ -3684,7 +3699,10 @@ const LibraryContentScreen = () => {
           </p>
         </div>
       </Modal>
+    {ConfirmModal}
+      <RevealProgressBar />
     </DashboardLayout>
+    </ProgressiveRevealProvider>
   );
 };
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppState } from 'react-native';
 import {
   View,
@@ -25,10 +25,9 @@ import SvgPlay from '../components/icons/SvgPlay';
 import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
-import hybridDataService from '../services/hybridDataService';
 import courseDownloadService from '../data-management/courseDownloadService';
 import purchaseEventManager from '../services/purchaseEventManager';
 import consolidatedDataService from '../services/consolidatedDataService';
@@ -39,22 +38,21 @@ import EpaycoWebView from '../components/EpaycoWebView';
 import BookCallSlotModal from '../components/BookCallSlotModal';
 import { getBookingForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
+import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import profilePictureService from '../services/profilePictureService';
 import { isWeb } from '../utils/platform';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
+import VideoExchangeTab from '../components/videoExchange/VideoExchangeTab.web';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course } = route.params;
   const { user, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
   const { isMuted, toggleMute } = useVideo();
-  
-  // Log auth state changes for debugging
-  useEffect(() => {
-    logger.log(`🔐 [CourseDetailScreen] Auth state changed - user.uid=${user?.uid}, authLoading=${authLoading}`);
-  }, [user?.uid, authLoading]);
   
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
@@ -86,12 +84,14 @@ const CourseDetailScreen = ({ navigation, route }) => {
   
   // Video player state
   const [videoUri, setVideoUri] = useState(null);
+  const [videoSourceType, setVideoSourceType] = useState(null);
   const [isVideoPaused, setIsVideoPaused] = useState(false);
   const [creatorProfileImage, setCreatorProfileImage] = useState(null);
   const [creatorDisplayName, setCreatorDisplayName] = useState('');
   const [userCourseEntry, setUserCourseEntry] = useState(null);
   const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
+  const [courseDetailTab, setCourseDetailTab] = useState('programa'); // 'programa' | 'videos'
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [checkoutURL, setCheckoutURL] = useState(null);
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
@@ -100,13 +100,15 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [emailModalError, setEmailModalError] = useState('');
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
+  const [simulateUserRole, setSimulateUserRole] = useState(false);
+  const [refreshingOwnership, setRefreshingOwnership] = useState(false);
 
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
     queryKey: ['user', effectiveUserUid],
     queryFn: () => firestoreService.getUser(effectiveUserUid),
     enabled: !!effectiveUserUid,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
     refetchInterval: processingPurchase ? 2000 : false,
   });
 
@@ -135,7 +137,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
         isActive = expirationTime > now;
         isExpired = expirationTime <= now;
       } catch (error) {
-        logger.warn('⚠️ Error parsing trial expiration date:', error);
       }
     }
 
@@ -167,8 +168,9 @@ const CourseDetailScreen = ({ navigation, route }) => {
     [course?.deliveryType, course?.delivery_type]
   );
   
-  // Initialize video player
-  const videoPlayer = useVideoPlayer(videoUri, (player) => {
+  // Initialize video player — skip external URLs (YouTube/Vimeo use iframe)
+  const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
+  const videoPlayer = useVideoPlayer(isExternalVideo ? null : videoUri, (player) => {
     if (player) {
       player.loop = false;
       player.muted = isMuted;
@@ -180,29 +182,18 @@ const CourseDetailScreen = ({ navigation, route }) => {
   // Note: handlePostPurchaseFlow needs to be defined first as it's used by checkCourseOwnership
   
   const fetchUserRole = React.useCallback(async () => {
-    const effectiveUser = user || auth.currentUser;
-    if (!effectiveUser?.uid) return;
-
-    try {
-      const userDoc = await firestoreService.getUser(effectiveUser.uid);
-      if (userDoc?.role) {
-        setUserRole(userDoc.role);
-      }
-    } catch (error) {
-      logger.error('Error fetching user role:', error);
+    // Use data already fetched by the useQuery at line 105 instead of a separate API call
+    if (userDocData?.role) {
+      setUserRole(userDocData.role);
     }
-  }, [user?.uid]);
+  }, [userDocData?.role]);
 
   const fetchCourseModules = React.useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      logger.debug('🔍 Fetching modules for course:', course.id);
-      // Fix: Modules can be fetched even without user (for public course details)
       const coursesModules = await firestoreService.getCourseModules(course.id, user?.uid);
-      
-      logger.debug('✅ Modules fetched:', coursesModules.length);
       setModules(coursesModules);
     } catch (error) {
       logger.error('❌ Error fetching course modules:', error);
@@ -219,11 +210,8 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const handlePostPurchaseFlow = React.useCallback(async () => {
     // Prevent duplicate execution
     if (postPurchaseFlowTriggeredRef.current) {
-      logger.log('⏭️ Post-purchase flow already triggered, skipping duplicate...');
       return;
     }
-    
-    logger.log('🔄 Starting post-purchase flow...');
     
     // Mark as triggered immediately to prevent duplicates
     postPurchaseFlowTriggeredRef.current = true;
@@ -253,31 +241,24 @@ const CourseDetailScreen = ({ navigation, route }) => {
       consolidatedDataService.clearUserCache(effectiveUser.uid);
       consolidatedDataService.clearAllCache();
       
-      // Sync courses to update cache with new purchase
-      logger.log('📦 Force syncing courses...');
-      await hybridDataService.syncCourses(effectiveUser.uid);
-      
-      // FIX: Also clear consolidated cache again after sync
-      consolidatedDataService.clearUserCache(effectiveUser.uid);
-      
-      // FIX: Wait a moment for cache to update, then download
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      // Invalidate course queries so React Query refetches fresh data
+      await queryClient.invalidateQueries({ queryKey: ['programs'] });
+      await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
+
       // Notify MainScreen about the purchase
-      logger.log('📢 Notifying purchase complete...');
       purchaseEventManager.notifyPurchaseComplete(course.id);
       
-      // Download the purchased course data
-      logger.log('📥 Downloading purchased course...');
+      // Download the purchased course data using cached data to avoid redundant API calls
       try {
-        // CRITICAL: Pass userId to downloadCourse for proper version checking and week change detection
-        await courseDownloadService.downloadCourse(course.id, effectiveUser.uid);
-        logger.log('✅ Course downloaded successfully');
+        await courseDownloadService.downloadCourse(course.id, effectiveUser.uid, {
+          cachedCourseData: course,
+          cachedModules: modules,
+          isOneOnOne,
+        });
       } catch (downloadError) {
-        logger.error('❌ Error downloading course:', downloadError);
-        // Continue even if download fails - user can retry later
+        logger.error('Error downloading course:', downloadError);
       }
-      
+
       // Set ownership state
       setUserOwnsCourse(true);
       setProcessingPurchase(false);
@@ -286,11 +267,8 @@ const CourseDetailScreen = ({ navigation, route }) => {
       processingPurchaseRef.current = false;
       postPurchaseFlowTriggeredRef.current = false;
       
-      logger.log('✅ Post-purchase flow completed, showing success alert...');
-
       // Show success message - use setTimeout to ensure it shows after state updates
       setTimeout(() => {
-        logger.log('📢 Displaying purchase success now...');
         try {
           if (Platform.OS === 'web') {
             setShowPurchaseSuccess(true);
@@ -301,22 +279,16 @@ const CourseDetailScreen = ({ navigation, route }) => {
             [
               {
                 text: 'Ir a Página Principal',
-                onPress: () => {
-                  logger.log('📱 User chose: Navigate to MainScreen');
-                  navigation.navigate('MainScreen');
-                }
+                onPress: () => navigation.navigate('MainScreen')
               },
               {
                 text: 'Aceptar',
-                onPress: () => {
-                  logger.log('✅ User chose: Aceptar (staying on page)');
-                },
+                onPress: () => {},
                 style: 'cancel'
               }
             ]
           );
           }
-          logger.log('✅ Purchase success shown');
         } catch (alertError) {
           logger.error('❌ Error showing alert:', alertError);
         }
@@ -346,7 +318,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
         ]
       );
     }
-  }, [user, course.id, navigation]);
+  }, [user, course.id, course, modules, isOneOnOne, navigation]);
 
   useEffect(() => {
     if (!userDocData || !course.id || !processingPurchase) return;
@@ -365,34 +337,23 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const checkCourseOwnership = React.useCallback(async () => {
     // Get user from context or Firebase auth as fallback
     const effectiveUser = user || auth.currentUser;
-    
+
     // Fix: Set checkingOwnership to false if user is not available to prevent infinite loading
     if (!effectiveUser?.uid) {
-      logger.log('⚠️ [checkCourseOwnership] User not available (context or Firebase), skipping ownership check');
       setCheckingOwnership(false);
       return;
     }
-    
-    logger.log(`🔍 [checkCourseOwnership] START - Checking ownership for course: ${course.id}, user: ${effectiveUser.uid} (fromContext=${!!user}, fromFirebase=${!!auth.currentUser && !user})`);
-    
+
     try {
       setCheckingOwnership(true);
-      logger.log(`🔍 [checkCourseOwnership] Calling getUserCourseState for course: ${course.id}`);
-      const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
-      logger.log(`🔍 [checkCourseOwnership] getUserCourseState result:`, {
-        ownsCourse: courseState.ownsCourse,
-        hasCourseData: !!courseState.courseData,
-        courseData: courseState.courseData,
-        hasTrialHistory: !!courseState.trialHistory,
-        trialHistory: courseState.trialHistory
-      });
-      
+      // Use cached user data from queryClient to avoid duplicate /users/me calls
+      const cachedUser = queryClient.getQueryData(['user', effectiveUser.uid]);
+      const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id, cachedUser);
+
       const isProcessing = processingPurchaseRef.current || pendingPostPurchaseRef.current;
-      logger.log(`🔍 [checkCourseOwnership] Processing state: isProcessing=${isProcessing}, processingPurchaseRef=${processingPurchaseRef.current}, pendingPostPurchaseRef=${pendingPostPurchaseRef.current}`);
-      
+
       // If we're processing a purchase and course is now owned, trigger post-purchase flow
       if (isProcessing && courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
-        logger.log('✅ Course ownership confirmed during purchase processing - triggering post-purchase flow');
         handlePostPurchaseFlow();
         // Fix: Set checkingOwnership to false before returning
         setCheckingOwnership(false);
@@ -401,13 +362,11 @@ const CourseDetailScreen = ({ navigation, route }) => {
       
       // If processing, defer UI update but still check ownership
       if (isProcessing) {
-        logger.log('⏳ Ownership check during purchase processing - course owned:', courseState.ownsCourse);
         // Fix: Set checkingOwnership to false before returning
         setCheckingOwnership(false);
         return;
       }
 
-      logger.log(`🔍 [checkCourseOwnership] Setting state - ownsCourse=${courseState.ownsCourse}, isProcessing=${isProcessing}`);
       setUserCourseEntry(courseState.courseData);
       setUserTrialHistory(courseState.trialHistory);
       setUserOwnsCourse(courseState.ownsCourse);
@@ -418,17 +377,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
       const shouldBeReady = courseState.ownsCourse && !isProcessing;
       setOwnershipReady(shouldBeReady);
       
-      // Log ownership state for debugging
-      logger.log(`✅ [checkCourseOwnership] State updated: userOwnsCourse=${courseState.ownsCourse}, ownershipReady=${shouldBeReady}, shouldBeReady calculation: ownsCourse(${courseState.ownsCourse}) && !isProcessing(${!isProcessing}) = ${shouldBeReady}`);
-      if (courseState.courseData) {
-        logger.log(`📋 [checkCourseOwnership] Course data details:`, {
-          status: courseState.courseData.status,
-          is_trial: courseState.courseData.is_trial,
-          expires_at: courseState.courseData.expires_at,
-          expires_at_parsed: courseState.courseData.expires_at ? new Date(courseState.courseData.expires_at).toISOString() : null,
-          isCourseEntryActive_result: purchaseService.isCourseEntryActive(courseState.courseData)
-        });
-      }
     } catch (error) {
       logger.error('Error checking course ownership:', error);
       // On error, assume user doesn't own course to be safe
@@ -437,16 +385,28 @@ const CourseDetailScreen = ({ navigation, route }) => {
     } finally {
       setCheckingOwnership(false);
     }
-  }, [user?.uid, course.id, handlePostPurchaseFlow]); // Note: We check auth.currentUser inside the function
+  }, [user?.uid, course.id, handlePostPurchaseFlow, queryClient]);
+
+  const handleRefreshOwnership = React.useCallback(async () => {
+    const effectiveUser = user || auth.currentUser;
+    if (!effectiveUser?.uid) return;
+    setRefreshingOwnership(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
+      await checkCourseOwnership();
+    } catch (err) {
+      logger.error('Error refreshing ownership:', err);
+    } finally {
+      setRefreshingOwnership(false);
+    }
+  }, [user, queryClient, checkCourseOwnership]);
 
   useEffect(() => {
-    logger.log(`🚀 [CourseDetailScreen] Component mounted/updated - course.id=${course.id}, user.uid=${user?.uid}`);
     fetchCourseModules();
     fetchUserRole();
     
     // Safety timeout: Clear loading states after 10 seconds to prevent infinite loading
     const safetyTimeout = setTimeout(() => {
-      logger.warn('⚠️ Safety timeout: Clearing loading states after 10s');
       setLoading(false);
       setCheckingOwnership(false);
     }, 10000);
@@ -460,48 +420,31 @@ const CourseDetailScreen = ({ navigation, route }) => {
   // This is critical because user might not be loaded when component first mounts
   // AuthContext may take time to restore user from IndexedDB (checks at 0ms, 100ms, 500ms, 1000ms)
   useEffect(() => {
-    logger.log(`👤 [CourseDetailScreen] User effect triggered - user.uid=${user?.uid}, authLoading=${authLoading}, course.id=${course.id}, checkingOwnership=${checkingOwnership}`);
-    
-    // Check Firebase auth directly as fallback (in case AuthContext hasn't updated yet)
     const firebaseUser = auth.currentUser;
-    logger.log(`👤 [CourseDetailScreen] Firebase auth.currentUser: ${firebaseUser?.uid || 'null'}`);
     
     // Use user from context if available, otherwise fallback to Firebase auth
     const effectiveUser = user || firebaseUser;
     
-    if (effectiveUser?.uid && course.id) {
-      logger.log(`👤 [CourseDetailScreen] User available (uid=${effectiveUser.uid}, fromContext=${!!user}, fromFirebase=${!!firebaseUser && !user}) - checking ownership for course: ${course.id}`);
-      // If user from context is not available but Firebase has it, update the check
-      if (!user && firebaseUser) {
-        logger.log(`⚠️ [CourseDetailScreen] User found in Firebase but not in context - AuthContext may not have updated yet`);
-      }
+    if (effectiveUser?.uid && course.id && userDocData) {
+      // userDocData available — checkCourseOwnership will use it from queryClient cache
       checkCourseOwnership();
-      // Fetch role when we have a user (context or Firebase) so admin/creator see correct button even before context loads
       fetchUserRole();
-    } else if (!authLoading) {
+    } else if (!authLoading && !effectiveUser?.uid) {
       // Auth has finished loading - wait a bit more for IndexedDB restore (up to 2 seconds)
-      // This handles the case where AuthContext delay checks haven't completed yet
-      if (!effectiveUser?.uid) {
-        logger.log(`⏳ [CourseDetailScreen] Auth finished loading but no user yet - waiting 2s for IndexedDB restore before clearing checkingOwnership`);
-        const timeout = setTimeout(() => {
-          const finalFirebaseUser = auth.currentUser;
-          const finalEffectiveUser = user || finalFirebaseUser;
-          if (!finalEffectiveUser?.uid) {
-            logger.log(`✅ [CourseDetailScreen] After 2s wait, still no user - user is not logged in, clearing checkingOwnership`);
-            setCheckingOwnership(false);
-          } else {
-            logger.log(`✅ [CourseDetailScreen] User became available during 2s wait (uid=${finalEffectiveUser.uid}) - checking ownership`);
-            checkCourseOwnership();
-            fetchUserRole();
-          }
-        }, 2000);
-        
-        return () => clearTimeout(timeout);
-      }
-    } else {
-      logger.log(`⏳ [CourseDetailScreen] Auth still loading (authLoading=${authLoading}) - waiting for auth to finish before checking ownership`);
+      const timeout = setTimeout(() => {
+        const finalFirebaseUser = auth.currentUser;
+        const finalEffectiveUser = user || finalFirebaseUser;
+        if (!finalEffectiveUser?.uid) {
+          setCheckingOwnership(false);
+        } else {
+          checkCourseOwnership();
+          fetchUserRole();
+        }
+      }, 2000);
+
+      return () => clearTimeout(timeout);
     }
-  }, [user?.uid, course.id, checkCourseOwnership, fetchUserRole, authLoading, checkingOwnership]);
+  }, [user?.uid, course.id, checkCourseOwnership, fetchUserRole, authLoading, userDocData]);
 
   useEffect(() => {
     let isMounted = true;
@@ -516,7 +459,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       }
 
       try {
-        const creatorDoc = await firestoreService.getUser(creatorId);
+        const creatorDoc = await firestoreService.getPublicProfile(creatorId);
         if (!isMounted) {
           return;
         }
@@ -594,8 +537,6 @@ useEffect(() => {
   if (userOwnsCourse && ownershipReady && processingPurchase && !successAlertShownRef.current) {
     successAlertShownRef.current = true;
     
-    logger.log('📢 Button shows "¡Ya tienes este programa!" - showing success alert');
-    
     // Small delay to ensure UI has updated
     setTimeout(() => {
       Alert.alert(
@@ -604,16 +545,11 @@ useEffect(() => {
         [
           {
             text: 'Ir a Página Principal',
-            onPress: () => {
-              logger.log('📱 User chose: Navigate to MainScreen');
-              navigation.navigate('MainScreen');
-            }
+            onPress: () => navigation.navigate('MainScreen')
           },
           {
             text: 'Aceptar',
-            onPress: () => {
-              logger.log('✅ User chose: Aceptar (staying on page)');
-            },
+            onPress: () => {},
             style: 'cancel'
           }
         ]
@@ -636,48 +572,41 @@ useEffect(() => {
   };
 }, []);
 
-  // Re-check ownership when screen comes into focus (handles expiration case)
-  // On web, use useEffect. On native, useFocusEffect is handled by wrapper
+  // Re-check ownership during purchase processing (handles MP redirect back)
+  // Only runs when actively processing a purchase to avoid duplicating the main ownership check
   React.useEffect(() => {
-    // On web, run the check on mount
     const effectiveUser = user || auth.currentUser;
-    if (isWeb && effectiveUser?.uid) {
+    if (isWeb && effectiveUser?.uid && (processingPurchaseRef.current || pendingPostPurchaseRef.current)) {
       checkCourseOwnership().then(async () => {
         if (processingPurchaseRef.current || pendingPostPurchaseRef.current) {
-          logger.log('💳 Screen mounted while processing purchase - checking if course was assigned...');
-          const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
+          const cachedUser = queryClient.getQueryData(['user', effectiveUser.uid]) || userDocData;
+          const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id, cachedUser);
           if (courseState.ownsCourse && !postPurchaseFlowTriggeredRef.current) {
-            logger.log('✅ Course found on mount - triggering post-purchase flow');
             handlePostPurchaseFlow();
           }
         }
       });
     }
-  }, [user?.uid, course.id, checkCourseOwnership, handlePostPurchaseFlow]);
+  }, [user?.uid, course.id, checkCourseOwnership, handlePostPurchaseFlow, queryClient, userDocData]);
 
-  // Safety check: Re-verify ownership after initial check completes
+  // Safety check: Re-verify ownership using already-cached userDocData
   // This catches cases where the initial check might have failed or been skipped
   React.useEffect(() => {
-    const effectiveUser = user || auth.currentUser;
-    if (!checkingOwnership && !userOwnsCourse && effectiveUser?.uid && course.id && !processingPurchase) {
-      // Double-check ownership after a delay to catch any missed updates
-      const safetyCheckTimeout = setTimeout(async () => {
-        try {
-          const courseState = await purchaseService.getUserCourseState(effectiveUser.uid, course.id);
-          if (courseState.ownsCourse && !userOwnsCourse) {
-            logger.log('🔍 Safety check: User actually owns course, updating state');
+    if (!checkingOwnership && !userOwnsCourse && userDocData && course.id && !processingPurchase) {
+      const safetyCheckTimeout = setTimeout(() => {
+        const courseState = purchaseService.getUserCourseState(null, course.id, userDocData);
+        // getUserCourseState with cachedUserDoc is sync-like (no API call), but returns a Promise
+        courseState.then(state => {
+          if (state.ownsCourse && !userOwnsCourse) {
             setUserOwnsCourse(true);
             setOwnershipReady(true);
           }
-        } catch (error) {
-          logger.debug('Safety check ownership error (non-critical):', error);
-        }
-      }, 3000); // Check after 3 seconds
-      
+        }).catch(() => {});
+      }, 3000);
+
       return () => clearTimeout(safetyCheckTimeout);
     }
-  }, [checkingOwnership, userOwnsCourse, user?.uid, course.id, processingPurchase]);
-
+  }, [checkingOwnership, userOwnsCourse, userDocData, course.id, processingPurchase]);
 
   // Handle screen focus changes - pause video when screen loses focus
   // Only needed on native - on web, browser handles this
@@ -687,7 +616,6 @@ useEffect(() => {
     // On native, set up focus/blur handling
     const handleAppStateChange = (nextAppState) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        logger.log('🛑 App went to background - pausing video');
         try {
           if (videoPlayer) {
             videoPlayer.pause();
@@ -695,7 +623,6 @@ useEffect(() => {
             setIsVideoPaused(true);
           }
         } catch (error) {
-          logger.log('⚠️ Error pausing video player:', error.message);
         }
       }
     };
@@ -710,9 +637,12 @@ useEffect(() => {
   // Set video URI when course data is available
   useEffect(() => {
     if (course?.video_intro_url) {
+      const source = detectVideoSource(course.video_intro_url, course.video_intro_source);
       setVideoUri(course.video_intro_url);
+      setVideoSourceType(source);
     } else if (course?.image_url) {
-      setVideoUri(null); // Fallback to image
+      setVideoUri(null);
+      setVideoSourceType(null);
     }
   }, [course]);
 
@@ -726,7 +656,6 @@ useEffect(() => {
       }
     }
   }, [isVideoPaused, videoPlayer]);
-
 
   // Video tap handler
   const handleVideoTap = () => {
@@ -747,33 +676,18 @@ useEffect(() => {
     // Get effective user (from context or Firebase auth)
     const effectiveUser = user || auth.currentUser;
     
-    // Debug logging
-    logger.debug('🔍 DEBUG shouldUseFreeFlow:');
-    logger.debug('  - course.status:', course.status);
-    logger.debug('  - userRole:', userRole);
-    logger.debug('  - isAdmin(userRole):', isAdmin(userRole));
-    logger.debug('  - isCreator(userRole):', isCreator(userRole));
-    logger.debug('  - course.status !== "published":', course.status !== 'published');
-    logger.debug('  - creatorId:', creatorId);
-    logger.debug('  - effectiveUser.uid:', effectiveUser?.uid);
-    logger.debug('  - isOwnProgram:', creatorId && effectiveUser?.uid && creatorId === effectiveUser.uid);
-    
     // Use free flow if:
     // 1. Program is in draft state (not published) - free for everyone
     // 2. User is admin - free for all programs
     // 3. User is creator AND this is their own program - free for creators' own programs
+    if (simulateUserRole) return false;
     const isDraft = course.status !== 'published';
     const isAdminUser = isAdmin(userRole);
     const isCreatorUser = isCreator(userRole);
     const isOwnProgram = creatorId && effectiveUser?.uid && creatorId === effectiveUser.uid;
     const isCreatorOwnProgram = isCreatorUser && isOwnProgram;
-    
-    const shouldUseFree = isDraft || isAdminUser || isCreatorOwnProgram;
-    
-    logger.debug('  - shouldUseFreeFlow result:', shouldUseFree);
-    logger.debug('  - Breakdown: isDraft=', isDraft, ', isAdminUser=', isAdminUser, ', isCreatorOwnProgram=', isCreatorOwnProgram);
-    
-    return shouldUseFree;
+
+    return isDraft || isAdminUser || isCreatorOwnProgram;
   };
 
   const handlePurchaseCourse = async () => {
@@ -785,7 +699,7 @@ useEffect(() => {
       return;
     }
 
-    if (userOwnsCourse) {
+    if (userOwnsCourse && !simulateUserRole) {
       Alert.alert('Ya tienes este curso', 'Este curso ya está en tu biblioteca');
       return;
     }
@@ -817,29 +731,25 @@ useEffect(() => {
         const isOwnProgram = creatorId && effectiveUser?.uid && creatorId === effectiveUser.uid;
         const isCreatorOwnProgram = isCreatorUser && isOwnProgram;
         
-        logger.debug(`🆓 Using free flow - isDraft=${isDraft}, isAdmin=${isAdminUser}, isCreatorOwnProgram=${isCreatorOwnProgram}`);
-        
-        const result = await purchaseService.grantFreeAccess(effectiveUser.uid, course.id);
-        
+        const result = await purchaseService.grantFreeAccess(effectiveUser.uid, course.id, userDocData);
+
         if (result.success) {
-          // Do the same operations as the old purchase system
-          logger.debug('✅ Processing free access, syncing data...');
-          
-          // Sync courses to update cache with new purchase
-          await hybridDataService.syncCourses(effectiveUser.uid);
-          
+
+          // Invalidate course queries so React Query refetches fresh data
+          await queryClient.invalidateQueries({ queryKey: ['programs'] });
+          await queryClient.invalidateQueries({ queryKey: ['user', effectiveUser.uid] });
+
           // Notify MainScreen about the purchase
           purchaseEventManager.notifyPurchaseComplete(course.id);
-          
-          // Download the purchased course data
-          logger.debug('📥 Downloading purchased course...');
+
           try {
-            // CRITICAL: Pass userId to downloadCourse for proper version checking and week change detection
-            await courseDownloadService.downloadCourse(course.id, effectiveUser.uid);
-            logger.debug('✅ Course downloaded successfully');
+            await courseDownloadService.downloadCourse(course.id, effectiveUser.uid, {
+              cachedCourseData: course,
+              cachedModules: modules,
+              isOneOnOne,
+            });
           } catch (downloadError) {
-            logger.error('❌ Error downloading course:', downloadError);
-            // Continue even if download fails - user can retry later
+            logger.error('Error downloading course:', downloadError);
           }
           
           // Show appropriate message based on who got access
@@ -884,7 +794,6 @@ useEffect(() => {
       return; // Exit early - free flow handled
     }
 
-
     // Regular purchase flow - open payment modal
     try {
       setPurchasing(true);
@@ -895,27 +804,15 @@ useEffect(() => {
       readyNotificationSentRef.current = false;
       successAlertShownRef.current = false;
 
-      logger.log('💳 Preparing purchase for course:', course.id);
-      logger.log('🔍 [handlePurchaseCourse] User details:', {
-        userId: effectiveUser.uid,
-        userEmail: effectiveUser.email,
-        courseId: course.id,
-      });
-      
       // Prepare purchase (creates payment preference)
-      const purchaseResult = await purchaseService.preparePurchase(effectiveUser.uid, course.id);
-      
-      logger.log('🔍 [handlePurchaseCourse] Purchase result:', {
-        success: purchaseResult.success,
-        requiresAlternateEmail: purchaseResult.requiresAlternateEmail,
-        error: purchaseResult.error,
-        checkoutURL: purchaseResult.checkoutURL,
+      const purchaseResult = await purchaseService.preparePurchase(effectiveUser.uid, course.id, {
+        accessDuration: course.access_duration,
+        payerEmail: effectiveUser.email || null,
       });
-      
+
       if (!purchaseResult.success) {
         // Handle special case: requires alternate email for subscription
         if (purchaseResult.requiresAlternateEmail) {
-          logger.warn('⚠️ [handlePurchaseCourse] Requires alternate email - showing email modal');
           setPurchasing(false);
           setProcessingPurchase(false);
           processingPurchaseRef.current = false;
@@ -926,7 +823,6 @@ useEffect(() => {
           setShowEmailModal(true);
           return;
         } else {
-          logger.error('❌ [handlePurchaseCourse] Purchase failed:', purchaseResult.error);
           Alert.alert('Error', purchaseResult.error || 'Error al preparar el pago');
         }
         setPurchasing(false);
@@ -936,7 +832,13 @@ useEffect(() => {
         return;
       }
 
-      // Open payment modal with checkout URL
+      // On web: redirect directly — more reliable than going through EpaycoWebView's useEffect
+      if (isWeb) {
+        window.location.href = purchaseResult.checkoutURL;
+        return;
+      }
+
+      // Native: open in-app WebView modal
       setCheckoutURL(purchaseResult.checkoutURL);
       setShowPaymentModal(true);
       setPurchasing(false);
@@ -950,7 +852,6 @@ useEffect(() => {
       pendingPostPurchaseRef.current = false;
     }
   };
-
 
   // Handle email submission for Mercado Pago subscription
   const handleEmailSubmit = async () => {
@@ -988,8 +889,6 @@ useEffect(() => {
       readyNotificationSentRef.current = false;
       successAlertShownRef.current = false;
 
-      logger.log('💳 Retrying purchase with Mercado Pago email:', mercadoPagoEmail.trim());
-      
       // Call prepareSubscription directly with the provided email
       const subscriptionResult = await purchaseService.prepareSubscription(
         effectiveUser.uid,
@@ -1012,7 +911,13 @@ useEffect(() => {
         return;
       }
 
-      // Success - open payment modal
+      // On web: redirect directly
+      if (isWeb) {
+        window.location.href = subscriptionResult.checkoutURL;
+        return;
+      }
+
+      // Native: open in-app WebView modal
       setCheckoutURL(subscriptionResult.checkoutURL);
       setShowPaymentModal(true);
       setPurchasing(false);
@@ -1063,13 +968,18 @@ useEffect(() => {
         return;
       }
 
-      await hybridDataService.syncCourses(user.uid);
+      await queryClient.invalidateQueries({ queryKey: ['programs'] });
+      await queryClient.invalidateQueries({ queryKey: ['user', user.uid] });
       purchaseEventManager.notifyPurchaseComplete(course.id);
 
       try {
-        await courseDownloadService.downloadCourse(course.id);
+        await courseDownloadService.downloadCourse(course.id, user?.uid, {
+          cachedCourseData: course,
+          cachedModules: modules,
+          isOneOnOne,
+        });
       } catch (downloadError) {
-        logger.error('❌ Error downloading course after starting trial:', downloadError);
+        logger.error('Error downloading course after starting trial:', downloadError);
       }
 
       await checkCourseOwnership();
@@ -1096,8 +1006,6 @@ useEffect(() => {
     }
   };
 
-
-
   const schedulePostPurchaseFlow = React.useCallback(() => {
     if (!pendingPostPurchaseRef.current) {
       return;
@@ -1117,10 +1025,8 @@ useEffect(() => {
     }, 3000);
   }, [handlePostPurchaseFlow]);
 
-
   // Handle payment success
   const handlePaymentSuccess = () => {
-    logger.log('✅ Payment successful, waiting for course assignment...');
     setShowPaymentModal(false);
     setCheckoutURL(null);
     // Post-purchase flow will be triggered by Firestore listener
@@ -1128,7 +1034,6 @@ useEffect(() => {
 
   // Handle payment error
   const handlePaymentError = () => {
-    logger.log('❌ Payment failed or cancelled');
     setShowPaymentModal(false);
     setCheckoutURL(null);
     setProcessingPurchase(false);
@@ -1160,7 +1065,7 @@ useEffect(() => {
 
     // Show "Ya tienes este programa" if user owns course
     // Fix: Check userOwnsCourse first - if true, always show owned button (don't check ownershipReady for display)
-    if (userOwnsCourse) {
+    if (userOwnsCourse && !simulateUserRole) {
       if (!ownershipReady) {
         return (
           <TouchableOpacity style={[styles.primaryButton, styles.disabledButton]} disabled>
@@ -1196,7 +1101,35 @@ useEffect(() => {
       );
     }
 
-    if (canShowTrialCta) return null;
+    if (canShowTrialCta && !simulateUserRole) {
+      const currencyCode = course.currency || course.currency_id || 'COP';
+      const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
+      return (
+        <View>
+          <TouchableOpacity
+            style={[styles.primaryButton, purchasing && styles.disabledButton]}
+            onPress={handleStartTrial}
+            disabled={purchasing}
+          >
+            {purchasing ? (
+              <>
+                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryButtonText}>Activando prueba...</Text>
+              </>
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {`Prueba gratis - ${trialDurationDays} dias`}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {course.price > 0 && (
+            <Text style={styles.trialPriceText}>
+              {`Luego ${formatPrice(course.price)} ${currencyCode}`}
+            </Text>
+          )}
+        </View>
+      );
+    }
 
     if (isOneOnOne) {
       const hasUpcomingBooking = userCallBooking && new Date(userCallBooking.slotEndUtc) > new Date();
@@ -1212,13 +1145,38 @@ useEffect(() => {
     }
 
     const currencyCode = course.currency || course.currency_id || 'COP';
+    const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
+    const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
+    const discountPercent = hasCompareAt ? Math.round((1 - course.price / course.compare_at_price) * 100) : 0;
     const purchaseButtonText = course.price
-      ? `Comprar - ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(course.price)} ${currencyCode}`
+      ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
       : 'Comprar';
+
+    if (hasCompareAt && !purchasing) {
+      return (
+        <View style={styles.discountCtaContainer}>
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountBadgeText}>{`-${discountPercent}%`}</Text>
+          </View>
+          <TouchableOpacity
+            className={isWeb ? 'course-cta-pulse' : undefined}
+            style={styles.primaryButton}
+            onPress={handlePurchaseCourse}
+            disabled={purchasing}
+          >
+            <View style={styles.discountPriceRow}>
+              <Text style={styles.compareAtPriceText}>{formatPrice(course.compare_at_price)}</Text>
+              <Text style={styles.primaryButtonText}>{`${formatPrice(course.price)} ${currencyCode}`}</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
-        style={[styles.primaryButton, purchasing && styles.disabledButton]} 
+        style={[styles.primaryButton, purchasing && styles.disabledButton]}
         onPress={handlePurchaseCourse}
         disabled={purchasing}
       >
@@ -1251,7 +1209,6 @@ useEffect(() => {
       </View>
     </View>
   );
-
 
   // Render pagination indicators - MainScreen style (native driver compatible)
   const renderPaginationIndicators = () => {
@@ -1311,9 +1268,8 @@ useEffect(() => {
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        <LoadingSpinner 
-          size="large" 
-          text="Cargando programa..." 
+        <LoadingSpinner
+          size="large"
           containerStyle={styles.loadingContainer}
         />
       </SafeAreaView>
@@ -1329,9 +1285,8 @@ useEffect(() => {
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        <LoadingSpinner 
-          size="large" 
-          text="Verificando acceso..." 
+        <LoadingSpinner
+          size="large"
           containerStyle={styles.loadingContainer}
         />
       </SafeAreaView>
@@ -1367,6 +1322,33 @@ useEffect(() => {
                 </Text>
           </View>
 
+          {/* One-on-one tab bar */}
+          {isOneOnOne && userOwnsCourse && isWeb && (
+            <View style={styles.videoTabBar}>
+              <TouchableOpacity
+                style={[styles.videoTab, courseDetailTab === 'programa' && styles.videoTabActive]}
+                onPress={() => setCourseDetailTab('programa')}
+              >
+                <Text style={[styles.videoTabText, courseDetailTab === 'programa' && styles.videoTabTextActive]}>Programa</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.videoTab, courseDetailTab === 'videos' && styles.videoTabActive]}
+                onPress={() => setCourseDetailTab('videos')}
+              >
+                <Text style={[styles.videoTabText, courseDetailTab === 'videos' && styles.videoTabTextActive]}>Videos</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Video Exchange Tab (one-on-one only) */}
+          {isOneOnOne && userOwnsCourse && isWeb && courseDetailTab === 'videos' ? (
+            <VideoExchangeTab
+              userId={clientUserId}
+              courseId={course?.id}
+              creatorId={creatorId}
+            />
+          ) : (
+          <>
           {/* Swipeable Cards Container */}
           <View style={styles.swipeableCardsContainer}>
             <ScrollView
@@ -1397,9 +1379,21 @@ useEffect(() => {
                   (videoUri || course?.image_url) && styles.imageCardNoBorder
                 ]}
               >
-                {videoUri ? (
+                {videoUri && isExternalVideo && Platform.OS === 'web' ? (
                   <VideoCardWebWrapper>
-                  <TouchableOpacity 
+                    <View style={styles.videoContainer}>
+                      <iframe
+                        src={getEmbedUrl(videoUri, videoSourceType)}
+                        style={{ width: '100%', height: '100%', border: 'none', borderRadius: 12 }}
+                        allow="autoplay; encrypted-media"
+                        allowFullScreen
+                        title="Course intro video"
+                      />
+                    </View>
+                  </VideoCardWebWrapper>
+                ) : videoUri ? (
+                  <VideoCardWebWrapper>
+                  <TouchableOpacity
                     style={styles.videoContainer}
                     onPress={handleVideoTap}
                     activeOpacity={1}
@@ -1429,7 +1423,7 @@ useEffect(() => {
                     {isVideoPaused && (
                       <VideoOverlayWebWrapper>
                         <View style={styles.volumeIconContainer}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.volumeIconButton}
                           onPress={toggleMute}
                           activeOpacity={0.7}
@@ -1446,7 +1440,7 @@ useEffect(() => {
                     {isVideoPaused && (
                       <VideoOverlayWebWrapper>
                         <View style={styles.restartIconContainer}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={styles.restartIconButton}
                           onPress={handleVideoRestart}
                           activeOpacity={0.7}
@@ -1604,14 +1598,30 @@ useEffect(() => {
             {renderPaginationIndicators()}
           </View>
 
-
-
           {/* Action Buttons */}
           <View style={styles.actionsSection}>
             {renderPurchaseButton()}
           </View>
 
+          {/* Refresh ownership button */}
+          <TouchableOpacity
+            style={styles.refreshOwnershipButton}
+            onPress={handleRefreshOwnership}
+            disabled={refreshingOwnership || checkingOwnership}
+          >
+            {refreshingOwnership ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" />
+            ) : (
+              <SvgArrowReload width={16} height={16} color="rgba(255,255,255,0.5)" />
+            )}
+            <Text style={styles.refreshOwnershipText}>
+              {refreshingOwnership ? 'Verificando...' : 'Verificar acceso'}
+            </Text>
+          </TouchableOpacity>
+
           <BottomSpacer />
+          </>
+          )}
         </WakeHeaderContent>
       </ScrollView>
 
@@ -1740,6 +1750,32 @@ useEffect(() => {
           >
             Ir al programa
           </button>
+        </div>
+      )}
+      {/* Debug: simulate user role toggle (web only) */}
+      {Platform.OS === 'web' && isAdmin(userRole) && (
+        <div
+          onClick={() => setSimulateUserRole(prev => !prev)}
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 10000,
+            background: simulateUserRole ? 'rgba(255,80,80,0.9)' : 'rgba(255,255,255,0.15)',
+            border: `1px solid ${simulateUserRole ? 'rgba(255,80,80,0.5)' : 'rgba(255,255,255,0.2)'}`,
+            borderRadius: 12,
+            padding: '8px 14px',
+            cursor: 'pointer',
+            backdropFilter: 'blur(12px)',
+            fontFamily: 'Montserrat, sans-serif',
+            fontSize: 11,
+            fontWeight: 600,
+            color: '#fff',
+            letterSpacing: 0.5,
+            userSelect: 'none',
+          }}
+        >
+          {simulateUserRole ? 'USER MODE' : 'ADMIN'}
         </div>
       )}
     </SafeAreaView>
@@ -2176,7 +2212,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingVertical: 40,
   },
   errorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 16,
@@ -2283,6 +2319,45 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  discountCtaContainer: {
+    alignItems: 'center',
+    position: 'relative',
+  },
+  discountBadge: {
+    position: 'absolute',
+    top: -10,
+    right: -8,
+    backgroundColor: '#e53e3e',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    zIndex: 1,
+    shadowColor: '#e53e3e',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  discountBadgeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  discountPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compareAtPriceText: {
+    color: 'rgba(26, 26, 26, 0.4)',
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'line-through',
+  },
+  priceRow: {
+    alignItems: 'center',
+  },
   buttonPriceText: {
     color: 'rgba(255, 255, 255, 1)',
     fontSize: 14,
@@ -2305,6 +2380,19 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   ownedButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
     opacity: 0.45,
+  },
+  refreshOwnershipButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    alignSelf: 'center',
+  },
+  refreshOwnershipText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 13,
+    fontWeight: '500',
   },
   secondaryButton: {
     backgroundColor: 'transparent',
@@ -2520,10 +2608,10 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginBottom: Math.max(8, screenHeight * 0.01),
   },
   emailModalInputError: {
-    borderColor: '#ff4444',
+    borderColor: 'rgba(224, 84, 84, 0.9)',
   },
   emailModalErrorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: Math.min(screenWidth * 0.035, 14),
     marginBottom: Math.max(12, screenHeight * 0.015),
     textAlign: 'center',
@@ -2559,6 +2647,32 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '700',
+  },
+  videoTabBar: {
+    flexDirection: 'row',
+    gap: 4,
+    marginBottom: 16,
+    marginTop: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 8,
+    padding: 3,
+  },
+  videoTab: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  videoTabActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  videoTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.4)',
+  },
+  videoTabTextActive: {
+    color: 'rgba(255, 255, 255, 0.9)',
   },
 });
 

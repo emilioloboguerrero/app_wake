@@ -1,0 +1,184 @@
+/* ─── Session Panel Container ────────────────────────────────── */
+.cpsp-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ─── Client Copy Banner ─────────────────────────────────────── */
+.cpsp-banner {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* ─── Exercises List ─────────────────────────────────────────── */
+.cpsp-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cpsp-empty {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 13px;
+  text-align: center;
+  padding: 32px 0;
+}
+
+/* ─── Exercise Card ──────────────────────────────────────────── */
+.cpsp-exercise {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.cpsp-exercise-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cpsp-exercise-grip {
+  color: rgba(255, 255, 255, 0.15);
+  cursor: grab;
+}
+
+.cpsp-exercise-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.cpsp-exercise-notes {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0 0 8px;
+  font-style: italic;
+}
+
+/* ─── Sets Table ─────────────────────────────────────────────── */
+.cpsp-sets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cpsp-sets-header {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr 60px 24px;
+  gap: 6px;
+  padding: 0 4px 4px;
+}
+
+.cpsp-sets-header span {
+  font-size: 9px;
+  font-weight: 500;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.3px;
+}
+
+/* ─── Set Row ────────────────────────────────────────────────── */
+.cpsp-set-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr 60px 24px;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 4px;
+  border-radius: 4px;
+  transition: background 150ms;
+}
+
+.cpsp-set-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cpsp-set-num {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.2);
+  text-align: center;
+}
+
+.cpsp-set-input {
+  width: 100%;
+  padding: 5px 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  text-align: center;
+  -moz-appearance: textfield;
+  transition: border-color 200ms;
+}
+
+.cpsp-set-input::-webkit-inner-spin-button,
+.cpsp-set-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+}
+
+.cpsp-set-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cpsp-set-input::placeholder {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+.cpsp-set-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 150ms;
+  opacity: 0;
+}
+
+.cpsp-set-row:hover .cpsp-set-delete {
+  opacity: 1;
+}
+
+.cpsp-set-delete:hover {
+  color: rgba(248, 113, 113, 0.7);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+/* ─── Add Set Button ─────────────────────────────────────────── */
+.cpsp-add-set {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  background: none;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 4px;
+  transition: all 200ms;
+  align-self: flex-start;
+}
+
+.cpsp-add-set:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.03);
+}

@@ -1,49 +1,78 @@
 /**
- * Nutrition API service — calls Cloud Functions (FatSecret proxy).
- * Base URL matches deployed functions (us-central1).
+ * Nutrition API service — calls the Phase 3 REST API (FatSecret proxy endpoints).
+ * Shapes responses back to the raw FatSecret format that callers expect.
  */
-const NUTRITION_BASE =
-  'https://us-central1-wolf-20b8b.cloudfunctions.net';
+import apiClient, { WakeApiError } from '../utils/apiClient';
+import { showOfflineError } from '../utils/offlineError';
 
-async function post(endpoint, body) {
-  const res = await fetch(`${NUTRITION_BASE}/${endpoint}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body ?? {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data?.error ?? `Request failed: ${res.status}`);
-    err.status = res.status;
-    err.data = data;
+/**
+ * Search foods by name.
+ * Returns data shaped like the old FatSecret v4 response:
+ * { foods_search: { results: { food: [...] }, total_results, page_number } }
+ */
+export async function nutritionFoodSearch(searchExpression, pageNumber = 0, _maxResults = 20) {
+  let result;
+  try {
+    const page = pageNumber + 1; // API is 1-indexed, old service was 0-indexed
+    result = await apiClient.get('/nutrition/foods/search', {
+      params: { q: searchExpression, page: String(page) },
+    });
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      showOfflineError();
+    }
     throw err;
   }
-  return data;
+  // API returns raw FatSecret objects (snake_case fields) inside data.foods
+  const rawFoods = result?.data?.foods ?? [];
+  const foods = Array.isArray(rawFoods) ? rawFoods : (rawFoods ? [rawFoods] : []);
+  return {
+    foods_search: {
+      results: { food: foods },
+      total_results: String(result?.data?.totalResults ?? 0),
+      page_number: String(pageNumber),
+    },
+  };
 }
 
 /**
- * Search foods via FatSecret proxy.
- */
-export async function nutritionFoodSearch(searchExpression, pageNumber = 0, maxResults = 20) {
-  return post('nutritionFoodSearch', {
-    search_expression: searchExpression,
-    page_number: pageNumber,
-    max_results: maxResults,
-  });
-}
-
-/**
- * Get food by ID via FatSecret proxy.
+ * Get full food detail by ID.
+ * Returns data shaped like the old FatSecret v5 response:
+ * { food: { food_id, food_name, servings: { serving: [...] } } }
  */
 export async function nutritionFoodGet(foodId) {
-  return post('nutritionFoodGet', { food_id: foodId });
+  let result;
+  try {
+    result = await apiClient.get(`/nutrition/foods/${foodId}`);
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      showOfflineError();
+    }
+    throw err;
+  }
+  // API returns raw FatSecret food object (snake_case fields) inside data
+  const foodData = result?.data ?? {};
+  return { food: foodData };
 }
 
 /**
- * Lookup food by barcode via FatSecret proxy.
+ * Lookup food by barcode.
+ * Returns data shaped like the old FatSecret barcode response:
+ * { food: { food_id, food_name, food_category, servings: { serving: [...] } } }
  */
 export async function nutritionBarcodeLookup(barcode) {
-  return post('nutritionBarcodeLookup', { barcode });
+  let result;
+  try {
+    result = await apiClient.get(`/nutrition/foods/barcode/${encodeURIComponent(barcode)}`);
+  } catch (err) {
+    if (err instanceof WakeApiError && err.status === 0) {
+      showOfflineError();
+    }
+    throw err;
+  }
+  // API returns raw FatSecret food object (snake_case fields) inside data
+  const foodData = result?.data ?? {};
+  return { food: foodData };
 }
 
 export default {

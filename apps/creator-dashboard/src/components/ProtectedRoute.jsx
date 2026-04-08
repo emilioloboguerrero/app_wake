@@ -13,8 +13,8 @@ const ProtectedRoute = ({ children, requireOnboarding = true, requireCreator = t
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center',
-        backgroundColor: '#1a1a1a',
-        color: '#ffffff'
+        backgroundColor: 'var(--canvas)',
+        color: 'var(--text-primary)'
       }}>
         Cargando...
       </div>
@@ -33,11 +33,6 @@ const ProtectedRoute = ({ children, requireOnboarding = true, requireCreator = t
     const currentPath = location.pathname;
     // Redirect non-creators to login (creator dashboard is creator-only)
     if (currentPath !== '/login') {
-      console.log('🚫 ProtectedRoute: Non-creator user accessing creator route, redirecting', {
-        userRole,
-        currentPath,
-        isCreator
-      });
       return <Navigate to="/login" replace />;
     }
     // If already on login but route requires creator, don't render

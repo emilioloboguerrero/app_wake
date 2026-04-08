@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import { getSessionDateAsDate } from '../utils/sessionFilter';
-import logger from '../utils/logger';
 import WakeLoader from './WakeLoader';
 
 const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) => {
@@ -63,18 +62,6 @@ const ExerciseHistoryCard = ({ sessions, loading, maxSessions = 5, onViewAll }) 
   );
 
   const recentSessions = validSessions.slice(0, maxSessions);
-
-  logger.log('📊 ExerciseHistoryCard: sessions:', sessions?.length ?? 0, 'validSessions:', validSessions.length, 'recentSessions:', recentSessions.length);
-  if (sessions?.length > 0 && validSessions.length === 0) {
-    const first = sessions[0];
-    const firstSet = first.sets?.[0];
-    logger.warn('📊 ExerciseHistoryCard: No valid sessions – debug:', {
-      sessionsCount: sessions.length,
-      firstSessionHasSets: !!first.sets,
-      firstSessionSetsLength: first.sets?.length ?? 0,
-      firstSet: firstSet ? { reps: firstSet.reps, weight: firstSet.weight, intensity: firstSet.intensity } : null
-    });
-  }
 
   return (
     <View style={styles.container}>

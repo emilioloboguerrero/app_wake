@@ -1,8 +1,6 @@
 // Progress Query Service - Updated to use new data structure
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import userProgressService from '../services/userProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 
@@ -15,13 +13,10 @@ class ProgressQueryService {
    */
   async getUserCourseProgress(userId, courseId) {
     try {
-      logger.log('📊 Getting course progress:', { userId, courseId });
-      
       // Get course progress from user document
       const progressData = await userProgressService.getCourseProgress(userId, courseId);
       
       if (!progressData) {
-        logger.log('📊 No course progress found');
         return {
           sessions: [],
           analytics: this.calculateProgressAnalytics([]),
@@ -29,24 +24,21 @@ class ProgressQueryService {
         };
       }
       
-      // Get session history for completed sessions
-      const sessions = [];
+      // Get session history for completed sessions in parallel
+      let sessions = [];
       if (progressData.allSessionsCompleted) {
-        for (const sessionId of progressData.allSessionsCompleted) {
-          const sessionData = await exerciseHistoryService.getSessionHistory(userId, sessionId);
-          if (sessionData) {
-            sessions.push({
-              id: sessionId,
-              ...sessionData
-            });
-          }
-        }
+        const results = await Promise.all(
+          progressData.allSessionsCompleted.map(sessionId =>
+            exerciseHistoryService.getSessionHistory(userId, sessionId)
+              .then(data => data ? { id: sessionId, ...data } : null)
+              .catch(() => null)
+          )
+        );
+        sessions = results.filter(Boolean);
       }
       
       // Calculate progress analytics
       const progressAnalytics = this.calculateProgressAnalytics(sessions);
-      
-      logger.log(`✅ Retrieved ${sessions.length} sessions for course progress`);
       
       return {
         sessions,
@@ -67,35 +59,35 @@ class ProgressQueryService {
    */
   async getRecentWorkouts(userId, days = 7) {
     try {
-      logger.log('📅 Getting recent workouts:', { userId, days });
-      
       // Get all course progress for user
       const allCourseProgress = await userProgressService.getAllCourseProgress(userId);
       
-      // Get recent sessions from all courses
-      const allSessions = [];
+      // Get recent sessions from all courses in parallel
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
-      
+
+      const fetchPromises = [];
       for (const [courseId, courseProgress] of Object.entries(allCourseProgress)) {
         if (courseProgress.allSessionsCompleted) {
           for (const sessionId of courseProgress.allSessionsCompleted) {
-            const sessionData = await exerciseHistoryService.getSessionHistory(userId, sessionId);
-            if (sessionData && new Date(sessionData.completedAt) >= cutoffDate) {
-              allSessions.push({
-                id: sessionId,
-                courseId: courseId,
-                ...sessionData
-              });
-            }
+            fetchPromises.push(
+              exerciseHistoryService.getSessionHistory(userId, sessionId)
+                .then(data => {
+                  if (data && new Date(data.completedAt) >= cutoffDate) {
+                    return { id: sessionId, courseId, ...data };
+                  }
+                  return null;
+                })
+                .catch(() => null)
+            );
           }
         }
       }
+      const allSessions = (await Promise.all(fetchPromises)).filter(Boolean);
       
       // Sort all sessions by date
       allSessions.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
       
-      logger.log(`✅ Retrieved ${allSessions.length} recent sessions`);
       return allSessions;
       
     } catch (error) {
@@ -112,12 +104,9 @@ class ProgressQueryService {
    */
   async getExerciseProgressHistory(userId, exerciseId, courseId = null) {
     try {
-      logger.log('💪 Getting exercise progress:', { userId, exerciseId, courseId });
-      
       // Get exercise history from subcollection
       const exerciseHistory = await exerciseHistoryService.getExerciseHistory(userId, exerciseId);
       
-      logger.log(`✅ Retrieved exercise history: ${exerciseHistory.sessions.length} sessions`);
       return exerciseHistory.sessions;
       
     } catch (error) {
@@ -179,7 +168,7 @@ class ProgressQueryService {
    */
   async getUserActiveCourseIds(userId) {
     try {
-      const userDoc = await firestoreService.getUser(userId);
+      const userDoc = await apiService.getUser(userId);
       return userDoc?.courses ? Object.keys(userDoc.courses) : [];
     } catch (error) {
       logger.error('Failed to get user active courses:', error);
@@ -279,8 +268,6 @@ class ProgressQueryService {
       };
       
       await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
-      logger.log('💾 Progress data cached locally');
-      
     } catch (error) {
       logger.error('❌ Failed to cache progress data:', error);
     }
@@ -301,11 +288,9 @@ class ProgressQueryService {
       const maxAgeMs = maxAgeMinutes * 60 * 1000;
       
       if (cacheAge > maxAgeMs) {
-        logger.log('⏰ Progress cache expired');
         return null;
       }
-      
-      logger.log('⚡ Using cached progress data');
+
       return cache;
       
     } catch (error) {

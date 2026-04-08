@@ -1,0 +1,752 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+.pwa-ob-root {
+  width: 100vw;
+  height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  background: #1a1a1a;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.pwa-ob-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Welcome ── */
+.pwa-ob-welcome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32px;
+  z-index: 10;
+}
+
+.pwa-ob-welcome-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.pwa-ob-welcome-logo {
+  display: flex;
+  justify-content: center;
+}
+
+.pwa-ob-welcome-tagline {
+  color: rgba(255,255,255,0.85);
+  font-size: clamp(22px, 6vw, 32px);
+  font-weight: 300;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin: 16px 0 0;
+  text-align: center;
+}
+
+.pwa-ob-welcome-cta {
+  position: absolute;
+  bottom: 12%;
+  margin-top: 0;
+}
+
+.pwa-ob-bold {
+  font-weight: 700;
+  color: rgba(255,255,255,1);
+}
+
+/* ── CTA Button (glass) ── */
+.pwa-ob-cta {
+  margin-top: 28px;
+  padding: 14px 48px;
+  background: rgba(255,87,168,0.12);
+  border: 1px solid rgba(255,87,168,0.3);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.85);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.pwa-ob-cta:hover {
+  background: rgba(255,87,168,0.18);
+  border-color: rgba(255,87,168,0.45);
+}
+
+.pwa-ob-cta.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.pwa-ob-cta-fixed {
+  position: absolute;
+  bottom: 10%;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  z-index: 10;
+}
+
+/* ── Scene (visual area) ── */
+.pwa-ob-scene {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.pwa-ob-scene::after {
+  content: '';
+  position: absolute;
+  inset: -20px;
+  background: radial-gradient(ellipse 65% 65% at center, transparent 45%, #1a1a1a 100%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pwa-ob-scene svg {
+  width: 88%;
+  max-width: 340px;
+  height: auto;
+}
+
+/* ── Text area ── */
+.pwa-ob-text {
+  position: absolute;
+  bottom: 25%;
+  left: 0;
+  right: 0;
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 10;
+}
+
+.pwa-ob-copy {
+  color: rgba(255,255,255,0.85);
+  font-size: clamp(22px, 6vw, 32px);
+  font-weight: 300;
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  letter-spacing: -0.01em;
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* ── Navigation bar ── */
+.pwa-ob-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding-bottom: 32px;
+  position: relative;
+  z-index: 9;
+  flex-shrink: 0;
+}
+
+.pwa-ob-nav-arrow {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.25s, background 0.25s, color 0.25s;
+  flex-shrink: 0;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.pwa-ob-nav-arrow:hover {
+  border-color: rgba(255,87,168,0.25);
+  background: rgba(255,87,168,0.06);
+  color: rgba(255,255,255,0.8);
+}
+
+/* ── Progress dots ── */
+.pwa-ob-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.pwa-ob-dot {
+  height: 6px;
+  border-radius: 3px;
+}
+
+/* ── Tap zones ── */
+.pwa-ob-tap-left,
+.pwa-ob-tap-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%;
+  z-index: 8;
+  cursor: pointer;
+}
+
+.pwa-ob-tap-left {
+  left: 0;
+}
+
+.pwa-ob-tap-right {
+  right: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Profile phase
+   ═══════════════════════════════════════════════════════════════════ */
+
+.pwa-ob-profile {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.pwa-ob-profile-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  scrollbar-width: none;
+}
+
+.pwa-ob-profile-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.pwa-ob-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 8px 12px;
+  font-family: 'Montserrat', sans-serif;
+  transition: color 0.2s;
+}
+
+.pwa-ob-back:hover {
+  color: rgba(255,255,255,0.7);
+}
+
+/* ── Profile Hero ── */
+.pwa-ob-profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 20px;
+  padding-bottom: 8px;
+  width: 100%;
+}
+
+.pwa-ob-profile-title {
+  color: rgba(255,255,255,0.85);
+  font-size: clamp(26px, 7vw, 36px);
+  font-weight: 300;
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  letter-spacing: -0.02em;
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* Photo with glow */
+.pwa-ob-photo-wrap {
+  position: relative;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.pwa-ob-photo-glow {
+  position: absolute;
+  inset: -16px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,87,168,0.12) 0%, transparent 70%);
+  animation: ob-photo-breathe 3.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes ob-photo-breathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.pwa-ob-photo {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.03);
+  position: relative;
+  z-index: 1;
+  transition: border-color 0.3s;
+}
+
+.pwa-ob-photo:hover {
+  border-color: rgba(255,87,168,0.3);
+}
+
+.pwa-ob-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pwa-ob-photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.2);
+}
+
+/* ── Sections ── */
+.pwa-ob-section {
+  width: 100%;
+  max-width: 380px;
+  margin-bottom: 24px;
+}
+
+.pwa-ob-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+
+.pwa-ob-section-label {
+  color: rgba(255,255,255,0.3);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Montserrat', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  flex-shrink: 0;
+}
+
+.pwa-ob-section-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,87,168,0.15), transparent);
+  transform-origin: left center;
+}
+
+.pwa-ob-section-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Inputs */
+.pwa-ob-input {
+  width: 100%;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 13px 16px;
+  color: rgba(255,255,255,0.9);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 0.3s, background 0.3s;
+  box-sizing: border-box;
+}
+
+.pwa-ob-input::placeholder {
+  color: rgba(255,255,255,0.18);
+}
+
+.pwa-ob-input:focus {
+  border-color: rgba(255,87,168,0.25);
+  background: rgba(255,255,255,0.04);
+}
+
+/* Date picker */
+.pwa-ob-date-display {
+  cursor: pointer;
+  color: rgba(255,255,255,0.18);
+  user-select: none;
+  position: relative;
+}
+
+.pwa-ob-date-display.filled {
+  color: rgba(255,255,255,0.9);
+}
+
+.pwa-ob-date-native {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+
+/* Username / field hints */
+.pwa-ob-field-hint {
+  display: block;
+  font-size: 12px;
+  margin-top: 6px;
+  color: rgba(255,255,255,0.4);
+}
+.pwa-ob-field-error {
+  color: rgba(255,80,80,0.9);
+}
+.pwa-ob-field-success {
+  color: rgba(80,220,120,0.9);
+}
+
+/* Gender pills */
+.pwa-ob-pill-row-profile {
+  display: flex;
+  gap: 6px;
+}
+
+.pwa-ob-pill-profile {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.35);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+  text-align: center;
+}
+
+.pwa-ob-pill-profile:hover {
+  border-color: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.55);
+}
+
+.pwa-ob-pill-profile.active {
+  border-color: rgba(255,87,168,0.35);
+  background: rgba(255,87,168,0.08);
+  color: rgba(255,255,255,0.9);
+  box-shadow: 0 0 16px rgba(255,87,168,0.08);
+}
+
+/* Location selects */
+.pwa-ob-location-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pwa-ob-select-wrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.pwa-ob-select-display {
+  cursor: pointer;
+  color: rgba(255,255,255,0.18);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pwa-ob-select-display.filled {
+  color: rgba(255,255,255,0.9);
+}
+
+.pwa-ob-select-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pwa-ob-select-chevron {
+  flex-shrink: 0;
+  opacity: 0.3;
+  transition: opacity 0.2s;
+}
+
+.pwa-ob-select-display:hover .pwa-ob-select-chevron {
+  opacity: 0.5;
+}
+
+.pwa-ob-select-native {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+/* Metrics */
+.pwa-ob-metric-row-profile {
+  display: flex;
+  gap: 10px;
+}
+
+.pwa-ob-metric-field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pwa-ob-metric-input {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font-weight: 500;
+  font-size: 16px;
+  -moz-appearance: textfield;
+}
+
+.pwa-ob-metric-input::-webkit-outer-spin-button,
+.pwa-ob-metric-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.pwa-ob-metric-unit {
+  color: rgba(255,255,255,0.25);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  flex-shrink: 0;
+}
+
+/* Profile CTA wrapper */
+.pwa-ob-profile-cta {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 12px 28px 36px;
+  display: flex;
+  justify-content: center;
+  z-index: 15;
+  background: linear-gradient(transparent, rgba(26,26,26,0.95) 40%);
+  pointer-events: none;
+}
+
+.pwa-ob-profile-cta .pwa-ob-cta {
+  pointer-events: auto;
+  margin-top: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Completion phase
+   ═══════════════════════════════════════════════════════════════════ */
+
+.pwa-ob-completion {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* Loading state */
+.pwa-ob-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  position: relative;
+}
+
+.pwa-ob-loading-rings {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.pwa-ob-pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255,87,168,0.15);
+  animation: ob-pulse-expand 2.8s ease-out infinite;
+}
+
+.pwa-ob-pulse-ring-2 {
+  animation-delay: 0.9s;
+}
+
+.pwa-ob-pulse-ring-3 {
+  animation-delay: 1.8s;
+}
+
+@keyframes ob-pulse-expand {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+.pwa-ob-loading-text {
+  color: rgba(255,255,255,0.4);
+  font-size: 15px;
+  font-weight: 400;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+/* Check state */
+.pwa-ob-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pwa-ob-check-svg {
+  width: 80px;
+  height: 80px;
+}
+
+/* Done state */
+.pwa-ob-done {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pwa-ob-done-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 28px;
+  gap: 20px;
+}
+
+.pwa-ob-done-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  margin-bottom: 8px;
+}
+
+.pwa-ob-done-title {
+  color: #ffffff;
+  font-size: 30px;
+  font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.pwa-ob-done-message {
+  color: rgba(255,255,255,0.45);
+  font-size: 18px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  text-align: center;
+  line-height: 1.45;
+  margin: 0;
+  padding: 0 8px;
+}
+
+/* Bottom CTA (completion) */
+.pwa-ob-done-bottom {
+  position: absolute;
+  bottom: 80px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
+}
+
+.pwa-ob-done-cta {
+  background: rgba(255,87,168,0.12);
+  border: 1px solid rgba(255,87,168,0.3);
+  height: 50px;
+  min-width: 200px;
+  width: 50%;
+  max-width: 280px;
+  border-radius: 14px;
+  color: rgba(255,255,255,0.95);
+  font-size: 18px;
+  font-weight: 600;
+  font-family: 'Montserrat', sans-serif;
+  cursor: pointer;
+  transition: background 0.3s, border-color 0.3s;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.pwa-ob-done-cta:hover {
+  background: rgba(255,87,168,0.18);
+  border-color: rgba(255,87,168,0.45);
+}

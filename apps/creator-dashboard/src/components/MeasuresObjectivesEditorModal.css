@@ -1,0 +1,174 @@
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.data-editor-modal-content {
+  animation: modalIn 0.3s var(--spring) both;
+}
+
+.data-editor-preset-name input {
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 10px 14px;
+  width: 100%;
+  font-size: clamp(13px, 3vw, 14px);
+  box-sizing: border-box;
+}
+
+.data-editor-preset-name input:focus {
+  border-color: var(--border-default);
+  outline: none;
+}
+
+.data-editor-columns {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.data-editor-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.data-editor-column-title {
+  font-size: clamp(11px, 2.5vw, 12px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin: 0 0 10px 0;
+}
+
+.data-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-height: 8px;
+}
+
+.data-editor-sortable-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+
+.data-editor-sortable-drag {
+  display: flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  cursor: grab;
+  flex-shrink: 0;
+  touch-action: none;
+}
+
+.data-editor-sortable-drag:active {
+  cursor: grabbing;
+}
+
+.data-editor-sortable-label {
+  flex: 1;
+  font-size: clamp(13px, 3vw, 14px);
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-editor-sortable-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: clamp(14px, 3.5vw, 16px);
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.15s ease;
+}
+
+.data-editor-sortable-delete:hover {
+  color: var(--text-secondary);
+}
+
+.data-editor-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.data-editor-add-pill {
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  padding: 5px 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.data-editor-add-pill:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-primary);
+}
+
+.data-editor-add-pill:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.data-editor-add-custom {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.data-editor-add-custom input {
+  flex: 1;
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: clamp(13px, 3vw, 14px);
+  min-width: 0;
+}
+
+.data-editor-add-custom input:focus {
+  border-color: var(--border-default);
+  outline: none;
+}
+
+.data-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.data-editor-done {
+  background: var(--text-primary);
+  color: #000;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 10px 24px;
+  font-weight: 600;
+  font-size: clamp(13px, 3vw, 14px);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.data-editor-done:hover {
+  opacity: 0.88;
+}

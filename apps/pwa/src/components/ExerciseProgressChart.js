@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, useWindowDimensions, Animated, TouchableWithout
 import { LineChart } from 'react-native-chart-kit';
 import SvgChevronRight from './icons/vectors_fig/Arrow/ChevronRight';
 import { getSessionDateAsDate } from '../utils/sessionFilter';
-import logger from '../utils/logger.js';
 import WakeLoader from './WakeLoader';
 
 const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', onPeriodChange }) => {
@@ -64,7 +63,6 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   const handleDataPointClick = (data, index) => {
     setSelectedIndex(index);
     showTooltip();
-    logger.log('📊 Data point clicked:', { index, data });
   };
 
   // Dismiss tooltip
@@ -104,22 +102,6 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
   const validSessions = sessions.filter(session => 
     session.sets && session.sets.some(hasSetData)
   );
-
-  logger.log('📊 ExerciseProgressChart: sessions received:', sessions?.length || 0);
-  logger.log('📊 ExerciseProgressChart: validSessions:', validSessions.length);
-  logger.log('📊 ExerciseProgressChart: loading:', loading);
-
-  if (sessions?.length > 0 && validSessions.length === 0) {
-    const first = sessions[0];
-    const firstSet = first.sets?.[0];
-    logger.warn('📊 ExerciseProgressChart: No valid sessions – debug:', {
-      sessionsCount: sessions.length,
-      firstSessionHasSets: !!first.sets,
-      firstSessionSetsLength: first.sets?.length ?? 0,
-      firstSet: firstSet ? { reps: firstSet.reps, weight: firstSet.weight, intensity: firstSet.intensity } : null,
-      firstSetHasSetData: firstSet ? hasSetData(firstSet) : false
-    });
-  }
 
   if (validSessions.length === 0) {
     return (
@@ -205,13 +187,6 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
       ? repsValues.reduce((sum, reps) => sum + reps, 0) / repsValues.length 
       : 0;
 
-    logger.log('📊 Session data:', { 
-      date: session.date, 
-      maxWeight, 
-      avgReps, 
-      validSets: validSets.length 
-    });
-
     return {
       date: formatDate(session.date || session.completedAt),
       maxWeight: maxWeight,
@@ -226,14 +201,6 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
 
   // Apply dynamic label density filtering
   const filteredLabels = getFilteredLabels(allLabels, selectedPeriod);
-
-  logger.log('📊 Progress chart data:', { 
-    allLabels: allLabels.length, 
-    filteredLabels: filteredLabels.length, 
-    selectedPeriod,
-    maxWeights, 
-    avgReps 
-  });
 
   // SessionTooltip Component
   const SessionTooltip = ({ session, index }) => {

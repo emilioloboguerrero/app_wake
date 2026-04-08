@@ -1,0 +1,270 @@
+.sdc-glow-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border-radius: 12px;
+}
+
+.sdc {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* ── Idle ── */
+.sdc-idle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 20px;
+  cursor: pointer;
+}
+
+.sdc-idle-title {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+}
+
+.sdc-idle-desc {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Pick (two cards side by side) ── */
+.sdc-pick {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.sdc-cards {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+}
+
+.sdc-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sdc-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.sdc-card:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.sdc-card--alt {
+  border-style: dashed;
+}
+
+.sdc-card--alt:hover {
+  border-style: dashed;
+}
+
+.sdc-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.45);
+  transition: all 0.2s ease;
+}
+
+.sdc-card:hover .sdc-card-icon {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sdc-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.sdc-card-desc {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1.5;
+  max-width: 200px;
+}
+
+.sdc-card-tags {
+  display: flex;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.sdc-card-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.sdc-card-tag--accent {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* ── Active (configured) ── */
+.sdc-active {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 18px;
+  gap: 14px;
+}
+
+.sdc-mockup {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sdc-mockup-header {
+  margin-bottom: 2px;
+}
+
+.sdc-mockup-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sdc-mockup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+.sdc-mockup-row--dim {
+  opacity: 0.3;
+}
+
+.sdc-mockup-num {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.15);
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.sdc-mockup-fields {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+}
+
+.sdc-mockup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 40px;
+}
+
+.sdc-mockup-field-label {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.sdc-mockup-field-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.sdc-mockup-field--target .sdc-mockup-field-val {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.sdc-change {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sdc-change:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .sdc-cards {
+    flex-direction: column;
+  }
+
+  .sdc-card {
+    padding: 16px 14px;
+  }
+
+  .sdc-active {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .sdc-mockup-row {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .sdc-mockup-fields {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+}

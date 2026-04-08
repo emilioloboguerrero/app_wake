@@ -1,4 +1,4 @@
- import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   Animated,
-  Image,
   Keyboard,
-  TouchableWithoutFeedback,
   useWindowDimensions,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -25,9 +23,9 @@ const AnimatedKeyboardAwareScrollView = Animated.createAnimatedComponent(Keyboar
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
-import hybridDataService from '../services/hybridDataService';
 import profilePictureService from '../services/profilePictureService';
 import authService from '../services/authService';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
@@ -38,8 +36,7 @@ import BottomSpacer from '../components/BottomSpacer';
 import countriesList from '../../assets/data/countries.json';
 import citiesBundle from '../../assets/data/cities.json';
 
-import { validateForm, validateInput, sanitizeInput } from '../utils/validation.js';
-import { trackUserRegistration } from '../services/monitoringService';
+import { sanitizeInput } from '../utils/validation.js';
 import { isPWA } from '../utils/platform';
 import { 
   validateDisplayName, 
@@ -113,27 +110,11 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   const effectiveUid = user?.uid || auth.currentUser?.uid;
 
-  // Log uid sources on mount and when user/uid changes (verify uid is passed correctly)
   useEffect(() => {
-    logger.log('[ONBOARDING] uid check:', {
-      effectiveUid: effectiveUid ?? null,
-      fromUseAuth: user?.uid ?? null,
-      fromAuthCurrentUser: auth.currentUser?.uid ?? null,
-      hasUser: !!user,
-      hasAuthCurrentUser: !!auth.currentUser,
-      routeParams: route?.params ?? {},
-      routeName: route?.name ?? null,
-    });
     if (!effectiveUid) {
-      logger.warn('[ONBOARDING] No uid available — user:', !!user, 'auth.currentUser:', !!auth.currentUser);
     }
   }, [effectiveUid, user?.uid, auth.currentUser?.uid, route?.params, route?.name]);
 
-  // Log when AuthContext user reference changes (e.g. after sign-in restore)
-  useEffect(() => {
-    logger.log('[ONBOARDING] useAuth user changed:', user?.uid ?? 'null', 'email:', user?.email ?? 'null');
-  }, [user]);
-  
   // Create styles with current dimensions - memoized to prevent recalculation
   // No static top padding on web: logo bar at top 0 (same as WakeHeader); space is in scroll spacer so it shrinks as user scrolls
   const styles = useMemo(() => StyleSheet.create({
@@ -295,7 +276,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       // Preserve shadow effects from base input style
     },
     inputError: {
-      borderColor: '#ff4444',
+      borderColor: 'rgba(224, 84, 84, 0.9)',
       borderWidth: 1,
       shadowColor: 'transparent',
       shadowOpacity: 0,
@@ -311,7 +292,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       elevation: 0,
     },
     errorText: {
-      color: '#ff4444',
+      color: 'rgba(224, 84, 84, 0.9)',
       fontSize: 12,
       fontWeight: '400',
       marginTop: 5,
@@ -813,8 +794,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     },
   }), [screenWidth, screenHeight]);
   const [loading, setLoading] = useState(false);
-  const [availableDisciplines, setAvailableDisciplines] = useState([]);
-  const [disciplinesLoading, setDisciplinesLoading] = useState(true);
   
   // Animation values for logo
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -888,24 +867,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     }
   }, [authEmail, formData.email]);
 
-  // Load available disciplines from database
-  useEffect(() => {
-    const loadDisciplines = async () => {
-      try {
-        setDisciplinesLoading(true);
-        const disciplines = await hybridDataService.loadAvailableDisciplines(user?.uid);
-        setAvailableDisciplines(disciplines || []);
-      } catch (error) {
-        logger.error('Error loading disciplines:', error);
-        setAvailableDisciplines([]);
-      } finally {
-        setDisciplinesLoading(false);
-      }
-    };
-    
-    loadDisciplines();
-  }, [user]);
-
   // Validate username uniqueness
   const validateUsername = async (username) => {
     if (!username || username.length < 3) {
@@ -915,7 +876,8 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     
     setUsernameValidating(true);
     try {
-      const taken = await firestoreService.isUsernameTaken(username);
+      // TODO: no endpoint for isUsernameTaken — no REST endpoint for username availability check
+      const taken = await apiService.isUsernameTaken(username);
       setUsernameAvailable(!taken);
     } catch (error) {
       logger.error('Error validating username:', error);
@@ -1305,9 +1267,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
     }
 
     const uidForSubmit = user?.uid || auth.currentUser?.uid;
-    logger.log('[ONBOARDING] handleSubmit: uid being used:', uidForSubmit ?? 'null', 'fromUseAuth:', user?.uid ?? 'null', 'fromAuthCurrentUser:', auth.currentUser?.uid ?? 'null');
     if (!uidForSubmit) {
-      logger.warn('[ONBOARDING] handleSubmit: No uid available — cannot save profile');
       Alert.alert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
       return;
     }
@@ -1354,7 +1314,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       if (formData.gender) userData.gender = sanitizeInput.text(formData.gender);
       if (formData.country) userData.country = sanitizeInput.text(formData.country);
       if (formData.city?.trim()) userData.city = sanitizeInput.text(formData.city.trim());
-      if (formData.bodyweight?.trim()) userData.bodyweight = parseFloat(formData.bodyweight.trim());
+      if (formData.bodyweight?.trim()) userData.weight = parseFloat(formData.bodyweight.trim());
       if (formData.height?.trim()) userData.height = parseFloat(formData.height.trim());
       // Removed: objectives/interests persistence
       
@@ -1379,9 +1339,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       userData.profileCompleted = true;
       userData.onboardingCompleted = false;
       
-      // Track user registration
-      trackUserRegistration();
-      
       // Initialize general tutorials
       userData.generalTutorials = {
         mainScreen: false,
@@ -1389,8 +1346,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         profile: false,
         community: false
       };
-
-      logger.debug('📝 Saving user data:', userData);
 
       // Update Firebase Auth displayName with full name
       if (formData.displayName?.trim()) {
@@ -1400,9 +1355,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           });
           // Reload user to propagate changes to AuthContext
           await auth.currentUser.reload();
-          logger.debug('✅ Firebase Auth displayName updated to:', formData.displayName.trim());
         } catch (profileError) {
-          logger.warn('⚠️ Failed to update Firebase Auth displayName:', profileError);
           // Continue anyway, not critical
         }
       }
@@ -1415,16 +1368,12 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           profileCompleted: true,
           cachedAt: Date.now()
         }));
-        logger.debug('💾 Profile completion status cached locally');
       } catch (cacheError) {
-        logger.warn('⚠️ Failed to cache profile completion status:', cacheError);
         // Continue anyway - Firestore update is more important
       }
 
-      await hybridDataService.updateUserProfile(uidForSubmit, userData);
+      await apiClient.patch('/users/me', userData);
 
-      logger.debug('✅ Onboarding completed successfully');
-      
       // Trigger AppNavigator to re-check user profile
       if (onComplete) {
         onComplete();
@@ -1454,11 +1403,9 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
             try {
               setLoading(true);
               await authService.signOutUser();
-              logger.debug('✅ User signed out successfully');
               // On web/PWA, force full reload to /login (same as ProfileScreen sign-out flow)
               if (typeof window !== 'undefined') {
                 const loginPath = (process.env.EXPO_PUBLIC_BASE_PATH || '') + '/login';
-                logger.log('[ONBOARDING] Web: reloading to /login after cancel');
                 window.location.replace(loginPath);
                 return;
               }
@@ -1528,7 +1475,6 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
           {/* Spacer: clears expanded logo when scroll=0; scrolls away so no huge static padding */}
           <View style={{ height: scrollSpacerHeight }} />
           
-
           {/* Profile Picture and Name/Username Row */}
           <View style={styles.section}>
             <View style={styles.inputContainer}>

@@ -1,0 +1,71 @@
+.auth-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a1a;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ─── Ambient orbs ─────────────────────────────────────────────────────── */
+.auth-loading__orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.auth-loading__orb--1 {
+  width: 320px;
+  height: 320px;
+  top: -80px;
+  right: -60px;
+  animation: auth-orb-1 13s ease-in-out infinite alternate;
+}
+
+.auth-loading__orb--2 {
+  width: 260px;
+  height: 260px;
+  bottom: 5%;
+  left: -70px;
+  opacity: 0.85;
+  animation: auth-orb-2 17s ease-in-out infinite alternate;
+}
+
+.auth-loading__orb--3 {
+  width: 200px;
+  height: 200px;
+  top: 38%;
+  right: 8%;
+  opacity: 0.65;
+  animation: auth-orb-3 21s ease-in-out infinite alternate;
+}
+
+@keyframes auth-orb-1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-28px, 44px) scale(1.08); }
+}
+
+@keyframes auth-orb-2 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(38px, -32px) scale(0.92); }
+}
+
+@keyframes auth-orb-3 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(-18px, 26px) scale(1.06); }
+}
+
+/* ─── Logo shimmer ─────────────────────────────────────────────────────── */
+.auth-loading__logo-wrap {
+  position: relative;
+  z-index: 1;
+  animation: auth-fade-in 0.4s ease forwards;
+}
+
+@keyframes auth-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

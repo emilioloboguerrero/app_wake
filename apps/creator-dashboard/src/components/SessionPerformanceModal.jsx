@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import clientProgramService from '../services/clientProgramService';
 import libraryService from '../services/libraryService';
+import logger from '../utils/logger';
 import './SessionPerformanceModal.css';
 
 const STATUS = {
@@ -34,6 +35,14 @@ function getPlannedExerciseDisplayName(ex) {
   }
   const t = ex.title || ex.name || '';
   return String(t).trim() || 'Sin nombre';
+}
+
+function parseRpeValue(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  return (isNaN(v) || v < 1 || v > 10) ? null : v;
 }
 
 function getPerformedExerciseDisplayName(data, key) {
@@ -112,13 +121,13 @@ export default function SessionPerformanceModal({
           if (!cancelled) setPlannedExercises(plannedFromSnapshot);
         } else {
           // Fallback: load from library (subject to plan/library changes)
-          const librarySessionId = session.librarySessionRef || sessionIdsToTry[0];
+          const librarySessionId = session.source_library_session_id ?? session.librarySessionRef ?? sessionIdsToTry[0];
           let planned = [];
           if (librarySessionId && creatorId) {
             try {
               planned = await libraryService.getLibrarySessionExercises(creatorId, librarySessionId);
             } catch (e) {
-              console.warn('SessionPerformanceModal: could not load planned exercises', e?.message);
+              logger.warn('SessionPerformanceModal: could not load planned exercises', e?.message);
             }
           }
           if (!cancelled) setPlannedExercises(Array.isArray(planned) ? planned : []);
@@ -150,7 +159,7 @@ export default function SessionPerformanceModal({
       }));
     }
     const performed = historyDoc?.exercises ? { ...historyDoc.exercises } : {};
-    const fallbackSessionId = session?.librarySessionRef || sessionIdsToTry[0];
+    const fallbackSessionId = session?.source_library_session_id ?? session?.librarySessionRef ?? sessionIdsToTry[0];
     const items = [];
 
     const matchedPerformedKeys = new Set();
@@ -225,7 +234,7 @@ export default function SessionPerformanceModal({
     });
 
     return items;
-  }, [historyDoc, plannedExercises, session?.librarySessionRef, sessionIdsToTry, historyOnlyData]);
+  }, [historyDoc, plannedExercises, session?.source_library_session_id, session?.librarySessionRef, sessionIdsToTry, historyOnlyData]);
 
   const stats = useMemo(() => {
     let completed = 0, not_completed = 0, extra = 0;
@@ -392,16 +401,26 @@ export default function SessionPerformanceModal({
                           <div className="session-performance-compare-col session-performance-compare-col--performed">
                             {item.performedSets.length > 0 ? (
                               <ul className="session-performance-set-list session-performance-set-list--performed">
-                                {item.performedSets.map((set, i) => (
+                                {item.performedSets.map((set, i) => {
+                                  const plannedSet = item.plannedSets[i];
+                                  const reportedRpe = parseRpeValue(set.intensity);
+                                  const plannedRpe = parseRpeValue(plannedSet?.intensity);
+                                  const delta = (reportedRpe != null && plannedRpe != null) ? Math.round(reportedRpe - plannedRpe) : null;
+                                  return (
                                   <li key={i} className="session-performance-set-item">
                                     <span className="session-performance-set-num">{i + 1}.</span>
                                     <span className="session-performance-set-values">
                                       {set.reps != null && set.reps !== '' ? `${set.reps} rep` : '—'}
                                       {(set.weight != null && set.weight !== '') && ` · ${set.weight} kg`}
-                                      {(set.intensity != null && set.intensity !== '') && ` · ${set.intensity}`}
+                                      {reportedRpe != null ? (
+                                        <>{' · '}<span className={`spm-rpe-tag${delta == null ? '' : delta > 0 ? ' spm-rpe-tag--over' : delta < 0 ? ' spm-rpe-tag--under' : ' spm-rpe-tag--on'}`}>
+                                          RPE {reportedRpe}{delta != null && <span className="spm-rpe-delta">{delta > 0 ? `+${delta}` : delta}</span>}
+                                        </span></>
+                                      ) : (set.intensity != null && set.intensity !== '') && ` · ${set.intensity}`}
                                     </span>
                                   </li>
-                                ))}
+                                  );
+                                })}
                               </ul>
                             ) : (
                               <p className="session-performance-empty-col">No realizado</p>

@@ -82,7 +82,7 @@
 }
 
 .ec-event-name {
-  color: #fff;
+  color: var(--text-primary);
   font-size: 1rem;
   font-weight: 700;
   margin: 0 0 3px;
@@ -180,7 +180,7 @@
 }
 
 .ec-processing p {
-  color: rgba(255,255,255,0.6);
+  color: var(--text-secondary);
   font-size: 0.9rem;
   margin: 0;
 }
@@ -188,7 +188,7 @@
 .ec-spinner {
   width: 36px;
   height: 36px;
-  border: 2.5px solid rgba(255,255,255,0.1);
+  border: 2.5px solid var(--border-default);
   border-top-color: rgba(var(--ec-accent-r), var(--ec-accent-g), var(--ec-accent-b), 0.9);
   border-radius: 50%;
   animation: ecSpin 0.7s linear infinite;
@@ -244,7 +244,7 @@
 .ec-result-title {
   font-size: 1.3rem;
   font-weight: 800;
-  color: #fff;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -265,7 +265,7 @@
   background: rgba(255,255,255,0.07);
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: 10px;
-  color: rgba(255,255,255,0.6);
+  color: var(--text-secondary);
   cursor: pointer;
   font-family: inherit;
   font-size: 0.85rem;
@@ -277,7 +277,7 @@
 
 .ec-reset-btn:hover {
   background: rgba(255,255,255,0.11);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* ── Instructions ── */

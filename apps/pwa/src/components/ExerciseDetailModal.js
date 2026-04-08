@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,58 +10,36 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ExerciseDetailContent from './ExerciseDetailContent';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
-import logger from '../utils/logger.js';
 
-const ExerciseDetailModal = ({ 
-  visible, 
-  onClose, 
-  exerciseKey, 
-  exerciseName, 
-  libraryId, 
-  currentEstimate, 
-  lastUpdated 
+const ExerciseDetailModal = ({
+  visible,
+  onClose,
+  exerciseKey,
+  exerciseName,
+  libraryId,
+  currentEstimate,
+  lastUpdated
 }) => {
-  const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailModal render started - ${componentStartTime.toFixed(2)}ms`);
-  
-  // CRITICAL: Early return BEFORE expensive operations to avoid blocking paint
-  const visibilityCheckStart = performance.now();
+  // All hooks must be called before any early return
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
+  const styles = useMemo(
+    () => createStyles(screenWidth, screenHeight, insets),
+    [screenWidth, screenHeight, insets]
+  );
+
+  useEffect(() => {
+    // Placeholder for render-complete tracking if needed in __DEV__
+  });
+
   if (!visible) {
     return null;
   }
-  const visibilityCheckDuration = performance.now() - visibilityCheckStart;
-  if (visibilityCheckDuration > 1) {
-    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
-  }
-  
-  // Get safe area insets for proper header positioning
-  const insets = useSafeAreaInsets();
-  
-  // Use hook for reactive dimensions that update on orientation change
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  
-  // Create styles with dimensions and safe area insets
-  const stylesStartTime = performance.now();
-  const styles = createStyles(screenWidth, screenHeight, insets);
-  const stylesDuration = performance.now() - stylesStartTime;
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailModal createStyles took ${stylesDuration.toFixed(2)}ms`);
-  if (stylesDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal createStyles took ${stylesDuration.toFixed(2)}ms`);
-  }
-  
-  const handleViewAllHistory = () => {
-    // Navigate to full history screen (if implemented)
-    logger.log('📊 View all history for:', exerciseKey);
-  };
 
-  const handleResetPR = () => {
-    // Modal doesn't support reset functionality
-    logger.log('📊 Reset PR requested for:', exerciseKey);
-  };
+  const handleViewAllHistory = () => {};
+  const handleResetPR = () => {};
 
-  const jsxStartTime = performance.now();
-  logger.debug(`[CHILD] [TIMING] ExerciseDetailModal JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
-  
   return (
     <Modal
       visible={visible}
@@ -69,23 +47,18 @@ const ExerciseDetailModal = ({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      {(() => {
-        const jsxContentStartTime = performance.now();
-        logger.debug(`[CHILD] [TIMING] ExerciseDetailModal JSX content starting - ${jsxContentStartTime.toFixed(2)}ms`);
-        return null;
-      })()}
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
             onPress={onClose}
           >
             <SvgChevronLeft width={24} height={24} stroke="#ffffff" />
           </TouchableOpacity>
-          
+
           <Text style={styles.headerTitle}>{exerciseName}</Text>
-          
+
           <View style={styles.infoButton} />
         </View>
 
@@ -105,30 +78,11 @@ const ExerciseDetailModal = ({
           />
         )}
       </View>
-      {(() => {
-        const jsxEndTime = performance.now();
-        const jsxDuration = jsxEndTime - jsxStartTime;
-        logger.debug(`[CHILD] [TIMING] ExerciseDetailModal JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
-        if (jsxDuration > 50) {
-          logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal JSX creation took ${jsxDuration.toFixed(2)}ms`);
-        }
-        return null;
-      })()}
     </Modal>
   );
-  
-  // Track component render completion using useEffect
-  useEffect(() => {
-    const componentEndTime = performance.now();
-    const componentDuration = componentEndTime - componentStartTime;
-    logger.debug(`[CHILD] [CHECKPOINT] ExerciseDetailModal render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-    if (componentDuration > 50) {
-      logger.warn(`[CHILD] ⚠️ SLOW: ExerciseDetailModal render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-    }
-  });
 };
 
-// Styles function - takes screenWidth, screenHeight, and insets as parameters
+// Styles at module level — createStyles is called with dynamic values but memoized via useMemo above
 const createStyles = (screenWidth, screenHeight, insets) => StyleSheet.create({
   container: {
     flex: 1,

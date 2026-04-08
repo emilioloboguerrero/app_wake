@@ -8,8 +8,11 @@ import { queryClient } from './config/queryClient';
 import LoginScreen from './screens/LoginScreen.web';
 import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
+import wakeDebug from './utils/wakeDebug';
+import apiClient from './utils/apiClient';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
+import OfflineBanner from './components/ui/OfflineBanner';
 
 // Extra top padding for non-iOS so Mac/Android browser layout matches iOS (safe area is 0 there).
 const CONTENT_TOP_PADDING_NON_IOS = 0;
@@ -33,6 +36,17 @@ const AuthProvider = require('./contexts/AuthContext').AuthProvider;
 const ActivityStreakProvider = require('./contexts/ActivityStreakContext').ActivityStreakProvider;
 const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
+// Wake Debug instrumentation — activate with localStorage.WAKE_DEBUG = '1'
+wakeDebug.patchApiClient(apiClient);
+wakeDebug.patchQueryClient(queryClient);
+wakeDebug.startMemoryTracking();
+if (wakeDebug.IS_ENABLED) {
+  try {
+    const firestoreModule = require('firebase/firestore');
+    wakeDebug.patchFirestore(firestoreModule);
+  } catch { /* firestore not available */ }
+}
+
 // CRITICAL: DO NOT import useMontserratFonts from './config/fonts'
 // That file conditionally calls useFonts from expo-google-fonts, which violates Rules of Hooks
 // Instead, define it inline here to ensure consistent hook order on web
@@ -48,12 +62,8 @@ const useMontserratFontsWeb = () => {
   // Use useState to maintain hook order (matching what native useFonts does)
   // This is the ONLY hook called in this function, ensuring consistent hook order
   // DO NOT call any other hooks here - this must match the hook structure exactly
-  
+
   // Unique identifier to verify this version is being used
-  if (typeof window !== 'undefined') {
-    logger.debug('[APP] ✅ Using INLINED useMontserratFontsWeb (web version)');
-  }
-  
   // CRITICAL: Always call useState in the same order
   // This must be called unconditionally to maintain hook order
   const [fontsLoaded] = React.useState(true);
@@ -61,9 +71,6 @@ const useMontserratFontsWeb = () => {
 };
 
 // Verify this is the web version (safety check)
-if (typeof window === 'undefined' || typeof document === 'undefined') {
-  logger.warn('[APP] WARNING: useMontserratFonts is being used in non-web environment!');
-}
 
 // Inject Montserrat font link at runtime – ensures font loads in dev (Expo dev server
 // doesn't use web/index.html) and production (backup if index.html link is missing)
@@ -97,15 +104,9 @@ ensureMontserratLoaded();
 // This ensures the fix runs in Expo dev and in production before React mounts.
 const VIEWPORT_LOG = '[VIEWPORT]';
 function applyViewportHeightOnce() {
-  if (typeof window === 'undefined' || !window.document) {
-    console.log(VIEWPORT_LOG, 'once: skip (no window/document)');
-    return;
-  }
+  if (typeof window === 'undefined' || !window.document) return;
   const root = document.getElementById('root');
-  if (!root) {
-    console.log(VIEWPORT_LOG, 'once: skip (no #root)');
-    return;
-  }
+  if (!root) return;
   const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
   const isAndroid = () => /Android/.test(navigator.userAgent || '');
   const isPWAHere = () => {
@@ -141,7 +142,6 @@ function applyViewportHeightOnce() {
   const curH = getCurrentHeight();
   const w = getWidth();
   const h = getHeight();
-  console.log(VIEWPORT_LOG, 'once: run', { pwa, ios, android, innerHeight: window.innerHeight, visualViewportH: window.visualViewport?.height, screenAvailH: window.screen?.availHeight, curH, getHeight: h, width: w });
   if (w > 0 && h > 0 && window.document.documentElement) {
     window.document.documentElement.style.setProperty('--layout-width-px', `${w}px`);
     window.document.documentElement.style.setProperty('--layout-height-px', `${h}px`);
@@ -154,9 +154,6 @@ function applyViewportHeightOnce() {
     root.style.setProperty('height', `${h}px`, 'important');
     root.style.setProperty('min-height', `${h}px`, 'important');
     root.style.setProperty('max-height', `${h}px`, 'important');
-    console.log(VIEWPORT_LOG, 'once: applied', { height: h, rootComputed: root ? getComputedStyle(root).height : null });
-  } else {
-    console.log(VIEWPORT_LOG, 'once: not applied (w or h invalid)', { w, h });
   }
 }
 applyViewportHeightOnce();
@@ -164,29 +161,21 @@ applyViewportHeightOnce();
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
 let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary;
-let auth, webStorageService;
+let auth;
 
 // Function to load heavy components (called when not on login route)
 // Made async to prevent blocking the main thread
 const loadHeavyComponents = async () => {
   if (!StatusBar) {
-    logger.debug('[APP] Loading heavy components...');
     // Load components asynchronously to prevent blocking
     await new Promise(resolve => {
       requestAnimationFrame(() => {
         try {
-          logger.debug('[APP] Loading StatusBar...');
           StatusBar = require('expo-status-bar').StatusBar;
-          logger.debug('[APP] Loading VideoProvider...');
           VideoProvider = require('./contexts/VideoContext').VideoProvider;
-          logger.debug('[APP] Loading WebAppNavigator...');
           WebAppNavigator = require('./navigation/WebAppNavigator').default;
-          logger.debug('[APP] Loading ErrorBoundary...');
           ErrorBoundary = require('./components/ErrorBoundary').default;
-          logger.debug('[APP] Loading auth, webStorageService...');
           auth = require('./config/firebase').auth;
-          webStorageService = require('./services/webStorageService').default;
-          logger.debug('[APP] ✅ All heavy components loaded successfully');
         } catch (error) {
           logger.error('[APP] ❌ Error loading heavy components:', error);
           // Don't throw - let the app continue with partial loading
@@ -194,8 +183,6 @@ const loadHeavyComponents = async () => {
         resolve();
       });
     });
-  } else {
-    logger.debug('[APP] Heavy components already loaded');
   }
 };
 
@@ -203,8 +190,6 @@ const loadHeavyComponents = async () => {
 const safeLog = (method, ...args) => {
   if (logger && logger[method]) {
     logger[method](...args);
-  } else {
-    console[method === 'log' ? 'log' : method === 'error' ? 'error' : 'warn'](...args);
   }
 };
 
@@ -218,12 +203,12 @@ export default function App() {
   const [initError, setInitError] = React.useState(null);
   const [debugMode] = React.useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('WAKE_DEBUG') === 'true' || 
+      return localStorage.getItem('WAKE_DEBUG') === 'true' ||
              window.location.search.includes('debug=true');
     }
     return false;
   });
-  
+
   // Base path: derive from URL first (reload at /app stays in PWA), then fall back to build env
   const webBasePath =
     typeof window !== 'undefined' && (window.location.pathname === '/app' || window.location.pathname.startsWith('/app/'))
@@ -232,23 +217,15 @@ export default function App() {
   // Font loading - MUST be called unconditionally before any conditional logic
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
   const fontsLoadedFromHook = useMontserratFontsWeb();
-  logger.debug('[APP] useMontserratFontsWeb called, fontsLoadedFromHook:', fontsLoadedFromHook);
-  
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
-  
+
   // Determine final fonts loaded state (after hooks are called)
   // CRITICAL: Always use fontsLoadedFromHook to maintain consistent hook order
   // Don't conditionally change this value as it can affect hook order
   const fontsLoaded = fontsLoadedFromHook;
-  
+
   // Production debug: log on mount so we see something in console (Safari etc.)
-  React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const { isSafariWeb } = require('./utils/platform');
-      logger.prod('App.web mounted', window.location.pathname, 'Safari:', isSafariWeb());
-    }
-  }, []);
 
   // Service worker management (for both login and non-login routes)
   React.useEffect(() => {
@@ -258,17 +235,19 @@ export default function App() {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
           registrations.forEach((registration) => {
             registration.unregister();
-            logger.debug('[APP] Service worker unregistered for login route');
           });
         });
       }
     } else {
-      // Load heavy components for non-login routes
-      logger.debug('[APP] Starting to load heavy components for non-login route...');
       loadHeavyComponents().then(() => {
-        logger.debug('[APP] Heavy components loaded, setting componentsLoaded to true');
         setComponentsLoaded(true);
-        
+
+        // Register background sync listeners so the offline queue is processed on reconnect
+        try {
+          const { registerOnlineListener } = require('./utils/backgroundSync');
+          registerOnlineListener();
+        } catch (_) {}
+
         // Initialize Service Worker AFTER components are loaded (path respects base path e.g. /app/sw.js)
         if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
           const swPath = webBasePath + '/sw.js';
@@ -277,9 +256,7 @@ export default function App() {
             return Promise.all(
               registrations.map((reg) => {
                 if (reg.scope === rootScope && webBasePath === '/app') {
-                  return reg.unregister().then(() => {
-                    logger.debug('[APP] Unregistered old root-scoped service worker');
-                  });
+                  return reg.unregister();
                 }
                 return Promise.resolve();
               })
@@ -290,31 +267,26 @@ export default function App() {
             if (!res) return null;
             const ct = res && res.headers ? res.headers.get('content-type') || '' : '';
             if (ct.indexOf('javascript') === -1 && ct.indexOf('ecmascript') === -1) {
-              safeLog('log', '[WAKE] Skipping SW registration: ' + swPath + ' not served as JavaScript');
               return null;
             }
             return navigator.serviceWorker.register(swPath);
           })
-            .then((registration) => {
-              if (registration) safeLog('log', '✅ Service Worker registered:', registration);
-            })
+            .then(() => {})
             .catch((error) => {
               safeLog('error', '❌ Service Worker registration failed:', error);
             });
         }
       }).catch((error) => {
-        logger.error('[APP] ❌ Error loading components:', error);
-        logger.debug('[APP] Setting componentsLoaded to true anyway to continue...');
+        logger.error('[APP] Error loading components:', error);
         setComponentsLoaded(true); // Continue anyway
       });
-      
+
       // Fallback: if components don't load within 3 seconds, set to true anyway
       // Use a ref to track if we've already set it
       const timeoutId = setTimeout(() => {
-        logger.debug('[APP] ⚠️ Components loading timeout (3s) - forcing componentsLoaded to true');
         setComponentsLoaded(true);
       }, 3000);
-      
+
       // Cleanup timeout if component unmounts
       return () => {
         clearTimeout(timeoutId);
@@ -327,7 +299,7 @@ export default function App() {
     if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
       const originalWarn = logger.warn;
       const originalError = logger.error;
-      
+
       // Filter out specific chart-related warnings
       logger.warn = (...args) => {
         const message = args.join(' ');
@@ -348,7 +320,7 @@ export default function App() {
         }
         originalWarn(...args);
       };
-      
+
       logger.error = (...args) => {
         const message = args.join(' ');
         // Suppress chart-related errors
@@ -361,7 +333,7 @@ export default function App() {
         }
         originalError(...args);
       };
-      
+
       return () => {
         logger.warn = originalWarn;
         logger.error = originalError;
@@ -377,7 +349,7 @@ export default function App() {
       const errorHandler = (event) => {
         const message = String(event.message || '');
         const source = String(event.filename || '');
-        
+
         // Skip Chrome extension errors
         if (message.includes('chrome-extension://') ||
             message.includes('ERR_FILE_NOT_FOUND') ||
@@ -402,7 +374,7 @@ export default function App() {
       const rejectionHandler = (event) => {
         const reason = event.reason;
         const reasonStr = String(reason || '');
-        
+
         // Skip Chrome extension promise rejections
         if (reasonStr.includes('chrome-extension://') ||
             reasonStr.includes('ERR_FILE_NOT_FOUND') ||
@@ -415,13 +387,13 @@ export default function App() {
           event.preventDefault();
           return;
         }
-        
+
         safeLog('error', '❌ Unhandled Promise Rejection:', event.reason);
       };
-      
+
       window.addEventListener('error', errorHandler, true);
       window.addEventListener('unhandledrejection', rejectionHandler);
-      
+
       return () => {
         window.removeEventListener('error', errorHandler, true);
         window.removeEventListener('unhandledrejection', rejectionHandler);
@@ -449,148 +421,59 @@ export default function App() {
   React.useEffect(() => {
     // Skip initialization for login route
     if (isLoginPath) return;
-    
+
     // Prevent multiple initializations
     let mounted = true;
-    
+
     // Initialize web storage (non-blocking)
     const initializeApp = async () => {
       if (!mounted) return;
-      
+
       // Guard: Only run if components are loaded
-      if (!webStorageService || !auth) {
+      if (!auth) {
         return;
       }
-      
+
       try {
-        safeLog('log', '🚀 Starting web app initialization...');
-        if (debugMode) {
-          logger.debug('[DEBUG] Environment:', {
-            userAgent: navigator.userAgent,
-            platform: navigator.platform,
-            language: navigator.language,
-            cookieEnabled: navigator.cookieEnabled,
-            onLine: navigator.onLine
-          });
-        }
-        
-        // Initialize web storage service first (critical for web)
-        // Don't await - let it initialize in background with timeout
-        Promise.race([
-          webStorageService.init().then(() => {
-            if (mounted) safeLog('log', '✅ Web storage initialized');
-          }),
-          new Promise(resolve => setTimeout(resolve, 2000)) // 2 second timeout
-        ]).catch((error) => {
-          if (mounted) {
-            safeLog('error', '⚠️ Web storage initialization failed (non-critical):', error);
-            if (debugMode) {
-              logger.error('[DEBUG] Storage error details:', error);
-            }
-          }
-        });
-        
-        // Check auth state (non-blocking)
+        // Initialize React Query IndexedDB persistence (non-blocking)
         try {
-          const currentUser = auth.currentUser;
-          if (mounted) {
-            safeLog('log', '🔐 Auth state:', {
-              isAuthenticated: !!currentUser,
-              userId: currentUser?.uid || 'none'
-            });
-            if (debugMode && currentUser) {
-              logger.debug('[DEBUG] User details:', {
-                uid: currentUser.uid,
-                email: currentUser.email,
-                emailVerified: currentUser.emailVerified
-              });
-            }
-          }
-        } catch (authError) {
-          if (mounted) {
-            safeLog('error', '❌ Auth check failed:', authError);
-            if (debugMode) {
-              logger.error('[DEBUG] Auth error details:', authError);
-            }
-          }
+          const { initQueryPersistence } = require('./config/queryPersistence.web');
+          initQueryPersistence(queryClient);
+        } catch (persistError) {
         }
-        
-        // Skip native-only services on web (they use AsyncStorage/AppState which don't work)
-        // These services are not critical for web functionality
-        if (mounted) safeLog('log', 'ℹ️ Skipping native-only services on web (session manager, workout progress)');
-        
-        // Skip monitoring on web (uses React Native Firebase which doesn't work on web)
-        if (mounted) safeLog('log', 'ℹ️ Skipping monitoring service on web (React Native Firebase not available)');
-        
+
         // Request persistent storage for better quota (non-blocking with timeout)
         if (navigator.storage && navigator.storage.persist) {
           // Use Promise.race to prevent hanging
           Promise.race([
-            navigator.storage.persist().then(isPersistent => {
-              if (mounted) safeLog('log', '💾 Persistent storage:', isPersistent ? 'granted' : 'not granted');
-            }),
+            navigator.storage.persist(),
             new Promise(resolve => setTimeout(resolve, 1000)) // 1 second timeout
           ]).catch((error) => {
-            if (mounted) safeLog('warn', '⚠️ Persistent storage request failed:', error);
           });
         }
-        
-        if (mounted) safeLog('log', '✅ Web app initialization completed');
+
       } catch (error) {
         if (mounted) {
-          safeLog('error', '❌ App initialization failed:', error);
-          if (debugMode) {
-            logger.error('[DEBUG] Initialization error stack:', error.stack);
-            logger.error('[DEBUG] Error details:', {
-              name: error.name,
-              message: error.message,
-              code: error.code,
-              stack: error.stack
-            });
-          }
+          safeLog('error', 'App initialization failed:', error);
           setInitError(error);
         }
         // Don't block app from loading even if initialization fails
       }
     };
-    
+
     if (fontsLoaded) {
       // Run initialization asynchronously without blocking render
       initializeApp().catch(err => {
         if (mounted) {
           safeLog('error', 'Unhandled initialization error:', err);
-          if (debugMode) {
-            logger.error('[DEBUG] Unhandled init error:', err);
-          }
           setInitError(err);
         }
       });
-    } else {
-      safeLog('log', '⏳ Waiting for fonts to load...');
     }
-    
+
     return () => {
       mounted = false;
     };
-  }, [fontsLoaded, debugMode, isLoginPath]);
-
-  // Debug: Log render - Skip for login route
-  React.useEffect(() => {
-    if (isLoginPath) return;
-    
-    if (fontsLoaded) {
-      safeLog('log', '🎨 App rendered, fonts loaded:', fontsLoaded);
-      if (debugMode) {
-        const root = document.getElementById('root');
-        logger.debug('[DEBUG] Root element:', root);
-        logger.debug('[DEBUG] Root children:', root?.children.length || 0);
-        logger.debug('[DEBUG] Window size:', {
-          width: window.innerWidth,
-          height: window.innerHeight
-        });
-        logger.debug('[DEBUG] React render count:', performance.now());
-      }
-    }
   }, [fontsLoaded, debugMode, isLoginPath]);
 
   // Safari video overlay debug: run when ?safari_video_debug=1 or __DEV__ + Safari (navigate to a screen with video, pause, then check console or on-screen panel).
@@ -641,15 +524,9 @@ export default function App() {
   // and on iOS PWA use screen.availHeight. If standalone isn't detected, still apply on iOS when viewport
   // is already near full height (innerHeight >= screen.availHeight - 2).
   React.useEffect(() => {
-    if (typeof window === 'undefined' || !window.document) {
-      console.log(VIEWPORT_LOG, 'effect: skip (no window/document)');
-      return;
-    }
+    if (typeof window === 'undefined' || !window.document) return;
     const root = document.getElementById('root');
-    if (!root) {
-      console.log(VIEWPORT_LOG, 'effect: skip (no #root)');
-      return;
-    }
+    if (!root) return;
     const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent || '');
     const isAndroid = () => /Android/.test(navigator.userAgent || '');
     const getCurrentHeight = () =>
@@ -688,10 +565,7 @@ export default function App() {
       setLayoutViewportCSSVars();
       const apply = shouldApply();
       const h = getHeight();
-      if (!apply) {
-        console.log(VIEWPORT_LOG, 'effect setHeight: shouldApply=false, skip');
-        return;
-      }
+      if (!apply) return;
       document.documentElement.style.setProperty('height', `${h}px`, 'important');
       document.documentElement.style.setProperty('min-height', `${h}px`, 'important');
       document.body.style.setProperty('height', `${h}px`, 'important');
@@ -699,11 +573,7 @@ export default function App() {
       root.style.setProperty('height', `${h}px`, 'important');
       root.style.setProperty('min-height', `${h}px`, 'important');
       root.style.setProperty('max-height', `${h}px`, 'important');
-      console.log(VIEWPORT_LOG, 'effect setHeight: applied', { h, rootComputed: getComputedStyle(root).height });
     };
-    const h0 = getHeight();
-    const apply0 = shouldApply();
-    console.log(VIEWPORT_LOG, 'effect: mount', { shouldApply: apply0, getHeight: h0, innerHeight: window.innerHeight, rootComputed: getComputedStyle(root).height });
     setHeight();
     const t1 = setTimeout(setHeight, 100);
     const t2 = setTimeout(setHeight, 300);
@@ -734,7 +604,6 @@ export default function App() {
 
   // Ensure critical components are loaded before rendering main app
   if (!ErrorBoundary || !VideoProvider || !WebAppNavigator || !StatusBar) {
-    logger.debug('[APP] ⚠️ Some components not loaded, attempting synchronous load...');
     try {
       if (!ErrorBoundary) ErrorBoundary = require('./components/ErrorBoundary').default;
       if (!VideoProvider) VideoProvider = require('./contexts/VideoContext').VideoProvider;
@@ -742,10 +611,8 @@ export default function App() {
       if (!StatusBar) StatusBar = require('expo-status-bar').StatusBar;
       if (!auth) auth = require('./config/firebase').auth;
       if (!logger) logger = require('./utils/logger').default;
-      if (!webStorageService) webStorageService = require('./services/webStorageService').default;
-      logger.debug('[APP] ✅ Synchronous load successful');
     } catch (syncError) {
-      logger.error('[APP] ❌ Synchronous load failed:', syncError);
+      logger.error('[APP] Synchronous load failed:', syncError);
     }
   }
 
@@ -773,13 +640,10 @@ export default function App() {
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
   if (!shouldShowAppFlow()) {
-    logger.debug('[APP] Not in standalone mode (no bypass) - rendering InstallScreen');
     content = <InstallScreen />;
   } else if (isLoginPath) {
-    logger.debug('[APP] Login route - rendering LoginScreen');
     content = <LoginScreen />;
   } else if (!componentsLoaded || !fontsLoaded) {
-    logger.debug('[APP] Showing loading screen - componentsLoaded:', componentsLoaded, 'fontsLoaded:', fontsLoaded);
     content = loadingMarkup;
   } else if (initError && initError.message?.includes('critical')) {
     content = (
@@ -790,7 +654,6 @@ export default function App() {
       </div>
     );
   } else if (!ErrorBoundary || !VideoProvider || !WebAppNavigator) {
-    logger.error('[APP] ❌ Critical components failed to load');
     content = (
       <div style={{ padding: 20, color: 'white', backgroundColor: '#1a1a1a' }}>
         <h1>Error Loading App</h1>
@@ -845,6 +708,7 @@ export default function App() {
         <SafeAreaProvider initialMetrics={initialMetrics}>
           <AuthProvider>
             <ActivityStreakProvider>
+              <OfflineBanner />
               <FrozenBottomWrapper>
                 <View style={contentWrapperStyle}>
                   {content}

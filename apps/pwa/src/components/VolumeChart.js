@@ -1,17 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import logger from '../utils/logger.js';
-
 const VolumeChart = ({ volumeHistory }) => {
   const { width: screenWidth } = useWindowDimensions();
-  logger.log('📊 VolumeChart: Rendering chart component');
-  logger.log('📊 VolumeChart: volumeHistory received:', volumeHistory);
-  logger.log('📊 VolumeChart: Data points count:', volumeHistory?.length || 0);
-  
   // Handle empty data
   if (!volumeHistory || volumeHistory.length === 0) {
-    logger.log('⚠️ VolumeChart: No data to display - showing empty state');
     return (
       <View style={styles.emptyContainer}>
         <Text style={styles.emptyText}>Completa un entrenamiento para ver tu progreso</Text>
@@ -19,12 +12,9 @@ const VolumeChart = ({ volumeHistory }) => {
     );
   }
   
-  logger.log('✅ VolumeChart: Proceeding to render chart with', volumeHistory.length, 'data points');
-  
   // If only 1 data point, add a starting point at 0 to show progression
   let chartData = [...volumeHistory];
   if (volumeHistory.length === 1) {
-    logger.log('📊 Only 1 data point - adding baseline at 0 for visualization');
     const firstEntry = volumeHistory[0];
     const firstDate = new Date(firstEntry.date);
     const baselineDate = new Date(firstDate);
@@ -49,8 +39,6 @@ const VolumeChart = ({ volumeHistory }) => {
   });
   
   const volumes = chartData.map(entry => entry.volume);
-  
-  logger.log('📊 Chart data:', { labels, volumes });
   
   const data = {
     labels: labels,

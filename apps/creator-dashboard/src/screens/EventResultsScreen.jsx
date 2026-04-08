@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell
+  BarChart, Bar, Cell, Area, ComposedChart,
 } from 'recharts';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -14,14 +13,21 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext, sortableKeyboardCoordinates,
-  verticalListSortingStrategy, useSortable, arrayMove
+  verticalListSortingStrategy, arrayMove
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import ScreenSkeleton from '../components/ScreenSkeleton';
+import { GlowingEffect, TubelightNavBar, FullScreenError, InlineError, KeepAlivePane } from '../components/ui';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
 import ErrorBoundary from '../components/ErrorBoundary';
+import {
+  DEFAULT_FIELD_IDS, DEFAULT_FIELDS, UNDELETABLE_FIELD_IDS,
+  relativeLuminance, extractAccentFromImage,
+  SortableField, LockedField, FieldTypePicker, NumberStepper,
+} from '../components/events/eventFieldComponents';
+import MediaPickerModal from '../components/MediaPickerModal';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
 import './EventResultsScreen.css';
@@ -29,20 +35,16 @@ import './EventEditorScreen.css';
 
 // ─── Shared helpers ────────────────────────────────────────────────
 
-function relativeLuminance(r, g, b) {
-  return [r, g, b]
-    .map(v => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); })
-    .reduce((acc, c, i) => acc + c * [0.2126, 0.7152, 0.0722][i], 0);
-}
-
 function formatDate(ts) {
   if (!ts) return '—';
-  return ts.toDate().toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function formatTime(ts) {
   if (!ts) return '';
-  return ts.toDate().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDay(ts) {
@@ -97,6 +99,13 @@ function getDisplayName(reg, columns) {
   return 'Registrado';
 }
 
+// ─── Analytics engine ──────────────────────────────────────────────
+
+function toDate(ts) {
+  if (!ts) return null;
+  return ts.toDate ? ts.toDate() : new Date(ts);
+}
+
 function groupByDay(registrations) {
   const map = {};
   registrations.forEach(r => {
@@ -107,23 +116,348 @@ function groupByDay(registrations) {
   return Object.entries(map).map(([day, count]) => ({ day, count }));
 }
 
-function buildFieldDistributions(event, registrations) {
-  const chartFields = (event.fields || []).filter(f =>
-    ['select', 'radio', 'multiselect'].includes(f.type)
-  );
-  return chartFields.map(field => {
-    const counts = {};
-    registrations.forEach(r => {
-      const val = r.responses?.[field.id];
-      if (!val) return;
-      const values = Array.isArray(val) ? val : [val];
-      values.forEach(v => { if (v) counts[v] = (counts[v] || 0) + 1; });
-    });
-    return {
-      field,
-      data: Object.entries(counts).map(([name, value]) => ({ name, value })),
-    };
+function buildTimelineData(registrations) {
+  const sorted = [...registrations].sort((a, b) => {
+    const da = toDate(a.created_at), db = toDate(b.created_at);
+    return (da?.getTime() || 0) - (db?.getTime() || 0);
   });
+  const dayMap = {};
+  sorted.forEach(r => {
+    const d = toDate(r.created_at);
+    if (!d) return;
+    const key = d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+    dayMap[key] = (dayMap[key] || 0) + 1;
+  });
+  let cumulative = 0;
+  return Object.entries(dayMap).map(([day, daily]) => {
+    cumulative += daily;
+    return { day, daily, cumulative };
+  });
+}
+
+function buildTimelineInsights(timelineData, total) {
+  if (timelineData.length < 2) return [];
+  const insights = [];
+  const halfTotal = total / 2;
+  const firstHalfIdx = timelineData.findIndex(d => d.cumulative >= halfTotal);
+  if (firstHalfIdx >= 0 && firstHalfIdx < timelineData.length / 3) {
+    const firstHalfPct = Math.round(timelineData[firstHalfIdx].cumulative / total * 100);
+    insights.push(`El ${firstHalfPct}% de los registros llegaron en los primeros ${firstHalfIdx + 1} dia${firstHalfIdx > 0 ? 's' : ''}.`);
+  }
+  const peakDay = timelineData.reduce((max, d) => d.daily > max.daily ? d : max, timelineData[0]);
+  const avgDaily = total / timelineData.length;
+  if (peakDay.daily > avgDaily * 2) {
+    insights.push(`Hubo un pico el ${peakDay.day} con ${peakDay.daily} registros — revisa si publicaste algo ese dia.`);
+  }
+  const lastThird = timelineData.slice(Math.floor(timelineData.length * 0.66));
+  const lastThirdTotal = lastThird.reduce((s, d) => s + d.daily, 0);
+  if (lastThirdTotal < total * 0.1 && timelineData.length > 3) {
+    insights.push('Los registros se frenaron en los ultimos dias del periodo.');
+  }
+  return insights;
+}
+
+function computeFillTime(registrations, capacity) {
+  if (!capacity) return null;
+  const sorted = [...registrations].sort((a, b) => {
+    const da = toDate(a.created_at), db = toDate(b.created_at);
+    return (da?.getTime() || 0) - (db?.getTime() || 0);
+  });
+  if (sorted.length < capacity) return null;
+  const first = toDate(sorted[0]?.created_at);
+  const atCap = toDate(sorted[capacity - 1]?.created_at);
+  if (!first || !atCap) return null;
+  const diffMs = atCap.getTime() - first.getTime();
+  const days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  const dateStr = atCap.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+  return { days, dateStr };
+}
+
+function buildSmartFieldAnalysis(event, registrations) {
+  const fields = event?.fields || [];
+  if (!fields.length || !registrations.length) return [];
+  const total = registrations.length;
+  const results = [];
+
+  for (const field of fields) {
+    const values = registrations.map(r => {
+      if (r.responses) return r.responses[field.id];
+      return r[field.id];
+    }).filter(v => v != null && v !== '');
+
+    if (values.length < 3) continue;
+
+    const labelLower = field.label.toLowerCase();
+    if (field.id === 'f_nombre' || labelLower.includes('nombre') || labelLower.includes('name')) continue;
+
+    if (field.type === 'number' || field.id === 'f_edad') {
+      const nums = values.map(Number).filter(n => !isNaN(n));
+      if (nums.length < 3) continue;
+      nums.sort((a, b) => a - b);
+      const avg = Math.round(nums.reduce((s, n) => s + n, 0) / nums.length);
+      const median = nums[Math.floor(nums.length / 2)];
+      const min = nums[0];
+      const max = nums[nums.length - 1];
+      const range = max - min;
+      const bucketSize = range <= 10 ? 2 : range <= 30 ? 5 : range <= 100 ? 10 : 20;
+      const bucketStart = Math.floor(min / bucketSize) * bucketSize;
+      const buckets = {};
+      nums.forEach(n => {
+        const bStart = Math.floor(n / bucketSize) * bucketSize;
+        const label = `${bStart}-${bStart + bucketSize - 1}`;
+        buckets[label] = (buckets[label] || 0) + 1;
+      });
+      const histogram = Object.entries(buckets).map(([label, count]) => ({ label, count }));
+      const maxBucket = histogram.reduce((m, b) => b.count > m.count ? b : m, histogram[0]);
+      const maxBucketPct = Math.round(maxBucket.count / nums.length * 100);
+
+      results.push({
+        field,
+        type: 'number',
+        stats: { avg, median, min, max },
+        histogram,
+        insight: `Tu audiencia promedio tiene ${avg} ${field.label.toLowerCase()}. El grupo mas grande es ${maxBucket.label} (${maxBucketPct}%).`,
+      });
+      continue;
+    }
+
+    if (['select', 'radio'].includes(field.type)) {
+      const counts = {};
+      values.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      if (sorted.length === 1 && sorted[0][1] === values.length) {
+        results.push({ field, type: 'uniform', value: sorted[0][0], count: sorted[0][1] });
+        continue;
+      }
+      const bars = sorted.map(([name, count]) => ({
+        name, count, pct: Math.round(count / values.length * 100),
+      }));
+      const topPct = bars[0]?.pct || 0;
+      const insight = topPct > 50
+        ? `La mayoria selecciono ${bars[0].name} (${topPct}%).`
+        : `${bars[0].name} fue la respuesta mas comun (${topPct}%).`;
+
+      results.push({ field, type: 'select', bars, insight });
+      continue;
+    }
+
+    if (field.type === 'multiselect') {
+      const counts = {};
+      values.forEach(v => {
+        const arr = Array.isArray(v) ? v : [v];
+        arr.forEach(opt => { if (opt) counts[opt] = (counts[opt] || 0) + 1; });
+      });
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const totalResponses = Object.values(counts).reduce((s, c) => s + c, 0);
+      const bars = sorted.map(([name, count]) => ({
+        name, count, pct: Math.round(count / totalResponses * 100),
+      }));
+      const insight = `${bars[0]?.name} fue la opcion mas popular (${bars[0]?.count} respuestas).`;
+      results.push({ field, type: 'multiselect', bars, insight });
+      continue;
+    }
+
+    if (field.type === 'email' || field.id === 'f_email') continue;
+    if (field.type === 'tel' || field.id === 'f_telefono') continue;
+
+    if (['text', 'textarea'].includes(field.type)) {
+      const counts = {};
+      values.forEach(v => {
+        const norm = String(v).trim().toLowerCase();
+        counts[norm] = (counts[norm] || 0) + 1;
+      });
+      const unique = Object.keys(counts).length;
+      if (unique > 20) {
+        results.push({ field, type: 'text-many', uniqueCount: unique });
+        continue;
+      }
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const bars = sorted.map(([name, count]) => ({
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        count,
+        pct: Math.round(count / values.length * 100),
+      }));
+      results.push({ field, type: 'text-few', bars, insight: `${bars[0]?.name} fue la respuesta mas comun (${bars[0]?.pct}%).` });
+      continue;
+    }
+  }
+
+  return results;
+}
+
+function buildCrossTab(event, registrations) {
+  const fields = event?.fields || [];
+  const selectFields = fields.filter(f => ['select', 'radio'].includes(f.type) && f.id !== 'f_email' && f.id !== 'f_telefono');
+  if (selectFields.length < 2 || registrations.length < 10) return null;
+
+  let bestPair = null;
+  let bestScore = 0;
+
+  for (let i = 0; i < selectFields.length; i++) {
+    for (let j = i + 1; j < selectFields.length; j++) {
+      const fA = selectFields[i];
+      const fB = selectFields[j];
+      const groupedA = {};
+      registrations.forEach(r => {
+        const vA = r.responses?.[fA.id] ?? r[fA.id];
+        const vB = r.responses?.[fB.id] ?? r[fB.id];
+        if (!vA || !vB) return;
+        if (!groupedA[vA]) groupedA[vA] = {};
+        groupedA[vA][vB] = (groupedA[vA][vB] || 0) + 1;
+      });
+      const groups = Object.keys(groupedA);
+      if (groups.length < 2) continue;
+      const allBValues = [...new Set(registrations.map(r => r.responses?.[fB.id] ?? r[fB.id]).filter(Boolean))];
+      if (allBValues.length < 2 || allBValues.length > 6) continue;
+
+      let maxDiff = 0;
+      for (const bVal of allBValues) {
+        const pcts = groups.map(g => {
+          const groupTotal = Object.values(groupedA[g]).reduce((s, c) => s + c, 0);
+          return groupTotal > 0 ? (groupedA[g][bVal] || 0) / groupTotal : 0;
+        });
+        const diff = Math.max(...pcts) - Math.min(...pcts);
+        if (diff > maxDiff) maxDiff = diff;
+      }
+
+      if (maxDiff > bestScore) {
+        bestScore = maxDiff;
+        bestPair = { rowField: fA, colField: fB, grouped: groupedA, allColValues: allBValues };
+      }
+    }
+  }
+
+  if (!bestPair || bestScore < 0.15) return null;
+
+  const { rowField, colField, grouped, allColValues } = bestPair;
+  const rows = Object.entries(grouped).map(([rowVal, colCounts]) => {
+    const rowTotal = Object.values(colCounts).reduce((s, c) => s + c, 0);
+    const cells = allColValues.map(cv => ({
+      value: cv,
+      count: colCounts[cv] || 0,
+      pct: rowTotal > 0 ? Math.round((colCounts[cv] || 0) / rowTotal * 100) : 0,
+    }));
+    return { label: rowVal, total: rowTotal, cells };
+  });
+
+  let insightParts = [];
+  if (rows.length >= 2 && allColValues.length >= 1) {
+    const topCol = allColValues[0];
+    const row0 = rows[0];
+    const row1 = rows[1];
+    const pct0 = row0.cells.find(c => c.value === topCol)?.pct || 0;
+    const pct1 = row1.cells.find(c => c.value === topCol)?.pct || 0;
+    if (Math.abs(pct0 - pct1) > 15) {
+      insightParts.push(
+        `De los ${row0.label.toLowerCase()}, el ${pct0}% selecciono ${topCol}. En ${row1.label.toLowerCase()} solo el ${pct1}%.`
+      );
+    }
+  }
+
+  return {
+    rowField,
+    colField,
+    rows,
+    colValues: allColValues,
+    insight: insightParts.join(' '),
+  };
+}
+
+function buildCheckinTimeline(registrations) {
+  const checkedIn = registrations.filter(r => r.checked_in && r.checked_in_at);
+  if (checkedIn.length < 3) return null;
+
+  const times = checkedIn.map(r => {
+    const d = toDate(r.checked_in_at);
+    return d ? d.getHours() + d.getMinutes() / 60 : null;
+  }).filter(Boolean);
+
+  if (!times.length) return null;
+  times.sort((a, b) => a - b);
+
+  const minHour = Math.floor(Math.min(...times));
+  const maxHour = Math.ceil(Math.max(...times));
+  const slotMinutes = 15;
+  const slots = [];
+
+  for (let h = minHour; h <= maxHour; h++) {
+    for (let m = 0; m < 60; m += slotMinutes) {
+      const slotStart = h + m / 60;
+      const slotEnd = slotStart + slotMinutes / 60;
+      const count = times.filter(t => t >= slotStart && t < slotEnd).length;
+      const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      slots.push({ label, count, hour: h, minute: m });
+    }
+  }
+
+  const peakSlot = slots.reduce((m, s) => s.count > m.count ? s : m, slots[0]);
+  const peakEnd = `${String(peakSlot.hour).padStart(2, '0')}:${String(peakSlot.minute + slotMinutes).padStart(2, '0')}`;
+  const insight = `La mayoria llego entre ${peakSlot.label} y ${peakEnd}.`;
+
+  return { slots, insight, peakLabel: peakSlot.label };
+}
+
+function buildNoShowProfile(event, registrations) {
+  const fields = event?.fields || [];
+  const total = registrations.length;
+  const noShows = registrations.filter(r => !r.checked_in);
+  if (noShows.length < 3 || total < 10) return null;
+
+  const segmentFields = fields.filter(f =>
+    ['select', 'radio', 'number'].includes(f.type) || f.id === 'f_edad' || f.id === 'f_genero'
+  );
+
+  const segments = [];
+  for (const field of segmentFields) {
+    const isNumber = field.type === 'number' || field.id === 'f_edad';
+
+    if (isNumber) {
+      const getVal = r => {
+        const v = r.responses?.[field.id] ?? r[field.id];
+        return v != null ? Number(v) : NaN;
+      };
+      const allNums = registrations.map(getVal).filter(n => !isNaN(n));
+      if (allNums.length < 5) continue;
+      const med = allNums.sort((a, b) => a - b)[Math.floor(allNums.length / 2)];
+      const groups = [
+        { label: `${field.label} <= ${med}`, filter: r => getVal(r) <= med },
+        { label: `${field.label} > ${med}`, filter: r => getVal(r) > med },
+      ];
+      for (const g of groups) {
+        const groupRegs = registrations.filter(g.filter);
+        const groupNoShows = groupRegs.filter(r => !r.checked_in);
+        if (groupRegs.length < 3) continue;
+        const rate = Math.round(groupNoShows.length / groupRegs.length * 100);
+        segments.push({ label: g.label, rate, count: groupNoShows.length, total: groupRegs.length });
+      }
+    } else {
+      const counts = {};
+      registrations.forEach(r => {
+        const v = r.responses?.[field.id] ?? r[field.id];
+        if (!v) return;
+        if (!counts[v]) counts[v] = { total: 0, noShow: 0 };
+        counts[v].total++;
+        if (!r.checked_in) counts[v].noShow++;
+      });
+      Object.entries(counts).forEach(([val, c]) => {
+        if (c.total < 3) return;
+        const rate = Math.round(c.noShow / c.total * 100);
+        segments.push({ label: val, rate, count: c.noShow, total: c.total });
+      });
+    }
+  }
+
+  if (segments.length < 2) return null;
+  segments.sort((a, b) => b.rate - a.rate);
+
+  const highest = segments[0];
+  const lowest = segments[segments.length - 1];
+  let insight = '';
+  if (highest.rate - lowest.rate > 15) {
+    insight = `Los no-shows fueron mas comunes en ${highest.label} (${highest.rate}% no asistio) vs ${lowest.label} (solo ${lowest.rate}%).`;
+  }
+
+  return { segments: segments.slice(0, 6), insight };
 }
 
 const CHART_COLORS = [
@@ -134,234 +468,8 @@ const CHART_COLORS = [
   'rgba(255,255,255,0.12)',
 ];
 
-// ─── Editor constants ──────────────────────────────────────────────
 
-const FIELD_TYPES = [
-  { type: 'text',        label: 'Texto corto' },
-  { type: 'email',       label: 'Email' },
-  { type: 'tel',         label: 'Teléfono' },
-  { type: 'number',      label: 'Número' },
-  { type: 'select',      label: 'Selección' },
-  { type: 'radio',       label: 'Radio' },
-  { type: 'multiselect', label: 'Selección múltiple' },
-  { type: 'textarea',    label: 'Párrafo' },
-  { type: 'date',        label: 'Fecha' },
-];
-
-const TYPE_LABELS = Object.fromEntries(FIELD_TYPES.map(f => [f.type, f.label]));
-
-const DEFAULT_FIELD_IDS = ['f_nombre', 'f_email', 'f_telefono', 'f_edad', 'f_genero'];
-const DEFAULT_FIELDS = [
-  { id: 'f_nombre',   type: 'text',   label: 'Nombre',   placeholder: 'Tu nombre completo', required: true,  locked: true },
-  { id: 'f_email',    type: 'email',  label: 'Email',    placeholder: 'correo@ejemplo.com', required: true,  locked: true },
-  { id: 'f_telefono', type: 'tel',    label: 'Teléfono', placeholder: '+57 300 000 0000',   required: false, locked: true },
-  { id: 'f_edad',     type: 'number', label: 'Edad',     placeholder: '25',                 required: false, locked: true },
-  { id: 'f_genero',   type: 'select', label: 'Género',   placeholder: '',                   required: false, locked: true, options: ['Masculino', 'Femenino', 'Prefiero no decir'] },
-];
-
-// ─── Editor sub-components ─────────────────────────────────────────
-
-function SortableField({ field, onUpdate, onRemove }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: field.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.45 : 1,
-    zIndex: isDragging ? 9 : undefined,
-  };
-  const [expanded, setExpanded] = useState(false);
-  const hasOptions = ['select', 'radio', 'multiselect'].includes(field.type);
-
-  return (
-    <div ref={setNodeRef} style={style} className={`ee-field-card${isDragging ? ' ee-field-card--dragging' : ''}`}>
-      <div className="ee-field-card-header">
-        <button className="ee-field-drag" {...attributes} {...listeners} aria-label="Arrastrar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="9" cy="5" r="1.2" fill="currentColor" /><circle cx="15" cy="5" r="1.2" fill="currentColor" />
-            <circle cx="9" cy="12" r="1.2" fill="currentColor" /><circle cx="15" cy="12" r="1.2" fill="currentColor" />
-            <circle cx="9" cy="19" r="1.2" fill="currentColor" /><circle cx="15" cy="19" r="1.2" fill="currentColor" />
-          </svg>
-        </button>
-        <span className="ee-field-type-badge">{TYPE_LABELS[field.type]}</span>
-        <input
-          className="ee-field-label-input"
-          placeholder="Etiqueta del campo…"
-          value={field.label}
-          onChange={e => onUpdate({ label: e.target.value })}
-        />
-        <div className="ee-field-actions">
-          <button
-            className="ee-field-expand-btn"
-            onClick={() => setExpanded(e => !e)}
-            aria-label={expanded ? 'Colapsar' : 'Expandir'}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              {expanded
-                ? <polyline points="18 15 12 9 6 15" />
-                : <polyline points="6 9 12 15 18 9" />}
-            </svg>
-          </button>
-          <button className="ee-field-remove-btn" onClick={onRemove} aria-label="Eliminar campo">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="ee-field-card-body">
-          <div className="ee-field-row">
-            <label className="ee-field-sub-label">Placeholder</label>
-            <input
-              className="ee-field-input"
-              placeholder="Texto de ayuda…"
-              value={field.placeholder || ''}
-              onChange={e => onUpdate({ placeholder: e.target.value })}
-            />
-          </div>
-          <div className="ee-field-row ee-field-row--toggle">
-            <span className="ee-field-sub-label">Obligatorio</span>
-            <button
-              className={`ee-toggle${field.required ? ' ee-toggle--on' : ''}`}
-              onClick={() => onUpdate({ required: !field.required })}
-              aria-pressed={field.required}
-            >
-              <span className="ee-toggle-thumb" />
-            </button>
-          </div>
-          {hasOptions && (
-            <div className="ee-field-options">
-              <label className="ee-field-sub-label">Opciones</label>
-              {(field.options || []).map((opt, i) => (
-                <div key={i} className="ee-option-row">
-                  <input
-                    className="ee-field-input"
-                    placeholder={`Opción ${i + 1}`}
-                    value={opt}
-                    onChange={e => {
-                      const o = [...(field.options || [])];
-                      o[i] = e.target.value;
-                      onUpdate({ options: o });
-                    }}
-                  />
-                  <button
-                    className="ee-option-remove"
-                    onClick={() => {
-                      const o = (field.options || []).filter((_, j) => j !== i);
-                      onUpdate({ options: o });
-                    }}
-                    aria-label="Eliminar opción"
-                  >×</button>
-                </div>
-              ))}
-              <button
-                className="ee-add-option-btn"
-                onClick={() => onUpdate({ options: [...(field.options || []), ''] })}
-              >
-                + Agregar opción
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LockedField({ field, onUpdate }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasOptions = ['select', 'radio', 'multiselect'].includes(field.type);
-
-  return (
-    <div className="ee-field-card ee-field-card--locked">
-      <div className="ee-field-card-header">
-        <span className="ee-field-lock-icon" aria-label="Campo base">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <rect x="3" y="11" width="18" height="11" rx="2" />
-            <path d="M7 11V7a5 5 0 0110 0v4" />
-          </svg>
-        </span>
-        <span className="ee-field-type-badge">{TYPE_LABELS[field.type]}</span>
-        <span className="ee-field-label-locked">{field.label}</span>
-        <div className="ee-field-actions">
-          <button
-            className="ee-field-expand-btn"
-            onClick={() => setExpanded(e => !e)}
-            aria-label={expanded ? 'Colapsar' : 'Expandir'}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              {expanded
-                ? <polyline points="18 15 12 9 6 15" />
-                : <polyline points="6 9 12 15 18 9" />}
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="ee-field-card-body">
-          <div className="ee-field-row">
-            <label className="ee-field-sub-label">Placeholder</label>
-            <input
-              className="ee-field-input"
-              placeholder="Texto de ayuda…"
-              value={field.placeholder || ''}
-              onChange={e => onUpdate({ placeholder: e.target.value })}
-            />
-          </div>
-          <div className="ee-field-row ee-field-row--toggle">
-            <span className="ee-field-sub-label">Obligatorio</span>
-            <button
-              className={`ee-toggle${field.required ? ' ee-toggle--on' : ''}`}
-              onClick={() => onUpdate({ required: !field.required })}
-              aria-pressed={field.required}
-            >
-              <span className="ee-toggle-thumb" />
-            </button>
-          </div>
-          {hasOptions && (
-            <div className="ee-field-options">
-              <label className="ee-field-sub-label">Opciones</label>
-              {(field.options || []).map((opt, i) => (
-                <div key={i} className="ee-option-row">
-                  <input
-                    className="ee-field-input"
-                    placeholder={`Opción ${i + 1}`}
-                    value={opt}
-                    onChange={e => {
-                      const o = [...(field.options || [])];
-                      o[i] = e.target.value;
-                      onUpdate({ options: o });
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FieldTypePicker({ onPick, onClose }) {
-  return (
-    <div className="ee-picker-backdrop" onClick={onClose}>
-      <div className="ee-picker-panel ee-fade-in" onClick={e => e.stopPropagation()}>
-        <p className="ee-picker-title">Tipo de campo</p>
-        <div className="ee-picker-grid">
-          {FIELD_TYPES.map(ft => (
-            <button key={ft.type} className="ee-picker-btn" onClick={() => onPick(ft.type)}>
-              {ft.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+// ─── Editor sub-components (imported from components/events/eventFieldComponents) ──
 
 // ─── Results sub-components ────────────────────────────────────────
 
@@ -370,17 +478,75 @@ function ChartTooltip({ active, payload, label }) {
   return (
     <div className="er-tooltip">
       <p className="er-tooltip-label">{label}</p>
-      <p className="er-tooltip-value">{payload[0].value}</p>
+      {payload.map((p, i) => (
+        <p key={i} className="er-tooltip-value">{p.name === 'cumulative' ? `Total: ${p.value}` : p.value}</p>
+      ))}
     </div>
   );
 }
 
-function StatCard({ label, value, sub }) {
+function StatCard({ label, value, sub, badge, badgeColor, comparison }) {
   return (
-    <div className="er-stat-card er-fade-in">
+    <div className="er-stat-card er-fade-in" style={{ position: 'relative' }}>
+      <GlowingEffect />
       <span className="er-stat-label">{label}</span>
       <span className="er-stat-value">{value}</span>
+      {badge && (
+        <span className={`er-stat-badge er-stat-badge--${badgeColor || 'neutral'}`}>{badge}</span>
+      )}
+      {comparison && (
+        <span className={`er-stat-comparison er-stat-comparison--${comparison.direction}`}>
+          {comparison.direction === 'up' ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 19V5m-7 7 7-7 7 7"/></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14m-7-7 7 7 7-7"/></svg>
+          )}
+          {comparison.text}
+        </span>
+      )}
       {sub && <span className="er-stat-sub">{sub}</span>}
+    </div>
+  );
+}
+
+function SectionTitle({ children }) {
+  return <h2 className="er-section-title">{children}</h2>;
+}
+
+function InsightText({ children }) {
+  if (!children) return null;
+  return <p className="er-insight-text">{children}</p>;
+}
+
+function HBarChart({ bars, accentFirst }) {
+  if (!bars?.length) return null;
+  return (
+    <div className="er-hbar-list">
+      {bars.map((bar, i) => (
+        <div key={bar.name} className="er-hbar-item">
+          <span className="er-hbar-label">{bar.name}</span>
+          <div className="er-hbar-track">
+            <div
+              className={`er-hbar-fill${accentFirst && i === 0 ? ' er-hbar-fill--accent' : ''}`}
+              style={{ width: `${Math.max(bar.pct, 2)}%` }}
+            >
+              {bar.pct >= 15 && <span className="er-hbar-pct">{bar.pct}%</span>}
+            </div>
+          </div>
+          <span className="er-hbar-count">{bar.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AnalyticsCard({ title, insight, children, className }) {
+  return (
+    <div className={`er-analytics-card er-fade-in ${className || ''}`} style={{ position: 'relative' }}>
+      <GlowingEffect />
+      {title && <h3 className="er-analytics-card-title">{title}</h3>}
+      {insight && <InsightText>{insight}</InsightText>}
+      {children}
     </div>
   );
 }
@@ -471,38 +637,6 @@ function RowModal({ reg, columns, onClose, onCheckIn, onDelete }) {
   );
 }
 
-// ─── NumberStepper ─────────────────────────────────────────────────
-function NumberStepper({ value, onChange, placeholder, min = 1 }) {
-  const num = value === '' ? '' : Number(value);
-  function decrement() {
-    if (value === '') return;
-    const next = Math.max(min, num - 1);
-    onChange(next === min && num === min ? '' : String(next));
-  }
-  function increment() {
-    onChange(String(value === '' ? min : num + 1));
-  }
-  return (
-    <div className="ee-number-stepper">
-      <button type="button" className="ee-number-stepper-btn" onClick={decrement} disabled={value === '' || num <= min} aria-label="Reducir">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12" /></svg>
-      </button>
-      <input
-        className="ee-number-stepper-input"
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        placeholder={placeholder}
-        value={value}
-        onChange={e => onChange(e.target.value.replace(/[^0-9]/g, ''))}
-      />
-      <button type="button" className="ee-number-stepper-btn" onClick={increment} aria-label="Aumentar">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-      </button>
-    </div>
-  );
-}
-
 // ─── Main screen ───────────────────────────────────────────────────
 
 export default function EventResultsScreen() {
@@ -511,14 +645,19 @@ export default function EventResultsScreen() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
-  const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'registros';
+  const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'analytics';
 
-  const { data: event, isLoading: eventLoading } = useQuery({
+  const { data: event, isLoading: eventLoading, isError: eventError } = useQuery({
     queryKey: queryKeys.events.detail(eventId),
-    queryFn: () => eventService.getEvent(eventId),
+    queryFn: async () => {
+      const result = await eventService.getEvent(eventId);
+      return result;
+    },
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+    refetchOnMount: false,
   });
 
   const { data: registrations = [], isLoading: regsLoading } = useQuery({
@@ -526,6 +665,7 @@ export default function EventResultsScreen() {
     queryFn: () => eventService.getEventRegistrations(eventId),
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+    refetchOnMount: false,
   });
 
   const { data: waitlist = [], isLoading: waitlistLoading } = useQuery({
@@ -533,6 +673,14 @@ export default function EventResultsScreen() {
     queryFn: () => eventService.getEventWaitlist(eventId),
     enabled: !!user && !!eventId,
     ...cacheConfig.events,
+    refetchOnMount: false,
+  });
+
+  const { data: allCreatorEvents = [] } = useQuery({
+    queryKey: queryKeys.events.byCreator(user?.uid),
+    queryFn: () => eventService.getEventsByCreator(user.uid),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
   });
 
   const isLoading = eventLoading || regsLoading || waitlistLoading;
@@ -540,6 +688,7 @@ export default function EventResultsScreen() {
   const [selectedReg, setSelectedReg] = useState(null);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set([defaultTab]));
 
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
 
@@ -559,8 +708,9 @@ export default function EventResultsScreen() {
   const [imageUrl, setImageUrl] = useState('');
   const [uploadProgress, setUploadProgress] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const imageInputRef = useRef(null);
   const savedRef = useRef(null);
@@ -610,30 +760,7 @@ export default function EventResultsScreen() {
 
   useEffect(() => {
     if (!imagePreview) return;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const size = 64;
-        const canvas = document.createElement('canvas');
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, size, size);
-        const { data } = ctx.getImageData(0, 0, size, size);
-        let bestR = 255, bestG = 255, bestB = 255, bestScore = -1;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-          if (a < 128) continue;
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          if (max < 40 || max > 245) continue;
-          const sat = max === 0 ? 0 : (max - min) / max;
-          const score = sat * (max / 255);
-          if (score > bestScore) { bestScore = score; bestR = r; bestG = g; bestB = b; }
-        }
-        setAccentRgb([bestR, bestG, bestB]);
-      } catch {}
-    };
-    img.src = imagePreview;
+    return extractAccentFromImage(imagePreview, setAccentRgb);
   }, [imagePreview]);
 
   const sensors = useSensors(
@@ -686,85 +813,112 @@ export default function EventResultsScreen() {
 
   async function uploadImage() {
     if (!imageFile) return imageUrl;
-    const storageRef = ref(storage, `events/${eventId}/cover`);
-    return new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, imageFile);
-      task.on(
-        'state_changed',
-        snap => setUploadProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)),
-        reject,
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          setImageFile(null);
-          setImageUrl(url);
-          setUploadProgress(null);
-          resolve(url);
-        }
-      );
+    const contentType = imageFile.type || 'image/jpeg';
+    const { data } = await apiClient.post(`/creator/events/${eventId}/image/upload-url`, { contentType });
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', contentType);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.timeout = 120000;
+      xhr.ontimeout = () => reject(new Error('Upload timed out'));
+      xhr.send(imageFile);
     });
+    const confirmRes = await apiClient.post(`/creator/events/${eventId}/image/confirm`, { storagePath: data.storagePath });
+    setImageFile(null);
+    setUploadProgress(null);
+    const url = confirmRes.data.imageUrl;
+    setImageUrl(url);
+    return url;
   }
 
   async function handleSave(targetStatus = eventStatus) {
-    if (!title.trim()) { setSaveError('El título es obligatorio'); return; }
+    const errors = {};
+    if (!title.trim()) errors.title = 'El titulo es obligatorio';
+    if (!eventDate) errors.date = 'La fecha es obligatoria';
+    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un numero positivo';
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    setFieldErrors({});
     setSaving(true);
-    setSaveError(null);
-    try {
-      const finalImageUrl = await uploadImage();
 
-      const validFields = fields
-        .filter(f => f.locked || f.label.trim())
-        .map(f => ({
-          id: f.id,
-          label: f.label.trim(),
-          type: f.type,
-          required: Boolean(f.required),
-          placeholder: f.placeholder || '',
-          locked: Boolean(f.locked),
-          ...(f.options ? { options: f.options.filter(o => o.trim()) } : {}),
-        }));
-
-      const eventData = {
-        title: title.trim(),
-        description: description.trim(),
-        date: eventService.makeDateTimestamp(eventDate),
-        location: eventLocation.trim(),
-        access,
-        max_registrations: maxRegistrations ? Number(maxRegistrations) : null,
-        settings: {
-          confirmation_message: confirmationMessage.trim(),
-          send_confirmation_email: sendConfirmationEmail,
-          enable_qr_checkin: enableQrCheckin,
-          show_registration_count: false,
-        },
-        status: targetStatus,
-        fields: validFields,
-        image_url: finalImageUrl,
-      };
-
-      await eventService.updateEvent(eventId, eventData);
-      queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
-      setEventStatus(targetStatus);
-      savedRef.current = {
-        title,
-        description,
-        eventDate,
-        eventLocation,
-        access,
-        maxRegistrations,
-        confirmationMessage,
-        sendConfirmationEmail,
-        enableQrCheckin,
-        eventStatus: targetStatus,
-        fields: JSON.stringify(fields),
-        imageUrl: finalImageUrl,
-      };
-    } catch (err) {
-      logger.error('[EventResults] save failed', err);
-      setSaveError('Error al guardar. Intenta de nuevo.');
-      setUploadProgress(null);
-    } finally {
-      setSaving(false);
+    let finalImageUrl = imageUrl;
+    if (imageFile) {
+      try {
+        finalImageUrl = await uploadImage();
+      } catch (err) {
+        logger.error('[EventResults] image upload failed', err);
+        showToast('No pudimos subir la imagen. Intenta de nuevo.', 'error');
+        setUploadProgress(null);
+        setSaving(false);
+        return;
+      }
     }
+
+    const validFields = fields
+      .filter(f => f.locked || f.label.trim())
+      .map(f => ({
+        id: f.id,
+        label: f.label.trim(),
+        type: f.type,
+        required: Boolean(f.required),
+        placeholder: f.placeholder || '',
+        locked: Boolean(f.locked),
+        ...(f.options ? { options: f.options.filter(o => o.trim()) } : {}),
+      }));
+
+    const eventData = {
+      title: title.trim(),
+      description: description.trim(),
+      date: eventService.makeDateTimestamp(eventDate),
+      location: eventLocation.trim(),
+      access,
+      max_registrations: maxRegistrations ? Number(maxRegistrations) : null,
+      settings: {
+        confirmation_message: confirmationMessage.trim(),
+        send_confirmation_email: sendConfirmationEmail,
+        enable_qr_checkin: enableQrCheckin,
+        show_registration_count: false,
+      },
+      status: targetStatus,
+      fields: validFields,
+      image_url: finalImageUrl,
+    };
+
+    const detailKey = queryKeys.events.detail(eventId);
+    const previousEvent = queryClient.getQueryData(detailKey);
+
+    queryClient.setQueryData(detailKey, old => old ? { ...old, ...eventData, image_url: finalImageUrl } : old);
+    setEventStatus(targetStatus);
+    savedRef.current = {
+      title,
+      description,
+      eventDate,
+      eventLocation,
+      access,
+      maxRegistrations,
+      confirmationMessage,
+      sendConfirmationEmail,
+      enableQrCheckin,
+      eventStatus: targetStatus,
+      fields: JSON.stringify(fields),
+      imageUrl: finalImageUrl,
+    };
+    setSaving(false);
+    showToast('Cambios guardados');
+
+    eventService.updateEvent(eventId, eventData).then(() => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });
+    }).catch(err => {
+      logger.error('[EventResults] save failed', err);
+      queryClient.setQueryData(detailKey, previousEvent);
+      savedRef.current = null;
+      showToast('No pudimos guardar los cambios. Intenta de nuevo.', 'error');
+      queryClient.invalidateQueries({ queryKey: detailKey });
+    });
   }
 
   function exportCSV() {
@@ -772,7 +926,7 @@ export default function EventResultsScreen() {
     const headers = [...cols.map(c => c.label), 'Fecha', 'Check-in'];
     const rows = filteredRegs.map(r => [
       ...cols.map(c => String(getCellValue(r, c.id) ?? '')),
-      r.created_at?.toDate().toLocaleDateString('es-CO') ?? '',
+      formatDate(r.created_at) ?? '',
       r.checked_in ? 'Sí' : 'No',
     ]);
     const csv = [headers, ...rows]
@@ -788,14 +942,24 @@ export default function EventResultsScreen() {
   }
 
   async function handleManualCheckIn(regId) {
-    await eventService.checkInRegistration(eventId, regId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+    try {
+      await eventService.checkInRegistration(eventId, regId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+    } catch (err) {
+      logger.error('[EventResults] check-in failed', err);
+      showToast('No pudimos hacer el check-in. Intenta de nuevo.', 'error');
+    }
   }
 
   async function handleDeleteRegistration(regId) {
-    await eventService.deleteRegistration(eventId, regId);
-    queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
-    setSelectedReg(null);
+    try {
+      await eventService.deleteRegistration(eventId, regId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+      setSelectedReg(null);
+    } catch (err) {
+      logger.error('[EventResults] delete registration failed', err);
+      showToast('No pudimos eliminar el registro. Intenta de nuevo.', 'error');
+    }
   }
 
   async function admitFromWaitlist(waitId) {
@@ -805,6 +969,7 @@ export default function EventResultsScreen() {
       queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
     } catch (err) {
       logger.error('[EventResults] admit failed', err);
+      showToast('No pudimos admitir desde la lista de espera. Intenta de nuevo.', 'error');
     }
   }
 
@@ -850,10 +1015,35 @@ export default function EventResultsScreen() {
   const total = registrations.length;
   const checkedIn = registrations.filter(r => r.checked_in).length;
   const checkinRate = total > 0 ? Math.round(checkedIn / total * 100) : 0;
+  const noShows = total - checkedIn;
   const capacity = event?.max_registrations;
   const capacityPct = capacity ? Math.min(Math.round(total / capacity * 100), 100) : null;
-  const timelineData = groupByDay([...registrations].reverse());
-  const fieldDistributions = event ? buildFieldDistributions(event, registrations) : [];
+
+  const timelineData = useMemo(() => buildTimelineData(registrations), [registrations]);
+  const timelineInsights = useMemo(() => buildTimelineInsights(timelineData, total), [timelineData, total]);
+  const fillTime = useMemo(() => computeFillTime(registrations, capacity), [registrations, capacity]);
+  const fieldAnalysis = useMemo(() => buildSmartFieldAnalysis(event, registrations), [event, registrations]);
+  const crossTab = useMemo(() => buildCrossTab(event, registrations), [event, registrations]);
+  const checkinTimeline = useMemo(() => buildCheckinTimeline(registrations), [registrations]);
+  const noShowProfile = useMemo(() => buildNoShowProfile(event, registrations), [event, registrations]);
+  const peakDaily = useMemo(() => {
+    if (!timelineData.length) return 0;
+    return Math.max(...timelineData.map(d => d.daily));
+  }, [timelineData]);
+
+  const otherEvents = useMemo(() => {
+    if (!allCreatorEvents.length || !eventId) return [];
+    return allCreatorEvents
+      .filter(e => e.id !== eventId)
+      .sort((a, b) => {
+        const da = toDate(a.date || a.created_at);
+        const db = toDate(b.date || b.created_at);
+        return (db?.getTime() || 0) - (da?.getTime() || 0);
+      })
+      .slice(0, 5);
+  }, [allCreatorEvents, eventId]);
+
+  const checkinBadgeColor = checkinRate >= 80 ? 'green' : checkinRate >= 50 ? 'yellow' : 'red';
 
   const cssVars = {
     '--er-accent-r': accentRgb[0],
@@ -874,13 +1064,86 @@ export default function EventResultsScreen() {
       backPath="/events"
     >
       <div className="event-results-screen" style={cssVars}>
-        <div className="er-orbs" aria-hidden="true">
-          <div className="er-orb er-orb-1" />
-          <div className="er-orb er-orb-2" />
-        </div>
-
         {isLoading ? (
-          <ScreenSkeleton />
+          <div className="er-skeleton-wrap">
+            {/* Header */}
+            <div className="er-skel-header">
+              <div>
+                <ShimmerSkeleton width="220px" height="24px" borderRadius="8px" />
+                <ShimmerSkeleton width="140px" height="14px" borderRadius="4px" className="er-skel-mt8" />
+              </div>
+              <div className="er-skel-actions">
+                <ShimmerSkeleton width="90px" height="32px" borderRadius="8px" />
+                <ShimmerSkeleton width="100px" height="32px" borderRadius="8px" />
+                <ShimmerSkeleton width="110px" height="32px" borderRadius="8px" />
+              </div>
+            </div>
+
+            {/* Tab bar */}
+            <div className="er-skel-tabs">
+              <ShimmerSkeleton width="80px" height="32px" borderRadius="8px" />
+              <ShimmerSkeleton width="80px" height="32px" borderRadius="8px" />
+              <ShimmerSkeleton width="64px" height="32px" borderRadius="8px" />
+            </div>
+
+            {/* Section: Resumen */}
+            <ShimmerSkeleton width="90px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skeleton-stats">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="er-skel-stat-card">
+                  <ShimmerSkeleton width="70px" height="10px" borderRadius="4px" />
+                  <ShimmerSkeleton width="48px" height="28px" borderRadius="6px" />
+                  <ShimmerSkeleton width="90px" height="10px" borderRadius="4px" />
+                </div>
+              ))}
+            </div>
+
+            {/* Section: Ritmo de inscripcion (chart) */}
+            <ShimmerSkeleton width="160px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skel-chart-card">
+              <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              <ShimmerSkeleton width="100%" height="180px" borderRadius="8px" />
+            </div>
+
+            {/* Section: Quien se registro (field analysis) */}
+            <ShimmerSkeleton width="140px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skel-analysis-card">
+              <ShimmerSkeleton width="60px" height="10px" borderRadius="4px" />
+              <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              {[100, 72, 45].map((w, i) => (
+                <div key={i} className="er-skel-hbar">
+                  <ShimmerSkeleton width="80px" height="12px" borderRadius="4px" />
+                  <ShimmerSkeleton width={`${w}%`} height="28px" borderRadius="6px" />
+                  <ShimmerSkeleton width="28px" height="12px" borderRadius="4px" />
+                </div>
+              ))}
+            </div>
+
+            {/* Section: Asistencia (two-col) */}
+            <ShimmerSkeleton width="100px" height="12px" borderRadius="4px" className="er-skel-mt20" />
+            <div className="er-skel-two-col">
+              <div className="er-skel-analysis-card">
+                <ShimmerSkeleton width="100px" height="10px" borderRadius="4px" />
+                <ShimmerSkeleton width="64px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="100%" height="8px" borderRadius="4px" />
+                <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              </div>
+              <div className="er-skel-analysis-card">
+                <ShimmerSkeleton width="120px" height="10px" borderRadius="4px" />
+                <ShimmerSkeleton width="48px" height="28px" borderRadius="6px" />
+                <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
+              </div>
+            </div>
+          </div>
+        ) : eventError ? (
+          <FullScreenError
+            title="No pudimos cargar este evento"
+            message="Verifica tu conexion e intenta de nuevo."
+            onRetry={() => {
+              queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
+              queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+            }}
+          />
         ) : (
           <>
             {/* Header */}
@@ -891,6 +1154,21 @@ export default function EventResultsScreen() {
                   {registrations.length} registros
                   {event?.max_registrations != null && ` · ${event.max_registrations} cupos`}
                   {waitlist.length > 0 && ` · ${waitlist.length} en lista de espera`}
+                  <button
+                    className="er-refresh-btn"
+                    title="Buscar nuevos registros"
+                    onClick={() => {
+                      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+                      queryClient.invalidateQueries({ queryKey: queryKeys.events.waitlist(eventId) });
+                      queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10" />
+                      <polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                    </svg>
+                  </button>
                 </span>
                 {event?.max_registrations != null && (
                   <div className="er-capacity-bar-outer">
@@ -922,6 +1200,18 @@ export default function EventResultsScreen() {
                   </svg>
                   Vista previa
                 </button>
+                <button
+                  className="ee-btn ee-btn--ghost"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://wakelab.co/e/${eventId}`);
+                    showToast('Enlace copiado');
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                  </svg>
+                  Copiar enlace
+                </button>
                 {eventStatus !== 'active' && (
                   <button
                     className="ee-btn ee-btn--publish"
@@ -931,46 +1221,69 @@ export default function EventResultsScreen() {
                     Publicar
                   </button>
                 )}
-                <button
-                  className="ee-btn ee-btn--primary"
-                  onClick={() => handleSave(eventStatus)}
-                  disabled={saving || !isDirty}
-                >
-                  {saving
-                    ? (uploadProgress != null ? `Subiendo ${uploadProgress}%…` : 'Guardando…')
-                    : 'Guardar'}
-                </button>
+                {isDirty && (
+                  <>
+                    <button
+                      className="ee-btn ee-btn--discard"
+                      onClick={() => {
+                        const s = savedRef.current;
+                        if (!s) return;
+                        setTitle(s.title);
+                        setDescription(s.description);
+                        setEventDate(s.eventDate);
+                        setEventLocation(s.eventLocation);
+                        setAccess(s.access);
+                        setMaxRegistrations(s.maxRegistrations);
+                        setConfirmationMessage(s.confirmationMessage);
+                        setSendConfirmationEmail(s.sendConfirmationEmail);
+                        setEnableQrCheckin(s.enableQrCheckin);
+                        setEventStatus(s.eventStatus);
+                        setFields(JSON.parse(s.fields));
+                        setImageFile(null);
+                        setImagePreview(s.imageUrl || null);
+                        setImageUrl(s.imageUrl);
+                      }}
+                      aria-label="Descartar cambios"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                    <button
+                      className="ee-btn ee-btn--save"
+                      onClick={() => handleSave(eventStatus)}
+                      disabled={saving}
+                      style={{
+                        background: `rgba(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]},0.85)`,
+                        color: accentText,
+                      }}
+                    >
+                      {saving
+                        ? (uploadProgress != null ? `Subiendo ${uploadProgress}%…` : 'Guardando…')
+                        : 'Guardar cambios'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Tabs */}
-            <div className="er-tabs">
-              <button
-                className={`er-tab${activeTab === 'registros' ? ' er-tab--active' : ''}`}
-                onClick={() => setActiveTab('registros')}
-              >
-                Registros
-                {registrations.length > 0 && (
-                  <span className="er-tab-count">{registrations.length}</span>
-                )}
-              </button>
-              <button
-                className={`er-tab${activeTab === 'analytics' ? ' er-tab--active' : ''}`}
-                onClick={() => setActiveTab('analytics')}
-              >
-                Analytics
-              </button>
-              <button
-                className={`er-tab${activeTab === 'editar' ? ' er-tab--active' : ''}`}
-                onClick={() => setActiveTab('editar')}
-              >
-                Editar
-              </button>
-            </div>
+            <TubelightNavBar
+              items={[
+                { id: 'analytics', label: 'Analytics' },
+                { id: 'registros', label: 'Registros' },
+                { id: 'editar', label: 'Editar' },
+              ]}
+              activeId={activeTab}
+              onSelect={(tab) => {
+                setActiveTab(tab);
+                setVisitedTabs(prev => prev.has(tab) ? prev : new Set(prev).add(tab));
+              }}
+            />
 
             {/* ── Registros tab ── */}
-            {activeTab === 'registros' && (
-              <>
+            {visitedTabs.has('registros') && (
+              <KeepAlivePane active={activeTab === 'registros'}>
                 {registrations.length > 0 && (
                   <div className="er-search-row">
                     <div className="er-search-wrap">
@@ -995,7 +1308,7 @@ export default function EventResultsScreen() {
 
                 {filteredRegs.length === 0 ? (
                   <div className="event-results-empty">
-                    {search ? 'Sin resultados para esa búsqueda.' : 'Aún no hay registros.'}
+                    {search ? 'Sin resultados para esa busqueda.' : 'Nadie se ha registrado todavia. Comparte el link de tu evento.'}
                   </div>
                 ) : (
                   <div className="event-results-table-wrap">
@@ -1083,139 +1396,362 @@ export default function EventResultsScreen() {
                     </div>
                   </div>
                 )}
-              </>
+              </KeepAlivePane>
             )}
 
             {/* ── Analytics tab ── */}
-            {activeTab === 'analytics' && (
+            {visitedTabs.has('analytics') && (
+              <KeepAlivePane active={activeTab === 'analytics'}>
               <div className="er-analytics">
                 {total === 0 ? (
                   <div className="er-analytics-empty er-fade-in">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
                       <path d="M18 20V10M12 20V4M6 20v-6" />
                     </svg>
-                    <p>Aún no hay datos. Los analytics aparecerán cuando lleguen los primeros registros.</p>
+                    <p>Aun no hay datos. Los analytics apareceran cuando lleguen los primeros registros.</p>
                   </div>
                 ) : (
                   <>
+                    {/* ── Section 1: Resumen ── */}
+                    <SectionTitle>Resumen</SectionTitle>
                     <div className="er-stats-row">
                       <StatCard label="Registros" value={total} />
                       <StatCard
-                        label="Check-in"
-                        value={`${checkedIn}`}
-                        sub={total > 0 ? `${checkinRate}% del total` : undefined}
+                        label="Asistencia"
+                        value={checkedIn}
+                        badge={`${checkinRate}% check-in`}
+                        badgeColor={checkinBadgeColor}
                       />
                       {capacity != null && (
                         <StatCard
                           label="Capacidad"
                           value={`${total} / ${capacity}`}
-                          sub={`${capacityPct}% lleno`}
+                          badge={total > capacity ? 'Sobrecupo' : `${capacityPct}% lleno`}
+                          badgeColor={total > capacity ? 'red' : capacityPct >= 90 ? 'yellow' : 'green'}
+                        />
+                      )}
+                      {fillTime && (
+                        <StatCard
+                          label="Tiempo de llenado"
+                          value={`${fillTime.days} dia${fillTime.days !== 1 ? 's' : ''}`}
+                          sub={`Se lleno el ${fillTime.dateStr}`}
+                        />
+                      )}
+                      {waitlist.length > 0 && (
+                        <StatCard
+                          label="Lista de espera"
+                          value={waitlist.length}
+                          sub="No alcanzaron cupo"
                         />
                       )}
                     </div>
 
+                    {/* ── Section 2: Ritmo de inscripcion ── */}
                     {timelineData.length > 1 && (
-                      <div className="er-analytics-card er-fade-in">
-                        <h3 className="er-analytics-card-title">Registros por día</h3>
-                        <div className="er-chart-wrap">
-                          <ResponsiveContainer width="100%" height={220}>
-                            <LineChart data={timelineData} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
-                              <XAxis
-                                dataKey="day"
-                                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
-                                axisLine={{ stroke: 'rgba(255,255,255,0.07)' }}
-                                tickLine={false}
-                              />
-                              <YAxis
-                                allowDecimals={false}
-                                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
-                                axisLine={false}
-                                tickLine={false}
-                              />
-                              <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.08)' }} />
-                              <Line
-                                type="monotone"
-                                dataKey="count"
-                                stroke={accentCss}
-                                strokeWidth={2}
-                                dot={{ fill: accentCss, r: 4, strokeWidth: 0 }}
-                                activeDot={{ r: 6, fill: accentCss }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="er-analytics-card er-fade-in">
-                      <h3 className="er-analytics-card-title">Tasa de check-in</h3>
-                      <div className="er-checkin-rate-row">
-                        <div className="er-checkin-bar-outer">
-                          <div className="er-checkin-bar-fill" style={{ width: `${checkinRate}%` }} />
-                        </div>
-                        <span className="er-checkin-pct">{checkinRate}%</span>
-                      </div>
-                      <p className="er-checkin-sub">{checkedIn} de {total} registrados hicieron check-in</p>
-                    </div>
-
-                    {capacity != null && (
-                      <div className="er-analytics-card er-fade-in">
-                        <h3 className="er-analytics-card-title">Capacidad</h3>
-                        <div className="er-analytics-cap-bar-outer">
-                          <div className="er-analytics-cap-bar-fill" style={{ width: `${capacityPct}%` }} />
-                        </div>
-                        <div className="er-analytics-cap-labels">
-                          <span>{total} registros</span>
-                          <span>{capacity} cupos</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {fieldDistributions.map(({ field, data }) =>
-                      data.length > 0 && (
-                        <div key={field.id} className="er-analytics-card er-fade-in">
-                          <h3 className="er-analytics-card-title">{field.label}</h3>
+                      <>
+                        <SectionTitle>Ritmo de inscripcion</SectionTitle>
+                        <AnalyticsCard insight={timelineInsights.join(' ')}>
                           <div className="er-chart-wrap">
-                            <ResponsiveContainer width="100%" height={Math.max(180, data.length * 44)}>
-                              <BarChart
-                                data={data}
-                                layout="vertical"
-                                margin={{ top: 0, right: 40, bottom: 0, left: 8 }}
-                              >
+                            <ResponsiveContainer width="100%" height={220}>
+                              <ComposedChart data={timelineData} margin={{ top: 8, right: 16, bottom: 0, left: -16 }}>
+                                <defs>
+                                  <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor={accentCss} stopOpacity={0.25} />
+                                    <stop offset="100%" stopColor={accentCss} stopOpacity={0} />
+                                  </linearGradient>
+                                </defs>
                                 <XAxis
-                                  type="number"
-                                  allowDecimals={false}
+                                  dataKey="day"
                                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
                                   axisLine={{ stroke: 'rgba(255,255,255,0.07)' }}
                                   tickLine={false}
                                 />
                                 <YAxis
-                                  type="category"
-                                  dataKey="name"
-                                  width={120}
-                                  tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 12 }}
+                                  yAxisId="left"
+                                  allowDecimals={false}
+                                  tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
                                   axisLine={false}
                                   tickLine={false}
                                 />
-                                <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                                <Bar dataKey="value" radius={[0, 5, 5, 0]}>
-                                  {data.map((_, i) => (
-                                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                                  ))}
-                                </Bar>
-                              </BarChart>
+                                <YAxis yAxisId="right" orientation="right" hide />
+                                <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                                <Area
+                                  yAxisId="right"
+                                  type="monotone"
+                                  dataKey="cumulative"
+                                  fill="url(#areaGradient)"
+                                  stroke={accentCss}
+                                  strokeWidth={2}
+                                  dot={false}
+                                  name="cumulative"
+                                />
+                                <Bar
+                                  yAxisId="left"
+                                  dataKey="daily"
+                                  fill="rgba(255,255,255,0.12)"
+                                  radius={[3, 3, 0, 0]}
+                                  name="daily"
+                                />
+                              </ComposedChart>
                             </ResponsiveContainer>
                           </div>
-                        </div>
-                      )
+                        </AnalyticsCard>
+                      </>
                     )}
+
+                    {/* ── Section 3: Quien se registro ── */}
+                    {fieldAnalysis.length > 0 && (
+                      <>
+                        <SectionTitle>Quien se registro</SectionTitle>
+
+                        {fieldAnalysis.map((fa) => {
+                          if (fa.type === 'number') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label} insight={fa.insight}>
+                                <div className="er-number-stats">
+                                  <div className="er-number-stat">
+                                    <span className="er-number-stat-label">Promedio</span>
+                                    <span className="er-number-stat-value">{fa.stats.avg}</span>
+                                  </div>
+                                  <div className="er-number-stat">
+                                    <span className="er-number-stat-label">Mediana</span>
+                                    <span className="er-number-stat-value">{fa.stats.median}</span>
+                                  </div>
+                                  <div className="er-number-stat">
+                                    <span className="er-number-stat-label">Rango</span>
+                                    <span className="er-number-stat-value">{fa.stats.min} – {fa.stats.max}</span>
+                                  </div>
+                                </div>
+                                <div className="er-histogram">
+                                  {fa.histogram.map((b, i) => {
+                                    const maxCount = Math.max(...fa.histogram.map(h => h.count));
+                                    const heightPct = maxCount > 0 ? (b.count / maxCount * 100) : 0;
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`er-histogram-bar${heightPct >= 80 ? ' er-histogram-bar--active' : ''}`}
+                                        style={{ height: `${Math.max(heightPct, 4)}%` }}
+                                        title={`${b.label}: ${b.count}`}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                                <div className="er-histogram-labels">
+                                  {fa.histogram.map((b, i) => (
+                                    <span key={i}>{b.label}</span>
+                                  ))}
+                                </div>
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          if (fa.type === 'uniform') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label}>
+                                <p className="er-insight-text">Todos seleccionaron <strong>{fa.value}</strong> ({fa.count} registros).</p>
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          if (fa.type === 'select' || fa.type === 'multiselect' || fa.type === 'text-few') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label} insight={fa.insight}>
+                                <HBarChart bars={fa.bars} accentFirst />
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          if (fa.type === 'text-many') {
+                            return (
+                              <AnalyticsCard key={fa.field.id} title={fa.field.label}>
+                                <p className="er-insight-text">{fa.uniqueCount} respuestas unicas.</p>
+                              </AnalyticsCard>
+                            );
+                          }
+
+                          return null;
+                        })}
+
+                        {crossTab && (
+                          <AnalyticsCard
+                            title={`Cruce: ${crossTab.rowField.label} × ${crossTab.colField.label}`}
+                            insight={crossTab.insight}
+                          >
+                            <div className="er-crosstab-grid" style={{
+                              gridTemplateColumns: `auto repeat(${crossTab.colValues.length}, 1fr)`,
+                            }}>
+                              <div className="er-crosstab-cell er-crosstab-cell--header" />
+                              {crossTab.colValues.map(cv => (
+                                <div key={cv} className="er-crosstab-cell er-crosstab-cell--header">{cv}</div>
+                              ))}
+                              {crossTab.rows.map(row => (
+                                <Fragment key={row.label}>
+                                  <div className="er-crosstab-cell er-crosstab-cell--row-header">{row.label}</div>
+                                  {row.cells.map(cell => {
+                                    const isMax = cell.pct === Math.max(...row.cells.map(c => c.pct)) && cell.pct > 0;
+                                    return (
+                                      <div
+                                        key={`${row.label}-${cell.value}`}
+                                        className={`er-crosstab-cell${isMax ? ' er-crosstab-cell--highlight' : ''}`}
+                                      >
+                                        {cell.pct}%
+                                      </div>
+                                    );
+                                  })}
+                                </Fragment>
+                              ))}
+                            </div>
+                          </AnalyticsCard>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── Section 4: Asistencia ── */}
+                    {checkedIn > 0 && (
+                      <>
+                        <SectionTitle>Asistencia</SectionTitle>
+                        <div className="er-two-col">
+                          <AnalyticsCard title="Tasa de check-in">
+                            <div className="er-checkin-rate-row">
+                              <span className={`er-checkin-pct er-checkin-pct--${checkinBadgeColor}`}>{checkinRate}%</span>
+                              <span className="er-checkin-sub-inline">{checkedIn} de {total} asistieron</span>
+                            </div>
+                            <div className="er-checkin-bar-outer">
+                              <div className={`er-checkin-bar-fill er-checkin-bar-fill--${checkinBadgeColor}`} style={{ width: `${checkinRate}%` }} />
+                            </div>
+                            <p className="er-insight-text" style={{ marginTop: 12 }}>
+                              <strong>{noShows} persona{noShows !== 1 ? 's' : ''} no asisti{noShows !== 1 ? 'eron' : 'o'}</strong> ({100 - checkinRate}%).
+                              {checkinRate >= 80 ? ' Un no-show menor al 20% es excelente.' : checkinRate >= 50 ? ' Considera enviar recordatorios antes del evento.' : ' Un no-show alto sugiere revisar la estrategia de confirmacion.'}
+                            </p>
+                          </AnalyticsCard>
+
+                          <AnalyticsCard title="Velocidad de llenado">
+                            <div className="er-velocity-stat">
+                              <span className="er-velocity-value">{peakDaily}</span>
+                              <span className="er-velocity-unit">registros/dia en el pico</span>
+                            </div>
+                            {fillTime && (
+                              <p className="er-insight-text">
+                                Alcanzaste capacidad en <strong>{fillTime.days} dia{fillTime.days !== 1 ? 's' : ''}</strong>.
+                              </p>
+                            )}
+                          </AnalyticsCard>
+                        </div>
+
+                        {checkinTimeline && (
+                          <AnalyticsCard title="Hora de llegada (check-in)" insight={checkinTimeline.insight}>
+                            <div className="er-arrival-bars">
+                              {checkinTimeline.slots.map((slot, i) => {
+                                const maxCount = Math.max(...checkinTimeline.slots.map(s => s.count));
+                                const heightPct = maxCount > 0 ? (slot.count / maxCount * 100) : 0;
+                                const isPeak = slot.label === checkinTimeline.peakLabel;
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`er-arrival-bar${isPeak ? ' er-arrival-bar--peak' : ''}`}
+                                    style={{ height: `${Math.max(heightPct, 3)}%` }}
+                                    title={`${slot.label}: ${slot.count}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                            <div className="er-arrival-labels">
+                              {checkinTimeline.slots.filter((_, i) => i % 2 === 0).map((s, i) => (
+                                <span key={i}>{s.label}</span>
+                              ))}
+                            </div>
+                          </AnalyticsCard>
+                        )}
+
+                        {noShowProfile && (
+                          <AnalyticsCard title="Perfil de no-shows" insight={noShowProfile.insight}>
+                            <div className="er-noshow-grid">
+                              {noShowProfile.segments.map((seg, i) => (
+                                <div key={i} className="er-noshow-segment">
+                                  <div className="er-noshow-segment-label">{seg.label}</div>
+                                  <div className={`er-noshow-segment-value ${seg.rate >= 30 ? 'er-noshow--red' : seg.rate >= 15 ? 'er-noshow--yellow' : 'er-noshow--green'}`}>
+                                    {seg.rate}%
+                                  </div>
+                                  <div className="er-noshow-segment-sub">no asistio ({seg.count} de {seg.total})</div>
+                                </div>
+                              ))}
+                            </div>
+                          </AnalyticsCard>
+                        )}
+                      </>
+                    )}
+
+                    {/* ── Section 5: Comparar con eventos anteriores ── */}
+                    {otherEvents.length > 0 && (() => {
+                      const prevEvent = otherEvents[0];
+                      const prevRegs = prevEvent?.registration_count;
+                      const regDiff = prevRegs > 0 ? Math.round((total - prevRegs) / prevRegs * 100) : null;
+                      const prevCheckinRate = prevEvent?.registration_count && prevEvent?.checkin_count != null
+                        ? Math.round(prevEvent.checkin_count / prevEvent.registration_count * 100)
+                        : null;
+                      const checkinDiff = prevCheckinRate != null ? checkinRate - prevCheckinRate : null;
+
+                      const insightParts = [];
+                      if (regDiff != null && regDiff !== 0) {
+                        insightParts.push(`Tus registros ${regDiff > 0 ? 'crecieron' : 'bajaron'} un ${Math.abs(regDiff)}% vs tu ultimo evento.`);
+                      }
+                      if (checkinDiff != null && Math.abs(checkinDiff) >= 3) {
+                        insightParts.push(`Tu asistencia ${checkinDiff > 0 ? 'mejoro' : 'bajo'} ${Math.abs(checkinDiff)} puntos porcentuales.`);
+                      }
+
+                      return (
+                        <>
+                          <SectionTitle>Comparar con eventos anteriores</SectionTitle>
+                          <AnalyticsCard insight={insightParts.join(' ') || undefined}>
+                            <table className="er-compare-table">
+                              <thead>
+                                <tr>
+                                  <th>Evento</th>
+                                  <th>Registros</th>
+                                  <th>Check-in</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="er-compare-current">
+                                  <td>{event?.title}</td>
+                                  <td>
+                                    {total}
+                                    {regDiff != null && regDiff !== 0 && (
+                                      <span className={`er-compare-badge er-compare-badge--${regDiff > 0 ? 'up' : 'down'}`}>
+                                        {regDiff > 0 ? '+' : ''}{regDiff}%
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td>{checkinRate}%</td>
+                                </tr>
+                                {otherEvents.map(oe => {
+                                  const oeCheckin = oe.registration_count && oe.checkin_count != null
+                                    ? `${Math.round(oe.checkin_count / oe.registration_count * 100)}%`
+                                    : '—';
+                                  return (
+                                    <tr key={oe.id}>
+                                      <td>{oe.title}</td>
+                                      <td>{oe.registration_count ?? '—'}</td>
+                                      <td>{oeCheckin}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </AnalyticsCard>
+                        </>
+                      );
+                    })()}
+
                   </>
                 )}
               </div>
+              </KeepAlivePane>
             )}
 
             {/* ── Editar tab ── */}
-            {activeTab === 'editar' && (
+            {visitedTabs.has('editar') && (
+              <KeepAlivePane active={activeTab === 'editar'}>
               <div style={{ paddingBottom: 48 }}>
                 {/* Status pills */}
                 <div className="ee-status-pills" style={{ marginBottom: 16 }}>
@@ -1230,12 +1766,11 @@ export default function EventResultsScreen() {
                   ))}
                 </div>
 
-                {saveError && <p className="ee-save-error">{saveError}</p>}
-
                 {/* Two-panel layout */}
                 <div className="ee-panels">
                   {/* ── Left: Metadata ── */}
-                  <div className="ee-panel ee-panel--meta">
+                  <div className="ee-panel ee-panel--meta" style={{ position: 'relative' }}>
+                    <GlowingEffect />
                     <h2 className="ee-panel-title">Detalles del evento</h2>
 
                     <div className="ee-field-group">
@@ -1260,23 +1795,16 @@ export default function EventResultsScreen() {
                       ) : (
                         <button
                           className="ee-image-upload-area"
-                          onClick={() => imageInputRef.current?.click()}
+                          onClick={() => setShowMediaPicker(true)}
                         >
                           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                             <rect x="3" y="3" width="18" height="18" rx="2" />
                             <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" strokeWidth="0" />
                             <polyline points="21 15 16 10 5 21" />
                           </svg>
-                          <span>Subir imagen</span>
+                          <span>Elegir imagen</span>
                         </button>
                       )}
-                      <input
-                        ref={imageInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="ee-input-hidden"
-                        onChange={handleImageChange}
-                      />
                     </div>
 
                     <div className="ee-field-group">
@@ -1285,8 +1813,9 @@ export default function EventResultsScreen() {
                         className="ee-input"
                         placeholder="Ej. Run Club Marzo 2026"
                         value={title}
-                        onChange={e => setTitle(e.target.value)}
+                        onChange={e => { setTitle(e.target.value); setFieldErrors(prev => ({ ...prev, title: undefined })); }}
                       />
+                      <InlineError message={fieldErrors.title} field="title" />
                     </div>
 
                     <div className="ee-field-group">
@@ -1301,13 +1830,14 @@ export default function EventResultsScreen() {
                     </div>
 
                     <div className="ee-field-group">
-                      <label className="ee-label">Fecha</label>
+                      <label className="ee-label">Fecha <span className="ee-required">*</span></label>
                       <DatePicker
                         value={eventDate}
-                        onChange={e => setEventDate(e.target.value)}
+                        onChange={e => { setEventDate(e.target.value); setFieldErrors(prev => ({ ...prev, date: undefined })); }}
                         placeholder="Selecciona la fecha del evento"
                         allowFuture
                       />
+                      <InlineError message={fieldErrors.date} field="date" />
                     </div>
 
                     <div className="ee-field-group">
@@ -1324,10 +1854,11 @@ export default function EventResultsScreen() {
                       <label className="ee-label">Cupos máximos</label>
                       <NumberStepper
                         value={maxRegistrations}
-                        onChange={setMaxRegistrations}
+                        onChange={(v) => { setMaxRegistrations(v); setFieldErrors(prev => ({ ...prev, capacity: undefined })); }}
                         placeholder="Ilimitado"
                         min={1}
                       />
+                      <InlineError message={fieldErrors.capacity} field="capacity" />
                     </div>
 
                     <div className="ee-field-group">
@@ -1373,6 +1904,7 @@ export default function EventResultsScreen() {
                       </div>
                     </div>
 
+                    {/* Acceso section hidden for now
                     <div className="ee-field-group">
                       <label className="ee-label">Acceso</label>
                       <div className="ee-access-toggle">
@@ -1380,31 +1912,22 @@ export default function EventResultsScreen() {
                           className={`ee-access-opt${access === 'public' ? ' ee-access-opt--on' : ''}`}
                           onClick={() => setAccess('public')}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-                          </svg>
-                          Público
+                          Publico
                         </button>
                         <button
                           className={`ee-access-opt${access === 'wake_users_only' ? ' ee-access-opt--on' : ''}`}
                           onClick={() => setAccess('wake_users_only')}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                          </svg>
                           Solo usuarios Wake
                         </button>
                       </div>
-                      {access === 'wake_users_only' && (
-                        <p className="ee-access-note">
-                          Los usuarios deben tener cuenta en Wake para registrarse.
-                        </p>
-                      )}
                     </div>
+                    */}
                   </div>
 
                   {/* ── Right: Field Builder ── */}
-                  <div className="ee-panel ee-panel--builder">
+                  <div className="ee-panel ee-panel--builder" style={{ position: 'relative' }}>
+                    <GlowingEffect />
                     <div className="ee-panel-title-row">
                       <h2 className="ee-panel-title">Campos del formulario</h2>
                       {(() => {
@@ -1422,6 +1945,7 @@ export default function EventResultsScreen() {
                           key={field.id}
                           field={field}
                           onUpdate={changes => updateField(field.id, changes)}
+                          onRemove={() => removeField(field.id)}
                         />
                       ))}
                     </div>
@@ -1459,6 +1983,7 @@ export default function EventResultsScreen() {
                   </div>
                 </div>
               </div>
+              </KeepAlivePane>
             )}
           </>
         )}
@@ -1482,6 +2007,17 @@ export default function EventResultsScreen() {
           onClose={() => setShowFieldPicker(false)}
         />
       )}
+
+      <MediaPickerModal
+        isOpen={showMediaPicker}
+        onClose={() => setShowMediaPicker(false)}
+        accept="image/*"
+        onSelect={(media) => {
+          setImagePreview(media.url);
+          setImageUrl(media.url);
+          setImageFile(null);
+        }}
+      />
 
       {lightboxOpen && imagePreview && (
         <div className="ee-lightbox" onClick={() => setLightboxOpen(false)}>

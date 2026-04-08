@@ -1,0 +1,103 @@
+/* ── InlineError ── */
+@keyframes inline-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.inline-error {
+  color: rgba(224, 84, 84, 0.9);
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-top: 6px;
+  animation: inline-error-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── FullScreenError ── */
+@keyframes fullscreen-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fullscreen-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 32px 24px;
+  text-align: center;
+  animation: fullscreen-error-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fullscreen-error-icon {
+  color: rgba(224, 84, 84, 0.9);
+  margin-bottom: 20px;
+}
+
+.fullscreen-error-title {
+  color: #ffffff;
+  font-size: clamp(1.4rem, 5vw, 1.8rem);
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 10px;
+}
+
+.fullscreen-error-message {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.5;
+  max-width: 360px;
+  margin: 0 0 28px;
+}
+
+.fullscreen-error-retry {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 18px 24px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: background 0.18s, border-color 0.18s;
+}
+
+.fullscreen-error-retry:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.fullscreen-error-retry:active {
+  transform: scale(0.977);
+}
+
+.fullscreen-error-retry::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.06) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: shimmer 2.5s ease-in-out 1.2s infinite;
+}
+
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}

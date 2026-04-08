@@ -14,9 +14,11 @@ const {
   dirPwaOutput,
   dirPwaPublic,
   dirCreatorOutput,
+  dirDevPortalOutput,
   dirHosting,
   dirHostingApp,
   dirHostingCreators,
+  dirHostingDevelopers,
 } = require('./paths.js');
 
 function copyDir(src, dest) {
@@ -70,6 +72,10 @@ if (fs.existsSync(pwaDataDir)) {
 }
 if (copyDir(dirCreatorOutput, dirHostingCreators)) {
   console.log('assemble-hosting: copied creator build → hosting/creators/');
+  copied++;
+}
+if (copyDir(dirDevPortalOutput, dirHostingDevelopers)) {
+  console.log('assemble-hosting: copied developer-portal build → hosting/developers/');
   copied++;
 }
 

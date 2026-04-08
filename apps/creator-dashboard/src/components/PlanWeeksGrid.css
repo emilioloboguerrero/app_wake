@@ -37,40 +37,11 @@
 
 .plan-weeks-grid-overlay-text {
   color: rgba(255, 255, 255, 0.95);
-  font-size: 15px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
 }
 
-.plan-weeks-drag-hint {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 25;
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  color: rgba(255, 255, 255, 0.95);
-  font-size: 13px;
-  font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  pointer-events: none;
-  animation: plan-weeks-drag-hint-in 0.2s ease;
-}
-
-@keyframes plan-weeks-drag-hint-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
+/* (drag-hint removed — dead code) */
 
 .plan-weeks-grid-header {
   display: flex;
@@ -90,7 +61,7 @@
   background-color: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
@@ -129,7 +100,7 @@
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -179,7 +150,7 @@
 
 .plan-weeks-days-header-cell {
   text-align: center;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.45);
   text-transform: uppercase;
@@ -190,7 +161,7 @@
   padding: 40px 20px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   background: rgba(255, 255, 255, 0.02);
   border: 1px dashed rgba(255, 255, 255, 0.12);
   border-radius: 12px;
@@ -198,10 +169,12 @@
 
 /* Week block: self-contained container */
 .plan-weeks-week-block {
+  position: relative;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .plan-weeks-week-header {
@@ -215,7 +188,7 @@
 }
 
 .plan-weeks-week-title {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.85);
 }
@@ -253,19 +226,14 @@
   position: absolute;
   top: 100%;
   right: 0;
-  margin-top: 2px;
+  margin-top: 4px;
   min-width: 120px;
-  background: #2a2a2a;
+  background: var(--surface-3, #2a2a2a);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  z-index: 20;
+  z-index: 50;
   overflow: hidden;
-}
-
-.plan-weeks-week-menu .plan-weeks-week-menu-item-delete:hover {
-  background: rgba(255, 68, 68, 0.15);
-  color: rgba(255, 68, 68, 1);
 }
 
 .plan-weeks-week-header--drag-over {
@@ -283,7 +251,7 @@
   border: 1px dashed rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
@@ -302,7 +270,9 @@
 
 .plan-weeks-day-cell {
   min-height: 44px;
-  overflow: hidden;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
 }
 
 .plan-weeks-day-cell > * {
@@ -331,7 +301,7 @@
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
 }
 
@@ -347,6 +317,7 @@
 
 /* Session card: single container with title + 3-dots inside */
 .plan-weeks-session-card {
+  position: relative;
   display: flex;
   align-items: stretch;
   width: 100%;
@@ -355,7 +326,7 @@
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
@@ -371,7 +342,7 @@
   border: none;
   background: none;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: inherit;
   text-align: left;
   cursor: grab;
@@ -423,7 +394,7 @@
   right: 0;
   margin-top: 2px;
   min-width: 120px;
-  background: #2a2a2a;
+  background: var(--surface-3);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -435,7 +406,7 @@
 .plan-weeks-session-menu-portal {
   position: fixed;
   min-width: 120px;
-  background: #2a2a2a;
+  background: var(--surface-3, #2a2a2a);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -443,53 +414,36 @@
   overflow: hidden;
 }
 
-.plan-weeks-session-menu-portal .plan-weeks-session-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  border: none;
-  background: none;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s;
-  font-family: inherit;
-}
-
-.plan-weeks-session-menu-portal .plan-weeks-session-menu-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.plan-weeks-session-menu-portal .plan-weeks-week-menu-item-delete:hover {
-  background: rgba(255, 68, 68, 0.15);
-  color: rgba(255, 68, 68, 1);
-}
-
 .plan-weeks-session-menu-item {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: none;
-  background: none;
-  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
   font-size: 13px;
   cursor: pointer;
-  text-align: left;
-  transition: background 0.15s;
+  transition: background 0.15s ease;
 }
 
 .plan-weeks-session-menu-item:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.plan-weeks-session-menu-item.plan-weeks-week-menu-item-delete {
+  color: #ef4444;
+}
+
+.plan-weeks-session-menu-item.plan-weeks-week-menu-item-delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .plan-weeks-cell-add {
   width: 100%;
   min-height: 44px;
+  height: 100%;
   max-width: 100%;
   display: flex;
   align-items: center;
@@ -498,8 +452,8 @@
   border: 1px dashed rgba(255, 255, 255, 0.2);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.4);
-  font-size: 20px;
-  font-weight: 300;
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 400;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -525,7 +479,7 @@
 }
 
 .plan-weeks-modal-field label {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   letter-spacing: 0.02em;
@@ -537,7 +491,7 @@
 
 .plan-weeks-modal-recommended-tag {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   text-transform: uppercase;
@@ -577,8 +531,8 @@
   border-radius: 6px;
   border: none;
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
-  font-size: 13px;
+  color: var(--text-primary);
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
 }
 
@@ -599,7 +553,7 @@
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.04);
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -611,7 +565,7 @@
 }
 
 .plan-weeks-image-upload-icon {
-  font-size: 28px;
+  font-size: clamp(24px, 6vw, 32px);
   line-height: 1;
   color: rgba(255, 255, 255, 0.5);
 }
@@ -672,13 +626,13 @@
 }
 
 .plan-weeks-save-option-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: inherit;
 }
 
 .plan-weeks-save-option-desc {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.4;
 }
@@ -703,7 +657,7 @@
 .plan-weeks-modal-actions .plan-btn {
   padding: 10px 20px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
 }
@@ -720,30 +674,258 @@
   color: rgba(255, 255, 255, 0.75);
 }
 
-.plan-weeks-delete-modal-body {
-  padding: 0;
+/* (delete-modal removed — replaced by ConfirmDeleteModal) */
+
+/* ─── Session card enrichment ─────────────────────────────────────────── */
+
+.plan-weeks-session-card-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
 }
 
-.plan-weeks-delete-modal-message {
-  margin: 0 0 24px 0;
-  font-size: 15px;
+.plan-weeks-session-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: rgba(255, 255, 255, 0.3);
+  transition: color 0.2s;
+}
+
+.plan-weeks-session-card:hover .plan-weeks-session-type-icon {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Bottom bar: linked vs local */
+.plan-weeks-session-bar {
+  position: absolute;
+  bottom: 0;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  transition: opacity 0.2s;
+  opacity: 0.6;
+}
+
+.plan-weeks-session-card:hover .plan-weeks-session-bar {
+  opacity: 1;
+}
+
+.plan-weeks-session-bar--linked {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.plan-weeks-session-bar--local {
+  background: transparent;
+  border-bottom: 2px dashed rgba(255, 255, 255, 0.12);
+}
+
+/* ─── Skeleton week block ─────────────────────────────────────────────── */
+
+.plan-weeks-week-block--skeleton {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* ─── Move/Duplicate modal ────────────────────────────────────────────── */
+
+.plan-weeks-move-modal-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.plan-weeks-move-modal-desc {
+  margin: 0;
+  font-size: clamp(14px, 3.5vw, 16px);
   color: rgba(255, 255, 255, 0.85);
   line-height: 1.5;
 }
 
-.plan-weeks-delete-modal-actions {
-  display: flex;
+.plan-weeks-move-modal-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
-  justify-content: flex-end;
 }
 
-.plan-weeks-delete-modal-actions .plan-btn--danger {
-  background: rgba(255, 68, 68, 0.2);
-  border: 1px solid rgba(255, 68, 68, 0.5);
-  color: rgba(255, 100, 100, 1);
+.plan-weeks-move-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+  color: inherit;
 }
 
-.plan-weeks-delete-modal-actions .plan-btn--danger:hover {
-  background: rgba(255, 68, 68, 0.3);
-  border-color: rgba(255, 68, 68, 0.7);
+.plan-weeks-move-option:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.plan-weeks-move-option-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.plan-weeks-move-option-title {
+  font-size: clamp(14px, 3.5vw, 15px);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.plan-weeks-move-option-desc {
+  font-size: clamp(12px, 3vw, 13px);
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+}
+
+/* Creating spinner in session modal */
+.plan-weeks-creating-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  animation: plan-weeks-spin 0.6s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ─── Empty cell label ────────────────────────────────────────────────── */
+
+.plan-weeks-cell-add-label {
+  font-size: clamp(10px, 2.5vw, 11px);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* ─── Muscle heatmap popover ──────────────────────────────────────────── */
+
+.plan-weeks-heatmap-popover {
+  position: fixed;
+  z-index: 1050;
+  width: 130px;
+  padding: 12px;
+  background: rgba(26, 26, 26, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+  animation: plan-weeks-heatmap-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes plan-weeks-heatmap-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.plan-weeks-heatmap-popover svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.plan-weeks-heatmap-loading,
+.plan-weeks-heatmap-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ========== Mobile Responsive ========== */
+@media (max-width: 768px) {
+  .plan-weeks-grid {
+    gap: 14px;
+  }
+
+  .plan-weeks-grid-header {
+    gap: 8px;
+  }
+
+  .plan-weeks-volume-btn {
+    padding: 6px 12px;
+    height: 36px;
+    font-size: 12px;
+  }
+
+  .plan-weeks-add-week-btn {
+    padding: 6px 14px;
+    height: 36px;
+    font-size: 12px;
+  }
+
+  .plan-weeks-list-wrap {
+    gap: 12px;
+  }
+
+  .plan-weeks-days-header {
+    grid-template-columns: repeat(7, minmax(90px, 1fr));
+    min-width: 670px;
+    padding: 0 10px 6px;
+  }
+
+  .plan-weeks-week-block {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .plan-weeks-week-days {
+    grid-template-columns: repeat(7, minmax(90px, 1fr));
+    min-width: 670px;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .plan-weeks-week-header {
+    padding: 8px 10px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+
+  .plan-weeks-session-card-body {
+    padding: 8px 6px 8px 10px;
+    font-size: 12px;
+  }
+
+  .plan-weeks-session-menu-btn {
+    width: 28px;
+    min-height: 40px;
+  }
+
+  .plan-weeks-cell-add {
+    min-height: 40px;
+    font-size: 12px;
+  }
+
+  .plan-weeks-move-modal-options {
+    grid-template-columns: 1fr;
+  }
 }

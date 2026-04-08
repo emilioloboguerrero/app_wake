@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { queryClient, queryKeys } from '../config/queryClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
@@ -21,19 +21,40 @@ import programService from '../services/programService';
 import libraryService from '../services/libraryService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import clientNutritionPlanContentService from '../services/clientNutritionPlanContentService';
-import { getUser } from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import ErrorBoundary from '../components/ErrorBoundary';
 import ScreenSkeleton from '../components/ScreenSkeleton';
+import { FullScreenError, InlineError } from '../components/ui/ErrorStates';
+import { GlowingEffect, ProgressRing, NumberTicker, KeepAlivePane } from '../components/ui';
+import TubelightNavBar from '../components/ui/TubelightNavBar';
+import ContextualHint from '../components/hints/ContextualHint';
 import { getWeeksBetween, getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, LineChart, Line, XAxis, YAxis } from 'recharts';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
+import useConfirm from '../hooks/useConfirm';
 import './ClientProgramScreen.css';
 
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const MONTH_NAMES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const MINI_DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const NUTRITION_DRAG_TYPE = 'nutrition_plan';
+
+const LAB_CHART_TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(26,26,26,0.95)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: '8px',
+  fontSize: '13px',
+  color: '#fff',
+};
+
+const NUTRI_BARS = [
+  { key: 'calories', label: 'Calorías', unit: 'kcal' },
+  { key: 'protein', label: 'Proteína', unit: 'g' },
+  { key: 'carbs', label: 'Carbos', unit: 'g' },
+  { key: 'fat', label: 'Grasa', unit: 'g' },
+];
 
 // Resolves a plan module from the sorted modules array using the stable moduleId when
 // available, falling back to the positional moduleIndex for assignments created before
@@ -79,18 +100,23 @@ function assignmentDateToISO(value) {
 
 
 const TAB_CONFIG = [
-  { key: 'lab', title: 'Lab' },
-  { key: 'planificacion', title: 'Planificación' },
-  { key: 'nutricion', title: 'Nutrición' },
-  { key: 'info', title: 'Info' },
+  { id: 'lab', label: 'Lab' },
+  { id: 'planificacion', label: 'Planificación' },
+  { id: 'nutricion', label: 'Nutrición' },
+  { id: 'perfil', label: 'Perfil' },
 ];
+
 
 const ClientProgramScreen = () => {
   const { clientId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const { confirm, ConfirmModal } = useConfirm();
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentTabIndex, setCurrentTabIndex] = useState(0);
+  const queryClient = useQueryClient();
+  const [currentTabKey, setCurrentTabKey] = useState('lab');
+  const [visitedTabs, setVisitedTabs] = useState(() => new Set(['lab']));
   const [isSessionAssignmentModalOpen, setIsSessionAssignmentModalOpen] = useState(false);
   const [selectedPlanningDate, setSelectedPlanningDate] = useState(null);
   const [selectedProgramId, setSelectedProgramId] = useState(null); // Selected program (container/bin)
@@ -150,21 +176,20 @@ const ClientProgramScreen = () => {
   const [nutritionModalEditingEnd, setNutritionModalEditingEnd] = useState(false);
   const [nutritionModalEditingAssignmentId, setNutritionModalEditingAssignmentId] = useState(null);
   const [nutritionCurrentCardMenuOpen, setNutritionCurrentCardMenuOpen] = useState(false);
-  const [nutritionPlanDetail, setNutritionPlanDetail] = useState(null);
-  const [isLoadingNutritionPlanDetail, setIsLoadingNutritionPlanDetail] = useState(false);
 
   const { data: client, isLoading: loading, error: clientError } = useQuery({
     queryKey: ['clients', 'detail', clientId],
     queryFn: () => oneOnOneService.getClientById(clientId),
     enabled: !!clientId && !!user,
+    ...cacheConfig.userProfile,
   });
   const error = clientError?.message ?? (!loading && client && client.creatorId !== user?.uid ? 'No tienes permiso para ver este cliente' : (!loading && !client ? 'Cliente no encontrado' : null));
 
   // Restore tab when returning from session edit (back button passed returnState.tab)
   useEffect(() => {
     const tab = location.state?.tab;
-    if (typeof tab === 'number' && tab >= 0 && tab < TAB_CONFIG.length) {
-      setCurrentTabIndex(tab);
+    if (typeof tab === 'string' && TAB_CONFIG.some((t) => t.id === tab)) {
+      setCurrentTabKey(tab);
     }
   }, [location.pathname, location.state?.tab]);
 
@@ -183,7 +208,7 @@ const ClientProgramScreen = () => {
       }));
     },
     enabled: !!client?.clientUserId && !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    ...cacheConfig.programStructure,
   });
 
   useEffect(() => {
@@ -195,33 +220,49 @@ const ClientProgramScreen = () => {
     });
   }, [assignedPrograms]);
 
-  // Load client user doc when Info tab is active (for access end date)
-  const isInfoTab = TAB_CONFIG[currentTabIndex]?.key === 'info';
+  // Load client user doc when Perfil tab is active (for profile + access end date)
+  const isPerfilTab = currentTabKey === 'perfil';
   const { data: clientUserDoc } = useQuery({
-    queryKey: queryKeys.user.detail(client?.clientUserId),
-    queryFn: () => getUser(client.clientUserId),
-    enabled: isInfoTab && !!client?.clientUserId,
+    queryKey: queryKeys.user.detail(clientId),
+    queryFn: async () => {
+      const { data } = await apiClient.get(`/creator/clients/${clientId}`);
+      return data;
+    },
+    enabled: isPerfilTab && !!clientId,
   });
-  const loadingClientUser = !isInfoTab ? false : !client?.clientUserId ? false : clientUserDoc === undefined;
+  const loadingClientUser = !isPerfilTab ? false : !clientId ? false : clientUserDoc === undefined;
 
-  const isNutricionTab = TAB_CONFIG[currentTabIndex]?.key === 'nutricion';
-  const { data: nutritionPlans = [], isLoading: isNutritionLoading } = useQuery({
+  // Lab tab data
+  const isLabTab = currentTabKey === 'lab';
+  const { data: labData, isLoading: isLabLoading } = useQuery({
+    queryKey: ['analytics', 'client-lab', client?.clientUserId],
+    queryFn: () => apiClient.get(`/analytics/client/${client.clientUserId}/lab`),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    enabled: isLabTab && !!client?.clientUserId,
+    select: (res) => res?.data ?? null,
+  });
+
+  const isNutricionTab = currentTabKey === 'nutricion';
+  const { data: nutritionPlans = [], isLoading: isNutritionLoading, error: nutritionPlansError } = useQuery({
     queryKey: ['nutrition', 'plans', user?.uid],
     queryFn: () => nutritionDb.getPlansByCreator(user.uid),
     enabled: isNutricionTab && !!user?.uid,
+    ...cacheConfig.programStructure,
   });
 
-  const { data: clientNutritionAssignments = [] } = useQuery({
+  const { data: clientNutritionAssignments = [], error: nutritionAssignmentsError } = useQuery({
     queryKey: ['nutrition', 'assignments', client?.clientUserId],
     queryFn: () => nutritionDb.getAssignmentsByUser(client.clientUserId),
     enabled: isNutricionTab && !!client?.clientUserId,
+    ...cacheConfig.programStructure,
   });
 
   const { data: plans = [] } = useQuery({
     queryKey: ['library', 'plans', user?.uid],
     queryFn: () => plansService.getPlansByCreator(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    ...cacheConfig.programStructure,
   });
 
   const { data: clientProgramData } = useQuery({
@@ -231,12 +272,13 @@ const ClientProgramScreen = () => {
       return { contentPlanId: cp?.content_plan_id ?? null, planAssignments: cp?.planAssignments ?? {} };
     },
     enabled: !!selectedProgramId && !!client?.clientUserId,
-    staleTime: 0,
+    ...cacheConfig.activeProgram,
   });
   const contentPlanId = clientProgramData?.contentPlanId ?? null;
-  const planAssignments = clientProgramData?.planAssignments ?? {};
+  const EMPTY_PLAN_ASSIGNMENTS = useMemo(() => ({}), []);
+  const planAssignments = clientProgramData?.planAssignments ?? EMPTY_PLAN_ASSIGNMENTS;
 
-  const isPlanificacionTab = TAB_CONFIG[currentTabIndex]?.key === 'planificacion';
+  const isPlanificacionTab = currentTabKey === 'planificacion';
   const needsSessionHistory = isPlanificacionTab;
 
   const { data: plannedSessions = [] } = useQuery({
@@ -261,64 +303,51 @@ const ClientProgramScreen = () => {
       return enrichPlannedSessionsWithTitles(filtered, user.uid);
     },
     enabled: !!client?.clientUserId && !!user?.uid,
-    staleTime: 0,
+    ...cacheConfig.activeProgram,
   });
 
   const { data: completedSessionIds = new Set() } = useQuery({
     queryKey: ['completedSessionIds', selectedProgramId, client?.clientUserId],
     queryFn: () => clientProgramService.getClientCompletedSessionIds(selectedProgramId, client.clientUserId),
     enabled: !!client?.clientUserId && !!selectedProgramId,
-    staleTime: 10 * 60 * 1000,
+    ...cacheConfig.sessionHistory,
   });
 
   const { data: sessionHistory = [], isLoading: isLoadingSessionHistory } = useQuery({
     queryKey: ['sessionHistory', selectedProgramId, client?.clientUserId],
     queryFn: () => clientProgramService.getClientSessionHistory(selectedProgramId, client.clientUserId),
     enabled: needsSessionHistory && !!client?.clientUserId && !!selectedProgramId,
-    staleTime: 10 * 60 * 1000,
+    ...cacheConfig.sessionHistory,
   });
 
-  // Load plan detail and meals (for summary: objectives, categories, recipe resolution) when client has an assignment
-  useEffect(() => {
-    const assignment = clientNutritionAssignments[0] || null;
-    if (!assignment?.planId || !user?.uid) {
-      setNutritionPlanDetail(null);
-      return;
-    }
-    let cancelled = false;
-    setIsLoadingNutritionPlanDetail(true);
-    (async () => {
-      try {
-        const [clientCopy, plan] = await Promise.all([
-          clientNutritionPlanContentService.getByAssignmentId(assignment.id),
-          nutritionDb.getPlanById(user.uid, assignment.planId),
-        ]);
-        if (cancelled) return;
-        if (clientCopy?.categories?.length) {
-          setNutritionPlanDetail({
-            daily_calories: clientCopy.daily_calories ?? null,
-            daily_protein_g: clientCopy.daily_protein_g ?? null,
-            daily_carbs_g: clientCopy.daily_carbs_g ?? null,
-            daily_fat_g: clientCopy.daily_fat_g ?? null,
-            categories: clientCopy.categories,
-          });
-          return;
-        }
-        setNutritionPlanDetail(plan ? {
-          daily_calories: plan.daily_calories ?? null,
-          daily_protein_g: plan.daily_protein_g ?? null,
-          daily_carbs_g: plan.daily_carbs_g ?? null,
-          daily_fat_g: plan.daily_fat_g ?? null,
-          categories: plan.categories ?? [],
-        } : null);
-      } catch (e) {
-        if (!cancelled) setNutritionPlanDetail(null);
-      } finally {
-        if (!cancelled) setIsLoadingNutritionPlanDetail(false);
+  const activeNutritionAssignment = clientNutritionAssignments[0] || null;
+  const { data: nutritionPlanDetail = null, isLoading: isLoadingNutritionPlanDetail } = useQuery({
+    queryKey: ['nutritionPlanDetail', activeNutritionAssignment?.id, activeNutritionAssignment?.planId, user?.uid],
+    queryFn: async () => {
+      const [clientCopy, plan] = await Promise.all([
+        clientNutritionPlanContentService.getByAssignmentId(activeNutritionAssignment.id),
+        nutritionDb.getPlanById(user.uid, activeNutritionAssignment.planId),
+      ]);
+      if (clientCopy?.categories?.length) {
+        return {
+          daily_calories: clientCopy.daily_calories ?? null,
+          daily_protein_g: clientCopy.daily_protein_g ?? null,
+          daily_carbs_g: clientCopy.daily_carbs_g ?? null,
+          daily_fat_g: clientCopy.daily_fat_g ?? null,
+          categories: clientCopy.categories,
+        };
       }
-    })();
-    return () => { cancelled = true; };
-  }, [clientNutritionAssignments, user?.uid]);
+      return plan ? {
+        daily_calories: plan.daily_calories ?? null,
+        daily_protein_g: plan.daily_protein_g ?? null,
+        daily_carbs_g: plan.daily_carbs_g ?? null,
+        daily_fat_g: plan.daily_fat_g ?? null,
+        categories: plan.categories ?? [],
+      } : null;
+    },
+    enabled: !!activeNutritionAssignment?.planId && !!user?.uid,
+    ...cacheConfig.programStructure,
+  });
 
   const nutritionObjectivesPieData = useMemo(() => {
     const p = Number(nutritionPlanDetail?.daily_protein_g) || 0;
@@ -344,7 +373,7 @@ const ClientProgramScreen = () => {
     setIsAssigningNutrition(true);
     try {
       if (assignmentId) {
-        await nutritionDb.updateAssignment(assignmentId, {
+        await nutritionDb.updateAssignment(client.clientUserId, assignmentId, {
           startDate: startDate || null,
           endDate: noEndDate ? null : (endDate || null),
         });
@@ -384,7 +413,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
-      alert(e?.message || 'Error al asignar plan');
+      showToast(e?.message || 'No pudimos asignar el plan. Intenta de nuevo.', 'error');
     } finally {
       setIsAssigningNutrition(false);
     }
@@ -399,11 +428,11 @@ const ClientProgramScreen = () => {
       } catch (e) {
         logger.warn('Could not delete client nutrition plan copy:', e?.message);
       }
-      await nutritionDb.deleteAssignment(assignmentId);
+      await nutritionDb.deleteAssignment(assignmentId, client?.clientUserId);
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', client?.clientUserId] });
     } catch (e) {
       logger.error(e);
-      alert(e?.message || 'Error al quitar asignación');
+      showToast(e?.message || 'No pudimos quitar la asignacion. Intenta de nuevo.', 'error');
     } finally {
       setIsEndingNutrition(false);
     }
@@ -467,8 +496,8 @@ const ClientProgramScreen = () => {
 
   // Load week content (plan sessions or client copy) for each week visible in calendar grid that has a plan assignment
   useEffect(() => {
-    if (!client?.clientUserId || !selectedProgramId || !planAssignments || Object.keys(planAssignments).length === 0) {
-      setWeekContentByWeekKey({});
+    if (!isPlanificacionTab || !client?.clientUserId || !selectedProgramId || !planAssignments || Object.keys(planAssignments).length === 0) {
+      if (isPlanificacionTab) setWeekContentByWeekKey({});
       return;
     }
     const year = currentDate.getFullYear();
@@ -578,10 +607,11 @@ const ClientProgramScreen = () => {
     };
     load();
     return () => { cancelled = true; };
-  }, [client?.clientUserId, selectedProgramId, currentDate.getFullYear(), currentDate.getMonth(), planAssignments, user?.uid]);
+  }, [isPlanificacionTab, client?.clientUserId, selectedProgramId, currentDate.getFullYear(), currentDate.getMonth(), planAssignments, user?.uid]);
 
   // Load week count per plan for calendar plan bar "(N semanas)"
   useEffect(() => {
+    if (!isPlanificacionTab) return;
     const planIds = [...new Set(Object.values(planAssignments || {}).map((a) => a.planId).filter(Boolean))];
     if (planIds.length === 0) {
       setPlanWeeksCount({});
@@ -604,7 +634,7 @@ const ClientProgramScreen = () => {
     };
     load();
     return () => { cancelled = true; };
-  }, [planAssignments]);
+  }, [isPlanificacionTab, planAssignments]);
 
   const weekVolumeWeekOptions = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -717,8 +747,14 @@ const ClientProgramScreen = () => {
     return colors;
   }, [assignedPrograms]);
 
-  const handleTabClick = (index) => {
-    setCurrentTabIndex(index);
+  const handleTabClick = (tabId) => {
+    setCurrentTabKey(tabId);
+    setVisitedTabs((prev) => {
+      if (prev.has(tabId)) return prev;
+      const next = new Set(prev);
+      next.add(tabId);
+      return next;
+    });
   };
 
   const handleSessionAssigned = async (sessionData) => {
@@ -742,7 +778,7 @@ const ClientProgramScreen = () => {
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
       logger.error('Error assigning session:', error);
-      alert('Error al asignar la sesión');
+      showToast('No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -771,7 +807,7 @@ const ClientProgramScreen = () => {
 
   const handlePlanAssignment = async (planId, weekKey, day) => {
     if (!client?.clientUserId || !selectedProgramId || !planId || !weekKey) {
-      alert('Por favor, selecciona un programa primero');
+      showToast('Selecciona un programa primero', 'error');
       return;
     }
     setIsAssigningPlan(true);
@@ -827,7 +863,7 @@ const ClientProgramScreen = () => {
       logger.log('✅ Plan assigned to consecutive weeks:', { programId: selectedProgramId, planId, weekKey, count: assignedWeekKeys.length });
     } catch (error) {
       logger.error('Error assigning plan:', error);
-      alert(error?.message === 'Este plan no tiene semanas.' ? error.message : `Error al asignar el plan: ${error.message || 'Error desconocido'}`);
+      showToast(error?.message === 'Este plan no tiene semanas.' ? error.message : `No pudimos asignar el plan. Intenta de nuevo.`, 'error');
     } finally {
       setIsAssigningPlan(false);
       setAssigningPlanWeekKey(null);
@@ -851,7 +887,7 @@ const ClientProgramScreen = () => {
       });
     } catch (error) {
       logger.error('Error removing plan:', error);
-      alert(`Error al quitar el plan: ${error.message || 'Error desconocido'}`);
+      showToast('No pudimos quitar el plan. Intenta de nuevo.', 'error');
     } finally {
       setIsRemovingPlanFromWeek(false);
       setRemovingPlanWeekKey(null);
@@ -865,7 +901,7 @@ const ClientProgramScreen = () => {
   const handleSessionAssignment = async (sessionData) => {
     logger.log('[ClientProgramScreen] handleSessionAssignment', { clientUserId: client?.clientUserId, selectedProgramId, sessionData });
     if (!client?.clientUserId || !selectedProgramId) {
-      alert('Por favor, selecciona un programa primero');
+      showToast('Selecciona un programa primero', 'error');
       return;
     }
     setIsAssigningSession(true);
@@ -883,7 +919,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleSessionAssignment error:', error);
-      alert('Error al asignar la sesión');
+      showToast('No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsAssigningSession(false);
     }
@@ -891,7 +927,7 @@ const ClientProgramScreen = () => {
 
   const handleEditSessionAssignment = async ({ session, date }) => {
     if (!client?.clientUserId || !session?.session_id) return;
-    const returnState = { tab: currentTabIndex };
+    const returnState = { tab: currentTabKey };
     if (session.plan_id) {
       const weekKey = session.week_key || getMondayWeek(date);
       try {
@@ -910,7 +946,7 @@ const ClientProgramScreen = () => {
         }
       } catch (error) {
         logger.error('[ClientProgramScreen] handleEditSessionAssignment: copyFromPlan error:', error);
-        alert('Error al preparar la sesión para editar');
+        showToast('No pudimos abrir la sesion para editar. Intenta de nuevo.', 'error');
         return;
       }
       navigate(`/content/sessions/${session.session_id}`, {
@@ -940,7 +976,8 @@ const ClientProgramScreen = () => {
 
   const handleDeleteSessionAssignment = async ({ session, date }) => {
     if (!client?.clientUserId) return;
-    if (!window.confirm('¿Eliminar esta sesión del día?')) return;
+    const ok = await confirm('¿Eliminar esta sesión del día?');
+    if (!ok) return;
     setIsDeletingSessionAssignment(true);
     try {
       await clientSessionService.removeSessionFromDate(
@@ -951,7 +988,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
-      alert('Error al eliminar la sesión');
+      showToast('No pudimos eliminar la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsDeletingSessionAssignment(false);
     }
@@ -997,7 +1034,7 @@ const ClientProgramScreen = () => {
       const modules = await plansService.getModulesByPlan(assignment.planId);
       const module = resolveModule(modules, assignment);
       if (!module) {
-        alert('Módulo del plan no encontrado');
+        showToast('No encontramos el modulo del plan', 'error');
         return;
       }
       await clientPlanContentService.copyFromPlan(
@@ -1011,7 +1048,7 @@ const ClientProgramScreen = () => {
       setHasClientPlanCopy(true);
     } catch (error) {
       logger.error('Error personalizando plan:', error);
-      alert(error.message || 'Error al personalizar la semana');
+      showToast(error.message || 'No pudimos personalizar la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsPersonalizingPlanWeek(false);
     }
@@ -1019,7 +1056,8 @@ const ClientProgramScreen = () => {
 
   const handleResetPlanWeek = async ({ assignment, weekKey }) => {
     if (!client?.clientUserId || !selectedProgramId || weekKey == null || !assignment?.planId) return;
-    if (!window.confirm('¿Restablecer esta semana al plan original? Se usará de nuevo el contenido del plan para todos.')) return;
+    const ok = await confirm('¿Restablecer esta semana al plan original? Se usará de nuevo el contenido del plan para todos.');
+    if (!ok) return;
     setIsResettingPlanWeek(true);
     try {
       await clientPlanContentService.deleteClientPlanContent(client.clientUserId, selectedProgramId, weekKey);
@@ -1032,7 +1070,7 @@ const ClientProgramScreen = () => {
       }
     } catch (error) {
       logger.error('Error restableciendo plan:', error);
-      alert(error.message || 'Error al restablecer');
+      showToast(error.message || 'No pudimos restablecer la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsResettingPlanWeek(false);
     }
@@ -1072,7 +1110,7 @@ const ClientProgramScreen = () => {
       navigate(`/content/sessions/${session.id}`, {
         state: {
           returnTo: location.pathname,
-          returnState: { tab: currentTabIndex },
+          returnState: { tab: currentTabKey },
           editScope: 'client_plan',
           clientId: client.clientUserId,
           programId: selectedProgramId,
@@ -1082,13 +1120,14 @@ const ClientProgramScreen = () => {
       });
     } catch (error) {
       logger.error('Error opening plan session for edit:', error);
-      alert(error.message || 'Error al abrir la sesión');
+      showToast(error.message || 'No pudimos abrir la sesion. Intenta de nuevo.', 'error');
     }
   };
 
   const handleDeletePlanSession = async ({ session, weekKey, weekContent }) => {
     if (!client?.clientUserId || !selectedProgramId || !session?.id || !weekKey) return;
-    if (!window.confirm('¿Quitar esta sesión de la semana para este cliente? No se borra del plan ni de la biblioteca.')) return;
+    const ok = await confirm('¿Quitar esta sesión de la semana para este cliente? No se borra del plan ni de la biblioteca.');
+    if (!ok) return;
     setIsDeletingPlanSession(true);
     try {
       if (!weekContent?.fromClientCopy) {
@@ -1117,7 +1156,7 @@ const ClientProgramScreen = () => {
       }
     } catch (error) {
       logger.error('Error deleting plan session:', error);
-      alert(error.message || 'Error al quitar la sesión');
+      showToast(error.message || 'No pudimos quitar la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsDeletingPlanSession(false);
     }
@@ -1163,7 +1202,7 @@ const ClientProgramScreen = () => {
         ...prev,
         ...(prevContent != null && { [weekKey]: prevContent })
       }));
-      alert(error.message || 'Error al mover');
+      showToast(error.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -1216,7 +1255,7 @@ const ClientProgramScreen = () => {
       }));
     } catch (error) {
       logger.error('Error moving plan session to week:', error);
-      alert(error.message || 'Error al mover la sesión');
+      showToast(error.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsMovingPlanSession(false);
     }
@@ -1243,7 +1282,7 @@ const ClientProgramScreen = () => {
     }
     const libSession = await libraryService.getLibrarySessionById(user.uid, librarySessionId);
     if (!libSession) {
-      alert('Sesión de biblioteca no encontrada');
+      showToast('No encontramos esa sesion en la biblioteca', 'error');
       return;
     }
     const payload = {
@@ -1284,7 +1323,7 @@ const ClientProgramScreen = () => {
       await addLibrarySessionToPlanWeek(weekKey, dayIndex, librarySessionId);
     } catch (error) {
       logger.error('Error adding library session to plan day:', error);
-      alert(error.message || 'Error al añadir la sesión');
+      showToast(error.message || 'No pudimos añadir la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingToWeekKey(null);
@@ -1312,7 +1351,7 @@ const ClientProgramScreen = () => {
       setAddPlanSessionTarget(null);
     } catch (error) {
       logger.error('Error adding session:', error);
-      alert(error.message || 'Error al añadir');
+      showToast(error.message || 'No pudimos añadir la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingSessionIdInModal(null);
@@ -1328,25 +1367,156 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['clientProgram', selectedProgramId, client?.clientUserId] });
     } catch (error) {
       logger.error('Error setting content plan:', error);
-      alert('Error al guardar el contenido del programa');
-    } finally {
+      showToast('No pudimos guardar el contenido del programa. Intenta de nuevo.', 'error');
     }
   };
 
-  const renderTabContent = () => {
-    const currentTab = TAB_CONFIG[currentTabIndex];
-    
-    switch (currentTab.key) {
-      case 'lab':
+  const renderLabTab = () => {
+        if (isLabLoading) {
+          return (
+            <div className="tab-content tab-lab" data-tutorial="client-program-lab">
+              <div className="lab-grid lab-grid--top">
+                {[0, 1, 2].map((i) => <div key={i} className="lab-card lab-card--skeleton"><div className="lab-skeleton-circle" /><div className="lab-skeleton-lines"><div className="lab-skeleton-line" /><div className="lab-skeleton-line short" /></div></div>)}
+              </div>
+              <div className="lab-grid lab-grid--charts">
+                {[0, 1].map((i) => <div key={i} className="lab-chart-card lab-card--skeleton"><div className="lab-skeleton-line" style={{ width: '40%' }} /><div className="lab-skeleton-line short" /><div className="lab-skeleton-rect" /></div>)}
+              </div>
+            </div>
+          );
+        }
+        const readinessScore = labData?.trends?.readinessAvg ?? 0;
+        const completionRate = labData?.completionRate ?? 0;
+        const weeklyVolume = labData?.trends?.weeklyVolume ?? [];
+        const bodyProgressData = (labData?.trends?.bodyProgress ?? [])
+          .filter((p) => p.weight != null)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const labNutrition = labData?.nutritionComparison ?? { actual: {}, target: {} };
+
+        const volumeChartData = weeklyVolume.map((w) => ({
+          name: w.week.slice(5),
+          series: w.totalSets,
+          sesiones: w.sessions,
+        }));
+
+        const bodyChartData = bodyProgressData.map((p) => ({
+          name: p.date.slice(5),
+          peso: p.weight,
+        }));
+
         return (
-          <div className="client-program-tab-content client-program-tab-empty">
-            <p className="client-program-tab-empty-title">Estadísticas del cliente</p>
-            <p className="client-program-tab-empty-message">Próximamente podrás ver aquí métricas y progreso de este cliente.</p>
+          <div className="tab-content tab-lab" data-tutorial="client-program-lab">
+            <div className="lab-grid lab-grid--top lab-entrance lab-entrance--in">
+              <div className="lab-card">
+                <GlowingEffect />
+                <div className="lab-card__ring-wrap">
+                  <ProgressRing
+                    percent={completionRate > 100 ? 100 : completionRate}
+                    size={80}
+                    strokeWidth={6}
+                    color="rgba(255,255,255,0.75)"
+                    label={`${completionRate}`}
+                  />
+                </div>
+                <div className="lab-card__info">
+                  <span className="lab-card__metric-label">Sesiones completadas</span>
+                  <span className="lab-card__metric-sub">Últimos 30 días</span>
+                </div>
+              </div>
+
+              <div className="lab-card">
+                <GlowingEffect />
+                <div className="lab-card__ticker-wrap">
+                  <NumberTicker value={readinessScore} suffix="/10" decimals={1} />
+                </div>
+                <div className="lab-card__info">
+                  <span className="lab-card__metric-label">Readiness</span>
+                  <span className="lab-card__metric-sub">Promedio 7 días</span>
+                </div>
+              </div>
+
+              <div className="lab-card">
+                <GlowingEffect />
+                <div className="lab-card__ring-wrap">
+                  <ProgressRing
+                    percent={bodyProgressData.length > 0 ? 100 : 0}
+                    size={80}
+                    strokeWidth={6}
+                    color="rgba(255,255,255,0.75)"
+                    label={bodyProgressData.length > 0 ? `${bodyProgressData[bodyProgressData.length - 1].weight}` : '—'}
+                  />
+                </div>
+                <div className="lab-card__info">
+                  <span className="lab-card__metric-label">Peso corporal</span>
+                  <span className="lab-card__metric-sub">{bodyProgressData.length > 0 ? 'Último registro (kg)' : 'Sin registros'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lab-grid lab-grid--charts lab-entrance lab-entrance--in" style={{ transitionDelay: '80ms' }}>
+              <div className="lab-chart-card">
+                <h4 className="lab-chart-card__title">Volumen semanal</h4>
+                <p className="lab-chart-card__sub">Series totales — últimas 8 semanas</p>
+                {volumeChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={170}>
+                    <LineChart data={volumeChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={LAB_CHART_TOOLTIP_STYLE} />
+                      <Line type="monotone" dataKey="series" stroke="rgba(255,255,255,0.8)" strokeWidth={2} dot={{ r: 3, fill: '#fff' }} activeDot={{ r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="lab-chart-card__empty">Sin datos de volumen</p>
+                )}
+              </div>
+
+              <div className="lab-chart-card">
+                <h4 className="lab-chart-card__title">Peso corporal</h4>
+                <p className="lab-chart-card__sub">Últimos 30 días</p>
+                {bodyChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={170}>
+                    <LineChart data={bodyChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis domain={['dataMin - 1', 'dataMax + 1']} tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={LAB_CHART_TOOLTIP_STYLE} formatter={(v) => [`${v} kg`, 'Peso']} />
+                      <Line type="monotone" dataKey="peso" stroke="rgba(255,255,255,0.8)" strokeWidth={2} dot={{ r: 3, fill: '#fff' }} activeDot={{ r: 5 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="lab-chart-card__empty">Sin registros de peso</p>
+                )}
+              </div>
+            </div>
+
+            <div className="lab-chart-card lab-entrance lab-entrance--in" style={{ transitionDelay: '160ms' }}>
+              <h4 className="lab-chart-card__title">Nutrición: real vs. objetivo</h4>
+              <p className="lab-chart-card__sub">Promedio diario — últimos 7 días</p>
+              <div className="lab-nutri-bars">
+                {NUTRI_BARS.map(({ key, label, unit }) => {
+                  const actual = labNutrition.actual?.[key] ?? 0;
+                  const target = labNutrition.target?.[key] ?? 0;
+                  const pct = target > 0 ? Math.min((actual / target) * 100, 100) : 0;
+                  return (
+                    <div key={key} className="lab-nutri-row">
+                      <div className="lab-nutri-row__header">
+                        <span className="lab-nutri-row__label">{label}</span>
+                        <span className="lab-nutri-row__values">{actual} / {target} {unit}</span>
+                      </div>
+                      <div className="lab-nutri-row__track">
+                        <div className="lab-nutri-row__fill" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         );
-      case 'planificacion':
+  };
+
+  const renderPlanificacionTab = () => {
         return (
-          <div className="client-program-planning-content">
+          <div className="client-program-planning-content" data-tutorial="client-program-week">
             {/* Layout: left (library - sessions/plans only), right (calendar). Program is chosen in Info tab. */}
             <div className="plan-structure-layout client-program-planning-layout">
               <div className="plan-structure-sidebars client-program-planning-left">
@@ -1484,7 +1654,17 @@ const ClientProgramScreen = () => {
             </div>
           </div>
         );
-      case 'nutricion': {
+  };
+
+  const renderNutricionTab = () => {
+        const nutritionTabError = nutritionPlansError || nutritionAssignmentsError;
+        if (nutritionTabError) {
+          return (
+            <div className="client-program-tab-content">
+              <InlineError message="No pudimos cargar la informacion de nutricion. Intenta recargar la pagina." />
+            </div>
+          );
+        }
         const currentNutritionAssignment = clientNutritionAssignments[0] || null;
         const currentPlanName = currentNutritionAssignment && nutritionPlans.find((p) => p.id === currentNutritionAssignment.planId)?.name;
         const nutritionStartDateStr = currentNutritionAssignment?.startDate
@@ -1498,7 +1678,7 @@ const ClientProgramScreen = () => {
           ? nutritionPlans.filter((p) => (p.name || '').toLowerCase().includes(nutritionPlanQ))
           : nutritionPlans;
         return (
-          <div className="client-program-nutricion-content">
+          <div className="client-program-nutricion-content" data-tutorial="client-program-nutrition">
             <div className="plan-structure-layout client-program-nutricion-layout">
               {/* Left panel: plans list (same structure as session-edit sidebar) */}
               <aside className="plan-structure-sidebars client-program-nutricion-sidebar">
@@ -1600,7 +1780,7 @@ const ClientProgramScreen = () => {
                           <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <p className="client-program-nutricion-empty-text">No tiene un plan nutricional asignado</p>
+                      <p className="client-program-nutricion-empty-text">Este cliente no tiene un plan asignado. Asignale uno desde Planificacion.</p>
                       <p className="client-program-nutricion-empty-hint">Arrastra un plan desde el panel izquierdo para asignarlo</p>
                     </div>
             ) : (
@@ -1620,7 +1800,7 @@ const ClientProgramScreen = () => {
                             assignmentPlanId: currentNutritionAssignment.planId,
                             clientName: client?.clientName || client?.name || client?.displayName || 'Cliente',
                             returnTo: location.pathname,
-                            returnState: { tab: currentTabIndex },
+                            returnState: { tab: currentTabKey },
                           },
                         })}
                             aria-label="Editar plan (solo este cliente)"
@@ -1935,8 +2115,9 @@ const ClientProgramScreen = () => {
             })()}
           </div>
         );
-      }
-      case 'info':
+  };
+
+  const renderPerfilTab = () => {
         const assignedForInfo = assignedPrograms.filter((p) => p.isAssigned) || [];
         const currentExpiresAt = infoProgramId && clientUserDoc?.courses?.[infoProgramId]?.expires_at;
         const currentStatusText = (() => {
@@ -1985,12 +2166,6 @@ const ClientProgramScreen = () => {
               <div className="client-program-info-err-block">
                 <span className="client-program-info-err-icon" aria-hidden>!</span>
                 <p className="client-program-info-error">{accessEndDateError}</p>
-              </div>
-            ) : assignedForInfo.length === 0 ? (
-              <div className="client-program-info-empty-block">
-                <span className="client-program-info-empty-icon" aria-hidden>◇</span>
-                <p className="client-program-info-empty">Este cliente no tiene programas asignados</p>
-                <p className="client-program-info-empty-hint">Ve a la pestaña Planificación y asígnale un programa para gestionar su acceso aquí.</p>
               </div>
             ) : (
               <div className={`client-program-info-layout ${!hasProfile ? 'client-program-info-layout--no-profile' : ''}`}>
@@ -2053,30 +2228,34 @@ const ClientProgramScreen = () => {
                     <div className="client-program-info-access-card-row">
                       <div className="client-program-info-access-card-program-block">
                         <span className="client-program-info-access-card-label">Programa</span>
-                        <div className="client-program-info-program-list">
-                          {assignedForInfo.map((program) => (
-                            <button
-                              key={program.id}
-                              type="button"
-                              className={`client-program-info-program-item ${infoProgramId === program.id ? 'client-program-info-program-item--selected' : ''}`}
-                              onClick={() => setInfoProgramId(program.id)}
-                            >
-                              {program.image_url ? (
-                                <span className="client-program-info-program-thumb" style={{ backgroundImage: `url(${program.image_url})` }} />
-                              ) : (
-                                <span className="client-program-info-program-initial">
-                                  {(program.title || 'P').charAt(0).toUpperCase()}
+                        {assignedForInfo.length > 0 ? (
+                          <div className="client-program-info-program-list">
+                            {assignedForInfo.map((program) => (
+                              <button
+                                key={program.id}
+                                type="button"
+                                className={`client-program-info-program-item ${infoProgramId === program.id ? 'client-program-info-program-item--selected' : ''}`}
+                                onClick={() => setInfoProgramId(program.id)}
+                              >
+                                {program.image_url ? (
+                                  <span className="client-program-info-program-thumb" style={{ backgroundImage: `url(${program.image_url})` }} />
+                                ) : (
+                                  <span className="client-program-info-program-initial">
+                                    {(program.title || 'P').charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                                <span className="client-program-info-program-name">
+                                  {program.title || `Programa ${program.id.slice(0, 8)}`}
                                 </span>
-                              )}
-                              <span className="client-program-info-program-name">
-                                {program.title || `Programa ${program.id.slice(0, 8)}`}
-                              </span>
-                              {infoProgramId === program.id && (
-                                <span className="client-program-info-program-check" aria-hidden>✓</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
+                                {infoProgramId === program.id && (
+                                  <span className="client-program-info-program-check" aria-hidden>✓</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="client-program-info-access-empty-hint">No hay programas asignados. Asígnale uno desde Planificación.</p>
+                        )}
                       </div>
 
                       {infoProgramId && clientUserDoc?.courses?.[infoProgramId] ? (
@@ -2136,9 +2315,6 @@ const ClientProgramScreen = () => {
             )}
           </div>
         );
-      default:
-        return null;
-    }
   };
 
   if (loading) {
@@ -2155,58 +2331,89 @@ const ClientProgramScreen = () => {
     const errorBackPath = location.state?.returnTo || '/products?tab=clientes';
     return (
       <DashboardLayout screenName="Cliente">
-        <div className="client-program-error">
-          <p>{error || 'Cliente no encontrado'}</p>
-          <button 
-            className="client-program-back-button"
-            onClick={() => navigate(errorBackPath)}
-          >
-            Volver
-          </button>
-        </div>
+        <FullScreenError
+          title="No pudimos cargar este cliente"
+          message={error || 'Cliente no encontrado'}
+          onRetry={() => navigate(errorBackPath)}
+        />
       </DashboardLayout>
     );
   }
 
-  const containerWidth = 100 / TAB_CONFIG.length; // Updated to 4 tabs (removed programas)
   const clientName = client.clientName || client.clientEmail || `Cliente ${client.clientUserId.slice(0, 8)}`;
+  const clientInitials = clientName.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const activePrograms = assignedPrograms.filter((p) => p.isAssigned);
+  const totalSessions = sessionHistory?.length ?? 0;
 
   return (
     <ErrorBoundary>
     <DashboardLayout
-      screenName={clientName}
+      screenName="Cliente"
       showBackButton={true}
       backPath={location.state?.returnTo || '/products?tab=clientes'}
     >
       <div className="client-program-container">
+        {/* Client profile card */}
+        <div className="cp-profile">
+          <div className="cp-profile-inner">
+            <div className="cp-avatar">
+              {clientInitials}
+            </div>
+            <div className="cp-profile-info">
+              <h1 className="cp-profile-name">{clientName}</h1>
+              {client.clientEmail && (
+                <p className="cp-profile-email">{client.clientEmail}</p>
+              )}
+            </div>
+            <div className="cp-profile-stats">
+              <div className="cp-stat">
+                <span className="cp-stat-value">{totalSessions}</span>
+                <span className="cp-stat-label">Sesiones</span>
+              </div>
+              <div className="cp-stat">
+                <span className="cp-stat-value">{activePrograms.length}</span>
+                <span className="cp-stat-label">Programas</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Tab Bar */}
         <div className="client-program-tab-bar">
-          <div className="client-program-tab-header-container">
-            <div className="client-program-tab-indicator-wrapper">
-              {TAB_CONFIG.map((tab, index) => (
-                <button
-                  key={tab.key}
-                  onClick={() => handleTabClick(index)}
-                  className={`client-program-tab-button ${currentTabIndex === index ? 'client-program-tab-button-active' : ''}`}
-                >
-                  <span className="client-program-tab-title-text">{tab.title}</span>
-                </button>
-              ))}
-              <div 
-                className="client-program-tab-indicator"
-                style={{
-                  width: `${containerWidth}%`,
-                  transform: `translateX(${currentTabIndex * 100}%)`,
-                }}
-              />
-            </div>
+          <div className="client-program-tab-bar-inner">
+            <TubelightNavBar
+              items={TAB_CONFIG}
+              activeId={currentTabKey}
+              onSelect={handleTabClick}
+            />
           </div>
         </div>
 
         {/* Tab Content */}
         <div className="client-program-content">
-          {renderTabContent()}
+          {visitedTabs.has('lab') && (
+            <KeepAlivePane active={currentTabKey === 'lab'}>
+              {renderLabTab()}
+            </KeepAlivePane>
+          )}
+          {visitedTabs.has('planificacion') && (
+            <KeepAlivePane active={currentTabKey === 'planificacion'}>
+              {renderPlanificacionTab()}
+            </KeepAlivePane>
+          )}
+          {visitedTabs.has('nutricion') && (
+            <KeepAlivePane active={currentTabKey === 'nutricion'}>
+              {renderNutricionTab()}
+            </KeepAlivePane>
+          )}
+          {visitedTabs.has('perfil') && (
+            <KeepAlivePane active={currentTabKey === 'perfil'}>
+              {renderPerfilTab()}
+            </KeepAlivePane>
+          )}
         </div>
+
+        <ContextualHint screenKey="client-detail" />
 
         {/* Session performance modal - used from Planificación (calendar cards and history-only cards) */}
         <SessionPerformanceModal
@@ -2224,6 +2431,7 @@ const ClientProgramScreen = () => {
           historyOnlyData={performanceModalContext?.historyOnlyData ?? null}
         />
       </div>
+      {ConfirmModal}
     </DashboardLayout>
     </ErrorBoundary>
   );

@@ -1,19 +1,27 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
+import MediaDropZone from '../components/ui/MediaDropZone';
 import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
+import { FullScreenError } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
 import './ProgramDetailScreen.css';
+import './SharedScreenLayout.css';
 import '../components/PropagateChangesModal.css';
 
 /** Get per-100g values from food servings (FatSecret: find 100g serving or normalize by metric_serving_amount). */
@@ -85,6 +93,7 @@ export default function MealEditorScreen() {
   const { mealId } = useParams();
   const isEdit = Boolean(mealId);
   const { user } = useAuth();
+  const { showToast } = useToast();
   const creatorId = user?.uid ?? '';
 
   const [mealFormName, setMealFormName] = useState(() => {
@@ -107,13 +116,15 @@ export default function MealEditorScreen() {
   const [mealSortMenuOpen, setMealSortMenuOpen] = useState(false);
   const [videoMediaPickerOpen, setVideoMediaPickerOpen] = useState(false);
 
-  const { data: mealData, isLoading: mealLoading } = useQuery({
-    queryKey: ['nutrition', 'meal', creatorId, mealId],
+  const queryClient = useQueryClient();
+  const { data: mealData, isLoading: mealLoading, error: mealError, refetch: refetchMeal } = useQuery({
+    queryKey: queryKeys.nutrition.meal(creatorId, mealId),
     queryFn: () => nutritionDb.getMealById(creatorId, mealId),
     enabled: !!mealId && mealId !== 'new' && !!creatorId,
+    ...cacheConfig.otherPrograms,
   });
   useEffect(() => {
-    if (!mealId || mealId === 'new') navigate('/nutrition', { replace: true });
+    if (!mealId || mealId === 'new') navigate('/biblioteca?domain=nutricion', { replace: true });
   }, [mealId, navigate]);
   useEffect(() => {
     if (mealData && !seededRef.current) {
@@ -138,10 +149,11 @@ export default function MealEditorScreen() {
         lastSavedRef.current = { name, itemsJson, video_url };
       } catch (e) {
         logger.error(e);
+        showToast('No pudimos guardar la receta. Intenta de nuevo.', 'error');
       }
     }, 700);
     return () => clearTimeout(t);
-  }, [mealId, creatorId, mealLoading, mealFormName, mealFormItems, mealFormVideoUrl]);
+  }, [mealId, creatorId, mealLoading, mealFormName, mealFormItems, mealFormVideoUrl, showToast]);
 
   async function handleMealFormSearch() {
     if (!mealFormSearchQuery.trim()) return;
@@ -153,7 +165,9 @@ export default function MealEditorScreen() {
       const foods = Array.isArray(raw) ? raw : (raw ? [raw] : []);
       setMealFormSearchResults(foods);
     } catch (e) {
+      logger.error('Food search failed', e);
       setMealFormSearchResults([]);
+      showToast('No pudimos buscar alimentos. Intenta de nuevo.', 'error');
     } finally {
       setMealFormSearchLoading(false);
     }
@@ -283,8 +297,41 @@ export default function MealEditorScreen() {
     return (
       <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
         <div className="library-session-detail-container">
-          <p style={{ color: 'rgba(255,255,255,0.6)', padding: 24 }}>Cargando…</p>
+          <div className="library-session-sidebar" style={{ padding: 16 }}>
+            <ShimmerSkeleton width="100%" height="40px" borderRadius="8px" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <ShimmerSkeleton key={i} width="100%" height="48px" borderRadius="8px" />
+              ))}
+            </div>
+          </div>
+          <div className="library-session-main" style={{ padding: 24 }}>
+            <ShimmerSkeleton width="200px" height="22px" borderRadius="6px" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ShimmerSkeleton width="48px" height="48px" borderRadius="8px" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <ShimmerSkeleton width="60%" height="14px" borderRadius="4px" />
+                    <ShimmerSkeleton width="40%" height="12px" borderRadius="4px" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (mealError) {
+    return (
+      <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
+        <FullScreenError
+          title="No pudimos cargar la receta"
+          message="Hubo un problema cargando esta receta. Revisa tu conexion e intenta de nuevo."
+          onRetry={refetchMeal}
+        />
       </DashboardLayout>
     );
   }
@@ -417,6 +464,7 @@ export default function MealEditorScreen() {
               <p className="meal-editor-video-card-hint">
                 Pega un enlace (YouTube, Vimeo, etc.) o elige un vídeo de tu carpeta de medios.
               </p>
+              <MediaDropZone onSelect={(item) => setMealFormVideoUrl(item.url ?? '')} accept="video/*">
               <div className="meal-editor-video-link-row">
                 <button
                   type="button"
@@ -426,7 +474,7 @@ export default function MealEditorScreen() {
                   <svg className="meal-editor-video-upload-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span>Subir vídeo</span>
+                  <span>Subir video</span>
                 </button>
                 <input
                   type="url"
@@ -438,11 +486,22 @@ export default function MealEditorScreen() {
               </div>
               {mealFormVideoUrl.trim() && (
                 <div className="meal-editor-video-preview">
-                  <a href={mealFormVideoUrl.trim()} target="_blank" rel="noopener noreferrer" className="meal-editor-video-link">
-                    Ver vídeo
-                  </a>
+                  {(() => {
+                    const url = mealFormVideoUrl.trim();
+                    const source = detectVideoSource(url);
+                    const isExternal = source === 'youtube' || source === 'vimeo';
+                    if (isExternal) {
+                      return <iframe src={getEmbedUrl(url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video receta" className="meal-editor-video-player" />;
+                    }
+                    return <video src={url} controls playsInline className="meal-editor-video-player" />;
+                  })()}
+                  <div className="meal-editor-video-actions">
+                    <button type="button" className="meal-editor-video-action-btn" onClick={() => setVideoMediaPickerOpen(true)}>Cambiar</button>
+                    <button type="button" className="meal-editor-video-action-btn meal-editor-video-action-btn--danger" onClick={() => setMealFormVideoUrl('')}>Eliminar</button>
+                  </div>
                 </div>
               )}
+              </MediaDropZone>
             </div>
             <div
               className={`library-session-exercises-container meal-editor-items-container ${mealFormItems.length === 0 ? 'empty' : ''}`}
@@ -755,6 +814,7 @@ export default function MealEditorScreen() {
         creatorId={creatorId}
         accept="video/*"
       />
+      <ContextualHint screenKey="meal-editor" />
     </DashboardLayout>
   );
 }

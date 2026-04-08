@@ -8,8 +8,6 @@ class StorageManagementService {
    */
   async getStorageUsage() {
     try {
-      logger.log('📊 Analyzing storage usage...');
-      
       const allKeys = await AsyncStorage.getAllKeys();
       
       // Categorize storage keys
@@ -48,7 +46,7 @@ class StorageManagementService {
           }
           
         } catch (error) {
-          logger.warn('⚠️ Failed to analyze key:', key);
+          // Skip unanalyzable keys
         }
       }
       
@@ -63,7 +61,6 @@ class StorageManagementService {
         details: storageBreakdown
       };
       
-      logger.log('✅ Storage analysis completed:', summary);
       return summary;
       
     } catch (error) {
@@ -78,8 +75,6 @@ class StorageManagementService {
    */
   async cleanupOldSessions(olderThanDays = 30) {
     try {
-      logger.log(`🧹 Cleaning up sessions older than ${olderThanDays} days...`);
-      
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
       
@@ -101,18 +96,15 @@ class StorageManagementService {
             if (sessionDate < cutoffDate) {
               await AsyncStorage.removeItem(key);
               cleanedCount++;
-              logger.log(`🗑️ Removed old session: ${key}`);
             }
           }
         } catch (error) {
           // Remove corrupted session data
           await AsyncStorage.removeItem(key);
           cleanedCount++;
-          logger.log(`🗑️ Removed corrupted session: ${key}`);
         }
       }
       
-      logger.log(`✅ Cleanup completed: ${cleanedCount} sessions removed`);
       return cleanedCount;
       
     } catch (error) {
@@ -126,8 +118,6 @@ class StorageManagementService {
    */
   async removeFailedSessions() {
     try {
-      logger.log('🧹 Cleaning up failed upload sessions...');
-      
       // Get upload queue
       const queueData = await AsyncStorage.getItem('upload_queue');
       if (!queueData) return 0;
@@ -147,7 +137,6 @@ class StorageManagementService {
       queue.sessions = queue.sessions.filter(s => s.status !== 'failed');
       await AsyncStorage.setItem('upload_queue', JSON.stringify(queue));
       
-      logger.log(`✅ Removed ${removedCount} failed sessions`);
       return removedCount;
       
     } catch (error) {
@@ -161,14 +150,11 @@ class StorageManagementService {
    */
   async clearCacheData() {
     try {
-      logger.log('🧹 Clearing progress cache...');
-      
       const allKeys = await AsyncStorage.getAllKeys();
       const cacheKeys = allKeys.filter(key => key.startsWith('progress_cache_'));
       
       await AsyncStorage.multiRemove(cacheKeys);
       
-      logger.log(`✅ Cleared ${cacheKeys.length} cache entries`);
       return cacheKeys.length;
       
     } catch (error) {
@@ -182,27 +168,19 @@ class StorageManagementService {
    */
   async optimizeStorage() {
     try {
-      logger.log('⚡ Optimizing storage...');
-      
       const usage = await this.getStorageUsage();
       
       // If storage usage is high, perform cleanup
       if (usage.total_size_mb > 100) {
-        logger.log('⚠️ High storage usage detected, performing cleanup...');
-        
         const results = await Promise.all([
           this.cleanupOldSessions(30),
           this.removeFailedSessions(),
           this.clearCacheData()
         ]);
         
-        const totalCleaned = results.reduce((sum, count) => sum + count, 0);
-        logger.log(`✅ Storage optimization completed: ${totalCleaned} items cleaned`);
-        
-        return totalCleaned;
+        return results.reduce((sum, count) => sum + count, 0);
       }
       
-      logger.log('ℹ️ Storage usage within limits, no optimization needed');
       return 0;
       
     } catch (error) {
@@ -238,11 +216,9 @@ class StorageManagementService {
    */
   async removeUnusedCourses(userId) {
     try {
-      logger.log('🧹 Removing unused courses...');
-      
       // Get user's active courses  
-      const firestoreService = require('../services/firestoreService').default;
-      const userDoc = await firestoreService.getUser(userId);
+      const apiService = require('../services/apiService').default;
+      const userDoc = await apiService.getUser(userId);
       const activeCourseIds = userDoc?.courses ? Object.keys(userDoc.courses) : [];
       
       // Get locally stored courses
@@ -257,11 +233,9 @@ class StorageManagementService {
         if (!activeCourseIds.includes(courseId)) {
           await AsyncStorage.removeItem(key);
           removedCount++;
-          logger.log(`🗑️ Removed unused course: ${courseId}`);
         }
       }
       
-      logger.log(`✅ Removed ${removedCount} unused courses`);
       return removedCount;
       
     } catch (error) {

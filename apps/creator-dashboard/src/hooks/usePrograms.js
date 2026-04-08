@@ -2,7 +2,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import programService from '../services/programService';
-import { getUser } from '../services/firestoreService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 
 // Hook to get all programs for the current creator
@@ -41,17 +40,12 @@ export const useProgram = (programId, options = {}) => {
 
 // Hook to get modules for a program
 export const useModules = (programId, options = {}) => {
-  const { isActive = false, useCounts = false, ...queryOptions } = options;
+  const { isActive = false, ...queryOptions } = options;
 
   return useQuery({
-    queryKey: useCounts 
-      ? queryKeys.modules.withCounts(programId)
-      : queryKeys.modules.all(programId),
+    queryKey: queryKeys.modules.all(programId),
     queryFn: async () => {
       if (!programId) return [];
-      if (useCounts) {
-        return await programService.getModulesWithCounts(programId);
-      }
       return await programService.getModulesByProgram(programId);
     },
     enabled: !!programId,
@@ -116,6 +110,7 @@ export const useCreateModule = () => {
   const { user } = useAuth();
 
   return useMutation({
+    mutationKey: ['modules', 'create'],
     mutationFn: async ({ programId, moduleName }) => {
       return await programService.createModule(programId, moduleName);
     },
@@ -166,6 +161,7 @@ export const useUpdateModuleOrder = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['modules', 'reorder'],
     mutationFn: async ({ programId, moduleOrders }) => {
       return await programService.updateModuleOrder(programId, moduleOrders);
     },
@@ -182,6 +178,7 @@ export const useDeleteModule = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['modules', 'delete'],
     mutationFn: async ({ programId, moduleId }) => {
       return await programService.deleteModule(programId, moduleId);
     },
@@ -216,6 +213,7 @@ export const useCreateSession = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['sessions', 'create'],
     mutationFn: async ({ programId, moduleId, sessionName, order, imageUrl }) => {
       return await programService.createSession(programId, moduleId, sessionName, order, imageUrl);
     },
@@ -260,6 +258,7 @@ export const useUpdateSessionOrder = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['sessions', 'reorder'],
     mutationFn: async ({ programId, moduleId, sessionOrders }) => {
       return await programService.updateSessionOrder(programId, moduleId, sessionOrders);
     },
@@ -274,6 +273,7 @@ export const useCreateExercise = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['exercises', 'create'],
     mutationFn: async ({ programId, moduleId, sessionId, exerciseName, order }) => {
       return await programService.createExercise(programId, moduleId, sessionId, exerciseName, order);
     },
@@ -318,6 +318,7 @@ export const useUpdateExercise = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['exercises', 'update'],
     mutationFn: async ({ programId, moduleId, sessionId, exerciseId, updates }) => {
       return await programService.updateExercise(programId, moduleId, sessionId, exerciseId, updates);
     },
@@ -352,6 +353,7 @@ export const useDeleteExercise = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['exercises', 'delete'],
     mutationFn: async ({ programId, moduleId, sessionId, exerciseId }) => {
       return await programService.deleteExercise(programId, moduleId, sessionId, exerciseId);
     },
@@ -386,6 +388,7 @@ export const useUpdateExerciseOrder = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: ['exercises', 'reorder'],
     mutationFn: async ({ programId, moduleId, sessionId, exerciseOrders }) => {
       return await programService.updateExerciseOrder(programId, moduleId, sessionId, exerciseOrders);
     },

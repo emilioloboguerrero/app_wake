@@ -1,0 +1,65 @@
+/* ─── EditScopeInfoModal ─────────────────────────────────────── */
+
+.esim-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.esim-paragraph {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+.esim-paragraph strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.esim-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 14px 0;
+}
+
+.esim-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.esim-tip-icon {
+  color: rgba(234, 179, 8, 0.7);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.esim-tip span {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.esim-tip strong {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+}
+
+/* ─── Clickable banner ──────────────────────────────────────── */
+
+.esim-clickable {
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.esim-clickable:hover {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.35);
+}

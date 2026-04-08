@@ -89,14 +89,6 @@ const PRsScreen = () => {
     return <div style={{ padding: 20, color: 'white' }}>Error: PRsScreenBase not loaded</div>;
   }
 
-  // Debug: Log navigation object before passing
-  logger.debug('[PRsScreen.web] Passing navigation to base component:', {
-    hasNavigation: !!navigation,
-    hasNavigate: !!(navigation && navigation.navigate),
-    hasGoBack: !!(navigation && navigation.goBack),
-    navigationType: typeof navigation
-  });
-
   return <PRsScreenBase navigation={navigation} route={route} />;
 };
 

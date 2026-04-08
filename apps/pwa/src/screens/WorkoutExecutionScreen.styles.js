@@ -292,7 +292,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
   },
   errorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
     textAlign: 'center',
@@ -1225,9 +1225,9 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     flex: 1,
   },
   setInputError: {
-    borderColor: '#ff4444',
+    borderColor: 'rgba(224, 84, 84, 0.9)',
     borderWidth: 2,
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    backgroundColor: 'rgba(224, 84, 84, 0.1)',
   },
   previousValue: {
     fontSize: Math.min(screenWidth * 0.04, 16),
@@ -1383,9 +1383,9 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '400',
   },
   setInputFieldInputError: {
-    borderColor: '#ff4444',
+    borderColor: 'rgba(224, 84, 84, 0.9)',
     borderWidth: 2,
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    backgroundColor: 'rgba(224, 84, 84, 0.1)',
   },
   setInputModalFooter: {
     flexDirection: 'row',
@@ -1866,7 +1866,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     fontWeight: '600',
   },
   endWorkoutButton: {
-    backgroundColor: 'rgba(255, 68, 68, 0.2)',
+    backgroundColor: 'rgba(224, 84, 84, 0.2)',
     height: Math.max(50, screenHeight * 0.06), // Match purchase button height
     width: Math.max(280, screenWidth * 0.7), // Match purchase button width
     borderRadius: Math.max(12, screenWidth * 0.04),
@@ -1891,7 +1891,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     borderWidth: 1,
   },
   endWorkoutButtonText: {
-    color: 'rgba(255, 68, 68, 0.8)',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '600',
   },

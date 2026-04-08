@@ -1,7 +1,7 @@
 /**
  * PWA Nutrition Screen — User view: assigned plan, diary, log food (search + manual).
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,15 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import * as nutritionDb from '../services/nutritionFirestoreService';
+import apiClient from '../utils/apiClient';
 import * as nutritionApi from '../services/nutritionApiService';
-import activityStreakService from '../services/activityStreakService';
 import WakeLoader from '../components/WakeLoader';
 import logger from '../utils/logger';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 
 const MEAL_OPTIONS = [
   { id: 'breakfast', label: 'Desayuno' },
@@ -102,16 +104,12 @@ function getServingsWithStandardOptions(food) {
 export function NutritionScreenBase({ navigation }) {
   const { user } = useAuth();
   const userId = user?.uid ?? '';
+  const queryClient = useQueryClient();
 
-  const [assignment, setAssignment] = useState(null);
-  const [plan, setPlan] = useState(null);
-  const [loadingAssignment, setLoadingAssignment] = useState(true);
   const [diaryDate, setDiaryDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
-  const [diaryEntries, setDiaryEntries] = useState([]);
-  const [loadingDiary, setLoadingDiary] = useState(false);
   const [logMode, setLogMode] = useState('search'); // 'search' | 'manual'
   const [logMeal, setLogMeal] = useState('breakfast');
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
@@ -132,45 +130,59 @@ export function NutritionScreenBase({ navigation }) {
   const [manualCarbs, setManualCarbs] = useState('');
   const [manualFat, setManualFat] = useState('');
 
-  const [submittingLog, setSubmittingLog] = useState(false);
+  const { data: assignmentData, isLoading: loadingAssignment } = useQuery({
+    queryKey: ['nutrition', 'assignment', userId],
+    queryFn: () => apiClient.get('/nutrition/assignment').then((res) => res?.data ?? res),
+    enabled: !!userId,
+    staleTime: STALE_TIMES.programStructure,
+    gcTime: GC_TIMES.programStructure,
+  });
 
-  const loadAssignment = useCallback(async () => {
-    if (!userId) return;
-    setLoadingAssignment(true);
-    try {
-      const { plan: effectivePlan, assignment: a } = await nutritionDb.getEffectivePlanForUser(userId);
-      setAssignment(a);
-      setPlan(effectivePlan);
-    } catch (e) {
-      logger.error(e);
-      setAssignment(null);
-      setPlan(null);
-    } finally {
-      setLoadingAssignment(false);
-    }
-  }, [userId]);
+  const assignment = assignmentData?.assignment ?? null;
+  const plan = assignmentData?.plan ?? null;
 
-  useEffect(() => {
-    loadAssignment();
-  }, [loadAssignment]);
+  const { data: diaryEntries = [], isLoading: loadingDiary } = useQuery({
+    queryKey: ['nutrition', 'diary', userId, diaryDate],
+    queryFn: () =>
+      apiClient
+        .get('/nutrition/diary', { params: { date: diaryDate } })
+        .then((res) => res?.data ?? res ?? []),
+    enabled: !!userId && !!diaryDate,
+    staleTime: STALE_TIMES.nutritionDiary,
+    gcTime: GC_TIMES.nutritionDiary,
+  });
 
-  const loadDiary = useCallback(async () => {
-    if (!userId || !diaryDate) return;
-    setLoadingDiary(true);
-    try {
-      const list = await nutritionDb.getDiaryEntries(userId, diaryDate);
-      setDiaryEntries(list);
-    } catch (e) {
-      logger.error(e);
-      setDiaryEntries([]);
-    } finally {
-      setLoadingDiary(false);
-    }
-  }, [userId, diaryDate]);
+  const addDiaryMutation = useMutation({
+    mutationFn: (entry) => {
+      const profile = queryClient.getQueryData(['user', userId]);
+      return apiClient.post('/nutrition/diary', {
+        ...entry,
+        lastKnownActivityDate: profile?.activityStreak?.lastActivityDate ?? null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', userId] });
+      closeLogModal();
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
+    },
+    onError: (e) => {
+      logger.error('[NutritionScreen] addDiaryEntry error:', e);
+      Alert.alert('Error', 'No se pudo añadir el alimento. Inténtalo de nuevo.');
+    },
+  });
 
-  useEffect(() => {
-    loadDiary();
-  }, [loadDiary]);
+  const deleteDiaryMutation = useMutation({
+    mutationFn: (entryId) => apiClient.delete(`/nutrition/diary/${entryId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, diaryDate] });
+    },
+    onError: (e) => {
+      logger.error('[NutritionScreen] deleteDiaryEntry error:', e);
+      Alert.alert('Error', 'No se pudo eliminar el alimento. Inténtalo de nuevo.');
+    },
+  });
+
+  const submittingLog = addDiaryMutation.isPending;
 
   async function handleSearch() {
     if (!searchQuery.trim()) return;
@@ -183,7 +195,9 @@ export function NutritionScreenBase({ navigation }) {
       const foods = data?.foods_search?.results?.food ?? [];
       setSearchResults(Array.isArray(foods) ? foods : []);
     } catch (e) {
+      logger.error('[NutritionScreen] nutritionFoodSearch error:', e);
       setSearchResults([]);
+      Alert.alert('Error', 'No se pudo buscar alimentos. Inténtalo de nuevo.');
     } finally {
       setSearchLoading(false);
     }
@@ -195,60 +209,40 @@ export function NutritionScreenBase({ navigation }) {
     setServingUnits('1');
   }
 
-  async function handleLogFromSearch() {
+  function handleLogFromSearch() {
     if (!userId || !diaryDate || !selectedFood || !selectedServing) return;
     const s = selectedServing;
     const mult = Number(servingUnits) || 1;
-    setSubmittingLog(true);
-    try {
-      await nutritionDb.addDiaryEntry(userId, {
-        date: diaryDate,
-        meal: logMeal,
-        food_id: selectedFood.food_id,
-        serving_id: s.serving_id,
-        number_of_units: mult,
-        name: selectedFood.food_name || 'Food',
-        food_category: selectedFood.food_category ?? null,
-        calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
-        protein: s.protein != null ? Math.round(Number(s.protein) * mult) : null,
-        carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult) : null,
-        fat: s.fat != null ? Math.round(Number(s.fat) * mult) : null,
-      });
-      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
-      closeLogModal();
-      loadDiary();
-    } catch (e) {
-      logger.error(e);
-    } finally {
-      setSubmittingLog(false);
-    }
+    addDiaryMutation.mutate({
+      date: diaryDate,
+      meal: logMeal,
+      food_id: selectedFood.food_id,
+      serving_id: s.serving_id,
+      number_of_units: mult,
+      name: selectedFood.food_name || 'Food',
+      food_category: selectedFood.food_category ?? null,
+      calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
+      protein: s.protein != null ? Math.round(Number(s.protein) * mult) : null,
+      carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult) : null,
+      fat: s.fat != null ? Math.round(Number(s.fat) * mult) : null,
+    });
   }
 
-  async function handleLogManual() {
+  function handleLogManual() {
     if (!userId || !diaryDate || !manualName.trim()) return;
-    setSubmittingLog(true);
-    try {
-      await nutritionDb.addDiaryEntry(userId, {
-        date: diaryDate,
-        meal: logMeal,
-        food_id: `manual-${Date.now()}`,
-        serving_id: '0',
-        number_of_units: Number(manualUnits) || 1,
-        name: manualName.trim(),
-        food_category: null,
-        calories: manualCalories !== '' ? Number(manualCalories) : null,
-        protein: manualProtein !== '' ? Number(manualProtein) : null,
-        carbs: manualCarbs !== '' ? Number(manualCarbs) : null,
-        fat: manualFat !== '' ? Number(manualFat) : null,
-      });
-      activityStreakService.updateActivityStreak(userId, diaryDate).catch(() => {});
-      closeLogModal();
-      loadDiary();
-    } catch (e) {
-      logger.error(e);
-    } finally {
-      setSubmittingLog(false);
-    }
+    addDiaryMutation.mutate({
+      date: diaryDate,
+      meal: logMeal,
+      food_id: `manual-${Date.now()}`,
+      serving_id: '0',
+      number_of_units: Number(manualUnits) || 1,
+      name: manualName.trim(),
+      food_category: null,
+      calories: manualCalories !== '' ? Number(manualCalories) : null,
+      protein: manualProtein !== '' ? Number(manualProtein) : null,
+      carbs: manualCarbs !== '' ? Number(manualCarbs) : null,
+      fat: manualFat !== '' ? Number(manualFat) : null,
+    });
   }
 
   function closeLogModal() {
@@ -266,14 +260,9 @@ export function NutritionScreenBase({ navigation }) {
     setManualFat('');
   }
 
-  async function handleDeleteEntry(entryId) {
+  function handleDeleteEntry(entryId) {
     if (!userId || !entryId) return;
-    try {
-      await nutritionDb.deleteDiaryEntry(userId, entryId);
-      loadDiary();
-    } catch (e) {
-      logger.error(e);
-    }
+    deleteDiaryMutation.mutate(entryId);
   }
 
   const dailyTotalCal = diaryEntries.reduce((s, e) => s + (Number(e.calories) || 0), 0);
@@ -288,7 +277,6 @@ export function NutritionScreenBase({ navigation }) {
       <View style={styles.container}>
         <View style={styles.loadingWrap}>
           <WakeLoader size={80} />
-          <Text style={styles.loadingText}>Cargando…</Text>
         </View>
       </View>
     );

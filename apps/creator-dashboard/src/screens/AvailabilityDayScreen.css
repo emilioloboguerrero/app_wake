@@ -1,140 +1,333 @@
-.availability-day-container {
-  padding: 24px;
+/* ─── AvailabilityDayScreen ───────────────────────────────────────── */
+
+@keyframes avday-enter {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes avday-card-enter {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Container */
+.avday-container {
+  padding: 28px 24px;
   max-width: 640px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: avday-enter 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.availability-day-header {
+/* Header */
+.avday-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 20px;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 12px;
+  margin-bottom: 4px;
 }
 
-.availability-day-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+.avday-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.avday-title {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary, #fff);
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
-.availability-day-back {
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
+.avday-slot-count {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.8125rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+}
+
+.avday-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
+  border-radius: 10px;
+  color: var(--text-secondary, rgba(255,255,255,0.5));
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.8125rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.16s cubic-bezier(0.22,1,0.36,1),
+    border-color 0.16s,
+    color 0.16s;
+  white-space: nowrap;
 }
 
-.availability-day-back:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.3);
+.avday-back-btn:hover {
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(255,255,255,0.14);
+  color: var(--text-primary, #fff);
 }
 
-.availability-day-error {
-  padding: 12px;
-  margin-bottom: 16px;
-  background: rgba(220, 53, 69, 0.15);
-  border: 1px solid rgba(220, 53, 69, 0.4);
-  border-radius: 8px;
-  color: #f8a0a0;
-  font-size: 14px;
+/* Error */
+.avday-error {
+  padding: 12px 14px;
+  background: rgba(224,84,84,0.08);
+  border: 1px solid rgba(224,84,84,0.18);
+  border-radius: 10px;
+  color: rgba(224,84,84,0.9);
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
 
-.availability-day-loading {
-  color: rgba(255, 255, 255, 0.7);
+/* Invalid date */
+.avday-invalid {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.875rem;
+  color: var(--text-secondary, rgba(255,255,255,0.5));
+  margin: 0 0 16px;
+}
+
+/* Cards */
+.avday-card {
+  position: relative;
+  padding: 20px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
+  border-radius: var(--radius-lg, 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow:
+    0 20px 56px rgba(0,0,0,0.5),
+    0 4px 14px rgba(0,0,0,0.3),
+    0 0 0 1px rgba(255,255,255,0.05);
+  animation: avday-card-enter 0.46s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.avday-card--slots {
+  animation-delay: 0.06s;
+}
+
+.avday-card--add {
+  animation-delay: 0.12s;
+}
+
+.avday-card-label {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
   margin: 0;
 }
 
-.availability-day-card {
-  padding: 20px;
+.avday-card-desc {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.8125rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+  margin: 0;
+  line-height: 1.6;
 }
 
-.availability-day-list {
+/* Skeleton loading list */
+.avday-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Empty state */
+.avday-empty {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.875rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+  margin: 0;
+  padding: 12px 0;
+  text-align: center;
+}
+
+/* Slot list */
+.avday-slot-list {
   list-style: none;
-  padding-left: 0;
-  margin: 0 0 24px 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.availability-day-empty {
-  color: rgba(255, 255, 255, 0.6);
-  font-style: italic;
-  padding: 8px 0;
-}
-
-.availability-day-slot-item {
+/* Each slot item */
+.avday-slot-item {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.9);
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-default, rgba(255,255,255,0.10));
+  border-radius: 12px;
+  gap: 12px;
+  transition:
+    background 0.16s cubic-bezier(0.22,1,0.36,1),
+    border-color 0.16s;
 }
 
-.availability-day-remove-slot {
+.avday-slot-item:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.16);
+}
+
+/* Time display */
+.avday-slot-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.avday-slot-start,
+.avday-slot-end {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.avday-slot-sep {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.875rem;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+}
+
+/* Remove button */
+.avday-remove-btn {
   padding: 6px 12px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 13px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.16s cubic-bezier(0.22,1,0.36,1),
+    border-color 0.16s,
+    color 0.16s;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.availability-day-remove-slot:hover:not(:disabled) {
-  background: rgba(220, 53, 69, 0.2);
-  border-color: rgba(220, 53, 69, 0.5);
-  color: #f8a0a0;
+.avday-remove-btn:hover:not(:disabled) {
+  background: rgba(224,84,84,0.12);
+  border-color: rgba(224,84,84,0.35);
+  color: rgba(224,84,84,0.9);
 }
 
-.availability-day-remove-slot:disabled {
-  opacity: 0.6;
+.avday-remove-btn:disabled {
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
-.availability-day-add {
-  padding-top: 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.availability-day-add-fields {
+/* Add fields */
+.avday-add-fields {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 12px 16px;
   align-items: flex-end;
-  margin: 12px 0 16px;
 }
 
-.availability-day-add-fields label {
+.avday-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
+  gap: 5px;
 }
 
-.availability-day-input,
-.availability-day-select {
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.95);
-  font-size: 14px;
-  min-width: 100px;
+.avday-field-label {
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-tertiary, rgba(255,255,255,0.25));
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 
-.availability-day-input:focus,
-.availability-day-select:focus {
+.avday-input,
+.avday-select {
+  padding: 9px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
+  border-radius: 10px;
+  color: var(--text-primary, #fff);
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.875rem;
+  min-width: 110px;
+  transition: border-color 0.15s;
+}
+
+.avday-input:focus,
+.avday-select:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255,255,255,0.26);
+}
+
+/* Add button */
+.avday-add-btn {
+  align-self: flex-start;
+  padding: 11px 24px;
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border: none;
+  background: var(--text-primary, #fff);
+  color: #111;
+  transition:
+    background 0.16s cubic-bezier(0.22,1,0.36,1),
+    opacity 0.16s,
+    transform 0.12s cubic-bezier(0.22,1,0.36,1);
+}
+
+.avday-add-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.88);
+}
+
+.avday-add-btn:active:not(:disabled) {
+  transform: scale(0.977);
+}
+
+.avday-add-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .avday-container {
+    padding: 20px 16px;
+  }
+  .avday-add-fields {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .avday-input,
+  .avday-select {
+    min-width: 0;
+    width: 100%;
+  }
 }

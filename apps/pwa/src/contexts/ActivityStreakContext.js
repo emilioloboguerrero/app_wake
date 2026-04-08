@@ -1,9 +1,7 @@
-import React, { createContext, useContext, useMemo, useRef, useState, useEffect } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import { useAuth } from './AuthContext';
-import activityStreakService from '../services/activityStreakService';
-import logger from '../utils/logger';
-import { auth } from '../config/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { computeStreakState, getTodayLocal } from '../services/activityStreakService';
 
 const DEFAULT_STREAK_STATE = {
   streakNumber: 0,
@@ -13,7 +11,7 @@ const DEFAULT_STREAK_STATE = {
   longestStreakEndDate: null,
   streakStartDate: null,
   lastActivityDate: null,
-  isLoading: false,
+  isLoading: true,
   userId: null,
   hasUser: false,
 };
@@ -24,42 +22,91 @@ export const useActivityStreakContext = () => {
   return useContext(ActivityStreakContext);
 };
 
+/**
+ * Web: subscribes to React Query cache for user profile (activityStreak field).
+ * Native: fetches profile via apiClient on mount (no QueryClientProvider at top level).
+ */
 export const ActivityStreakProvider = ({ children }) => {
-  const { user: contextUser } = useAuth();
+  const { user } = useAuth();
+  const userId = user?.uid ?? null;
+  const [today, setToday] = useState(getTodayLocal);
+  const [activityStreak, setActivityStreak] = useState(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
-  // Subscribe to Firebase auth so we get userId as soon as auth restores (same as WebAppNavigator).
-  // Otherwise we only re-render when AuthContext updates, and the layout can show main content
-  // (using its own firebaseUser state) before AuthContext has set user, leaving streak with userId undefined.
-  const [firebaseUser, setFirebaseUser] = useState(null);
+  // Midnight refresh
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setFirebaseUser(user || null);
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const ms = Math.max(0, nextMidnight.getTime() - now.getTime() + 1000);
+    const id = setTimeout(() => setToday(getTodayLocal()), ms);
+    return () => clearTimeout(id);
+  }, [today]);
+
+  const isWeb = Platform.OS === 'web';
+
+  // Web path: subscribe to React Query cache
+  useEffect(() => {
+    if (!isWeb || !userId) {
+      if (!userId) {
+        setActivityStreak(null);
+        setProfileLoaded(false);
+      }
+      return;
+    }
+
+    const { queryClient } = require('../config/queryClient');
+    const { queryKeys } = require('../config/queryClient');
+    const queryKey = queryKeys.user.detail(userId);
+
+    const cached = queryClient.getQueryData(queryKey);
+    if (cached?.activityStreak !== undefined) {
+      setActivityStreak(cached.activityStreak);
+      setProfileLoaded(true);
+    }
+
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (event?.type === 'updated' && event.query?.queryKey?.[0] === 'user' && event.query?.queryKey?.[1] === userId) {
+        const data = event.query.state?.data;
+        if (data?.activityStreak !== undefined) {
+          setActivityStreak(data.activityStreak);
+          setProfileLoaded(true);
+        }
+      }
     });
-    return unsub;
-  }, []);
 
-  const effectiveUser = contextUser || firebaseUser;
-  const userId = effectiveUser?.uid ?? null;
+    return unsubscribe;
+  }, [isWeb, userId]);
 
-  const streakState = activityStreakService.useActivityStreak(userId);
+  // Native path: fetch profile directly
+  const fetchedRef = useRef(null);
+  useEffect(() => {
+    if (isWeb || !userId) return;
+    if (fetchedRef.current === userId) return;
+    fetchedRef.current = userId;
 
-  const value = useMemo(
-    () => {
-      const v = {
-        ...DEFAULT_STREAK_STATE,
-        ...streakState,
-        userId,
-        hasUser: !!userId,
-      };
-      logger.log('[STREAK] ActivityStreakProvider value', { userId: userId?.slice(0, 8), isLoading: v.isLoading, streakNumber: v.streakNumber });
-      return v;
-    },
-    [streakState, userId]
-  );
+    const apiClient = require('../utils/apiClient').default;
+    apiClient.get('/users/me').then((res) => {
+      const data = res?.data ?? res;
+      setActivityStreak(data?.activityStreak ?? null);
+      setProfileLoaded(true);
+    }).catch(() => {
+      setProfileLoaded(true);
+    });
+  }, [isWeb, userId]);
 
-  const renderCountRef = useRef(0);
-  renderCountRef.current += 1;
-  logger.log('[STREAK] ActivityStreakProvider render', { renderCount: renderCountRef.current, userId: userId?.slice(0, 8), valueIsLoading: value.isLoading });
+  const value = useMemo(() => {
+    if (!userId) return DEFAULT_STREAK_STATE;
+
+    const computed = computeStreakState(activityStreak, today);
+
+    return {
+      ...computed,
+      isLoading: !profileLoaded,
+      userId,
+      hasUser: true,
+    };
+  }, [userId, activityStreak, today, profileLoaded]);
 
   return (
     <ActivityStreakContext.Provider value={value}>
@@ -67,4 +114,3 @@ export const ActivityStreakProvider = ({ children }) => {
     </ActivityStreakContext.Provider>
   );
 };
-

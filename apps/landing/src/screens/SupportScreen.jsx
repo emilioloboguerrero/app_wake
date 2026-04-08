@@ -317,7 +317,7 @@ const SupportScreen = () => {
           </div>
           <div className="support-footer-bottom">
             <p className="support-footer-copyright">
-              © 2025 Wake. Todos los derechos reservados.
+              © {new Date().getFullYear()} Wake. Todos los derechos reservados.
             </p>
             <p className="support-footer-legal">
               <Link to="/legal" className="support-footer-link-small">Términos y Condiciones</Link>

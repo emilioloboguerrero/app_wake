@@ -224,16 +224,6 @@ const WarmupScreen = ({ navigation, route }) => {
     },
   }), [screenWidth, screenHeight]);
   
-  // Debug: Log the workout object received
-  logger.log('🔍 WarmupScreen: Received workout object:', {
-    hasWorkout: !!workout,
-    hasExercises: !!workout?.exercises,
-    exercisesLength: workout?.exercises?.length,
-    firstExerciseHasMuscleActivation: !!workout?.exercises?.[0]?.muscle_activation,
-    firstExerciseMuscleActivationKeys: workout?.exercises?.[0]?.muscle_activation ? Object.keys(workout.exercises[0].muscle_activation) : 'none',
-    firstExerciseStructure: workout?.exercises?.[0] ? Object.keys(workout.exercises[0]) : 'no exercises'
-  });
-  
   // Timer state
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -296,7 +286,6 @@ const WarmupScreen = ({ navigation, route }) => {
       player.loop = true;
       player.muted = isMuted;
       player.volume = 1.0;
-      logger.log('Video player initialized with volume');
       // Don't auto-play, let the timer control it
     }
   }, [isMuted]);
@@ -327,12 +316,6 @@ const WarmupScreen = ({ navigation, route }) => {
     return text ? text.split(' ')[0] : '';
   }, []);
 
-  // Debug video source
-  useEffect(() => {
-    logger.log('Video source changed:', videoSource);
-    logger.log('Current exercise:', currentExercise);
-  }, [videoSource, currentExercise]);
-
   // Track if component is mounted for setTimeout cleanup
   const isMountedRef = useRef(true);
   
@@ -347,28 +330,14 @@ const WarmupScreen = ({ navigation, route }) => {
   const syncVideoWithTimer = useCallback(() => {
     if (videoPlayer) {
       try {
-        logger.log('Video sync - isActive:', isActive, 'isResting:', isResting);
         if (isActive && !isResting) {
-          logger.log('Playing video');
           videoPlayer.play();
-          // Add a small delay to ensure video starts
-          const timeoutId = setTimeout(() => {
-            if (isMountedRef.current) {
-              logger.log('Video should be playing now');
-            }
-          }, 100);
-          // Note: This timeout is in a callback, cleanup is handled by component unmount check
-          return () => clearTimeout(timeoutId);
         } else {
-          logger.log('Pausing video');
           videoPlayer.pause();
         }
       } catch (error) {
         // Video player might be invalid, ignore error
-        logger.log('Video player operation error (safe to ignore):', error.message);
       }
-    } else {
-      logger.log('Video player not available');
     }
   }, [isActive, isResting, videoPlayer]);
 
@@ -398,22 +367,17 @@ const WarmupScreen = ({ navigation, route }) => {
     if (!user?.uid || !course?.courseId) return;
 
     try {
-      logger.log('🎬 Checking for warmup screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
-        user.uid, 
+        user.uid,
         'warmup',
-        course.courseId  // Pass programId for program-specific tutorials
+        course.courseId
       );
-      
+
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-        // Keep warmup paused while tutorial is showing
       } else {
-        logger.log('✅ No tutorials to show for warmup screen');
-        // No tutorials, start warmup immediately
         setIsActive(true);
       }
     } catch (error) {
@@ -434,9 +398,8 @@ const WarmupScreen = ({ navigation, route }) => {
           user.uid, 
           'warmup', 
           currentTutorial.videoUrl,
-          course.courseId  // Pass programId for program-specific tutorials
+          course.courseId
         );
-        logger.log('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -446,8 +409,6 @@ const WarmupScreen = ({ navigation, route }) => {
   // Handle tutorial close - start warmup when tutorial is closed
   const handleTutorialClose = () => {
     setTutorialVisible(false);
-    // Start warmup after tutorial is closed
-    logger.log('🎬 Tutorial closed, starting warmup...');
     setIsActive(true);
   };
   
@@ -478,16 +439,6 @@ const WarmupScreen = ({ navigation, route }) => {
               setIsActive(false);
               // Use setTimeout to navigate after render cycle
               setTimeout(() => {
-                // Debug: log workout implements before navigating
-                logger.log('🔧 WarmupScreen navigating to WorkoutExecution with workout:', {
-                  hasWorkout: !!workout,
-                  hasExercises: !!workout?.exercises,
-                  exercisesLength: workout?.exercises?.length,
-                  firstExerciseImplements: workout?.exercises?.[0]?.implements ?? null,
-                  firstExerciseHasImplements: Array.isArray(workout?.exercises?.[0]?.implements)
-                    ? workout.exercises[0].implements.length
-                    : 'not-array-or-missing',
-                });
                 navigation.navigate('WorkoutExecution', { course, workout, sessionId });
               }, 0);
               return 0;
@@ -519,7 +470,6 @@ const WarmupScreen = ({ navigation, route }) => {
       // On web, handle visibility change
       const handleVisibilityChange = () => {
         if (document.hidden) {
-          logger.log('🛑 Warmup page hidden - pausing video and stopping warmup');
           setIsActive(false);
           try {
             if (videoPlayer) {
@@ -527,7 +477,7 @@ const WarmupScreen = ({ navigation, route }) => {
               videoPlayer.muted = true;
             }
           } catch (error) {
-            logger.log('⚠️ Error pausing video player:', error.message);
+            // Video player might be invalid
           }
           if (timerRef.current) {
             clearInterval(timerRef.current);
@@ -563,17 +513,7 @@ const WarmupScreen = ({ navigation, route }) => {
       setIsResting(false);
       const nextIndex = currentExerciseIndex + 1;
       if (nextIndex >= warmupData.warmup.exercises.length) {
-        // All exercises done, navigate to workout execution
         setTimeout(() => {
-          logger.log('🔧 WarmupScreen skipExercise navigating to WorkoutExecution with workout:', {
-            hasWorkout: !!workout,
-            hasExercises: !!workout?.exercises,
-            exercisesLength: workout?.exercises?.length,
-            firstExerciseImplements: workout?.exercises?.[0]?.implements ?? null,
-            firstExerciseHasImplements: Array.isArray(workout?.exercises?.[0]?.implements)
-              ? workout.exercises[0].implements.length
-              : 'not-array-or-missing',
-          });
           navigation.navigate('WorkoutExecution', { course, workout, sessionId });
         }, 0);
         return;
@@ -589,15 +529,6 @@ const WarmupScreen = ({ navigation, route }) => {
 
   const finishWarmup = useCallback(() => {
     setTimeout(() => {
-      logger.log('🔧 WarmupScreen finishWarmup navigating to WorkoutExecution with workout:', {
-        hasWorkout: !!workout,
-        hasExercises: !!workout?.exercises,
-        exercisesLength: workout?.exercises?.length,
-        firstExerciseImplements: workout?.exercises?.[0]?.implements ?? null,
-        firstExerciseHasImplements: Array.isArray(workout?.exercises?.[0]?.implements)
-          ? workout.exercises[0].implements.length
-          : 'not-array-or-missing',
-      });
       navigation.navigate('WorkoutExecution', { course, workout, sessionId });
     }, 0);
   }, [navigation, course, workout, sessionId]);
@@ -610,20 +541,9 @@ const WarmupScreen = ({ navigation, route }) => {
         videoPlayer.pause(); // Stop video
       } catch (error) {
         // Video player might be invalid, ignore error
-        logger.log('Video player pause error (safe to ignore):', error.message);
       }
     }
-    
-    // Navigate immediately to workout execution
-    logger.log('🔧 WarmupScreen skipEntireWarmup navigating to WorkoutExecution with workout:', {
-      hasWorkout: !!workout,
-      hasExercises: !!workout?.exercises,
-      exercisesLength: workout?.exercises?.length,
-      firstExerciseImplements: workout?.exercises?.[0]?.implements ?? null,
-      firstExerciseHasImplements: Array.isArray(workout?.exercises?.[0]?.implements)
-        ? workout.exercises[0].implements.length
-        : 'not-array-or-missing',
-    });
+
     navigation.navigate('WorkoutExecution', { course, workout, sessionId });
   }, [videoPlayer, navigation, course, workout, sessionId]);
 

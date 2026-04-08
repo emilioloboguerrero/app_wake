@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Rect, G } from 'react-native-svg';
-import logger from '../utils/logger.js';
 // You can import your SVG icons here or define them inline
 const iconPaths = {
   // Example icon - replace with your Figma exports
@@ -25,7 +24,6 @@ const Icon = ({
   const iconData = iconPaths[name];
   
   if (!iconData) {
-    logger.warn(`Icon "${name}" not found`);
     return <View style={[{ width: size, height: size }, style]} />;
   }
 
@@ -55,9 +53,3 @@ const Icon = ({
 };
 
 export default Icon;
-
-
-
-
-
-

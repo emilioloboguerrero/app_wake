@@ -1,0 +1,348 @@
+/* ─── Nutrition Tab Root ──────────────────────────────────────── */
+.pnt-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 4px;
+  width: 100%;
+}
+
+.pnt-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  PLAN CARD                                                     */
+/* ═══════════════════════════════════════════════════════════════ */
+.pnt-plan-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  animation: pnt-rise 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pnt-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pnt-plan-card-inner {
+  position: relative;
+  z-index: 2;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pnt-plan-display {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.pnt-plan-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pnt-plan-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pnt-plan-cal {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.pnt-plan-cal-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.pnt-plan-cal-unit {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* ─── Pie + macros ───────────────────────────────────────────── */
+.pnt-plan-pie {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.pnt-plan-macros {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pnt-plan-macro-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pnt-plan-macro-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pnt-plan-macro-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  width: 50px;
+}
+
+.pnt-plan-macro-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  ACTION BUTTONS                                                */
+/* ═══════════════════════════════════════════════════════════════ */
+.pnt-plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pnt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
+}
+
+.pnt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pnt-btn--edit {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pnt-btn--edit:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.pnt-btn--remove {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.pnt-btn--remove:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.08);
+  color: rgba(248, 113, 113, 0.8);
+}
+
+.pnt-btn--danger {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: rgba(248, 113, 113, 0.9);
+}
+
+.pnt-btn--danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+.pnt-btn--ghost {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.pnt-btn--ghost:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pnt-btn--assign {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  padding: 5px 10px;
+  font-size: 10px;
+}
+
+.pnt-btn--assign:hover:not(:disabled) {
+  background: rgba(74, 222, 128, 0.1);
+  border-color: rgba(74, 222, 128, 0.25);
+  color: rgba(74, 222, 128, 0.9);
+}
+
+/* ─── Confirm row ────────────────────────────────────────────── */
+.pnt-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pnt-confirm-text {
+  font-size: 11px;
+  color: rgba(248, 113, 113, 0.8);
+  font-weight: 500;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  ASSIGN FLOW                                                   */
+/* ═══════════════════════════════════════════════════════════════ */
+.pnt-assign-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pnt-assign-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0 8px;
+}
+
+.pnt-assign-empty-icon {
+  color: rgba(255, 255, 255, 0.12);
+}
+
+.pnt-assign-empty p {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  LIBRARY                                                       */
+/* ═══════════════════════════════════════════════════════════════ */
+.pnt-library-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pnt-search-icon {
+  position: absolute;
+  left: 10px;
+  color: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+.pnt-search-input {
+  width: 100%;
+  padding: 8px 10px 8px 30px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.pnt-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.pnt-search-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.pnt-library-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+.pnt-library-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pnt-library-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.pnt-library-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pnt-library-item-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pnt-library-item-cal {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.pnt-library-empty {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.2);
+  text-align: center;
+  padding: 20px 0;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  RESPONSIVE                                                    */
+/* ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .pnt-plan-display {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pnt-plan-actions {
+    flex-wrap: wrap;
+  }
+}

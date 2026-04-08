@@ -1,0 +1,443 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+/* ─── Root ───────────────────────────────────────────────── */
+.cp-root {
+  width: 100vw;
+  height: 100vh;
+  background: #1a1a1a;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.cp-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Left panel — branding ──────────────────────────────── */
+.cp-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.cp-left-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.cp-logo {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+}
+
+.cp-headline {
+  color: rgba(255,255,255,0.9);
+  font-size: clamp(36px, 4vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ─── Right panel — form ─────────────────────────────────── */
+.cp-right {
+  flex: 1;
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  padding: 40px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.cp-right::-webkit-scrollbar {
+  display: none;
+}
+
+.cp-form-scroll {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin: auto 0;
+}
+
+/* ─── Error ──────────────────────────────────────────────── */
+.cp-error {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: rgba(239, 68, 68, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* ─── Photo section ──────────────────────────────────────── */
+.cp-photo-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.cp-photo-ring {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cp-photo-ring:hover {
+  transform: scale(1.05);
+}
+
+.cp-photo-empty {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  border: 2px dashed rgba(255,255,255,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.2);
+}
+
+.cp-photo-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.12);
+}
+
+.cp-photo-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 87, 168, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  border: 3px solid #1a1a1a;
+}
+
+.cp-photo-label {
+  color: rgba(255,255,255,0.3);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ─── Fields grid ────────────────────────────────────────── */
+.cp-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.cp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.cp-field--full {
+  grid-column: 1 / -1;
+}
+
+.cp-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* ─── Input ──────────────────────────────────────────────── */
+.cp-input-wrap {
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.cp-input-wrap:focus-within {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.05);
+}
+
+.cp-input-wrap--error {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.cp-input-wrap--ok {
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.cp-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.9);
+  padding: 13px 16px;
+  border-radius: 12px;
+  outline: none;
+}
+
+.cp-input::placeholder {
+  color: rgba(255,255,255,0.2);
+}
+
+.cp-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Select ─────────────────────────────────────────────── */
+.cp-select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(255,255,255,0.25)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+.cp-select option {
+  background: #252525;
+  color: #fff;
+}
+
+/* ─── Pills ──────────────────────────────────────────────── */
+.cp-pills {
+  display: flex;
+  gap: 8px;
+}
+
+.cp-pill {
+  flex: 1;
+  padding: 12px 0;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.4);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  text-align: center;
+}
+
+.cp-pill:hover:not(:disabled) {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.6);
+}
+
+.cp-pill--active {
+  background: rgba(255, 87, 168, 0.1);
+  border-color: rgba(255, 87, 168, 0.3);
+  color: rgba(255, 87, 168, 0.9);
+}
+
+.cp-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── Status / hints ─────────────────────────────────────── */
+.cp-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.3);
+  margin-top: -2px;
+}
+
+.cp-status--ok {
+  color: rgba(74, 222, 128, 0.8);
+}
+
+/* ─── Inline error ───────────────────────────────────────── */
+.cp-inline-error {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(239, 68, 68, 0.85);
+  margin-top: -2px;
+}
+
+/* ─── CTA ────────────────────────────────────────────────── */
+.cp-cta {
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.92);
+  color: #1a1a1a;
+  border: none;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 54px;
+  letter-spacing: 0.01em;
+  transition: background 0.15s ease;
+  margin-top: 4px;
+}
+
+.cp-cta:hover:not(:disabled) {
+  background: #fff;
+}
+
+.cp-cta:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* ─── Spinner ────────────────────────────────────────────── */
+.cp-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(26,26,26,0.2);
+  border-top-color: #1a1a1a;
+  border-radius: 50%;
+  animation: cp-spin 0.6s linear infinite;
+}
+
+@keyframes cp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─── DatePicker overrides ───────────────────────────────── */
+.cp-field .date-picker-wrapper {
+  position: relative;
+}
+
+.cp-field .date-picker-input {
+  height: auto;
+  padding: 13px 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgba(255,255,255,0.9);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.cp-field .date-picker-input:hover {
+  border-color: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.05);
+}
+
+.cp-field .date-picker-input.has-error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(255,255,255,0.03);
+}
+
+.cp-field .date-picker-input .placeholder {
+  color: rgba(255,255,255,0.2);
+}
+
+.cp-field .date-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  backdrop-filter: none;
+  z-index: 9998;
+}
+
+.cp-field .date-picker-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  transform: none;
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 18px;
+  z-index: 9999;
+  width: 320px;
+  max-width: none;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.cp-field .date-picker-month-year-select {
+  font-family: 'Montserrat', sans-serif;
+}
+
+.cp-field .date-picker-error-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(239, 68, 68, 0.85);
+  margin-top: 2px;
+  margin-left: 0;
+}
+
+/* ─── Responsive ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .cp-root {
+    flex-direction: column;
+  }
+
+  .cp-left {
+    flex: 0 0 auto;
+    padding: 40px 24px 20px;
+  }
+
+  .cp-headline {
+    font-size: 24px;
+  }
+
+  .cp-logo {
+    width: 100px;
+    height: 100px;
+  }
+
+  .cp-right {
+    flex: 1;
+    padding: 20px 24px 40px;
+    overflow-y: auto;
+  }
+
+  .cp-fields {
+    grid-template-columns: 1fr;
+  }
+}

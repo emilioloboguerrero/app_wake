@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import eventService from '../services/eventService';
 import DashboardLayout from '../components/DashboardLayout';
+import { GlowingEffect } from '../components/ui';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import { extractAccentFromImage } from '../components/events/eventFieldComponents';
 import logger from '../utils/logger';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import './EventCheckinScreen.css';
@@ -15,6 +19,7 @@ import './EventCheckinScreen.css';
 export default function EventCheckinScreen() {
   const { eventId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [scannerState, setScannerState] = useState('idle'); // idle | scanning | processing
@@ -36,31 +41,57 @@ export default function EventCheckinScreen() {
 
   useEffect(() => {
     if (!event?.image_url) return;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const size = 64;
-        const canvas = document.createElement('canvas');
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, size, size);
-        const { data } = ctx.getImageData(0, 0, size, size);
-        let bestR = 255, bestG = 255, bestB = 255, bestScore = -1;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-          if (a < 128) continue;
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          if (max < 40 || max > 245) continue;
-          const sat = max === 0 ? 0 : (max - min) / max;
-          const score = sat * (max / 255);
-          if (score > bestScore) { bestScore = score; bestR = r; bestG = g; bestB = b; }
-        }
-        setAccentRgb([bestR, bestG, bestB]);
-      } catch {}
-    };
-    img.src = event.image_url;
+    return extractAccentFromImage(event.image_url, setAccentRgb);
   }, [event?.image_url]);
+
+  // ─── Event handlers ───
+  function startScanner() {
+    setScannerState('scanning');
+    setResult(null);
+  }
+
+  function stopScanner() {
+    if (controlsRef.current) {
+      try { controlsRef.current.stop(); } catch {}
+      controlsRef.current = null;
+    }
+  }
+
+  const onQrSuccess = useCallback(async (raw) => {
+    setScannerState('processing');
+    if (controlsRef.current) {
+      try { controlsRef.current.stop(); } catch {}
+      controlsRef.current = null;
+    }
+
+    let token = raw.trim();
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.token) token = parsed.token;
+    } catch {}
+
+    try {
+      const checkResult = await eventService.checkInByToken(eventId, token);
+      if (checkResult.status === 'invalid') {
+        setResult({ type: 'invalid' });
+      } else if (checkResult.status === 'already') {
+        setResult({ type: 'already', reg: checkResult.reg });
+      } else {
+        setResult({ type: 'success', reg: checkResult.reg });
+      }
+    } catch (err) {
+      logger.error('[Checkin] lookup failed', err);
+      setResult({ type: 'error' });
+      showToast('No pudimos procesar el check-in. Intenta de nuevo.', 'error');
+    }
+
+    setScannerState('idle');
+
+    // Auto-reset after 3.5s
+    resetTimerRef.current = setTimeout(() => {
+      setResult(null);
+    }, 3500);
+  }, [eventId]);
 
   // ─── Scanner lifecycle ───
   useEffect(() => {
@@ -84,7 +115,10 @@ export default function EventCheckinScreen() {
       controlsRef.current = controls;
     }).catch(err => {
       logger.error('[Checkin] camera error', err);
-      if (isMounted) setScannerState('idle');
+      if (isMounted) {
+        setScannerState('idle');
+        showToast('No se pudo acceder a la cámara. Verifica los permisos.', 'error');
+      }
     });
 
     return () => {
@@ -94,20 +128,7 @@ export default function EventCheckinScreen() {
         controlsRef.current = null;
       }
     };
-  }, [scannerState]);
-
-  // ─── Event handlers ───
-  function startScanner() {
-    setScannerState('scanning');
-    setResult(null);
-  }
-
-  function stopScanner() {
-    if (controlsRef.current) {
-      try { controlsRef.current.stop(); } catch {}
-      controlsRef.current = null;
-    }
-  }
+  }, [scannerState, onQrSuccess, showToast]);
 
   useEffect(() => {
     return () => {
@@ -115,38 +136,6 @@ export default function EventCheckinScreen() {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
   }, []);
-
-  async function onQrSuccess(raw) {
-    setScannerState('processing');
-    stopScanner();
-
-    let token = raw.trim();
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed.token) token = parsed.token;
-    } catch {}
-
-    try {
-      const checkResult = await eventService.checkInByToken(eventId, token);
-      if (checkResult.status === 'invalid') {
-        setResult({ type: 'invalid' });
-      } else if (checkResult.status === 'already') {
-        setResult({ type: 'already', reg: checkResult.reg });
-      } else {
-        setResult({ type: 'success', reg: checkResult.reg });
-      }
-    } catch (err) {
-      logger.error('[Checkin] lookup failed', err);
-      setResult({ type: 'error' });
-    }
-
-    setScannerState('idle');
-
-    // Auto-reset after 3.5s
-    resetTimerRef.current = setTimeout(() => {
-      setResult(null);
-    }, 3500);
-  }
 
   function handleReset() {
     if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -163,7 +152,24 @@ export default function EventCheckinScreen() {
   if (accessStatus === 'loading') {
     return (
       <DashboardLayout screenName="Check-in" showBackButton backPath="/events">
-        <div className="ec-loading">Cargando…</div>
+        <div className="ec-screen">
+          <div className="ec-content">
+            <div className="ec-event-header" style={{ opacity: 0.6 }}>
+              <ShimmerSkeleton width="48px" height="48px" borderRadius="8px" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+                <ShimmerSkeleton width="160px" height="16px" borderRadius="4px" />
+                <ShimmerSkeleton width="220px" height="13px" borderRadius="4px" />
+              </div>
+            </div>
+            <div className="ec-scanner-card" style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                <ShimmerSkeleton width="64px" height="64px" borderRadius="12px" />
+                <ShimmerSkeleton width="140px" height="14px" borderRadius="4px" />
+                <ShimmerSkeleton width="120px" height="36px" borderRadius="8px" />
+              </div>
+            </div>
+          </div>
+        </div>
       </DashboardLayout>
     );
   }
@@ -217,7 +223,8 @@ export default function EventCheckinScreen() {
             </div>
           </div>
 
-          <div className="ec-scanner-card ec-fade-in">
+          <div className="ec-scanner-card ec-fade-in" style={{ position: 'relative' }}>
+                    <GlowingEffect />
             <video
               ref={videoRef}
               muted
@@ -229,7 +236,8 @@ export default function EventCheckinScreen() {
               <div className="ec-scanner-overlay">
                 {result ? (
                   /* ── Result display ── */
-                  <div className={`ec-result ec-result--${result.type} ec-fade-in`}>
+                  <div className={`ec-result ec-result--${result.type} ec-fade-in`} style={{ position: 'relative' }}>
+                    <GlowingEffect />
                     {result.type === 'success' && (
                       <>
                         <div className="ec-result-icon ec-result-icon--success">
@@ -238,8 +246,7 @@ export default function EventCheckinScreen() {
                             <polyline className="ec-check-tick" points="14,26 22,34 38,18" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">¡Check-in confirmado!</h2>
-                        <p className="ec-result-name">{getRegName(result.reg)}</p>
+                        <h2 className="ec-result-title">Listo, {getRegName(result.reg)} esta adentro.</h2>
                       </>
                     )}
                     {result.type === 'already' && (
@@ -251,11 +258,10 @@ export default function EventCheckinScreen() {
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">Ya hizo check-in</h2>
-                        <p className="ec-result-name">{getRegName(result.reg)}</p>
+                        <h2 className="ec-result-title">{getRegName(result.reg)} ya habia hecho check-in.</h2>
                         {result.reg.checked_in_at && (
                           <p className="ec-result-sub">
-                            Entró a las {formatCheckinTime(result.reg.checked_in_at)}
+                            Entro a las {formatCheckinTime(result.reg.checked_in_at)}
                           </p>
                         )}
                       </>
@@ -269,8 +275,8 @@ export default function EventCheckinScreen() {
                             <line x1="9" y1="9" x2="15" y2="15" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">QR no válido</h2>
-                        <p className="ec-result-sub">No se encontró este registro</p>
+                        <h2 className="ec-result-title">QR no valido</h2>
+                        <p className="ec-result-sub">No reconocimos ese codigo. Pide al asistente que muestre su QR de nuevo.</p>
                       </>
                     )}
                     {result.type === 'error' && (
@@ -282,7 +288,7 @@ export default function EventCheckinScreen() {
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">Error de conexión</h2>
+                        <h2 className="ec-result-title">Error de conexion</h2>
                         <p className="ec-result-sub">Intenta de nuevo</p>
                       </>
                     )}

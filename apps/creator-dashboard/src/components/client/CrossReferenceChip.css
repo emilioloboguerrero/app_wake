@@ -1,0 +1,45 @@
+/* ─── Cross Reference Chip ───────────────────────────────────── */
+.crc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  align-self: flex-start;
+}
+
+.crc-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.crc-chip-icon {
+  font-size: 13px;
+}
+
+.crc-chip-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.crc-chip-detail {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.crc-chip-arrow {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.25);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.crc-chip:hover .crc-chip-arrow {
+  transform: translateX(2px);
+  color: rgba(255, 255, 255, 0.5);
+}

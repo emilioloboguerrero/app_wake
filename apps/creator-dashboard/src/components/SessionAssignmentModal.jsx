@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import logger from '../utils/logger';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Button from './Button';
@@ -14,6 +16,7 @@ const SessionAssignmentModal = ({
   onSessionAssigned,
   onAddFromLibrary,
 }) => {
+  const { showToast } = useToast();
   const [mode, setMode] = useState('choose'); // 'choose' | 'create'
   const [newSessionName, setNewSessionName] = useState('');
   const [saveToLibrary, setSaveToLibrary] = useState(true);
@@ -67,8 +70,8 @@ const SessionAssignmentModal = ({
       });
       handleClose();
     } catch (err) {
-      console.error('Error creating session:', err);
-      alert(err.message || 'Error al crear la sesión');
+      logger.error('Error creating session:', err);
+      showToast(err.message || 'No pudimos crear la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsCreating(false);
     }

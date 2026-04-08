@@ -1,6 +1,16 @@
 # .gitignore for Wake - React Native/Expo Project
 # Created: January 2025
 
+# Claude Code
+.claude/
+
+# Local Figma reference files (not part of the repo)
+fig/
+
+# Firestore exports (production data — never commit)
+firestore-dump.json
+**/serviceAccountKey*.json
+
 # ============================================
 # Dependencies
 # ============================================
@@ -118,6 +128,13 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 
+# Playwright
+tests/e2e/.auth/
+tests/e2e/.env.test
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/blob-report/
+
 # ============================================
 # Temporary files
 # ============================================
@@ -157,8 +174,7 @@ assets/videos/**/*
 # ============================================
 # Scripts and Documentation
 # ============================================
-# Note: scripts/ is kept, only docs/ are ignored
-docs/
+# scripts/ and docs/ are both kept
 
 # ============================================
 # React Native / Metro
@@ -180,6 +196,11 @@ eas-build-*.json
 *.tar.gz
 *.rar
 *.7z
+
+# ============================================
+# MCP config (contains API keys)
+# ============================================
+.mcp.json
 
 # ============================================
 # Keep these files (explicitly NOT ignored)

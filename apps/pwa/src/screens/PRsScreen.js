@@ -66,13 +66,6 @@ const PRsScreen = ({ navigation, route }) => {
 
   // Create safe navigation object - ensure it's always defined using useMemo
   const safeNavigation = React.useMemo(() => {
-    logger.debug('[PRsScreen] Creating safeNavigation, navigation prop:', {
-      hasNavigation: !!navigation,
-      hasNavigate: !!(navigation && navigation.navigate),
-      hasGoBack: !!(navigation && navigation.goBack),
-      navigationType: typeof navigation
-    });
-    
     if (navigation && typeof navigation.navigate === 'function' && typeof navigation.goBack === 'function') {
       return navigation;
     }
@@ -91,10 +84,9 @@ const PRsScreen = ({ navigation, route }) => {
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const { data: estimates = {}, isLoading: loading } = useQuery({
+  const { data: estimates = {}, isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.prs.all(user?.uid),
     queryFn: async () => {
-      logger.log('[PRsScreen] fetching PRs for userId:', user.uid);
       const [prs, allExerciseKeys] = await Promise.all([
         oneRepMaxService.getEstimatesForUser(user.uid),
         exerciseHistoryService.getAllExerciseKeysFromExerciseHistory(user.uid),
@@ -103,7 +95,6 @@ const PRsScreen = ({ navigation, route }) => {
       allExerciseKeys.forEach(key => {
         merged[key] = prs[key] ?? { current: null, lastUpdated: 'Historial disponible' };
       });
-      logger.log('✅ All exercises loaded:', Object.keys(merged).length);
       return merged;
     },
     enabled: !!user?.uid,
@@ -166,12 +157,34 @@ const PRsScreen = ({ navigation, route }) => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
-        <FixedWakeHeader 
+        <FixedWakeHeader
           showBackButton
           onBackPress={() => safeNavigation.goBack()}
         />
         <View style={styles.loadingContainer}>
           <WakeLoader />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}>
+        <FixedWakeHeader
+          showBackButton
+          onBackPress={() => safeNavigation.goBack()}
+        />
+        <View style={styles.loadingContainer}>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, textAlign: 'center', paddingHorizontal: 32 }}>
+            No se pudo cargar tus ejercicios. Inténtalo de nuevo.
+          </Text>
+          <TouchableOpacity
+            onPress={refetch}
+            style={{ marginTop: 20, paddingHorizontal: 24, paddingVertical: 12, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 10 }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 15 }}>Reintentar</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );

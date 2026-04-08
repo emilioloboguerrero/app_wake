@@ -1,8 +1,6 @@
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { getFirestore, doc, updateDoc, deleteField, serverTimestamp, getDoc } from 'firebase/firestore';
 import { isWeb } from '../utils/platform';
-import webStorageService from './webStorageService';
 import logger from '../utils/logger';
+import apiClient from '../utils/apiClient';
 
 class ProfilePictureService {
   constructor() {
@@ -55,6 +53,18 @@ class ProfilePictureService {
 
           canvas.toBlob(
             (blob) => {
+              if (blob.size > 204800) {
+                // Re-compress at lower quality to meet 200KB limit
+                canvas.toBlob(
+                  (smallerBlob) => {
+                    const url = URL.createObjectURL(smallerBlob || blob);
+                    resolve(url);
+                  },
+                  'image/jpeg',
+                  0.5
+                );
+                return;
+              }
               const url = URL.createObjectURL(blob);
               resolve(url);
             },
@@ -155,39 +165,47 @@ class ProfilePictureService {
     }
   }
 
-  // Upload profile picture to Firebase Storage
+  // Upload profile picture via signed URL flow
   async uploadProfilePicture(userId, imageUri) {
     try {
       // Compress image first
       const compressedUri = await this.compressImage(imageUri);
-      
-      // Create storage reference
-      const storage = getStorage();
-      const storageRef = ref(storage, `profiles/${userId}/profile.jpg`);
-      
+
+      // Get a signed upload URL from the API
+      const { data } = await apiClient.post('/users/me/profile-picture/upload-url', {
+        contentType: 'image/jpeg',
+      });
+
       // Convert URI to blob for upload
       const response = await fetch(compressedUri);
       const blob = await response.blob();
-      
-      // Upload file (explicit contentType for Storage rules: image/.*)
-      await uploadBytes(storageRef, blob, { contentType: blob.type || 'image/jpeg' });
-      
-      // Get download URL
-      const downloadUrl = await getDownloadURL(storageRef);
-      
-      // Update user document in Firestore
-      const firestore = getFirestore();
-      const userRef = doc(firestore, 'users', userId);
-      await updateDoc(userRef, {
-        profilePictureUrl: downloadUrl,
-        profilePicturePath: `profiles/${userId}/profile.jpg`,
-        profilePictureUpdatedAt: serverTimestamp()
+
+      // Revoke the object URL created during compression to prevent memory leak
+      if (compressedUri.startsWith('blob:')) {
+        URL.revokeObjectURL(compressedUri);
+      }
+
+      // Upload directly to Firebase Storage via signed URL
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob,
       });
+      if (!uploadResponse.ok) {
+        throw new Error(`Storage upload failed: ${uploadResponse.status}`);
+      }
+
+      // Confirm the upload and persist the URL
+      const confirmResult = await apiClient.post('/users/me/profile-picture/confirm', {
+        storagePath: data.storagePath,
+      });
+
+      const downloadUrl = confirmResult.data.profilePictureUrl;
 
       // Cache the URL
       this.cache.set(userId, downloadUrl);
       if (isWeb) {
-        await webStorageService.setItem(`profile_${userId}`, downloadUrl);
+        try { localStorage.setItem(`profile_${userId}`, downloadUrl); } catch (_) {}
       } else {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         await AsyncStorage.setItem(`profile_${userId}`, downloadUrl);
@@ -203,42 +221,55 @@ class ProfilePictureService {
   // Get profile picture URL for a user
   async getProfilePictureUrl(userId) {
     try {
-      // Check cache first
+      // Check in-memory cache first (only trust after migration fix)
       if (this.cache.has(userId)) {
         return this.cache.get(userId);
       }
 
-      // Check storage
-      let cached;
-      if (isWeb) {
-        cached = await webStorageService.getItem(`profile_${userId}`);
+      // Determine if this is the current user or someone else
+      const { auth } = require('../config/firebase');
+      const currentUid = auth.currentUser?.uid;
+      const isSelf = !userId || userId === currentUid;
+
+      // Only trust localStorage cache for self — other users' entries were poisoned
+      // by the old code that always called /users/me regardless of userId
+      if (isSelf) {
+        let cached;
+        if (isWeb) {
+          try { cached = localStorage.getItem(`profile_${userId}`); } catch (_) { cached = null; }
+        } else {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          cached = await AsyncStorage.getItem(`profile_${userId}`);
+        }
+        if (cached) {
+          this.cache.set(userId, cached);
+          return cached;
+        }
       } else {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        cached = await AsyncStorage.getItem(`profile_${userId}`);
-      }
-      if (cached) {
-        this.cache.set(userId, cached);
-        return cached;
+        // Clear any poisoned localStorage entry for this other user
+        if (isWeb) {
+          try { localStorage.removeItem(`profile_${userId}`); } catch (_) {}
+        }
       }
 
-      // Fetch from Firestore
-      const firestore = getFirestore();
-      const userRef = doc(firestore, 'users', userId);
-      const userDoc = await getDoc(userRef);
-      const profilePictureUrl = userDoc.data()?.profilePictureUrl;
+      // Fetch from API
+      const { data } = isSelf
+        ? await apiClient.get('/users/me')
+        : await apiClient.get(`/users/${userId}/public-profile`);
+      const profilePictureUrl = data?.profilePictureUrl ?? null;
 
       if (profilePictureUrl) {
         // Cache the result
         this.cache.set(userId, profilePictureUrl);
         if (isWeb) {
-          await webStorageService.setItem(`profile_${userId}`, profilePictureUrl);
+          try { localStorage.setItem(`profile_${userId}`, profilePictureUrl); } catch (_) {}
         } else {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           await AsyncStorage.setItem(`profile_${userId}`, profilePictureUrl);
         }
       }
 
-      return profilePictureUrl || null;
+      return profilePictureUrl;
     } catch (error) {
       logger.error('Error getting profile picture URL:', error);
       return null;
@@ -248,54 +279,21 @@ class ProfilePictureService {
   // Delete profile picture
   async deleteProfilePicture(userId) {
     try {
-      // Delete from Firebase Storage first
-      const storage = getStorage();
-      const storageRef = ref(storage, `profiles/${userId}/profile.jpg`);
-      
-      try {
-        await deleteObject(storageRef);
-      } catch (storageError) {
-        // If file doesn't exist, that's okay - just continue
-        if (storageError.code === 'storage/object-not-found') {
-          logger.debug('Profile picture does not exist in Storage, skipping deletion');
-        } else {
-          // Re-throw other storage errors
-          throw storageError;
-        }
-      }
+      await apiClient.patch('/users/me', {
+        profilePictureUrl: null,
+      });
 
-      // Try to update Firestore document if it still exists
-      // (It might already be deleted if this is called during account deletion)
-      try {
-        const firestore = getFirestore();
-        const userRef = doc(firestore, 'users', userId);
-        const userDoc = await getDoc(userRef);
-        
-        if (userDoc.exists()) {
-          await updateDoc(userRef, {
-            profilePictureUrl: deleteField(),
-            profilePicturePath: deleteField(),
-            profilePictureUpdatedAt: deleteField()
-          });
-        }
-      } catch (firestoreError) {
-        // If document doesn't exist or can't update, that's okay
-        // This can happen during account deletion
-        logger.debug('Could not update Firestore document (may already be deleted)');
-      }
-
-      // Clear cache (this should always work)
+      // Clear cache
       this.cache.delete(userId);
       try {
         if (isWeb) {
-          await webStorageService.removeItem(`profile_${userId}`);
+          localStorage.removeItem(`profile_${userId}`);
         } else {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           await AsyncStorage.removeItem(`profile_${userId}`);
         }
       } catch (cacheError) {
-        // Ignore cache errors
-        logger.debug('Could not clear cache');
+        // Could not clear cache
       }
 
       return true;
@@ -326,16 +324,15 @@ class ProfilePictureService {
     try {
       // Clear from memory cache
       this.cache.delete(userId);
-      
+
       // Clear from storage
       if (isWeb) {
-        await webStorageService.removeItem(`profile_${userId}`);
+        localStorage.removeItem(`profile_${userId}`);
       } else {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         await AsyncStorage.removeItem(`profile_${userId}`);
       }
-      
-      logger.debug(`✅ Cleared profile picture cache for user: ${userId}`);
+
     } catch (error) {
       logger.error('Error clearing profile picture cache:', error);
     }

@@ -1,7 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
+import { GlowingEffect, ShimmerSkeleton } from './ui';
+import logger from '../utils/logger';
 import './CalendarView.css';
 
 export const DRAG_TYPE_CLIENT_PLAN_SESSION = 'client_plan_session';
@@ -15,7 +18,7 @@ const DAYS_OF_WEEK = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 // Color palette for programs (cycle through these)
 const PROGRAM_COLORS = [
-  'rgba(255, 255, 255, 0.6)',   // Gold
+  'rgba(255, 255, 255, 0.6)',   // White
   'rgba(107, 142, 35, 0.6)',   // Olive
   'rgba(70, 130, 180, 0.6)',   // Steel blue
   'rgba(186, 85, 211, 0.6)',   // Medium orchid
@@ -60,19 +63,25 @@ const CalendarView = ({
   isPersonalizingPlanWeek = false,
   isResettingPlanWeek = false,
   isDeletingPlanSession = false,
+  deletingPlanSessionId = null,
+  deletingPlanSessionWeekKey = null,
   isMovingPlanSession = false,
   isAssigningPlan = false,
   assigningPlanWeekKey = null,
   isRemovingPlanFromWeek = false,
-  removingPlanWeekKey = null,
+  removingPlanId = null,
   isAssigningSession = false,
   isDeletingSessionAssignment = false,
+  deletingSessionAssignmentId = null,
+  isLoading = false,
   showVolumeButton = false,
   onVolumeClick,
-  onWeekClick
+  onWeekClick,
+  programAccentColor = null,
 }) => {
-  const PLAN_BAR_COLOR = 'rgba(50, 50, 55, 0.96)';
-  const PLAN_BAR_ACCENT = 'rgba(255, 255, 255, 0.65)'; // visible gold accent
+  const PLAN_BAR_FALLBACK = 'rgba(255, 255, 255, 0.12)';
+  const PLAN_BAR_COLOR = programAccentColor || PLAN_BAR_FALLBACK;
+  const PLAN_BAR_ACCENT = programAccentColor ? 'rgba(255, 255, 255, 0.85)' : 'rgba(255, 255, 255, 0.45)';
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(null);
@@ -84,10 +93,6 @@ const CalendarView = ({
 
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
-
-  useEffect(() => {
-    console.log('[CalendarView] plannedSessions prop changed', { length: plannedSessions?.length ?? 0, sample: plannedSessions?.slice(0, 2)?.map(s => ({ id: s.id, date: s.date, client_id: s.client_id })) });
-  }, [plannedSessions]);
 
   // Close session card menu when clicking outside (not on trigger or portal menu)
   useEffect(() => {
@@ -246,7 +251,6 @@ const CalendarView = ({
   const sessionsByDate = useMemo(() => {
     const map = {};
     if (!plannedSessions || plannedSessions.length === 0) {
-      console.log('[CalendarView] sessionsByDate: no plannedSessions', { length: plannedSessions?.length ?? 0 });
       return map;
     }
     plannedSessions.forEach(session => {
@@ -265,21 +269,11 @@ const CalendarView = ({
         if (!map[dateStr]) map[dateStr] = [];
         map[dateStr].push(session);
       } else {
-        console.log('[CalendarView] sessionsByDate: session has no date', { id: session.id, keys: Object.keys(session) });
       }
     });
-    console.log('[CalendarView] sessionsByDate: built map', { plannedCount: plannedSessions.length, dateKeys: Object.keys(map), sample: Object.keys(map).slice(0, 5) });
     return map;
   }, [plannedSessions]);
 
-  // Debug: log completed slot ids (slot-based matching)
-  useEffect(() => {
-    const size = completedSessionIds?.size ?? 0;
-    const completedArr = size ? [...completedSessionIds].slice(0, 15) : [];
-    if (size > 0) {
-      console.log('[CalendarView] completedSessionIds (slot ids)', { size, sample: completedArr });
-    }
-  }, [completedSessionIds]);
 
   // Get sessions for a specific cell
   const getSessionsForCell = (cell) => {
@@ -438,10 +432,8 @@ const CalendarView = ({
     try {
       rawData = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain');
     } catch (err) {
-      console.log('[CalendarView] handleDrop getData failed', err);
       return;
     }
-    console.log('[CalendarView] handleDrop rawData', rawData ? rawData.substring(0, 120) : '(empty)');
     if (!rawData) return;
     // Prevent double drop while a previous action is in progress
     if (isAddingSessionToPlanDay || isMovingPlanSession || isAssigningPlan || isAssigningSession) return;
@@ -481,27 +473,28 @@ const CalendarView = ({
         return;
       }
 
-      if (type === DRAG_TYPE_LIBRARY_SESSION && dragData.librarySessionRef) {
+      const libSessionId = dragData.librarySessionRef || dragData.sourceLibrarySessionId;
+      if (type === DRAG_TYPE_LIBRARY_SESSION && libSessionId) {
         if (!selectedProgramId) {
-          console.warn('[CalendarView] handleDrop: need to select a program first');
+          logger.warn('[CalendarView] handleDrop: need to select a program first');
           return;
         }
         const weekKey = getMondayWeek(date);
         const weekdayIndex = (date.getDay() + 6) % 7;
-        if (planAssignments[weekKey] && onAddLibrarySessionToPlanDay) {
-          onAddLibrarySessionToPlanDay({ weekKey, dayIndex: weekdayIndex, librarySessionId: dragData.librarySessionRef });
+        if (onAddLibrarySessionToPlanDay) {
+          onAddLibrarySessionToPlanDay({ weekKey, dayIndex: weekdayIndex, librarySessionId: libSessionId });
         } else if (onSessionAssignment) {
           onSessionAssignment({
-            sessionId: dragData.librarySessionRef,
+            sessionId: libSessionId,
             date,
-            library_session_ref: true
+            library_session_ref: true,
+            session_name: dragData.title || null,
           });
         }
       } else {
-        console.log('[CalendarView] handleDrop: type not handled', { type, hasLibraryRef: !!dragData.librarySessionRef, hasPlanId: !!dragData.planId });
       }
     } catch (error) {
-      console.error('[CalendarView] handleDrop:', error);
+      logger.error('[CalendarView] handleDrop:', error);
     }
   };
 
@@ -649,6 +642,7 @@ const CalendarView = ({
             }
           }}
         >
+          <AnimatePresence initial={false} mode="sync">
           {weeksInMonth.flatMap((weekKey, rowIndex) => {
             const assignment = planAssignments[weekKey];
             const planId = assignment?.planId;
@@ -658,15 +652,20 @@ const CalendarView = ({
             const planBarLabel = weeksNum != null
               ? `${planTitle} (${weeksNum} ${weeksNum === 1 ? 'semana' : 'semanas'})`
               : planTitle;
+            const isPlanBeingRemoved = isRemovingPlanFromWeek && removingPlanId === planId;
             const planBar = planId ? (
-              <div
+              <motion.div
                 key={`plan-${weekKey}`}
-                className={`calendar-week-plan-bar ${onWeekClick ? 'calendar-week-plan-bar-clickable' : ''}`}
+                className={`calendar-week-plan-bar ${onWeekClick ? 'calendar-week-plan-bar-clickable' : ''} ${isPlanBeingRemoved ? 'calendar-week-plan-bar-deleting' : ''}`}
                 style={{
                   backgroundColor: PLAN_BAR_COLOR,
                   borderLeftColor: PLAN_BAR_ACCENT,
                   '--calendar-plan-gradient-start': PLAN_BAR_COLOR,
                 }}
+                initial={{ opacity: 0, scaleX: 0.3, x: -40 }}
+                animate={{ opacity: 1, scaleX: 1, x: 0 }}
+                exit={{ opacity: 0, scaleX: 0.5, x: -20, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 }}
+                transition={{ type: 'spring', damping: 22, stiffness: 260 }}
                 title={onWeekClick ? `${planTitle}. Clic para ver volumen de la semana.` : planTitle}
                 onClick={onWeekClick ? (e) => {
                   if (e.target.closest('.calendar-week-plan-bar-actions')) return;
@@ -681,9 +680,22 @@ const CalendarView = ({
                   }
                 } : undefined}
               >
-                <span className="calendar-week-plan-bar-label">{planBarLabel}</span>
+                <GlowingEffect spread={40} proximity={100} borderWidth={1} />
+                <motion.span
+                  className="calendar-week-plan-bar-label"
+                  initial={{ opacity: 0, x: -12 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ type: 'spring', damping: 20, stiffness: 240, delay: 0.08 }}
+                >
+                  {planBarLabel}
+                </motion.span>
                 {onRemovePlanFromWeek && (
-                  <div className="calendar-week-plan-bar-actions">
+                  <motion.div
+                    className="calendar-week-plan-bar-actions"
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', damping: 18, stiffness: 300, delay: 0.12 }}
+                  >
                     <button
                       type="button"
                       className="calendar-week-plan-bar-menu-trigger"
@@ -704,9 +716,9 @@ const CalendarView = ({
                         <circle cx="12" cy="18" r="1.5" />
                       </svg>
                     </button>
-                  </div>
+                  </motion.div>
                 )}
-              </div>
+              </motion.div>
             ) : null;
             const dayCells = rowDays.map((cell, colIndex) => {
             const index = rowIndex * 7 + colIndex;
@@ -756,7 +768,18 @@ const CalendarView = ({
                 onDrop={(e) => handleDrop(e, cell)}
                 style={dayStyle}
               >
+                <GlowingEffect spread={40} proximity={100} borderWidth={1} />
                 <span className="calendar-day-number">{cell.day}</span>
+                {isLoading && !isOtherMonth && (
+                  <div className="calendar-day-loading-shimmers">
+                    {(index % 3 !== 2) && (
+                      <ShimmerSkeleton width="100%" height={20} borderRadius={5} />
+                    )}
+                    {(index % 4 < 2) && (
+                      <ShimmerSkeleton width="70%" height={20} borderRadius={5} />
+                    )}
+                  </div>
+                )}
                 {isAddingToThisDay && (
                   <div className="calendar-day-adding-indicator" role="status" aria-live="polite">
                     <span className="calendar-saving-bar-spinner" aria-hidden />
@@ -766,7 +789,8 @@ const CalendarView = ({
                 {/* Plan sessions (from week plan) - colored cards, draggable, Editar / Eliminar */}
                 {hasPlanSessions && weekContent && (
                   <div className="calendar-day-session-cards">
-                    {planSessionsForDay.map((session) => {
+                  <AnimatePresence mode="popLayout">
+                  {planSessionsForDay.map((session, sessionIdx) => {
                       const sessionName = session.title || session.session_name || 'Sesión';
                       const docId = `plan-${weekKey}-${session.id}`;
                       const slotId = getSlotId(session, { type: 'plan', weekKey });
@@ -775,11 +799,21 @@ const CalendarView = ({
                       const isCompleted = isSessionCompleted(slotId);
                       const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
+                      const isBeingDeleted = (isDeletingPlanSession && deletingPlanSessionId === session.id && deletingPlanSessionWeekKey === weekKey) || isPlanBeingRemoved;
                       return (
-                        <div
+                        <motion.div
                           key={docId}
-                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
+                          className={`calendar-day-session-card calendar-day-session-card-from-plan ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''} ${session.image_url ? 'calendar-day-session-card-has-image' : ''}`}
+                          initial={{ opacity: 0, y: 8, scale: 0.85 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.7, y: -4, transition: { duration: 0.2, ease: [0.4, 0, 1, 1] } }}
+                          transition={{ type: 'spring', damping: 20, stiffness: 280, delay: sessionIdx * 0.04 + colIndex * 0.03 }}
                           title={`${sessionName}. Arrastra a otro día o semana para mover.`}
+                          style={session.image_url ? {
+                            backgroundImage: isCompleted
+                              ? `linear-gradient(to bottom, rgba(34,139,34,0.3), rgba(26,26,26,0.8)), url(${session.image_url})`
+                              : `linear-gradient(to bottom, rgba(26,26,26,0.45), rgba(26,26,26,0.8)), url(${session.image_url})`,
+                          } : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (isCompleted && (onEditPlanSession || onDeletePlanSession)) {
@@ -842,12 +876,13 @@ const CalendarView = ({
                               </button>
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       );
                     })}
+                  </AnimatePresence>
                   </div>
                 )}
-                
+
                 {/* History-only sessions (from sessionHistory - persist when plan is deleted) */}
                 {hasHistoryOnlySessions && (
                   <div className="calendar-day-session-cards">
@@ -915,6 +950,7 @@ const CalendarView = ({
                 {/* Date-assigned session name(s) in colored cards with 3-dots menu */}
                 {hasSessions && (
                   <div className="calendar-day-session-cards">
+                  <AnimatePresence mode="popLayout">
                     {displayedDaySessions.map((session, idx) => {
                       const sessionName = session.session_name || session.title || `Sesión ${idx + 1}`;
                       const sessionDocId = session.id || `session-${dateStr}-${session.session_id || idx}`;
@@ -923,11 +959,21 @@ const CalendarView = ({
                       const isCompleted = isSessionCompleted(slotId);
                       const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
+                      const isBeingDeleted = isDeletingSessionAssignment && deletingSessionAssignmentId === session.session_id;
                       return (
-                        <div
+                        <motion.div
                           key={sessionDocId}
-                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''}`}
+                          className={`calendar-day-session-card ${isCompleted ? 'calendar-day-session-card-completed' : ''} ${hasNotes ? 'calendar-day-session-card-has-notes' : ''} ${isBeingDeleted ? 'calendar-day-session-card-deleting' : ''} ${session.image_url ? 'calendar-day-session-card-has-image' : ''}`}
+                          initial={{ opacity: 0, y: 6, scale: 0.9 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.7, y: -4, transition: { duration: 0.2 } }}
+                          transition={{ type: 'spring', damping: 22, stiffness: 300 }}
                           title={sessionName}
+                          style={session.image_url ? {
+                            backgroundImage: isCompleted
+                              ? `linear-gradient(to bottom, rgba(34,139,34,0.3), rgba(26,26,26,0.8)), url(${session.image_url})`
+                              : `linear-gradient(to bottom, rgba(26,26,26,0.45), rgba(26,26,26,0.8)), url(${session.image_url})`,
+                          } : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (isCompleted) {
@@ -973,9 +1019,10 @@ const CalendarView = ({
                               </svg>
                             </button>
                           </div>
-                        </div>
+                        </motion.div>
                       );
                     })}
+                  </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -983,6 +1030,7 @@ const CalendarView = ({
           });
             return planBar ? [ planBar, ...dayCells ] : dayCells;
           })}
+          </AnimatePresence>
         </div>
       </div>
 

@@ -1,0 +1,68 @@
+/* ─── Week Navigator ─────────────────────────────────────────── */
+.wn-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wn-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.wn-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.wn-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.wn-label-group {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 100px;
+  justify-content: center;
+}
+
+.wn-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.wn-total {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.wn-today {
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.wn-today:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}

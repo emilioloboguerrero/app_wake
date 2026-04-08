@@ -28,7 +28,7 @@
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
 }
 
@@ -51,6 +51,8 @@
 }
 
 .calendar-day-adding-indicator {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -61,7 +63,7 @@
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 6px;
   color: rgba(255, 255, 255, 0.95);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
 }
 
@@ -90,7 +92,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   cursor: pointer;
@@ -131,7 +133,7 @@
   color: rgba(255, 255, 255, 0.8);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: inherit;
 }
@@ -208,7 +210,7 @@
   background-color: rgba(255, 255, 255, 0.04);
   border-left: 3px solid rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.6);
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   min-width: 0;
 }
 
@@ -227,7 +229,7 @@
   text-overflow: ellipsis;
   width: 100%;
   text-align: center;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
 }
 
 .calendar-plan-bar-segment-week {
@@ -247,7 +249,7 @@
 .calendar-weekday {
   text-align: center;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   padding: 8px 4px;
@@ -261,6 +263,7 @@
 
 /* Plan bar above each week row - rich bronze with gold accent, plan name (N semanas) */
 .calendar-week-plan-bar {
+  position: relative;
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
@@ -271,6 +274,8 @@
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-left: 3px solid rgba(255, 255, 255, 0.65);
+  transform-origin: left center;
+  overflow: hidden;
 }
 
 .calendar-week-plan-bar-clickable {
@@ -282,8 +287,37 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
+/* Plan bar being removed — pulse animation */
+.calendar-week-plan-bar-deleting {
+  pointer-events: none;
+}
+
+/* Plan bar entrance glow sweep */
+.calendar-week-plan-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: plan-bar-sweep 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.12s forwards;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+@keyframes plan-bar-sweep {
+  0% { transform: translateX(-100%); opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
 .calendar-week-plan-bar-label {
-  font-size: 11px;
+  position: relative;
+  z-index: 2;
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.95);
   letter-spacing: 0.02em;
@@ -295,6 +329,8 @@
 }
 
 .calendar-week-plan-bar-actions {
+  position: relative;
+  z-index: 2;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -338,7 +374,7 @@
   padding: 8px 12px;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.9);
   text-align: left;
   cursor: pointer;
@@ -360,7 +396,7 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   color: rgba(255, 255, 255, 0.8);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   cursor: pointer;
@@ -375,7 +411,9 @@
 }
 
 .calendar-day-number {
-  font-size: 14px;
+  position: relative;
+  z-index: 2;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   line-height: 1.2;
   margin-bottom: 4px;
@@ -441,18 +479,30 @@
 .calendar-day-has-plan-assignment {
   background: linear-gradient(
     to bottom,
-    var(--calendar-plan-gradient-start, rgba(50, 50, 55, 0.55)) 0%,
+    var(--calendar-plan-gradient-start, rgba(255, 255, 255, 0.12)) 0%,
     rgba(255, 255, 255, 0.04) 100%
   ) !important;
   border: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
+/* Loading shimmer placeholders inside day cells */
+.calendar-day-loading-shimmers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
 .calendar-day-session-cards {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 3px;
   width: 100%;
-  margin-top: auto;
+  flex: 1;
   min-height: 0;
   overflow: visible;
 }
@@ -466,11 +516,13 @@
   padding-right: 22px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   min-height: 0;
-  flex-shrink: 1;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: visible;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
 }
 
 /* Completed session - green gradient indicator (top-right to bottom-left) */
@@ -485,6 +537,11 @@
   cursor: pointer;
 }
 
+/* Completed + has image: green tint is baked into the inline backgroundImage gradient */
+.calendar-day-session-card-completed.calendar-day-session-card-has-image {
+  background: none !important;
+}
+
 /* Blue dot: completed session with notes (top-left) */
 .calendar-day-session-card-notes-dot {
   position: absolute;
@@ -496,6 +553,7 @@
   background: #3b82f6;
   flex-shrink: 0;
   pointer-events: none;
+  z-index: 2;
 }
 
 .calendar-day-session-card-has-notes .calendar-day-session-card-name {
@@ -503,6 +561,8 @@
 }
 
 .calendar-day-session-card-name {
+  position: relative;
+  z-index: 2;
   font-size: 10px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.98);
@@ -519,6 +579,7 @@
   top: 2px;
   right: 2px;
   flex-shrink: 0;
+  z-index: 2;
 }
 
 .calendar-day-session-card-menu-trigger {
@@ -575,7 +636,7 @@
   padding: 8px 12px;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.9);
   text-align: left;
   cursor: pointer;
@@ -597,7 +658,7 @@
   padding: 8px 12px;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.9);
   text-align: left;
   cursor: pointer;
@@ -611,6 +672,20 @@
 .calendar-day-session-card-menu-item-danger:hover {
   background: rgba(220, 53, 69, 0.25);
   color: rgba(255, 255, 255, 0.95);
+}
+
+/* Deleting session - pulse shimmer animation */
+.calendar-day-session-card-deleting {
+  opacity: 0.5;
+  pointer-events: none;
+  animation: session-card-deleting 0.8s ease-in-out infinite;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+@keyframes session-card-deleting {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.25; }
 }
 
 .calendar-day-session-card-from-plan[draggable="true"] {
@@ -729,7 +804,7 @@
 }
 
 .calendar-day-info-modal {
-  background-color: #1a1a1a;
+  background-color: var(--canvas);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   max-width: 500px;
@@ -748,7 +823,7 @@
 }
 
 .calendar-day-info-title {
-  font-size: 18px;
+  font-size: clamp(16px, 4vw, 20px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   margin: 0;
@@ -785,7 +860,7 @@
 }
 
 .calendar-day-info-section-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
   text-transform: uppercase;
@@ -795,7 +870,7 @@
 }
 
 .calendar-day-info-plan-hint {
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   color: rgba(255, 255, 255, 0.6);
   margin: 0 0 12px 0;
   line-height: 1.4;
@@ -831,7 +906,7 @@
 }
 
 .calendar-day-info-item-title {
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.9);
   margin-bottom: 4px;
@@ -839,7 +914,7 @@
 }
 
 .calendar-day-info-item-subtitle {
-  font-size: 12px;
+  font-size: clamp(11px, 2.5vw, 12px);
   color: rgba(255, 255, 255, 0.5);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
@@ -851,7 +926,7 @@
 .calendar-day-info-plan-btn {
   padding: 6px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: clamp(13px, 3vw, 14px);
   font-weight: 500;
   cursor: pointer;
   border: 1px solid transparent;
@@ -884,7 +959,7 @@
   padding: 40px 20px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 14px;
+  font-size: clamp(13px, 3vw, 14px);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 

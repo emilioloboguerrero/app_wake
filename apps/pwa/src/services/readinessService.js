@@ -1,32 +1,15 @@
-import { collection, doc, getDoc, setDoc, getDocs, query, where, orderBy, serverTimestamp } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
-
-const COLLECTION = 'readiness';
-
-function readinessRef(userId) {
-  return collection(firestore, 'users', userId, COLLECTION);
-}
-
-function transformReadinessData(raw, id) {
-  if (!raw) return raw;
-  const data = { ...(id ? { id } : {}), ...raw };
-  if (typeof raw.soreness === 'number') {
-    data.soreness = 11 - raw.soreness;
-  }
-  return data;
-}
 
 /**
  * Get today's readiness doc. Returns null if none logged yet.
  */
 export async function getTodayReadiness(userId, dateStr) {
   try {
-    const snap = await getDoc(doc(firestore, 'users', userId, COLLECTION, dateStr));
-    if (!snap.exists()) return null;
-    const raw = snap.data();
-    return transformReadinessData(raw, snap.id);
+    const res = await apiClient.get(`/progress/readiness/${dateStr}`);
+    return res?.data ?? null;
   } catch (err) {
+    if (err.code === 'NOT_FOUND') return null;
     logger.error('[readinessService] getTodayReadiness', err?.message);
     return null;
   }
@@ -36,18 +19,12 @@ export async function getTodayReadiness(userId, dateStr) {
  * Save readiness for a given date. Overwrites if already exists.
  */
 export async function saveReadiness(userId, dateStr, { energy, soreness, sleep }) {
-  const ref = doc(firestore, 'users', userId, COLLECTION, dateStr);
-  const numericSoreness = Number(soreness);
-  await setDoc(ref, {
-    userId,
-    date: dateStr,
+  const body = {
     energy: Number(energy),
-    // Store soreness internally as 1 = fresco, 10 = muy adolorido (legacy),
-    // but expose it through the service as 1 = peor, 10 = mejor para los músculos.
-    soreness: Number.isFinite(numericSoreness) ? (11 - numericSoreness) : null,
+    soreness: Number(soreness),
     sleep: Number(sleep),
-    completedAt: serverTimestamp(),
-  });
+  };
+  return apiClient.put(`/progress/readiness/${dateStr}`, body);
 }
 
 /**
@@ -56,14 +33,10 @@ export async function saveReadiness(userId, dateStr, { energy, soreness, sleep }
  */
 export async function getReadinessInRange(userId, startDateStr, endDateStr) {
   try {
-    const q = query(
-      readinessRef(userId),
-      where('date', '>=', startDateStr),
-      where('date', '<=', endDateStr),
-      orderBy('date', 'asc')
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => transformReadinessData(d.data(), d.id));
+    const res = await apiClient.get('/progress/readiness', {
+      params: { startDate: startDateStr, endDate: endDateStr },
+    });
+    return res?.data ?? [];
   } catch (err) {
     logger.error('[readinessService] getReadinessInRange', err?.message);
     return [];

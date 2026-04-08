@@ -17,13 +17,12 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 import TextInput from '../components/TextInput';
-// import { PanGestureHandler } from 'react-native-gesture-handler'; // Temporarily disabled
+
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import { auth } from '../config/firebase';
-import hybridDataService from '../services/hybridDataService';
 import purchaseService from '../services/purchaseService';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
@@ -85,7 +84,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
 
   const { data: userDoc } = useQuery({
     queryKey: ['user', userId],
-    queryFn: () => firestoreService.getUser(userId),
+    // TODO: no endpoint for getUser — GET /api/v1/users/me shape mismatch; callers expect Firestore field shapes
+    queryFn: () => apiService.getUser(userId),
     enabled: !!userId,
     ...cacheConfig.userProfile,
   });
@@ -227,21 +227,16 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const checkForTutorials = useCallback(async () => {
     const effectiveUser = user || auth.currentUser;
     if (!effectiveUser?.uid) {
-      logger.log('⚠️ [ProgramLibraryScreen] No user available for tutorials check');
       return;
     }
 
     try {
-      logger.log(`🎬 [ProgramLibraryScreen] Checking for library screen tutorials for user: ${effectiveUser.uid}`);
       const tutorials = await tutorialManager.getTutorialsForScreen(effectiveUser.uid, 'library');
-      
+
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.log('✅ No tutorials to show for library screen');
       }
     } catch (error) {
       logger.error('❌ [ProgramLibraryScreen] Error checking for tutorials:', error);
@@ -251,7 +246,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
   const { data: fetchedCourses, isLoading: coursesLoading, isError: coursesError } = useQuery({
     queryKey: ['programs', 'library', userId, userRole],
     queryFn: async () => {
-      const allCourses = await firestoreService.getCourses(userId);
+      // TODO: no endpoint for getCourses — no REST endpoint; courses are in the users/me courses map
+      const allCourses = await apiService.getCourses(userId);
       let filtered;
       if (isAdmin(userRole)) {
         filtered = allCourses;
@@ -332,7 +328,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
     // Check cache first
     const cached = moduleCache.current.get(courseId);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      logger.log('✅ Using cached modules for course:', courseId);
       return cached.data;
     }
     
@@ -342,8 +337,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
     }
     
     try {
-      logger.log('🔄 Fetching modules for course:', courseId);
-      const modules = await firestoreService.getCourseModules(courseId, user?.uid);
+      // TODO: no endpoint for getCourseModules — no matching REST endpoint
+      const modules = await apiService.getCourseModules(courseId, user?.uid);
       
       // Cache the modules
       moduleCache.current.set(courseId, {
@@ -404,8 +399,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
 
   const handleRefresh = async () => {
     try {
-      logger.log('🔄 Refreshing courses from database...');
-      
       // Reload courses directly from database
       await fetchCourses();
       
@@ -427,8 +420,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
           'library', 
           currentTutorial.videoUrl
         );
-        logger.log('✅ Tutorial marked as completed');
-      }
+        }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
     }
@@ -704,7 +696,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
               {state.loading ? (
                 <LoadingSpinner
                   size="large"
-                  text="Cargando..."
                   containerStyle={styles.programsLoadingContainer}
                 />
               ) : state.error ? (
@@ -736,7 +727,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
               {state.loading ? (
                 <LoadingSpinner
                   size="large"
-                  text="Cargando programas..."
                   containerStyle={styles.programsLoadingContainer}
                 />
               ) : state.error ? (
@@ -839,16 +829,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   libraryPage: {
     width: undefined,
-    flexGrow: 0,
-    minHeight: screenHeight,
+    flex: 1,
   },
   libraryPageContent: {
     paddingBottom: 20,
     flexGrow: 1,
-    minHeight: screenHeight,
   },
   content: {
-    paddingBottom: 20, // Normal padding
+    paddingBottom: 20,
+    flex: 1,
   },
   titleSection: {
     paddingTop: 0,

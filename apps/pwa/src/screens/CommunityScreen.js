@@ -37,16 +37,12 @@ const CommunityScreen = () => {
     if (!user?.uid) return;
 
     try {
-      logger.log('🎬 Checking for community screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(user.uid, 'community');
-      
+
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.log('✅ No tutorials to show for community screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -65,7 +61,6 @@ const CommunityScreen = () => {
           'community', 
           currentTutorial.videoUrl
         );
-        logger.log('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -91,7 +86,7 @@ const CommunityScreen = () => {
           </View>
 
           <BottomSpacer />
-        </View>
+        </WakeHeaderContent>
       </ScrollView>
       
       {/* Tutorial Overlay */}
@@ -145,7 +140,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
   },
   debugButton: {
-    backgroundColor: '#ff4444',
+    backgroundColor: 'rgba(224, 84, 84, 0.9)',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,

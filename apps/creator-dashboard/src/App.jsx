@@ -1,39 +1,44 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
+import { MediaUploadProvider } from './contexts/MediaUploadContext';
+import UploadStatusCard from './components/ui/UploadStatusCard';
+import LoginScreen from './screens/LoginScreen';
+import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
+import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
+import ProgramDetailScreen from './screens/ProgramDetailScreen';
+import LibraryContentScreen from './screens/LibraryContentScreen';
+import OnboardingEducation from './screens/onboarding/OnboardingEducation';
+import CompleteProfileScreen from './screens/CompleteProfileScreen';
+
+import ProfileScreen from './screens/ProfileScreen';
+import ClientScreen from './screens/ClientScreen';
+import PlanDetailScreen from './screens/PlanDetailScreen';
+import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
+import MealEditorScreen from './screens/MealEditorScreen';
+import PlanEditorScreen from './screens/PlanEditorScreen';
+import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
+import EventsScreen from './screens/EventsScreen';
+import EventResultsScreen from './screens/EventResultsScreen';
+import EventCheckinScreen from './screens/EventCheckinScreen';
+import ApiKeysScreen from './screens/ApiKeysScreen';
+import DashboardScreen from './screens/DashboardScreen';
+import ProtectedRoute from './components/ProtectedRoute';
+
+// New IA screens
+import BibliotecaScreen from './screens/BibliotecaScreen';
+import ProgramasScreen from './screens/ProgramasScreen';
+import ClientesScreen from './screens/ClientesScreen';
+
+import BibliotecaGuideTest from './screens/biblioteca-guide/BibliotecaGuideTest';
+import DebugScreenTracker from './components/DebugScreenTracker';
+import './App.css';
 
 const RedirectLibrarySessionEdit = () => {
   const { sessionId } = useParams();
   return <Navigate to={`/content/sessions/${sessionId}`} replace />;
 };
-import { AuthProvider } from './contexts/AuthContext';
-import LoginScreen from './screens/LoginScreen';
-import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
-import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
-import LibraryModuleDetailScreen from './screens/LibraryModuleDetailScreen';
-import ProgramsScreen from './screens/ProgramsScreen';
-import ProgramDetailScreen from './screens/ProgramDetailScreen';
-import LibraryContentScreen from './screens/LibraryContentScreen';
-import CreatorOnboardingScreen from './screens/CreatorOnboardingScreen';
-import LabScreen from './screens/LabScreen';
-import ProfileScreen from './screens/ProfileScreen';
-import OneOnOneScreen from './screens/OneOnOneScreen';
-import ClientProgramScreen from './screens/ClientProgramScreen';
-import ContentHubScreen from './screens/ContentHubScreen';
-import PlanDetailScreen from './screens/PlanDetailScreen';
-import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
-import ProgramsAndClientsScreen from './screens/ProgramsAndClientsScreen';
-import AvailabilityCalendarScreen from './screens/AvailabilityCalendarScreen';
-import NutritionScreen from './screens/NutritionScreen';
-import MealEditorScreen from './screens/MealEditorScreen';
-import PlanEditorScreen from './screens/PlanEditorScreen';
-import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
-import CreateLibraryModuleScreen from './screens/CreateLibraryModuleScreen';
-import EventsScreen from './screens/EventsScreen';
-import EventResultsScreen from './screens/EventResultsScreen';
-import EventEditorScreen from './screens/EventEditorScreen';
-import EventCheckinScreen from './screens/EventCheckinScreen';
-import ProtectedRoute from './components/ProtectedRoute';
-import './App.css';
 
 const CREATOR_BASE = '/creators';
 
@@ -42,268 +47,249 @@ function AppContent() {
     <Router basename={CREATOR_BASE}>
         <div className="App">
           <Routes>
-            <Route path="/login" element={<LoginScreen />} />
-            <Route 
-              path="/onboarding" 
+            <Route path="/login" element={<DebugScreenTracker name="LoginScreen"><LoginScreen /></DebugScreenTracker>} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="DashboardScreen"><DashboardScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/complete-profile"
+              element={
+                <ProtectedRoute requireOnboarding={false} requireCreator={false}>
+                  <DebugScreenTracker name="CompleteProfileScreen"><CompleteProfileScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/onboarding"
               element={
                 <ProtectedRoute requireOnboarding={false}>
-                  <CreatorOnboardingScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/libraries" 
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/content" replace />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/libraries/:libraryId" 
-              element={
-                <ProtectedRoute>
-                  <LibraryExercisesScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/content/sessions/:sessionId" 
-              element={
-                <ProtectedRoute>
-                  <LibrarySessionDetailScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/content/modules/:moduleId" 
-              element={
-                <ProtectedRoute>
-                  <LibraryModuleDetailScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit" 
-              element={
-                <ProtectedRoute>
-                  <LibrarySessionDetailScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/plans/:planId/modules/:moduleId/sessions/:sessionId" 
-              element={
-                <ProtectedRoute>
-                  <PlanSessionDetailScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/plans/:planId" 
-              element={
-                <ProtectedRoute>
-                  <PlanDetailScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/content" 
-              element={
-                <ProtectedRoute>
-                  <ContentHubScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/products" 
-              element={
-                <ProtectedRoute>
-                  <ProgramsAndClientsScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/products/new" 
-              element={
-                <ProtectedRoute>
-                  <ProgramsScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/programs" 
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/products" replace />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/programs/:programId" 
-              element={
-                <ProtectedRoute>
-                  <ProgramDetailScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/lab" 
-              element={
-                <ProtectedRoute>
-                  <LabScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/clients" 
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/products?tab=clientes" replace />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/one-on-one" 
-              element={
-                <ProtectedRoute>
-                  <Navigate to="/products?tab=clientes" replace />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/clients/:clientId" 
-              element={
-                <ProtectedRoute>
-                  <ClientProgramScreen />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/one-on-one/:clientId" 
-              element={
-                <ProtectedRoute>
-                  <ClientProgramScreen />
+                  <DebugScreenTracker name="OnboardingEducation"><OnboardingEducation /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/availability" 
+            <Route
+              path="/libraries"
               element={
                 <ProtectedRoute>
-                  <AvailabilityCalendarScreen />
+                  <Navigate to="/biblioteca" replace />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition" 
+            <Route
+              path="/libraries/:libraryId"
               element={
                 <ProtectedRoute>
-                  <NutritionScreen />
+                  <DebugScreenTracker name="LibraryExercisesScreen"><LibraryExercisesScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition/meals/new" 
+            <Route
+              path="/content/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <MealEditorScreen />
+                  <DebugScreenTracker name="LibrarySessionDetailScreen"><LibrarySessionDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition/meals/:mealId" 
+            <Route path="/content/modules/:moduleId" element={<Navigate to="/biblioteca" replace />} />
+            <Route
+              path="/plans/:planId/modules/:moduleId/sessions/:sessionId/edit"
               element={
                 <ProtectedRoute>
-                  <MealEditorScreen />
+                  <DebugScreenTracker name="PlanSessionEditScreen"><LibrarySessionDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/nutrition/plans/:planId" 
+            <Route
+              path="/programs/:programId/modules/:moduleId/sessions/:sessionId/edit"
               element={
                 <ProtectedRoute>
-                  <PlanEditorScreen />
+                  <DebugScreenTracker name="ProgramSessionEditScreen"><LibrarySessionDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
-            <Route 
+            <Route
+              path="/plans/:planId/modules/:moduleId/sessions/:sessionId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="PlanSessionDetailScreen"><PlanSessionDetailScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/plans/:planId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="PlanDetailScreen"><PlanDetailScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            {/* ── New IA screens ──────────────────────────────── */}
+            <Route
+              path="/biblioteca"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="BibliotecaScreen"><BibliotecaScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/programas"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ProgramasScreen"><ProgramasScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clientes"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ClientesScreen"><ClientesScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clientes/programa/:programId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ProgramDetailScreen"><ProgramDetailScreen backTo="/clientes?tab=asesorias" /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            {/* ── Legacy redirects ─────────────────────────────── */}
+            <Route path="/content" element={<Navigate to="/biblioteca" replace />} />
+            <Route path="/products" element={<Navigate to="/clientes" replace />} />
+            <Route path="/products/new" element={<Navigate to="/programas" replace />} />
+            <Route path="/programs" element={<Navigate to="/programas" replace />} />
+            <Route
+              path="/programs/:programId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ProgramDetailScreen"><ProgramDetailScreen backTo="/programas" /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/lab" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/clients" element={<Navigate to="/clientes" replace />} />
+            <Route path="/one-on-one" element={<Navigate to="/clientes" replace />} />
+            <Route
+              path="/clients/:clientId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ClientScreen"><ClientScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/one-on-one/:clientId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ClientScreen"><ClientScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/availability" element={<Navigate to="/clientes?tab=llamadas" replace />} />
+            <Route path="/nutrition" element={<Navigate to="/biblioteca?domain=nutricion" replace />} />
+            <Route
+              path="/nutrition/meals/new"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="MealEditorScreen"><MealEditorScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/nutrition/meals/:mealId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="MealEditorScreen"><MealEditorScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/nutrition/plans/:planId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="PlanEditorScreen"><PlanEditorScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/profile"
               element={
                 <ProtectedRoute>
-                  <ProfileScreen />
+                  <DebugScreenTracker name="ProfileScreen"><ProfileScreen /></DebugScreenTracker>
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/sessions/:sessionId/edit" 
+            <Route
+              path="/api-keys"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="ApiKeysScreen"><ApiKeysScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/library/sessions/:sessionId/edit"
               element={
                 <ProtectedRoute>
                   <RedirectLibrarySessionEdit />
                 </ProtectedRoute>
               }
             />
-            <Route 
-              path="/library/sessions/new" 
+            <Route
+              path="/library/sessions/new"
               element={
                 <ProtectedRoute>
-                  <CreateLibrarySessionScreen />
+                  <DebugScreenTracker name="CreateLibrarySessionScreen"><CreateLibrarySessionScreen /></DebugScreenTracker>
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/modules/new" 
+            <Route path="/library/modules/new" element={<Navigate to="/biblioteca" replace />} />
+            <Route
+              path="/library/content"
               element={
                 <ProtectedRoute>
-                  <CreateLibraryModuleScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content" 
+            <Route
+              path="/library/content/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content/sessions/:sessionId" 
+            <Route
+              path="/library/content/modules/:moduleId"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/library/content/modules/:moduleId" 
+            <Route
+              path="/library/content/modules/:moduleId/sessions/:sessionId"
               element={
                 <ProtectedRoute>
-                  <LibraryContentScreen />
+                  <DebugScreenTracker name="LibraryContentScreen"><LibraryContentScreen /></DebugScreenTracker>
                 </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/library/content/modules/:moduleId/sessions/:sessionId" 
-              element={
-                <ProtectedRoute>
-                  <LibraryContentScreen />
-                </ProtectedRoute>
-              } 
+              }
             />
             <Route
               path="/events"
               element={
                 <ProtectedRoute>
-                  <EventsScreen />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/events/new"
-              element={
-                <ProtectedRoute>
-                  <EventEditorScreen />
+                  <DebugScreenTracker name="EventsScreen"><EventsScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -311,7 +297,7 @@ function AppContent() {
               path="/events/:eventId/edit"
               element={
                 <ProtectedRoute>
-                  <EventResultsScreen />
+                  <DebugScreenTracker name="EventResultsScreen"><EventResultsScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -319,7 +305,7 @@ function AppContent() {
               path="/events/:eventId/results"
               element={
                 <ProtectedRoute>
-                  <EventResultsScreen />
+                  <DebugScreenTracker name="EventResultsScreen"><EventResultsScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
@@ -327,11 +313,13 @@ function AppContent() {
               path="/events/:eventId/checkin"
               element={
                 <ProtectedRoute>
-                  <EventCheckinScreen />
+                  <DebugScreenTracker name="EventCheckinScreen"><EventCheckinScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            {/* ── Test routes ─────────────────────────────────── */}
+            <Route path="/test/biblioteca-guide" element={<BibliotecaGuideTest />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </div>
       </Router>
@@ -341,10 +329,14 @@ function AppContent() {
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <MediaUploadProvider>
+          <AppContent />
+          <UploadStatusCard />
+        </MediaUploadProvider>
+      </ToastProvider>
     </AuthProvider>
   );
 }
 
 export default App;
-

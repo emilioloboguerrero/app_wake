@@ -5,17 +5,17 @@ const TAB_BAR_EXTRA_BOTTOM_PADDING = 28;
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import apiClient from '../utils/apiClient';
 import { User02 as SvgUser02, House02 as SvgHouse02, Steak as SvgSteak } from './icons';
 import SvgBodyPartMuscleStrokeRounded from './icons/SvgBodyPartMuscleStrokeRounded';
 import SvgChartLine from './icons/SvgChartLine';
 import useFrozenBottomInset from '../hooks/useFrozenBottomInset.web';
 import { useUserRole } from '../contexts/UserRoleContext';
 import { useAuth } from '../contexts/AuthContext';
-import { firestore, auth } from '../config/firebase';
+import { auth } from '../config/firebase';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import purchaseService from '../services/purchaseService';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import sessionService from '../services/sessionService';
 import sessionManager from '../services/sessionManager';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
@@ -67,7 +67,7 @@ const BottomTabBar = () => {
     const today = toYYYYMMDD(new Date());
     Promise.all([
       purchaseService.getUserPurchasedCourses(userId, false),
-      firestoreService.getPinnedTrainingCourseId(userId),
+      apiService.getPinnedTrainingCourseId(userId),
     ]).then(([courses, pinnedId]) => {
       if (cancelled) return;
       const active = Array.isArray(courses) ? courses : [];
@@ -168,7 +168,7 @@ const BottomTabBar = () => {
     setMenuActionLoading(true);
     Promise.all([
       purchaseService.getUserPurchasedCourses(userId, false),
-      firestoreService.getPinnedTrainingCourseId(userId),
+      apiService.getPinnedTrainingCourseId(userId),
     ]).then(([courses, pinnedId]) => {
       const active = Array.isArray(courses) ? courses : [];
       if (active.length === 0) {
@@ -209,7 +209,7 @@ const BottomTabBar = () => {
     const userId = user?.uid ?? auth.currentUser?.uid;
     if (!userId) return;
     setProgramPickerTraining((prev) => ({ ...prev, visible: false }));
-    firestoreService.setPinnedTrainingCourseId(userId, item.courseId || item.id).then(() => {
+    apiService.setPinnedTrainingCourseId(userId, item.courseId || item.id).then(() => {
       setMenuActionLoading(true);
       runEntrenarFlow(item, userId);
     }).catch((err) => {
@@ -233,7 +233,7 @@ const BottomTabBar = () => {
     setMenuActionLoading(true);
     Promise.all([
       nutritionFirestoreService.getAssignmentsByUser(userId),
-      firestoreService.getPinnedNutritionAssignmentId(userId),
+      apiService.getPinnedNutritionAssignmentId(userId),
     ]).then(([assignments, pinnedId]) => {
       const today = toYYYYMMDD(new Date());
       const activeAssignments = nutritionFirestoreService.getActiveAssignmentsForDate(assignments || [], today);
@@ -302,7 +302,7 @@ const BottomTabBar = () => {
     const planSnapshot = item.plan && typeof item.plan === 'object'
       ? { id: item.planId, ...item.plan }
       : null;
-    firestoreService.setPinnedNutritionAssignmentId(userId, assignmentId).then(() => {
+    apiService.setPinnedNutritionAssignmentId(userId, assignmentId).then(() => {
       navigate('/nutrition', {
         state: {
           preferredAssignmentId: assignmentId,
@@ -330,26 +330,20 @@ const BottomTabBar = () => {
 
     setMenuActionLoading(true);
     try {
-      const snap = await getDocs(
-        query(
-          collection(firestore, 'events'),
-          where('creator_id', '==', userId),
-          orderBy('created_at', 'desc')
-        )
-      );
+      const response = await apiClient.get('/creator/events');
+      const events = response?.data || [];
 
-      if (snap.empty) {
+      if (events.length === 0) {
         closeMenu();
         navigate('/creator/events');
         return;
       }
 
-      const events = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const active = events.filter((ev) => ev.status === 'active');
       const target = active[0] || events[0];
 
       closeMenu();
-      navigate(`/creator/events/${target.id}/checkin`);
+      navigate(`/creator/events/${target.eventId}/checkin`);
     } catch (_err) {
       closeMenu();
       navigate('/creator/events');
@@ -645,5 +639,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default BottomTabBar;
+export default React.memo(BottomTabBar);
 

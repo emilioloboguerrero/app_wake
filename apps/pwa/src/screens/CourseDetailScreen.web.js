@@ -2,11 +2,10 @@
 import React from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 import LoadingScreen from './LoadingScreen';
-import logger from '../utils/logger';
-
 // Import the base component
 const CourseDetailScreenModule = require('./CourseDetailScreen.js');
 const CourseDetailScreenBase = CourseDetailScreenModule.CourseDetailScreenBase || CourseDetailScreenModule.default;
@@ -23,13 +22,12 @@ const CourseDetailScreen = () => {
     queryKey: ['programs', courseId],
     queryFn: async () => {
       if (courseFromState) {
-        logger.log('✅ Using course from navigation state:', courseFromState);
-        return courseFromState;
+        return { ...courseFromState, courseId: courseFromState.courseId || courseFromState.id || courseId, id: courseFromState.id || courseFromState.courseId || courseId };
       }
-      logger.log('🔍 Fetching course data for courseId:', courseId);
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) throw new Error('Course not found');
       const transformedCourse = {
+        ...courseData,
         id: courseData.id || courseId,
         courseId: courseData.id || courseId,
         title: courseData.title || 'Programa sin título',
@@ -45,12 +43,10 @@ const CourseDetailScreen = () => {
         free_trial: courseData.free_trial || {},
         status: courseData.status || 'published',
         video_intro_url: courseData.video_intro_url || null,
-        ...courseData,
       };
-      logger.log('✅ Course data loaded:', transformedCourse);
       return transformedCourse;
     },
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
     enabled: !!courseId,
   });
 

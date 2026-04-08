@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta id="theme-color-meta" name="theme-color" content="#1a1a1a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Wake" />
+    <title>Wake — Entrena con quienes te inspiran</title>
+    <meta name="description" content="Sigue programas de entrenamiento y nutrición de los creadores que admiras. Registra tu progreso y entrena con quienes te inspiran." />
+    <meta property="og:title" content="Wake — Entrena con quienes te inspiran" />
+    <meta property="og:description" content="Sigue programas de entrenamiento y nutrición de los creadores que admiras. Registra tu progreso y entrena con quienes te inspiran." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://wolf-20b8b.web.app/" />
+    <meta property="og:image" content="/app_icon.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Wake — Entrena con quienes te inspiran" />
+    <meta name="twitter:description" content="Sigue programas de entrenamiento y nutrición de los creadores que admiras." />
+    <meta name="twitter:image" content="/app_icon.png" />
+    <link rel="icon" href="/app_icon.png" />
+    <link rel="apple-touch-icon" href="/app_icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script type="module" crossorigin src="/assets/index-DwkDLAB2.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-jX95Cn97.css">
+  </head>
+  <body>
+    <script>
+      (function () {
+        var ua = navigator.userAgent || '';
+        var isIOS = /iPhone|iPad|iPod/.test(ua);
+        var isStandalone = !!(navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+        if (isIOS && !isStandalone) {
+          document.documentElement.classList.add('safari-ios');
+          function setCtaTop() {
+            var h = window.innerHeight || document.documentElement.clientHeight;
+            var cur = parseInt(document.documentElement.style.getPropertyValue('--safari-cta-top') || '0', 10);
+            var top = h - 60;
+            if (!cur || top < cur) document.documentElement.style.setProperty('--safari-cta-top', top + 'px');
+          }
+          setCtaTop();
+          setTimeout(setCtaTop, 50);
+          setTimeout(setCtaTop, 200);
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <script>
+      // Unregister root-scoped SW first, then register /app SW so /app and refresh-at-/app stay on PWA
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+        var rootScope = location.origin + '/';
+        navigator.serviceWorker.getRegistrations()
+          .then(function (regs) {
+            return Promise.all(regs.filter(function (reg) { return reg.scope === rootScope; }).map(function (reg) { return reg.unregister(); }));
+          })
+          .then(function () { return navigator.serviceWorker.register('/app/sw.js', { scope: '/app/' }); })
+          .catch(function () {});
+      })();
+    </script>
+  </body>
+</html>

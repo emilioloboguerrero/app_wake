@@ -1,7 +1,6 @@
 import React, { memo } from 'react';
 import { Svg, G, Path } from 'react-native-svg';
 import { getMuscleColor, getMuscleColorEnhanced, getMuscleColorWorkoutExecution, getMuscleSelectionColor } from '../utils/muscleColorUtils';
-import logger from '../utils/logger';
 
 const MuscleSilhouetteSVG = memo(({ 
   muscleVolumes = {}, 
@@ -12,16 +11,10 @@ const MuscleSilhouetteSVG = memo(({
   onMuscleClick = null // Callback for when muscle is clicked
 }) => {
   const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] MuscleSilhouetteSVG render started - ${componentStartTime.toFixed(2)}ms`);
   
   // Check if we're in selection mode (clickable)
   const isSelectionMode = selectedMuscles !== null && onMuscleClick !== null;
   
-  // Debug logging (only for volume mode)
-  if (!isSelectionMode) {
-    logger.debug('🎨 MuscleSilhouetteSVG rendering with volumes:', muscleVolumes);
-    logger.debug('🎨 Number of muscles with volume:', Object.keys(muscleVolumes).length);
-  }
 
   const renderMuscleGroup = (muscleId, paths) => {
     // Selection mode: use selectedMuscles Set
@@ -63,8 +56,6 @@ const MuscleSilhouetteSVG = memo(({
     }
     const { color: fillColor, opacity } = colorResult;
     
-    logger.debug(`🎨 Rendering ${muscleId}: volume=${volume}, color=${fillColor}, opacity=${opacity}`);
-    
     return (
       <G key={muscleId} id={muscleId}>
         {paths.map((pathData, index) => (
@@ -81,7 +72,6 @@ const MuscleSilhouetteSVG = memo(({
   };
 
   const svgReturnStartTime = performance.now();
-  logger.debug(`[SVG] [CHECKPOINT] Starting SVG JSX creation - ${svgReturnStartTime.toFixed(2)}ms`);
   
   // Create the SVG JSX (this is synchronous)
   // Add GPU acceleration hints for better paint performance
@@ -368,17 +358,8 @@ const MuscleSilhouetteSVG = memo(({
   // Time JSX creation (runs BEFORE return)
   const svgReturnEndTime = performance.now();
   const svgReturnDuration = svgReturnEndTime - svgReturnStartTime;
-  logger.debug(`[SVG] [CHECKPOINT] SVG JSX created - ${svgReturnEndTime.toFixed(2)}ms (took ${svgReturnDuration.toFixed(2)}ms)`);
-  if (svgReturnDuration > 50) {
-    logger.warn(`[SVG] ⚠️ SLOW: SVG JSX creation took ${svgReturnDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
-  
   const componentEndTime = performance.now();
   const componentDuration = componentEndTime - componentStartTime;
-  logger.debug(`[CHILD] [CHECKPOINT] MuscleSilhouetteSVG render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-  if (componentDuration > 50) {
-    logger.warn(`[CHILD] ⚠️ SLOW: MuscleSilhouetteSVG render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
   
   return svgJSX;
 }, (prevProps, nextProps) => {
@@ -394,7 +375,6 @@ const MuscleSilhouetteSVG = memo(({
     prevProps.onMuscleClick !== nextProps.onMuscleClick
   ) {
     const comparisonDuration = performance.now() - comparisonStartTime;
-    logger.debug(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props changed (basic props) - comparison took ${comparisonDuration.toFixed(2)}ms`);
     return false; // Props changed, re-render
   }
   
@@ -406,7 +386,6 @@ const MuscleSilhouetteSVG = memo(({
   
   if (prevKeys.length !== nextKeys.length) {
     const comparisonDuration = performance.now() - comparisonStartTime;
-    logger.debug(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props changed (muscle count: ${prevKeys.length} → ${nextKeys.length}) - comparison took ${comparisonDuration.toFixed(2)}ms`);
     return false; // Different number of muscles, re-render
   }
   
@@ -414,13 +393,11 @@ const MuscleSilhouetteSVG = memo(({
   for (const key of prevKeys) {
     if (prevVolumes[key] !== nextVolumes[key]) {
       const comparisonDuration = performance.now() - comparisonStartTime;
-      logger.debug(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props changed (${key}: ${prevVolumes[key]} → ${nextVolumes[key]}) - comparison took ${comparisonDuration.toFixed(2)}ms`);
       return false; // Value changed, re-render
     }
   }
   
   const comparisonDuration = performance.now() - comparisonStartTime;
-  logger.debug(`[MEMO] [CHECKPOINT] MuscleSilhouetteSVG props unchanged - skipping re-render (comparison took ${comparisonDuration.toFixed(2)}ms)`);
   return true; // Props are equal, skip re-render
 });
 

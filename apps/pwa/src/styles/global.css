@@ -14,11 +14,10 @@
   --color-primary: rgba(255, 255, 255, 1);
   --color-primary-dark: rgba(255, 255, 255, 0.8);
   --color-primary-light: rgba(255, 255, 255, 0.2);
-  --color-accent: #007AFF;
   --color-border: rgba(255, 255, 255, 0.2);
   --color-shadow: rgba(255, 255, 255, 0.4);
 
-  /* Wake Design System — Accent (Wake gold, overridable per-screen) */
+  /* Wake Design System — Accent (dynamic, extracted from content image at runtime) */
   --accent-r: 255;
   --accent-g: 255;
   --accent-b: 255;
@@ -1474,7 +1473,7 @@ video::-webkit-media-controls-enclosure {
   border-radius: 4px;
   transition: width 0.6s var(--ease-material);
 }
-.macro-progress-fill--over { background: rgba(255,68,68,0.8); }
+.macro-progress-fill--over { background: rgba(224,84,84,0.8); }
 .nutrition-modal-panel {
   background: rgba(28,28,28,0.96);
   border: 1px solid rgba(255,255,255,0.15);

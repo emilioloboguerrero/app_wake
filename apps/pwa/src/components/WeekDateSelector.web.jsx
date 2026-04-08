@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import logger from '../utils/logger';
+import WakeLoader from './WakeLoader';
 
 const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const DAY_NAMES_DISPLAY = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -100,6 +100,7 @@ export default function WeekDateSelector({
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(selected.getFullYear(), selected.getMonth(), 1));
   const [datesWithEntries, setDatesWithEntries] = useState([]);
   const [datesWithPlanned, setDatesWithPlanned] = useState([]);
+  const [calendarFetching, setCalendarFetching] = useState(false);
   const pillRef = useRef(null);
   const dropdownRef = useRef(null);
   const calendarMonthRef = useRef(calendarMonth);
@@ -133,44 +134,37 @@ export default function WeekDateSelector({
     const hasInitialArrays = Array.isArray(initialDatesWithPlanned) && Array.isArray(initialDatesWithEntries);
     const monthMatch = key === initialMonthKey;
     if (monthMatch && hasInitialArrays) {
-      logger.log('[WeekDateSelector.web] calendar open: using initial data', { key, initialMonthKey, plannedCount: initialDatesWithPlanned.length, entriesCount: initialDatesWithEntries.length });
       fetchCacheRef.current[key] = { planned: initialDatesWithPlanned, entries: initialDatesWithEntries };
       setDatesWithPlanned(initialDatesWithPlanned);
       setDatesWithEntries(initialDatesWithEntries);
+      setCalendarFetching(false);
       return;
     }
 
     // 2. Cache hit — already fetched this month during this session
     if (fetchCacheRef.current[key]) {
-      logger.log('[WeekDateSelector.web] calendar open: using cache', { key, plannedCount: fetchCacheRef.current[key].planned?.length, entriesCount: fetchCacheRef.current[key].entries?.length });
       setDatesWithPlanned(fetchCacheRef.current[key].planned);
       setDatesWithEntries(fetchCacheRef.current[key].entries);
+      setCalendarFetching(false);
       return;
     }
 
     // 3. Live fetch — both queries in parallel
-    logger.log('[WeekDateSelector.web] calendar open: live fetch', {
-      key,
-      initialMonthKey,
-      monthMatch,
-      hasInitialArrays,
-      hasFetchPlanned: !!fetchDatesWithPlanned,
-      hasFetchEntries: !!fetchDatesWithEntries,
-    });
     setDatesWithPlanned([]);
     setDatesWithEntries([]);
+    setCalendarFetching(true);
     Promise.all([
       fetchDatesWithPlanned ? fetchDatesWithPlanned(start, end) : Promise.resolve([]),
       fetchDatesWithEntries ? fetchDatesWithEntries(start, end) : Promise.resolve([]),
     ]).then(([planned, entries]) => {
       const plannedList = Array.isArray(planned) ? planned : [];
       const entriesList = Array.isArray(entries) ? entries : [];
-      logger.log('[WeekDateSelector.web] live fetch resolved', { key, plannedCount: plannedList.length, entriesCount: entriesList.length, stillCurrentMonth: monthKey(calendarMonthRef.current) === key });
       if (monthKey(calendarMonthRef.current) === key) {
         fetchCacheRef.current[key] = { planned: plannedList, entries: entriesList };
         setDatesWithPlanned(plannedList);
         setDatesWithEntries(entriesList);
       }
+      setCalendarFetching(false);
     });
   }, [dropdownOpen, calendarMonth, fetchDatesWithEntries, fetchDatesWithPlanned, initialMonthKey, initialDatesWithPlanned, initialDatesWithEntries]);
 
@@ -262,7 +256,13 @@ export default function WeekDateSelector({
                 </Text>
               ))}
             </View>
-            <View style={styles.grid}>
+            <View style={styles.gridWrapper}>
+              {calendarFetching && (
+                <View style={styles.gridLoadingOverlay}>
+                  <WakeLoader size={36} />
+                </View>
+              )}
+              <View style={[styles.grid, calendarFetching && styles.gridFetching]}>
               {gridCells.map((cell, i) => {
                 const ymd = toYYYYMMDD(cell.date);
                 const selectedCell = selectedDate === ymd;
@@ -299,6 +299,7 @@ export default function WeekDateSelector({
                   </TouchableOpacity>
                 );
               })}
+              </View>
             </View>
           </View>
         </View>
@@ -478,12 +479,28 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
   },
+  gridWrapper: {
+    position: 'relative',
+  },
+  gridLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     width: '100%',
     gap: 5,
     justifyContent: 'flex-start',
+  },
+  gridFetching: {
+    opacity: 0.3,
   },
   gridCell: {
     position: 'relative',

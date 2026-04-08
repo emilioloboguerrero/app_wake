@@ -37,8 +37,8 @@ export default function LabWeightChart({ data, goalValue, unit = 'kg' }) {
 
   const values = data.map((d) => d.value).filter((v) => typeof v === 'number');
   const allValues = goalValue != null ? [...values, goalValue] : values;
-  const minVal = Math.max(0, Math.floor(Math.min(...allValues) * 0.97));
-  const maxVal = Math.ceil(Math.max(...allValues) * 1.03);
+  const minVal = Math.max(0, Math.floor(allValues.reduce((a, b) => a < b ? a : b, Infinity) * 0.97));
+  const maxVal = Math.ceil(allValues.reduce((a, b) => a > b ? a : b, -Infinity) * 1.03);
 
   return (
     <ResponsiveContainer width="100%" height={180}>

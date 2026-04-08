@@ -1,0 +1,218 @@
+.ves-container {
+  margin-top: 24px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.ves-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ves-header__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ves-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0;
+}
+
+.ves-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ves-new-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* New thread form */
+.ves-new-form {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.ves-new-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  outline: none;
+  margin-bottom: 8px;
+}
+
+.ves-new-input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.ves-new-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.ves-new-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ves-new-cancel,
+.ves-new-submit {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ves-new-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ves-new-submit {
+  background: rgba(255, 255, 255, 0.9);
+  color: #1a1a1a;
+}
+
+.ves-new-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Thread list */
+.ves-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ves-thread-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.ves-thread-card:last-child {
+  border-bottom: none;
+}
+
+.ves-thread-card:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.ves-thread-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ves-thread-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.ves-thread-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.ves-thread-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.ves-unread-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* Empty state */
+.ves-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.ves-empty p {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+.ves-empty span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Loading */
+.ves-loading {
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ves-skeleton {
+  height: 48px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: ves-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ves-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

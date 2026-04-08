@@ -33,7 +33,6 @@ const LegalDocumentsWebView = ({
     if (!visible || !isWeb) return;
     if (hasOpenedRef.current) return;
     hasOpenedRef.current = true;
-    logger.log('🌐 [LegalDocumentsWebView] Opening legal page immediately');
     try {
       const w = window.open(LEGAL_URL, '_blank', 'noopener,noreferrer');
       if (w) {
@@ -55,9 +54,7 @@ const LegalDocumentsWebView = ({
   }, [visible]);
 
   // Handle WebView navigation (native only)
-  const handleNavigationStateChange = (navState) => {
-    logger.debug('📍 Legal WebView Navigation:', navState.url);
-  };
+  const handleNavigationStateChange = () => {};
 
   const handleWebViewLoad = () => {
     setLoading(false);

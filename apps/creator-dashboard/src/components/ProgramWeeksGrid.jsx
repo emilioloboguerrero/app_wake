@@ -1,23 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useDroppable } from '@dnd-kit/core';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
 import Button from './Button';
+import ShimmerSkeleton from './ui/ShimmerSkeleton';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
 import programService from '../services/programService';
+import { useToast } from '../contexts/ToastContext';
+import logger from '../utils/logger';
+import { GlowingEffect } from './ui';
 import '../screens/ProgramDetailScreen.css';
+import '../screens/SharedScreenLayout.css';
 import './PlanWeeksGrid.css';
+import './ProgramWeeksGrid.css';
 
 const SLOTS = [1, 2, 3, 4, 5, 6, 7];
 const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
 
-function arrayMove(arr, fromIndex, toIndex) {
-  const a = [...arr];
-  const [removed] = a.splice(fromIndex, 1);
-  a.splice(toIndex, 0, removed);
-  return a;
-}
+const DroppableDayCell = ({ moduleId, slotIndex, children, className = '', onNativeDragOver, onNativeDragLeave, onNativeDrop }) => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `day-cell-${moduleId}-${slotIndex}`,
+    data: { moduleId, slotIndex },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${isOver ? 'plan-weeks-cell-dndkit-over' : ''}`}
+      onDragOver={onNativeDragOver}
+      onDragLeave={onNativeDragLeave}
+      onDrop={onNativeDrop}
+    >
+      {children}
+    </div>
+  );
+};
 
 /**
  * Weeks grid for low-ticket program content: rows = weeks (modules), columns = position 1-7.
@@ -34,10 +53,12 @@ const ProgramWeeksGrid = ({
   libraryService = null,
   plansService = null,
   creatorId = null,
+  isLoading = false,
   isAddingWeek = false,
   queryClient = null,
   queryKeys = null,
 }) => {
+  const { showToast } = useToast();
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [addSessionModuleId, setAddSessionModuleId] = useState(null);
   const [addSessionSlotIndex, setAddSessionSlotIndex] = useState(0);
@@ -108,7 +129,7 @@ const ProgramWeeksGrid = ({
         await queryClient.refetchQueries({ queryKey: queryKeys.modules.all(programId) });
       }
     } catch (err) {
-      console.error('Error refreshing program modules:', err);
+      logger.error('Error refreshing program modules:', err);
     }
   };
 
@@ -155,7 +176,7 @@ const ProgramWeeksGrid = ({
         if (modAgain && sess) onSessionClick(modAgain, sess);
       }
     } catch (err) {
-      alert(err.message || 'Error al crear la sesión');
+      showToast(err.message || 'No pudimos crear la sesion. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -193,7 +214,7 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      alert(err.message || 'Error al asignar la sesión');
+      showToast(err.message || 'No pudimos asignar la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -228,32 +249,21 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       setDeleteConfirmTarget(null);
     } catch (err) {
-      alert(err.message || (type === 'week' ? 'Error al eliminar la semana' : 'Error al eliminar la sesión'));
+      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesion'), 'error');
     } finally {
       setIsDeleting(false);
     }
   };
 
   const handleEditSession = (moduleId, sessionId) => {
-    console.log('[ProgramWeeksGrid] handleEditSession called', { moduleId, sessionId, modulesCount: modules?.length, hasOnSessionClick: !!onSessionClick });
     setOpenMenuSession(null);
     setMenuAnchorEl(null);
     const mod = modules.find((m) => m.id === moduleId);
     const session = mod?.sessions?.find((s) => s.id === sessionId);
-    console.log('[ProgramWeeksGrid] handleEditSession resolved', {
-      foundMod: !!mod,
-      modId: mod?.id,
-      sessionsInMod: mod?.sessions?.length ?? 0,
-      foundSession: !!session,
-      sessionId: session?.id,
-      sessionTitle: session?.title || session?.name,
-      sessionLibraryRef: session?.librarySessionRef,
-    });
     if (onSessionClick && mod && session) {
-      console.log('[ProgramWeeksGrid] handleEditSession: calling onSessionClick(mod, session)');
       onSessionClick(mod, session);
     } else {
-      console.warn('[ProgramWeeksGrid] handleEditSession: NOT calling onSessionClick', {
+      logger.warn('[ProgramWeeksGrid] handleEditSession: NOT calling onSessionClick', {
         hasOnSessionClick: !!onSessionClick,
         hasMod: !!mod,
         hasSession: !!session,
@@ -307,8 +317,8 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      console.warn('Session reorder failed:', err);
-      alert(err?.message || 'Error al cambiar el orden');
+      logger.warn('Session reorder failed:', err);
+      showToast(err?.message || 'No pudimos cambiar el orden. Intenta de nuevo.', 'error');
     }
   };
 
@@ -324,7 +334,7 @@ const ProgramWeeksGrid = ({
       if (toSlotIndex < 0 || toSlotIndex > 6) return;
       const sessionAtTarget = getSessionForSlot(modules.find((m) => m.id === toModuleId), toSlotIndex);
       if (sessionAtTarget) {
-        alert('Ese día ya tiene una sesión. Mueve o elimina esa sesión primero.');
+        showToast('Ese día ya tiene una sesión. Mueve o elimina esa sesión primero.', 'error');
         return;
       }
       setIsMovingOrAddingItem(true);
@@ -337,8 +347,8 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      console.warn('Move session to week failed:', err);
-      alert(err?.message || 'Error al mover la sesión');
+      logger.warn('Move session to week failed:', err);
+      showToast(err?.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
     }
   };
 
@@ -384,7 +394,7 @@ const ProgramWeeksGrid = ({
     try {
       const planModules = await plansService.getModulesByPlan(planId);
       if (!planModules?.length) {
-        alert('El plan no tiene semanas.');
+        showToast('El plan no tiene semanas.', 'error');
         return;
       }
       if (targetModuleId != null && targetModIndex != null) {
@@ -410,7 +420,7 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       await new Promise((r) => setTimeout(r, 0));
     } catch (err) {
-      alert(err?.message || 'Error al asignar el plan');
+      showToast(err?.message || 'No pudimos asignar el plan. Intenta de nuevo.', 'error');
     } finally {
       setIsAssigningPlan(false);
       setDragOverWeekId(null);
@@ -445,12 +455,7 @@ const ProgramWeeksGrid = ({
   const handleDragOverWeek = (e, moduleId) => {
     e.preventDefault();
     e.stopPropagation();
-    const data = e.dataTransfer.types.includes('application/json') ? (() => {
-      try {
-        return JSON.parse(e.dataTransfer.getData('application/json'));
-      } catch { return {}; }
-    })() : {};
-    if (data.type === DRAG_TYPE_PLAN) {
+    if (e.dataTransfer.types.includes('application/json')) {
       e.dataTransfer.dropEffect = 'copy';
       setDragOverWeekId(moduleId);
     }
@@ -459,12 +464,7 @@ const ProgramWeeksGrid = ({
   const handleDragOverBelow = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const data = e.dataTransfer.types.includes('application/json') ? (() => {
-      try {
-        return JSON.parse(e.dataTransfer.getData('application/json'));
-      } catch { return {}; }
-    })() : {};
-    if (data.type === DRAG_TYPE_PLAN) {
+    if (e.dataTransfer.types.includes('application/json')) {
       e.dataTransfer.dropEffect = 'copy';
       setDragOverBelow(true);
     }
@@ -482,6 +482,41 @@ const ProgramWeeksGrid = ({
       : isMovingOrAddingItem
         ? 'Moviendo sesión...'
         : null;
+
+  if (isLoading) {
+    return (
+      <div className="plan-weeks-grid">
+        <div className="plan-weeks-grid-header">
+          <ShimmerSkeleton width="140px" height="36px" borderRadius="8px" />
+        </div>
+        <div className="plan-weeks-list-wrap">
+          <div className="plan-weeks-days-header">
+            {SLOTS.map((d) => (
+              <div key={d} className="plan-weeks-days-header-cell">
+                <ShimmerSkeleton width="32px" height="14px" borderRadius="4px" />
+              </div>
+            ))}
+          </div>
+          {[0, 1].map((i) => (
+            <div key={i} className="plan-weeks-week-block">
+              <div className="plan-weeks-week-header">
+                <ShimmerSkeleton width="90px" height="16px" borderRadius="4px" />
+              </div>
+              <div className="plan-weeks-week-days">
+                {SLOTS.map((_, j) => (
+                  <div key={j} className="plan-weeks-day-cell">
+                    {j % 2 === 0 && (
+                      <ShimmerSkeleton width="100%" height="44px" borderRadius="8px" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="plan-weeks-grid">
@@ -542,6 +577,7 @@ const ProgramWeeksGrid = ({
         ) : (
           modules.map((mod, modIndex) => (
             <div key={mod.id} className="plan-weeks-week-block">
+              <GlowingEffect spread={25} proximity={80} borderWidth={1} />
               <div
                 className={`plan-weeks-week-header ${dragOverWeekId === mod.id ? 'plan-weeks-week-header--drag-over' : ''}`}
                 onDragOver={(e) => handleDragOverWeek(e, mod.id)}
@@ -613,32 +649,34 @@ const ProgramWeeksGrid = ({
                   const handleCellDragOver = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const data = e.dataTransfer.types.includes('application/json') ? (() => {
-                      try { return JSON.parse(e.dataTransfer.getData('application/json')); } catch { return {}; }
-                    })() : {};
-                    if (data.type === DRAG_TYPE_PLAN) {
+                    if (e.dataTransfer.types.includes('application/json')) {
                       e.dataTransfer.dropEffect = 'copy';
-                      setDragOverWeekId(mod.id);
-                    } else if (isEmpty && data.type === DRAG_TYPE_LIBRARY_SESSION) {
-                      handleDragOver(e);
-                    } else if (data.type === DRAG_TYPE_PROGRAM_SESSION) {
-                      e.dataTransfer.dropEffect = 'move';
                       e.currentTarget.classList.add('plan-weeks-cell-drag-over');
                     }
                   };
                   return (
-                    <div
+                    <DroppableDayCell
                       key={slotIndex}
+                      moduleId={mod.id}
+                      slotIndex={slotIndex}
                       className="plan-weeks-day-cell"
-                      onDragOver={handleCellDragOver}
-                      onDragLeave={(e) => {
-                    handleDragLeave(e);
-                    setDragOverWeekId(null);
-                  }}
-                      onDrop={handleCellDrop}
+                      onNativeDragOver={handleCellDragOver}
+                      onNativeDragLeave={(e) => {
+                        handleDragLeave(e);
+                        setDragOverWeekId(null);
+                      }}
+                      onNativeDrop={handleCellDrop}
                     >
                       {session ? (
-                        <div className="plan-weeks-session-card">
+                        <div
+                          className="plan-weeks-session-card"
+                          style={session.image_url ? {
+                            backgroundImage: `linear-gradient(to bottom, rgba(26,26,26,0.55), rgba(26,26,26,0.85)), url(${session.image_url})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          } : undefined}
+                        >
+                          <GlowingEffect spread={30} proximity={60} borderWidth={1} />
                           <div
                             className="plan-weeks-session-card-body"
                             draggable
@@ -696,7 +734,7 @@ const ProgramWeeksGrid = ({
                           +
                         </button>
                       )}
-                    </div>
+                    </DroppableDayCell>
                   );
                 })}
               </div>

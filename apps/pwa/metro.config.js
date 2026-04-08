@@ -23,7 +23,15 @@ config.resolver.sourceExts = [
 
 // Single source of truth for layout viewport on web: use our Dimensions so useWindowDimensions() returns canonical size.
 // On web, prefer WakeLoader.web.jsx (shimmer) over WakeLoader.js (pulse). Resolve proactively so we don't depend on defaultResolve return shape.
+// @ffmpeg packages use dynamic import() syntax that Metro cannot parse.
+// The compressor is only loaded at runtime via dynamic import in videoExchangeCompressor.js,
+// so we can safely stub the static resolution to an empty module.
+const ffmpegStub = path.resolve(__dirname, 'src/utils/ffmpegStub.js');
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName.startsWith('@ffmpeg/')) {
+    return { type: 'sourceFile', filePath: ffmpegStub };
+  }
   if (
     platform === 'web' &&
     context.originModulePath &&

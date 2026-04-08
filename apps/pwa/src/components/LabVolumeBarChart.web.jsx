@@ -43,9 +43,9 @@ const CustomTooltip = ({ active, payload, label }) => {
         <>
           <View style={styles.tooltipDivider} />
           <View style={styles.tooltipRow}>
-            <View style={[styles.tooltipDot, { backgroundColor: 'rgba(251,191,36,0.8)' }]} />
+            <View style={[styles.tooltipDot, { backgroundColor: 'rgba(255,255,255,0.7)' }]} />
             <Text style={styles.tooltipLabel}>Bienestar</Text>
-            <Text style={[styles.tooltipVal, { color: 'rgba(251,191,36,0.9)' }]}>{Number(wellnessEntry.value).toFixed(1)}/10</Text>
+            <Text style={[styles.tooltipVal, { color: 'rgba(255,255,255,0.8)' }]}>{Number(wellnessEntry.value).toFixed(1)}/10</Text>
           </View>
         </>
       )}
@@ -94,7 +94,7 @@ export default function LabVolumeBarChart({ data }) {
           {SERIES.map((s) => (
             <Bar key={s.key} yAxisId="left" dataKey={s.key} name={s.label} stackId="vol" fill={s.fill} radius={s.key === 'empuje' ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
           ))}
-          <Line yAxisId="right" type="monotone" dataKey="wellness" stroke="rgba(251,191,36,0.7)" strokeWidth={1.5} strokeDasharray="3 3" dot={false} activeDot={{ r: 3 }} connectNulls={false} />
+          <Line yAxisId="right" type="monotone" dataKey="wellness" stroke="rgba(255,255,255,0.7)" strokeWidth={1.5} strokeDasharray="3 3" dot={false} activeDot={{ r: 3 }} connectNulls={false} />
         </ComposedChart>
       </ResponsiveContainer>
       <CustomLegend />
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   legendLine: {
     width: 14,
     height: 2,
-    backgroundColor: 'rgba(251,191,36,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 1,
     marginRight: 4,
   },

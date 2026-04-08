@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import hybridDataService from '../services/hybridDataService';
+import apiClient from '../utils/apiClient';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 import OnboardingQuestion1 from '../screens/onboarding/OnboardingQuestion1';
 import OnboardingQuestion2 from '../screens/onboarding/OnboardingQuestion2';
@@ -35,11 +35,6 @@ const OnboardingNavigator = ({ onComplete }) => {
   const [onboardingAnswers, setOnboardingAnswers] = useState({});
   const effectiveUid = getEffectiveUid(user);
 
-  useEffect(() => {
-    logger.log('[ONBOARDING_NAV] mounted. uid:', effectiveUid);
-    if (!effectiveUid) logger.warn('[ONBOARDING_NAV] No uid in OnboardingNavigator');
-  }, [effectiveUid]);
-
   const handleAnswer = (questionKey, answer) => {
     setOnboardingAnswers(prev => ({ ...prev, [questionKey]: answer }));
   };
@@ -47,7 +42,6 @@ const OnboardingNavigator = ({ onComplete }) => {
   const handleComplete = async () => {
     const uid = effectiveUid;
     if (!uid) {
-      logger.warn('[ONBOARDING_NAV] handleComplete: no uid, skipping save');
       if (onComplete) onComplete();
       return;
     }
@@ -70,8 +64,6 @@ const OnboardingNavigator = ({ onComplete }) => {
         profileCompleted: true,
       };
 
-      logger.debug('📝 Saving onboarding data. uid:', uid, userData.onboardingData);
-
       try {
         await AsyncStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
           onboardingCompleted: true,
@@ -79,24 +71,22 @@ const OnboardingNavigator = ({ onComplete }) => {
           cachedAt: Date.now(),
         }));
       } catch (cacheError) {
-        logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
+        // Continue anyway - not critical
       }
 
       if (Platform.OS === 'web') {
         try {
-          const webStorageService = require('../services/webStorageService').default;
-          await webStorageService.setItem(`onboarding_status_${uid}`, JSON.stringify({
+          localStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
             onboardingCompleted: true,
             profileCompleted: true,
             cachedAt: Date.now(),
           }));
         } catch (e) {
-          logger.warn('[ONBOARDING_NAV] Web cache write failed:', e?.message);
+          // Continue anyway - not critical
         }
       }
 
-      await hybridDataService.updateUserProfile(uid, userData);
-      logger.debug('✅ Onboarding completed successfully. uid:', uid);
+      await apiClient.patch('/users/me', userData);
 
       if (onComplete) onComplete();
     } catch (error) {

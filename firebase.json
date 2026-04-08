@@ -25,10 +25,14 @@
       "**/node_modules/**"
     ],
     "rewrites": [
+      { "source": "/api/**", "function": "api", "region": "us-central1" },
+      { "source": "/e/**", "function": "eventPage", "region": "us-central1" },
       { "source": "/app", "destination": "/app/index.html" },
       { "source": "/app/**", "destination": "/app/index.html" },
       { "source": "/creators", "destination": "/creators/index.html" },
       { "source": "/creators/**", "destination": "/creators/index.html" },
+      { "source": "/developers", "destination": "/developers/index.html" },
+      { "source": "/developers/**", "destination": "/developers/index.html" },
       { "source": "/landing", "destination": "/index.html" },
       { "source": "/landing/**", "destination": "/index.html" },
       { "source": "**", "destination": "/index.html" }
@@ -69,17 +73,16 @@
   },
   "firestore": {
     "rules": "config/firebase/firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "indexes": "config/firebase/firestore.indexes.json"
   },
   "storage": {
     "rules": "config/firebase/storage.rules"
   },
   "emulators": {
-    "firestore": {
-      "port": 8080
-    },
-    "ui": {
-      "enabled": false
-    }
+    "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "auth": { "port": 9099 },
+    "storage": { "port": 9199 },
+    "ui": { "enabled": true, "port": 4000 }
   }
 }

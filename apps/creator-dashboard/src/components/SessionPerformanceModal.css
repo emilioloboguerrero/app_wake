@@ -40,7 +40,7 @@
 .session-performance-title {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.03em;
 }
@@ -71,7 +71,7 @@
 
 .session-performance-close:hover {
   background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 /* ===== Content ===== */
@@ -119,7 +119,7 @@
 .session-performance-session-name {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
 }
 
 .session-performance-date {
@@ -309,7 +309,7 @@
 .session-performance-compare-col-title {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #ffffff;
+  color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -371,7 +371,7 @@
   flex: 1;
   font-weight: 600;
   font-size: 1.05rem;
-  color: #ffffff;
+  color: var(--text-primary);
   line-height: 1.4;
 }
 
@@ -483,6 +483,40 @@
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.35);
   font-style: italic;
+}
+
+/* RPE badge */
+.spm-rpe-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.spm-rpe-tag--over {
+  background: rgba(251, 146, 60, 0.18);
+  color: #fdba74;
+}
+
+.spm-rpe-tag--under {
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.spm-rpe-tag--on {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.spm-rpe-delta {
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.85;
 }
 
 .session-performance-empty-col:not(:only-child) {

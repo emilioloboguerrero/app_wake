@@ -54,7 +54,6 @@ function runOnce() {
       'first overlay computed': overlayStyle,
     };
 
-    console.log('[Safari video overlay debug]', info);
     try {
       window.__SAFARI_VIDEO_DEBUG_INFO = info;
     } catch (_) {}
@@ -94,7 +93,7 @@ export function runSafariVideoOverlayDebug() {
       setTimeout(() => {
         const info = window.__SAFARI_VIDEO_DEBUG_INFO;
         if (info) {
-          panel.innerHTML = '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;">' + JSON.stringify(info, null, 2) + '</pre>';
+          panel.textContent = JSON.stringify(info, null, 2);
         }
       }, 2800);
     }, 2600);

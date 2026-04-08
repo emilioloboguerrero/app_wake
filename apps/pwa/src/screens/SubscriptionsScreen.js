@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   SafeAreaView,
   ScrollView,
@@ -17,7 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
@@ -81,7 +82,7 @@ const SubscriptionsScreen = ({ navigation }) => {
     queryKey: queryKeys.user.subscriptions(user?.uid),
     queryFn: () => firestoreService.getUserSubscriptions(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIMES.clientList,
   });
 
   const subscriptions = rawSubscriptions
@@ -148,13 +149,9 @@ const SubscriptionsScreen = ({ navigation }) => {
         maximumFractionDigits: 0,
       }).format(amount);
     } catch (error) {
-      logger.warn('Error formatting currency, falling back to string.', error);
       return `${amount} ${currency}`;
     }
   };
-
-
-
 
   const renderActions = (subscription) => {
     const currentStatus = subscription.status || 'pending';
@@ -207,12 +204,14 @@ const SubscriptionsScreen = ({ navigation }) => {
     try {
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: true } }));
 
+      const idToken = await user.getIdToken();
       const response = await fetch(
         'https://us-central1-wolf-20b8b.cloudfunctions.net/updateSubscriptionStatus',
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             userId: user.uid,
@@ -225,8 +224,8 @@ const SubscriptionsScreen = ({ navigation }) => {
 
       const result = await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Error al procesar la acción');
+      if (!response.ok || result?.error) {
+        throw new Error(result?.error?.message || result?.error || 'Error al procesar la acción');
       }
 
       Alert.alert('Éxito', 'La suscripción ha sido actualizada correctamente');
@@ -318,21 +317,8 @@ const SubscriptionsScreen = ({ navigation }) => {
       return;
     }
 
-    logger.log('Cancel subscription survey result', {
-      subscriptionId: pendingCancelSubscription.id,
-      answers: cancelSurveyAnswers,
-    });
-
-    const courseId =
-      pendingCancelSubscription?.course_id ||
-      pendingCancelSubscription?.courseId ||
-      pendingCancelSubscription?.program_id ||
-      null;
-
-    const courseTitle =
-      pendingCancelSubscription?.course_title ||
-      pendingCancelSubscription?.courseTitle ||
-      null;
+    const courseId = pendingCancelSubscription?.course_id || null;
+    const courseTitle = pendingCancelSubscription?.course_title || null;
 
     performAction(pendingCancelSubscription.id, 'cancel', {
       survey: {

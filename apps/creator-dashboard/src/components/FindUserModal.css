@@ -1,112 +1,206 @@
-/* FindUserModal - matches Propagate modal style */
-.find-user-modal-body {
-  flex: 1;
-  padding: 24px 24px 16px;
-}
-
-.find-user-modal-card {
-  flex: 1;
-}
-
-.find-user-modal-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  margin: 0 0 10px 0;
-  display: block;
-}
-
-.find-user-modal-required {
-  color: rgba(255, 107, 107, 0.95);
-}
-
-.find-user-modal-row {
+/* ─── Find User Modal ────────────────────────────────────────── */
+.fum {
   display: flex;
-  gap: 12px;
-  align-items: stretch;
-  margin-bottom: 12px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.find-user-modal-row .input-container,
-.find-user-modal-row input {
+.fum__hint {
+  font-size: 0.82rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ─── Input ──────────────────────────────────────────────────── */
+.fum__input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.fum__input {
+  flex: 1;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  color: var(--text-primary, #fff);
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.fum__input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.fum__input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ─── Result card ────────────────────────────────────────────── */
+.fum__result {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  animation: fum-result-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fum-result-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fum__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.fum__avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fum__avatar-initial {
+  font-size: 1rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.fum__result-info {
   flex: 1;
   min-width: 0;
 }
 
-.find-user-modal-btn {
-  flex-shrink: 0;
-  min-width: 100px;
-}
-
-.find-user-modal-hint {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.find-user-modal-success {
-  padding: 8px 0;
-}
-
-.find-user-modal-success-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0 0 6px 0;
-}
-
-.find-user-modal-success-name {
-  font-size: 1rem;
+.fum__result-name {
+  font-size: 0.92rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--text-primary, #fff);
   margin: 0;
 }
 
-.find-user-modal-success-email {
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.7);
+.fum__result-email {
+  font-size: 0.78rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  margin: 2px 0 0;
 }
 
-.find-user-modal-already-exists {
-  padding: 8px 0;
-}
-
-.find-user-modal-already-exists-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0 0 6px 0;
-}
-
-.find-user-modal-already-exists-name {
-  font-size: 1rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
-  margin: 0 0 12px 0;
-}
-
-.find-user-modal-already-exists-email {
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.find-user-modal-already-exists-message {
-  font-size: 14px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.75);
-  margin: 0;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.05);
+/* ─── Badge ──────────────────────────────────────────────────── */
+.fum__badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 3px 10px;
   border-radius: 8px;
-  border-left: 3px solid rgba(255, 255, 255, 0.25);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
 }
 
-.find-user-modal-error {
-  padding: 14px 24px;
-  background-color: rgba(255, 107, 107, 0.12);
-  border: 1px solid rgba(255, 107, 107, 0.35);
+.fum__badge--existing {
+  color: rgba(251, 191, 36, 0.9);
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+/* ─── Info box ───────────────────────────────────────────────── */
+.fum__info-box {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
-  color: #FF6B6B;
-  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ─── Error ──────────────────────────────────────────────────── */
+.fum__error {
+  font-size: 0.8rem;
+  color: rgba(248, 113, 113, 0.95);
+  margin: 0;
+  padding: 10px 14px;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.15);
+  border-radius: 10px;
   line-height: 1.4;
-  margin: 0 24px 16px 24px;
+}
+
+/* ─── Actions ────────────────────────────────────────────────── */
+.fum__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fum__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.fum__btn--ghost {
+  background: transparent;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+}
+
+.fum__btn--ghost:hover {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.fum__btn--primary {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-primary, #fff);
+}
+
+.fum__btn--primary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.fum__btn--primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.fum__btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ─── Spinner ────────────────────────────────────────────────── */
+.fum__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: fum-spin 0.6s linear infinite;
+}
+
+@keyframes fum-spin {
+  to { transform: rotate(360deg); }
 }

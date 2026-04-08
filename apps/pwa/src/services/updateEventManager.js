@@ -19,7 +19,6 @@ class UpdateEventManager {
 
   // Notify that an update completed
   notifyUpdateComplete(courseId) {
-    logger.debug('📢 Update event: Course update completed:', courseId);
     this.pendingUpdates.add(courseId);
     
     this.listeners.forEach(callback => {
@@ -38,7 +37,6 @@ class UpdateEventManager {
 
   // Clear pending updates after refresh
   clearPendingUpdates() {
-    logger.debug('🧹 Clearing pending updates:', Array.from(this.pendingUpdates));
     this.pendingUpdates.clear();
   }
 

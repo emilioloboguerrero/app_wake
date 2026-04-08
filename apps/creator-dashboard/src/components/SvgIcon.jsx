@@ -1,24 +1,26 @@
 import React from 'react';
+import DOMPurify from 'dompurify';
+
+const CSS_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|rgba\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*[\d.]+\s*\)|[a-zA-Z]+)$/;
 
 const SvgIcon = ({ svgString, width = 32, height = 32, color = '#ffffff', className = '' }) => {
-  // Parse the SVG string and inject the color
-  // Replace stroke="currentColor" with the actual color
-  let svgWithColor = svgString.replace(/stroke="currentColor"/g, `stroke="${color}"`);
-  // Replace fill="currentColor" with the actual color (for yoga icon)
-  svgWithColor = svgWithColor.replace(/fill="currentColor"/g, `fill="${color}"`);
-  // Also handle stroke-width vs strokeWidth
+  const safeColor = CSS_COLOR_RE.test(color) ? color : '#ffffff';
+
+  let svgWithColor = DOMPurify.sanitize(svgString, { USE_PROFILES: { svg: true, svgFilters: true } });
+  svgWithColor = svgWithColor.replace(/stroke="currentColor"/g, `stroke="${safeColor}"`);
+  svgWithColor = svgWithColor.replace(/fill="currentColor"/g, `fill="${safeColor}"`);
   svgWithColor = svgWithColor.replace(/stroke-width=/g, 'strokeWidth=');
-  
+
   return (
-    <div 
+    <div
       className={className}
-      style={{ 
-        width: `${width}px`, 
+      style={{
+        width: `${width}px`,
         height: `${height}px`,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: color // Set color for any remaining currentColor references
+        color: safeColor
       }}
       dangerouslySetInnerHTML={{ __html: svgWithColor }}
     />

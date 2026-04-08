@@ -97,9 +97,9 @@ export function HeaderStreakInfoModal({ visible, onClose }) {
               <SvgFire
                 width={ICON_MIDDLE}
                 height={ICON_MIDDLE}
-                stroke="#D5C672"
+                stroke="rgba(255,255,255,0.9)"
                 strokeWidth={0.6}
-                fill="#D5C672"
+                fill="rgba(255,255,255,0.9)"
                 style={[
                   styles.iconMiddle,
                   { opacity: useDimmed ? 0.4 : 0.9 },

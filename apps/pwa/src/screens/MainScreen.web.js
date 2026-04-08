@@ -1,26 +1,22 @@
 // Web wrapper for MainScreen - provides React Router navigation
 import React, { useState, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { NavigationContainer } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
-import * as nutritionDb from '../services/nutritionFirestoreService';
+import { queryKeys } from '../config/queryClient';
 import { TrainingNutritionChoiceModal } from '../components/TrainingNutritionChoiceModal.web';
-import logger from '../utils/logger';
 
 const MainScreenModule = require('./MainScreen.js');
 const MainScreenBase = MainScreenModule.MainScreenBase || MainScreenModule.default;
 
 const MainScreen = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useAuth();
-  const userId = user?.uid ?? auth.currentUser?.uid ?? '';
+  const queryClient = useQueryClient();
 
   const [programChoiceVisible, setProgramChoiceVisible] = useState(false);
   const [programChoiceCourse, setProgramChoiceCourse] = useState(null);
-  const [programChoiceAssignmentId, setProgramChoiceAssignmentId] = useState(null);
 
   const goToWorkout = useCallback(
     (course) => {
@@ -31,43 +27,44 @@ const MainScreen = () => {
   );
 
   const goToNutrition = useCallback(
-    (preferredAssignmentId) => {
-      navigate('/nutrition', { state: preferredAssignmentId ? { preferredAssignmentId } : {} });
-    },
+    () => navigate('/nutrition'),
     [navigate]
   );
+
+  const handleTapCourse = useCallback(
+    (course) => {
+      const profile = user?.uid ? queryClient.getQueryData(queryKeys.user.detail(user.uid)) : null;
+      const hasNutritionFallback = user?.uid ? queryClient.getQueryData(['nutrition', 'has-assignment', user.uid]) : false;
+      const hasNutrition = !!profile?.pinnedNutritionAssignmentId || hasNutritionFallback === true;
+      if (hasNutrition) {
+        setProgramChoiceCourse(course);
+        setProgramChoiceVisible(true);
+      } else {
+        goToWorkout(course);
+      }
+    },
+    [user?.uid, queryClient, goToWorkout]
+  );
+
+  const handleCloseChoice = useCallback(() => {
+    setProgramChoiceVisible(false);
+    setProgramChoiceCourse(null);
+  }, []);
+
+  const handleChooseTraining = useCallback(() => {
+    if (programChoiceCourse) goToWorkout(programChoiceCourse);
+    handleCloseChoice();
+  }, [programChoiceCourse, goToWorkout, handleCloseChoice]);
+
+  const handleChooseNutrition = useCallback(() => {
+    goToNutrition();
+    handleCloseChoice();
+  }, [goToNutrition, handleCloseChoice]);
 
   const navigation = React.useMemo(() => ({
     navigate: (routeName, params) => {
       if (routeName === 'DailyWorkout' && params?.course) {
-        const course = params.course;
-        const courseId = course.courseId || course.id;
-        (async () => {
-          if (!userId) {
-            goToWorkout(course);
-            return;
-          }
-          try {
-            const assignments = await nutritionDb.getAssignmentsByUser(userId);
-            const active = nutritionDb.getActiveAssignmentsForDate(assignments);
-            let creatorId = course.creator_id || course.creatorId;
-            if (!creatorId && courseId) {
-              const courseDoc = await firestoreService.getCourse(courseId);
-              creatorId = courseDoc?.creator_id ?? courseDoc?.creatorId ?? null;
-            }
-            const assignmentForCreator = active.find((a) => a.assignedBy === creatorId);
-            if (assignmentForCreator && creatorId) {
-              setProgramChoiceCourse(course);
-              setProgramChoiceAssignmentId(assignmentForCreator.id);
-              setProgramChoiceVisible(true);
-            } else {
-              goToWorkout(course);
-            }
-          } catch (e) {
-            logger.warn('[MainScreen.web] program choice check failed', e);
-            goToWorkout(course);
-          }
-        })();
+        handleTapCourse(params.course);
         return;
       }
 
@@ -89,25 +86,9 @@ const MainScreen = () => {
       }
     },
     setParams: () => {},
-  }), [userId, navigate, goToWorkout]);
+  }), [navigate, goToWorkout, handleTapCourse]);
 
   const route = { params: {} };
-
-  const handleCloseChoice = useCallback(() => {
-    setProgramChoiceVisible(false);
-    setProgramChoiceCourse(null);
-    setProgramChoiceAssignmentId(null);
-  }, []);
-
-  const handleChooseTraining = useCallback(() => {
-    if (programChoiceCourse) goToWorkout(programChoiceCourse);
-    handleCloseChoice();
-  }, [programChoiceCourse, goToWorkout, handleCloseChoice]);
-
-  const handleChooseNutrition = useCallback(() => {
-    goToNutrition(programChoiceAssignmentId);
-    handleCloseChoice();
-  }, [programChoiceAssignmentId, goToNutrition, handleCloseChoice]);
 
   return (
     <NavigationContainer independent={true}>
@@ -125,4 +106,3 @@ const MainScreen = () => {
 };
 
 export default MainScreen;
-

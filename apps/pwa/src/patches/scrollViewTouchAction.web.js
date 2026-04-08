@@ -5,6 +5,9 @@
  * - Vertical ScrollView → touch-action: pan-y, overscrollBehavior: contain
  * - Horizontal ScrollView / FlatList → touch-action: pan-x, overscrollBehavior: contain
  * - FlatList gets the same so screens that use FlatList as main scroll behave like MainScreen
+ *
+ * Targets: react-native-web 0.19.x (Expo SDK 54). Remove once RNW adds built-in
+ * touch-action support or when upgrading to a version that includes it.
  */
 const RN = require('react-native');
 const React = require('react');

@@ -1,0 +1,16 @@
+/* ─── Scroll Progress ────────────────────────────────────── */
+.scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  height: 2px;
+  transform-origin: left;
+  background: linear-gradient(to right,
+    rgba(255, 255, 255, 0.15),
+    rgba(255, 255, 255, 0.50),
+    rgba(255, 255, 255, 0.15)
+  );
+  pointer-events: none;
+}

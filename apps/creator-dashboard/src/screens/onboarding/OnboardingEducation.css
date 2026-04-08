@@ -1,0 +1,168 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+
+.ob-root {
+  width: 100vw;
+  height: 100vh;
+  background: #1a1a1a;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  font-family: 'Montserrat', sans-serif;
+  perspective: 1200px;
+}
+
+.ob-grid {
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── Persistent isotipo ─────────────────────────────────── */
+.ob-isotipo-anchor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ob-isotipo-anchor img {
+  position: absolute;
+  left: 50%;
+  object-fit: contain;
+}
+
+/* ─── Welcome Screen ─────────────────────────────────────── */
+.ob-welcome {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 8vh;
+  gap: 0;
+  z-index: 10;
+}
+
+.ob-welcome-title {
+  color: rgba(255,255,255,0.9);
+  font-size: clamp(36px, 4vw, 56px);
+  font-weight: 300;
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  letter-spacing: -0.02em;
+  margin: 24px 0 0 0;
+  line-height: 1.3;
+}
+
+.ob-welcome-bold {
+  font-weight: 600;
+  color: rgba(255,255,255,1);
+}
+
+.ob-welcome-greeting {
+  color: rgba(255,255,255,0.45);
+  font-size: clamp(20px, 2.2vw, 28px);
+  font-weight: 400;
+  font-family: 'Montserrat', sans-serif;
+  text-align: center;
+  letter-spacing: 0.02em;
+  margin: 0 0 12px 0;
+}
+
+.ob-welcome-name {
+  font-weight: 600;
+  color: rgba(255,255,255,0.7);
+}
+
+.ob-welcome-cta {
+  margin-top: 32px;
+  padding: 14px 48px;
+  background: rgba(255,87,168,0.12);
+  border: 1px solid rgba(255,87,168,0.3);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.85);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: 'Montserrat', sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.ob-welcome-cta:hover {
+  background: rgba(255,87,168,0.18);
+  border-color: rgba(255,87,168,0.45);
+}
+
+/* ─── Tree separator ─────────────────────────────────────── */
+.ob-separator {
+  position: absolute;
+  top: 10%;
+  bottom: 10%;
+  right: 38%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,0.04), transparent);
+  z-index: 6;
+  pointer-events: none;
+}
+
+/* ─── Screen wrapper ─────────────────────────────────────── */
+.ob-screen-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  transform-style: preserve-3d;
+}
+
+/* ─── Hint ───────────────────────────────────────────────── */
+.ob-hint {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.ob-hint-text {
+  color: rgba(255,255,255,0.25);
+  font-size: 13px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+}
+
+/* ─── Progress bar ───────────────────────────────────────── */
+.ob-progress-track {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,0.04);
+  z-index: 10;
+}
+
+.ob-progress-fill {
+  height: 100%;
+  background: rgba(255,87,168,0.4);
+}

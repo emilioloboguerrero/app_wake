@@ -1,28 +1,102 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
-import { queryClient } from '../config/queryClient';
 import DashboardLayout from '../components/DashboardLayout';
 import PlanStructureSidebar from '../components/PlanStructureSidebar';
 import PlanWeeksGrid from '../components/PlanWeeksGrid';
 import WeekVolumeDrawer from '../components/WeekVolumeDrawer';
-import Modal from '../components/Modal';
-import Input from '../components/Input';
-import Button from '../components/Button';
 import plansService from '../services/plansService';
 import libraryService from '../services/libraryService';
 import propagationService from '../services/propagationService';
-import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
-import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import ContextualHint from '../components/hints/ContextualHint';
+import '../components/PropagateChangesModal.css';
+import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
+import { ShimmerSkeleton, FullScreenError, GlowingEffect } from '../components/ui';
+import { cacheConfig } from '../config/queryClient';
 import './PlanDetailScreen.css';
+import './LibrarySessionDetailScreen.css';
+
+const SPRING_EASE = [0.22, 1, 0.36, 1];
+
+const PlanDetailSkeleton = () => (
+  <DashboardLayout screenName="Plan">
+    <div className="plan-page" style={{ maxWidth: 'none', padding: '24px 32px 48px' }}>
+      {/* Toolbar */}
+      <div className="plan-page-toolbar">
+        <ShimmerSkeleton width="120px" height="32px" borderRadius="999px" />
+      </div>
+      {/* Two-column layout */}
+      <div className="plan-structure-layout">
+        {/* Left sidebar */}
+        <div className="plan-structure-sidebars" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <div style={{ paddingBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <ShimmerSkeleton width="160px" height="18px" borderRadius="4px" />
+            </div>
+            <div style={{ padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <ShimmerSkeleton width="100%" height="36px" borderRadius="8px" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 16 }}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <ShimmerSkeleton key={i} width="100%" height="42px" borderRadius="8px" />
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Right main — weeks grid */}
+        <div className="plan-structure-main">
+          {/* Grid header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <ShimmerSkeleton width="110px" height="40px" borderRadius="999px" />
+            <ShimmerSkeleton width="140px" height="40px" borderRadius="999px" />
+          </div>
+          {/* Day labels */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10, padding: '0 14px 8px' }}>
+            {Array.from({ length: 7 }).map((_, i) => (
+              <ShimmerSkeleton key={i} width="100%" height="14px" borderRadius="4px" />
+            ))}
+          </div>
+          {/* Week blocks */}
+          {Array.from({ length: 3 }).map((_, wi) => (
+            <div key={wi} style={{
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 12,
+              marginBottom: 16,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                <ShimmerSkeleton width="80px" height="16px" borderRadius="4px" />
+                <ShimmerSkeleton width="28px" height="28px" borderRadius="6px" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 10, padding: 14 }}>
+                {Array.from({ length: 7 }).map((_, di) => (
+                  <div key={di} style={{ minHeight: 44 }}>
+                    {di % 3 !== 2 && (
+                      <ShimmerSkeleton width="100%" height={di % 2 === 0 ? '56px' : '44px'} borderRadius="8px" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </DashboardLayout>
+);
 
 const PlanDetailScreen = () => {
   const { planId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [planTitle, setPlanTitle] = useState('');
   const [planDescription, setPlanDescription] = useState('');
@@ -30,17 +104,20 @@ const PlanDetailScreen = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [modulesWithSessions, setModulesWithSessions] = useState([]);
   const [structureSearchQuery, setStructureSearchQuery] = useState('');
-  const [isPropagateModalOpen, setIsPropagateModalOpen] = useState(false);
-  const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
-  const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
-  const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
-  const [isPropagating, setIsPropagating] = useState(false);
-  const [hasMadeChanges, setHasMadeChanges] = useState(false);
   const [isAddingWeek, setIsAddingWeek] = useState(false);
   const [weekVolumeDrawerOpen, setWeekVolumeDrawerOpen] = useState(false);
   const [selectedWeekModuleIdForVolume, setSelectedWeekModuleIdForVolume] = useState('');
   const [weekVolumeLoading, setWeekVolumeLoading] = useState(false);
   const [weekVolumeMuscleVolumes, setWeekVolumeMuscleVolumes] = useState({});
+  const [compareWeekModuleId, setCompareWeekModuleId] = useState('');
+  const [compareVolumes, setCompareVolumes] = useState({});
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [hasMadeChanges, setHasMadeChanges] = useState(!!location.state?.planHasChanges);
+  const [isNavigateModalOpen, setIsNavigateModalOpen] = useState(false);
+  const [propagateAffectedCount, setPropagateAffectedCount] = useState(0);
+  const [propagateAffectedUsers, setPropagateAffectedUsers] = useState([]);
+  const [propagateProgramCount, setPropagateProgramCount] = useState(0);
+  const [isPropagating, setIsPropagating] = useState(false);
 
   const isNew = planId === 'new';
 
@@ -48,6 +125,9 @@ const PlanDetailScreen = () => {
     queryKey: ['plans', planId],
     queryFn: () => plansService.getPlanById(planId),
     enabled: !!user && !!planId && planId !== 'new',
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: modulesData, isLoading: modulesLoading } = useQuery({
@@ -58,14 +138,15 @@ const PlanDetailScreen = () => {
         await plansService.createModule(planId, 'Semana 1', 0);
         mods = await plansService.getModulesByPlan(planId);
       }
-      return await Promise.all(
-        mods.map(async (m) => {
-          const sessions = await plansService.getSessionsByModule(planId, m.id);
-          return { ...m, sessions };
-        })
-      );
+      return mods.map((m) => ({
+        ...m,
+        sessions: (m.sessions ?? []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+      }));
     },
     enabled: !!user && !!planId && planId !== 'new',
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const loading = planLoading || modulesLoading;
@@ -99,8 +180,9 @@ const PlanDetailScreen = () => {
       await plansService.createModule(planId, `Semana ${nextNum}`, nextOrder);
       await queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
       setHasMadeChanges(true);
+      showToast('Semana añadida', 'success');
     } catch (err) {
-      alert(err.message || 'Error al añadir semana');
+      showToast(err.message || 'No pudimos añadir la semana. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingWeek(false);
     }
@@ -117,7 +199,7 @@ const PlanDetailScreen = () => {
       });
       navigate(`/plans/${p.id}`, { replace: true });
     } catch (err) {
-      alert(err.message || 'Error al crear el plan');
+      showToast(err.message || 'No pudimos crear el plan. Intenta de nuevo.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -134,9 +216,9 @@ const PlanDetailScreen = () => {
       });
       setIsEditModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ['plans', planId] });
-      setHasMadeChanges(true);
+      showToast('Plan actualizado', 'success');
     } catch (err) {
-      alert(err.message || 'Error al guardar');
+      showToast(err.message || 'No pudimos guardar los cambios. Intenta de nuevo.', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -148,8 +230,8 @@ const PlanDetailScreen = () => {
   };
 
   const handleDeleteWeek = () => {
-    setHasMadeChanges(true);
     queryClient.invalidateQueries({ queryKey: ['plans', planId, 'modules'] });
+    setHasMadeChanges(true);
   };
 
   const weekVolumeWeekOptions = React.useMemo(
@@ -161,65 +243,76 @@ const PlanDetailScreen = () => {
     [modulesWithSessions]
   );
 
+  // Volume computation helper: reads exercises from plan sessions directly (new model)
+  // Falls back to library resolution for legacy sessions with librarySessionRef
+  const computeVolumeForModule = useCallback(async (moduleId, cancelled) => {
+    const mod = modulesWithSessions.find((m) => m.id === moduleId);
+    const sessions = mod?.sessions ?? [];
+    if (sessions.length === 0) return {};
+
+    const allExercises = [];
+    const libraryIds = new Set();
+
+    for (const session of sessions) {
+      // New model: session has exercises directly
+      if (session.exercises?.length > 0) {
+        session.exercises.forEach((ex) => {
+          allExercises.push(ex);
+          getPrimaryReferences(ex).forEach(({ libraryId }) => { if (libraryId) libraryIds.add(libraryId); });
+        });
+        continue;
+      }
+      // Legacy: resolve from library session
+      const ref = session.source_library_session_id ?? session.librarySessionRef;
+      if (!ref) continue;
+      const libSession = await libraryService.getLibrarySessionById(user.uid, ref);
+      if (cancelled?.current) return {};
+      if (libSession?.exercises?.length) {
+        libSession.exercises.forEach((ex) => {
+          allExercises.push(ex);
+          getPrimaryReferences(ex).forEach(({ libraryId }) => { if (libraryId) libraryIds.add(libraryId); });
+        });
+      }
+    }
+
+    if (cancelled?.current) return {};
+    const libraryDataCache = {};
+    for (const libraryId of libraryIds) {
+      const lib = await libraryService.getLibraryById(libraryId);
+      if (cancelled?.current) return {};
+      if (lib) libraryDataCache[libraryId] = lib;
+    }
+    return computePlannedMuscleVolumes(allExercises, libraryDataCache);
+  }, [modulesWithSessions, user?.uid]);
+
   useEffect(() => {
     if (!weekVolumeDrawerOpen || !selectedWeekModuleIdForVolume || !user?.uid || !planId) {
       if (!weekVolumeDrawerOpen) setWeekVolumeMuscleVolumes({});
       return;
     }
-    const mod = modulesWithSessions.find((m) => m.id === selectedWeekModuleIdForVolume);
-    const sessions = mod?.sessions ?? [];
-    if (sessions.length === 0) {
-      setWeekVolumeMuscleVolumes({});
+    const cancelled = { current: false };
+    setWeekVolumeLoading(true);
+    computeVolumeForModule(selectedWeekModuleIdForVolume, cancelled)
+      .then((volumes) => { if (!cancelled.current) setWeekVolumeMuscleVolumes(volumes); })
+      .catch((err) => { logger.warn('[PlanDetail] Week volume load failed:', err); if (!cancelled.current) setWeekVolumeMuscleVolumes({}); })
+      .finally(() => { if (!cancelled.current) setWeekVolumeLoading(false); });
+    return () => { cancelled.current = true; };
+  }, [weekVolumeDrawerOpen, selectedWeekModuleIdForVolume, user?.uid, planId, computeVolumeForModule]);
+
+  // Comparison volume computation
+  useEffect(() => {
+    if (!weekVolumeDrawerOpen || !compareWeekModuleId || !user?.uid || !planId) {
+      if (!compareWeekModuleId) setCompareVolumes({});
       return;
     }
-    let cancelled = false;
-    setWeekVolumeLoading(true);
-    (async () => {
-      try {
-        const allExercises = [];
-        const libraryIds = new Set();
-        for (const session of sessions) {
-          const ref = session.librarySessionRef;
-          if (!ref) continue;
-          const libSession = await libraryService.getLibrarySessionById(user.uid, ref);
-          if (cancelled) return;
-          if (libSession?.exercises?.length) {
-            libSession.exercises.forEach((ex) => {
-              allExercises.push(ex);
-              getPrimaryReferences(ex).forEach(({ libraryId }) => {
-                if (libraryId) libraryIds.add(libraryId);
-              });
-            });
-          }
-        }
-        if (cancelled) return;
-        const libraryDataCache = {};
-        for (const libraryId of libraryIds) {
-          const lib = await libraryService.getLibraryById(libraryId);
-          if (cancelled) return;
-          if (lib) libraryDataCache[libraryId] = lib;
-        }
-        if (cancelled) return;
-        const volumes = computePlannedMuscleVolumes(allExercises, libraryDataCache);
-        setWeekVolumeMuscleVolumes(volumes);
-      } catch (err) {
-        logger.warn('[PlanDetail] Week volume load failed:', err);
-        if (!cancelled) setWeekVolumeMuscleVolumes({});
-      } finally {
-        if (!cancelled) setWeekVolumeLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    weekVolumeDrawerOpen,
-    selectedWeekModuleIdForVolume,
-    user?.uid,
-    planId,
-    modulesWithSessions,
-    libraryService,
-  ]);
+    const cancelled = { current: false };
+    setCompareLoading(true);
+    computeVolumeForModule(compareWeekModuleId, cancelled)
+      .then((volumes) => { if (!cancelled.current) setCompareVolumes(volumes); })
+      .catch((err) => { logger.warn('[PlanDetail] Compare volume load failed:', err); if (!cancelled.current) setCompareVolumes({}); })
+      .finally(() => { if (!cancelled.current) setCompareLoading(false); });
+    return () => { cancelled.current = true; };
+  }, [weekVolumeDrawerOpen, compareWeekModuleId, user?.uid, planId, computeVolumeForModule]);
 
   const openWeekVolumeDrawer = useCallback(() => {
     if (modulesWithSessions.length > 0) {
@@ -231,157 +324,84 @@ const PlanDetailScreen = () => {
 
   const contentReturnState = { activeTab: 'contenido' };
 
-  const handleBack = () => {
-    if (hasMadeChanges && propagateAffectedCount > 0) {
-      setIsNavigateModalOpen(true);
-    } else {
-      navigate('/content', { state: contentReturnState });
-    }
-  };
-
-  const handleOpenPropagateModal = async () => {
-    if (!planId) return;
-    try {
-      const { affectedUserIds } = await propagationService.findAffectedByPlan(planId);
-      setPropagateAffectedCount(affectedUserIds.length);
-      const users = await propagationService.getAffectedUsersWithDetailsByPlan(planId);
-      setPropagateAffectedUsers(users);
-      setIsPropagateModalOpen(true);
-    } catch (err) {
-      logger.error('Error finding affected users:', err);
-      alert('Error al comprobar usuarios afectados.');
-    }
-  };
-
-  const handlePropagatePlan = async () => {
-    if (!planId) return;
-    setIsPropagating(true);
-    try {
-      const { propagated, errors } = await propagationService.propagatePlan(planId);
-      if (errors.length > 0) {
-        logger.warn('Propagation had some errors:', errors);
-        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
-      } else if (propagated > 0) {
-        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
-      }
-      setHasMadeChanges(false);
-    } catch (err) {
-      logger.error('Error propagating:', err);
-      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
-    } finally {
-      setIsPropagating(false);
-    }
-  };
-
+  // Fetch affected count on mount
   useEffect(() => {
-    if (!planId || !hasMadeChanges) return;
+    if (!planId || planId === 'new') return;
+    let cancelled = false;
     propagationService.findAffectedByPlan(planId)
-      .then(({ affectedUserIds }) => setPropagateAffectedCount(affectedUserIds.length))
-      .catch((err) => logger.warn('Error fetching affected count:', err));
-  }, [planId, hasMadeChanges]);
+      .then((result) => {
+        if (cancelled) return;
+        setPropagateAffectedCount(result.affectedUserIds?.length ?? 0);
+        setPropagateProgramCount(result.programCount ?? 0);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [planId]);
 
+  // Block browser close when unpropagated changes exist
   useEffect(() => {
-    if (!isNavigateModalOpen || !planId || propagateAffectedCount === 0) return;
-    if (propagateAffectedUsers.length > 0) return;
-    propagationService.getAffectedUsersWithDetailsByPlan(planId)
-      .then(setPropagateAffectedUsers)
-      .catch((err) => logger.warn('Error fetching affected users:', err));
-  }, [isNavigateModalOpen, planId, propagateAffectedCount, propagateAffectedUsers.length]);
-
-  useEffect(() => {
-    const shouldBlock = hasMadeChanges && propagateAffectedCount > 0;
-    const handler = (e) => {
-      if (shouldBlock) {
-        e.preventDefault();
-        e.returnValue = '';
-      }
-    };
-    if (shouldBlock) {
-      window.addEventListener('beforeunload', handler);
-    }
+    if (!hasMadeChanges || propagateAffectedCount === 0) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [hasMadeChanges, propagateAffectedCount]);
 
-  const handleNavigatePropagate = async () => {
-    await handlePropagatePlan();
-    setIsNavigateModalOpen(false);
-    navigate('/content', { state: contentReturnState });
+  const handlePropagate = async () => {
+    if (!planId) return;
+    setHasMadeChanges(false);
+    showToast('Propagando cambios...', 'info', 10000);
+    propagationService.propagatePlan(planId)
+      .then((result) => {
+        const count = result?.propagated ?? 0;
+        showToast(count > 0 ? `Cambios propagados a ${count} copia(s).` : 'No habia copias para actualizar.', 'success');
+      })
+      .catch((err) => {
+        logger.error('Error propagating plan:', err);
+        setHasMadeChanges(true);
+        showToast('Error al propagar.', 'error', 6000, {
+          action: { label: 'Reintentar', onClick: handlePropagate },
+        });
+      });
   };
 
-  const handleNavigateLeaveWithoutPropagate = () => {
-    setIsNavigateModalOpen(false);
-    setHasMadeChanges(false);
-    navigate('/content', { state: contentReturnState });
+  const handleBack = () => {
+    if (hasMadeChanges && propagateAffectedCount > 0) {
+      // Fetch user details for modal
+      propagationService.getAffectedUsersWithDetailsByPlan(planId)
+        .then((users) => setPropagateAffectedUsers(users))
+        .catch(() => {});
+      setIsNavigateModalOpen(true);
+    } else {
+      navigate('/biblioteca', { state: contentReturnState });
+    }
   };
+
 
   if (!user) {
-    return (
-      <DashboardLayout screenName="Nuevo plan">
-        <div className="plan-page">
-          <div className="plan-loading">Cargando...</div>
-        </div>
-      </DashboardLayout>
-    );
+    return <PlanDetailSkeleton />;
   }
 
   if (planId === 'new') {
-    return (
-      <DashboardLayout screenName="Nuevo plan">
-        <div className="plan-page plan-page--new">
-          <nav className="plan-breadcrumb">
-            <button type="button" className="plan-breadcrumb-link" onClick={handleBack}>
-              Contenido
-            </button>
-            <span className="plan-breadcrumb-sep">/</span>
-            <span className="plan-breadcrumb-current">Nuevo plan</span>
-          </nav>
-          <div className="plan-card">
-            <h1 className="plan-card-title">Crear nuevo plan</h1>
-            <p className="plan-card-subtitle">Define el título y la disciplina de tu plan. Después podrás añadir semanas, sesiones y ejercicios.</p>
-            <div className="plan-form">
-              <div className="plan-form-field">
-                <label>Título *</label>
-                <Input value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} placeholder="Ej: Plan de 8 semanas" light />
-              </div>
-              <div className="plan-form-field">
-                <label>Descripción</label>
-                <Input value={planDescription} onChange={(e) => setPlanDescription(e.target.value)} placeholder="Descripción opcional" light />
-              </div>
-              <div className="plan-form-field">
-                <label>Disciplina</label>
-                <Input value={planDiscipline} onChange={(e) => setPlanDiscipline(e.target.value)} placeholder="Ej: Fuerza, Hipertrofia" light />
-              </div>
-              <div className="plan-form-actions">
-                <Button title={isSaving ? 'Creando...' : 'Crear plan'} onClick={handleCreatePlan} disabled={!planTitle.trim() || isSaving} loading={isSaving} />
-                <button type="button" className="plan-btn plan-btn--secondary" onClick={handleBack}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
+    navigate('/biblioteca?domain=entrenamiento&tab=planes', { replace: true });
+    return null;
   }
 
   if (loading) {
-    return (
-      <DashboardLayout screenName="Plan">
-        <div className="plan-page">
-          <div className="plan-loading">Cargando...</div>
-        </div>
-      </DashboardLayout>
-    );
+    return <PlanDetailSkeleton />;
   }
 
   if (error || (!loading && !plan)) {
     return (
       <DashboardLayout screenName="Plan">
         <div className="plan-page">
-          <div className="plan-error">
-            <p>{error || 'Plan no encontrado'}</p>
-            <button type="button" className="plan-btn plan-btn--primary" onClick={handleBack}>
-              Volver a Contenido
+          <FullScreenError
+            title="Plan no encontrado"
+            message={error || 'No pudimos cargar este plan.'}
+            onRetry={() => queryClient.invalidateQueries({ queryKey: ['plans', planId] })}
+          />
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+            <button type="button" className="plan-btn plan-btn--secondary" onClick={handleBack}>
+              Volver a Biblioteca
             </button>
           </div>
         </div>
@@ -396,28 +416,44 @@ const PlanDetailScreen = () => {
       backPath="/content"
       onBack={handleBack}
       onHeaderEditClick={() => setIsEditModalOpen(true)}
-    >
-      <div className="plan-page">
-        <div className="plan-page-toolbar">
-          {hasMadeChanges && propagateAffectedCount > 0 && (
-            <button
-              type="button"
-              className="plan-propagate-button"
-              onClick={handleOpenPropagateModal}
-              title="Propagar cambios del plan a los usuarios que lo tienen asignado"
-            >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17 1L21 5L17 9M3 11V16C3 16.5304 3.21071 17.0391 3.58579 17.4142C3.96086 17.7893 4.46957 18 5 18H16M21 5H9C7.93913 5 6.92172 5.42143 6.17157 6.17157C5.42143 6.92172 5 7.93913 5 9V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      headerRight={hasMadeChanges && propagateAffectedCount > 0 ? (
+        <div className="library-session-propagate-group">
+          <button
+            type="button"
+            className="library-session-propagate-button"
+            onClick={handlePropagate}
+            disabled={isPropagating}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            Propagar a usuarios
+            {isPropagating ? 'Propagando...' : `Propagar a ${propagateAffectedCount} cliente(s)`}
           </button>
-          )}
+          <button
+            type="button"
+            className="library-session-propagate-dismiss"
+            onClick={() => setHasMadeChanges(false)}
+            title="Descartar"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         </div>
+      ) : null}
+    >
+      <motion.div
+        className="plan-page"
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42, ease: SPRING_EASE }}
+      >
+        <div className="plan-page-toolbar" />
         <div className="plan-structure-layout">
           <div className="plan-structure-sidebars">
+            <GlowingEffect spread={30} proximity={100} borderWidth={1} />
             <PlanStructureSidebar
               creatorId={user.uid}
-              libraryService={libraryService}
               searchQuery={structureSearchQuery}
               onSearchChange={setStructureSearchQuery}
             />
@@ -430,7 +466,7 @@ const PlanDetailScreen = () => {
               onDeleteWeek={handleDeleteWeek}
               onModulesChange={handleModulesChange}
               onSessionClick={(moduleId, sessionId) =>
-                navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}`)
+                navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`)
               }
               plansService={plansService}
               libraryService={libraryService}
@@ -441,27 +477,6 @@ const PlanDetailScreen = () => {
           </div>
         </div>
 
-        <PropagateChangesModal
-          isOpen={isPropagateModalOpen}
-          onClose={() => setIsPropagateModalOpen(false)}
-          type="plan"
-          itemName={plan?.title}
-          affectedCount={propagateAffectedCount}
-          affectedUsers={propagateAffectedUsers}
-          isPropagating={isPropagating}
-          onPropagate={handlePropagatePlan}
-        />
-        <PropagateNavigateModal
-          isOpen={isNavigateModalOpen}
-          onClose={() => setIsNavigateModalOpen(false)}
-          type="plan"
-          itemName={plan?.title}
-          affectedCount={propagateAffectedCount}
-          affectedUsers={propagateAffectedUsers}
-          isPropagating={isPropagating}
-          onPropagate={handleNavigatePropagate}
-          onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
-        />
         <WeekVolumeDrawer
           isOpen={weekVolumeDrawerOpen}
           onClose={() => setWeekVolumeDrawerOpen(false)}
@@ -475,27 +490,94 @@ const PlanDetailScreen = () => {
           emptyMessage="Añade sesiones con ejercicios (e intensidad ≥7) a esta semana para ver el volumen por músculo."
           variant="card"
           weekSelectorStyle="list"
+          compareWeekValue={compareWeekModuleId}
+          onCompareWeekChange={setCompareWeekModuleId}
+          compareVolumes={compareVolumes}
+          compareLoading={compareLoading}
         />
-        <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Editar plan">
-          <div className="plan-modal-body">
-            <div className="plan-form-field">
-              <label>Título *</label>
-              <Input value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} placeholder="Título del plan" light />
-            </div>
-            <div className="plan-form-field">
-              <label>Descripción</label>
-              <Input value={planDescription} onChange={(e) => setPlanDescription(e.target.value)} placeholder="Descripción" light />
-            </div>
-            <div className="plan-form-field">
-              <label>Disciplina</label>
-              <Input value={planDiscipline} onChange={(e) => setPlanDiscipline(e.target.value)} placeholder="Ej: Fuerza" light />
-            </div>
-            <div className="plan-modal-actions">
-              <Button title={isSaving ? 'Guardando...' : 'Guardar'} onClick={handleSavePlan} disabled={!planTitle.trim() || isSaving} loading={isSaving} />
+        {isEditModalOpen && (
+          <div className="cfo-overlay" onClick={!isSaving ? () => setIsEditModalOpen(false) : undefined}>
+            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
+              <GlowingEffect spread={40} borderWidth={1} />
+              <div className="cfo-topbar">
+                <div />
+                {!isSaving && (
+                  <button type="button" className="cfo-close" onClick={() => setIsEditModalOpen(false)} aria-label="Cerrar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+              <div className="cfo-body">
+                <div className="cfo-step" key="edit-plan">
+                  <div className="cfo-step__header">
+                    <h1 className="cfo-step__title">Editar plan</h1>
+                    <p className="cfo-step__desc">Actualiza el nombre, descripción o disciplina.</p>
+                  </div>
+                  <div className="cfo-step__content">
+                    <input
+                      className="cfo-name-input"
+                      type="text"
+                      placeholder="Título del plan"
+                      value={planTitle}
+                      onChange={(e) => setPlanTitle(e.target.value)}
+                      maxLength={80}
+                      autoFocus
+                    />
+                    <textarea
+                      className="cfo-desc-input"
+                      placeholder="Descripción (opcional)"
+                      value={planDescription}
+                      onChange={(e) => setPlanDescription(e.target.value)}
+                      rows={2}
+                    />
+                    <input
+                      className="cfo-name-input"
+                      type="text"
+                      placeholder="Disciplina — Ej: Fuerza"
+                      value={planDiscipline}
+                      onChange={(e) => setPlanDiscipline(e.target.value)}
+                      maxLength={40}
+                      style={{ fontSize: 'clamp(13px, 3vw, 15px)', fontWeight: 500 }}
+                    />
+                  </div>
+                  <div className="cfo-footer" style={{ justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      className="cfo-next-btn"
+                      onClick={handleSavePlan}
+                      disabled={!planTitle.trim() || isSaving}
+                    >
+                      {isSaving ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </Modal>
-      </div>
+        )}
+
+        <PropagateNavigateModal
+          isOpen={isNavigateModalOpen}
+          onClose={() => setIsNavigateModalOpen(false)}
+          type="plan"
+          itemName={plan?.title || 'Este plan'}
+          affectedCount={propagateAffectedCount}
+          affectedUsers={propagateAffectedUsers}
+          programCount={propagateProgramCount}
+          isPropagating={isPropagating}
+          onPropagate={async () => {
+            await handlePropagate();
+            setIsNavigateModalOpen(false);
+            navigate('/biblioteca', { state: contentReturnState });
+          }}
+          onLeaveWithoutPropagate={() => {
+            setHasMadeChanges(false);
+            setIsNavigateModalOpen(false);
+            navigate('/biblioteca', { state: contentReturnState });
+          }}
+        />
+      </motion.div>
+      <ContextualHint screenKey="plan-detail" />
     </DashboardLayout>
   );
 };

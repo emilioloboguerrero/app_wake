@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import eventService from '../services/eventService';
@@ -34,7 +35,7 @@ export default function EventsManagementScreen() {
     queryKey: eventsQueryKey,
     queryFn: () => eventService.getEventsByCreator(user.uid),
     enabled: !!user?.uid,
-    staleTime: 2 * 60 * 1000,
+    staleTime: STALE_TIMES.clientList,
   });
 
   const toggleStatusMutation = useMutation({

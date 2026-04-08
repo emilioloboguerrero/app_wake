@@ -1,7 +1,6 @@
 // Web wrapper for WorkoutCompletionScreen - provides React Router navigation
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import logger from '../utils/logger';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from './LoadingScreen';
 
@@ -23,8 +22,6 @@ const WorkoutCompletionScreen = () => {
   // Create navigation adapter
   const navigation = {
     navigate: (routeName, params) => {
-      logger.log('🧭 [WorkoutCompletion Web] Navigating to:', routeName, params);
-      
       const routeMap = {
         'DailyWorkout': () => {
           const cId = params?.course?.courseId || params?.course?.id || courseId;
@@ -43,7 +40,6 @@ const WorkoutCompletionScreen = () => {
     },
     goBack: () => navigate(-1),
     setParams: (params) => {
-      logger.log('🧭 [WorkoutCompletion Web] setParams:', params);
     },
   };
   

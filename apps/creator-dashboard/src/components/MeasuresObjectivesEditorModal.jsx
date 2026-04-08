@@ -11,29 +11,32 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import Modal from './Modal';
 import '../screens/ProgramDetailScreen.css';
+import '../screens/SharedScreenLayout.css';
+import './MeasuresObjectivesEditorModal.css';
 
 const getMeasureDisplayNameDefault = (measure, customMeasureLabels = {}) => {
   if (customMeasureLabels[measure]) return customMeasureLabels[measure];
   if (measure === 'reps') return 'Repeticiones';
   if (measure === 'weight') return 'Peso';
+  if (measure === 'intensity') return 'RPE';
   return measure;
 };
 
 const getObjectiveDisplayNameDefault = (objective, customObjectiveLabels = {}) => {
   if (customObjectiveLabels[objective]) return customObjectiveLabels[objective];
   if (objective === 'reps') return 'Repeticiones';
-  if (objective === 'intensity') return 'Intensidad';
+  if (objective === 'intensity') return 'RPE';
   if (objective === 'previous') return 'Anterior';
   return objective;
 };
 
 const generateCustomId = () => 'custom_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
 
-const BUILTIN_MEASURES = [{ id: 'reps', label: 'Repeticiones' }, { id: 'weight', label: 'Peso' }];
+const BUILTIN_MEASURES = [{ id: 'reps', label: 'Repeticiones' }, { id: 'weight', label: 'Peso' }, { id: 'intensity', label: 'RPE' }];
 // 'previous' (Anterior) is always included when saving; hidden from UI
 const BUILTIN_OBJECTIVES = [
   { id: 'reps', label: 'Repeticiones' },
-  { id: 'intensity', label: 'Intensidad' },
+  { id: 'intensity', label: 'RPE' },
 ];
 const OBJECTIVE_PREVIOUS = 'previous';
 

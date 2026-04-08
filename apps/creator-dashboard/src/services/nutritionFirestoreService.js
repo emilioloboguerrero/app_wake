@@ -1,236 +1,199 @@
-/**
- * Nutrition Firestore service — creator meal/plan library, assignments, user diary.
- * Paths: creator_nutrition_library/{creatorId}/meals|plans, nutrition_assignments, users/{userId}/diary
- */
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { firestore } from '../config/firebase';
+import apiClient from '../utils/apiClient';
 
-const MEALS = 'meals';
-const PLANS = 'plans';
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function mealsRef(creatorId) {
-  return collection(firestore, 'creator_nutrition_library', creatorId, MEALS);
+function shapePlanFromApi(p) {
+  if (!p) return null;
+  return {
+    id: p.planId ?? null,
+    name: p.name ?? null,
+    description: p.description ?? null,
+    daily_calories: p.daily_calories ?? null,
+    daily_protein_g: p.daily_protein_g ?? null,
+    daily_carbs_g: p.daily_carbs_g ?? null,
+    daily_fat_g: p.daily_fat_g ?? null,
+    categories: p.categories ?? [],
+    created_at: p.created_at ?? null,
+    updated_at: p.updated_at ?? null,
+  };
 }
 
-function planRef(creatorId, planId) {
-  return doc(firestore, 'creator_nutrition_library', creatorId, PLANS, planId);
+// ─── Meals ────────────────────────────────────────────────────────────────────
+
+export async function getMealsByCreator(_creatorId) {
+  const result = await apiClient.get('/creator/nutrition/meals');
+  return (result?.data ?? []).map((m) => ({ ...m, id: m.mealId }));
 }
 
-function plansRef(creatorId) {
-  return collection(firestore, 'creator_nutrition_library', creatorId, PLANS);
+export async function getMealById(_creatorId, mealId) {
+  const result = await apiClient.get(`/creator/nutrition/meals/${mealId}`);
+  return result?.data ? { ...result.data, id: result.data.mealId } : null;
 }
 
-function assignmentsRef() {
-  return collection(firestore, 'nutrition_assignments');
-}
-
-function diaryRef(userId) {
-  return collection(firestore, 'users', userId, 'diary');
-}
-
-/**
- * Meals
- */
-export async function getMealsByCreator(creatorId) {
-  const q = query(mealsRef(creatorId), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-}
-
-export async function getMealById(creatorId, mealId) {
-  const ref = doc(firestore, 'creator_nutrition_library', creatorId, MEALS, mealId);
-  const d = await getDoc(ref);
-  return d.exists() ? { id: d.id, ...d.data() } : null;
-}
-
-export async function createMeal(creatorId, data) {
-  const ref = await addDoc(mealsRef(creatorId), {
+export async function createMeal(_creatorId, data) {
+  const result = await apiClient.post('/creator/nutrition/meals', {
     name: data.name ?? '',
-    creatorId,
     items: data.items ?? [],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    ...(data.description !== undefined ? { description: data.description } : {}),
+    ...(data.video_url !== undefined ? { video_url: data.video_url } : {}),
+    ...(data.videoUrl !== undefined ? { video_url: data.videoUrl } : {}),
   });
-  return ref.id;
+  return result?.data?.mealId;
 }
 
-export async function updateMeal(creatorId, mealId, data) {
-  const ref = doc(firestore, 'creator_nutrition_library', creatorId, MEALS, mealId);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+export async function updateMeal(_creatorId, mealId, data) {
+  const body = {};
+  if (data.name !== undefined) body.name = data.name;
+  if (data.description !== undefined) body.description = data.description;
+  if (data.video_url !== undefined) body.video_url = data.video_url;
+  if (data.videoUrl !== undefined) body.video_url = data.videoUrl;
+  if (data.items !== undefined) body.items = data.items;
+  await apiClient.patch(`/creator/nutrition/meals/${mealId}`, body);
 }
 
-export async function deleteMeal(creatorId, mealId) {
-  const ref = doc(firestore, 'creator_nutrition_library', creatorId, MEALS, mealId);
-  await deleteDoc(ref);
+export async function deleteMeal(_creatorId, mealId) {
+  await apiClient.delete(`/creator/nutrition/meals/${mealId}`);
 }
 
-/**
- * Plans
- */
-export async function getPlansByCreator(creatorId) {
-  const q = query(plansRef(creatorId), orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+// ─── Plans ────────────────────────────────────────────────────────────────────
+
+export async function getPlansByCreator(_creatorId) {
+  const result = await apiClient.get('/creator/nutrition/plans');
+  return (result?.data ?? []).map((p) => ({ ...shapePlanFromApi(p), id: p.planId }));
 }
 
-export async function getPlanById(creatorId, planId) {
-  const d = await getDoc(planRef(creatorId, planId));
-  return d.exists() ? { id: d.id, ...d.data() } : null;
+export async function getPlanById(_creatorId, planId) {
+  const result = await apiClient.get(`/creator/nutrition/plans/${planId}`);
+  return result?.data ? { ...shapePlanFromApi(result.data), id: result.data.planId } : null;
 }
 
-export async function createPlan(creatorId, data) {
-  const ref = await addDoc(plansRef(creatorId), {
+export async function createPlan(_creatorId, data) {
+  const result = await apiClient.post('/creator/nutrition/plans', {
     name: data.name ?? '',
     description: data.description ?? '',
-    creatorId,
-    tags: data.tags ?? [],
-    daily_calories: data.daily_calories ?? null,
-    daily_protein_g: data.daily_protein_g ?? null,
-    daily_carbs_g: data.daily_carbs_g ?? null,
-    daily_fat_g: data.daily_fat_g ?? null,
     categories: data.categories ?? [],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    ...(data.daily_calories != null ? { daily_calories: data.daily_calories } : {}),
+    ...(data.daily_protein_g != null ? { daily_protein_g: data.daily_protein_g } : {}),
+    ...(data.daily_carbs_g != null ? { daily_carbs_g: data.daily_carbs_g } : {}),
+    ...(data.daily_fat_g != null ? { daily_fat_g: data.daily_fat_g } : {}),
   });
-  return ref.id;
+  return result?.data?.planId;
 }
 
-export async function updatePlan(creatorId, planId, data) {
-  const ref = planRef(creatorId, planId);
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+export async function updatePlan(_creatorId, planId, data) {
+  const body = {};
+  if (data.name !== undefined) body.name = data.name;
+  if (data.description !== undefined) body.description = data.description;
+  if (data.categories !== undefined) body.categories = data.categories;
+  if (data.daily_calories !== undefined) body.daily_calories = data.daily_calories;
+  if (data.daily_protein_g !== undefined) body.daily_protein_g = data.daily_protein_g;
+  if (data.daily_carbs_g !== undefined) body.daily_carbs_g = data.daily_carbs_g;
+  if (data.daily_fat_g !== undefined) body.daily_fat_g = data.daily_fat_g;
+  await apiClient.patch(`/creator/nutrition/plans/${planId}`, body);
 }
 
-export async function deletePlan(creatorId, planId) {
-  await deleteDoc(planRef(creatorId, planId));
+export async function deletePlan(_creatorId, planId) {
+  await apiClient.delete(`/creator/nutrition/plans/${planId}`);
 }
 
-/**
- * Assignments
- */
-export async function getAssignmentsByUser(userId) {
-  const q = query(
-    assignmentsRef(),
-    where('userId', '==', userId),
-    orderBy('startDate', 'desc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+// ─── Assignments ──────────────────────────────────────────────────────────────
+
+export async function getAssignmentsByUser(clientId) {
+  const result = await apiClient.get(`/creator/clients/${clientId}/nutrition/assignments`);
+  return (result?.data ?? []).map((a) => ({
+    id: a.assignmentId,
+    planId: a.planId ?? null,
+    planName: a.planName ?? a.plan?.name ?? null,
+    daily_calories: a.plan?.daily_calories ?? a.daily_calories ?? null,
+    daily_protein_g: a.plan?.daily_protein_g ?? a.daily_protein_g ?? null,
+    daily_carbs_g: a.plan?.daily_carbs_g ?? a.daily_carbs_g ?? null,
+    daily_fat_g: a.plan?.daily_fat_g ?? a.daily_fat_g ?? null,
+    assignedBy: a.assignedBy ?? null,
+    startDate: a.startDate ?? null,
+    endDate: a.endDate ?? null,
+    status: a.status ?? 'active',
+    createdAt: a.createdAt ?? null,
+  }));
 }
 
-export async function getAssignmentsByCreator(creatorId) {
-  const q = query(
-    assignmentsRef(),
-    where('assignedBy', '==', creatorId),
-    orderBy('createdAt', 'desc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+export async function getAssignmentsByCreator(_creatorId) {
+  const result = await apiClient.get('/creator/nutrition/assignments');
+  return (result?.data ?? []).map((a) => ({ id: a.assignmentId, ...a }));
 }
 
 export async function createAssignment(data) {
-  const ref = await addDoc(assignmentsRef(), {
-    userId: data.userId,
-    planId: data.planId,
-    plan: data.plan ?? null,
-    assignedBy: data.assignedBy,
-    source: data.source ?? 'one_on_one',
-    programId: data.programId ?? null,
-    startDate: data.startDate ?? null,
-    endDate: data.endDate ?? null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
+  const result = await apiClient.post(
+    `/creator/clients/${data.userId}/nutrition/assignments`,
+    {
+      planId: data.planId,
+      startDate: data.startDate ?? null,
+      endDate: data.endDate ?? null,
+    },
+    { idempotent: false }
+  );
+  return result?.data?.assignmentId;
 }
 
-export async function updateAssignment(assignmentId, data) {
-  const ref = doc(firestore, 'nutrition_assignments', assignmentId);
-  await updateDoc(ref, { ...data, updatedAt: serverTimestamp() });
-}
-
-export async function deleteAssignment(assignmentId) {
-  await deleteDoc(doc(firestore, 'nutrition_assignments', assignmentId));
+export async function deleteAssignment(assignmentId, clientId) {
+  await apiClient.delete(`/creator/clients/${clientId}/nutrition/assignments/${assignmentId}`);
 }
 
 export async function getAssignmentById(assignmentId) {
   if (!assignmentId) return null;
-  const ref = doc(firestore, 'nutrition_assignments', assignmentId);
-  const d = await getDoc(ref);
-  return d.exists() ? { id: d.id, ...d.data() } : null;
+  const result = await apiClient.get(`/creator/nutrition/assignments/${assignmentId}`);
+  return result?.data ?? null;
 }
 
-/**
- * User diary
- */
-export async function getDiaryEntries(userId, date) {
-  const q = query(
-    diaryRef(userId),
-    where('date', '==', date),
-    orderBy('meal', 'asc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+export async function updateAssignment(clientId, assignmentId, data) {
+  const body = {};
+  if (data.planId !== undefined) body.planId = data.planId;
+  if (data.startDate !== undefined) body.startDate = data.startDate;
+  if (data.endDate !== undefined) body.endDate = data.endDate;
+  await apiClient.patch(`/creator/clients/${clientId}/nutrition/assignments/${assignmentId}`, body);
 }
 
-export async function getDiaryEntriesInRange(userId, startDate, endDate) {
-  const q = query(
-    diaryRef(userId),
-    where('date', '>=', startDate),
-    where('date', '<=', endDate),
-    orderBy('date', 'asc'),
-    orderBy('meal', 'asc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+// ─── User diary (creator reading client diary) ────────────────────────────────
+
+export async function getDiaryEntries(clientId, date) {
+  const result = await apiClient.get(`/creator/clients/${clientId}/nutrition/diary`, {
+    params: { date },
+  });
+  return (result?.data ?? []).map((e) => ({ id: e.entryId ?? e.id, ...e }));
 }
 
-export async function addDiaryEntry(userId, data) {
-  const ref = await addDoc(diaryRef(userId), {
-    userId,
+export async function getDiaryEntriesInRange(clientId, startDate, endDate) {
+  const result = await apiClient.get(`/creator/clients/${clientId}/nutrition/diary`, {
+    params: { startDate, endDate },
+  });
+  return (result?.data ?? []).map((e) => ({ id: e.entryId ?? e.id, ...e }));
+}
+
+export async function addDiaryEntry(_userId, data) {
+  const result = await apiClient.post(`/creator/clients/${_userId}/nutrition/diary`, {
     date: data.date,
     meal: data.meal ?? '',
     food_id: data.food_id,
-    serving_id: data.serving_id,
+    serving_id: data.serving_id ?? '0',
     number_of_units: data.number_of_units ?? 1,
     name: data.name ?? '',
+    food_category: data.food_category ?? null,
     calories: data.calories ?? null,
     protein: data.protein ?? null,
     carbs: data.carbs ?? null,
     fat: data.fat ?? null,
-    createdAt: serverTimestamp(),
-  });
-  return ref.id;
+    serving_unit: data.serving_unit ?? null,
+    grams_per_unit: data.grams_per_unit ?? null,
+    ...(data.servings ? { servings: data.servings } : {}),
+  }, { idempotent: false });
+  return result?.data?.entryId;
 }
 
-export async function deleteDiaryEntry(userId, entryId) {
-  await deleteDoc(doc(firestore, 'users', userId, 'diary', entryId));
+export async function deleteDiaryEntry(_userId, _entryId) {
+  await apiClient.delete(`/creator/clients/${_userId}/nutrition/diary/${_entryId}`);
 }
 
-/**
- * Expand recipe refs in plan categories: replace each item with recipe===true by the meal's items
- * and set recipe_meal_id, recipe_name, recipe_video_url on the option.
- * @param {string} creatorId
- * @param {Array<{ id, label, order, options: Array<{ id, label, items }> }>} categories
- * @returns {Promise<Array>} categories with expanded items and recipe metadata on options
- */
+// ─── Recipe expansion ─────────────────────────────────────────────────────────
+
 export async function expandRecipeRefsInCategories(creatorId, categories) {
   if (!creatorId || !Array.isArray(categories)) return categories;
   const result = [];
@@ -257,11 +220,7 @@ export async function expandRecipeRefsInCategories(creatorId, categories) {
           newItems.push(item);
         }
       }
-      const expandedOpt = {
-        id: opt.id,
-        label: opt.label ?? '',
-        items: newItems,
-      };
+      const expandedOpt = { id: opt.id, label: opt.label ?? '', items: newItems };
       if (recipe_meal_id != null) {
         expandedOpt.recipe_meal_id = recipe_meal_id;
         expandedOpt.recipe_name = recipe_name;
@@ -281,6 +240,46 @@ export async function expandRecipeRefsInCategories(creatorId, categories) {
     });
   }
   return result;
+}
+
+// ─── Program Nutrition Assignments ────────────────────────────────────────
+
+function shapeAssignment(a) {
+  return {
+    id: a.assignmentId,
+    planId: a.planId ?? null,
+    planName: a.planName ?? a.plan?.name ?? null,
+    daily_calories: a.plan?.daily_calories ?? a.daily_calories ?? null,
+    daily_protein_g: a.plan?.daily_protein_g ?? a.daily_protein_g ?? null,
+    daily_carbs_g: a.plan?.daily_carbs_g ?? a.daily_carbs_g ?? null,
+    daily_fat_g: a.plan?.daily_fat_g ?? a.daily_fat_g ?? null,
+    assignedBy: a.assignedBy ?? null,
+    source: a.source ?? null,
+    programId: a.programId ?? null,
+    startDate: a.startDate ?? null,
+    endDate: a.endDate ?? null,
+    status: a.status ?? 'active',
+    createdAt: a.createdAt ?? null,
+    updatedAt: a.updatedAt ?? null,
+  };
+}
+
+export async function getProgramNutritionAssignments(programId) {
+  const result = await apiClient.get(`/creator/programs/${programId}/nutrition/assignments`);
+  return (result?.data ?? []).map(shapeAssignment);
+}
+
+export async function createProgramNutritionAssignment(programId, planId) {
+  const result = await apiClient.post(
+    `/creator/programs/${programId}/nutrition/assignments`,
+    { planId },
+    { idempotent: false }
+  );
+  return result?.data?.assignmentId;
+}
+
+export async function deleteProgramNutritionAssignment(programId, assignmentId) {
+  await apiClient.delete(`/creator/programs/${programId}/nutrition/assignments/${assignmentId}`);
 }
 
 export default {
@@ -305,4 +304,7 @@ export default {
   getDiaryEntriesInRange,
   addDiaryEntry,
   deleteDiaryEntry,
+  getProgramNutritionAssignments,
+  createProgramNutritionAssignment,
+  deleteProgramNutritionAssignment,
 };

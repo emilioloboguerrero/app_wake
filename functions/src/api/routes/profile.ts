@@ -1,0 +1,742 @@
+import { Router } from "express";
+import * as admin from "firebase-admin";
+import { db, FieldValue } from "../firestore.js";
+import type { Query } from "../firestore.js";
+import { validateAuth, validateAuthAndRateLimit } from "../middleware/auth.js";
+import { validateBody, validateStoragePath } from "../middleware/validate.js";
+import { WakeApiServerError } from "../errors.js";
+import { calculateExpirationDate } from "../services/paymentHelpers.js";
+import { assignCourseToUser } from "../services/courseAssignment.js";
+
+const router = Router();
+
+// GET /users/me
+router.get("/users/me", async (req, res) => {
+
+  const auth = await validateAuthAndRateLimit(req);
+
+  const data = auth.userData;
+  if (!data) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  // Auto-heal: if no pinned nutrition assignment, check for active ones
+  let pinnedNutritionAssignmentId = data.pinnedNutritionAssignmentId ?? null;
+  if (!pinnedNutritionAssignmentId) {
+    const assignSnap = await db
+      .collection("nutrition_assignments")
+      .where("userId", "==", auth.userId)
+      .orderBy("createdAt", "desc")
+      .limit(1)
+      .get();
+    const activeDoc = assignSnap.docs.find((d) => {
+      const s = d.data().status;
+      return !s || s === "active";
+    });
+    if (activeDoc) {
+      pinnedNutritionAssignmentId = activeDoc.id;
+      // Persist so future calls skip the extra query
+      db.collection("users").doc(auth.userId).update({ pinnedNutritionAssignmentId }).catch(() => {});
+    }
+  }
+
+  res.json({
+    data: {
+      userId: auth.userId,
+      email: data.email ?? null,
+      displayName: data.displayName ?? data.name ?? null,
+      username: data.username ?? null,
+      role: data.role ?? "user",
+      country: data.country ?? null,
+      city: data.city ?? null,
+      gender: data.gender ?? null,
+      height: data.height ?? null,
+      weight: data.bodyweight ?? data.weight ?? null,
+      birthDate: data.birthDate ?? null,
+      profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
+      phoneNumber: data.phoneNumber ?? null,
+      pinnedTrainingCourseId: data.pinnedTrainingCourseId ?? null,
+      pinnedNutritionAssignmentId,
+      createdAt: data.created_at ?? null,
+      webOnboardingCompleted: data.webOnboardingCompleted ?? false,
+      profileCompleted: data.profileCompleted ?? false,
+      onboardingCompleted: data.onboardingCompleted ?? false,
+      bibliotecaGuideCompleted: data.bibliotecaGuideCompleted ?? false,
+      courses: data.courses ?? {},
+      bio: data.bio ?? null,
+      creatorNavPreferences: data.creatorNavPreferences ?? null,
+      // Lab screen fields
+      oneRepMaxEstimates: data.oneRepMaxEstimates ?? null,
+      weeklyMuscleVolume: data.weeklyMuscleVolume ?? null,
+      onboardingData: data.onboardingData ?? null,
+      goalWeight: data.goalWeight ?? null,
+      weightUnit: data.weightUnit ?? null,
+      activityStreak: data.activityStreak ?? null,
+    },
+  });
+});
+
+// POST /users/me/init — bootstrap user doc if it doesn't exist
+router.post("/users/me/init", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req, 20);
+
+  const userRef = db.collection("users").doc(auth.userId);
+  const userDoc = await userRef.get();
+
+  if (userDoc.exists) {
+    res.json({ data: { userId: auth.userId, created: false } });
+    return;
+  }
+
+  // Pull email/displayName from Firebase Auth record
+  let email: string | null = null;
+  let displayName: string | null = null;
+  try {
+    const authRecord = await admin.auth().getUser(auth.userId);
+    email = authRecord.email ?? null;
+    displayName = authRecord.displayName ?? null;
+  } catch { /* user may not exist in Auth yet */ }
+
+  await userRef.set({
+    email,
+    displayName,
+    role: "user",
+    courses: {},
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.status(201).json({ data: { userId: auth.userId, created: true } });
+});
+
+// PATCH /users/me
+router.patch(["/users/me", "/users/me/full"], async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const allowedFields = [
+    "displayName", "username", "country", "city", "gender",
+    "height", "weight", "birthDate", "phoneNumber",
+    "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
+    "beholdFeedId",
+    "webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted",
+    "onboardingData",
+    "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
+    "howTheyFoundUs", "creatorOnboardingData",
+    "goalWeight", "weightUnit",
+    "bio", "creatorNavPreferences",
+    "creatorSpecializations", "creatorExperience", "creatorCertifications",
+    "websiteUrl", "socialLinks", "profilePictureUrl",
+  ];
+
+  const stringFields = new Set([
+    "displayName", "username", "country", "city", "gender",
+    "birthDate", "phoneNumber", "pinnedTrainingCourseId", "pinnedNutritionAssignmentId",
+    "beholdFeedId",
+    "creatorDiscipline", "creatorDeliveryType", "creatorClientRange",
+    "howTheyFoundUs", "weightUnit", "bio",
+    "creatorExperience", "creatorCertifications",
+  ]);
+  const urlFields = new Set(["websiteUrl", "profilePictureUrl"]);
+  const numberFields = new Set(["height", "weight", "goalWeight"]);
+  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted"]);
+  const objectFields = new Set(["creatorOnboardingData", "onboardingData", "creatorNavPreferences", "socialLinks"]);
+  const arrayFields = new Set(["creatorSpecializations"]);
+
+  const updates: Record<string, unknown> = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      const value = req.body[field];
+
+      // Type validation per field
+      if (stringFields.has(field)) {
+        if (typeof value !== "string" || value.length > 200) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un string de máximo 200 caracteres`, field
+          );
+        }
+      } else if (urlFields.has(field)) {
+        if (value !== null && (typeof value !== "string" || value.length > 2048)) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un string de máximo 2048 caracteres`, field
+          );
+        }
+      } else if (numberFields.has(field)) {
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1000) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un número entre 0 y 1000`, field
+          );
+        }
+      } else if (booleanFields.has(field)) {
+        if (typeof value !== "boolean") {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un booleano`, field
+          );
+        }
+      } else if (objectFields.has(field)) {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un objeto`, field
+          );
+        }
+      } else if (arrayFields.has(field)) {
+        if (!Array.isArray(value) || value.length > 20 || !value.every((v: unknown) => typeof v === "string" && v.length <= 100)) {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `${field} debe ser un array de strings (máximo 20 items)`, field
+          );
+        }
+      }
+
+      if (field === "weight") {
+        updates["bodyweight"] = value;
+      } else {
+        updates[field] = value;
+      }
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
+    );
+  }
+
+  if (updates.username) {
+    const normalized = (updates.username as string).toLowerCase().trim();
+    updates.username = normalized;
+    const existing = await db.collection("users")
+      .where("username", "==", normalized)
+      .limit(1)
+      .get();
+    if (!existing.empty && existing.docs[0].id !== auth.userId) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409, "Este username ya esta en uso", "username"
+      );
+    }
+  }
+
+  updates.updated_at = FieldValue.serverTimestamp();
+  await db.collection("users").doc(auth.userId).update(updates);
+
+  res.json({ data: { userId: auth.userId, updatedAt: new Date().toISOString() } });
+});
+
+// POST /users/me/profile-picture/upload-url
+router.post("/users/me/profile-picture/upload-url", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req, 10);
+
+  const { contentType } = validateBody<{ contentType: string }>(
+    { contentType: "string" },
+    req.body
+  );
+
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedTypes.includes(contentType)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Tipo de imagen no soportado. Usa JPEG, PNG o WebP",
+      "contentType"
+    );
+  }
+
+  const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
+  const storagePath = `profile_pictures/${auth.userId}/profile.${ext}`;
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(storagePath);
+
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "write",
+    expires: Date.now() + 15 * 60 * 1000,
+    contentType,
+  });
+
+  res.json({ data: { uploadUrl: url, storagePath } });
+});
+
+// POST /users/me/profile-picture/confirm
+router.post("/users/me/profile-picture/confirm", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const { storagePath } = validateBody<{ storagePath: string }>(
+    { storagePath: "string" },
+    req.body
+  );
+
+  // CRITICAL: Validate storage path prefix to prevent path traversal
+  validateStoragePath(storagePath, `profile_pictures/${auth.userId}/`);
+
+  const bucket = admin.storage().bucket();
+  const [exists] = await bucket.file(storagePath).exists();
+  if (!exists) {
+    throw new WakeApiServerError(
+      "NOT_FOUND", 404, "Archivo no encontrado en Storage"
+    );
+  }
+
+  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+
+  await db.collection("users").doc(auth.userId).update({
+    profilePictureUrl: publicUrl,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { profilePictureUrl: publicUrl } });
+});
+
+// GET /users/:userId/public-profile
+router.get("/users/:userId/public-profile", async (req, res) => {
+  await validateAuthAndRateLimit(req);
+
+  const userDoc = await db.collection("users").doc(req.params.userId).get();
+  if (!userDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  const data = userDoc.data()!;
+  res.json({
+    data: {
+      userId: req.params.userId,
+      displayName: data.displayName ?? data.name ?? null,
+      firstName: data.firstName ?? data.first_name ?? null,
+      lastName: data.lastName ?? data.last_name ?? null,
+      username: data.username ?? null,
+      profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
+      role: data.role ?? "user",
+      bio: data.bio ?? null,
+      birthDate: data.birthDate ?? data.birthdate ?? null,
+      city: data.city ?? null,
+      country: data.country ?? null,
+      cards: data.cards ?? null,
+    },
+  });
+});
+
+// POST /users/me/courses/:courseId/trial — start a trial for a course
+router.post("/users/me/courses/:courseId/trial", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const body = validateBody<{
+    courseDetails: Record<string, unknown>;
+    durationInDays: number;
+  }>(
+    {
+      courseDetails: "object",
+      durationInDays: "number",
+    },
+    req.body
+  );
+
+  const courseId = req.params.courseId;
+
+  // Verify course exists
+  const courseDoc = await db.collection("courses").doc(courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  // Check user doesn't already have an active trial (reuse auth.userData)
+  const courses = (auth.userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+  if (courses[courseId]?.status === "trial") {
+    throw new WakeApiServerError("CONFLICT", 409, "Ya tienes un trial activo para este programa");
+  }
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + body.durationInDays * 24 * 60 * 60 * 1000);
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${courseId}`]: {
+      status: "trial",
+      title: body.courseDetails.title ?? "",
+      image_url: body.courseDetails.image_url ?? "",
+      deliveryType: body.courseDetails.deliveryType ?? "low_ticket",
+      purchased_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      access_duration: "trial",
+    },
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { success: true, expirationDate: expiresAt.toISOString() } });
+});
+
+// POST /users/me/move-course — add/move a course to the user's courses map
+router.post("/users/me/move-course", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const body = validateBody<{ courseId: string }>(
+    { courseId: "string" },
+    req.body
+  );
+
+  const courseDoc = await db.collection("courses").doc(body.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const course = courseDoc.data()!;
+  if (!course.access_duration) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Programa sin duración de acceso");
+  }
+
+  const expiresAt = calculateExpirationDate(course.access_duration);
+  await assignCourseToUser(auth.userId, body.courseId, course, expiresAt);
+
+  res.json({ data: { success: true } });
+});
+
+// POST /users/me/courses/:programId/backfill — backfill a course entry for orphaned client_programs
+router.post("/users/me/courses/:programId/backfill", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const body = validateBody<{ courseData: Record<string, unknown> }>(
+    { courseData: "object" },
+    req.body
+  );
+
+  const courseData = body.courseData;
+  const programId = req.params.programId;
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${programId}`]: {
+      status: "active",
+      deliveryType: courseData.deliveryType ?? "one_on_one",
+      title: courseData.title ?? "",
+      image_url: courseData.image_url ?? "",
+      discipline: courseData.discipline ?? "General",
+      creatorName: courseData.creatorName ?? "",
+      purchased_at: new Date().toISOString(),
+      expires_at: null,
+      access_duration: "one_on_one",
+    },
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { success: true } });
+});
+
+// POST /auth/logout — no-op; Firebase Auth is stateless
+router.post("/auth/logout", async (req, res) => {
+  await validateAuth(req);
+  res.json({ data: { logged_out: true } });
+});
+
+// PATCH /creator/profile
+router.patch("/creator/profile", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  if (auth.role !== "creator" && auth.role !== "admin") {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Solo creadores pueden actualizar su perfil de creador");
+  }
+
+  const { cards } = req.body;
+
+  if (cards === undefined) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
+    );
+  }
+
+  if (typeof cards !== "object" || cards === null || Array.isArray(cards)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "cards debe ser un objeto", "cards"
+    );
+  }
+
+  // Validate cards object size and depth
+  const cardsJson = JSON.stringify(cards);
+  if (cardsJson.length > 10_000) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "cards excede el tamaño máximo de 10KB", "cards"
+    );
+  }
+
+  // Check max depth of 3
+  function checkDepth(obj: unknown, depth: number): boolean {
+    if (depth > 3) return false;
+    if (typeof obj === "object" && obj !== null) {
+      for (const val of Object.values(obj as Record<string, unknown>)) {
+        if (!checkDepth(val, depth + 1)) return false;
+      }
+    }
+    return true;
+  }
+  if (!checkDepth(cards, 1)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "cards excede la profundidad máxima permitida", "cards"
+    );
+  }
+
+  await db.collection("users").doc(auth.userId).update({
+    cards,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({ data: { updatedAt: new Date().toISOString() } });
+});
+
+// GET /users/me/full — returns full user document including all fields
+router.get("/users/me/full", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const data = auth.userData;
+  if (!data) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  res.json({
+    data: {
+      userId: auth.userId,
+      ...data,
+      profilePictureUrl: data.profilePictureUrl ?? data.profile_picture_url ?? null,
+    },
+  });
+});
+
+// GET /users/me/username-check — check if username is available
+router.get("/users/me/username-check", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const username = req.query.username as string;
+  if (!username || typeof username !== "string" || username.length > 50) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "username es requerido (máx 50 caracteres)", "username"
+    );
+  }
+
+  const snapshot = await db
+    .collection("users")
+    .where("username", "==", username)
+    .limit(1)
+    .get();
+
+  const available = snapshot.empty || snapshot.docs[0].id === auth.userId;
+
+  res.json({ data: { available } });
+});
+
+// DELETE /users/me — account deletion
+router.delete("/users/me", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req, 10);
+
+  const userRef = db.collection("users").doc(auth.userId);
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  // Delete known subcollections
+  const subcollections = [
+    "diary", "sessionHistory", "exerciseHistory",
+    "exerciseLastPerformance", "saved_foods", "saved_meals",
+    "readiness", "bodyLog", "subscriptions", "purchase_logs",
+  ];
+
+  for (const sub of subcollections) {
+    const collRef = userRef.collection(sub);
+    let snapshot = await collRef.limit(500).get();
+    while (!snapshot.empty) {
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+      snapshot = await collRef.limit(500).get();
+    }
+  }
+
+  // Delete the user document
+  await userRef.delete();
+
+  // Delete Firebase Auth record
+  try {
+    await admin.auth().deleteUser(auth.userId);
+  } catch { /* Auth record may already be deleted */ }
+
+  res.status(204).send();
+});
+
+// POST /users/me/delete-feedback — save account deletion feedback
+router.post("/users/me/delete-feedback", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req, 10);
+
+  const body = validateBody<{ feedback: Record<string, unknown> }>(
+    { feedback: "object" },
+    req.body
+  );
+
+  await db.collection("subscription_cancellation_feedback").add({
+    userId: auth.userId,
+    type: "account_deletion",
+    feedback: body.feedback,
+    submittedAt: FieldValue.serverTimestamp(),
+  });
+
+  res.status(201).json({ data: { saved: true } });
+});
+
+// DELETE /users/me/courses/:courseId — remove a course from user's courses map
+router.delete("/users/me/courses/:courseId", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const courseId = req.params.courseId;
+  if (!auth.userData) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  const courses = (auth.userData.courses ?? {}) as Record<string, unknown>;
+  if (!courses[courseId]) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Curso no encontrado en tu cuenta");
+  }
+
+  await db.collection("users").doc(auth.userId).update({
+    [`courses.${courseId}`]: FieldValue.delete(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.status(204).send();
+});
+
+// PATCH /users/me/courses/:courseId/version — update version status fields
+router.patch("/users/me/courses/:courseId/version", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const courseId = req.params.courseId;
+  const allowedFields = ["update_status", "downloaded_version", "last_version_check"];
+  const updates: Record<string, unknown> = {};
+
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) {
+      updates[`courses.${courseId}.${field}`] = req.body[field];
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar"
+    );
+  }
+
+  updates.updated_at = FieldValue.serverTimestamp();
+  await db.collection("users").doc(auth.userId).update(updates);
+
+  res.json({ data: { updated: true } });
+});
+
+// PATCH /users/me/courses/:courseId/status — update course status
+router.patch("/users/me/courses/:courseId/status", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const courseId = req.params.courseId;
+  const body = validateBody<{ status: string; expiresAt?: string }>(
+    { status: "string", expiresAt: "optional_string" },
+    req.body
+  );
+
+  const updates: Record<string, unknown> = {
+    [`courses.${courseId}.status`]: body.status,
+    updated_at: FieldValue.serverTimestamp(),
+  };
+
+  if (body.expiresAt !== undefined) {
+    updates[`courses.${courseId}.expires_at`] = body.expiresAt;
+  }
+
+  await db.collection("users").doc(auth.userId).update(updates);
+
+  res.json({ data: { updated: true } });
+});
+
+// GET /courses — course listing, optional ?creatorId=X filter
+router.get("/courses", async (req, res) => {
+  await validateAuthAndRateLimit(req);
+
+  const creatorId = req.query.creatorId as string | undefined;
+
+  let query: Query = db
+    .collection("courses")
+    .orderBy("created_at", "desc")
+    .limit(100);
+
+  if (creatorId) {
+    query = query.where("creator_id", "==", creatorId);
+  }
+
+  const snapshot = await query.get();
+
+  res.json({
+    data: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+  });
+});
+
+// GET /storage/download-url — return signed download URL for a storage path
+router.get("/storage/download-url", async (req, res) => {
+  await validateAuthAndRateLimit(req);
+
+  const path = req.query.path as string;
+  if (!path || typeof path !== "string") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "path es requerido", "path"
+    );
+  }
+
+  if (path.includes("..") || path.startsWith("/")) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Ruta inválida", "path"
+    );
+  }
+
+  const bucket = admin.storage().bucket();
+  const file = bucket.file(path);
+
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado");
+  }
+
+  const [url] = await file.getSignedUrl({
+    version: "v4",
+    action: "read",
+    expires: Date.now() + 60 * 60 * 1000,
+  });
+
+  res.json({ data: { url } });
+});
+
+// POST /purchases — log a purchase record
+router.post("/purchases", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  const body = validateBody<{
+    courseId?: string;
+    amount?: number;
+    currency?: string;
+    paymentMethod?: string;
+    receiptId?: string;
+  }>(
+    {
+      courseId: "optional_string",
+      amount: "optional_number",
+      currency: "optional_string",
+      paymentMethod: "optional_string",
+      receiptId: "optional_string",
+    },
+    req.body
+  );
+
+  const docRef = await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("purchase_logs")
+    .add({
+      ...body,
+      userId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({ data: { id: docRef.id } });
+});
+
+export default router;

@@ -17,16 +17,11 @@ import {
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 import { Image as ExpoImage } from 'expo-image';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import workoutProgressService from '../data-management/workoutProgressService';
 import sessionManager from '../services/sessionManager';
-import localCourseCache from '../data-management/localCourseCache';
-import hybridDataService from '../services/hybridDataService';
-import exerciseLibraryService from '../services/exerciseLibraryService';
 import tutorialManager from '../services/tutorialManager';
 import sessionService from '../services/sessionService';
-import firestoreService from '../services/firestoreService';
+import apiClient from '../utils/apiClient';
 import { useActivityStreakContext } from '../contexts/ActivityStreakContext';
 import TutorialOverlay from '../components/TutorialOverlay';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
@@ -57,7 +52,7 @@ const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
           <SvgFire width={60} height={60} stroke="#000000" strokeWidth={0.3} fill="#E64A11" style={[styles.fireBase, { opacity }]} />
         )}
         {showMiddle && (
-          <SvgFire width={20} height={20} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity }]} />
+          <SvgFire width={20} height={20} stroke="rgba(255,255,255,0.9)" strokeWidth={0.5} fill="rgba(255,255,255,0.9)" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity }]} />
         )}
         {showInner && (
           <SvgFire width={8} height={8} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" style={[styles.fireInner, { opacity }]} />
@@ -65,7 +60,7 @@ const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
         {flameLevel === 0 && (
           <>
             <SvgFire width={60} height={60} stroke="#000000" strokeWidth={0.3} fill="#E64A11" style={[styles.fireBase, { opacity: opacityDead }]} />
-            <SvgFire width={20} height={20} stroke="#D5C672" strokeWidth={0.5} fill="#D5C672" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: opacityDead }]} />
+            <SvgFire width={20} height={20} stroke="rgba(255,255,255,0.9)" strokeWidth={0.5} fill="rgba(255,255,255,0.9)" style={[styles.fireMiddle, { transform: [{ scaleX: -1 }], opacity: opacityDead }]} />
             <SvgFire width={8} height={8} stroke="#FFFFFF" strokeWidth={0.5} fill="#FFFFFF" style={[styles.fireInner, { opacity: opacityDead }]} />
           </>
         )}
@@ -77,36 +72,37 @@ const StreakDisplay = React.memo(({ streakNumber, flameLevel, styles }) => {
 
 const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp, onDateChange, showSessionsList = true, renderBeforeContent }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { course } = route.params;
-  const { user: contextUser } = useAuth();
+  const rawCourse = route.params?.course;
+  const course = rawCourse ? { ...rawCourse, courseId: rawCourse.courseId || rawCourse.id } : null;
+  const { user } = useAuth();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
   const [failedImages, setFailedImages] = React.useState(new Set());
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
-
-  const [fallbackUser, setFallbackUser] = React.useState(null);
-  React.useEffect(() => {
-    if (!contextUser) {
-      import('../config/firebase').then(({ auth }) => {
-        const firebaseUser = auth.currentUser;
-        if (firebaseUser) {
-          logger.log('⚠️ DailyWorkoutScreen: Using fallback Firebase user (AuthContext failed)');
-          setFallbackUser(firebaseUser);
-        }
-      });
-    }
-  }, [contextUser]);
-
-  const user = contextUser || fallbackUser;
   const queryClientHook = useQueryClient();
   const { streakNumber, flameLevel, isLoading: streakLoading } = useActivityStreakContext();
 
+  logger.debug('[DailyWorkout] RENDER', {
+    courseId: course?.courseId,
+    deliveryType: course?.deliveryType,
+    isOneOnOne,
+    userId: user?.uid,
+    selectedDateProp,
+    hasSelectedSessionId: !!route.params?.selectedSessionId,
+    courseTitle: course?.title,
+  });
+
   // React Query: default session load (no specific date, no pre-selected session)
   const defaultSessionQueryKey = queryKeys.programs.dailySession(user?.uid, course?.courseId, 'default');
+  const defaultQueryEnabled = !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId && !isOneOnOne;
+  logger.debug('[DailyWorkout] defaultQuery config', {
+    queryKey: defaultSessionQueryKey,
+    enabled: defaultQueryEnabled,
+  });
   const { data: defaultSessionData } = useQuery({
     queryKey: defaultSessionQueryKey,
     queryFn: () => sessionService.getCurrentSession(user.uid, course.courseId, {}),
-    enabled: !!user?.uid && !!course?.courseId && !route.params?.selectedSessionId,
+    enabled: defaultQueryEnabled,
     ...cacheConfig.activeSession,
   });
 
@@ -125,13 +121,30 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
 
   // Sync React Query default session result into sessionState (initial load only)
   useEffect(() => {
+    logger.debug('[DailyWorkout] EFFECT: sync defaultSessionData', {
+      hasData: !!defaultSessionData,
+      hasSelectedSessionId: !!route.params?.selectedSessionId,
+      emptyReason: defaultSessionData?.emptyReason,
+      hasSession: !!defaultSessionData?.session,
+      allSessionsCount: defaultSessionData?.allSessions?.length,
+    });
     if (defaultSessionData && !route.params?.selectedSessionId) {
       setSessionState(defaultSessionData);
     }
   }, [defaultSessionData]);
 
-  // UI state
-  const [courseMetadata, setCourseMetadata] = useState(null);
+  // React Query: user profile for course metadata (creator name)
+  const userDetailKey = queryKeys.user.detail(user?.uid);
+  const existingUserCache = queryClientHook.getQueryData(userDetailKey);
+  const { data: userMeData } = useQuery({
+    queryKey: userDetailKey,
+    queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
+    enabled: !!user?.uid,
+    ...cacheConfig.userProfile,
+  });
+
+  const courseMetadata = userMeData?.courses?.[course?.courseId] ?? null;
+
   const [previewSessionId, setPreviewSessionId] = useState(null);
   const [isChangingSession, setIsChangingSession] = useState(false);
   const [isRevealDelayed, setIsRevealDelayed] = useState(false);
@@ -146,13 +159,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   const pendingStartAfterLoadRef = useRef(false);
   const pendingStartForDateRef = useRef(null);
   const lastLoadedForDateRef = useRef(null);
-
-  // Cache for service calls to prevent redundant requests
-  const serviceCache = useRef({
-    courses: null,
-    courseData: null,
-    lastFetch: 0
-  });
   
   // Scroll tracking for pagination indicator
   const scrollX = new Animated.Value(0);
@@ -249,35 +255,40 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   };
 
   useEffect(() => {
-    loadCourseMetadata();
-    
-    // Only load normal session state if no session is pre-selected
-    // Skip if user is not yet available
-    if (!route.params?.selectedSessionId) {
+    // Only load via imperative call for one-on-one with a specific date.
+    // Low-ticket default load is handled by React Query (defaultSessionData).
+    logger.debug('[DailyWorkout] EFFECT: initial one-on-one load check', {
+      hasSelectedSessionId: !!route.params?.selectedSessionId,
+      isOneOnOne,
+      selectedDateProp,
+      userId: user?.uid,
+      willLoad: !route.params?.selectedSessionId && isOneOnOne && selectedDateProp && !!user?.uid,
+    });
+    if (!route.params?.selectedSessionId && isOneOnOne && selectedDateProp) {
       if (user?.uid) {
-        const opts = isOneOnOne && selectedDateProp ? { targetDate: selectedDateProp } : {};
-        loadSessionState(opts);
-      } else {
-        logger.log('⏭️ Waiting for user to be available before loading session state...');
+        logger.debug('[DailyWorkout] EFFECT: triggering loadSessionState for one-on-one initial', { targetDate: selectedDateProp });
+        loadSessionState({ targetDate: selectedDateProp });
       }
-    } else {
-      logger.log('⏭️ Skipping normal session load - session pre-selected from CourseStructure');
     }
   }, [user?.uid]); // Re-run when user becomes available
 
-  // When selectedDate changes (web date picker), reload session for that day (skip initial mount to avoid double load)
+  // When selectedDate changes (web date picker), reload session for that day
+  // Only one-on-one programs are date-based. Low-ticket sessions are sequential — no reload needed on date change.
   const prevSelectedDateRef = useRef(selectedDateProp);
   useEffect(() => {
+    logger.debug('[DailyWorkout] EFFECT: selectedDate change check', {
+      isOneOnOne, selectedDateProp, prevDate: prevSelectedDateRef.current,
+      userId: user?.uid, courseId: course?.courseId,
+      dateChanged: prevSelectedDateRef.current !== selectedDateProp,
+    });
+    if (!isOneOnOne) return;
     if (!user?.uid || !course?.courseId || !selectedDateProp) return;
     if (prevSelectedDateRef.current === selectedDateProp) return;
     prevSelectedDateRef.current = selectedDateProp;
     pendingStartAfterLoadRef.current = false;
     setShowLoadingOverlayForStart(false);
-    if (isOneOnOne) {
-      loadSessionState({ targetDate: selectedDateProp });
-    } else {
-      loadSessionState({ forceRefresh: true });
-    }
+    logger.debug('[DailyWorkout] EFFECT: date changed, loading session for new date', { targetDate: selectedDateProp });
+    loadSessionState({ targetDate: selectedDateProp });
   }, [selectedDateProp, isOneOnOne, user?.uid, course?.courseId]);
 
   // Handle pre-selected session from CourseStructureScreen
@@ -285,123 +296,96 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (route.params?.selectedSessionId && user?.uid) {
       const { selectedSessionId, selectedModuleId, selectedSessionIndex } = route.params;
       
-      logger.log('📍 Session pre-selected from CourseStructure:', {
-        selectedSessionId,
-        selectedModuleId,
-        selectedSessionIndex
-      });
-      
-      // Find the session object from allSessions or load it
+      // Load allSessions from cache/API, then call lightweight session-exercises endpoint
       const handlePreSelectedSession = async () => {
         try {
-          // If we already have allSessions loaded, use them
-          let allSessions = sessionState.allSessions;
-          
-          if (!allSessions || allSessions.length === 0) {
-            // Need to load session state first to get all sessions
-            logger.log('📥 Loading session state to get all sessions...');
-            const initialState = await sessionService.getCurrentSession(
-              user.uid,
-              course.courseId
-            );
-            allSessions = initialState.allSessions || [];
-            // Update state with loaded sessions (but don't select yet)
-            setSessionState(prev => ({
-              ...prev,
-              allSessions: allSessions,
-              isLoading: false
-            }));
-          }
-          
-          // Find the selected session
-          const selectedSession = allSessions.find(s => 
+          setIsChangingSession(true);
+          setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
+
+          // Get allSessions from cache or fetch
+          const initialState = await sessionService.getCurrentSession(user.uid, course.courseId);
+          const allSessions = initialState.allSessions || [];
+
+          const selectedSession = allSessions.find(s =>
             (s.id === selectedSessionId) || (s.sessionId === selectedSessionId)
           );
-          
+
           if (selectedSession) {
-            logger.log('✅ Found pre-selected session, selecting it...');
-            await handleSelectSession(selectedSession, selectedSessionIndex);
-            
-            // Clear params after successful selection to prevent re-selection on back navigation
-            navigation.setParams({ 
-              selectedSessionId: undefined,
-              selectedModuleId: undefined,
-              selectedSessionIndex: undefined
-            });
+            // Call selectSession directly with the loaded state (not component sessionState which may be stale)
+            const newState = await sessionService.selectSession(
+              user.uid,
+              course.courseId,
+              selectedSession.sessionId || selectedSession.id,
+              selectedSessionIndex,
+              initialState
+            );
+            setSessionState(newState);
+            setPreviewSessionId(null);
           } else {
-            logger.warn('⚠️ Pre-selected session not found in allSessions, loading normally');
-            // Clear params and load normally
-            navigation.setParams({ 
-              selectedSessionId: undefined,
-              selectedModuleId: undefined,
-              selectedSessionIndex: undefined
-            });
-            loadSessionState();
+            // Session not found in allSessions — fall back to default load
+            setSessionState(initialState);
           }
+
+          navigation.setParams({
+            selectedSessionId: undefined,
+            selectedModuleId: undefined,
+            selectedSessionIndex: undefined
+          });
         } catch (error) {
-          logger.error('❌ Error handling pre-selected session:', error);
-          // Clear params and fallback to normal load
-          navigation.setParams({ 
+          logger.error('Error handling pre-selected session:', error);
+          navigation.setParams({
             selectedSessionId: undefined,
             selectedModuleId: undefined,
             selectedSessionIndex: undefined
           });
           loadSessionState();
+        } finally {
+          setIsChangingSession(false);
         }
       };
-      
+
       handlePreSelectedSession();
     }
   }, [route.params?.selectedSessionId, user?.uid]);
 
-  // Refresh data when screen comes into focus
-  // On web, this runs on mount since there's no focus event.
-  // Skip when one-on-one: the user/selectedDate effects already load with targetDate.
-  const webLoadCalledRef = React.useRef(false);
-  
-  React.useEffect(() => {
-    if (isWeb && !webLoadCalledRef.current && !isOneOnOne) {
-      if (!sessionState.isManual && user?.uid && course?.courseId) {
-        webLoadCalledRef.current = true;
-        loadSessionState();
-      }
-    }
-  }, [isWeb, isOneOnOne, user?.uid, course?.courseId, sessionState.isManual]);
-
   // Load session state using single service
   const loadSessionState = async (options = {}) => {
     try {
-      logger.log('🎯 Loading session state...');
-      
+      logger.debug('[DailyWorkout] loadSessionState CALLED', {
+        options,
+        userId: user?.uid,
+        courseId: course?.courseId,
+        isOneOnOne,
+      });
+
       // Safety check: ensure user and course are available
       if (!user?.uid) {
-        logger.error('❌ Cannot load session state: user not available');
+        logger.error('Cannot load session state: user not available');
         return;
       }
-      
+
       if (!course?.courseId) {
-        logger.error('❌ Cannot load session state: course not available');
+        logger.error('Cannot load session state: course not available');
         return;
       }
-      
+
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
-      
+
       const newState = await sessionService.getCurrentSession(
         user.uid,
         course.courseId,
         options
       );
-
-      logger.prod('[DailyWorkout] loadSessionState result:', {
-        targetDate: options.targetDate ?? 'none',
-        emptyReason: newState.emptyReason ?? 'none',
-        sessionTitle: newState.session?.title ?? 'null',
-        sessionId: newState.session?.id ?? newState.session?.sessionId ?? 'null',
-        workoutExercises: newState.workout?.exercises?.length ?? 0,
-        allSessionsCount: newState.allSessions?.length ?? 0,
-        error: newState.error ?? 'none',
+      logger.debug('[DailyWorkout] loadSessionState RESULT', {
+        hasSession: !!newState.session,
+        hasWorkout: !!newState.workout,
+        emptyReason: newState.emptyReason,
+        allSessionsCount: newState.allSessions?.length,
+        exerciseCount: newState.workout?.exercises?.length,
+        progress: newState.progress,
+        error: newState.error,
+        targetDate: options.targetDate,
       });
-
       if (options.targetDate && newState.workout) {
         lastLoadedForDateRef.current = options.targetDate;
       }
@@ -412,8 +396,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         await checkForTutorials();
       }
 
-      logger.log('✅ Session state loaded successfully');
-      
     } catch (error) {
       logger.error('❌ Error loading session state:', error);
       setSessionState(prev => ({ 
@@ -430,51 +412,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     }
   };
 
-  // Load course metadata using hybrid system with caching
-  const loadCourseMetadata = async () => {
-    try {
-      logger.log('🔄 Loading course metadata using hybrid system...');
-      
-      // Check cache first (5 minute TTL)
-      const now = Date.now();
-      const cacheAge = now - serviceCache.current.lastFetch;
-      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-      
-      let courses = serviceCache.current.courses;
-      
-      if (!courses || cacheAge > CACHE_TTL) {
-        logger.log('📥 Fetching fresh course data from hybrid system...');
-        courses = await hybridDataService.loadCourses(user?.uid ?? null);
-        serviceCache.current.courses = courses;
-        serviceCache.current.lastFetch = now;
-      } else {
-        logger.log('✅ Using cached course data');
-      }
-      
-      let courseMeta = courses.find(c => c.id === course.courseId);
-      if (courseMeta) {
-        setCourseMetadata(courseMeta);
-        logger.log('✅ Course metadata loaded:', courseMeta.title);
-      } else {
-        logger.log('⚠️ Course metadata not found in hybrid cache (one-on-one may be in users.courses). Trying Firestore...');
-        try {
-          const firestoreCourse = await firestoreService.getCourse(course.courseId);
-          if (firestoreCourse) {
-            courseMeta = { id: firestoreCourse.id, ...firestoreCourse };
-            setCourseMetadata(courseMeta);
-            logger.log('✅ Course metadata loaded from Firestore:', courseMeta.title);
-          }
-        } catch (e) {
-          logger.debug('Could not load course metadata from Firestore:', e?.message);
-        }
-      }
-      
-    } catch (error) {
-      logger.error('❌ Error loading course metadata:', error);
-    }
-  };
-
-  // Preload images for better performance (optimized)
+// Preload images for better performance (optimized)
   const preloadImages = async (workoutData) => {
     try {
       const imageUrls = [];
@@ -492,16 +430,12 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       }
       
       if (imageUrls.length > 0) {
-        logger.log('🖼️ Preloading images in parallel...');
-        // Preload all images in parallel for maximum speed
         await Promise.all(imageUrls.map(url => ExpoImage.prefetch(url)));
-        logger.log('✅ All images preloaded');
       }
     } catch (error) {
       logger.error('❌ Error preloading images:', error);
     }
   };
-
 
   const handleStartWorkout = async () => {
     if (!sessionState.workout) return;
@@ -514,9 +448,8 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         sessionId,
         sessionState.workout.title
       );
-      logger.log('✅ Workout session started:', session.sessionId);
       navigation.navigate('Warmup', {
-        course: course,
+        course: { ...course, availableLibraries: sessionState.availableLibraries || course.availableLibraries || [] },
         workout: sessionState.workout,
         sessionId: session.sessionId
       });
@@ -540,87 +473,32 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     }
   };
 
-  // Debug function to check course storage
-  const debugCourseStorage = async () => {
-    try {
-      logger.log('🔍 DEBUG: Checking course storage...');
-      
-      // Check if course exists in AsyncStorage
-      const storageKey = `course_${course.courseId}`;
-      const storedData = await AsyncStorage.getItem(storageKey);
-      
-      if (storedData) {
-        const courseData = JSON.parse(storedData);
-        logger.log('✅ Course found in AsyncStorage:', {
-          courseId: courseData.courseId,
-          downloadedAt: courseData.downloadedAt,
-          expiresAt: courseData.expiresAt,
-          modulesCount: courseData.courseData?.modules?.length || 0,
-          size_mb: courseData.size_mb
-        });
-      } else {
-        logger.log('❌ Course NOT found in AsyncStorage');
-      }
-      
-      // Check hybrid cache
-      const courses = await hybridDataService.loadCourses();
-      const courseMeta = courses.find(c => c.id === course.courseId);
-      if (courseMeta) {
-        logger.log('✅ Course found in hybrid cache:', courseMeta.title);
-      } else {
-        logger.log('❌ Course NOT found in hybrid cache');
-      }
-      
-    } catch (error) {
-      logger.error('❌ Debug error:', error);
-    }
-  };
-
-  // Handle session selection
+// Handle session selection
   const handleSelectSession = async (session, sessionIndex) => {
     try {
-      logger.log('🔄 Starting session selection for:', session.title);
       setIsChangingSession(true);
-      logger.log('📍 User selected session:', session.title, 'at index:', sessionIndex);
-      logger.log('🔄 isChangingSession set to true');
-      
-      // DON'T clear preview state yet - keep it for loading overlay
-      // setPreviewSessionId(null);
-      logger.log('🔄 Keeping previewSessionId for loading overlay:', previewSessionId);
-      
+
       // Show loading state immediately
       setSessionState(prev => ({ ...prev, isLoading: true, error: null }));
-      logger.log('🔄 Session state loading set to true');
       
-      // Use single service to select session
+      // Use lightweight endpoint — pass existing state to reuse allSessions/progress
       const newState = await sessionService.selectSession(
         user.uid,
         course.courseId,
         session.sessionId || session.id,
-        sessionIndex
+        sessionIndex,
+        sessionState
       );
-
-      logger.prod('[DailyWorkout] selectSession result:', {
-        requestedId: session.sessionId || session.id,
-        sessionTitle: newState.session?.title ?? 'null',
-        sessionId: newState.session?.id ?? newState.session?.sessionId ?? 'null',
-        workoutExercises: newState.workout?.exercises?.length ?? 0,
-        emptyReason: newState.emptyReason ?? 'none',
-        error: newState.error ?? 'none',
-      });
 
       setSessionState(newState);
 
       // Clear preview state after successful load
       setPreviewSessionId(null);
-      logger.log('🔄 previewSessionId cleared after successful load');
       
       // Scroll back to session image card (first card)
       if (mainSwipeRef.current) {
         mainSwipeRef.current.scrollTo({ x: 0, animated: true });
       }
-      
-      logger.log('✅ Session selected successfully');
       
     } catch (error) {
       logger.error('❌ Error selecting session:', error);
@@ -631,28 +509,21 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       }));
       // Clear preview state on error too
       setPreviewSessionId(null);
-      logger.log('🔄 previewSessionId cleared after error');
       Alert.alert('Error', 'No se pudo cambiar la sesión');
     } finally {
       setIsChangingSession(false);
-      logger.log('🔄 isChangingSession set to false');
     }
   };
 
   const handleNextWorkout = async () => {
     try {
-      logger.log('⏭️ Moving to next workout...');
-      
-      // Use single service to move to next workout
       const newState = await sessionService.moveToNextWorkout(
         user.uid,
         course.courseId,
         sessionState.workout?.sessionId
       );
-      
+
       setSessionState(newState);
-      logger.log('✅ Next workout loaded');
-      
     } catch (error) {
       logger.error('❌ Failed to move to next workout:', error);
       alert('Error al cargar el siguiente entrenamiento. Inténtalo de nuevo.');
@@ -689,10 +560,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     const isPlannedForToday = isDayOrdered && session.dayIndex === todayWeekdayIndex;
     const completedIds = sessionState.progress?.allSessionsCompleted || [];
     const isCompleted = !!(sessionId && completedIds.includes(sessionId)) || !!(session.id && completedIds.includes(session.id));
-
-    if (isLoadingThisCard) {
-      logger.log('🔄 Loading overlay should be visible for session:', session.title);
-    }
 
     const anim = sessionListAnimsRef.current[index];
     const animStyle = anim ? {
@@ -767,7 +634,6 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
             {session.title || `Sesión ${index + 1}`}
           </Text>
         </View>
-        
         
         {/* Current Session Indicator - "Actual" badge (gradient + glass, creator planificación style) */}
         {isCurrentSession && (
@@ -859,20 +725,16 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
     if (!user?.uid || !course?.courseId) return;
 
     try {
-      logger.log('🎬 Checking for daily workout screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
-        user.uid, 
+        user.uid,
         'dailyWorkout',
-        course.courseId  // Pass programId for program-specific tutorials
+        course.courseId
       );
-      
+
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.log('✅ No tutorials to show for daily workout screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -890,16 +752,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           user.uid, 
           'dailyWorkout', 
           currentTutorial.videoUrl,
-          course.courseId  // Pass programId for program-specific tutorials
+          course.courseId
         );
-        logger.log('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
     }
   };
-
-
 
     return (
       <SafeAreaView style={styles.container}>
@@ -991,6 +850,13 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
                       </View>
                     </View>
                   </View>
+                  <TouchableOpacity
+                    style={styles.noSessionRefreshButton}
+                    onPress={() => loadSessionState({ forceRefresh: true })}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.noSessionRefreshButtonText}>Buscar de nuevo</Text>
+                  </TouchableOpacity>
                 </View>
             ) : sessionState.emptyReason === 'no_planning_this_week' ? (
                 <View style={styles.placeholderCardContainer}>
@@ -1342,7 +1208,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingVertical: 40,
   },
   errorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: 16,
     fontWeight: '400',
     textAlign: 'center',
@@ -2104,6 +1970,22 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     maxWidth: 280,
+  },
+  noSessionRefreshButton: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  noSessionRefreshButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   alreadyCompletedOverlay: {
     ...StyleSheet.absoluteFillObject,

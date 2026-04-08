@@ -1,12 +1,10 @@
 // Workout Progress Service - Main orchestrator for the workout progress system
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import courseDownloadService from './courseDownloadService';
-import workoutSessionService from './workoutSessionService';
-import uploadService from './uploadService';
 import sessionRecoveryService from './sessionRecoveryService';
 import progressQueryService from './progressQueryService';
 import storageManagementService from './storageManagementService';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import exerciseLibraryService from '../services/exerciseLibraryService';
 import { getMondayWeek } from '../utils/weekCalculation';
 
@@ -18,18 +16,8 @@ class WorkoutProgressService {
    */
   async initialize() {
     try {
-      logger.log('🚀 Initializing workout progress system...');
-      
-      // Initialize recovery system (handles crashed sessions)
       await sessionRecoveryService.initializeRecovery();
-      
-      // Optimize storage (cleanup old data)
       await storageManagementService.optimizeStorage();
-      
-      // Check for expired courses (will be enhanced when auth context is available)
-      logger.log('🔍 Checking for expired courses...');
-      
-      logger.log('✅ Workout progress system initialized');
       
     } catch (error) {
       logger.error('❌ Failed to initialize workout progress system:', error);
@@ -42,18 +30,7 @@ class WorkoutProgressService {
    */
   async checkExpiredCoursesForUser(userId) {
     try {
-      logger.log('🔍 Checking expired courses for user:', userId);
-      
-      // This will compare user's active courses vs locally stored courses
-      // and delete any courses that are no longer active
       const cleanedCount = await courseDownloadService.cleanupExpiredCourses(userId);
-      
-      if (cleanedCount > 0) {
-        logger.log(`🧹 Cleaned up ${cleanedCount} expired courses`);
-      } else {
-        logger.log('✅ No expired courses found');
-      }
-      
       return cleanedCount;
       
     } catch (error) {
@@ -69,16 +46,9 @@ class WorkoutProgressService {
    */
   async onCoursePurchased(userId, courseId) {
     try {
-      logger.log('📥 Course purchased, starting background download:', courseId);
-      
-      // Download course content in background (non-blocking)
-      // Don't await - let it download in background while user can use the app
       courseDownloadService.downloadCourse(courseId, userId).catch(error => {
         logger.error('❌ Background course download failed:', error);
-        // Don't throw - course purchase should still succeed even if download fails
       });
-      
-      logger.log('✅ Course download started in background for:', courseId);
       
     } catch (error) {
       logger.error('❌ Error starting course download:', error);
@@ -93,120 +63,11 @@ class WorkoutProgressService {
    */
   async onCourseExpired(userId, courseId) {
     try {
-      logger.log('⏰ Course expired, cleaning up:', courseId);
-      
-      // Delete course data
       await courseDownloadService.deleteCourse(courseId);
-      
-      // Clean up related progress cache
       await this.cleanupCourseProgressCache(userId, courseId);
-      
-      logger.log('✅ Course cleanup completed for:', courseId);
       
     } catch (error) {
       logger.error('❌ Course cleanup failed:', error);
-    }
-  }
-  
-  /**
-   * Start a workout session
-   * @param {string} userId - User ID
-   * @param {string} courseId - Course ID
-   * @param {string} sessionId - Session ID from course structure
-   */
-  async startWorkout(userId, courseId, sessionId) {
-    try {
-      logger.log('🏋️ Starting workout:', { userId, courseId, sessionId });
-      
-      // Verify course is available locally
-      const isAvailable = await courseDownloadService.isCourseAvailable(courseId);
-      if (!isAvailable) {
-        throw new Error('Course not available offline. Please download first.');
-      }
-      
-      // Start session
-      const session = await workoutSessionService.startSession(courseId, sessionId, userId);
-      
-      logger.log('✅ Workout started successfully:', session.sessionId);
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to start workout:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Record a completed set
-   * @param {Object} setData - Set performance data
-   */
-  async recordSet(setData) {
-    try {
-      // Add set to current session (includes auto-save)
-      const session = await workoutSessionService.addSetToSession(setData);
-      
-      logger.log(`✅ Set recorded: ${session.sets.length} total sets`);
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to record set:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Complete current workout session
-   */
-  async completeWorkout() {
-    try {
-      logger.log('🏁 Completing workout...');
-      
-      // Complete session
-      const session = await workoutSessionService.completeSession();
-      
-      if (session) {
-        // Trigger background upload
-        this.triggerBackgroundUpload();
-        
-        logger.log('✅ Workout completed:', {
-          sessionId: session.sessionId,
-          sets: session.sets.length,
-          duration: session.duration_minutes
-        });
-      }
-      
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to complete workout:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Cancel current workout session
-   */
-  async cancelWorkout() {
-    try {
-      const session = await workoutSessionService.cancelSession();
-      logger.log('❌ Workout cancelled');
-      return session;
-      
-    } catch (error) {
-      logger.error('❌ Failed to cancel workout:', error);
-      throw error;
-    }
-  }
-  
-  /**
-   * Get current session progress
-   */
-  async getCurrentProgress() {
-    try {
-      return await workoutSessionService.getSessionProgress();
-    } catch (error) {
-      logger.error('❌ Failed to get current progress:', error);
-      return null;
     }
   }
   
@@ -244,8 +105,6 @@ class WorkoutProgressService {
    */
   async getCourseProgressSummary(userId, courseId) {
     try {
-      logger.log('📊 Getting course progress summary:', { courseId, userId });
-      
       // Get course data
       const courseData = await this.getCourseDataForWorkout(courseId, userId);
       if (!courseData?.courseData?.modules) {
@@ -267,19 +126,6 @@ class WorkoutProgressService {
       // Calculate progress percentage
       const progressPercentage = totalSessions > 0 ? Math.round((completedCount / totalSessions) * 100) : 0;
       
-      logger.log('📊 Progress summary:', { 
-        totalSessions, 
-        completedSessions: completedCount, 
-        progressPercentage 
-      });
-      logger.log('📋 Completed sessions details:', completedSessions);
-      logger.log('📚 Course modules structure:', courseData.courseData.modules.map(m => ({
-        moduleId: m.id,
-        moduleTitle: m.title,
-        sessionsCount: m.sessions?.length || 0,
-        sessionIds: m.sessions?.map(s => s.id) || []
-      })));
-      
       return {
         totalSessions,
         completedSessions: completedCount,
@@ -300,8 +146,6 @@ class WorkoutProgressService {
    */
   async clearCourseProgress(userId, courseId) {
     try {
-      logger.log('🔄 Clearing course progress:', { courseId, userId });
-      
       // Get all keys from AsyncStorage
       const allKeys = await AsyncStorage.getAllKeys();
       
@@ -310,12 +154,8 @@ class WorkoutProgressService {
         key.startsWith(`session_completed_${userId}_${courseId}_`)
       );
       
-      logger.log('📋 Found', courseProgressKeys.length, 'progress keys to remove');
-      
-      // Remove all progress keys for this course
       if (courseProgressKeys.length > 0) {
         await AsyncStorage.multiRemove(courseProgressKeys);
-        logger.log('✅ Course progress cleared:', courseProgressKeys.length, 'sessions');
       }
       
       return true;
@@ -337,71 +177,6 @@ class WorkoutProgressService {
     } catch (error) {
       logger.error('❌ Failed to get recent activity:', error);
       return [];
-    }
-  }
-  
-  /**
-   * Trigger background upload (non-blocking)
-   */
-  triggerBackgroundUpload() {
-    // Run upload in background without blocking UI
-    setTimeout(async () => {
-      try {
-        await uploadService.processUploadQueue();
-      } catch (error) {
-        logger.log('Background upload will retry later:', error.message);
-      }
-    }, 1000); // 1 second delay to not block completion UI
-  }
-  
-  /**
-   * Get system status for debugging
-   */
-  async getSystemStatus() {
-    try {
-      const [storageUsage, queueStatus, recoveryStatus] = await Promise.all([
-        storageManagementService.getStorageUsage(),
-        uploadService.getUploadQueueStatus(),
-        sessionRecoveryService.getRecoveryStatus()
-      ]);
-      
-      return {
-        storage: storageUsage,
-        uploadQueue: queueStatus,
-        recovery: recoveryStatus,
-        timestamp: new Date().toISOString()
-      };
-      
-    } catch (error) {
-      logger.error('❌ Failed to get system status:', error);
-      return null;
-    }
-  }
-  
-  /**
-   * Perform maintenance operations
-   */
-  async performMaintenance() {
-    try {
-      logger.log('🔧 Performing system maintenance...');
-      
-      const results = await Promise.all([
-        storageManagementService.optimizeStorage(),
-        uploadService.retryFailedUploads(),
-        this.cleanupExpiredCourses()
-      ]);
-      
-      logger.log('✅ Maintenance completed:', {
-        storageOptimized: results[0],
-        uploadsRetried: results[1],
-        coursesCleanedUp: results[2]
-      });
-      
-      return results;
-      
-    } catch (error) {
-      logger.error('❌ Maintenance failed:', error);
-      return [0, 0, 0];
     }
   }
   
@@ -428,16 +203,7 @@ class WorkoutProgressService {
    */
   async onUserCourseStatusChange(userId) {
     try {
-      logger.log('🔄 User course status changed, cleaning up...');
-      
-      // This will check user's active courses vs locally stored courses
-      // and delete any courses that are no longer active
       const cleanedCount = await courseDownloadService.cleanupExpiredCourses(userId);
-      
-      if (cleanedCount > 0) {
-        logger.log(`✅ Cleaned up ${cleanedCount} expired courses`);
-      }
-      
       return cleanedCount;
       
     } catch (error) {
@@ -453,7 +219,6 @@ class WorkoutProgressService {
     try {
       const cacheKey = `progress_cache_${userId}_${courseId}`;
       await AsyncStorage.removeItem(cacheKey);
-      logger.log('🧹 Progress cache cleaned for course:', courseId);
     } catch (error) {
       logger.error('❌ Failed to cleanup progress cache:', error);
     }
@@ -480,18 +245,10 @@ class WorkoutProgressService {
     try {
       let courseData = await courseDownloadService.getCourseData(courseId, true);
       const effectiveUserId = userId;
-      logger.log('📦 [getCourseDataForWorkout] initial courseData:', {
-        hasCourseData: !!courseData,
-        hasInner: !!courseData?.courseData,
-        isOneOnOne: courseData?.courseData?.isOneOnOne,
-        modulesLength: courseData?.courseData?.modules?.length ?? 'n/a',
-        innerKeys: courseData?.courseData ? Object.keys(courseData.courseData) : []
-      });
       if (courseData?.courseData?.isOneOnOne === true && (!courseData.courseData.modules || courseData.courseData.modules.length === 0) && effectiveUserId) {
         const moduleOpts = { cacheInMemory: true, ttlMs: 5 * 60 * 1000 };
         if (weekKeyForTarget) moduleOpts.weekKey = weekKeyForTarget;
-        const modules = await firestoreService.getCourseModules(courseId, effectiveUserId, moduleOpts);
-        logger.log('📦 [getCourseDataForWorkout] getCourseModules result:', { modulesLength: modules?.length ?? 0, isArray: Array.isArray(modules) });
+        const modules = await apiService.getCourseModules(courseId, { includeSessions: true });
         if (modules) {
           courseData = { ...courseData, courseData: { ...courseData.courseData, modules } };
         }
@@ -499,31 +256,26 @@ class WorkoutProgressService {
       // For non-one-on-one programs, merge fresh modules from Firestore so creator dashboard changes (reorder, move sessions) are visible without re-downloading
       if (!courseData?.courseData?.isOneOnOne && courseData?.courseData) {
         try {
-          const freshModules = await firestoreService.getCourseModules(courseId, effectiveUserId);
+          const freshModules = await apiService.getCourseModules(courseId, { includeSessions: true });
           if (freshModules && Array.isArray(freshModules)) {
             courseData = {
               ...courseData,
               courseData: { ...courseData.courseData, modules: freshModules },
             };
-            logger.log('📦 [getCourseDataForWorkout] merged fresh modules from Firestore:', freshModules.length);
           }
         } catch (e) {
-          logger.warn('Could not refresh modules for workout, using cache:', e?.message);
+          // fresh modules fetch failed, continue with cached data
         }
       }
       // One-on-one: attach planned session id for selected date (or today)
       // Use plan slot id (userId_courseId_weekKey_sessionId) when plan session so list match and sessionHistory dedupes in dashboard
       if (effectiveUserId && courseData?.courseData?.isOneOnOne === true) {
-        const planned = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
+        const planned = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
         const plannedId = planned
           ? (planned.plan_id && planned.session_id
             ? `${effectiveUserId}_${courseId}_${getMondayWeek(planned.date_timestamp?.toDate?.() || (planned.date ? new Date(planned.date) : effectiveTargetDate))}_${planned.session_id}`
             : planned.id)
           : null;
-        logger.log('🔍 [getCourseDataForWorkout] one-on-one plannedSessionIdForToday:', {
-          date: effectiveTargetDate.toDateString(),
-          plannedId
-        });
         courseData = {
           ...courseData,
           courseData: {
@@ -533,30 +285,20 @@ class WorkoutProgressService {
         };
       }
       if (!courseData && effectiveUserId) {
-        logger.log('📥 Course not found locally, checking hybrid cache:', courseId);
         try {
-          const hybridDataService = require('../services/hybridDataService').default;
-          const allCourses = await hybridDataService.loadCourses(effectiveUserId);
+          const allCourses = await apiService.getCourses();
           const hybridCourse = allCourses.find(c => c.id === courseId);
-          logger.log('📦 [getCourseDataForWorkout] hybrid lookup:', {
-            courseId,
-            hybridCount: allCourses?.length ?? 0,
-            hybridIds: allCourses?.map(c => c.id) ?? [],
-            foundInHybrid: !!hybridCourse
-          });
           
           if (hybridCourse) {
-            logger.log('✅ Found course in hybrid cache, fetching modules...');
             const moduleOptsHybrid = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
-            const modulesToUse = await firestoreService.getCourseModules(courseId, effectiveUserId, moduleOptsHybrid);
-            const plannedHybrid = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
+            const modulesToUse = await apiService.getCourseModules(courseId, { includeSessions: true });
+            const plannedHybrid = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = hybridCourse.deliveryType === 'one_on_one' || hybridCourse.isOneOnOne === true;
             const plannedIdHybrid = isOneOnOne && plannedHybrid
               ? (plannedHybrid.plan_id && plannedHybrid.session_id
                 ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedHybrid.date_timestamp?.toDate?.() || (plannedHybrid.date ? new Date(plannedHybrid.date) : effectiveTargetDate))}_${plannedHybrid.session_id}`
                 : plannedHybrid.id)
               : undefined;
-            if (plannedIdHybrid != null) logger.log('🔍 [getCourseDataForWorkout] HYBRID plannedSessionIdForToday:', { date: effectiveTargetDate.toDateString(), plannedId: plannedIdHybrid });
             // sessionService reads courseData.courseData as "inner" and expects inner.modules and inner.isOneOnOne
             const innerCourseData = {
               ...(hybridCourse.courseData || hybridCourse),
@@ -571,13 +313,6 @@ class WorkoutProgressService {
               expiresAt: hybridCourse.expires_at || hybridCourse.expiresAt,
               imageUrl: hybridCourse.image_url || hybridCourse.imageUrl
             };
-            logger.log('✅ Using hybrid cache + full week modules for instant load');
-            logger.log('📦 [getCourseDataForWorkout] HYBRID return shape:', {
-              hasCourseData: !!returnPayload.courseData,
-              innerKeys: returnPayload.courseData ? Object.keys(returnPayload.courseData) : [],
-              modulesLength: returnPayload.courseData?.modules?.length ?? 'n/a',
-              isOneOnOne: returnPayload.courseData?.isOneOnOne
-            });
             courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
               logger.error('❌ Background download failed:', error);
             });
@@ -585,17 +320,16 @@ class WorkoutProgressService {
           }
 
           // Course not in hybrid (e.g. one-on-one assigned via users.courses; hybrid uses courses collection). Fetch from Firestore.
-          logger.log('📥 Course not in hybrid list (hybrid uses courses collection; one-on-one may be in users.courses). Fetching from Firestore:', courseId);
           const firestoreModuleOpts = weekKeyForTarget ? { weekKey: weekKeyForTarget } : {};
           const [firestoreCourse, modules] = await Promise.all([
-            firestoreService.getCourse(courseId),
-            firestoreService.getCourseModules(courseId, effectiveUserId, firestoreModuleOpts)
+            apiService.getCourse(courseId),
+            apiService.getCourseModules(courseId, { includeSessions: true })
           ]);
           if (firestoreCourse) {
             courseDownloadService.downloadCourse(courseId, effectiveUserId).catch(error => {
               logger.error('❌ Background download failed:', error);
             });
-            const plannedFirestore = await firestoreService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
+            const plannedFirestore = await apiService.getPlannedSessionForDate(effectiveUserId, courseId, effectiveTargetDate);
             const isOneOnOne = firestoreCourse.deliveryType === 'one_on_one' || firestoreCourse.isOneOnOne === true;
             const modulesToUse = modules || [];
             const plannedIdFirestore = isOneOnOne && plannedFirestore
@@ -603,7 +337,6 @@ class WorkoutProgressService {
                 ? `${effectiveUserId}_${courseId}_${getMondayWeek(plannedFirestore.date_timestamp?.toDate?.() || (plannedFirestore.date ? new Date(plannedFirestore.date) : effectiveTargetDate))}_${plannedFirestore.session_id}`
                 : plannedFirestore.id)
               : undefined;
-            if (plannedIdFirestore != null) logger.log('🔍 [getCourseDataForWorkout] FIRESTORE plannedSessionIdForToday:', { date: effectiveTargetDate.toDateString(), plannedId: plannedIdFirestore });
             const innerCourseData = {
               ...(firestoreCourse.courseData || firestoreCourse),
               modules: modulesToUse,
@@ -617,28 +350,13 @@ class WorkoutProgressService {
               expiresAt: firestoreCourse.expires_at || firestoreCourse.expiresAt,
               imageUrl: firestoreCourse.image_url || firestoreCourse.imageUrl
             };
-            logger.log('✅ Using Firestore (course not in hybrid list)');
-            logger.log('📦 [getCourseDataForWorkout] FIRESTORE return shape:', {
-              hasCourseData: !!returnPayload.courseData,
-              innerKeys: returnPayload.courseData ? Object.keys(returnPayload.courseData) : [],
-              modulesLength: returnPayload.courseData?.modules?.length ?? 'n/a',
-              isOneOnOne: returnPayload.courseData?.isOneOnOne,
-              modulesIsArray: Array.isArray(returnPayload.courseData?.modules)
-            });
             return returnPayload;
           }
-          logger.warn('📦 [getCourseDataForWorkout] Course not found in Firestore either:', courseId);
         } catch (error) {
           logger.error('❌ Error in hybrid/Firestore path:', error);
         }
       }
       
-      logger.log('📦 [getCourseDataForWorkout] LOCAL return shape:', {
-        hasCourseData: !!courseData,
-        innerKeys: courseData?.courseData ? Object.keys(courseData.courseData) : [],
-        modulesLength: courseData?.courseData?.modules?.length ?? 'n/a',
-        isOneOnOne: courseData?.courseData?.isOneOnOne
-      });
       return courseData;
     } catch (error) {
       logger.error('❌ Failed to get course data:', error);
@@ -647,51 +365,11 @@ class WorkoutProgressService {
   }
 
   /**
-   * Get current active session
-   */
-  async getCurrentSession() {
-    try {
-      return await workoutSessionService.getCurrentSession();
-    } catch (error) {
-      logger.error('❌ Failed to get current session:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Complete current session
-   * @param {string} userId - User ID
-   * @param {string} sessionId - Session ID
-   */
-  async completeSession(userId, sessionId) {
-    try {
-      logger.log('🏁 Completing session via workoutProgressService:', { userId, sessionId });
-      
-      // Complete the session
-      const completedSession = await workoutSessionService.completeSession();
-      
-      if (completedSession) {
-        // Trigger background upload
-        this.triggerBackgroundUpload();
-        
-        logger.log('✅ Session completed successfully:', completedSession.sessionId);
-        return completedSession;
-      } else {
-        logger.log('⚠️ No active session found to complete');
-        return null;
-      }
-    } catch (error) {
-      logger.error('❌ Failed to complete session:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Get completed session data for completion screen
    */
   async getCompletedSessionData(sessionId) {
     try {
-      return await firestoreService.getProgressSession(sessionId);
+      return await apiService.getProgressSession(sessionId);
     } catch (error) {
       logger.error('❌ Failed to get completed session data:', error);
       return null;
@@ -703,34 +381,10 @@ class WorkoutProgressService {
    */
   async getUserCourseProgress(userId, courseId) {
     try {
-      return await firestoreService.getUserCourseProgress(userId, courseId);
+      return await apiService.getUserCourseProgress(userId, courseId);
     } catch (error) {
       logger.error('❌ Failed to get user course progress:', error);
       return [];
-    }
-  }
-
-  /**
-   * Get user's all progress
-   */
-  async getUserAllProgress(userId) {
-    try {
-      return await firestoreService.getUserAllProgress(userId);
-    } catch (error) {
-      logger.error('❌ Failed to get user all progress:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get course statistics
-   */
-  async getCourseStatistics(courseId) {
-    try {
-      return await firestoreService.getCourseStatistics(courseId);
-    } catch (error) {
-      logger.error('❌ Failed to get course statistics:', error);
-      return { sessions: [], stats: null };
     }
   }
 
@@ -739,31 +393,24 @@ class WorkoutProgressService {
    */
   async getNextAvailableSession(userId, courseId) {
     try {
-      logger.log('🔍 Getting next available session for course:', { courseId, userId });
-      
       // Get course data
       const courseData = await this.getCourseDataForWorkout(courseId, userId);
       if (!courseData?.courseData?.modules) {
-        logger.log('❌ Course has no modules');
         return null;
       }
       
       // Get completed sessions from local storage (simple approach)
       const completedSessions = await this.getCompletedSessionsLocally(userId, courseId);
-      logger.log('📊 Found', completedSessions.length, 'completed sessions locally');
-      
       // Find the next session to do
       const nextSession = this.findNextSession(courseData.courseData.modules, completedSessions);
       
       if (!nextSession) {
-        logger.log('🎉 Course completed! All sessions finished.');
-        return { 
+        return {
           isCourseCompleted: true,
           message: '¡Felicidades! Has completado todo el curso.'
         };
       }
       
-      logger.log('✅ Next session found:', nextSession?.title || 'None');
       return nextSession;
       
     } catch (error) {
@@ -781,8 +428,6 @@ class WorkoutProgressService {
       completedSessions.map(session => session.session_id)
     );
     
-    logger.log('📋 Completed session IDs:', Array.from(completedSessionIds));
-    
     // Go through modules in order
     for (const module of modules) {
       if (!module.sessions || module.sessions.length === 0) continue;
@@ -790,13 +435,6 @@ class WorkoutProgressService {
       // Go through sessions in order within each module
       for (const session of module.sessions) {
         if (!completedSessionIds.has(session.id)) {
-          logger.log('🎯 Found next session:', session.title, 'in module:', module.title);
-          logger.log('🔍 Session structure:', {
-            id: session.id,
-            title: session.title,
-            hasExercises: !!session.exercises,
-            exercisesLength: session.exercises?.length || 0
-          });
           return {
             ...session,
             moduleId: module.id,
@@ -806,7 +444,6 @@ class WorkoutProgressService {
       }
     }
     
-    logger.log('🏁 All sessions completed!');
     return null; // All sessions completed
   }
 
@@ -825,9 +462,6 @@ class WorkoutProgressService {
         key.startsWith(`session_completed_${userId}_${courseId}_`)
       );
       
-      logger.log('🔍 Looking for completion keys with pattern:', `session_completed_${userId}_${courseId}_`);
-      logger.log('📋 All keys found:', allKeys.filter(key => key.includes('session_completed')));
-      logger.log('📋 Matching keys for this course:', completionKeys);
       
       // Get all completion data
       for (const key of completionKeys) {
@@ -839,14 +473,12 @@ class WorkoutProgressService {
               session_id: parsed.sessionId,
               completed_at: parsed.completedAt
             });
-            logger.log('✅ Parsed completion data:', { key, sessionId: parsed.sessionId });
           }
         } catch (parseError) {
-          logger.warn('⚠️ Failed to parse completion data for key:', key);
+          // Skip corrupted completion data
         }
       }
       
-      logger.log('📋 Found completed sessions locally:', completedSessions.length);
       return completedSessions;
       
     } catch (error) {
@@ -860,8 +492,6 @@ class WorkoutProgressService {
    */
   async markSessionCompleted(userId, courseId, sessionId) {
     try {
-      logger.log('✅ Marking session as completed:', { userId, courseId, sessionId });
-      
       // Store completion in local storage for quick access
       const completionKey = `session_completed_${userId}_${courseId}_${sessionId}`;
       await AsyncStorage.setItem(completionKey, JSON.stringify({
@@ -871,7 +501,6 @@ class WorkoutProgressService {
         completedAt: new Date().toISOString()
       }));
       
-      logger.log('✅ Session completion marked locally');
       
     } catch (error) {
       logger.error('❌ Failed to mark session as completed:', error);

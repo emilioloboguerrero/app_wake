@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
-import firestoreService from '../services/firestoreService';
+import apiService from '../services/apiService';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 
 // Import navigators
@@ -38,9 +38,7 @@ const AppNavigator = () => {
           // Small delay to ensure user document is created after registration
           await new Promise(resolve => setTimeout(resolve, 1500));
           
-          const profile = await firestoreService.getUser(user.uid);
-          logger.log('🔍 User profile loaded:', profile);
-          logger.log('🔍 Onboarding completed?', profile?.onboardingCompleted);
+          const profile = await apiService.getUser(user.uid);
           
           if (profile) {
             setUserProfile(profile);
@@ -52,14 +50,11 @@ const AppNavigator = () => {
                 profileCompleted: profile.profileCompleted ?? false,
                 cachedAt: Date.now()
               }));
-              logger.log('💾 Onboarding status cached from Firestore');
             } catch (cacheError) {
-              logger.warn('⚠️ Failed to cache onboarding status:', cacheError);
               // Continue anyway - not critical
             }
           } else {
             // New user - no profile exists yet. Start with Registro (profile) first.
-            logger.log('🆕 New user detected, starting onboarding (profile first)');
             setUserProfile({ profileCompleted: false, onboardingCompleted: false });
           }
         } catch (error) {
@@ -70,20 +65,17 @@ const AppNavigator = () => {
             const cachedOnboardingStatus = await AsyncStorage.getItem(`onboarding_status_${user.uid}`);
             if (cachedOnboardingStatus) {
               const status = JSON.parse(cachedOnboardingStatus);
-              logger.log('📱 Device is offline, using cached onboarding status:', status);
               setUserProfile({
                 profileCompleted: status.profileCompleted ?? false,
                 onboardingCompleted: status.onboardingCompleted ?? false
               });
             } else {
               // No cached status - default to showing onboarding
-              logger.log('📱 Device is offline, no cached onboarding status - showing onboarding');
               setUserProfile({ profileCompleted: false, onboardingCompleted: false });
             }
           } catch (cacheError) {
             // If reading cache fails, default to onboarding
             logger.error('Error reading cached onboarding status:', cacheError);
-            logger.log('📱 Device is offline, error reading cache - showing onboarding');
             setUserProfile({ profileCompleted: false, onboardingCompleted: false });
           }
         } finally {
@@ -124,15 +116,8 @@ const AppNavigator = () => {
 
   // Show loading while checking user profile for authenticated users
   if (user && profileLoading) {
-    logger.log('🔄 Loading user profile...');
     return <LoadingScreen />;
   }
-
-  // Debug logging for navigation decisions
-  logger.log('🧭 Navigation decision:');
-  logger.log('  - User:', user ? 'authenticated' : 'not authenticated');
-  logger.log('  - User profile:', userProfile ? 'loaded' : 'not loaded');
-  logger.log('  - Onboarding completed:', userProfile?.onboardingCompleted);
 
   return (
     <NavigationContainer>
@@ -165,5 +150,3 @@ const AppNavigator = () => {
 };
 
 export default AppNavigator;
-
-

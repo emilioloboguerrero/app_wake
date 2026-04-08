@@ -1,0 +1,73 @@
+/* === Delete Session Modal ===
+ * Styles for the confirmation modal when deleting a session
+ * from the program content tab.
+ */
+
+.modal-library-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.delete-instruction-text {
+  color: var(--text-secondary);
+  font-size: clamp(13px, 3vw, 14px);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.delete-input-button-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.delete-input-button-row .input-container {
+  flex: 1;
+}
+
+.delete-library-button {
+  background-color: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  padding: 0 24px;
+  height: 52px;
+  color: rgba(255, 68, 68, 0.85);
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 600;
+  font-family: var(--font-sans), sans-serif;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) ease,
+              border-color var(--duration-fast) ease,
+              transform var(--duration-fast) var(--spring);
+  min-width: 110px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.delete-library-button:hover:not(.delete-library-button-disabled) {
+  background-color: rgba(255, 68, 68, 0.25);
+  border-color: rgba(255, 68, 68, 0.5);
+  transform: translateY(-1px);
+}
+
+.delete-library-button-disabled {
+  background-color: var(--surface-3);
+  border-color: var(--border-subtle);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.delete-warning-text {
+  color: rgba(255, 68, 68, 0.8);
+  font-size: clamp(13px, 3vw, 14px);
+  font-weight: 500;
+  line-height: 1.5;
+  margin: 0;
+}

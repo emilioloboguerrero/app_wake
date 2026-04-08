@@ -1,11 +1,7 @@
-import { getUser, getCourse, addCourseToUser, startTrialForCourse } from './firestoreService';
-import { calculateExpirationDate } from '../utils/durationHelper';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
 
 class PurchaseService {
-  /**
-   * Returns true if a course entry grants current access.
-   */
   isCourseEntryActive(courseEntry) {
     if (!courseEntry) return false;
     const expiresAt = courseEntry.expires_at ? new Date(courseEntry.expires_at) : null;
@@ -13,21 +9,15 @@ class PurchaseService {
     return courseEntry.status === 'active' || courseEntry.is_trial === true;
   }
 
-  /**
-   * Returns the user's ownership state for a specific course.
-   */
   async getUserCourseState(userId, courseId) {
     try {
-      const userDoc = await getUser(userId);
-      if (!userDoc) {
-        return { ownsCourse: false, courseData: null, trialHistory: null };
-      }
-      const courseData = userDoc.courses?.[courseId] || null;
-      const trialHistory = userDoc.free_trial_history?.[courseId] || null;
+      const result = await apiClient.get(`/users/${userId}/public-profile`);
+      const profile = result?.data ?? {};
+      const courseData = profile.courses?.[courseId] ?? null;
       return {
         ownsCourse: this.isCourseEntryActive(courseData),
         courseData,
-        trialHistory,
+        trialHistory: null,
       };
     } catch (error) {
       logger.error('Error getting user course state:', error);
@@ -45,109 +35,35 @@ class PurchaseService {
     }
   }
 
-  /**
-   * Grants free access to a course (used for draft programs or admin grants).
-   */
   async grantFreeAccess(userId, courseId) {
     try {
-      const existingPurchase = await this.checkUserOwnsCourse(userId, courseId);
-      if (existingPurchase) {
-        return {
-          success: false,
-          error: 'Ya tienes este curso en tu biblioteca',
-          code: 'ALREADY_PURCHASED'
-        };
-      }
-
-      const courseDetails = await getCourse(courseId);
-      if (!courseDetails) {
-        return {
-          success: false,
-          error: 'El programa no fue encontrado',
-          code: 'COURSE_NOT_FOUND'
-        };
-      }
-
-      if (!courseDetails.access_duration) {
-        return {
-          success: false,
-          error: 'Programa sin duración de acceso',
-          code: 'INVALID_ACCESS_DURATION'
-        };
-      }
-
-      const expirationDate = calculateExpirationDate(courseDetails.access_duration);
-      await addCourseToUser(userId, courseId, expirationDate, courseDetails.access_duration, courseDetails);
-
+      const result = await apiClient.post(
+        `/creator/clients/${userId}/programs/${courseId}`,
+        { expiresAt: null }
+      );
       return {
         success: true,
         message: 'Acceso gratuito otorgado exitosamente',
-        expirationDate
+        data: result?.data,
       };
     } catch (error) {
       logger.error('Error granting free access:', error);
       return {
         success: false,
         error: error.message || 'Error al otorgar acceso gratuito',
-        code: error.code || 'FREE_ACCESS_ERROR'
+        code: error.code || 'FREE_ACCESS_ERROR',
       };
     }
   }
 
-  /**
-   * Starts a local free trial for a course.
-   */
-  async startLocalTrial(userId, courseId, durationDays) {
-    try {
-      if (!durationDays || durationDays <= 0) {
-        return {
-          success: false,
-          error: 'Duración de prueba inválida',
-          code: 'INVALID_DURATION',
-        };
-      }
-
-      const { ownsCourse, trialHistory, courseData } = await this.getUserCourseState(userId, courseId);
-      if (ownsCourse && !courseData?.is_trial) {
-        return {
-          success: false,
-          error: 'Ya tienes acceso a este programa',
-          code: 'ALREADY_OWNED',
-        };
-      }
-
-      if (trialHistory?.consumed || courseData?.trial_consumed) {
-        return {
-          success: false,
-          error: 'Ya usaste la prueba gratuita de este programa',
-          code: 'TRIAL_ALREADY_USED',
-        };
-      }
-
-      const courseDetails = await getCourse(courseId);
-      if (!courseDetails) {
-        return {
-          success: false,
-          error: 'El programa no fue encontrado',
-          code: 'COURSE_NOT_FOUND',
-        };
-      }
-
-      return await startTrialForCourse(userId, courseId, courseDetails, durationDays);
-    } catch (error) {
-      logger.error('Error starting local trial:', error);
-      return {
-        success: false,
-        error: error.message || 'Error al iniciar la prueba gratuita',
-        code: 'TRIAL_ERROR',
-      };
-    }
+  async startLocalTrial(_userId, _courseId, _durationDays) {
+    return {
+      success: false,
+      error: 'startLocalTrial no está soportado en la API. Use el flujo de pagos.',
+      code: 'NOT_SUPPORTED',
+    };
   }
 
-  /**
-   * Initiates a MercadoPago subscription checkout for monthly-access courses.
-   * Returns a checkout URL or a flag indicating an alternate email is needed.
-   */
   async prepareSubscription(userId, courseId, payerEmail) {
     try {
       if (!payerEmail) {
@@ -158,31 +74,20 @@ class PurchaseService {
         };
       }
 
-      const response = await fetch(
-        'https://us-central1-wolf-20b8b.cloudfunctions.net/createSubscriptionCheckout',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, courseId, payer_email: payerEmail }),
-        }
-      );
+      const result = await apiClient.post('/payments/subscription', {
+        courseId,
+        payer_email: payerEmail,
+      });
 
-      const result = await response.json();
-
-      if (response.status === 409 && result.requireAlternateEmail) {
+      return { success: true, checkoutURL: result?.data?.initPoint };
+    } catch (error) {
+      if (error.status === 409 && error.code === 'REQUIRES_ALTERNATE_EMAIL') {
         return {
           success: false,
           requiresAlternateEmail: true,
-          error: result.error || 'Por favor ingresa tu correo de Mercado Pago',
+          error: error.message || 'Por favor ingresa tu correo de Mercado Pago',
         };
       }
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Error creating subscription checkout');
-      }
-
-      return { success: true, checkoutURL: result.init_point };
-    } catch (error) {
       return {
         success: false,
         error: error.message || 'Error preparing subscription',
@@ -190,36 +95,24 @@ class PurchaseService {
     }
   }
 
-  /**
-   * Routes to subscription or one-time payment based on course access_duration.
-   * Monthly courses go through subscription; everything else through one-time payment.
-   */
   async preparePurchase(userId, courseId) {
     try {
-      const courseDetails = await getCourse(courseId);
-      if (!courseDetails) {
+      const programResult = await apiClient.get(`/creator/programs/${courseId}`);
+      const program = programResult?.data;
+      if (!program) {
         return { success: false, error: 'Course not found' };
       }
 
-      if (courseDetails.access_duration === 'monthly') {
+      if (program.accessDuration === 'monthly') {
         return await this.prepareSubscription(userId, courseId);
       }
 
-      const response = await fetch(
-        'https://us-central1-wolf-20b8b.cloudfunctions.net/createPaymentPreference',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, courseId }),
-        }
-      );
+      const result = await apiClient.post('/payments/preference', {
+        courseId,
+        accessDuration: program.accessDuration || 'monthly',
+      });
 
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || 'Error creating payment');
-      }
-
-      return { success: true, checkoutURL: result.init_point };
+      return { success: true, checkoutURL: result?.data?.initPoint };
     } catch (error) {
       return {
         success: false,

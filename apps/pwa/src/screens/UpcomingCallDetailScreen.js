@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   StyleSheet,
@@ -17,7 +18,7 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { getBookingById } from '../services/callBookingService';
-import firestoreService from '../services/firestoreService';
+import firestoreService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';
 
 const GOLD_ACCENT = 'rgba(255, 255, 255, 1)';
@@ -102,7 +103,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
       return { booking: b, creatorName: cn, courseName: cName, courseImageUrl: cImg, creatorProfileUrl };
     },
     enabled: !!paramBooking || !!bookingId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.userProfile,
   });
 
   const booking = data?.booking ?? null;
@@ -373,7 +374,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
         edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
       >
         <FixedWakeHeader showBackButton onBackPress={() => navigation.goBack()} />
-        <LoadingSpinner text="Cargando reserva..." containerStyle={{ flex: 1, justifyContent: 'center' }} />
+        <LoadingSpinner containerStyle={{ flex: 1, justifyContent: 'center' }} />
       </SafeAreaView>
     );
   }

@@ -1,0 +1,112 @@
+.dpi-calendar {
+  width: 260px;
+}
+
+/* ── Navigation ── */
+.dpi-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.dpi-nav-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.dpi-nav-btn:hover {
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dpi-nav-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ── Weekdays ── */
+.dpi-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.dpi-weekday {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.25);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 0;
+}
+
+/* ── Days ── */
+.dpi-days {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dpi-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dpi-day {
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0;
+  text-align: center;
+  transition: all 0.15s ease;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dpi-day:hover:not(:disabled):not(.dpi-day--past) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.dpi-day--other {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+.dpi-day--past {
+  color: rgba(255, 255, 255, 0.1);
+  cursor: default;
+}
+
+.dpi-day--today {
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dpi-day--blocked {
+  background: rgba(255, 80, 80, 0.15);
+  color: rgba(255, 130, 130, 0.85);
+  font-weight: 600;
+}
+
+.dpi-day--blocked:hover:not(:disabled) {
+  background: rgba(255, 80, 80, 0.25);
+}

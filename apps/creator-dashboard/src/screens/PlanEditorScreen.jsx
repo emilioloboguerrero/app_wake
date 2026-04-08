@@ -6,18 +6,24 @@
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { cacheConfig, queryKeys } from '../config/queryClient';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+// PieChart removed in v4 redesign — kept import comment for reference
 import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import clientNutritionPlanContentService from '../services/clientNutritionPlanContentService';
 import propagationService from '../services/propagationService';
 import PropagateChangesModal from '../components/PropagateChangesModal';
 import PropagateNavigateModal from '../components/PropagateNavigateModal';
+import EditScopeInfoModal from '../components/EditScopeInfoModal';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
+import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import { FullScreenError, GlowingEffect, ScrollProgress } from '../components/ui';
+import ContextualHint from '../components/hints/ContextualHint';
 import './LibrarySessionDetailScreen.css';
 import './MealEditorScreen.css';
 import './PlanEditorScreen.css';
@@ -156,20 +162,62 @@ function normalizeCategory(c, i) {
   };
 }
 
+function expandRecipeRefsLocally(categories, mealsMap) {
+  return categories.map((cat) => ({
+    ...cat,
+    options: (cat.options || []).map((opt) => {
+      let newItems = [];
+      let recipe_meal_id = null;
+      let recipe_name = null;
+      let recipe_video_url = null;
+      for (const item of opt.items || []) {
+        if (item.recipe === true && item.meal_id) {
+          const meal = mealsMap.get(item.meal_id);
+          if (meal?.items?.length) {
+            newItems = newItems.concat(meal.items);
+            recipe_meal_id = meal.id;
+            recipe_name = meal.name ?? item.name ?? '';
+            recipe_video_url = meal.video_url ?? meal.videoUrl ?? null;
+          } else {
+            newItems.push({ ...item, name: item.name || meal?.name || 'Receta' });
+          }
+        } else {
+          newItems.push(item);
+        }
+      }
+      const expanded = { id: opt.id, label: opt.label ?? '', items: newItems };
+      if (recipe_meal_id != null) {
+        expanded.recipe_meal_id = recipe_meal_id;
+        expanded.recipe_name = recipe_name;
+        expanded.recipe_video_url = recipe_video_url;
+      } else if (opt.recipe_meal_id != null || opt.recipe_video_url != null) {
+        expanded.recipe_meal_id = opt.recipe_meal_id;
+        expanded.recipe_name = opt.recipe_name;
+        expanded.recipe_video_url = opt.recipe_video_url;
+      }
+      return expanded;
+    }),
+  }));
+}
+
 export default function PlanEditorScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const { planId } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const creatorId = user?.uid ?? '';
 
   const editScope = location.state?.editScope;
   const assignmentId = location.state?.assignmentId;
   const assignmentPlanId = location.state?.assignmentPlanId ?? planId;
   const clientName = location.state?.clientName ?? 'Cliente';
+  const assignmentClientId = location.state?.clientId ?? null;
   const returnTo = location.state?.returnTo;
   const returnState = location.state?.returnState;
   const isAssignmentScope = editScope === 'assignment' && assignmentId;
+  const [showScopeInfo, setShowScopeInfo] = useState(false);
 
   const [planName, setPlanName] = useState('');
   const [dailyCalories, setDailyCalories] = useState('');
@@ -180,8 +228,13 @@ export default function PlanEditorScreen() {
   const [distributionPreset, setDistributionPreset] = useState('balanced');
   const [categories, setCategories] = useState(() => DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i)));
   const seededRef = useRef(false);
+  const justSeededRef = useRef(false);
   const lastSavedRef = useRef({ name: '', macros: '', categoriesJson: '' });
-  const [categoryEditModal, setCategoryEditModal] = useState({ open: false, categoryIndex: -1, label: '', confirmingDelete: false });
+  const pendingSaveRef = useRef(null);
+  const assignmentCopyExistsRef = useRef(false);
+  const [editingCategoryIndex, setEditingCategoryIndex] = useState(null);
+  const [editingCategoryLabel, setEditingCategoryLabel] = useState('');
+  const [deletingCategoryIndex, setDeletingCategoryIndex] = useState(null);
   const [deleteOptionModal, setDeleteOptionModal] = useState({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 });
   const [selectedOptionByCategory, setSelectedOptionByCategory] = useState({}); // { [catIdx]: optIdx }
   const selectedOption = (catIdx) => selectedOptionByCategory[catIdx] ?? 0;
@@ -193,8 +246,7 @@ export default function PlanEditorScreen() {
   const [leftPanelTab, setLeftPanelTab] = useState('alimentos'); // 'alimentos' | 'recetas'
 
   const [foodSearchQuery, setFoodSearchQuery] = useState('');
-  const [foodSearchResults, setFoodSearchResults] = useState([]);
-  const [foodSearchLoading, setFoodSearchLoading] = useState(false);
+  const [submittedFoodQuery, setSubmittedFoodQuery] = useState('');
   const [foodSortBy, setFoodSortBy] = useState('name'); // 'name' | 'calories' | 'protein' | 'carbs' | 'fat'
   const [foodSortMenuOpen, setFoodSortMenuOpen] = useState(false);
   const [customFoods, setCustomFoods] = useState([]); // manual food items for Alimentos tab
@@ -211,31 +263,47 @@ export default function PlanEditorScreen() {
   const [hasMadeChanges, setHasMadeChanges] = useState(false);
 
   useEffect(() => {
-    if (!planId || !creatorId) navigate('/nutrition', { replace: true });
-    else if (isAssignmentScope && !assignmentId) navigate(returnTo || '/nutrition', { replace: true });
+    if (!planId || planId === 'new' || !creatorId) navigate('/biblioteca?domain=nutricion&tab=planes_nutri', { replace: true });
+    else if (isAssignmentScope && !assignmentId) navigate(returnTo || '/biblioteca?domain=nutricion', { replace: true });
   }, [planId, creatorId, isAssignmentScope, assignmentId, navigate, returnTo]);
 
   const { data: mealsData } = useQuery({
-    queryKey: ['nutrition', 'meals', creatorId],
+    queryKey: queryKeys.nutrition.meals(creatorId),
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
+    ...cacheConfig.otherPrograms,
   });
 
-  const { data: planData, isLoading: planLoading } = useQuery({
+  const { data: planData, isLoading: planLoading, error: planError, refetch: refetchPlan } = useQuery({
     queryKey: isAssignmentScope
       ? ['nutrition', 'plan', 'assignment', assignmentId]
       : ['nutrition', 'plan', creatorId, planId],
     queryFn: async () => {
       if (isAssignmentScope) {
         const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
-        if (copy) return copy;
+        if (copy) { assignmentCopyExistsRef.current = true; return copy; }
         const effectivePlanId = assignmentPlanId || planId;
         return nutritionDb.getPlanById(creatorId, effectivePlanId);
       }
       return nutritionDb.getPlanById(creatorId, planId);
     },
     enabled: !!planId && !!creatorId && (!isAssignmentScope || !!assignmentId),
+    ...cacheConfig.activeProgram,
   });
+
+  const { data: foodSearchResults = [], isLoading: foodSearchLoading } = useQuery({
+    queryKey: queryKeys.nutrition.foodSearch(submittedFoodQuery),
+    queryFn: async () => {
+      const data = await nutritionApi.nutritionFoodSearch(submittedFoodQuery, 0, 20);
+      const raw = data?.foods_search?.results?.food ?? [];
+      return Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    },
+    enabled: !!submittedFoodQuery.trim(),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const mealsMap = useMemo(() => new Map(meals.map((m) => [m.id, m])), [meals]);
 
   useEffect(() => {
     if (mealsData) setMeals(mealsData);
@@ -253,27 +321,27 @@ export default function PlanEditorScreen() {
       setDailyProtein(p);
       setDailyCarbs(c);
       setDailyFat(f);
-      const inferred = inferPresetFromGrams(
-        planData.daily_calories ?? 0,
-        planData.daily_protein_g,
-        planData.daily_carbs_g,
-        planData.daily_fat_g
-      );
-      setDistributionPreset(inferred);
+      const hasStoredMacros = planData.daily_protein_g != null || planData.daily_carbs_g != null || planData.daily_fat_g != null;
+      if (hasStoredMacros) {
+        const inferred = inferPresetFromGrams(
+          planData.daily_calories ?? 0,
+          planData.daily_protein_g,
+          planData.daily_carbs_g,
+          planData.daily_fat_g
+        );
+        setDistributionPreset(inferred);
+      }
       const cats = Array.isArray(planData.categories) && planData.categories.length > 0
         ? planData.categories.map((c, i) => normalizeCategory(c, i))
         : DEFAULT_CATEGORIES.map((c, i) => normalizeCategory({ ...c, options: c.options || [] }, i));
       setCategories(cats);
-      lastSavedRef.current = {
-        name: planData.name ?? '',
-        macros: JSON.stringify({ cal: planData.daily_calories, p: planData.daily_protein_g, c: planData.daily_carbs_g, f: planData.daily_fat_g }),
-        categoriesJson: JSON.stringify(cats),
-      };
+      justSeededRef.current = true;
     }
   }, [planData]);
 
   // When calories or distribution preset change (and not custom), recompute macro grams.
   useEffect(() => {
+    if (justSeededRef.current) return;
     if (distributionPreset === 'custom') return;
     const cal = Number(dailyCalories);
     if (!Number.isFinite(cal) || cal <= 0) return;
@@ -320,19 +388,28 @@ export default function PlanEditorScreen() {
     const categoriesJson = JSON.stringify(planPayload.categories);
     if (name === lastSavedRef.current.name && macros === lastSavedRef.current.macros && categoriesJson === lastSavedRef.current.categoriesJson) return;
 
+    // First render after seeding: sync lastSavedRef from planPayload's shape without triggering changes
+    if (justSeededRef.current) {
+      justSeededRef.current = false;
+      lastSavedRef.current = { name, macros, categoriesJson };
+      return;
+    }
+
     if (!isAssignmentScope) setHasMadeChanges(true);
 
-    const t = setTimeout(async () => {
+    const doSave = async () => {
+      pendingSaveRef.current = null;
       try {
-        const expandedCategories = await nutritionDb.expandRecipeRefsInCategories(creatorId, planPayload.categories);
+        const expandedCategories = expandRecipeRefsLocally(planPayload.categories, mealsMap);
         const payloadToSave = {
           ...planPayload,
           categories: expandedCategories,
         };
         if (isAssignmentScope) {
-          const copy = await clientNutritionPlanContentService.getByAssignmentId(assignmentId);
-          const effectivePlanId = assignmentPlanId || planId;
-          if (!copy) {
+          if (assignmentCopyExistsRef.current) {
+            await clientNutritionPlanContentService.update(assignmentId, payloadToSave);
+          } else {
+            const effectivePlanId = assignmentPlanId || planId;
             await clientNutritionPlanContentService.setFromLibrary(assignmentId, effectivePlanId, {
               name: payloadToSave.name,
               description: '',
@@ -342,19 +419,38 @@ export default function PlanEditorScreen() {
               daily_fat_g: payloadToSave.daily_fat_g,
               categories: payloadToSave.categories,
             });
-          } else {
-            await clientNutritionPlanContentService.update(assignmentId, payloadToSave);
+            assignmentCopyExistsRef.current = true;
           }
         } else {
           await nutritionDb.updatePlan(creatorId, planId, payloadToSave);
         }
         lastSavedRef.current = { name, macros, categoriesJson };
+        queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
+        if (isAssignmentScope) {
+          queryClient.invalidateQueries({ queryKey: ['nutrition', 'plan', 'assignment', assignmentId] });
+          if (assignmentClientId) {
+            queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', assignmentClientId] });
+          }
+        } else {
+          queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plan(creatorId, planId) });
+        }
       } catch (e) {
         logger.error(e);
+        showToast('Error guardando el plan. Intenta de nuevo.', 'error');
       }
-    }, 700);
+    };
+
+    pendingSaveRef.current = doSave;
+    const t = setTimeout(doSave, 700);
     return () => clearTimeout(t);
-  }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId, meals]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planId, creatorId, planLoading, planPayload, isAssignmentScope, assignmentId, assignmentPlanId]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) pendingSaveRef.current();
+    };
+  }, []);
 
   useEffect(() => {
     if (!planId || isAssignmentScope || !hasMadeChanges) return;
@@ -386,17 +482,16 @@ export default function PlanEditorScreen() {
     } else if (returnTo) {
       navigate(returnTo, { state: returnState });
     } else {
-      navigate('/nutrition');
+      navigate('/biblioteca?domain=nutricion&tab=planes_nutri');
     }
   };
 
   const handleOpenPropagateModal = async () => {
     if (!planId) return;
     try {
-      const { affectedUserIds } = await propagationService.findAffectedByNutritionPlan(planId);
-      setPropagateAffectedCount(affectedUserIds.length);
       const users = await propagationService.getAffectedUsersWithDetailsByNutritionPlan(planId);
       setPropagateAffectedUsers(users);
+      setPropagateAffectedCount(users.length);
       setIsPropagateModalOpen(true);
     } catch (err) {
       logger.warn(err);
@@ -409,14 +504,14 @@ export default function PlanEditorScreen() {
     try {
       const { propagated, errors } = await propagationService.propagateNutritionPlan(planId, creatorId);
       if (errors.length > 0) {
-        alert(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`);
+        showToast(`Propagado parcialmente. ${propagated} copias actualizadas. Algunos errores: ${errors.slice(0, 3).join('; ')}`, 'error');
       } else if (propagated > 0) {
-        alert(`Cambios propagados correctamente a ${propagated} usuario(s).`);
+        showToast(`Cambios propagados correctamente a ${propagated} usuario(s).`, 'success');
       }
       setHasMadeChanges(false);
     } catch (err) {
       logger.error('Error propagating:', err);
-      alert(`Error al propagar: ${err?.message || 'Inténtalo de nuevo.'}`);
+      showToast(`No pudimos propagar los cambios: ${err?.message || 'Inténtalo de nuevo.'}`, 'error');
     } finally {
       setIsPropagating(false);
     }
@@ -426,29 +521,18 @@ export default function PlanEditorScreen() {
     await handlePropagateNutrition();
     setIsNavigateModalOpen(false);
     if (returnTo) navigate(returnTo, { state: returnState });
-    else navigate('/nutrition');
+    else navigate('/biblioteca?domain=nutricion&tab=planes_nutri');
   };
 
   const handleNavigateLeaveWithoutPropagate = () => {
     setIsNavigateModalOpen(false);
     if (returnTo) navigate(returnTo, { state: returnState });
-    else navigate('/nutrition');
+    else navigate('/biblioteca?domain=nutricion&tab=planes_nutri');
   };
 
-  async function handleFoodSearch() {
+  function handleFoodSearch() {
     if (!foodSearchQuery.trim()) return;
-    setFoodSearchLoading(true);
-    setFoodSearchResults([]);
-    try {
-      const data = await nutritionApi.nutritionFoodSearch(foodSearchQuery.trim(), 0, 20);
-      const raw = data?.foods_search?.results?.food ?? [];
-      const foods = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-      setFoodSearchResults(foods);
-    } catch (e) {
-      setFoodSearchResults([]);
-    } finally {
-      setFoodSearchLoading(false);
-    }
+    setSubmittedFoodQuery(foodSearchQuery.trim());
   }
 
   const filteredMeals = recipeSearchQuery.trim()
@@ -514,7 +598,8 @@ export default function PlanEditorScreen() {
       next[catIdx] = { ...next[catIdx], label: (newLabel || '').trim() || next[catIdx].label };
       return next;
     });
-    setCategoryEditModal({ open: false, categoryIndex: -1, label: '', confirmingDelete: false });
+    setEditingCategoryIndex(null);
+    setEditingCategoryLabel('');
   }
 
   function deleteCategory(catIdx) {
@@ -528,7 +613,7 @@ export default function PlanEditorScreen() {
       });
       return next;
     });
-    setCategoryEditModal({ open: false, categoryIndex: -1, label: '', confirmingDelete: false });
+    setDeletingCategoryIndex(null);
   }
 
   function addOption(catIdx) {
@@ -638,10 +723,10 @@ export default function PlanEditorScreen() {
   async function applyDropToOption(e, ci, optIdx) {
     e.preventDefault();
     e.stopPropagation();
-    e.currentTarget.classList.remove('plan-editor-category-block-dropzone-active');
-    e.currentTarget.classList.remove('meal-editor-dropzone-active');
-    e.currentTarget.classList.remove('plan-editor-option-pill-dropzone-active');
-    e.currentTarget.closest?.('.plan-editor-category-block')?.classList.remove('plan-editor-category-block-dropzone-active');
+    e.currentTarget.classList.remove('pe-dropzone-active');
+    e.currentTarget.classList.remove('pe-items-dropzone-active');
+    e.currentTarget.classList.remove('pe-opt-dropzone-active');
+    e.currentTarget.closest?.('.pe-category')?.classList.remove('pe-dropzone-active');
     const raw = e.dataTransfer.getData('application/json');
     if (!raw) return;
     try {
@@ -743,672 +828,489 @@ export default function PlanEditorScreen() {
   const displayCarbs = dailyCarbs === '' ? 0 : Number(dailyCarbs) || 0;
   const displayFat = dailyFat === '' ? 0 : Number(dailyFat) || 0;
 
+  // Gauge arc: semicircle, r=84, arc length = pi*84 ≈ 264
+  const GAUGE_ARC = Math.PI * 84;
+  const gaugeRatio = displayCal > 0 ? Math.min(1, selectedOptionsTotals.calories / displayCal) : 0;
+  const gaugeOffset = GAUGE_ARC * (1 - gaugeRatio);
+
+  /** Helper: get short unit label for a serving */
+  const getShortUnit = (item) => {
+    if (!item.servings || item.servings.length === 0) return item.serving_unit || '--';
+    const sid = item.serving_id ?? item.servings[0]?.serving_id;
+    const s = item.servings.find((x) => String(x.serving_id) === String(sid)) || item.servings[0];
+    const desc = s?.serving_description || s?.measurement_description || '--';
+    // Strip leading number+space to get just the unit (e.g. "1 cup" → "cup", "100 g" → "g")
+    return desc.replace(/^\d+([.,]\d+)?\s*/, '').trim() || desc;
+  };
+
   if (planLoading) {
     return (
       <DashboardLayout screenName="Plan" showBackButton onBack={handleBack} backPath={returnTo || '/nutrition'} backState={returnState}>
         <div className="library-session-detail-container">
-          <p style={{ color: 'rgba(255,255,255,0.6)', padding: 24 }}>Cargando…</p>
+          <div className="library-session-detail-body">
+            {/* Left sidebar skeleton */}
+            <div className="lsd-glow-wrap lsd-glow-wrap--sidebar plan-editor-sidebar-wrap" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <ShimmerSkeleton width="100%" height="40px" borderRadius="10px" />
+              <div style={{ display: 'flex', gap: 0 }}>
+                <ShimmerSkeleton width="50%" height="32px" borderRadius="0" />
+                <ShimmerSkeleton width="50%" height="32px" borderRadius="0" />
+              </div>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <ShimmerSkeleton key={i} width="100%" height="44px" borderRadius="10px" />
+              ))}
+            </div>
+            {/* Center skeleton */}
+            <div className="lsd-glow-wrap lsd-glow-wrap--main" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <ShimmerSkeleton width="100px" height="20px" borderRadius="6px" />
+                <ShimmerSkeleton width="90px" height="32px" borderRadius="8px" />
+              </div>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 12, overflow: 'hidden' }}>
+                  <ShimmerSkeleton width="100%" height="44px" borderRadius="0" />
+                  {i < 3 && Array.from({ length: 2 }).map((__, j) => (
+                    <ShimmerSkeleton key={j} width="100%" height="38px" borderRadius="0" />
+                  ))}
+                </div>
+              ))}
+            </div>
+            {/* Right panel skeleton */}
+            <div className="lsd-glow-wrap lsd-glow-wrap--volume" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <ShimmerSkeleton width="100%" height="48px" borderRadius="10px" />
+              <ShimmerSkeleton width="60%" height="14px" borderRadius="6px" />
+              <ShimmerSkeleton width="100%" height="40px" borderRadius="0" />
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4 }}>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <ShimmerSkeleton key={i} width="100%" height="64px" borderRadius="12px" />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );
   }
 
+  if (planError) {
+    return (
+      <DashboardLayout screenName="Plan" showBackButton onBack={handleBack} backPath={returnTo || '/nutrition'} backState={returnState}>
+        <FullScreenError
+          title="No pudimos cargar el plan"
+          message="Hubo un problema cargando este plan. Revisa tu conexion e intenta de nuevo."
+          onRetry={refetchPlan}
+        />
+      </DashboardLayout>
+    );
+  }
+
   return (
+    <>
+    <ScrollProgress />
     <DashboardLayout
       screenName={planName || 'Plan'}
       showBackButton
       onBack={handleBack}
       backPath={returnTo || '/nutrition'}
       backState={returnState}
+      headerRight={!isAssignmentScope && hasMadeChanges && propagateAffectedCount > 0 ? (
+        <div className="library-session-propagate-group">
+          <button type="button" className="library-session-propagate-button" onClick={handleOpenPropagateModal}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            {isPropagating ? 'Propagando...' : `Propagar a ${propagateAffectedCount} cliente(s)`}
+          </button>
+          <button type="button" className="library-session-propagate-dismiss" onClick={() => setHasMadeChanges(false)} title="Descartar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+        </div>
+      ) : null}
     >
       {isAssignmentScope && (
-        <div className="library-session-client-edit-banner plan-editor-assignment-banner" role="status">
+        <div className="library-session-client-edit-banner plan-editor-assignment-banner esim-clickable" role="button" tabIndex={0} onClick={() => setShowScopeInfo(true)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowScopeInfo(true); }}>
+          <svg className="library-session-client-only-icon" width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+            <path d="M12 16V12M12 8H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
           <span className="library-session-client-edit-banner-text">
-            Estás editando este plan solo para <strong>{clientName}</strong>. Los cambios no afectan la biblioteca ni otros clientes.
+            Estas editando este plan solo para <strong>{clientName}</strong>. Los cambios no afectan la biblioteca ni otros clientes.
           </span>
         </div>
       )}
-      {!isAssignmentScope && hasMadeChanges && propagateAffectedCount > 0 && (
-        <div className="plan-editor-propagate-bar">
-          <span className="plan-editor-propagate-text">{propagateAffectedCount} usuario(s) tienen una copia personalizada de este plan.</span>
-          <button
-            type="button"
-            className="plan-editor-propagate-btn"
-            onClick={handleOpenPropagateModal}
-            title="Propagar cambios a los usuarios asignados"
-          >
-            Propagar cambios
-          </button>
-        </div>
+      {isAssignmentScope && (
+        <EditScopeInfoModal isOpen={showScopeInfo} onClose={() => setShowScopeInfo(false)} scope="nutrition-assignment" clientName={clientName} planName={planName} />
       )}
       <div className="library-session-detail-container">
         <div className="library-session-detail-body">
-          <div className="library-session-sidebar plan-editor-sidebar">
-            <div className="plan-editor-sidebar-tabs">
-              <button
-                type="button"
-                className={`plan-editor-sidebar-tab ${leftPanelTab === 'alimentos' ? 'active' : ''}`}
-                onClick={() => setLeftPanelTab('alimentos')}
-              >
-                Alimentos
-              </button>
-              <button
-                type="button"
-                className={`plan-editor-sidebar-tab ${leftPanelTab === 'recetas' ? 'active' : ''}`}
-                onClick={() => setLeftPanelTab('recetas')}
-              >
-                Recetas
-              </button>
-            </div>
 
-            {leftPanelTab === 'alimentos' && (
-              <div className="plan-editor-sidebar-panel">
-                <div className="library-session-search-container meal-editor-search-block">
-                  <div className="meal-editor-search-row-top">
-                    <div className="library-session-search-input-container meal-editor-search-input-wrap">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="library-session-search-icon">
-                        <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      <input
-                        type="text"
-                        className="library-session-search-input"
-                        placeholder="Buscar alimento (ej. pollo)"
-                        value={foodSearchQuery}
-                        onChange={(e) => setFoodSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleFoodSearch()}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      className="meal-editor-add-own-btn"
-                      onClick={() => setManualFoodModalOpen(true)}
-                      aria-label="Añadir alimento propio"
-                      title="Añadir alimento propio"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
+          {/* ══ LEFT: Food/Recipe Search ══ */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--sidebar plan-editor-sidebar-wrap">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
+            <div className="library-session-sidebar plan-editor-sidebar">
+              <div className="pe-left-search">
+                <div className="pe-search-input-wrap">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                  <input
+                    type="text"
+                    placeholder={leftPanelTab === 'alimentos' ? 'Buscar alimento...' : 'Buscar receta...'}
+                    value={leftPanelTab === 'alimentos' ? foodSearchQuery : recipeSearchQuery}
+                    onChange={(e) => leftPanelTab === 'alimentos' ? setFoodSearchQuery(e.target.value) : setRecipeSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && leftPanelTab === 'alimentos' && handleFoodSearch()}
+                  />
+                  {leftPanelTab === 'alimentos' && (
+                    <button type="button" className="pe-search-action" onClick={() => setManualFoodModalOpen(true)} title="Alimento propio">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                     </button>
-                  </div>
-                  <div className="meal-editor-search-row-bottom">
-                    <button type="button" className="meal-editor-search-btn" onClick={handleFoodSearch} disabled={foodSearchLoading}>
-                      {foodSearchLoading ? '…' : 'Buscar'}
-                    </button>
-                    <div className="meal-editor-sort-wrap">
-                      <button
-                        type="button"
-                        className="meal-editor-sort-btn"
-                        onClick={() => setFoodSortMenuOpen((o) => !o)}
-                        aria-label="Ordenar"
-                        title="Ordenar"
-                      >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
-                      </button>
-                      {foodSortMenuOpen && (
-                        <>
-                          <div className="meal-editor-sort-backdrop" onClick={() => setFoodSortMenuOpen(false)} />
-                          <div className="meal-editor-sort-menu">
-                            {[
-                              { id: 'name', label: 'Nombre' },
-                              { id: 'calories', label: 'Calorías' },
-                              { id: 'protein', label: 'Proteína' },
-                              { id: 'carbs', label: 'Carbos' },
-                              { id: 'fat', label: 'Grasa' },
-                            ].map((opt) => (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                className={`meal-editor-sort-opt ${foodSortBy === opt.id ? 'active' : ''}`}
-                                onClick={() => { setFoodSortBy(opt.id); setFoodSortMenuOpen(false); }}
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="plan-editor-sidebar-section plan-editor-sidebar-list-wrap">
-                  <div className="library-session-sidebar-content plan-editor-panel-list">
-                    {sortedFoodSearchResults.length === 0 && customFoods.length === 0 ? (
-                      <p className="library-session-empty-state">Escribe y pulsa Buscar para buscar alimentos en la base de datos, o usa + para añadir un alimento propio.</p>
-                    ) : (
-                      <>
-                        {sortedFoodSearchResults.map((f) => {
-                          const portionOptions = getServingsWithStandardOptions(f);
-                          const hasServings = portionOptions.length > 0;
-                          const per100 = getPer100g(f);
-                          return (
-                            <div
-                              key={f.food_id}
-                              draggable={hasServings}
-                              className={`meal-editor-food-card plan-editor-panel-card plan-editor-food-card-readonly ${hasServings ? 'plan-editor-recipe-card-draggable' : ''}`}
-                              onDragStart={(e) => {
-                                if (!hasServings) return;
-                                e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }));
-                                e.dataTransfer.effectAllowed = 'copy';
-                              }}
-                            >
-                              <span className="meal-editor-food-card-name">{f.food_name}</span>
-                              {per100 && (
-                                <span className="meal-editor-food-card-per100">
-                                  {per100.calories} kcal · P:{per100.protein}g C:{per100.carbs}g G:{per100.fat}g
-                                  <span className="meal-editor-food-card-per100-label">/100g</span>
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {customFoods.map((item, idx) => (
-                          <div
-                            key={`custom-${item.food_id}-${idx}`}
-                            draggable
-                            className="meal-editor-food-card plan-editor-panel-card plan-editor-recipe-card-draggable"
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData('application/json', JSON.stringify({ custom_food_item: item }));
-                              e.dataTransfer.effectAllowed = 'copy';
-                            }}
-                          >
-                            <span className="meal-editor-food-card-name">{item.name}</span>
-                            <span className="meal-editor-food-card-per100">
-                              {item.calories ?? '?'} kcal
-                              {(item.protein != null || item.carbs != null || item.fat != null) && (
-                                <> · P:{item.protein ?? '?'}g C:{item.carbs ?? '?'}g G:{item.fat ?? '?'}g</>
-                              )}
-                            </span>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
-            )}
-
-            {leftPanelTab === 'recetas' && (
-              <div className="plan-editor-sidebar-panel">
-                <div className="library-session-search-container meal-editor-search-block">
-                  <div className="meal-editor-search-row-top">
-                    <div className="library-session-search-input-container meal-editor-search-input-wrap">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="library-session-search-icon">
-                        <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                      <input
-                        type="text"
-                        className="library-session-search-input"
-                        placeholder="Buscar recetas…"
-                        value={recipeSearchQuery}
-                        onChange={(e) => setRecipeSearchQuery(e.target.value)}
-                      />
+              <div className="pe-left-list">
+                {foodSearchLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="pe-food-card pe-food-card--skeleton" style={{ animationDelay: `${i * 60}ms` }}>
+                      <div className="pe-skeleton-line pe-skeleton-line--name" />
+                      <div className="pe-skeleton-line pe-skeleton-line--meta" />
                     </div>
-                  </div>
-                </div>
-                <div className="plan-editor-sidebar-section plan-editor-sidebar-list-wrap">
-                  <div className="library-session-sidebar-content plan-editor-panel-list plan-editor-recipes-list">
-                    {filteredMeals.length === 0 ? (
-                      <p className="library-session-empty-state">No hay recetas. Créalas en la pestaña Recetas.</p>
-                    ) : (
-                      filteredMeals.map((m) => (
+                  ))
+                ) : sortedFoodSearchResults.length === 0 && customFoods.length === 0 ? (
+                  <p className="pe-left-empty">Escribe y pulsa Enter para buscar alimentos, o usa + para crear uno propio.</p>
+                ) : (
+                  <>
+                    {sortedFoodSearchResults.map((f, fi) => {
+                      const portionOptions = getServingsWithStandardOptions(f);
+                      const hasServings = portionOptions.length > 0;
+                      const per100 = getPer100g(f);
+                      return (
                         <div
-                          key={m.id}
-                          draggable
-                          className="meal-editor-food-card plan-editor-panel-card plan-editor-recipe-card plan-editor-recipe-card-draggable"
+                          key={`${f.food_id}-${fi}`}
+                          draggable={hasServings}
+                          className="pe-food-card"
                           onDragStart={(e) => {
-                            e.dataTransfer.setData('application/json', JSON.stringify({ meal_id: m.id, meal_name: m.name || '' }));
+                            if (!hasServings) return;
+                            e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }));
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
                         >
-                          <span className="meal-editor-food-card-name">{m.name}</span>
-                          <span className="meal-editor-food-card-per100">
-                            {m.items?.length ?? 0} alimento(s)
-                          </span>
+                          <span className="pe-food-card-name">{f.food_name}</span>
+                          {per100 && (
+                            <div className="pe-food-card-meta">
+                              <span>{per100.calories} kcal</span>
+                              <span>P {per100.protein}g</span>
+                              <span>C {per100.carbs}g</span>
+                              <span>G {per100.fat}g</span>
+                            </div>
+                          )}
                         </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+                      );
+                    })}
+                    {customFoods.map((item, idx) => (
+                      <div
+                        key={`custom-${item.food_id}-${idx}`}
+                        draggable
+                        className="pe-food-card"
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('application/json', JSON.stringify({ custom_food_item: item }));
+                          e.dataTransfer.effectAllowed = 'copy';
+                        }}
+                      >
+                        <span className="pe-food-card-name">{item.name}</span>
+                        <div className="pe-food-card-meta">
+                          <span>{item.calories ?? '?'} kcal</span>
+                          {item.protein != null && <span>P {item.protein}g</span>}
+                          {item.carbs != null && <span>C {item.carbs}g</span>}
+                          {item.fat != null && <span>G {item.fat}g</span>}
+                        </div>
+                      </div>
+                    ))}
+                    {(sortedFoodSearchResults.length > 0 || customFoods.length > 0) && <p className="pe-drag-hint">Arrastra al centro para agregar</p>}
+                  </>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
-          <div className="library-session-main plan-editor-main">
-            <div className="plan-editor-macros-objectives">
-              <h3 className="plan-editor-macros-objectives-title">Objetivos diarios</h3>
-              <p className="plan-editor-macros-objectives-hint">Indica las calorías y cómo repartirlas en macros. Si eliges un preset, los gramos se calculan solos.</p>
-              <div className="plan-editor-macros-inputs">
-                <div className="plan-editor-macro-input-wrap">
-                  <label>Calorías (kcal)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    placeholder="ej. 2000"
-                    value={dailyCalories}
-                    onChange={(e) => setDailyCalories(e.target.value)}
-                  />
-                </div>
-                <div className="plan-editor-macro-input-wrap plan-editor-macro-distribution-wrap">
-                  <label>Distribución</label>
-                  <select
-                    className="plan-editor-distribution-select"
-                    value={distributionPreset}
-                    onChange={(e) => setDistributionPreset(e.target.value)}
-                  >
-                    {MACRO_PRESETS.map((pre) => (
-                      <option key={pre.id} value={pre.id}>{pre.label}</option>
-                    ))}
-                    <option key="custom" value="custom">Personalizado (gramos a mano)</option>
-                  </select>
-                </div>
+          {/* ══ CENTER: Categories ══ */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--main">
+            <GlowingEffect spread={40} proximity={120} borderWidth={1} />
+            <div className="pe-center">
+              <div className="pe-center-header">
+                <h3>Comidas</h3>
+                <button type="button" className="pe-center-add-btn" onClick={addCategory}>+ Comida</button>
               </div>
-              {distributionPreset === 'custom' ? (
-                <div className="plan-editor-macros-inputs plan-editor-macros-inputs-gram">
-                  <div className="plan-editor-macro-input-wrap">
-                    <label>Proteína (g)</label>
-                    <input type="number" min={0} placeholder="—" value={dailyProtein} onChange={(e) => setDailyProtein(e.target.value)} />
-                  </div>
-                  <div className="plan-editor-macro-input-wrap">
-                    <label>Carbos (g)</label>
-                    <input type="number" min={0} placeholder="—" value={dailyCarbs} onChange={(e) => setDailyCarbs(e.target.value)} />
-                  </div>
-                  <div className="plan-editor-macro-input-wrap">
-                    <label>Grasa (g)</label>
-                    <input type="number" min={0} placeholder="—" value={dailyFat} onChange={(e) => setDailyFat(e.target.value)} />
-                  </div>
-                </div>
-              ) : (
-                <div className="plan-editor-macros-computed">
-                  <span>Proteína: {displayProtein} g</span>
-                  <span>Carbos: {displayCarbs} g</span>
-                  <span>Grasa: {displayFat} g</span>
-                </div>
-              )}
-            </div>
-            <div className="plan-editor-categories-area">
-              <div className="plan-editor-categories-header">
-                <h3 className="plan-editor-categories-title">Categorías y opciones</h3>
-                <button type="button" className="plan-editor-add-category-btn" onClick={addCategory}>+ Categoría</button>
-              </div>
-              <div className="plan-editor-categories-list">
+              <div className="pe-center-body">
                 {categories.map((cat, ci) => (
                   <div
                     key={cat.id || ci}
-                    className="plan-editor-category-block"
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'copy';
-                      e.currentTarget.classList.add('plan-editor-category-block-dropzone-active');
-                    }}
-                    onDragLeave={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget)) {
-                        e.currentTarget.classList.remove('plan-editor-category-block-dropzone-active');
-                      }
-                    }}
-                    onDrop={(e) => handleDropOnCategory(e, ci)}
+                    className="pe-category"
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; e.currentTarget.classList.add('pe-dropzone-active'); }}
+                    onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('pe-dropzone-active'); }}
+                    onDrop={(e) => { e.currentTarget.classList.remove('pe-dropzone-active'); handleDropOnCategory(e, ci); }}
                   >
-                    <div className="plan-editor-category-title-row">
-                      <h4 className="plan-editor-category-title">{cat.label || 'Categoría'}</h4>
-                      <button
-                        type="button"
-                        className="plan-editor-category-edit-btn"
-                        onClick={() => setCategoryEditModal({ open: true, categoryIndex: ci, label: cat.label || '', confirmingDelete: false })}
-                        aria-label="Editar nombre"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="plan-editor-options-pills">
-                      {(cat.options || []).map((opt, oi) => (
-                        <div
-                          key={opt.id || oi}
-                          className={`plan-editor-option-pill-wrap ${selectedOption(ci) === oi ? 'active' : ''}`}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            e.dataTransfer.dropEffect = 'copy';
-                            e.currentTarget.classList.add('plan-editor-option-pill-dropzone-active');
-                          }}
-                          onDragLeave={(e) => {
-                            if (!e.currentTarget.contains(e.relatedTarget)) {
-                              e.currentTarget.classList.remove('plan-editor-option-pill-dropzone-active');
-                            }
-                          }}
-                          onDrop={(e) => applyDropToOption(e, ci, oi)}
-                        >
-                          <button
-                            type="button"
-                            className="plan-editor-option-pill"
-                            onClick={() => setSelectedOption(ci, oi)}
-                            aria-label={opt.label || `Opción ${oi + 1}`}
-                          >
-                            {opt.label || `Opción ${oi + 1}`}
-                          </button>
-                          <button
-                            type="button"
-                            className="plan-editor-option-pill-delete"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const opt = (cat.options || [])[oi];
-                              const itemCount = opt?.items?.length ?? 0;
-                              if (itemCount > 0) {
-                                setDeleteOptionModal({
-                                  open: true,
-                                  categoryIndex: ci,
-                                  optionIndex: oi,
-                                  optionLabel: opt?.label || `Opción ${oi + 1}`,
-                                  itemCount,
-                                });
-                              } else {
-                                deleteOption(ci, oi);
-                              }
-                            }}
-                            aria-label="Eliminar opción"
-                            title="Eliminar opción"
-                          >
-                            ×
-                          </button>
+                    <GlowingEffect spread={30} proximity={80} borderWidth={1} />
+                    <div className="pe-category-header">
+                      {deletingCategoryIndex === ci ? (
+                        <div className="pe-inline-delete">
+                          <span className="pe-inline-delete-text">Eliminar &quot;{cat.label}&quot;?</span>
+                          <button type="button" className="pe-inline-delete-yes" onClick={() => deleteCategory(ci)}>Si</button>
+                          <button type="button" className="pe-inline-delete-no" onClick={() => setDeletingCategoryIndex(null)}>No</button>
                         </div>
-                      ))}
-                      <button type="button" className="plan-editor-option-pill-add" onClick={() => addOption(ci)} aria-label="Añadir opción">
-                        +
-                      </button>
+                      ) : editingCategoryIndex === ci ? (
+                        <input
+                          type="text"
+                          className="pe-category-name-input"
+                          value={editingCategoryLabel}
+                          onChange={(e) => setEditingCategoryLabel(e.target.value)}
+                          onBlur={() => updateCategoryLabel(ci, editingCategoryLabel)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') updateCategoryLabel(ci, editingCategoryLabel);
+                            if (e.key === 'Escape') { setEditingCategoryIndex(null); setEditingCategoryLabel(''); }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="pe-category-name">{cat.label || 'Categoria'}</span>
+                      )}
+                      <div className="pe-options-tabs">
+                        {(cat.options || []).map((opt, oi) => (
+                          <button
+                            key={`${ci}-${opt.id || oi}`}
+                            type="button"
+                            className={`pe-opt-tab ${selectedOption(ci) === oi ? 'active' : ''}`}
+                            onClick={() => setSelectedOption(ci, oi)}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; e.currentTarget.classList.add('pe-opt-dropzone-active'); }}
+                            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('pe-opt-dropzone-active'); }}
+                            onDrop={(e) => { e.stopPropagation(); e.currentTarget.classList.remove('pe-opt-dropzone-active'); e.currentTarget.closest('.pe-category')?.classList.remove('pe-dropzone-active'); applyDropToOption(e, ci, oi); }}
+                          >
+                            {opt.label || `Opc ${oi + 1}`}
+                          </button>
+                        ))}
+                        <button type="button" className="pe-opt-tab-add" onClick={() => addOption(ci)}>+</button>
+                      </div>
+                      {editingCategoryIndex !== ci && deletingCategoryIndex !== ci && (
+                        <div className="pe-category-actions">
+                          <button type="button" className="pe-category-action-btn" onClick={() => { setEditingCategoryIndex(ci); setEditingCategoryLabel(cat.label || ''); }} aria-label="Editar nombre">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                          {categories.length > 1 && (
+                            <button type="button" className="pe-category-action-btn" onClick={() => setDeletingCategoryIndex(ci)} aria-label="Eliminar">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="plan-editor-option-items-wrap">
+                    {((cat.options || [])[selectedOption(ci)]?.items || []).length === 0 ? (
                       <div
-                        className={`plan-editor-option-items-dropzone ${((cat.options || [])[selectedOption(ci)]?.items || []).length === 0 ? 'empty' : ''}`}
-                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; e.currentTarget.classList.add('meal-editor-dropzone-active'); }}
-                        onDragLeave={(e) => e.currentTarget.classList.remove('meal-editor-dropzone-active')}
+                        className="pe-category-empty"
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
                         onDrop={(e) => handleDropOnCategory(e, ci)}
                       >
-                        {((cat.options || [])[selectedOption(ci)]?.items || []).length === 0 ? (
-                          <p className="plan-editor-add-hint">Arrastra alimentos o recetas aquí.</p>
-                        ) : (
-                          (cat.options || [])[selectedOption(ci)]?.items?.map((item, ii) => (
-                            item.recipe === true ? (
-                              <div key={ii} className="meal-editor-item-row">
-                                <span className="meal-editor-item-name">{item.name || 'Receta'}</span>
-                                <span className="meal-editor-item-meta">—</span>
-                                <button type="button" className="meal-editor-item-remove" onClick={() => removeOptionItem(ci, selectedOption(ci), ii)} aria-label="Quitar">×</button>
-                              </div>
-                            ) : (
-                              <div key={ii} className="plan-editor-option-item-card">
-                                <div className="plan-editor-option-item-card-left">
-                                  <span className="meal-editor-item-name">{item.name || 'Alimento'}</span>
-                                  <span className="meal-editor-item-meta">
-                                    {item.number_of_units ?? 1} · {item.calories ?? '?'} kcal
-                                  </span>
-                                </div>
-                                <div className="plan-editor-option-item-card-right">
-                                  <div className="plan-editor-option-item-portion">
-                                    <div className="plan-editor-option-item-portion-inputs">
-                                      <select
-                                        className="plan-editor-option-item-portion-select"
-                                        value={item.serving_id ?? (item.servings?.[0]?.serving_id ?? '')}
-                                        onChange={(e) => {
-                                          const list = item.servings || [];
-                                          if (list.length === 0) return;
-                                          const s = list.find((x) => String(x.serving_id) === e.target.value);
-                                          if (!s) return;
-                                          const u = Number(item.number_of_units) || 1;
-                                          updateOptionItem(ci, selectedOption(ci), ii, {
-                                            serving_id: s.serving_id,
-                                            number_of_units: u,
-                                            calories: s.calories != null ? Math.round(Number(s.calories) * u) : null,
-                                            protein: s.protein != null ? Math.round(Number(s.protein) * u * 10) / 10 : null,
-                                            carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * u * 10) / 10 : null,
-                                            fat: s.fat != null ? Math.round(Number(s.fat) * u * 10) / 10 : null,
-                                            serving_unit: s.serving_description ?? s.measurement_description ?? null,
-                                            grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
-                                          });
-                                        }}
-                                      >
-                                        {Array.isArray(item.servings) && item.servings.length > 0 ? (
-                                          item.servings.map((s, si) => (
-                                            <option key={`${ii}-${si}-${s.serving_id}`} value={s.serving_id}>
-                                              {s.serving_description} — {s.calories} kcal
-                                            </option>
-                                          ))
-                                        ) : (
-                                          <option value="">—</option>
-                                        )}
-                                      </select>
-                                      <input
-                                        type="number"
-                                        min={0.1}
-                                        step={0.5}
-                                        className="plan-editor-option-item-portion-units"
-                                        value={item.number_of_units ?? 1}
-                                        onChange={(e) => {
-                                          const u = Number(e.target.value) || 1;
-                                          const list = item.servings || [];
-                                          if (list.length > 0) {
-                                            const sid = item.serving_id ?? list[0]?.serving_id;
-                                            const s = list.find((x) => String(x.serving_id) === String(sid)) || list[0];
-                                            if (s) {
-                                              updateOptionItem(ci, selectedOption(ci), ii, {
-                                                number_of_units: u,
-                                                calories: s.calories != null ? Math.round(Number(s.calories) * u) : null,
-                                                protein: s.protein != null ? Math.round(Number(s.protein) * u * 10) / 10 : null,
-                                                carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * u * 10) / 10 : null,
-                                                fat: s.fat != null ? Math.round(Number(s.fat) * u * 10) / 10 : null,
-                                                serving_unit: s.serving_description ?? s.measurement_description ?? null,
-                                                grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
-                                              });
-                                            }
-                                          } else {
-                                            const prev = Number(item.number_of_units) || 1;
-                                            const scale = u / prev;
-                                            updateOptionItem(ci, selectedOption(ci), ii, {
-                                              number_of_units: u,
-                                              calories: item.calories != null ? Math.round(Number(item.calories) * scale) : null,
-                                              protein: item.protein != null ? Math.round(Number(item.protein) * scale * 10) / 10 : null,
-                                              carbs: item.carbs != null ? Math.round(Number(item.carbs) * scale * 10) / 10 : null,
-                                              fat: item.fat != null ? Math.round(Number(item.fat) * scale * 10) / 10 : null,
-                                            });
-                                          }
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="plan-editor-option-item-portion-labels">
-                                      <span className="plan-editor-option-item-portion-label">Porción</span>
-                                      <span className="plan-editor-option-item-portion-label">Unidades</span>
-                                    </div>
-                                  </div>
-                                  <button type="button" className="meal-editor-item-remove" onClick={() => removeOptionItem(ci, selectedOption(ci), ii)} aria-label="Quitar">×</button>
-                                </div>
-                              </div>
-                            )
-                          ))
-                        )}
+                        Arrastra alimentos o recetas aqui
                       </div>
-                    </div>
+                    ) : (
+                      <div
+                        className="pe-category-items"
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; e.currentTarget.classList.add('pe-items-dropzone-active'); }}
+                        onDragLeave={(e) => e.currentTarget.classList.remove('pe-items-dropzone-active')}
+                        onDrop={(e) => { e.currentTarget.classList.remove('pe-items-dropzone-active'); handleDropOnCategory(e, ci); }}
+                      >
+                        {(cat.options || [])[selectedOption(ci)]?.items?.map((item, ii) => (
+                          item.recipe === true ? (
+                            <div key={`${ci}-${selectedOption(ci)}-r-${ii}`} className="pe-item-row pe-recipe">
+                              <span className="pe-item-name">{item.name || 'Receta'}</span>
+                              <span className="pe-recipe-label">receta</span>
+                              <button type="button" className="pe-item-remove" onClick={() => removeOptionItem(ci, selectedOption(ci), ii)} aria-label="Quitar">&times;</button>
+                            </div>
+                          ) : (
+                            <div key={`${ci}-${selectedOption(ci)}-f-${ii}`} className="pe-item-row">
+                              <span className="pe-item-name">{item.name || 'Alimento'}</span>
+                              <div className="pe-item-portion">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.5}
+                                  className="pe-item-portion-qty"
+                                  value={item.number_of_units ?? ''}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    if (raw === '') { updateOptionItem(ci, selectedOption(ci), ii, { number_of_units: '' }); return; }
+                                    const u = Number(raw) || 0;
+                                    const list = item.servings || [];
+                                    if (list.length > 0) {
+                                      const sid = item.serving_id ?? list[0]?.serving_id;
+                                      const s = list.find((x) => String(x.serving_id) === String(sid)) || list[0];
+                                      if (s) {
+                                        updateOptionItem(ci, selectedOption(ci), ii, {
+                                          number_of_units: u,
+                                          calories: s.calories != null ? Math.round(Number(s.calories) * u) : null,
+                                          protein: s.protein != null ? Math.round(Number(s.protein) * u * 10) / 10 : null,
+                                          carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * u * 10) / 10 : null,
+                                          fat: s.fat != null ? Math.round(Number(s.fat) * u * 10) / 10 : null,
+                                          serving_unit: s.serving_description ?? s.measurement_description ?? null,
+                                          grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
+                                        });
+                                      }
+                                    } else {
+                                      const prev = Number(item.number_of_units) || 1;
+                                      const scale = prev > 0 ? u / prev : 0;
+                                      updateOptionItem(ci, selectedOption(ci), ii, {
+                                        number_of_units: u,
+                                        calories: item.calories != null ? Math.round(Number(item.calories) * scale) : null,
+                                        protein: item.protein != null ? Math.round(Number(item.protein) * scale * 10) / 10 : null,
+                                        carbs: item.carbs != null ? Math.round(Number(item.carbs) * scale * 10) / 10 : null,
+                                        fat: item.fat != null ? Math.round(Number(item.fat) * scale * 10) / 10 : null,
+                                      });
+                                    }
+                                  }}
+                                  onBlur={() => {
+                                    const raw = item.number_of_units;
+                                    if (raw === '' || raw == null || Number(raw) <= 0 || Number.isNaN(Number(raw))) {
+                                      const list = item.servings || [];
+                                      const sid = item.serving_id ?? list[0]?.serving_id;
+                                      const s = list.find((x) => String(x.serving_id) === String(sid)) || list[0];
+                                      if (s) {
+                                        updateOptionItem(ci, selectedOption(ci), ii, {
+                                          number_of_units: 1,
+                                          calories: s.calories != null ? Math.round(Number(s.calories)) : null,
+                                          protein: s.protein != null ? Math.round(Number(s.protein) * 10) / 10 : null,
+                                          carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * 10) / 10 : null,
+                                          fat: s.fat != null ? Math.round(Number(s.fat) * 10) / 10 : null,
+                                        });
+                                      } else {
+                                        updateOptionItem(ci, selectedOption(ci), ii, { number_of_units: 1 });
+                                      }
+                                    }
+                                  }}
+                                />
+                                <span className="pe-item-portion-unit">
+                                  {getShortUnit(item)}
+                                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 4.5l3 3 3-3"/></svg>
+                                  <select
+                                    className="pe-item-portion-select"
+                                    value={item.serving_id ?? (item.servings?.[0]?.serving_id ?? '')}
+                                    onChange={(e) => {
+                                      const list = item.servings || [];
+                                      if (list.length === 0) return;
+                                      const s = list.find((x) => String(x.serving_id) === e.target.value);
+                                      if (!s) return;
+                                      const u = Number(item.number_of_units) || 1;
+                                      updateOptionItem(ci, selectedOption(ci), ii, {
+                                        serving_id: s.serving_id,
+                                        number_of_units: u,
+                                        calories: s.calories != null ? Math.round(Number(s.calories) * u) : null,
+                                        protein: s.protein != null ? Math.round(Number(s.protein) * u * 10) / 10 : null,
+                                        carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * u * 10) / 10 : null,
+                                        fat: s.fat != null ? Math.round(Number(s.fat) * u * 10) / 10 : null,
+                                        serving_unit: s.serving_description ?? s.measurement_description ?? null,
+                                        grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
+                                      });
+                                    }}
+                                  >
+                                    {Array.isArray(item.servings) && item.servings.length > 0 ? (
+                                      item.servings.map((s, si) => <option key={`${ii}-${si}-${s.serving_id}`} value={s.serving_id}>{s.serving_description}</option>)
+                                    ) : (
+                                      <option value="">--</option>
+                                    )}
+                                  </select>
+                                </span>
+                              </div>
+                              <span className="pe-item-kcal">{item.calories ?? '?'} kcal</span>
+                              <button type="button" className="pe-item-remove" onClick={() => removeOptionItem(ci, selectedOption(ci), ii)} aria-label="Quitar">&times;</button>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          <div className="library-session-sidebar-right">
-            <div className="meal-editor-calories-hero">
-              <div className="meal-editor-calories-value">
-                {selectedOptionsTotals.calories}
-                {displayCal > 0 && (
-                  <span className="plan-editor-calories-vs-objective"> / {displayCal}</span>
-                )}
-              </div>
-              <div className="meal-editor-calories-label">kcal (plan / objetivo)</div>
-            </div>
-            <div className="library-session-sidebar-right-header">
-              <h3 className="library-session-sidebar-right-title">Macros</h3>
-              <p className="library-session-sidebar-right-subtitle">Distribución de la selección actual</p>
-            </div>
-            <div className="library-session-sidebar-right-content">
-              {planEditorPieData.length === 0 ? (
-                <div className="library-session-volume-empty">
-                  Selecciona opciones en cada categoría y añade alimentos para ver la distribución.
+          {/* ══ RIGHT: Gauge + Controls + Macros ══ */}
+          <div className="lsd-glow-wrap lsd-glow-wrap--volume">
+            <div className="library-session-sidebar-right pe-right">
+              <GlowingEffect spread={40} proximity={120} borderWidth={1} />
+              <div className="pe-right-inner">
+                <div className="pe-gauge-section">
+                  <div className="pe-gauge-wrap">
+                    <svg viewBox="0 0 200 108" fill="none">
+                      <path d="M 16 100 A 84 84 0 0 1 184 100" stroke="rgba(255,255,255,0.06)" strokeWidth="10" strokeLinecap="round" fill="none"/>
+                      <path d="M 16 100 A 84 84 0 0 1 184 100" stroke="rgba(255,255,255,0.28)" strokeWidth="10" strokeLinecap="round" fill="none"
+                        strokeDasharray={GAUGE_ARC.toFixed(1)}
+                        strokeDashoffset={gaugeOffset.toFixed(1)}/>
+                    </svg>
+                    <div className="pe-gauge-labels">
+                      <div>
+                        <span className="pe-gauge-planned">{selectedOptionsTotals.calories.toLocaleString()}</span>
+                        <span className="pe-gauge-planned-unit"> kcal</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <div className="library-session-volume-card library-session-volume-pie-card meal-editor-macros-card" style={{ width: '100%' }}>
-                  <div className="meal-editor-macros-card-top">
-                    <div className="library-session-pie-chart-wrap">
-                      <ResponsiveContainer width="100%" height={160}>
-                        <PieChart className="library-session-pie-chart">
-                          <defs>
-                            {[0, 1, 2].map((i) => (
-                              <linearGradient key={i} id={`plan-editor-pie-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={`rgba(255,255,255,${0.22 + i * 0.06})`} />
-                                <stop offset="50%" stopColor={`rgba(255,255,255,${0.12 + i * 0.04})`} />
-                                <stop offset="100%" stopColor={`rgba(255,255,255,${0.05 + i * 0.03})`} />
-                              </linearGradient>
-                            ))}
-                          </defs>
-                          <Pie
-                            key={`macro-${planEditorPieData.map((d) => d.value).join('-')}`}
-                            data={planEditorPieData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={40}
-                            outerRadius={64}
-                            paddingAngle={2}
-                            dataKey="value"
-                            nameKey="name"
-                            label={false}
-                          >
-                            {planEditorPieData.map((_, i) => (
-                              <Cell key={i} fill={`url(#plan-editor-pie-grad-${i})`} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            content={({ active, payload }) => {
-                              if (!active || !payload?.length) return null;
-                              const { name, grams } = payload[0].payload;
-                              return (
-                                <div className="library-session-pie-tooltip">
-                                  <span className="library-session-pie-tooltip-name">{name}</span>
-                                  <span className="library-session-pie-tooltip-sets">{Number(grams ?? 0).toFixed(0)} g</span>
-                                </div>
-                              );
-                            }}
+
+                <div className="pe-controls-strip">
+                  <div className="pe-ctrl-cell pe-ctrl-cell--obj">
+                    <span className="pe-ctrl-label">Objetivo</span>
+                    <input className={`pe-ctrl-obj-input${!dailyCalories ? ' pe-input-empty' : ''}`} type="number" min={0} value={dailyCalories} onChange={(e) => setDailyCalories(e.target.value)} />
+                    <span className="pe-ctrl-unit">kcal</span>
+                  </div>
+                  <div className="pe-ctrl-cell pe-ctrl-cell--dist">
+                    <span className="pe-ctrl-label">Dist.</span>
+                    <select className="pe-ctrl-select" value={distributionPreset} onChange={(e) => setDistributionPreset(e.target.value)}>
+                      {MACRO_PRESETS.map((pre) => <option key={pre.id} value={pre.id}>{pre.label}</option>)}
+                      <option value="custom">Personalizado</option>
+                    </select>
+                    <svg className="pe-ctrl-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 4.5l3 3 3-3"/></svg>
+                  </div>
+                </div>
+
+                <div className="pe-macros-section">
+                  {[
+                    { key: 'p', name: 'Proteina', current: selectedOptionsTotals.protein, value: dailyProtein, setter: setDailyProtein, target: displayProtein },
+                    { key: 'c', name: 'Carbohidratos', current: selectedOptionsTotals.carbs, value: dailyCarbs, setter: setDailyCarbs, target: displayCarbs },
+                    { key: 'f', name: 'Grasa', current: selectedOptionsTotals.fat, value: dailyFat, setter: setDailyFat, target: displayFat },
+                  ].map((m) => (
+                    <div key={m.key} className="pe-macro-block">
+                      <GlowingEffect spread={25} proximity={70} borderWidth={1} />
+                      <div className="pe-macro-head">
+                        <span className="pe-macro-name">{m.name}</span>
+                        <div className="pe-macro-nums">
+                          <span className="pe-macro-current">{m.current.toFixed(0)}</span>
+                          <span className="pe-macro-slash">/</span>
+                          <input
+                            className={`pe-macro-obj-input${!m.value ? ' pe-input-empty' : ''}`}
+                            type="number"
+                            min={0}
+                            value={m.value}
+                            onChange={(e) => { setDistributionPreset('custom'); m.setter(e.target.value); }}
                           />
-                        </PieChart>
-                      </ResponsiveContainer>
+                          <span className="pe-macro-unit">g</span>
+                        </div>
+                      </div>
+                      <div className="pe-macro-bar">
+                        <div className={`pe-macro-bar-fill ${m.key}`} style={{ width: `${m.target > 0 ? Math.min(100, (m.current / m.target) * 100) : 0}%` }} />
+                      </div>
                     </div>
-                  </div>
-                  <div className="meal-editor-macros-list">
-                    <div className="meal-editor-macro-row">
-                      <span className="meal-editor-macro-name">Proteína</span>
-                      <span className="meal-editor-macro-grams">
-                        {selectedOptionsTotals.protein.toFixed(0)} g
-                        <span className="plan-editor-macro-vs-objective"> / {displayProtein}</span>
-                      </span>
-                    </div>
-                    <div className="meal-editor-macro-row">
-                      <span className="meal-editor-macro-name">Carbohidratos</span>
-                      <span className="meal-editor-macro-grams">
-                        {selectedOptionsTotals.carbs.toFixed(0)} g
-                        <span className="plan-editor-macro-vs-objective"> / {displayCarbs}</span>
-                      </span>
-                    </div>
-                    <div className="meal-editor-macro-row">
-                      <span className="meal-editor-macro-name">Grasa</span>
-                      <span className="meal-editor-macro-grams">
-                        {selectedOptionsTotals.fat.toFixed(0)} g
-                        <span className="plan-editor-macro-vs-objective"> / {displayFat}</span>
-                      </span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              )}
+              </div>
             </div>
           </div>
+
         </div>
       </div>
 
       <Modal
-        isOpen={categoryEditModal.open}
-        onClose={() => setCategoryEditModal({ open: false, categoryIndex: -1, label: '', confirmingDelete: false })}
-        title={categoryEditModal.confirmingDelete ? 'Eliminar categoría' : 'Editar categoría'}
-      >
-        <div className="plan-editor-category-edit-modal">
-          {categoryEditModal.confirmingDelete ? (
-            <>
-              <p className="plan-editor-category-edit-confirm-text">
-                ¿Eliminar la categoría &quot;{categoryEditModal.label || 'Categoría'}&quot; y todas sus opciones?
-              </p>
-              <div className="plan-editor-category-edit-actions">
-                <button type="button" className="plan-editor-category-edit-cancel" onClick={() => setCategoryEditModal((m) => ({ ...m, confirmingDelete: false }))}>
-                  Cancelar
-                </button>
-                <button type="button" className="plan-editor-category-edit-delete" onClick={() => categoryEditModal.categoryIndex >= 0 && deleteCategory(categoryEditModal.categoryIndex)}>
-                  Eliminar
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <label className="plan-editor-category-edit-label">Nombre</label>
-              <input
-                type="text"
-                className="plan-editor-category-edit-input"
-                value={categoryEditModal.label}
-                onChange={(e) => setCategoryEditModal((m) => ({ ...m, label: e.target.value }))}
-                placeholder="Ej. Desayuno"
-              />
-              <div className="plan-editor-category-edit-actions">
-                <button type="button" className="plan-editor-category-edit-cancel" onClick={() => setCategoryEditModal({ open: false, categoryIndex: -1, label: '', confirmingDelete: false })}>
-                  Cancelar
-                </button>
-                <button type="button" className="plan-editor-category-edit-save" onClick={() => categoryEditModal.categoryIndex >= 0 && updateCategoryLabel(categoryEditModal.categoryIndex, categoryEditModal.label)}>
-                  Guardar
-                </button>
-              </div>
-              {categories.length > 1 && (
-                <div className="plan-editor-category-edit-delete-row">
-                  <button type="button" className="plan-editor-category-edit-delete-btn" onClick={() => setCategoryEditModal((m) => ({ ...m, confirmingDelete: true }))}>
-                    Eliminar categoría
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </Modal>
-
-      <Modal
         isOpen={deleteOptionModal.open}
         onClose={() => setDeleteOptionModal({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 })}
-        title="Eliminar opción"
+        title="Eliminar opcion"
       >
         <div className="plan-editor-category-edit-modal">
           <p className="plan-editor-category-edit-confirm-text">
-            La opción &quot;{deleteOptionModal.optionLabel}&quot; tiene {deleteOptionModal.itemCount} alimento(s). ¿Eliminarla?
+            La opcion &quot;{deleteOptionModal.optionLabel}&quot; tiene {deleteOptionModal.itemCount} alimento(s). Eliminarla?
           </p>
           <div className="plan-editor-category-edit-actions">
-            <button
-              type="button"
-              className="plan-editor-category-edit-cancel"
-              onClick={() => setDeleteOptionModal({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 })}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="plan-editor-category-edit-delete"
-              onClick={() => {
-                if (deleteOptionModal.categoryIndex >= 0 && deleteOptionModal.optionIndex >= 0) {
-                  deleteOption(deleteOptionModal.categoryIndex, deleteOptionModal.optionIndex);
-                }
-                setDeleteOptionModal({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 });
-              }}
-            >
-              Eliminar
-            </button>
+            <button type="button" className="plan-editor-category-edit-cancel" onClick={() => setDeleteOptionModal({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 })}>Cancelar</button>
+            <button type="button" className="plan-editor-category-edit-delete" onClick={() => { if (deleteOptionModal.categoryIndex >= 0 && deleteOptionModal.optionIndex >= 0) deleteOption(deleteOptionModal.categoryIndex, deleteOptionModal.optionIndex); setDeleteOptionModal({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 }); }}>Eliminar</button>
           </div>
         </div>
       </Modal>
@@ -1416,7 +1318,7 @@ export default function PlanEditorScreen() {
       <Modal
         isOpen={manualFoodModalOpen}
         onClose={() => setManualFoodModalOpen(false)}
-        title="Añadir alimento propio"
+        title="Anadir alimento propio"
         containerClassName="propagate-modal-container"
         contentClassName="propagate-modal-content-wrapper"
       >
@@ -1424,57 +1326,22 @@ export default function PlanEditorScreen() {
           <div className="propagate-modal-layout propagate-modal-layout-single">
             <div className="meal-editor-manual-form-in-modal">
               <label className="propagate-option-title">Nombre</label>
-              <input
-                value={planEditorManualFood.name}
-                onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, name: e.target.value }))}
-                placeholder="ej. Mi batido"
-                className="meal-editor-edit-name-input"
-              />
+              <input value={planEditorManualFood.name} onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, name: e.target.value }))} placeholder="ej. Mi batido" className="meal-editor-edit-name-input" />
               <label className="propagate-option-title">Unidades</label>
-              <input
-                type="number"
-                value={planEditorManualFood.units}
-                onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, units: e.target.value }))}
-                placeholder="1"
-                className="meal-editor-edit-name-input"
-              />
-              <label className="propagate-option-title">Calorías</label>
-              <input
-                type="number"
-                value={planEditorManualFood.calories}
-                onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, calories: e.target.value }))}
-                placeholder="0"
-                className="meal-editor-edit-name-input"
-              />
-              <label className="propagate-option-title">Proteína (g)</label>
-              <input
-                type="number"
-                value={planEditorManualFood.protein}
-                onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, protein: e.target.value }))}
-                placeholder="0"
-                className="meal-editor-edit-name-input"
-              />
+              <input type="number" value={planEditorManualFood.units} onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, units: e.target.value }))} placeholder="1" className="meal-editor-edit-name-input" />
+              <label className="propagate-option-title">Calorias</label>
+              <input type="number" value={planEditorManualFood.calories} onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, calories: e.target.value }))} placeholder="0" className="meal-editor-edit-name-input" />
+              <label className="propagate-option-title">Proteina (g)</label>
+              <input type="number" value={planEditorManualFood.protein} onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, protein: e.target.value }))} placeholder="0" className="meal-editor-edit-name-input" />
               <label className="propagate-option-title">Carbohidratos (g)</label>
-              <input
-                type="number"
-                value={planEditorManualFood.carbs}
-                onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, carbs: e.target.value }))}
-                placeholder="0"
-                className="meal-editor-edit-name-input"
-              />
+              <input type="number" value={planEditorManualFood.carbs} onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, carbs: e.target.value }))} placeholder="0" className="meal-editor-edit-name-input" />
               <label className="propagate-option-title">Grasa (g)</label>
-              <input
-                type="number"
-                value={planEditorManualFood.fat}
-                onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, fat: e.target.value }))}
-                placeholder="0"
-                className="meal-editor-edit-name-input"
-              />
+              <input type="number" value={planEditorManualFood.fat} onChange={(e) => setPlanEditorManualFood((m) => ({ ...m, fat: e.target.value }))} placeholder="0" className="meal-editor-edit-name-input" />
             </div>
           </div>
           <div className="propagate-modal-footer">
             <button type="button" className="propagate-modal-btn propagate-modal-btn-dont" onClick={() => setManualFoodModalOpen(false)}>Cancelar</button>
-            <button type="button" className="propagate-modal-btn propagate-modal-btn-propagate" onClick={addCustomFoodFromModal}>Añadir</button>
+            <button type="button" className="propagate-modal-btn propagate-modal-btn-propagate" onClick={addCustomFoodFromModal}>Anadir</button>
           </div>
         </div>
       </Modal>
@@ -1501,6 +1368,8 @@ export default function PlanEditorScreen() {
         onPropagate={handleNavigatePropagate}
         onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
       />
+      <ContextualHint screenKey="plan-editor" />
     </DashboardLayout>
+    </>
   );
 }

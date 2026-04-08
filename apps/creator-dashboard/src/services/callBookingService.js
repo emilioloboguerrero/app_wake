@@ -1,42 +1,10 @@
-/**
- * Call bookings (creator side): list upcoming/past bookings.
- */
+import apiClient from '../utils/apiClient';
 
-import { collection, query, where, orderBy, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
-
-const COLLECTION = 'call_bookings';
-
-/** Normalize timestamp field (string or Firestore Timestamp) to ISO string for consistency */
-function toIsoString(value) {
-  if (value == null) return null;
-  if (typeof value === 'string') return value;
-  if (typeof value.toDate === 'function') return value.toDate().toISOString();
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-/**
- * @param {string} creatorId
- * @param {{ fromDate?: string, toDate?: string, status?: 'scheduled'|'cancelled' }} [opts]
- * @returns {Promise<Array<{ id: string, creatorId: string, clientUserId: string, courseId?: string, slotStartUtc: string, slotEndUtc: string, status: string, createdAt: string, clientDisplayName?: string }>>}
- */
-export async function getBookingsForCreator(creatorId, opts = {}) {
-  const q = query(
-    collection(firestore, COLLECTION),
-    where('creatorId', '==', creatorId),
-    orderBy('slotStartUtc', 'asc')
-  );
-  const snap = await getDocs(q);
-  let list = snap.docs.map((d) => {
-    const data = d.data();
-    return {
-      id: d.id,
-      ...data,
-      slotStartUtc: toIsoString(data.slotStartUtc) ?? data.slotStartUtc,
-      slotEndUtc: toIsoString(data.slotEndUtc) ?? data.slotEndUtc,
-    };
-  });
+export async function getBookingsForCreator(opts = {}) {
+  const params = {};
+  if (opts.fromDate) params.date = opts.fromDate;
+  const result = await apiClient.get('/creator/bookings', { params });
+  let list = (result?.data ?? []).map((b) => ({ id: b.bookingId, ...b }));
 
   if (opts.status) {
     const statusLower = String(opts.status).toLowerCase();
@@ -48,19 +16,10 @@ export async function getBookingsForCreator(creatorId, opts = {}) {
   if (opts.toDate) {
     list = list.filter((b) => b.slotStartUtc <= opts.toDate);
   }
+
   return list;
 }
 
-/**
- * Update the call link for a booking.
- * @param {string} bookingId
- * @param {string} callLink - URL for the call (e.g. Meet, Zoom)
- * @returns {Promise<void>}
- */
-export async function updateBookingCallLink(bookingId, callLink) {
-  const ref = doc(firestore, COLLECTION, bookingId);
-  await updateDoc(ref, {
-    callLink: callLink?.trim() || null,
-    callLinkUpdatedAt: new Date().toISOString(),
-  });
+export async function cancelBookingAsCreator(bookingId) {
+  await apiClient.delete(`/creator/bookings/${bookingId}`);
 }

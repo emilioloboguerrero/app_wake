@@ -2,14 +2,14 @@
 // Expo-compatible Apple Sign-In with Firebase Web SDK
 import { OAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import firestoreService from './firestoreService';
+import apiService from './apiService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import logger from '../utils/logger'; 
 import * as Crypto from 'expo-crypto';
 
-// Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 // Dynamic import for Apple Sign-In (only loaded when needed)
 let appleAuth = null;
@@ -26,10 +26,7 @@ async function generateSecureNonce(length = 32) {
 class AppleAuthService {
   constructor() {
     // Apple Sign-In will be loaded dynamically when needed
-    logger.log('AppleAuthService initialized');
-    if (isExpoGo) {
-      logger.log('Apple Sign-In disabled in Expo Go - will work in production builds');
-    }
+    // Apple Sign-In disabled in Expo Go - will work in production builds
   }
 
   // Dynamically load Apple Sign-In module
@@ -46,8 +43,6 @@ class AppleAuthService {
       const appleSignInModule = await import('@invertase/react-native-apple-authentication');
       appleAuth = appleSignInModule.appleAuth;
       AppleButton = appleSignInModule.AppleButton;
-      
-      logger.log('Apple Sign-In loaded successfully');
       
       return { appleAuth, AppleButton };
     } catch (error) {
@@ -84,8 +79,6 @@ class AppleAuthService {
     }
 
     try {
-      logger.log('Apple Sign-In initiated');
-      
       // Generate secure nonce required by Firebase to mitigate replay attacks
       const rawNonce = await generateSecureNonce();
       
@@ -145,16 +138,6 @@ class AppleAuthService {
         throw new Error(`Nonce hash is invalid: expected 64 hex chars, got ${hashedNonce.length}`);
       }
       
-      // Debug log
-      logger.debug('[Apple Auth] Nonce hash computed:', {
-        rawNonce: rawNonce,
-        rawNonceLength: rawNonce.length,
-        hashLength: hashedNonce.length,
-        hashFull: hashedNonce,
-        hashStart: hashedNonce.substring(0, 16),
-        hashEnd: hashedNonce.substring(48)
-      });
-      
       // Dynamically load Apple Sign-In module
       const { appleAuth: appleAuthModule } = await this.loadAppleSignIn();
       
@@ -170,18 +153,11 @@ class AppleAuthService {
         nonce: rawNonce, // Send RAW nonce - library hashes it internally
       });
       
-      logger.debug('[Apple Auth] Sent raw nonce to Apple:', rawNonce);
-      logger.debug('[Apple Auth] Expected hash (for verification):', hashedNonce.substring(0, 16) + '...');
-      
-      logger.debug('[Apple Auth] Apple request completed, received identity token');
-
       // Ensure Apple returned a user identityToken
       if (!appleAuthRequestResponse.identityToken) {
         throw new Error('Apple Sign-In failed - no identify token returned');
       }
 
-      logger.log('Identity token received, signing in to Firebase...');
-      
       // Create a Firebase credential from the response
       const { identityToken } = appleAuthRequestResponse;
       const appleProvider = new OAuthProvider('apple.com');
@@ -204,12 +180,10 @@ class AppleAuthService {
             await updateProfile(firebaseUser, { displayName: fullName });
             await firebaseUser.reload();
           } catch (profileError) {
-            logger.warn('Failed to set Apple displayName:', profileError);
+            // Failed to set Apple displayName (non-fatal)
           }
         }
       }
-      
-      logger.log('Apple sign-in successful:', firebaseUser.uid);
       
       // Create or update user document in Firestore (same as Google — create if missing)
       await this.createOrUpdateUserDocument(firebaseUser);
@@ -268,12 +242,8 @@ class AppleAuthService {
   // Sign out from Apple and Firebase
   async signOut() {
     try {
-      logger.log('Signing out from Apple and Firebase...');
-      
       // Apple Sign-In doesn't require explicit sign-out
       // The sign-out is handled by Firebase Auth
-      
-      logger.log('Sign out successful');
       return { success: true };
       
     } catch (error) {
@@ -324,8 +294,6 @@ class AppleAuthService {
         return { success: false, error: 'Apple Sign-In not available' };
       }
 
-      logger.log('Revoking Apple Sign-In token...');
-      
       // Dynamically load Apple Sign-In module
       const { appleAuth: appleAuthModule } = await this.loadAppleSignIn();
       
@@ -342,7 +310,6 @@ class AppleAuthService {
       // Revoke the token
       await appleAuthModule.revokeToken(auth, authorizationCode);
       
-      logger.log('Apple Sign-In token revoked successfully');
       return { success: true };
       
     } catch (error) {
@@ -367,20 +334,17 @@ class AppleAuthService {
       };
 
       // Check if user already exists in Firestore
-      const existingUser = await firestoreService.getUser(firebaseUser.uid);
-      logger.log('[APPLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
-      
+      const existingUser = await apiService.getUser(firebaseUser.uid);
+
       if (existingUser) {
         // User exists - update login time and provider info
-        await firestoreService.updateUser(firebaseUser.uid, {
+        await apiService.updateUser(firebaseUser.uid, {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.log('[APPLE AUTH] Updated existing user document');
       } else {
         // New Apple user - updateUser now creates doc if missing
-        logger.log('[APPLE AUTH] No document for new Apple user — calling updateUser (will create doc)');
-        await firestoreService.updateUser(firebaseUser.uid, userData);
+        await apiService.updateUser(firebaseUser.uid, userData);
       }
       
     } catch (error) {

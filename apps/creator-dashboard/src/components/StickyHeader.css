@@ -8,13 +8,21 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background-color: #1a1a1a;
+  background-color: transparent;
   padding: 16px 32px;
-  backdrop-filter: blur(10px);
-  background-color: rgba(26, 26, 26, 0.95);
+  backdrop-filter: blur(0px);
+  border-bottom: 1px solid transparent;
   min-height: 120px;
   width: 100%;
   box-sizing: border-box;
+  transition: background-color 0.2s ease, backdrop-filter 0.2s ease, border-color 0.2s ease;
+}
+
+.sticky-header.sticky-header-scrolled {
+  background-color: rgba(26, 26, 26, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sticky-header-with-image {
@@ -126,7 +134,7 @@
 
 .sticky-header-back-button:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
 }
 
 .sticky-header-back-button svg {
@@ -188,9 +196,10 @@
 .sticky-header-title {
   font-size: 2.5rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--text-primary);
   margin: 0;
   line-height: 1.2;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
 }
 
 .sticky-header-with-image .sticky-header-title {
@@ -305,8 +314,8 @@
 }
 
 .sticky-header-purchase-button-container .course-detail-purchase-button-text {
-  color: rgba(255, 255, 255, 1);
-  font-size: 16px;
+  color: var(--text-primary);
+  font-size: clamp(14px, 3.5vw, 16px);
   font-weight: 700;
   text-align: center;
   line-height: 1.2;
@@ -314,8 +323,8 @@
 
 .sticky-header-purchase-button-container .course-detail-button-price-text,
 .sticky-header-purchase-button-container .course-detail-trial-price-text {
-  color: rgba(255, 255, 255, 1);
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: clamp(11px, 2.5vw, 12px);
   font-weight: 500;
   text-align: center;
   margin-top: 2px;
@@ -357,7 +366,7 @@
 
 .sticky-header-menu-button:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 1);
+  color: var(--text-primary);
 }
 
 .sticky-header-menu-button:active {

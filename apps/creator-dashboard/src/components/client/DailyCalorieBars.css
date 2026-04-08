@@ -1,0 +1,116 @@
+.dcb-container {
+  --dcb-on-track: rgba(255, 255, 255, 0.45);
+  --dcb-off: rgba(251, 191, 36, 0.5);
+  --dcb-far-off: rgba(248, 113, 113, 0.5);
+  --dcb-empty: rgba(255, 255, 255, 0.06);
+}
+
+.dcb-chart {
+  position: relative;
+  padding: 4px 0 0;
+}
+
+/* ─── Target line ────────────────────────────────────────────── */
+.dcb-target-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.dcb-target-label {
+  position: absolute;
+  right: 0;
+  top: -8px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.25);
+  font-weight: 500;
+}
+
+/* ─── Bars container ─────────────────────────────────────────── */
+.dcb-bars {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  height: 120px;
+}
+
+.dcb-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+}
+
+.dcb-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* ─── Bar fill ───────────────────────────────────────────────── */
+.dcb-bar-fill {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 4px 4px 2px 2px;
+  position: relative;
+  transition: height 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.dcb-bar-value {
+  position: absolute;
+  top: -16px;
+  font-size: 9px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.35);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.dcb-bar-col:hover .dcb-bar-value {
+  opacity: 1;
+}
+
+/* ─── Empty bar ──────────────────────────────────────────────── */
+.dcb-bar-empty {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+}
+
+/* ─── Day label ──────────────────────────────────────────────── */
+.dcb-bar-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.3);
+  text-transform: uppercase;
+}
+
+/* ─── Compact mode (30d) ────────────────────────────────────── */
+.dcb-chart--compact .dcb-bars {
+  gap: 2px;
+}
+
+.dcb-chart--compact .dcb-bar-col {
+  gap: 3px;
+}
+
+.dcb-chart--compact .dcb-bar-fill {
+  border-radius: 2px 2px 1px 1px;
+}
+
+.dcb-chart--compact .dcb-bar-label {
+  font-size: 8px;
+}

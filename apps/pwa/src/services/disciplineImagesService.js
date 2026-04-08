@@ -1,6 +1,5 @@
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { firestore } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiClient from '../utils/apiClient';
 
 import logger from '../utils/logger.js';
 class DisciplineImagesService {
@@ -32,33 +31,16 @@ class DisciplineImagesService {
 
   async fetchImagesFromDatabase() {
     try {
-      const appResourcesRef = collection(firestore, 'app_resources');
-      const q = query(appResourcesRef, where('title', '==', 'discipline_img'));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        return {};
-      }
-
+      const result = await apiClient.get('/app-resources');
+      const raw = result?.data?.disciplineImages ?? {};
       const disciplineImages = {};
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        
-        // Extract discipline name -> image URL mappings
-        Object.keys(data).forEach(key => {
-          if (key !== 'title' && data[key] && typeof data[key] === 'string' && data[key].trim() !== '') {
-            // Get the first word (before dash, space, or other separators)
-            const firstWord = key.split(/[\s\-–—]/)[0].toLowerCase().trim();
-            
-            // Store with the first word as key
-            disciplineImages[firstWord] = data[key];
-            
-            // Also store with original case for backward compatibility
-            disciplineImages[key] = data[key];
-          }
-        });
-      });
-
+      for (const [key, value] of Object.entries(raw)) {
+        if (typeof value === 'string' && value.trim() !== '') {
+          const firstWord = key.split(/[\s\-–—]/)[0].toLowerCase().trim();
+          disciplineImages[firstWord] = value;
+          disciplineImages[key] = value;
+        }
+      }
       return disciplineImages;
     } catch (error) {
       logger.error('Error fetching discipline images from database:', error);
@@ -76,7 +58,6 @@ class DisciplineImagesService {
 
       // Check if cache is expired
       if (now - parsedData.timestamp > this.cacheExpiry) {
-        logger.log('⏰ Discipline images cache expired');
         await AsyncStorage.removeItem(this.cacheKey);
         return null;
       }
@@ -102,23 +83,11 @@ class DisciplineImagesService {
 
   async testDatabaseConnection() {
     try {
-      const appResourcesRef = collection(firestore, 'app_resources');
-      const q = query(appResourcesRef, where('title', '==', 'discipline_img'));
-      const querySnapshot = await getDocs(q);
-      
-      return {
-        success: true,
-        documentCount: querySnapshot.size,
-        documents: querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          data: doc.data()
-        }))
-      };
+      const result = await apiClient.get('/app-resources');
+      const images = result?.data?.disciplineImages ?? {};
+      return { success: true, documentCount: Object.keys(images).length, documents: [{ id: 'discipline_img', data: images }] };
     } catch (error) {
-      return {
-        success: false,
-        error: error.message
-      };
+      return { success: false, error: error.message };
     }
   }
 }

@@ -1,11 +1,9 @@
-// Firebase Storage service for Wake
-import { storage } from '../config/firebase';
-import { ref, getDownloadURL } from 'firebase/storage';
+import apiClient from '../utils/apiClient';
 
 class StorageService {
   async getDownloadURL(filePath) {
-    const storageRef = ref(storage, filePath);
-    return await getDownloadURL(storageRef);
+    const result = await apiClient.get('/storage/download-url', { params: { path: filePath } });
+    return result.data.url;
   }
 }
 

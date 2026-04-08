@@ -1,0 +1,272 @@
+/* ─── Week View Grid ─────────────────────────────────────────── */
+.cpwv-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  animation: cpwv-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cpwv-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Day Column ─────────────────────────────────────────────── */
+.cpwv-day {
+  display: flex;
+  flex-direction: column;
+  min-height: 160px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 10px 8px;
+  transition: border-color 200ms;
+}
+
+.cpwv-day--has-sessions {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.cpwv-day--skeleton {
+  padding: 10px;
+}
+
+/* ─── Day Header ─────────────────────────────────────────────── */
+.cpwv-day-header {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+.cpwv-day-short {
+  display: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+
+.cpwv-day-full {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ─── Session Cards ──────────────────────────────────────────── */
+.cpwv-day-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+/* ─── Session wrapper (holds card + tooltip) ─────────────────── */
+.cpwv-session-wrap {
+  position: relative;
+}
+
+.cpwv-session {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 250ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpwv-session:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.cpwv-session-inner {
+  position: relative;
+  z-index: 2;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cpwv-session-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cpwv-session-icon {
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.cpwv-session-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* ─── Status Dot ─────────────────────────────────────────────── */
+.cpwv-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cpwv-dot--done {
+  background: rgba(74, 222, 128, 0.8);
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.3);
+}
+
+.cpwv-dot--skipped {
+  background: rgba(248, 113, 113, 0.7);
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.2);
+}
+
+.cpwv-dot--upcoming {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* ─── Session Meta ───────────────────────────────────────────── */
+.cpwv-session-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.cpwv-session-count {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.3);
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 3px;
+}
+
+.cpwv-session-muscle {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.25);
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+/* ─── Hover Tooltip ──────────────────────────────────────────── */
+.cpwv-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateX(-50%) translateY(4px);
+}
+
+.cpwv-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+
+.cpwv-session-wrap:hover .cpwv-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.cpwv-tooltip-status {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cpwv-tooltip-status--done { color: rgba(74, 222, 128, 0.85); }
+.cpwv-tooltip-status--skipped { color: rgba(248, 113, 113, 0.8); }
+.cpwv-tooltip-status--upcoming { color: rgba(255, 255, 255, 0.4); }
+
+.cpwv-tooltip-stat {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cpwv-tooltip-stat--pr {
+  color: rgba(251, 191, 36, 0.8);
+  font-weight: 600;
+}
+
+/* ─── Empty Day ──────────────────────────────────────────────── */
+.cpwv-day-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  border: 1px dashed rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 200ms;
+  opacity: 0;
+}
+
+.cpwv-day:hover .cpwv-day-empty {
+  opacity: 1;
+}
+
+.cpwv-day-empty-icon {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+.cpwv-day-empty:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cpwv-day-empty:hover .cpwv-day-empty-icon {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* ─── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .cpwv-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .cpwv-day-full { display: none; }
+  .cpwv-day-short { display: block; }
+}
+
+@media (max-width: 640px) {
+  .cpwv-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cpwv-day {
+    min-height: 120px;
+  }
+}

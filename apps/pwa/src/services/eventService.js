@@ -1,86 +1,42 @@
-import { firestore } from '../config/firebase';
-import {
-  doc,
-  getDoc,
-  collection,
-  query,
-  where,
-  orderBy,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
+import apiClient from '../utils/apiClient';
 
 class EventService {
   async getEvent(eventId) {
-    const snap = await getDoc(doc(firestore, 'events', eventId));
-    if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() };
+    const res = await apiClient.get(`/events/${eventId}`);
+    const d = res.data;
+    return { id: d.eventId, ...d };
   }
 
   async getRegistrations(eventId) {
-    const snap = await getDocs(
-      query(
-        collection(firestore, 'event_signups', eventId, 'registrations'),
-        orderBy('created_at', 'desc')
-      )
-    );
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const res = await apiClient.get(`/creator/events/${eventId}/registrations`);
+    return res.data.map(r => ({ id: r.registrationId, ...r }));
   }
 
   async getWaitlist(eventId) {
-    const snap = await getDocs(
-      query(
-        collection(firestore, 'event_signups', eventId, 'waitlist'),
-        orderBy('created_at', 'desc')
-      )
-    );
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const res = await apiClient.get(`/creator/events/${eventId}/waitlist`);
+    return res.data.map(r => ({ id: r.registrationId, ...r }));
   }
 
   async checkInByToken(eventId, token) {
-    const snap = await getDocs(
-      query(
-        collection(firestore, 'event_signups', eventId, 'registrations'),
-        where('check_in_token', '==', token)
-      )
-    );
-    if (snap.empty) return { status: 'invalid' };
-    const regDoc = snap.docs[0];
-    const reg = { id: regDoc.id, ...regDoc.data() };
-    if (reg.checked_in) return { status: 'already', reg };
-    await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regDoc.id), {
-      checked_in: true,
-      checked_in_at: serverTimestamp(),
-    });
-    return { status: 'success', reg };
+    const result = await apiClient.post(`/events/${eventId}/check-in-by-token`, { token });
+    return result?.data ?? null;
   }
 
   async manualCheckIn(eventId, regId) {
-    await updateDoc(doc(firestore, 'event_signups', eventId, 'registrations', regId), {
-      checked_in: true,
-      checked_in_at: serverTimestamp(),
-    });
+    await apiClient.post(`/creator/events/${eventId}/registrations/${regId}/check-in`);
   }
 
   async deleteRegistration(eventId, regId) {
-    await deleteDoc(doc(firestore, 'event_signups', eventId, 'registrations', regId));
+    await apiClient.delete(`/creator/events/${eventId}/registrations/${regId}`);
   }
 
-  async getEventsByCreator(creatorId) {
-    const snap = await getDocs(
-      query(
-        collection(firestore, 'events'),
-        where('creator_id', '==', creatorId),
-        orderBy('created_at', 'desc')
-      )
-    );
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  async getEventsByCreator(_creatorId) {
+    const res = await apiClient.get('/creator/events');
+    return res.data.map(e => ({ id: e.eventId, ...e }));
   }
 
   async updateEventStatus(eventId, status) {
-    await updateDoc(doc(firestore, 'events', eventId), { status });
+    await apiClient.patch(`/creator/events/${eventId}/status`, { status });
   }
 }
 

@@ -1,7 +1,4 @@
 // Input validation and sanitization utilities
-import { handleValidationError } from './errorHandler';
-import logger from './logger';
-
 // Validation rules
 export const VALIDATION_RULES = {
   EMAIL: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
@@ -219,7 +216,6 @@ export const safeJsonParse = (jsonString, defaultValue = null) => {
   try {
     return JSON.parse(jsonString);
   } catch (error) {
-    logger.warn('Failed to parse JSON:', error.message);
     return defaultValue;
   }
 };
@@ -229,7 +225,6 @@ export const safeJsonStringify = (obj, defaultValue = '{}') => {
   try {
     return JSON.stringify(obj);
   } catch (error) {
-    logger.warn('Failed to stringify JSON:', error.message);
     return defaultValue;
   }
 };
@@ -246,18 +241,6 @@ export const escapeHtml = (unsafe) => {
     .replace(/'/g, '&#039;');
 };
 
-// SQL injection protection (for future database queries)
-export const escapeSql = (unsafe) => {
-  if (typeof unsafe !== 'string') return unsafe;
-  
-  return unsafe
-    .replace(/'/g, "''")
-    .replace(/;/g, '')
-    .replace(/--/g, '')
-    .replace(/\/\*/g, '')
-    .replace(/\*\//g, '');
-};
-
 export default {
   sanitizeInput,
   validateInput,
@@ -265,6 +248,5 @@ export default {
   safeJsonParse,
   safeJsonStringify,
   escapeHtml,
-  escapeSql,
   VALIDATION_RULES
 };

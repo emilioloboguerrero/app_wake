@@ -1,0 +1,16 @@
+/* ─── Animated List ───────────────────────────────────────────── */
+.animated-list-item {
+  animation: animated-list-enter 0.42s var(--spring, cubic-bezier(0.22,1,0.36,1)) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+@keyframes animated-list-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

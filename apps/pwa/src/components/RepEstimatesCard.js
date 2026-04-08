@@ -80,7 +80,7 @@ const RepEstimatesCard = ({ oneRM }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Estimados por Reps</Text>
-      <Text style={styles.subtitle}>Intensidad 10/10</Text>
+      <Text style={styles.subtitle}>RPE 10</Text>
       
       <View style={styles.gridContainer}>
         {/* Left Column */}

@@ -1,53 +1,34 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import MediaPickerModal from '../components/MediaPickerModal';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import libraryService from '../services/libraryService';
+import { queryKeys } from '../config/queryClient';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import './ProgramDetailScreen.css';
+import './SharedScreenLayout.css';
+import ContextualHint from '../components/hints/ContextualHint';
+import './CreateLibrarySessionScreen.css';
 
 const CreateLibrarySessionScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
   const [sessionName, setSessionName] = useState('');
   const [sessionImageFile, setSessionImageFile] = useState(null);
   const [sessionImagePreview, setSessionImagePreview] = useState(null);
   const [sessionImageUrlFromLibrary, setSessionImageUrlFromLibrary] = useState(null);
-  const [isUploadingSessionImage, setIsUploadingSessionImage] = useState(false);
-  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [sessionImageUploadProgress, setSessionImageUploadProgress] = useState(0);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-
-  const handleSessionImageUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecciona un archivo de imagen válido');
-      return;
-    }
-
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      alert('El archivo es demasiado grande. El tamaño máximo es 10MB');
-      return;
-    }
-
-    setSessionImageFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setSessionImagePreview(reader.result);
-    };
-    reader.readAsDataURL(file);
-  };
+  const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
 
   const handleSessionImageDelete = () => {
     setSessionImageFile(null);
@@ -63,25 +44,15 @@ const CreateLibrarySessionScreen = () => {
     setIsMediaPickerOpen(false);
   };
 
-  const handleCreateSession = async () => {
-    if (!sessionName.trim() || !user) {
-      return;
-    }
-
-    try {
-      setIsCreatingSession(true);
-      
+  const createSessionMutation = useMutation({
+    mutationFn: async () => {
       let imageUrl = sessionImageUrlFromLibrary || null;
-      
       const librarySession = await libraryService.createLibrarySession(user.uid, {
         title: sessionName.trim(),
-        image_url: imageUrl
+        image_url: imageUrl,
       });
-      
       if (!imageUrl && sessionImageFile) {
         try {
-          setIsUploadingSessionImage(true);
-          setSessionImageUploadProgress(0);
           imageUrl = await libraryService.uploadLibrarySessionImage(
             user.uid,
             librarySession.id,
@@ -89,23 +60,27 @@ const CreateLibrarySessionScreen = () => {
             (progress) => setSessionImageUploadProgress(Math.round(progress))
           );
           await libraryService.updateLibrarySession(user.uid, librarySession.id, {
-            image_url: imageUrl
+            image_url: imageUrl,
           });
         } catch (uploadErr) {
           logger.error('Error uploading session image:', uploadErr);
-          alert(`Error al subir la imagen: ${uploadErr.message || 'Por favor, intenta de nuevo.'}`);
-        } finally {
-          setIsUploadingSessionImage(false);
+          showToast(`No pudimos subir la imagen: ${uploadErr.message || 'Intenta de nuevo.'}`, 'error');
         }
       }
-      
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
       navigate(backPath, { state: backState });
-    } catch (err) {
-      logger.error('Error creating library session:', err);
-      alert(`Error al crear la sesión: ${err.message || 'Por favor, intenta de nuevo.'}`);
-    } finally {
-      setIsCreatingSession(false);
-    }
+    },
+    onError: (err) => {
+      showToast(`No pudimos crear la sesion: ${err.message || 'Intenta de nuevo.'}`, 'error');
+    },
+  });
+
+  const handleCreateSession = () => {
+    if (!sessionName.trim() || !user) return;
+    createSessionMutation.mutate();
   };
 
   const handleCancel = () => {
@@ -119,45 +94,16 @@ const CreateLibrarySessionScreen = () => {
       backPath={backPath}
       backState={backState}
     >
-      <div style={{ 
-        minHeight: '100vh', 
-        backgroundColor: '#1a1a1a',
-        padding: '24px',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center'
-      }}>
-        <div style={{ 
-          width: '100%', 
-          maxWidth: '800px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px'
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            marginBottom: '8px'
-          }}>
-            <h1 style={{ 
-              color: '#ffffff', 
-              fontSize: '24px', 
-              fontWeight: '600',
-              margin: 0
-            }}>
+      <div className="create-session-root">
+        <div className="create-session-content">
+          <div className="create-session-header">
+            <h1 className="create-session-title">
               Nueva Sesión de Biblioteca
             </h1>
             <button
+              type="button"
               onClick={handleCancel}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'rgba(255, 255, 255, 0.7)',
-                fontSize: '16px',
-                cursor: 'pointer',
-                padding: '8px 16px'
-              }}
+              className="create-session-btn-cancel"
             >
               Cancelar
             </button>
@@ -195,9 +141,10 @@ const CreateLibrarySessionScreen = () => {
                             <span className="edit-program-image-action-text">Cambiar</span>
                           </button>
                           <button
+                            type="button"
                             className="edit-program-image-action-pill edit-program-image-delete-pill"
                             onClick={handleSessionImageDelete}
-                            disabled={isCreatingSession}
+                            disabled={createSessionMutation.isPending}
                           >
                             <span className="edit-program-image-action-text">Eliminar</span>
                           </button>
@@ -224,31 +171,25 @@ const CreateLibrarySessionScreen = () => {
               accept="image/*"
             />
 
-            <div className="edit-program-modal-actions" style={{ flexShrink: 0, marginTop: '24px', paddingTop: '16px', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <div className="create-session-cta-bar">
               <button
+                type="button"
                 onClick={handleCancel}
-                style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(255, 255, 255, 0.3)',
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  padding: '12px 24px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '16px'
-                }}
+                className="create-session-btn-cancel"
               >
                 Cancelar
               </button>
               <Button
-                title={isCreatingSession || isUploadingSessionImage ? 'Creando...' : 'Crear'}
+                title={createSessionMutation.isPending ? 'Creando...' : 'Crear'}
                 onClick={handleCreateSession}
-                disabled={!sessionName.trim() || isCreatingSession || isUploadingSessionImage}
-                loading={isCreatingSession || isUploadingSessionImage}
+                disabled={!sessionName.trim() || createSessionMutation.isPending}
+                loading={createSessionMutation.isPending}
               />
             </div>
           </div>
         </div>
       </div>
+      <ContextualHint screenKey="create-session" />
     </DashboardLayout>
   );
 };

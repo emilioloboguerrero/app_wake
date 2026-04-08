@@ -17,29 +17,31 @@
 // 14. Listener conflicts: Only one set of listeners active at a time
 // 15. Completeness flags: Denormalized flags prevent N+1 queries
 //
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryCache } from '@tanstack/react-query';
+import { WakeApiError } from '../utils/apiClient';
+import authService from '../services/authService';
 
 // Create query client with optimized defaults
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      if (error instanceof WakeApiError &&
+          (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
+        authService.signOutUser();
+      }
+    },
+  }),
   defaultOptions: {
     queries: {
-      // Default stale time: 5 minutes
       staleTime: 5 * 60 * 1000,
-      // Default cache time: 10 minutes
-      gcTime: 10 * 60 * 1000, // Previously cacheTime
-      // Retry failed requests
-      retry: 2,
-      // Disable refetch on window focus by default (respect staleTime instead)
-      // Individual queries can override this if needed
+      gcTime: 10 * 60 * 1000,
+      retry: false,
       refetchOnWindowFocus: false,
-      // Don't refetch on reconnect if data is fresh
       refetchOnReconnect: true,
-      // Refetch on mount if data is stale
       refetchOnMount: true,
     },
     mutations: {
-      // Retry mutations once on failure
-      retry: 1,
+      retry: false,
     },
   },
 });
@@ -49,7 +51,7 @@ export const cacheConfig = {
   // Active program being edited: no cache, always fresh
   activeProgram: {
     staleTime: 0,
-    gcTime: 0,
+    gcTime: 5 * 60 * 1000,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   },
@@ -70,10 +72,10 @@ export const cacheConfig = {
     refetchOnWindowFocus: false,
   },
   
-  // Program structure (modules, sessions, exercises): cache for 2 minutes
+  // Program structure (modules, sessions, exercises): no cache when editing
   programStructure: {
-    staleTime: 2 * 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    staleTime: 0,
+    gcTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
   },
@@ -82,6 +84,56 @@ export const cacheConfig = {
     gcTime: 5 * 60 * 1000,
     refetchOnMount: true,
     refetchOnWindowFocus: false,
+  },
+  userProfile: {
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
+  sessionHistory: {
+    staleTime: 10 * 60 * 1000,
+    gcTime: 20 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
+  bookings: {
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+  },
+  clientsOverview: {
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
+  libraries: {
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
+  // Session/module library lists — change only on explicit create/delete/rename
+  // (all of which already call invalidateQueries), so safe to cache
+  librarySessions: {
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+  },
+  apiKeys: {
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  },
+  videoExchanges: {
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   },
 };
 
@@ -109,7 +161,9 @@ export const queryKeys = {
     all: (programId, moduleId, sessionId, exerciseId) => ['programs', programId, 'modules', moduleId, 'sessions', sessionId, 'exercises', exerciseId, 'sets'],
   },
   analytics: {
+    dashboard: (creatorId) => ['analytics', 'dashboard', creatorId],
     program: (programId) => ['analytics', 'program', programId],
+    adherence: (creatorId, opts) => ['analytics', 'adherence', creatorId, opts],
   },
   user: {
     detail: (userId) => ['user', userId],
@@ -122,11 +176,43 @@ export const queryKeys = {
   },
   clients: {
     byCreator: (creatorId) => ['clients', 'creator', creatorId],
+    overview: (creatorId, opts) => ['clients', 'overview', creatorId, opts],
+    detail: (clientId) => ['clients', 'detail', clientId],
+    programs: (clientUserId, creatorId) => ['clients', clientUserId, 'programs', creatorId],
+    byProgram: (programId) => ['clients', 'program', programId],
+  },
+  availability: {
+    byCreator: (creatorId) => ['availability', creatorId],
+  },
+  bookings: {
+    byCreator: (creatorId) => ['bookings', creatorId],
+  },
+  plans: {
+    byCreator: (creatorId) => ['plans', 'creator', creatorId],
+    detail: (planId) => ['plans', planId],
   },
   library: {
     exercises: (creatorId) => ['library', 'exercises', creatorId],
+    libraries: (creatorId) => ['library', 'libraries', creatorId],
     sessions: (creatorId) => ['library', 'sessions', creatorId],
+    sessionsSlim: (creatorId) => ['library', 'sessions-slim', creatorId],
     modules: (creatorId) => ['library', 'modules', creatorId],
   },
+  nutrition: {
+    meals: (creatorId) => ['nutrition', 'meals', creatorId],
+    meal: (creatorId, mealId) => ['nutrition', 'meal', creatorId, mealId],
+    plans: (creatorId) => ['nutrition', 'plans', creatorId],
+    plan: (creatorId, planId) => ['nutrition', 'plan', creatorId, planId],
+    diary: (userId, date) => ['nutrition', 'diary', userId, date],
+    foodSearch: (query) => ['nutrition', 'foodSearch', query],
+  },
+  apiKeys: {
+    all: () => ['creator', 'api-keys'],
+  },
+  videoExchanges: {
+    byCreator: (creatorId) => ['videoExchanges', 'creator', creatorId],
+    byClient: (clientId) => ['videoExchanges', 'client', clientId],
+    detail: (exchangeId) => ['videoExchanges', exchangeId],
+    unreadCount: (userId) => ['videoExchanges', 'unreadCount', userId],
+  },
 };
-

@@ -1,17 +1,30 @@
 /**
- * Firebase Cloud Functions v1
+ * Firebase Cloud Functions v1 + Gen2 API
  */
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import type {Request, Response} from "express";
-import {MercadoPagoConfig, Preference, Payment, PreApproval} from "mercadopago";
+import {Preference, Payment, PreApproval} from "mercadopago";
 import {Resend} from "resend";
-
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
+import {onRequest} from "firebase-functions/v2/https";
+import {onSchedule} from "firebase-functions/v2/scheduler";
+import {defineSecret} from "firebase-functions/params";
+import * as webpush from "web-push";
+import "./init.js";
+import {app} from "./api/app.js";
+import {
+  type ParsedReference,
+  type MercadoPagoPreapproval,
+  buildExternalReference as sharedBuildExternalReference,
+  parseExternalReference as sharedParseExternalReference,
+  calculateExpirationDate as sharedCalculateExpirationDate,
+  classifyError as sharedClassifyError,
+  getClient as sharedGetClient,
+  toErrorMessage as sharedToErrorMessage,
+} from "./api/services/paymentHelpers.js";
+import {assignCourseToUser} from "./api/services/courseAssignment.js";
 
 const db = admin.firestore();
 
@@ -31,237 +44,114 @@ const fatSecretClientSecret = functions.params.defineSecret(
 );
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
 
-// Simple Mercado Pago client
-const getClient = () => {
-  const token = mercadopagoAccessToken.value();
+// ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
+// Accepted gap: in-memory rate limiting is ineffective in Cloud Functions
+// because each instance has its own empty Map, instances cold-start frequently,
+// and horizontal scaling means requests hit different instances. This provides
+// minimal protection. A Firestore-based rate limiter (like api/middleware/rateLimit.ts)
+// would be correct, but these Gen1 functions are being retired in Phase 3
+// migration, so the effort is not justified. The Gen2 API already uses
+// Firestore-based rate limiting.
+const rateLimitStore = new Map<string, {count: number; resetAt: number}>();
 
-  if (!token) {
-    throw new Error(
-      "Mercado Pago access token missing; configure MERCADOPAGO_ACCESS_TOKEN secret"
-    );
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const window = 60_000;
+  const max = 10;
+  const entry = rateLimitStore.get(key);
+  if (!entry || now >= entry.resetAt) {
+    rateLimitStore.set(key, {count: 1, resetAt: now + window});
+    return true;
   }
-
-  return new MercadoPagoConfig({accessToken: token});
-};
-
-type PaymentKind = "otp" | "sub";
-
-interface ParsedReference {
-  version: string;
-  userId: string;
-  courseId: string;
-  paymentType: PaymentKind;
-  raw: string;
+  if (entry.count >= max) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
 }
 
-interface MercadoPagoPreapproval {
-  external_reference?: string | null;
-  next_payment_date?: string | null;
-  auto_recurring?: {
-    next_payment_date?: string | null;
-    start_date?: string | null;
-    transaction_amount?: number | null;
-    currency_id?: string | null;
-  };
-  reason?: string | null;
-  status?: string | null;
-  payer_email?: string | null;
-  payer?: {
-    email?: string | null;
-  };
+// ─── Input validation helpers ────────────────────────────────────────────────
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BARCODE_RE = /^\d{8,14}$/;
+const COURSE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+
+function isValidEmail(v: unknown): v is string {
+  return typeof v === "string" && EMAIL_RE.test(v);
 }
 
-const REFERENCE_VERSION = "v1";
-const REFERENCE_DELIMITER = "|";
-const REFERENCE_MAX_LENGTH = 256;
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch (stringifyError) {
-    functions.logger.error("Failed to stringify error", stringifyError);
-    return "Unknown error";
-  }
+function isValidCourseId(v: unknown): v is string {
+  return typeof v === "string" && COURSE_ID_RE.test(v);
 }
 
-const buildReferenceBase = (
-  version: string,
-  userId: string,
-  courseId: string,
-  paymentType: PaymentKind
-): string => {
-  return [version, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
-};
-
-function buildExternalReference(
-  userId: string,
-  courseId: string,
-  paymentType: PaymentKind
-): string {
-  if (!userId || !courseId) {
-    throw new Error("Missing userId or courseId for external reference");
-  }
-
-  if (userId.includes(REFERENCE_DELIMITER) || courseId.includes(REFERENCE_DELIMITER)) {
-    throw new Error("Identifiers cannot contain the reference delimiter '|'");
-  }
-
-  const base = buildReferenceBase(REFERENCE_VERSION, userId, courseId, paymentType);
-  const reference = base;
-
-  if (reference.length > REFERENCE_MAX_LENGTH) {
-    throw new Error("external_reference exceeds Mercado Pago length limit");
-  }
-
-  return reference;
+function isValidBarcode(v: unknown): v is string {
+  return typeof v === "string" && BARCODE_RE.test(v);
 }
 
-function parseExternalReference(reference: string): ParsedReference {
-  if (!reference) {
-    throw new Error("external_reference is empty");
-  }
-
-  const parts = reference.split(REFERENCE_DELIMITER);
-
-  if (parts.length !== 4) {
-    throw new Error(`Unexpected external_reference format: ${reference}`);
-  }
-
-  const [version, userId, courseId, paymentTypeRaw] = parts;
-
-  if (version !== REFERENCE_VERSION) {
-    throw new Error(`Unsupported external_reference version: ${version}`);
-  }
-
-  if (!userId || !courseId) {
-    throw new Error("external_reference missing userId or courseId");
-  }
-
-  if (paymentTypeRaw !== "otp" && paymentTypeRaw !== "sub") {
-    throw new Error(`Unsupported payment type in external_reference: ${paymentTypeRaw}`);
-  }
-
-  const paymentType = paymentTypeRaw as PaymentKind;
-
-  return {
-    version,
-    userId,
-    courseId,
-    paymentType,
-    raw: reference,
-  };
-}
-
-
-// Helper: Calculate expiration date from access duration (same as app)
+// ─── Shared helpers (delegated to api/services/) ─────────────────────────────
+const getClient = () => sharedGetClient(mercadopagoAccessToken.value());
+const buildExternalReference = sharedBuildExternalReference;
+const parseExternalReference = sharedParseExternalReference;
+const classifyError = sharedClassifyError;
+const toErrorMessage = sharedToErrorMessage;
 function calculateExpirationDate(
   accessDuration: string,
-  options: {from?: Date | string} = {}
+  options: {from?: string} = {}
 ): string {
-  const durations: {[key: string]: number} = {
-    "monthly": 30,
-    "3-month": 90,
-    "6-month": 180,
-    "yearly": 365,
-  };
-
-  const days = durations[accessDuration] || 30; // Default to 30 days
-  const now = new Date();
-  let base = options.from ? new Date(options.from) : now;
-
-  if (Number.isNaN(base.getTime()) || base < now) {
-    base = now;
-  }
-
-  const expirationDate = new Date(
-    base.getTime() + (days * 24 * 60 * 60 * 1000)
-  );
-
-  return expirationDate.toISOString();
+  return sharedCalculateExpirationDate(accessDuration, options.from);
 }
 
-// Helper: Check if user already owns course (same as app)
-async function checkUserOwnsCourse(
-  userId: string,
-  courseId: string
-): Promise<boolean> {
+
+// ─── App Check helper ─────────────────────────────────────────────────────────
+// Note: Gen1 functions **require** App Check (verifyAppCheck returns false when
+// header is missing, causing 401). Gen2 auth middleware treats App Check as
+// **optional** (only verified if header is present). This inconsistency is
+// intentional during migration — Gen1 clients always send the header, while
+// Gen2 also serves third-party API-key clients that never will. Align behavior
+// when Gen1 functions are retired.
+async function verifyAppCheck(request: Request): Promise<boolean> {
+  const token = request.headers["x-firebase-appcheck"] as string | undefined;
+  if (!token) return false;
   try {
-    const userDoc = await db.collection("users").doc(userId).get();
-
-    if (!userDoc.exists) {
-      return false;
-    }
-
-    const userData = userDoc.data();
-    const userCourses = userData?.courses || {};
-    const courseData = userCourses[courseId];
-
-    if (!courseData) {
-      return false;
-    }
-
-    // Check: active status and not expired
-    const isActive = courseData.status === "active";
-    const isNotExpired = new Date(courseData.expires_at) > new Date();
-
-    return isActive && isNotExpired;
-  } catch (error) {
-    functions.logger.error("Error checking course ownership:", error);
+    await admin.appCheck().verifyToken(token);
+    return true;
+  } catch {
     return false;
   }
 }
 
-// Note: addCourseToUser function removed - now using transactions for atomic operations
-
-// Helper: Classify errors for proper handling
-function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
-  if (!error || typeof error !== "object") {
-    return "RETRYABLE";
+// ─── Gen1 auth helper ────────────────────────────────────────────────────────
+async function verifyGen1Auth(request: Request): Promise<string | null> {
+  const header = request.headers?.authorization;
+  if (!header || typeof header !== "string" || !header.startsWith("Bearer ")) return null;
+  try {
+    const decoded = await admin.auth().verifyIdToken(header.slice(7));
+    return decoded.uid;
+  } catch {
+    return null;
   }
-
-  const err = error as {code?: string; message?: string};
-
-  // Network errors
-  if (
-    err.code === "ECONNRESET" ||
-    err.code === "ETIMEDOUT" ||
-    err.code === "ENOTFOUND" ||
-    err.message?.includes("network") ||
-    err.message?.includes("timeout")
-  ) {
-    return "RETRYABLE";
-  }
-
-  // Validation errors
-  if (
-    err.message?.includes("not found") ||
-    err.message?.includes("missing") ||
-    err.message?.includes("invalid") ||
-    err.message?.includes("required")
-  ) {
-    return "NON_RETRYABLE";
-  }
-
-  // Firestore errors
-  if (err.code === "permission-denied" || err.code === "not-found") {
-    return "NON_RETRYABLE";
-  }
-
-  // Default to retryable for unknown errors
-  return "RETRYABLE";
 }
 
-// Signature verification removed - accepting all webhooks
-// WARNING: This allows anyone to send webhooks to your function
-// Consider implementing signature verification for production security
+function sendAppCheckError(res: Response): void {
+  res.status(401).json({
+    error: {code: "UNAUTHENTICATED", message: "App Check token inválido"},
+  });
+}
+
+function sendAuthError(res: Response): void {
+  res.status(401).json({
+    error: {code: "UNAUTHENTICATED", message: "Token de autenticación requerido"},
+  });
+}
+
+function sendRateLimitError(res: Response): void {
+  res.status(429).json({
+    error: {
+      code: "RATE_LIMITED",
+      message: "Demasiadas solicitudes. Intenta en un momento.",
+    },
+  });
+}
+
 
 // Create unique payment preference
 export const createPaymentPreference = functions
@@ -269,31 +159,51 @@ export const createPaymentPreference = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
       return;
     }
 
-    try {
-      const {userId, courseId} = request.body;
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
+      return;
+    }
 
-      // Get course
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      sendAuthError(response);
+      return;
+    }
+
+    if (!checkRateLimit(userId)) {
+      sendRateLimitError(response);
+      return;
+    }
+
+    const {courseId} = request.body || {};
+
+    if (!isValidCourseId(courseId)) {
+      response.status(400).json({
+        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
+      });
+      return;
+    }
+
+    try {
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
         response.status(404).json({
-          success: false,
-          error: "Course not found",
+          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
         });
         return;
       }
 
       const externalReference = buildExternalReference(userId, courseId, "otp");
 
-      // Create preference
       const client = getClient();
       const preference = new Preference(client);
       const result = await preference.create({
@@ -306,6 +216,12 @@ export const createPaymentPreference = functions
             unit_price: course.price,
           }],
           external_reference: externalReference,
+          back_urls: {
+            success: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+            failure: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+            pending: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+          },
+          auto_return: "approved",
         },
       });
 
@@ -315,15 +231,11 @@ export const createPaymentPreference = functions
         externalReference,
       });
 
-      response.json({
-        success: true,
-        init_point: result.init_point,
-      });
+      response.json({data: {init_point: result.init_point}});
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
+      functions.logger.error("createPaymentPreference error", error);
       response.status(500).json({
-        success: false,
-        error: message,
+        error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"},
       });
     }
   });
@@ -334,50 +246,72 @@ export const createSubscriptionCheckout = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
       return;
     }
 
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
+      return;
+    }
+
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      sendAuthError(response);
+      return;
+    }
+
+    if (!checkRateLimit(userId)) {
+      sendRateLimitError(response);
+      return;
+    }
+
+    const {courseId, payer_email: payerEmail} = request.body || {};
+
+    if (!isValidCourseId(courseId)) {
+      response.status(400).json({
+        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
+      });
+      return;
+    }
+
+    if (!payerEmail || !isValidEmail(payerEmail)) {
+      response.status(400).json({
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Se requiere un email de pago válido",
+          field: "payer_email",
+        },
+      });
+      return;
+    }
+
     try {
-      const {userId, courseId, payer_email: payerEmail} = request.body;
-
-      if (!payerEmail) {
-        response.status(400).json({
-          success: false,
-          error: "Payer email is required for subscriptions",
-        });
-        return;
-      }
-
       const courseDoc = await db.collection("courses").doc(courseId).get();
       const course = courseDoc.data();
 
       if (!course) {
         response.status(404).json({
-          success: false,
-          error: "Course not found",
+          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
         });
         return;
       }
 
       if (!course.price) {
         response.status(400).json({
-          success: false,
-          error: "Course price not found",
+          error: {code: "VALIDATION_ERROR", message: "Precio del curso no encontrado"},
         });
         return;
       }
 
       const userDoc = await db.collection("users").doc(userId).get();
-      const user = userDoc.data();
 
-      if (!user) {
+      if (!userDoc.exists) {
         response.status(404).json({
-          success: false,
-          error: "User not found",
+          error: {code: "NOT_FOUND", message: "Usuario no encontrado"},
         });
         return;
       }
@@ -407,12 +341,11 @@ export const createSubscriptionCheckout = functions
       });
 
       if (result.init_point && result.id) {
-        functions.logger.info(
-          "Subscription created dynamically with init_point:",
-          result.init_point
-        );
-        functions.logger.info("Subscription ID (preapproval_id):", result.id);
-        functions.logger.info("External reference:", externalRef);
+        functions.logger.info("Subscription created", {
+          init_point: result.init_point,
+          subscription_id: result.id,
+          external_reference: externalRef,
+        });
 
         let nextBillingDate: string | null = null;
 
@@ -459,18 +392,13 @@ export const createSubscriptionCheckout = functions
           {merge: true}
         );
 
-        response.json({
-          success: true,
-          init_point: result.init_point,
-          subscription_id: result.id,
-        });
+        response.json({data: {init_point: result.init_point, subscription_id: result.id}});
         return;
       }
 
       functions.logger.error("PreApproval API did not return init_point");
       response.status(500).json({
-        success: false,
-        error: "Failed to create subscription checkout URL",
+        error: {code: "INTERNAL_ERROR", message: "No se pudo crear el enlace de pago"},
       });
     } catch (error: unknown) {
       const message = toErrorMessage(error);
@@ -486,16 +414,17 @@ export const createSubscriptionCheckout = functions
 
       if (requiresAlternateEmail) {
         response.status(409).json({
-          success: false,
-          error: "Por favor ingresa tu correo de Mercado Pago",
+          error: {
+            code: "CONFLICT",
+            message: "Por favor ingresa tu correo de Mercado Pago",
+          },
           requireAlternateEmail: true,
         });
         return;
       }
 
       response.status(500).json({
-        success: false,
-        error: message || "Error creating subscription",
+        error: {code: "INTERNAL_ERROR", message: "Error al crear la suscripción"},
       });
     }
   });
@@ -601,6 +530,16 @@ export const processPaymentWebhook = functions
           return false;
         }
 
+        // Reject replayed webhooks: timestamp must be within 5 minutes of now
+        const tsMs = Number(timestamp) * 1000;
+        if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
+          functions.logger.warn("Webhook timestamp too old or invalid", {
+            timestamp,
+            ageMs: isNaN(tsMs) ? "NaN" : Date.now() - tsMs,
+          });
+          return false;
+        }
+
         const template = `id:${dataId};request-id:${requestId};ts:${timestamp};`;
         const expectedSignature = crypto
           .createHmac("sha256", webhookSecret)
@@ -642,20 +581,11 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      // Log webhook received - log everything for debugging
-      functions.logger.info("=== WEBHOOK RECEIVED ===");
-      functions.logger.info("Method:", request.method);
-      functions.logger.info("Headers:", JSON.stringify(request.headers, null, 2));
-      functions.logger.info("Body:", JSON.stringify(request.body, null, 2));
-      functions.logger.info("Query:", JSON.stringify(request.query, null, 2));
-      functions.logger.info("Type:", request.body?.type);
-      functions.logger.info("Action:", request.body?.action);
-      functions.logger.info("Full Request:", JSON.stringify({
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-        query: request.query,
-      }, null, 2));
+      functions.logger.info("Webhook received", {
+        type: request.body?.type,
+        action: request.body?.action,
+        dataId: request.body?.data?.id,
+      });
 
       // Handle both payment and subscription webhooks
       const webhookType = request.body?.type;
@@ -936,22 +866,13 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      // Log all payment data for debugging
-      functions.logger.info("=== PAYMENT DATA (FULL) ===");
-      functions.logger.info("Payment ID:", paymentId);
-      functions.logger.info("Payment Source:", paymentSource);
-      functions.logger.info("Payment Status:", paymentData.status);
-      functions.logger.info("Payment Data Keys:", Object.keys(paymentData));
-      functions.logger.info("Payment Full Data:", JSON.stringify(paymentData, null, 2));
-
-      // Log subscription-specific fields
-      functions.logger.info("=== SUBSCRIPTION FIELDS ===");
-      functions.logger.info("subscription_id:", paymentData.subscription_id);
-      functions.logger.info("preapproval_id:", paymentData.preapproval_id);
-      functions.logger.info("external_reference:", paymentData.external_reference);
-      functions.logger.info("payer:", JSON.stringify(paymentData.payer, null, 2));
-      functions.logger.info("subscription_data:", JSON.stringify(paymentData.subscription_data, null, 2));
-      functions.logger.info("date_of_expiration:", paymentData.date_of_expiration);
+      functions.logger.info("Payment data", {
+        paymentId,
+        paymentSource,
+        status: paymentData.status,
+        external_reference: paymentData.external_reference,
+        preapproval_id: paymentData.preapproval_id,
+      });
 
       // Check if payment is approved
       if (!paymentData || paymentData.status !== "approved") {
@@ -987,7 +908,7 @@ export const processPaymentWebhook = functions
 
       // Payment is approved - now check for duplicates and mark as processing
       // Use Firestore transaction for atomic idempotency check
-      const alreadyProcessed = await db.runTransaction(async (transaction) => {
+      const alreadyProcessed = await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
         const processedDoc = await transaction.get(processedPaymentsRef);
 
         if (processedDoc.exists) {
@@ -1077,23 +998,13 @@ export const processPaymentWebhook = functions
         });
       }
 
-      functions.logger.info("Parsed external reference", {
+      functions.logger.info("Processing approved payment", {
         paymentId,
-        externalReference,
-        paymentType,
-        version: parsedReference.version,
-      });
-
-      functions.logger.info(
-        "Processing approved payment:",
-        paymentId,
-        "User:",
         userId,
-        "Course:",
         courseId,
-        "Is Subscription:",
-        isSubscription
-      );
+        isSubscription,
+        paymentType,
+      });
 
       // Validate user exists - Fix #5: Return 200 to prevent retries
       const userDoc = await db.collection("users").doc(userId).get();
@@ -1138,238 +1049,103 @@ export const processPaymentWebhook = functions
       const courseTitle = courseDetails?.title || "Untitled Course";
       const courseAccessDuration = courseDetails?.access_duration;
 
-      // Check if user already owns course (same as app logic)
-      const existingPurchase = await checkUserOwnsCourse(userId, courseId);
-
-      // Determine if this is a subscription renewal
+      // Check if user already owns course
+      const userCourses = userData?.courses || {};
+      const existingCourseData = userCourses[courseId];
+      const existingPurchase =
+        existingCourseData?.status === "active" &&
+        new Date(existingCourseData.expires_at) > new Date();
       const isRenewal = existingPurchase && isSubscription;
-
-      if (isRenewal) {
-        // Subscription renewal: extend expiration date
-        functions.logger.info(
-          "Subscription renewal detected:",
-          userId,
-          courseId
-        );
-
-        const currentCourse = existingPurchase ? (userDoc.data()?.courses || {})[courseId] : null;
-        const currentExpiration = currentCourse?.expires_at ?? null;
-        const expirationDate = calculateExpirationDate(courseAccessDuration, {
-          from: currentExpiration ?? undefined,
-        });
-        functions.logger.info(
-          "Using calculated expiration date for renewal:",
-          expirationDate,
-          "Base:",
-          currentExpiration
-        );
-
-        // Update existing course with new expiration date
-        const userRef = db.collection("users").doc(userId);
-        const courses = (userData?.courses || {});
-
-        courses[courseId] = {
-          ...courses[courseId],
-          expires_at: expirationDate,
-          status: "active",
-          // Keep existing data
-        };
-
-        await userRef.update({
-          courses: courses,
-        });
-
-        functions.logger.info(
-          "✅ Subscription renewed successfully:",
-          paymentId,
-          "New expiration:",
-          expirationDate
-        );
-
-        const subscriptionId =
-          paymentData.subscription_id || paymentData.preapproval_id;
-
-        if (isSubscription && subscriptionId) {
-          await db
-            .collection("users")
-            .doc(userId)
-            .collection("subscriptions")
-            .doc(subscriptionId)
-            .set(
-              {
-                status: "authorized",
-                last_payment_id: paymentId,
-                last_payment_date:
-                  paymentData.date_approved ||
-                  paymentData.date_created ||
-                  new Date().toISOString(),
-                updated_at: admin.firestore.FieldValue.serverTimestamp(),
-              },
-              {merge: true}
-            );
-        }
-
-        // Mark payment as processed
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "approved",
-          userId: userId,
-          courseId: courseId,
-          isSubscription: true,
-          isRenewal: true,
-          payment_type: paymentType,
-          userEmail,
-          userName,
-          courseTitle,
-          state: "completed",
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      if (existingPurchase && !isSubscription) {
-        // User already owns course (not a subscription renewal)
-        functions.logger.info(
-          "User already owns course, skipping assignment:",
-          userId,
-          courseId
-        );
-        // Mark as processed
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "already_owned",
-          userId,
-          courseId,
-          userEmail,
-          userName,
-          courseTitle,
-          state: "already_owned",
-          payment_type: paymentType,
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      // Initial purchase (one-time or subscription)
-      // Validate course has access_duration - Fix #5: Return 200 to prevent retries
-      if (!courseAccessDuration) {
-        functions.logger.error(
-          "Course missing access_duration:",
-          courseId
-        );
-        // Mark as processed with error status to prevent retries
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error",
-          error_type: "missing_access_duration",
-          error_message: "Course missing access_duration",
-          userId,
-          courseId,
-          userEmail,
-          userName,
-          courseTitle,
-          state: "failed",
-          payment_type: paymentType,
-        });
-        // Return 200 to prevent retries
-
-        response.status(200).send("OK");
-        return;
-      }
 
       const subscriptionId =
         paymentData?.subscription_id || paymentData?.preapproval_id || null;
 
-      const expirationDate = calculateExpirationDate(courseAccessDuration);
-      functions.logger.info(
-        "Using calculated expiration date for new purchase:",
-        expirationDate
-      );
+      // ── Renewal ──
+      if (isRenewal) {
+        functions.logger.info("Subscription renewal detected:", userId, courseId);
 
-      // Fix #3: Use Firestore transaction for atomic course assignment
-      await db.runTransaction(async (transaction) => {
-        // Get user document
-        const userRef = db.collection("users").doc(userId);
-        const userDoc = await transaction.get(userRef);
-
-        if (!userDoc.exists) {
-          throw new Error("User not found");
+        const currentExpiration = existingCourseData?.expires_at ?? undefined;
+        let expirationDate: string;
+        try {
+          expirationDate = calculateExpirationDate(courseAccessDuration, {
+            from: currentExpiration,
+          });
+        } catch {
+          functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
+            userId, courseId, currentExpiration,
+          });
+          expirationDate = calculateExpirationDate(courseAccessDuration);
         }
 
-        const userData = userDoc.data();
-        const courses = userData?.courses || {};
-
-        // Check if course already assigned (atomic check)
-        if (courses[courseId]) {
-          const courseData = courses[courseId];
-          const isActive = courseData.status === "active";
-          const isNotExpired = new Date(courseData.expires_at) > new Date();
-
-          if (isActive && isNotExpired) {
-            // Already assigned - skip
-            functions.logger.info(
-              "Course already assigned, skipping:",
-              userId,
-              courseId
-            );
-            return; // Exit transaction
-          }
-        }
-
-        // Add course to user (atomic write)
-        courses[courseId] = {
-          // Access control
-          access_duration: courseAccessDuration,
-          expires_at: expirationDate,
-          status: "active",
-          purchased_at: new Date().toISOString(),
-
-          // Delivery type: PWA uses this for one_on_one vs low_ticket (version/load path)
-          deliveryType: courseDetails?.deliveryType ?? "low_ticket",
-
-          // Minimal cached data for display
-          title: courseDetails?.title || "Untitled Course",
-          image_url: courseDetails?.image_url || null,
-          discipline: courseDetails?.discipline || "General",
-          creatorName: courseDetails?.creatorName ||
-            courseDetails?.creator_name ||
-            "Unknown Creator",
-
-          // Tutorial completion tracking
-          completedTutorials: {
-            dailyWorkout: [],
-            warmup: [],
-            workoutExecution: [],
-            workoutCompletion: [],
-          },
-        };
-
-        // Update user document (atomic write)
-        transaction.update(userRef, {
-          courses: courses,
-          purchased_courses: [
-            ...new Set([...(userData?.purchased_courses || []), courseId]),
-          ],
+        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
+          isRenewal: true,
+          existingCourseData,
         });
 
         if (isSubscription && subscriptionId) {
-          const subscriptionRef = db
-            .collection("users")
-            .doc(userId)
-            .collection("subscriptions")
-            .doc(subscriptionId);
+          await db
+            .collection("users").doc(userId)
+            .collection("subscriptions").doc(subscriptionId)
+            .set({
+              status: "authorized",
+              last_payment_id: paymentId,
+              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            }, {merge: true});
+        }
 
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
+          payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+          amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
+          currency_id: paymentData.currency_id ?? null,
+        });
+
+        response.status(200).send("OK");
+        return;
+      }
+
+      // ── Already owned (one-time duplicate) ──
+      if (existingPurchase && !isSubscription) {
+        functions.logger.info("User already owns course, skipping:", userId, courseId);
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "already_owned", userId, courseId, userEmail, userName,
+          courseTitle, state: "already_owned", payment_type: paymentType,
+        });
+        response.status(200).send("OK");
+        return;
+      }
+
+      // ── New purchase ──
+      if (!courseAccessDuration) {
+        functions.logger.error("Course missing access_duration:", courseId);
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: "error", error_type: "missing_access_duration",
+          error_message: "Course missing access_duration",
+          userId, courseId, userEmail, userName, courseTitle,
+          state: "failed", payment_type: paymentType,
+        });
+        response.status(200).send("OK");
+        return;
+      }
+
+      const expirationDate = calculateExpirationDate(courseAccessDuration);
+
+      await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
+        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
+          transaction,
+        });
+
+        if (isSubscription && subscriptionId) {
           transaction.set(
-            subscriptionRef,
+            db.collection("users").doc(userId).collection("subscriptions").doc(subscriptionId),
             {
               status: "authorized",
               last_payment_id: paymentId,
-              last_payment_date:
-                paymentData.date_approved ||
-                paymentData.date_created ||
-                new Date().toISOString(),
+              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
               transaction_amount: paymentData.transaction_amount || null,
               currency_id: paymentData.currency_id || null,
               management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
@@ -1379,32 +1155,16 @@ export const processPaymentWebhook = functions
           );
         }
 
-        // Mark payment as processed (atomic write)
         transaction.set(
           processedPaymentsRef,
           {
             processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved",
-            userId: userId,
-            courseId: courseId,
-            isSubscription: isSubscription,
-            isRenewal: false,
-            payment_type: paymentType,
-            userEmail,
-            userName,
-            courseTitle,
-            state: "completed",
+            status: "approved", userId, courseId, isSubscription, isRenewal: false,
+            payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+            amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
+            currency_id: paymentData.currency_id ?? null,
           },
           {merge: true}
-        );
-
-        functions.logger.info(
-          "✅ Payment processed successfully:",
-          paymentId,
-          "Course assigned to user:",
-          userId,
-          "Is Subscription:",
-          isSubscription
         );
       });
 
@@ -1442,10 +1202,6 @@ export const processPaymentWebhook = functions
 
         response.status(200).send("OK");
         break;
-
-      default:
-        // Unknown errors - be safe and return 500
-        response.status(500).send("Error");
       }
     }
   });
@@ -1455,7 +1211,7 @@ export const updateSubscriptionStatus = functions
   .https.onRequest(async (request, response) => {
     response.set("Access-Control-Allow-Origin", "*");
     response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
+    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (request.method === "OPTIONS") {
       response.status(204).send("");
@@ -1463,50 +1219,61 @@ export const updateSubscriptionStatus = functions
     }
 
     if (request.method !== "POST") {
-      response.status(405).json({
-        success: false,
-        error: "Method not allowed",
-      });
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
+      return;
+    }
+
+    const userId = await verifyGen1Auth(request);
+    if (!userId) {
+      sendAuthError(response);
+      return;
+    }
+
+    if (!checkRateLimit(userId)) {
+      sendRateLimitError(response);
       return;
     }
 
     try {
       const {
-        userId,
         subscriptionId,
         action,
         survey,
       }: {
-        userId?: string;
         subscriptionId?: string;
         action?: string;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         survey?: any;
       } = request.body || {};
 
-      if (!userId || !subscriptionId || !action) {
-        response.status(400).json({
-          success: false,
-          error: "Missing userId, subscriptionId, or action",
-        });
+      if (!subscriptionId || typeof subscriptionId !== "string") {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "subscriptionId es requerido", field: "subscriptionId"}});
         return;
       }
 
+      if (!action || typeof action !== "string") {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "action es requerido", field: "action"}});
+        return;
+      }
+
+      const ALLOWED_ACTIONS = ["cancel", "pause", "resume"] as const;
       const actionToStatus: Record<string, string> = {
         cancel: "cancelled",
         pause: "paused",
         resume: "authorized",
       };
 
-      const targetStatus = actionToStatus[action];
-
-      if (!targetStatus) {
-        response.status(400).json({
-          success: false,
-          error: "Unsupported action",
-        });
+      if (!ALLOWED_ACTIONS.includes(action as typeof ALLOWED_ACTIONS[number])) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Unsupported action. Must be cancel, pause, or resume", field: "action"}});
         return;
       }
+
+      const targetStatus = actionToStatus[action];
 
       const subscriptionRef = db
         .collection("users")
@@ -1517,10 +1284,7 @@ export const updateSubscriptionStatus = functions
       const subscriptionDoc = await subscriptionRef.get();
 
       if (!subscriptionDoc.exists) {
-        response.status(404).json({
-          success: false,
-          error: "Subscription not found for user",
-        });
+        response.status(404).json({error: {code: "NOT_FOUND", message: "Subscription not found for user"}});
         return;
       }
 
@@ -1555,14 +1319,11 @@ export const updateSubscriptionStatus = functions
           const courseId =
             survey?.courseId ??
             subscriptionData?.course_id ??
-            subscriptionData?.courseId ??
-            subscriptionData?.program_id ??
             undefined;
 
           const courseTitle =
             survey?.courseTitle ??
             subscriptionData?.course_title ??
-            subscriptionData?.courseTitle ??
             undefined;
 
           const statusBefore =
@@ -1604,16 +1365,11 @@ export const updateSubscriptionStatus = functions
         }
       }
 
-      response.json({
-        success: true,
-        status: targetStatus,
-      });
+      response.json({data: {status: targetStatus}});
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("Error updating subscription status:", error);
       response.status(500).json({
-        success: false,
-        error: message,
+        error: {code: "INTERNAL_ERROR", message: "Error al actualizar la suscripción"},
       });
     }
   });
@@ -1624,7 +1380,8 @@ export const updateSubscriptionStatus = functions
  * Only creators can call this. Returns user info for confirmation before enrollment.
  */
 export const lookupUserForCreatorInvite = functions.https.onCall(
-  async (data, context) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async (data: any, context: functions.https.CallableContext) => {
     if (!context.auth) {
       throw new functions.https.HttpsError(
         "unauthenticated",
@@ -1675,7 +1432,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
         userId = authUser.uid;
         email = authUser.email || trimmed;
         displayName = authUser.displayName || "";
-      } catch (_err) {
+      } catch {
         // User not found by email - fall through to username lookup
       }
     }
@@ -1699,8 +1456,8 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       }
     }
 
-    // Enrich from Firestore if we found by email (or to get full profile for any path)
-    if (userId) {
+    // Enrich from Firestore only if found via Auth email lookup (username path already has the doc)
+    if (userId && !userDocData) {
       const userDoc = await db.collection("users").doc(userId).get();
       if (userDoc.exists) {
         userDocData = userDoc.data() ?? null;
@@ -1786,9 +1543,12 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
 // ============================================
 // NUTRITION (FatSecret proxy) — Step 2
 // ============================================
-// Optional: set this only if FatSecret requires a single whitelisted IP (then use
-// Serverless VPC connector + Cloud NAT). With 0.0.0.0/0 and ::/0 in FatSecret, leave empty.
-const NUTRITION_VPC_CONNECTOR = "";
+// Accepted risk: Nutrition proxies only require App Check — no Firebase Auth.
+// Any client with a valid App Check token can query FatSecret without being
+// logged in. The only abuse protection is the in-memory rate limiter, which
+// is ineffective (see note above). Adding Firebase Auth would break the
+// current client flow. These Gen1 functions will be retired when the Gen2
+// /nutrition/* API routes are fully migrated — those require Firebase Auth.
 
 const FATSECRET_TOKEN_BUFFER_MS = 5 * 60 * 1000; // refresh 5 min before expiry
 const fatSecretTokenCache = new Map<
@@ -1852,17 +1612,11 @@ async function getFatSecretToken(
 function setNutritionCors(res: Response): void {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Access-Control-Allow-Headers", "Content-Type, X-Firebase-AppCheck");
 }
 
 const nutritionRunOptions: functions.RuntimeOptions = {
   secrets: [fatSecretClientId, fatSecretClientSecret],
-  ...(NUTRITION_VPC_CONNECTOR
-    ? {
-        vpcConnector: NUTRITION_VPC_CONNECTOR,
-        vpcConnectorEgressSettings: "ALL_TRAFFIC" as const,
-      }
-    : {}),
 };
 
 export const nutritionFoodSearch = functions
@@ -1874,7 +1628,12 @@ export const nutritionFoodSearch = functions
       return;
     }
     if (request.method !== "POST") {
-      response.status(405).json({success: false, error: "Method not allowed"});
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -1882,10 +1641,7 @@ export const nutritionFoodSearch = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          success: false,
-          error: "Nutrition service not configured",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -1897,10 +1653,11 @@ export const nutritionFoodSearch = functions
         language = "es",
       } = request.body || {};
       if (!search_expression || typeof search_expression !== "string") {
-        response.status(400).json({
-          success: false,
-          error: "search_expression is required",
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "search_expression es requerido", field: "search_expression"}});
+        return;
+      }
+      if (search_expression.length > 200) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "search_expression demasiado largo (máx 200 caracteres)", field: "search_expression"}});
         return;
       }
 
@@ -1931,22 +1688,15 @@ export const nutritionFoodSearch = functions
           status: res.status,
           body: text,
         });
-        response.status(502).json({
-          success: false,
-          error: "Food search failed",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionFoodSearch error", error);
-      response.status(502).json({
-        success: false,
-        error: message || "Food search failed",
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda de alimentos falló"}});
     }
   });
 
@@ -1959,7 +1709,12 @@ export const nutritionFoodGet = functions
       return;
     }
     if (request.method !== "POST") {
-      response.status(405).json({success: false, error: "Method not allowed"});
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -1967,10 +1722,7 @@ export const nutritionFoodGet = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          success: false,
-          error: "Nutrition service not configured",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -1981,10 +1733,7 @@ export const nutritionFoodGet = functions
         include_sub_categories,
       } = request.body || {};
       if (food_id === undefined || food_id === null || food_id === "") {
-        response.status(400).json({
-          success: false,
-          error: "food_id is required",
-        });
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "food_id es requerido", field: "food_id"}});
         return;
       }
 
@@ -2011,7 +1760,7 @@ export const nutritionFoodGet = functions
 
       if (!res.ok) {
         if (res.status === 404) {
-          response.status(404).json({success: false, error: "Food not found"});
+          response.status(404).json({error: {code: "NOT_FOUND", message: "Alimento no encontrado"}});
           return;
         }
         const text = await res.text();
@@ -2019,22 +1768,15 @@ export const nutritionFoodGet = functions
           status: res.status,
           body: text,
         });
-        response.status(502).json({
-          success: false,
-          error: "Food details failed",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionFoodGet error", error);
-      response.status(502).json({
-        success: false,
-        error: message || "Food details failed",
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
     }
   });
 
@@ -2047,7 +1789,12 @@ export const nutritionBarcodeLookup = functions
       return;
     }
     if (request.method !== "POST") {
-      response.status(405).json({success: false, error: "Method not allowed"});
+      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
+      return;
+    }
+
+    if (!(await verifyAppCheck(request))) {
+      sendAppCheckError(response);
       return;
     }
 
@@ -2055,10 +1802,7 @@ export const nutritionBarcodeLookup = functions
       const clientId = fatSecretClientId.value();
       const clientSecret = fatSecretClientSecret.value();
       if (!clientId || !clientSecret) {
-        response.status(502).json({
-          success: false,
-          error: "Nutrition service not configured",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Servicio de nutrición no configurado"}});
         return;
       }
 
@@ -2067,11 +1811,8 @@ export const nutritionBarcodeLookup = functions
         region = "ES",
         language = "es",
       } = request.body || {};
-      if (!barcode || typeof barcode !== "string") {
-        response.status(400).json({
-          success: false,
-          error: "barcode is required",
-        });
+      if (!isValidBarcode(barcode)) {
+        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "El código de barras debe contener entre 8 y 14 dígitos", field: "barcode"}});
         return;
       }
 
@@ -2098,31 +1839,72 @@ export const nutritionBarcodeLookup = functions
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as {error?: {code?: number}};
         if (res.status === 404 || errBody?.error?.code === 211) {
-          response.status(404).json({success: false, error: "No food found for barcode"});
+          response.status(404).json({error: {code: "NOT_FOUND", message: "Ningún alimento encontrado para ese código de barras"}});
           return;
         }
         functions.logger.error("FatSecret barcode failed", {
           status: res.status,
           body: errBody,
         });
-        response.status(502).json({
-          success: false,
-          error: "Barcode lookup failed",
-        });
+        response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"}});
         return;
       }
 
       const json = await res.json();
       response.json(json);
     } catch (error: unknown) {
-      const message = toErrorMessage(error);
       functions.logger.error("nutritionBarcodeLookup error", error);
-      response.status(502).json({
-        success: false,
-        error: message || "Barcode lookup failed",
-      });
+      response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Búsqueda por código de barras falló"}});
     }
   });
+
+// ─── onUserCreated ────────────────────────────────────────────────────────────
+// Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
+// Creates the Firestore user doc so all downstream reads have a document to work with.
+export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
+  try {
+    const docRef = db.collection("users").doc(user.uid);
+    const existing = await docRef.get();
+
+    // If the doc already exists (e.g. /creator/register ran first), only fill
+    // in missing fields — never overwrite role or other data set by registration.
+    if (existing.exists) {
+      const data = existing.data() || {};
+      const patch: Record<string, unknown> = {};
+      if (!data.email) patch.email = user.email ?? null;
+      if (!data.displayName) patch.displayName = user.displayName ?? null;
+      if (!data.created_at) patch.created_at = admin.firestore.FieldValue.serverTimestamp();
+      if (Object.keys(patch).length > 0) {
+        await docRef.update(patch);
+      }
+      functions.logger.info("onUserCreated: doc already existed, patched missing fields", {uid: user.uid});
+      return;
+    }
+
+    // No doc yet — bootstrap with role: "user"
+    await docRef.set({
+      role: "user",
+      email: user.email ?? null,
+      displayName: user.displayName ?? null,
+      created_at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
+  } catch (error) {
+    functions.logger.error("onUserCreated: failed to bootstrap user doc", {
+      uid: user.uid,
+      error: toErrorMessage(error),
+    });
+  }
+});
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 // ─── sendEventConfirmationEmail ────────────────────────────────────────────
 // Fires on every new registration and sends an HTML email with the event
@@ -2133,7 +1915,7 @@ export const nutritionBarcodeLookup = functions
 export const sendEventConfirmationEmail = functions
   .runWith({secrets: ["RESEND_API_KEY"]})
   .firestore.document("event_signups/{eventId}/registrations/{regId}")
-  .onCreate(async (snap, context) => {
+  .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
     const {eventId, regId} = context.params;
     const reg = snap.data() as Record<string, unknown>;
 
@@ -2169,11 +1951,14 @@ export const sendEventConfirmationEmail = functions
     }
 
     const fromAddress = "Wake Eventos <eventos@wakelab.co>";
-    const eventTitle = (event.title as string) ?? "Evento Wake";
-    const confirmationMsg = ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined)
-      ?? "¡Tu lugar está confirmado! Nos vemos en el evento.";
+    const eventTitleRaw = (event.title as string) ?? "Evento Wake";
+    const eventTitle = escapeHtml(eventTitleRaw);
+    const confirmationMsg = escapeHtml(
+      ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined)
+        ?? "¡Tu lugar está confirmado! Nos vemos en el evento."
+    );
     const checkInToken = reg.check_in_token as string | undefined;
-    const eventImageUrl = (event.image_url as string | undefined) ?? "";
+    const eventImageUrl = escapeHtml((event.image_url as string | undefined) ?? "");
 
     // Resolve first name
     let firstName = "";
@@ -2187,7 +1972,7 @@ export const sendEventConfirmationEmail = functions
       if (nameEntry && typeof nameEntry[1] === "string") firstName = (nameEntry[1] as string).split(" ")[0];
     }
 
-    const greeting = firstName ? `¡Hola, ${firstName}!` : "¡Hola!";
+    const greeting = firstName ? `¡Hola, ${escapeHtml(firstName)}!` : "¡Hola!";
 
     // QR code image URL (api.qrserver.com, no server-side dependency)
     const qrData = checkInToken
@@ -2245,7 +2030,7 @@ export const sendEventConfirmationEmail = functions
       const {error: resendError} = await resend.emails.send({
         from: fromAddress,
         to: toEmail,
-        subject: `Confirmación: ${eventTitle}`,
+        subject: `Confirmación: ${eventTitleRaw}`,
         html,
         headers: {
           "List-Unsubscribe": "<mailto:eventos@wakelab.co?subject=unsubscribe>",
@@ -2263,3 +2048,642 @@ export const sendEventConfirmationEmail = functions
 
     return null;
   });
+
+// ─── VAPID keys for web push ──────────────────────────────────────────────
+const vapidPublicKey = defineSecret("VAPID_PUBLIC_KEY");
+const vapidPrivateKey = defineSecret("VAPID_PRIVATE_KEY");
+
+// ─── Scheduled: process rest timer notifications every 1 minute ───────────
+export const processRestTimerNotifications = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: "us-central1",
+    secrets: [vapidPublicKey, vapidPrivateKey],
+  },
+  async () => {
+    const now = admin.firestore.Timestamp.now();
+    const windowEnd = admin.firestore.Timestamp.fromMillis(
+      now.toMillis() + 30_000
+    );
+
+    const pendingSnap = await db
+      .collection("workout_timers")
+      .where("status", "==", "pending")
+      .where("endAt", "<=", windowEnd)
+      .get();
+
+    if (pendingSnap.empty) return;
+
+    const pub = vapidPublicKey.value().replace(/=+$/, "");
+    const priv = vapidPrivateKey.value().replace(/=+$/, "");
+    if (!pub || !priv) {
+      functions.logger.error("VAPID keys not configured");
+      return;
+    }
+
+    webpush.setVapidDetails("mailto:soporte@wakelab.co", pub, priv);
+
+    for (const timerDoc of pendingSnap.docs) {
+      const timer = timerDoc.data();
+      const userId = timer.userId as string;
+      const metadata = (timer.metadata || {}) as Record<string, unknown>;
+      const exerciseName = (metadata.exerciseName as string) || "tu ejercicio";
+
+      const subsSnap = await db
+        .collection("users")
+        .doc(userId)
+        .collection("web_push_subscriptions")
+        .where("isActive", "==", true)
+        .get();
+
+      const payload = JSON.stringify({
+        title: "Descanso terminado",
+        body: `Vuelve a ${exerciseName}`,
+      });
+
+      const deactivateIds: string[] = [];
+
+      await Promise.all(
+        subsSnap.docs.map(async (subDoc) => {
+          const sub = subDoc.data();
+          try {
+            await webpush.sendNotification(
+              { endpoint: sub.endpoint, keys: sub.keys },
+              payload
+            );
+          } catch (err: unknown) {
+            const status = (err as { statusCode?: number }).statusCode;
+            if (status === 410 || status === 404) {
+              deactivateIds.push(subDoc.id);
+            }
+          }
+        })
+      );
+
+      // Mark timer as sent
+      await timerDoc.ref.update({ status: "sent" });
+
+      // Deactivate expired subscriptions
+      if (deactivateIds.length > 0) {
+        const batch = db.batch();
+        for (const id of deactivateIds) {
+          batch.update(
+            db.collection("users").doc(userId)
+              .collection("web_push_subscriptions").doc(id),
+            { isActive: false }
+          );
+        }
+        await batch.commit();
+      }
+    }
+
+    functions.logger.info(
+      `Processed ${pendingSnap.size} rest timer notification(s)`
+    );
+  }
+);
+
+// ─── Gen2 API ─────────────────────────────────────────────────────────────
+// Single Gen2 function export — Express routes live in src/api/routes/
+
+const fatSecretClientIdV2 = defineSecret("FATSECRET_CLIENT_ID");
+const fatSecretClientSecretV2 = defineSecret("FATSECRET_CLIENT_SECRET");
+const resendApiKeyV2 = defineSecret("RESEND_API_KEY");
+const mercadopagoAccessTokenV2 = defineSecret("MERCADOPAGO_ACCESS_TOKEN");
+const mercadopagoWebhookSecretV2 = defineSecret("MERCADOPAGO_WEBHOOK_SECRET");
+
+export const api = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
+    concurrency: 80,
+    minInstances: 1,
+    secrets: [
+      fatSecretClientIdV2,
+      fatSecretClientSecretV2,
+      resendApiKeyV2,
+      mercadopagoAccessTokenV2,
+      mercadopagoWebhookSecretV2,
+      vapidPublicKey,
+      vapidPrivateKey,
+    ],
+  },
+  app
+);
+
+// ─── Event page with dynamic OG tags ────────────────────────────────────────
+
+let cachedIndexHtml: string | null = null;
+
+async function getIndexHtml(): Promise<string> {
+  if (cachedIndexHtml) return cachedIndexHtml;
+
+  // Fetch live from hosting — always in sync with deployed assets
+  try {
+    const resp = await fetch("https://wakelab.co/index.html");
+    if (resp.ok) {
+      cachedIndexHtml = await resp.text();
+      return cachedIndexHtml;
+    }
+  } catch {
+    // fall through to redirect fallback
+  }
+
+  // Fallback: redirect to homepage if fetch fails
+  cachedIndexHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wake</title>
+</head>
+<body>
+  <script>window.location.replace("https://wakelab.co");</script>
+</body>
+</html>`;
+  return cachedIndexHtml;
+}
+
+function formatEventDate(value: unknown): string {
+  if (!value) return "";
+  let d: Date;
+  if (typeof value === "string") {
+    d = new Date(value);
+  } else if (typeof value === "object" && value !== null && "_seconds" in value) {
+    d = new Date((value as {_seconds: number})._seconds * 1000);
+  } else if (typeof value === "object" && value !== null && "toDate" in value) {
+    d = (value as {toDate: () => Date}).toDate();
+  } else {
+    return "";
+  }
+  return d.toLocaleDateString("es-CO", {day: "numeric", month: "long", year: "numeric"});
+}
+
+export const eventPage = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 10,
+    concurrency: 80,
+  },
+  async (req, res) => {
+    // Extract eventId from path: /e/{eventId} or /e/{eventId}/anything
+    const match = req.path.match(/^\/e\/([a-zA-Z0-9_-]+)/);
+    if (!match) {
+      res.status(404).send("Not found");
+      return;
+    }
+    const eventId = match[1];
+
+    let html = await getIndexHtml();
+
+    try {
+      const eventDoc = await db.collection("events").doc(eventId).get();
+      if (eventDoc.exists) {
+        const data = eventDoc.data()!;
+        const title = data.title || "Evento Wake";
+        const dateStr = formatEventDate(data.date);
+        const description = dateStr
+          ? `${dateStr}${data.location ? ` — ${data.location}` : ""}`
+          : (data.description?.slice(0, 160) || "Evento en Wake");
+        const ogImage = data.og_image_url || data.image_url || "/app_icon.png";
+
+        // Replace OG meta tags
+        html = html
+          .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="https://wakelab.co/e/${eventId}" />`)
+          .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)} — Wake</title>`);
+      }
+    } catch (err) {
+      functions.logger.error("eventPage Firestore read failed:", err);
+      // Serve fallback HTML without dynamic tags
+    }
+
+    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.status(200).send(html);
+  }
+);
+
+function escapeOgAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+// ─── Scheduled: expand weekly availability templates into concrete slots ───
+export const expandWeeklyAvailability = onSchedule(
+  {
+    schedule: "every day 03:00",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const snapshot = await db.collection("creator_availability").get();
+    let totalExpanded = 0;
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const template = data.weeklyTemplate;
+      if (!template || typeof template !== "object") continue;
+
+      const hasAnySlots = Object.values(template).some(
+        (slots) => Array.isArray(slots) && (slots as unknown[]).length > 0
+      );
+      if (!hasAnySlots) continue;
+
+      const creatorId = doc.id;
+      const disabledDates = new Set<string>(
+        Array.isArray(data.disabledDates) ? data.disabledDates : []
+      );
+      const existingDays: Record<string, unknown> = data.days ?? {};
+
+      const updates: Record<string, unknown> = {};
+      const today = new Date();
+
+      // Generate slots for the next 14 days
+      for (let offset = 0; offset < 14; offset++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + offset);
+        const dateStr = d.toISOString().slice(0, 10);
+
+        if (disabledDates.has(dateStr)) continue;
+        if (existingDays[dateStr]) continue;
+
+        // JS getDay: 0=Sun..6=Sat → template key: 1=Mon..7=Sun
+        const jsDay = d.getDay();
+        const templateKey = String(jsDay === 0 ? 7 : jsDay);
+        const dayTemplate = template[templateKey];
+        if (!Array.isArray(dayTemplate) || dayTemplate.length === 0) continue;
+
+        const slots: Array<{
+          startLocal: string;
+          endLocal: string;
+          durationMinutes: number;
+          booked: boolean;
+        }> = [];
+
+        for (const entry of dayTemplate as Array<{startTime: string; durationMinutes: number}>) {
+          const [h, m] = entry.startTime.split(":").map(Number);
+          const endMinutes = h * 60 + m + entry.durationMinutes;
+          const endH = Math.floor(endMinutes / 60);
+          const endM = endMinutes % 60;
+
+          const startLocal = `${dateStr}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00.000Z`;
+          const endLocal = `${dateStr}T${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}:00.000Z`;
+
+          slots.push({
+            startLocal,
+            endLocal,
+            durationMinutes: entry.durationMinutes,
+            booked: false,
+          });
+        }
+
+        if (slots.length > 0) {
+          updates[`days.${dateStr}`] = {slots};
+          totalExpanded += slots.length;
+        }
+      }
+
+      // Prune days older than 30 days
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      for (const dateKey of Object.keys(existingDays)) {
+        if (dateKey < cutoffStr) {
+          updates[`days.${dateKey}`] = admin.firestore.FieldValue.delete();
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updates["updated_at"] = admin.firestore.FieldValue.serverTimestamp();
+        await db.collection("creator_availability").doc(creatorId).update(updates);
+      }
+    }
+
+    functions.logger.info("expandWeeklyAvailability: done", {totalExpanded});
+  }
+);
+
+// ─── Scheduled: send call reminders (24h and 1h before) ───────────────────
+export const sendCallReminders = onSchedule(
+  {
+    schedule: "every 15 minutes",
+    region: "us-central1",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    secrets: [resendApiKeyV2],
+  },
+  async () => {
+    const now = Date.now();
+    const h25FromNow = new Date(now + 25 * 60 * 60 * 1000).toISOString();
+
+    const snapshot = await db
+      .collection("call_bookings")
+      .where("status", "==", "scheduled")
+      .where("slotStartUtc", "<=", h25FromNow)
+      .orderBy("slotStartUtc", "asc")
+      .get();
+
+    if (snapshot.empty) return;
+
+    let sent24h = 0;
+    let sent1h = 0;
+
+    // Cache user lookups
+    const userCache = new Map<string, {email: string; displayName: string}>();
+    async function getUser(userId: string) {
+      if (userCache.has(userId)) return userCache.get(userId)!;
+      const doc = await db.collection("users").doc(userId).get();
+      const data = doc.data();
+      const entry = {
+        email: data?.email || "",
+        displayName: data?.displayName || "",
+      };
+      userCache.set(userId, entry);
+      return entry;
+    }
+
+    function buildReminderHtml(
+      recipientName: string,
+      otherName: string,
+      callLink: string,
+      dateTimeStr: string,
+      isCreator: boolean
+    ): string {
+      const bodyText = isCreator
+        ? `Tienes una llamada con ${otherName}.`
+        : `Tienes una llamada con ${otherName}.`;
+      const greeting = recipientName
+        ? `¡Hola, ${recipientName.split(" ")[0]}!`
+        : "¡Hola!";
+
+      return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1a1a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
+        <tr><td style="background:#1a1a1a;padding:52px 36px 44px;text-align:center;">
+          <p style="margin:0 0 18px;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Wake Coaching</p>
+          <h1 style="margin:0 0 10px;font-size:1.75rem;font-weight:800;color:#fff;line-height:1.2;">${escapeHtml(greeting)}</h1>
+          <p style="margin:0;font-size:1rem;color:rgba(255,255,255,0.78);line-height:1.55;">${escapeHtml(bodyText)}</p>
+        </td></tr>
+        <tr><td style="background:#1e1e1e;padding:32px 36px 28px;text-align:center;">
+          <div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:18px 24px;margin-bottom:24px;">
+            <p style="margin:0 0 4px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:rgba(255,255,255,0.35);">Fecha y hora</p>
+            <p style="margin:0;font-size:1.1rem;font-weight:700;color:#fff;">${escapeHtml(dateTimeStr)}</p>
+          </div>
+          ${callLink ? `<a href="${escapeHtml(callLink)}" style="display:inline-block;padding:14px 32px;background:rgba(255,255,255,0.12);color:#fff;font-size:0.95rem;font-weight:600;text-decoration:none;border-radius:10px;border:1px solid rgba(255,255,255,0.15);">Unirse a la llamada</a>` : ""}
+        </td></tr>
+        <tr><td style="background:#1e1e1e;padding:16px 36px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">
+          <p style="margin:0;font-size:0.75rem;color:rgba(255,255,255,0.22);">Enviado automáticamente por Wake · <a href="https://wakelab.co" style="color:rgba(255,255,255,0.22);text-decoration:none;">wakelab.co</a></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    }
+
+    async function sendReminderEmail(to: string, subject: string, html: string) {
+      if (!to) return;
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        await resend.emails.send({
+          from: "Wake Coaching <coaching@wakelab.co>",
+          to,
+          subject,
+          html,
+          headers: {
+            "List-Unsubscribe": "<mailto:soporte@wakelab.co?subject=unsubscribe>",
+          },
+        });
+      } catch (err) {
+        functions.logger.error("sendCallReminders: email failed", {to, error: String(err)});
+      }
+    }
+
+    function formatDateTime(isoUtc: string): string {
+      const d = new Date(isoUtc);
+      return d.toLocaleString("es-CO", {
+        timeZone: "America/Bogota",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
+
+    for (const doc of snapshot.docs) {
+      const booking = doc.data();
+      const slotStart = new Date(booking.slotStartUtc).getTime();
+      const msUntilCall = slotStart - now;
+
+      // 24h reminder: 23-25h window
+      if (
+        msUntilCall >= 23 * 60 * 60 * 1000 &&
+        msUntilCall <= 25 * 60 * 60 * 1000 &&
+        !booking.reminderSent24h
+      ) {
+        const client = await getUser(booking.clientUserId);
+        const creator = await getUser(booking.creatorId);
+        const dateTimeStr = formatDateTime(booking.slotStartUtc);
+        const callLink = booking.callLink || "";
+
+        if (client.email) {
+          const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
+          await sendReminderEmail(client.email, "Tu llamada es mañana", html);
+        }
+        if (creator.email) {
+          const html = buildReminderHtml(creator.displayName, client.displayName || "tu cliente", callLink, dateTimeStr, true);
+          await sendReminderEmail(creator.email, "Llamada mañana", html);
+        }
+
+        await doc.ref.update({reminderSent24h: true});
+        sent24h++;
+      }
+
+      // 1h reminder: 45min-75min window
+      if (
+        msUntilCall >= 45 * 60 * 1000 &&
+        msUntilCall <= 75 * 60 * 1000 &&
+        !booking.reminderSent1h
+      ) {
+        const client = await getUser(booking.clientUserId);
+        const creator = await getUser(booking.creatorId);
+        const dateTimeStr = formatDateTime(booking.slotStartUtc);
+        const callLink = booking.callLink || "";
+
+        if (client.email) {
+          const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
+          await sendReminderEmail(client.email, "Tu llamada es en 1 hora", html);
+        }
+        if (creator.email) {
+          const html = buildReminderHtml(creator.displayName, client.displayName || "tu cliente", callLink, dateTimeStr, true);
+          await sendReminderEmail(creator.email, "Llamada en 1 hora", html);
+        }
+
+        await doc.ref.update({reminderSent1h: true});
+        sent1h++;
+      }
+    }
+
+    functions.logger.info("sendCallReminders: done", {total: snapshot.size, sent24h, sent1h});
+  }
+);
+
+// ─── Scheduled: cleanup old video exchange messages (30-day retention) ────
+
+export const detectAbandonedSessions = onSchedule(
+  {
+    schedule: "every 6 hours",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+
+    const snapshot = await db.collectionGroup("activeSession").get();
+    if (snapshot.empty) return;
+
+    const batch = db.batch();
+    let count = 0;
+
+    for (const doc of snapshot.docs) {
+      if (doc.id !== "current") continue;
+      const data = doc.data();
+      const savedAt = data.savedAt as string | undefined;
+      if (!savedAt || savedAt >= fourHoursAgo) continue;
+
+      const userId = doc.ref.parent.parent?.id;
+      if (!userId) continue;
+
+      const completedSetsCount = data.completedSets
+        ? Object.keys(data.completedSets as Record<string, unknown>).length
+        : 0;
+
+      batch.set(
+        db
+          .collection("users")
+          .doc(userId)
+          .collection("abandonedSessions")
+          .doc((data.sessionId as string) || doc.id),
+        {
+          sessionId: (data.sessionId as string) || null,
+          courseId: (data.courseId as string) || null,
+          sessionName: (data.sessionName as string) || null,
+          startedAt: (data.startedAt as string) || null,
+          elapsedSeconds: (data.elapsedSeconds as number) || 0,
+          completedSetsCount,
+          completionPct: null,
+          userId,
+          abandonedAt: new Date().toISOString(),
+          detectedBy: "scheduled_scan",
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      batch.delete(doc.ref);
+      count++;
+      if (count >= 400) break;
+    }
+
+    if (count > 0) {
+      await batch.commit();
+      functions.logger.info(`detectAbandonedSessions: recorded ${count} abandoned sessions`);
+    }
+  }
+);
+
+export const cleanupVideoExchanges = onSchedule(
+  {
+    schedule: "every day 04:00",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const cutoff = admin.firestore.Timestamp.fromMillis(
+      Date.now() - 30 * 24 * 60 * 60 * 1000
+    );
+    const bucket = admin.storage().bucket();
+
+    const exchangesSnap = await db
+      .collection("video_exchanges")
+      .where("lastMessageAt", "<", cutoff)
+      .get();
+
+    if (exchangesSnap.empty) {
+      functions.logger.info("cleanupVideoExchanges: nothing to clean");
+      return;
+    }
+
+    let messagesDeleted = 0;
+    let messagesSaved = 0;
+    let exchangesDeleted = 0;
+
+    for (const exchangeDoc of exchangesSnap.docs) {
+      const messagesSnap = await exchangeDoc.ref.collection("messages").get();
+
+      let savedCount = 0;
+      let latestSavedAt: FirebaseFirestore.Timestamp | null = null;
+
+      for (const msgDoc of messagesSnap.docs) {
+        const msg = msgDoc.data();
+
+        if (msg.savedByCreator === true) {
+          savedCount++;
+          messagesSaved++;
+          const msgCreatedAt = msg.createdAt as FirebaseFirestore.Timestamp | undefined;
+          if (msgCreatedAt && (!latestSavedAt || msgCreatedAt.toMillis() > latestSavedAt.toMillis())) {
+            latestSavedAt = msgCreatedAt;
+          }
+          continue;
+        }
+
+        // Delete storage files
+        if (msg.videoPath) {
+          try { await bucket.file(msg.videoPath).delete(); } catch (_e) { /* file may already be gone */ }
+        }
+        if (msg.thumbnailPath) {
+          try { await bucket.file(msg.thumbnailPath).delete(); } catch (_e) { /* file may already be gone */ }
+        }
+
+        await msgDoc.ref.delete();
+        messagesDeleted++;
+      }
+
+      if (savedCount === 0) {
+        // No saved messages — delete the exchange doc
+        await exchangeDoc.ref.delete();
+        exchangesDeleted++;
+      } else {
+        // Some saved — update exchange
+        const updates: Record<string, unknown> = { status: "closed" };
+        if (latestSavedAt) {
+          updates.lastMessageAt = latestSavedAt;
+        }
+        await exchangeDoc.ref.update(updates);
+      }
+    }
+
+    functions.logger.info("cleanupVideoExchanges: done", {
+      exchangesProcessed: exchangesSnap.size,
+      exchangesDeleted,
+      messagesDeleted,
+      messagesSaved,
+    });
+  }
+);

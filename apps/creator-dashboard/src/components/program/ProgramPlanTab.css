@@ -1,0 +1,126 @@
+/* ═══════════════════════════════════════════════════════════════ */
+/*  TWO-PANEL LAYOUT                                              */
+/* ═══════════════════════════════════════════════════════════════ */
+.ppt-layout {
+  display: flex;
+  gap: 0;
+  min-height: calc(100vh - 240px);
+  padding-top: 4px;
+}
+
+/* ─── Left Panel: Library Sidebar ────────────────────────────── */
+.ppt-sidebar {
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  overflow: hidden;
+  animation: ppt-rise 400ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ppt-sidebar .planning-library-sidebar {
+  background: transparent;
+  border-right: none;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.ppt-sidebar .planning-library-tabs {
+  padding: 0 4px 12px;
+}
+
+.ppt-sidebar .planning-library-content {
+  padding: 0 4px;
+}
+
+.ppt-sidebar .planning-sidebar-program-item {
+  position: relative;
+  border-radius: 8px;
+}
+
+.ppt-sidebar .plan-structure-library-item {
+  position: relative;
+  border-radius: 8px;
+}
+
+@keyframes ppt-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Right Panel: Main Content ──────────────────────────────── */
+.ppt-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
+}
+
+.ppt-content {
+  flex: 1;
+}
+
+/* ─── Skeleton Loader ─────────────────────────────────────────── */
+.ppt-skeleton-sidebar {
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ppt-skeleton-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 20px;
+}
+
+.ppt-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
+/*  RESPONSIVE                                                    */
+/* ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .ppt-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .ppt-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .ppt-main {
+    padding-left: 0;
+  }
+
+  .ppt-skeleton-sidebar {
+    width: 100%;
+    min-width: 0;
+    max-height: 200px;
+    overflow: hidden;
+  }
+
+  .ppt-skeleton-main {
+    padding-left: 0;
+  }
+}

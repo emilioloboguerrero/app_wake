@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   View,
   Text,
@@ -24,28 +25,80 @@ import BottomSpacer from '../components/BottomSpacer';
 import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import completionPhrases from '../../assets/data/completionPhrases.json';
-import hybridDataService from '../services/hybridDataService';
 import logger from '../utils/logger.js';
 import SvgChampion from '../components/icons/SvgChampion';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
-import { getMondayWeek } from '../utils/weekCalculation';
+import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { auth } from '../config/firebase';
-import firestoreService from '../services/firestoreService';
+import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import SvgShareIOsExport from '../components/icons/vectors_fig/Communication/ShareIOsExport';
 import ViewShot from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
+import apiClient from '../utils/apiClient';
 import WakeLoader from '../components/WakeLoader';
 
 const WorkoutCompletionScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
+  const userId = (user || auth.currentUser)?.uid;
+
+  const { data: userData } = useQuery({
+    queryKey: ['user', userId],
+    queryFn: () => apiClient.get('/users/me').then(r => r?.data ?? null),
+    enabled: !!userId,
+    staleTime: 0,
+    gcTime: GC_TIMES.userProfile,
+  });
+
+  // Fetch weekly volume from analytics (computed from sessionHistory — always up to date)
+  const currentWeek = useMemo(() => getMondayWeek(), []);
+  const weekDates = useMemo(() => getWeekDates(currentWeek), [currentWeek]);
+  const toYMD = (d) => d.toISOString().split('T')[0];
+
+  const { data: analyticsVolumeData } = useQuery({
+    queryKey: ['analytics', 'weekly-volume', userId, currentWeek],
+    queryFn: () => apiClient.get('/analytics/weekly-volume', {
+      params: { startDate: toYMD(weekDates.start), endDate: toYMD(weekDates.end) },
+    }),
+    enabled: !!userId,
+    staleTime: 0,
+    gcTime: STALE_TIMES.exerciseHistory,
+  });
+
+  const userDisplayName = userData?.displayName || '';
+  const username = userData?.username || userData?.displayName || '';
+
+  // Weekly muscle volumes: prefer user doc, fall back to analytics endpoint
+  const weeklyMuscleVolumes = useMemo(() => {
+    // Try user doc first
+    if (userData?.weeklyMuscleVolume?.[currentWeek]) {
+      const vol = userData.weeklyMuscleVolume[currentWeek];
+      if (Object.keys(vol).length > 0) return vol;
+    }
+    // Fall back to analytics endpoint (computed from sessionHistory)
+    const weeks = analyticsVolumeData?.data || [];
+    const weekEntry = weeks.find((w) => w.weekKey === currentWeek);
+    return weekEntry?.muscleVolumes || null;
+  }, [userData, analyticsVolumeData, currentWeek]);
+
+  const lastWeekMuscleVolumes = useMemo(() => {
+    if (!userData?.weeklyMuscleVolume) return null;
+    const allWeeks = Object.keys(userData.weeklyMuscleVolume);
+    if (allWeeks.length === 0) return null;
+    const sorted = allWeeks.slice().sort();
+    const currentIndex = sorted.indexOf(currentWeek);
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : (currentIndex === -1 && sorted.length >= 2 ? sorted.length - 2 : -1);
+    if (prevIndex < 0) return null;
+    return userData.weeklyMuscleVolume[sorted[prevIndex]] || null;
+  }, [userData, currentWeek]);
+
   const [loading, setLoading] = useState(true);
   const [completionNotes, setCompletionNotes] = useState(route.params?.sessionData?.userNotes ?? '');
   const [initialNotes, setInitialNotes] = useState(null);
@@ -55,25 +108,21 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const hasNotesChanges = initialNotes !== null && (completionNotes || '') !== (initialNotes || '');
   const [completionStats, setCompletionStats] = useState(null);
   const [randomPhrase, setRandomPhrase] = useState('');
-  const [weeklyMuscleVolumes, setWeeklyMuscleVolumes] = useState(null);
-  const [lastWeekMuscleVolumes, setLastWeekMuscleVolumes] = useState(null);
-  
+
   // Muscle volume info modal state
   const [isMuscleVolumeInfoModalVisible, setIsMuscleVolumeInfoModalVisible] = useState(false);
   const [selectedMuscleVolumeInfo, setSelectedMuscleVolumeInfo] = useState(null);
-  
+
   // Scroll tracking for pagination indicator
   const scrollX = useRef(new Animated.Value(0)).current;
-  
-  logger.log('WorkoutCompletionScreen: Received', personalRecords?.length || 0, 'personal records');
-  logger.log('Personal records data:', personalRecords);
-  logger.log('WorkoutCompletionScreen: Received session muscle volumes:', sessionMuscleVolumes);
-  
+
+  // Debug data logged only via useEffect to avoid spamming on every render
+
   // Tutorial state
   const [tutorialVisible, setTutorialVisible] = useState(false);
   const [tutorialData, setTutorialData] = useState([]);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
-  
+
   // Share modal state
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
   const shareScrollX = useRef(new Animated.Value(0)).current;
@@ -82,8 +131,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const [isSharing, setIsSharing] = useState(false);
   const [currentShareCardIndex, setCurrentShareCardIndex] = useState(0);
   const [fullscreenCardIndex, setFullscreenCardIndex] = useState(null);
-  const [userDisplayName, setUserDisplayName] = useState('');
-  const [username, setUsername] = useState('');
   
   const prEntranceAnim = useRef(new Animated.Value(0)).current;
   const prGlowAnim = useRef(new Animated.Value(0)).current;
@@ -131,36 +178,8 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   // Get discipline-specific metric(s) - SIMPLIFIED
   const getDisciplineMetrics = (discipline, stats) => {
-    logger.log('🔍 getDisciplineMetrics called with:', { discipline, stats });
-    
-    // Calculate volume from exercises if available
-    const calculateVolume = () => {
-      if (!stats?.exercises) return 0;
-      
-      logger.log('🔍 Exercise data for volume calculation:', stats.exercises);
-      
-      let totalVolume = 0;
-      stats.exercises.forEach((exercise, exerciseIndex) => {
-        logger.log(`🔍 Exercise ${exerciseIndex}:`, exercise);
-        if (exercise.sets) {
-          exercise.sets.forEach((set, setIndex) => {
-            logger.log(`🔍 Set ${setIndex}:`, set);
-            const weight = parseFloat(set.weight) || 0;
-            const reps = parseInt(set.reps) || 0;
-            const setVolume = weight * reps;
-            logger.log(`🔍 Set volume: ${weight} × ${reps} = ${setVolume}`);
-            totalVolume += setVolume;
-          });
-        }
-      });
-      
-      logger.log('🔍 Total calculated volume:', totalVolume);
-      return totalVolume;
-    };
-    
     // Simple mapping based on discipline name
     if (discipline && discipline.toLowerCase().includes('fuerza')) {
-      // Volume metric removed - now handled by muscle volume cards above
       return [];
     }
     
@@ -193,7 +212,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       ];
     }
     
-    logger.log('⚠️ No metrics found for discipline:', discipline);
     return [];
   };
 
@@ -247,106 +265,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   }, [completionStats]);
 
   useEffect(() => {
-    // Set random phrase when component mounts
     setRandomPhrase(getRandomPhrase());
     initializeCompletionScreen();
-    
-    // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
-    const currentUser = user || auth.currentUser;
-    
-    logger.log('🔍 WorkoutCompletionScreen useEffect - User check:', {
-      userFromHook: !!user,
-      userUidFromHook: user?.uid,
-      firebaseCurrentUser: !!auth.currentUser,
-      firebaseCurrentUserUid: auth.currentUser?.uid,
-      currentUserToUse: !!currentUser,
-      currentUserUid: currentUser?.uid,
-      courseDiscipline: course?.discipline,
-      shouldTrackVolume: shouldTrackMuscleVolume(course?.discipline),
-      hasSessionMuscleVolumes: !!sessionMuscleVolumes,
-      sessionMuscleVolumesKeys: sessionMuscleVolumes ? Object.keys(sessionMuscleVolumes) : []
-    });
-    
-    // Fetch weekly muscle volumes if discipline supports it
-    if (shouldTrackMuscleVolume(course?.discipline) && currentUser?.uid) {
-      logger.log('📊 Fetching weekly muscle volumes...');
-      fetchWeeklyMuscleVolumes();
-    } else {
-      logger.log('⚠️ Skipping weekly muscle volumes fetch:', {
-        shouldTrack: shouldTrackMuscleVolume(course?.discipline),
-        hasUser: !!currentUser?.uid
-      });
-    }
-    
-    // Fetch user display name
-    const uid = (user || auth.currentUser)?.uid;
-    if (uid) {
-      fetchUserDisplayName();
-    }
   }, []);
-  
-  const fetchUserDisplayName = async () => {
-    try {
-      const currentUser = user || auth.currentUser;
-      if (!currentUser?.uid) return;
-      const data = await firestoreService.getUser(currentUser.uid);
-      if (data) {
-        setUserDisplayName(data.displayName || '');
-        setUsername(data.username || data.displayName || '');
-      }
-    } catch (error) {
-      logger.error('Error fetching user display name:', error);
-    }
-  };
-  
-  const fetchWeeklyMuscleVolumes = async () => {
-    try {
-      // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
-      const currentUser = user || auth.currentUser;
-      if (!currentUser?.uid) {
-        logger.error('❌ Cannot fetch weekly muscle volumes - no user available');
-        setWeeklyMuscleVolumes({});
-        setLastWeekMuscleVolumes({});
-        return;
-      }
-      
-      const currentWeek = getMondayWeek();
-      logger.log('📊 Fetching weekly muscle volumes for user:', currentUser.uid, 'week:', currentWeek);
-      const data = await firestoreService.getUser(currentUser.uid);
-
-      if (data) {
-        const weekData = data.weeklyMuscleVolume?.[currentWeek] || {};
-        setWeeklyMuscleVolumes(weekData);
-        logger.log('✅ Weekly muscle volumes fetched for completion screen:', weekData);
-
-        // Derive last week volumes by inspecting all weeks and picking the entry prior to current
-        const allWeeks = data.weeklyMuscleVolume ? Object.keys(data.weeklyMuscleVolume) : [];
-        if (allWeeks.length > 0) {
-          // Sort keys consistently; keys are date-like strings, string sort works for YYYY-MM-DD formats
-          const sorted = allWeeks.slice().sort();
-          const currentIndex = sorted.indexOf(currentWeek);
-          const prevIndex = currentIndex > 0 ? currentIndex - 1 : (currentIndex === -1 && sorted.length >= 2 ? sorted.length - 2 : -1);
-          if (prevIndex >= 0) {
-            const prevKey = sorted[prevIndex];
-            const prevWeekData = data.weeklyMuscleVolume?.[prevKey] || {};
-            setLastWeekMuscleVolumes(prevWeekData);
-            logger.log('📆 Last week muscle volumes fetched for comparison:', prevKey, prevWeekData);
-          } else {
-            setLastWeekMuscleVolumes({});
-          }
-        } else {
-          setLastWeekMuscleVolumes({});
-        }
-      } else {
-        setWeeklyMuscleVolumes({});
-        setLastWeekMuscleVolumes({});
-      }
-    } catch (error) {
-      logger.error('❌ Error fetching weekly muscle volumes:', error);
-      setWeeklyMuscleVolumes({});
-      setLastWeekMuscleVolumes({});
-    }
-  };
 
   // Check for tutorials to show
   const checkForTutorials = async () => {
@@ -354,7 +275,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     if (!currentUser?.uid || !course?.courseId) return;
 
     try {
-      logger.log('🎬 Checking for workout completion screen tutorials...');
       const tutorials = await tutorialManager.getTutorialsForScreen(
         currentUser.uid,
         'workoutCompletion',
@@ -362,12 +282,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       );
       
       if (tutorials.length > 0) {
-        logger.log('📚 Found tutorials to show:', tutorials.length);
         setTutorialData(tutorials);
         setCurrentTutorialIndex(0);
         setTutorialVisible(true);
-      } else {
-        logger.log('✅ No tutorials to show for workout completion screen');
       }
     } catch (error) {
       logger.error('❌ Error checking for tutorials:', error);
@@ -388,7 +305,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           currentTutorial.videoUrl,
           course.courseId  // Pass programId for program-specific tutorials
         );
-        logger.log('✅ Tutorial marked as completed');
       }
     } catch (error) {
       logger.error('❌ Error marking tutorial as completed:', error);
@@ -399,48 +315,16 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
       
-      logger.log('📊 Initializing completion screen with params:', { 
-        course: course?.courseId, 
-        workout: workout?.id, 
-        hasSessionData: !!sessionData,
-        hasLocalStats: !!localStats 
-      });
-      
-      logger.log('📊 Course discipline:', course?.discipline);
-      logger.log('📊 Course object keys:', Object.keys(course || {}));
-      logger.log('📊 Course object:', course);
-      logger.log('📊 Local stats:', localStats);
-      
       if (sessionData && localStats) {
-        logger.log('📊 Using passed session data:', sessionData.sessionId);
-        logger.log('📊 Using passed local stats:', localStats);
-        
-        // SIMPLE: Just use course.discipline directly
-        let discipline = course?.discipline;
-        
-        // If discipline is not in course object, try to get it from course metadata
-        if (!discipline && course?.courseId) {
-          try {
-            const courses = await hybridDataService.loadCourses();
-            const courseMeta = courses.find(c => c.id === course.courseId);
-            discipline = courseMeta?.discipline;
-            logger.log('📊 Discipline from metadata:', discipline);
-          } catch (error) {
-            logger.log('❌ Error loading course metadata:', error);
-          }
-        }
-        
-        logger.log('📊 Final discipline:', discipline);
-        
+        const discipline = course?.discipline;
+
         const statsWithDiscipline = {
           ...localStats,
           discipline: discipline
         };
-        
-        logger.log('📊 Stats with discipline:', statsWithDiscipline);
+
         setCompletionStats(statsWithDiscipline);
       } else {
-        logger.log('❌ No session data or local stats provided');
         setCompletionStats({ error: 'No session data available' });
       }
       
@@ -718,8 +602,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       
       // Capture the card as an image
       const uri = await currentCardRef.current.capture();
-      logger.log('Card captured:', uri);
-      
       // Check if sharing is available
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
@@ -734,7 +616,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         dialogTitle: 'Compartir sesión',
       });
       
-      logger.log('Image shared successfully');
     } catch (error) {
       logger.error('Error sharing card:', error);
     } finally {
@@ -773,7 +654,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
       paddingHorizontal: 24,
     },
     errorText: {
-      color: '#ff4444',
+      color: 'rgba(224, 84, 84, 0.9)',
       fontSize: 18,
       fontWeight: '600',
       textAlign: 'center',
@@ -1494,36 +1375,23 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           )}
 
             {/* Muscle Volume Section (show if discipline supports it) */}
-            {/* Muscle Volume Section (show if discipline supports it) */}
             {(() => {
               const shouldShow = shouldTrackMuscleVolume(course?.discipline);
               const hasWeeklyVolumes = !!weeklyMuscleVolumes && Object.keys(weeklyMuscleVolumes).length > 0;
               const hasSessionVolumes = !!sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0;
-              
-              logger.log('🔍 Volume card render check:', {
-                shouldTrack: shouldShow,
-                hasWeeklyVolumes,
-                hasSessionVolumes,
-                weeklyVolumesKeys: weeklyMuscleVolumes ? Object.keys(weeklyMuscleVolumes) : [],
-                sessionVolumesKeys: sessionMuscleVolumes ? Object.keys(sessionMuscleVolumes) : [],
-                courseDiscipline: course?.discipline,
-                willShow: shouldShow && (hasWeeklyVolumes || hasSessionVolumes)
-              });
-              
-              // Show if discipline supports it AND we have either weekly volumes OR session volumes
-              // The WeeklyMuscleVolumeCard can work with just sessionMuscleVolumes
-              // MuscleSilhouette needs weeklyMuscleVolumes, but we can still show WeeklyMuscleVolumeCard
+
+              // Use weekly volumes for SVG if available, otherwise fall back to session volumes
+              const svgVolumes = hasWeeklyVolumes ? weeklyMuscleVolumes : (hasSessionVolumes ? sessionMuscleVolumes : null);
+              const hasSvgVolumes = !!svgVolumes && Object.keys(svgVolumes).length > 0;
+
               if (!shouldShow) return null;
-              if (!hasWeeklyVolumes && !hasSessionVolumes) return null;
-              
-              // Calculate card width to match MainScreen pattern
-              // Card width = screenWidth - (padding on both sides)
-              // paddingHorizontal in muscleCardsScrollContainer is Math.max(20, screenWidth * 0.05) on each side
-              const containerPadding = Math.max(20, screenWidth * 0.05) * 2; // Both sides
-              const cardWidth = screenWidth - containerPadding; // Actual card width
-              const cardSpacing = 15; // marginRight between cards
-              const snapInterval = cardWidth + cardSpacing; // Card width + spacing
-              
+              if (!hasSvgVolumes && !hasSessionVolumes) return null;
+
+              const containerPadding = Math.max(20, screenWidth * 0.05) * 2;
+              const cardWidth = screenWidth - containerPadding;
+              const cardSpacing = 15;
+              const snapInterval = cardWidth + cardSpacing;
+
               return (
               <View style={styles.muscleVolumeSectionWrapper}>
                 <ScrollView
@@ -1537,28 +1405,28 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   onScroll={onMuscleScroll}
                   scrollEventThrottle={16}
                 >
-                  {/* CARD 1: Muscle Silhouette - Only show if we have weekly volumes */}
-                  {hasWeeklyVolumes && (
+                  {/* CARD 1: Muscle Silhouette SVG - weekly volumes preferred, session volumes as fallback */}
+                  {hasSvgVolumes && (
                     <View style={styles.muscleCardFirst}>
-                      <MuscleSilhouette 
-                        muscleVolumes={weeklyMuscleVolumes} 
-                        showCurrentWeekLabel={true}
-                        availableWeeks={[getMondayWeek()]}
-                        selectedWeek={getMondayWeek()}
-                        currentWeek={getMondayWeek()}
+                      <MuscleSilhouette
+                        muscleVolumes={svgVolumes}
+                        showCurrentWeekLabel={hasWeeklyVolumes}
+                        availableWeeks={hasWeeklyVolumes ? [getMondayWeek()] : []}
+                        selectedWeek={hasWeeklyVolumes ? getMondayWeek() : undefined}
+                        currentWeek={hasWeeklyVolumes ? getMondayWeek() : undefined}
                         onWeekChange={() => {}}
                         isReadOnly={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
                       />
                     </View>
                   )}
-                  
+
                   {/* CARD 2: Weekly Sets List - Show if we have session volumes */}
                   {hasSessionVolumes && (
                     <View style={styles.muscleCardSecond}>
-                      <WeeklyMuscleVolumeCard 
-                        userId={(user || auth.currentUser)?.uid} 
-                        sessionMuscleVolumes={sessionMuscleVolumes} 
+                      <WeeklyMuscleVolumeCard
+                        userId={(user || auth.currentUser)?.uid}
+                        sessionMuscleVolumes={sessionMuscleVolumes}
                         showCurrentWeekLabel={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
                       />
@@ -1613,15 +1481,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           <View style={styles.indicatorsRow}>
             {/* Discipline-Specific Metrics */}
             {(() => {
-              logger.log('🔍 Debug - completionStats:', completionStats);
-              logger.log('🔍 Debug - discipline:', completionStats?.discipline);
-              
               const metrics = getDisciplineMetrics(completionStats?.discipline, completionStats);
-              logger.log('🔍 Debug - metrics:', metrics);
-              
+
               if (!metrics || metrics.length === 0) {
-                logger.log('⚠️ No metrics found for discipline:', completionStats?.discipline);
-                // Return null instead of debug info - no discipline metrics to show
                 return null;
               }
               
@@ -1637,7 +1499,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
               ));
             })()}
           </View>
-
 
           {/* Session notes card - always show so user sees their notes or an empty card; save on blur when changed */}
           {sessionData?.sessionId != null && (
@@ -2030,7 +1891,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         animationType="fade"
         presentationStyle="fullScreen"
         onRequestClose={() => {
-          logger.log('Closing fullscreen, reopening share modal');
           setFullscreenCardIndex(null);
           setIsShareModalVisible(true);
         }}
@@ -2039,7 +1899,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
           <TouchableOpacity 
             activeOpacity={1}
             onPress={() => {
-              logger.log('Tapping to close fullscreen');
               setFullscreenCardIndex(null);
               setIsShareModalVisible(true);
             }}
@@ -2062,14 +1921,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   <View style={styles.fullscreenTopLeftRight}>
                     {(() => {
                       const sessionName = workout?.name || workout?.title || workout?.workoutName || sessionData?.workoutName || null;
-                      logger.log('🔍 Session name check:', { workout, sessionName });
                       return sessionName ? (
                         <Text style={styles.fullscreenSessionName}>{sessionName}</Text>
                       ) : null;
                     })()}
                     {(() => {
                       const programName = course?.name || course?.title || course?.courseName || null;
-                      logger.log('🔍 Program name check:', { course, programName });
                       return programName ? (
                         <Text style={styles.fullscreenProgramName}>{programName}</Text>
                       ) : null;
@@ -2143,45 +2000,27 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   {(() => {
                     // Calculate RM estimates for all sets
                     const allSetsWithRM = [];
-                    logger.log('🔍 Calculating top 3 RM sets. sessionData:', sessionData);
-                    
+
                     if (sessionData?.exercises) {
-                      logger.log('🔍 Found exercises:', sessionData.exercises.length);
-                      sessionData.exercises.forEach((exercise, exerciseIndex) => {
-                        logger.log(`🔍 Exercise ${exerciseIndex}:`, exercise.name || 'No name', 'sets:', exercise.sets?.length);
+                      sessionData.exercises.forEach((exercise) => {
                         if (exercise.sets) {
-                          exercise.sets.forEach((set, setIndex) => {
-                            logger.log(`  🔍 Set ${setIndex}:`, set);
-                            
-                            // Try multiple ways to get weight and reps
+                          exercise.sets.forEach((set) => {
                             const performance = set.performance || {};
                             let actualWeight = parseFloat(performance.weight || performance.weight_kg || set.weight || 0);
                             let actualReps = parseInt(performance.reps || set.reps || 0);
-                            
-                            // Try to get intensity from multiple locations
                             let intensity = set.intensity || set.objective?.intensity || exercise.intensity;
-                            
-                            logger.log(`  🔍 Set data: weight=${actualWeight}, reps=${actualReps}, intensity=${intensity}`);
-                            logger.log(`  🔍 Set object keys:`, Object.keys(set));
-                            
-                            // If we have weight and reps, try to calculate RM even without intensity
-                            // Use a default intensity of 7/10 if not available
+
                             if (actualWeight > 0 && actualReps > 0) {
                               let objectiveIntensity = null;
                               if (intensity) {
                                 objectiveIntensity = oneRepMaxService.parseIntensity(intensity);
-                                logger.log(`  🔍 Parsed intensity: ${objectiveIntensity}`);
                               }
-                              
-                              // If no intensity or couldn't parse, use default of 7
                               if (!objectiveIntensity) {
                                 objectiveIntensity = 7;
-                                logger.log(`  🔍 Using default intensity: 7`);
                               }
-                              
+
                               const rmEstimate = oneRepMaxService.calculate1RM(actualWeight, actualReps, objectiveIntensity);
-                              
-                              // Get exercise name from primary field if available
+
                               let exerciseName = 'Exercise';
                               if (exercise.name) {
                                 exerciseName = exercise.name;
@@ -2189,8 +2028,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                                 const libraryId = Object.keys(exercise.primary)[0];
                                 exerciseName = exercise.primary[libraryId];
                               }
-                              
-                              logger.log(`  ✅ Adding set: ${exerciseName}, RM=${rmEstimate}, weight=${actualWeight}, reps=${actualReps}`);
+
                               allSetsWithRM.push({
                                 exerciseName: exerciseName,
                                 weight: actualWeight,
@@ -2202,8 +2040,6 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                         }
                       });
                     }
-                    
-                    logger.log('🔍 Total sets with RM:', allSetsWithRM.length);
                     
                     // Group sets by exercise name and keep only the highest RM for each exercise
                     const exerciseMap = {};
@@ -2219,10 +2055,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                       .sort((a, b) => b.rmEstimate - a.rmEstimate)
                       .slice(0, 2);
                     
-                    logger.log('🔍 Top 3 sets (one per exercise):', top3Sets);
-                    
                     if (top3Sets.length === 0) {
-                      logger.log('⚠️ No top 3 sets to display');
                       return (
                         <View style={styles.top3RMContainer}>
                           <Text style={styles.top3RMExercise}>No RM data available</Text>

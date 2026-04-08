@@ -1,6 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
+import { STALE_TIMES } from '../config/queryConfig';
 import {
   View,
   Text,
@@ -21,7 +22,6 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
-import logger from '../utils/logger.js';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
@@ -34,17 +34,17 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
   const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  const { data: allCourses = [], isLoading: loading, isError } = useQuery({
+  const { data: allCourses = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.user.courses(user?.uid),
     queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
     enabled: !!user?.uid,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE_TIMES.programStructure,
   });
 
   const error = isError ? 'Error al cargar tus cursos' : null;
 
-  const handleCoursePress = (purchaseData) => {
-    navigation.navigate('CourseDetail', { course: purchaseData.courseDetails });
+  const handleCoursePress = (course) => {
+    navigation.navigate('CourseDetail', { course });
   };
 
   const getStatusBadge = (purchase) => {
@@ -58,17 +58,16 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     return { text: 'Desconocido', style: styles.unknownBadge };
   };
 
-  const renderCourseCard = (purchaseData, index) => {
-    const course = purchaseData.courseDetails;
-    const isOneOnOne = purchaseData.courseData?.deliveryType === 'one_on_one';
+  const renderCourseCard = (course, index) => {
+    const isOneOnOne = course.deliveryType === 'one_on_one';
 
     return (
-      <View key={purchaseData.id || index} style={styles.courseCardWrapper}>
+      <View key={course.id || index} style={styles.courseCardWrapper}>
         <View style={styles.courseCardContainer}>
           <TouchableOpacity
             className="profile-menu-row"
             style={styles.courseCard}
-            onPress={() => handleCoursePress(purchaseData)}
+            onPress={() => handleCoursePress(course)}
           >
             <View style={styles.courseImagePlaceholder}>
               {isOneOnOne && (
@@ -84,23 +83,23 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
                 />
               ) : (
                 <View style={styles.courseImageFallback}>
-                  <Text style={styles.fallbackText}>📚</Text>
+                  <Text style={styles.fallbackText}>W</Text>
                 </View>
               )}
             </View>
             <View style={styles.courseContent}>
               <Text style={styles.courseTitle}>
-                {course.title || 'Curso sin título'}
+                {course.title || 'Curso sin titulo'}
               </Text>
               <Text style={styles.courseInfo}>
                 Por {course.creatorName || 'Creador no especificado'} | {course.discipline || 'General'}
               </Text>
             </View>
-            <SvgChevronRight 
-              width={20} 
-              height={20} 
-              stroke="#ffffff" 
-              strokeWidth={2} 
+            <SvgChevronRight
+              width={20}
+              height={20}
+              stroke="#ffffff"
+              strokeWidth={2}
               style={styles.courseArrow}
             />
           </TouchableOpacity>
@@ -111,9 +110,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
 
   // Categorize courses - ensure all courses are shown even if they don't match a category
   const categorizedCourses = React.useMemo(() => {
-    logger.log('🔍 Categorizing courses, allCourses.length:', allCourses.length);
-    logger.log('🔍 allCourses array:', allCourses);
-    
     const active = allCourses.filter(course => course.isActive === true);
     const expired = allCourses.filter(course => course.isExpired === true);
     const completed = allCourses.filter(course => course.isCompleted === true);
@@ -121,21 +117,6 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
     const uncategorized = allCourses.filter(course => 
       !course.isActive && !course.isExpired && !course.isCompleted
     );
-    
-    logger.log('🔍 AllPurchasedCoursesScreen - Course categorization:', {
-      total: allCourses.length,
-      active: active.length,
-      expired: expired.length,
-      completed: completed.length,
-      uncategorized: uncategorized.length,
-      courses: allCourses.map(c => ({
-        title: c.courseDetails?.title,
-        isActive: c.isActive,
-        isExpired: c.isExpired,
-        isCompleted: c.isCompleted,
-        status: c.status
-      }))
-    });
     
     return { active, expired, completed, uncategorized };
   }, [allCourses]);
@@ -161,15 +142,14 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
           <Text style={styles.screenTitle}>Todos mis programas</Text>
 
           {loading ? (
-            <LoadingSpinner 
-              size="large" 
-              text="Cargando todos tus cursos..." 
+            <LoadingSpinner
+              size="large"
               containerStyle={styles.loadingContainer}
             />
           ) : error ? (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={fetchAllCourses}>
+              <TouchableOpacity style={styles.retryButton} onPress={refetch}>
                 <Text style={styles.retryButtonText}>Reintentar</Text>
               </TouchableOpacity>
             </View>
@@ -256,7 +236,7 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   errorText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: 16,
     fontWeight: '400',
     textAlign: 'center',
@@ -273,7 +253,6 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '400',
     fontWeight: '600',
   },
   coursesContainer: {
@@ -484,7 +463,6 @@ const styles = StyleSheet.create({
   purchaseDate: {
     color: '#cccccc',
     fontSize: 12,
-    fontWeight: '400',
     fontWeight: '500',
   },
   expirationInfo: {
@@ -496,7 +474,6 @@ const styles = StyleSheet.create({
   expirationText: {
     color: '#dc3545',
     fontSize: 12,
-    fontWeight: '400',
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -509,7 +486,6 @@ const styles = StyleSheet.create({
   completionText: {
     color: '#6f42c1',
     fontSize: 12,
-    fontWeight: '400',
     fontWeight: '500',
     textAlign: 'center',
   },

@@ -1,0 +1,1211 @@
+/* ExpandableExerciseCard — unified visual system */
+
+/*
+  Design tokens — 3-tier hierarchy:
+  - T1 Section title: 13px / 600 / uppercase / 0.08em / white 0.60
+  - T2 Field label:   11px / 600 / uppercase / 0.04em / white 0.45
+  - T3 Value:         13px / 500 / white 0.85
+  - Input:            13px / 500 / 32px height / 6px radius / white 0.06 bg / white 0.10 border
+  - Action:           12px / 600 / white 0.40 → 0.75 hover
+*/
+
+/* ─── Card shell ─── */
+.exc-card {
+  position: relative;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-left: 3px solid rgba(255,255,255,0.2);
+  border-radius: 14px;
+  box-shadow:
+    0 2px 8px rgba(0,0,0,0.12),
+    0 0 0 1px rgba(255,255,255,0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.25s cubic-bezier(0.22,1,0.36,1),
+              box-shadow 0.25s cubic-bezier(0.22,1,0.36,1),
+              border-left-color 0.25s cubic-bezier(0.22,1,0.36,1);
+}
+
+.exc-card:hover {
+  border-color: rgba(255,255,255,0.16);
+  box-shadow:
+    0 4px 16px rgba(0,0,0,0.18),
+    0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.exc-card--expanded {
+  border-color: rgba(255,255,255,0.18);
+  border-left-color: rgba(255,255,255,0.45);
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.25),
+    0 0 0 1px rgba(255,255,255,0.06);
+}
+
+.exc-card--dragging {
+  opacity: 0.5;
+  transform: scale(0.97);
+}
+
+/* ─── Header ─── */
+.exc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  gap: 12px;
+  min-height: 48px;
+  user-select: none;
+}
+
+.exc-card--expanded .exc-card-header {
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.exc-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.exc-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.exc-card-drag-handle {
+  color: rgba(255,255,255,0.25);
+  cursor: grab;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.exc-card-drag-handle:active {
+  cursor: grabbing;
+}
+
+.exc-card-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.exc-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.90);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+
+.exc-card-incomplete-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,160,60,0.9);
+  background: rgba(255,160,60,0.1);
+  border: 1px solid rgba(255,160,60,0.2);
+  border-radius: 5px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.exc-card-missing-details-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.exc-card-sets-pill {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 7px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.exc-card-delete-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,68,68,0.08);
+  border: 1px solid rgba(255,68,68,0.25);
+  border-radius: 8px;
+  color: rgba(255,68,68,0.9);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  padding: 0;
+}
+
+.exc-card-delete-btn:hover {
+  background: rgba(255,68,68,0.18);
+  border-color: rgba(255,68,68,0.45);
+}
+
+.exc-card-chevron {
+  color: rgba(255,255,255,0.3);
+  transition: transform 0.35s cubic-bezier(0.22,1,0.36,1);
+  flex-shrink: 0;
+}
+
+.exc-card-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* ─── Expand animation (CSS Grid) ─── */
+.exc-card-expand {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s cubic-bezier(0.22,1,0.36,1);
+}
+
+.exc-card--expanded .exc-card-expand {
+  grid-template-rows: 1fr;
+}
+
+.exc-card-expand-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── Body ─── */
+.exc-card-body {
+  padding: 14px;
+}
+
+/* ─── Sections row ─── */
+.exc-card-sections-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  animation: excEnterUp 0.35s cubic-bezier(0.22,1,0.36,1) both;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+
+.exc-card-sections-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.exc-card-sections-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.exc-card-sections-row::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+}
+
+.exc-card-sections-row::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.2);
+}
+
+/* ─── Section card — subtle surface ─── */
+.exc-card-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+}
+
+/* Left column */
+.exc-card-left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+  width: 240px;
+}
+
+/* Sets card — fills remaining width */
+.exc-card-section--sets {
+  flex: 1;
+  min-width: 0;
+  min-height: 240px;
+}
+
+/* ─── T1: Section title ─── */
+.exc-card-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 2px;
+}
+
+.exc-card-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.60);
+}
+
+/* ─── T2: Field label ─── */
+.exc-card-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.45);
+}
+
+/* ─── T3: Value text ─── */
+.exc-card-field-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.85);
+}
+
+.exc-card-field-value--dim {
+  color: rgba(255,255,255,0.50);
+}
+
+/* ─── Field row ─── */
+.exc-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exc-card-field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ─── Icon button ─── */
+.exc-card-icon-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.30);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+}
+
+.exc-card-icon-btn:hover {
+  color: rgba(255,255,255,0.70);
+  background: rgba(255,255,255,0.07);
+}
+
+/* ─── Alternatives list ─── */
+.exc-card-alt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.exc-card-alt-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.exc-card-alt-item:hover {
+  background: rgba(255,255,255,0.07);
+}
+
+.exc-card-alt-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.80);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.exc-card-alt-remove {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255,255,255,0.15);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: all 0.12s ease;
+}
+
+.exc-card-alt-item:hover .exc-card-alt-remove {
+  opacity: 1;
+}
+
+.exc-card-alt-remove:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.1);
+}
+
+.exc-card-alt-empty {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.30);
+}
+
+/* ─── Sustituir button ─── */
+.exc-card-sustituir-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  padding: 0 12px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.45);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.exc-card-sustituir-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.80);
+}
+
+.exc-card-sustituir-btn svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.exc-card-sustituir-btn:hover svg {
+  opacity: 1;
+}
+
+/* ─── Divider ─── */
+.exc-card-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.05);
+  margin: 2px 0;
+}
+
+/* ─── Input — consistent everywhere ─── */
+.exc-card-input {
+  height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.90);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.exc-card-input:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.10);
+}
+
+.exc-card-input::placeholder {
+  color: rgba(255,255,255,0.22);
+}
+
+/* Default width for standalone inputs */
+.exc-card-default-field .exc-card-input {
+  width: 72px;
+  text-align: center;
+}
+
+/* ─── Intensity wrap ─── */
+.exc-card-intensity-wrap {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.exc-card-intensity-wrap .exc-card-input {
+  width: 44px;
+  text-align: center;
+  padding: 0 6px;
+}
+
+.exc-card-intensity-suffix {
+  font-size: 12px;
+  color: rgba(255,255,255,0.30);
+  font-weight: 600;
+}
+
+/* ─── Series stepper (inline in header) ─── */
+.exc-card-stepper {
+  position: relative;
+  width: 56px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.exc-card-stepper--header {
+  width: 48px;
+  height: 26px;
+  margin-left: auto;
+}
+
+.exc-card-stepper-value {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.90);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s ease;
+}
+
+.exc-card-stepper-value--bounce {
+  animation: excNumberBounce 0.25s cubic-bezier(0.22,1,0.36,1);
+}
+
+.exc-card-stepper-btn {
+  position: absolute;
+  top: 0;
+  width: 18px;
+  height: 100%;
+  background: rgba(255,255,255,0.10);
+  border: none;
+  color: rgba(255,255,255,0.70);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+  z-index: 1;
+}
+
+.exc-card-stepper-btn--dec {
+  left: 0;
+  border-radius: 6px 0 0 6px;
+}
+
+.exc-card-stepper-btn--inc {
+  right: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.exc-card-stepper:hover .exc-card-stepper-btn {
+  opacity: 1;
+}
+
+.exc-card-stepper-btn:hover {
+  background: rgba(255,255,255,0.18);
+}
+
+/* ─── Sets section: default fields ─── */
+.exc-card-defaults {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.exc-card-default-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exc-card-default-field .exc-card-field-label {
+  flex-shrink: 0;
+}
+
+/* ─── Sets section: toggle (full-width button) ─── */
+.exc-card-toggle-detail-btn {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: rgba(255,255,255,0.45);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.exc-card-toggle-detail-btn:hover {
+  color: rgba(255,255,255,0.80);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
+}
+
+/* ─── Per-set table ─── */
+.exc-card-sets-table-wrap {
+  overflow-x: auto;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.10);
+  border: 1px solid rgba(255,255,255,0.06);
+  animation: excEnterUp 0.3s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.exc-card-sets-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.exc-card-th,
+.exc-card-td {
+  padding: 7px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.exc-card-th {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255,255,255,0.40);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.exc-card-th-num,
+.exc-card-td-num {
+  width: 28px;
+  text-align: center;
+  color: rgba(255,255,255,0.30);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.exc-card-th-actions,
+.exc-card-td-actions {
+  width: 50px;
+  text-align: right;
+}
+
+/* Rows */
+.exc-card-tr {
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  border-left: 2px solid transparent;
+  transition: border-left-color 0.15s ease, background 0.15s ease;
+  animation: excRowEnter 0.3s cubic-bezier(0.22,1,0.36,1) calc(var(--row-index, 0) * 40ms) both;
+}
+
+.exc-card-tr:hover {
+  border-left-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.02);
+}
+
+.exc-card-tr:last-child {
+  border-bottom: none;
+}
+
+/* Table inputs — compact variant, same style */
+.exc-card-table-input {
+  width: 60px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Row actions — hidden by default */
+.exc-card-td-actions {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.exc-card-tr:hover .exc-card-td-actions {
+  opacity: 1;
+}
+
+.exc-card-action-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 0.9rem;
+  transition: color 0.15s ease;
+}
+
+.exc-card-action-btn:hover {
+  color: rgba(255,255,255,0.75);
+}
+
+.exc-card-action-delete:hover {
+  color: rgba(255,68,68,0.8);
+}
+
+/* Ghost add row */
+.exc-card-tr--ghost {
+  border-bottom: none;
+  animation: none;
+}
+
+.exc-card-tr--ghost td {
+  padding: 5px 8px;
+}
+
+.exc-card-add-set-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  background: none;
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.18s ease;
+  font-family: inherit;
+}
+
+.exc-card-add-set-btn:hover {
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.03);
+}
+
+.exc-card-add-set-btn svg {
+  flex-shrink: 0;
+}
+
+/* ─── Objective label row (label + remove X) ─── */
+.exc-card-field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exc-card-remove-objective-btn {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: rgba(255,255,255,0.20);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.15s ease;
+}
+
+.exc-card-default-field:hover .exc-card-remove-objective-btn {
+  opacity: 1;
+}
+
+.exc-card-remove-objective-btn:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.1);
+}
+
+/* ─── Add objective button (inside defaults list) ─── */
+.exc-card-add-objective-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  background: none;
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.exc-card-add-objective-btn:hover {
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.03);
+}
+
+.exc-card-add-objective-btn svg {
+  flex-shrink: 0;
+}
+
+/* ─── Scope prompt ─── */
+.exc-card-scope-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  animation: excEnterUp 0.25s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.exc-card-scope-prompt-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.70);
+}
+
+.exc-card-scope-prompt-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.exc-card-scope-btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.60);
+}
+
+.exc-card-scope-btn:hover {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.90);
+  border-color: rgba(255,255,255,0.25);
+}
+
+.exc-card-scope-btn--all {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.85);
+  border-color: rgba(255,255,255,0.20);
+}
+
+.exc-card-scope-btn--all:hover {
+  background: rgba(255,255,255,0.16);
+}
+
+.exc-card-scope-btn--cancel {
+  width: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  color: rgba(255,255,255,0.30);
+  border-color: rgba(255,255,255,0.06);
+  background: none;
+}
+
+.exc-card-scope-btn--cancel:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.08);
+  border-color: rgba(255,68,68,0.2);
+}
+
+/* ─── Inline add input ─── */
+.exc-card-inline-add {
+  display: flex;
+  align-items: center;
+}
+
+.exc-card-inline-input {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.90);
+  font-family: inherit;
+  width: 100%;
+  transition: border-color 0.15s ease;
+  animation: excEnterUp 0.2s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.exc-card-inline-input:focus {
+  outline: none;
+  border-color: rgba(255,255,255,0.30);
+  background: rgba(255,255,255,0.10);
+}
+
+.exc-card-inline-input::placeholder {
+  color: rgba(255,255,255,0.25);
+}
+
+.exc-card-default-field--adding {
+  justify-content: stretch;
+}
+
+.exc-card-default-field--adding .exc-card-inline-input {
+  height: 32px;
+  font-size: 13px;
+}
+
+/* ─── Removable pill ─── */
+.exc-card-pill--removable {
+  gap: 4px;
+  padding-right: 5px;
+}
+
+.exc-card-pill-remove {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: rgba(255,255,255,0.20);
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  transition: all 0.12s ease;
+}
+
+.exc-card-pill--removable:hover .exc-card-pill-remove {
+  opacity: 1;
+}
+
+.exc-card-pill-remove:hover {
+  color: rgba(255,68,68,0.8);
+  background: rgba(255,68,68,0.1);
+}
+
+/* ─── Add pill button ─── */
+.exc-card-pill--add {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px dashed rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.25);
+  transition: all 0.15s ease;
+}
+
+.exc-card-pill--add:hover {
+  border-color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.06);
+}
+
+/* ─── Measures list layout ─── */
+.exc-card-measures-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.exc-card-inline-add--full {
+  width: 100%;
+}
+
+.exc-card-add-measure-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 28px;
+  background: none;
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  color: rgba(255,255,255,0.25);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.18s ease;
+}
+
+.exc-card-add-measure-btn:hover {
+  border-color: rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.03);
+}
+
+.exc-card-add-measure-btn svg {
+  flex-shrink: 0;
+}
+
+/* ─── Smaller section title variant ─── */
+.exc-card-section-title--small {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+/* ─── Data section ─── */
+.exc-card-data-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.exc-card-data-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.exc-card-data-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.exc-card-pill {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.60);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 3px 9px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+/* Data empty state */
+.exc-card-data-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.exc-card-data-empty-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.40);
+}
+
+.exc-card-data-empty-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.exc-card-data-empty-btn {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.50);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 6px;
+  padding: 0 14px;
+  height: 32px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  display: flex;
+  align-items: center;
+}
+
+.exc-card-data-empty-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.80);
+  border-color: rgba(255,255,255,0.20);
+}
+
+/* ─── Loading skeleton ─── */
+.exc-card-skeleton {
+  animation: excEnterUp 0.3s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.exc-card-skel-line {
+  height: 14px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  animation: excSkelShimmer 1.4s ease-in-out infinite;
+  width: 100%;
+}
+
+.exc-card-skel-line--short {
+  width: 60%;
+}
+
+.exc-card-skel-line--medium {
+  width: 80%;
+  margin-bottom: 10px;
+}
+
+.exc-card-skel-pills {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.exc-card-skel-pill {
+  height: 24px;
+  width: 72px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.05);
+  animation: excSkelShimmer 1.4s ease-in-out infinite;
+}
+
+.exc-card-skel-pill:nth-child(2) {
+  animation-delay: 0.15s;
+  width: 56px;
+}
+
+@keyframes excSkelShimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ─── Animations ─── */
+@keyframes excEnterUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes excRowEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes excNumberBounce {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .exc-card-sections-row {
+    flex-direction: column;
+  }
+
+  .exc-card-left-col {
+    width: 100%;
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .exc-card-left-col .exc-card-section {
+    flex: 1;
+  }
+
+  .exc-card-section--sets {
+    min-height: auto;
+  }
+
+  .exc-card-body {
+    padding: 10px;
+  }
+
+  .exc-card-header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .exc-card-name {
+    font-size: 13px;
+  }
+
+  .exc-card-table-input {
+    width: 50px;
+    height: 26px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .exc-card-left-col {
+    flex-direction: column;
+  }
+
+  .exc-card-header-right {
+    gap: 4px;
+  }
+
+  .exc-card-sets-pill {
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+
+  .exc-card-section {
+    padding: 10px;
+  }
+}
+

@@ -6,48 +6,6 @@
   min-height: calc(100vh - 64px);
 }
 
-/* ── Ambient orbs ── */
-.ee-orbs {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 0;
-}
-
-.ee-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.08);
-}
-
-.ee-orb-1 {
-  width: 380px;
-  height: 380px;
-  top: -100px;
-  right: -80px;
-  animation: eeDrift1 15s ease-in-out infinite alternate;
-}
-
-.ee-orb-2 {
-  width: 280px;
-  height: 280px;
-  bottom: 10%;
-  left: -60px;
-  opacity: 0.7;
-  animation: eeDrift2 21s ease-in-out infinite alternate;
-}
-
-@keyframes eeDrift1 {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(-24px, 36px) scale(1.06); }
-}
-
-@keyframes eeDrift2 {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(30px, -28px) scale(0.94); }
-}
 
 /* ── Loading ── */
 .ee-loading {
@@ -120,19 +78,19 @@
 .ee-btn--ghost {
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.12);
-  color: rgba(255,255,255,0.6);
+  color: var(--text-secondary);
 }
 
 .ee-btn--ghost:hover:not(:disabled) {
   background: rgba(255,255,255,0.09);
-  color: #fff;
+  color: var(--text-primary);
   border-color: rgba(255,255,255,0.22);
 }
 
 .ee-btn--primary {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.15);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .ee-btn--primary:hover:not(:disabled) {
@@ -148,6 +106,36 @@
 
 .ee-btn--publish:hover:not(:disabled) {
   opacity: 0.88;
+}
+
+.ee-btn--discard {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.5);
+  padding: 8px 10px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ee-btn--discard:hover {
+  background: rgba(248,113,113,0.12);
+  border-color: rgba(248,113,113,0.25);
+  color: #f87171;
+}
+
+.ee-btn--save {
+  border: none;
+  font-weight: 700;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.ee-btn--save:hover:not(:disabled) {
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.ee-btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .ee-save-error {
@@ -226,7 +214,7 @@
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 9px;
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 0.9rem;
   outline: none;
@@ -295,7 +283,7 @@
   background: rgba(0,0,0,0.7);
   border: none;
   border-radius: 50%;
-  color: #fff;
+  color: var(--text-primary);
   cursor: pointer;
   width: 28px;
   height: 28px;
@@ -350,7 +338,7 @@
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: 50%;
-  color: #fff;
+  color: var(--text-primary);
   cursor: pointer;
   width: 40px;
   height: 40px;
@@ -522,7 +510,7 @@
   flex: 1;
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 0.875rem;
   font-weight: 500;
@@ -555,11 +543,11 @@
   transition: color 0.15s, background 0.15s;
 }
 
-.ee-field-expand-btn:hover { color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.06); }
+.ee-field-expand-btn:hover { color: var(--text-secondary); background: rgba(255,255,255,0.06); }
 .ee-field-remove-btn:hover { color: rgba(224,84,84,0.8); background: rgba(224,84,84,0.08); }
 
 .ee-field-card-body {
-  border-top: 1px solid rgba(255,255,255,0.06);
+  border-top: 1px solid var(--border-subtle);
   padding: 14px 14px 16px;
   display: flex;
   flex-direction: column;
@@ -590,7 +578,7 @@
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.09);
   border-radius: 7px;
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 0.84rem;
   outline: none;
@@ -628,7 +616,7 @@
 }
 
 .ee-toggle-thumb {
-  background: #fff;
+  background: var(--text-primary);
   border-radius: 50%;
   display: block;
   height: 16px;
@@ -747,7 +735,7 @@
 }
 
 .ee-picker-panel {
-  background: #1e1e1e;
+  background: var(--surface-2);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 16px;
   box-shadow: 0 32px 80px rgba(0,0,0,0.7);
@@ -788,7 +776,7 @@
 .ee-picker-btn:hover {
   background: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.14);
   border-color: rgba(var(--ee-accent-r), var(--ee-accent-g), var(--ee-accent-b), 0.4);
-  color: #fff;
+  color: var(--text-primary);
 }
 
 /* ── Fade-in ── */
@@ -831,7 +819,7 @@
 }
 
 .ee-number-stepper-btn:hover:not(:disabled) {
-  color: #fff;
+  color: var(--text-primary);
   background: rgba(255,255,255,0.07);
 }
 
@@ -846,7 +834,7 @@
   border: none;
   border-left: 1px solid rgba(255,255,255,0.08);
   border-right: 1px solid rgba(255,255,255,0.08);
-  color: #fff;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 0.9rem;
   outline: none;
@@ -876,7 +864,7 @@
 
 /* ── Locked (base) field card ── */
 .ee-field-card--locked {
-  border-color: rgba(255,255,255,0.06) !important;
+  border-color: var(--border-subtle) !important;
   background: rgba(255,255,255,0.02) !important;
 }
 

@@ -25,12 +25,6 @@ const TutorialOverlay = ({
   onClose, 
   onComplete 
 }) => {
-  const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render started - ${componentStartTime.toFixed(2)}ms`);
-  
-  // Hooks must be called before any early returns (React rules)
-  // ALL hooks must be called unconditionally and in the same order every render
-  const hooksStartTime = performance.now();
   const { isMuted, toggleMute } = useVideo();
   const [isLoading, setIsLoading] = useState(true);
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
@@ -46,17 +40,6 @@ const TutorialOverlay = ({
   const videoUrl = tutorialData?.[currentTutorialIndex]?.videoUrl ?? '';
   const videoRef = useRef(null);
   
-  // Log when we have a video URL to load (for debugging web/PWA tutorial card stuck gray)
-  useEffect(() => {
-    if (visible && videoUrl) {
-      logger.log('[TutorialOverlay] Video source set, waiting for onLoad', {
-        platform: Platform.OS,
-        videoUrl: videoUrl.slice?.(0, 80),
-        currentTutorialIndex,
-      });
-    }
-  }, [visible, videoUrl, currentTutorialIndex]);
-
   // Sync mute state when context isMuted changes
   useEffect(() => {
     if (videoRef.current) {
@@ -77,33 +60,9 @@ const TutorialOverlay = ({
     }
   }, [visible, tutorialData, currentTutorialIndex]);
   
-  // Track component render completion using useEffect - must be before any returns
-  // This useEffect is always called (before early returns) to maintain hook order
-  useEffect(() => {
-    if (visible && tutorialData && tutorialData.length > 0 && tutorialData[currentTutorialIndex]) {
-      const componentEndTime = performance.now();
-      const componentDuration = componentEndTime - componentStartTime;
-      logger.debug(`[CHILD] [CHECKPOINT] TutorialOverlay render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-      if (componentDuration > 50) {
-        logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-      }
-    }
-  }, [visible, tutorialData, currentTutorialIndex, componentStartTime]);
-  
-  const hooksDuration = performance.now() - hooksStartTime;
-  if (hooksDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay hooks took ${hooksDuration.toFixed(2)}ms`);
-  }
-
   // CRITICAL: Early return AFTER all hooks are called
-  // Check visibility after hooks to avoid blocking paint but maintain hook order
-  const visibilityCheckStart = performance.now();
   if (!visible || !tutorialData || tutorialData.length === 0) {
     return null;
-  }
-  const visibilityCheckDuration = performance.now() - visibilityCheckStart;
-  if (visibilityCheckDuration > 1) {
-    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay visibility check took ${visibilityCheckDuration.toFixed(2)}ms`);
   }
   
   const currentTutorial = tutorialData?.[currentTutorialIndex];
@@ -114,7 +73,6 @@ const TutorialOverlay = ({
       await videoRef.current.pauseAsync();
       setIsVideoPlaying(false);
       progressAnimation.stopAnimation();
-      logger.log('Paused video and animation');
     } else {
       await videoRef.current.playAsync();
       setIsVideoPlaying(true);
@@ -125,7 +83,6 @@ const TutorialOverlay = ({
           duration: remainingDuration,
           useNativeDriver: false,
         }).start();
-        logger.log('Resumed animation for', remainingDuration, 'ms');
       } else if (videoDuration > 0) {
         setAnimationStarted(true);
         Animated.timing(progressAnimation, {
@@ -133,7 +90,6 @@ const TutorialOverlay = ({
           duration: videoDuration,
           useNativeDriver: false,
         }).start();
-        logger.log('Started synchronized animation for', videoDuration, 'ms');
       }
     }
   };
@@ -142,7 +98,6 @@ const TutorialOverlay = ({
     toggleMute();
     if (videoRef.current) {
       await videoRef.current.setIsMutedAsync(!isMuted).catch(() => {});
-      logger.log('Video audio updated - muted:', !isMuted);
     }
   };
 
@@ -176,19 +131,14 @@ const TutorialOverlay = ({
       : 0;
     const isLoaded = s?.isLoaded === true || isWebEvent;
 
-    if (!isLoaded) {
-      logger.log('[TutorialOverlay] onVideoLoad early return: not loaded', { hasIsLoaded: s?.isLoaded, isWebEvent });
-      return;
-    }
+    if (!isLoaded) return;
 
     const duration = s?.durationMillis ?? s?.duration ?? durationFromWeb;
-    logger.log('[TutorialOverlay] onVideoLoad proceeding', { duration, platform: Platform.OS, isWebEvent });
     setIsLoading(false);
     setVideoError(false);
     setVideoDuration(duration);
     setAnimationStarted(false);
     progressAnimation.setValue(0);
-    logger.log('Video', currentTutorialIndex, 'loaded, duration:', duration);
     setTimeout(async () => {
       if (videoRef.current) {
         await videoRef.current.setPositionAsync(0).catch(() => {});
@@ -202,9 +152,7 @@ const TutorialOverlay = ({
             duration,
             useNativeDriver: false,
           }).start();
-          logger.log('Started synchronized animation for', duration, 'ms');
         }
-        logger.log('Video', currentTutorialIndex, 'position reset to 0, started playing');
       }
     }, 100);
   };
@@ -228,10 +176,8 @@ const TutorialOverlay = ({
     // Auto-skip to next tutorial after a short delay, or close if it's the last one
     setTimeout(() => {
       if (currentTutorialIndex < tutorialData.length - 1) {
-        logger.log('⏭️ Auto-skipping to next tutorial due to video error');
         handleNextTutorial();
       } else {
-        logger.log('✅ Closing tutorial overlay (last tutorial failed)');
         handleComplete();
       }
     }, 2000); // Give user 2 seconds to see the error before auto-skipping
@@ -256,17 +202,7 @@ const TutorialOverlay = ({
     return null;
   }
 
-  // Create styles with dimensions
-  const stylesStartTime = performance.now();
   const styles = createStyles(screenWidth, screenHeight);
-  const stylesDuration = performance.now() - stylesStartTime;
-  logger.debug(`[CHILD] [TIMING] TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
-  if (stylesDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay createStyles took ${stylesDuration.toFixed(2)}ms`);
-  }
-
-  const jsxStartTime = performance.now();
-  logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation starting - ${jsxStartTime.toFixed(2)}ms`);
 
   const videoCardContent = (
     <TouchableOpacity
@@ -421,15 +357,6 @@ const TutorialOverlay = ({
       >
         {videoCardContent}
       </TouchableOpacity>
-      {(() => {
-        const jsxEndTime = performance.now();
-        const jsxDuration = jsxEndTime - jsxStartTime;
-        logger.debug(`[CHILD] [TIMING] TutorialOverlay JSX creation completed - ${jsxEndTime.toFixed(2)}ms (took ${jsxDuration.toFixed(2)}ms)`);
-        if (jsxDuration > 50) {
-          logger.warn(`[CHILD] ⚠️ SLOW: TutorialOverlay JSX creation took ${jsxDuration.toFixed(2)}ms`);
-        }
-        return null;
-      })()}
     </Modal>
   );
 };

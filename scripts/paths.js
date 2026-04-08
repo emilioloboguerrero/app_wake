@@ -21,14 +21,17 @@ module.exports = {
   // Build output directories (each app's build writes here)
   dirLandingOutput: path.join(root, 'apps', 'landing', 'dist'),
   dirCreatorOutput: path.join(root, 'apps', 'creator-dashboard', 'build'),
+  dirDevPortalOutput: path.join(root, 'apps', 'developer-portal', 'build'),
 
   // Assembled hosting directory (firebase.json "public" points here)
   dirHosting: path.join(root, 'hosting'),
   dirHostingApp: path.join(root, 'hosting', 'app'),
   dirHostingLanding: path.join(root, 'hosting', 'landing'),
   dirHostingCreators: path.join(root, 'hosting', 'creators'),
+  dirHostingDevelopers: path.join(root, 'hosting', 'developers'),
 
-  // Base paths for deployed apps (PWA at /app; landing at / and /landing; creators at /creators)
+  // Base paths for deployed apps (PWA at /app; landing at / and /landing; creators at /creators; devportal at /developers)
   basePathPwa: '/app',
   basePathCreators: '/creators',
+  basePathDevelopers: '/developers',
 };

@@ -2,14 +2,14 @@
 // Expo-compatible Google Sign-In with Firebase Web SDK
 import { GoogleAuthProvider, signInWithCredential, signInWithPopup } from 'firebase/auth';
 import { auth } from '../config/firebase';
-import firestoreService from './firestoreService';
+import apiService from './apiService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
 
-// Check if running in Expo Go
-const isExpoGo = Constants.appOwnership === 'expo';
+// Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
+const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 // Dynamic import for Google Sign-In (only loaded when needed)
 let GoogleSignin = null;
@@ -17,10 +17,7 @@ let GoogleSignin = null;
 class GoogleAuthService {
   constructor() {
     // Google Sign-In will be loaded dynamically when needed
-    logger.log('GoogleAuthService initialized');
-    if (isExpoGo) {
-      logger.log('Google Sign-In disabled in Expo Go - will work in production builds');
-    }
+    // Google Sign-In disabled in Expo Go - will work in production builds
   }
 
   // Dynamically load Google Sign-In module
@@ -44,9 +41,6 @@ class GoogleAuthService {
         webClientId: webClientId,
       });
       
-      logger.log('Google Sign-In loaded and configured successfully');
-      logger.log('Web Client ID:', webClientId);
-      
       return GoogleSignin;
     } catch (error) {
       logger.error('Error loading Google Sign-In module:', error);
@@ -68,12 +62,9 @@ class GoogleAuthService {
     // Web: Use Firebase signInWithPopup
     if (isWeb) {
       try {
-        logger.log('Google Sign-In initiated (Web)');
         const provider = new GoogleAuthProvider();
         const userCredential = await signInWithPopup(auth, provider);
         const firebaseUser = userCredential.user;
-        
-        logger.log('Google sign-in successful (Web):', firebaseUser.uid);
         
         // Create or update user document (allows new users — no account required)
         await this.createOrUpdateUserDocument(firebaseUser);
@@ -116,8 +107,6 @@ class GoogleAuthService {
     }
 
     try {
-      logger.log('Google Sign-In initiated (Native)');
-      
       // Dynamically load Google Sign-In module
       const GoogleSigninModule = await this.loadGoogleSignIn();
       
@@ -137,8 +126,6 @@ class GoogleAuthService {
         throw new Error('No ID token found');
       }
 
-      logger.log('ID token received, signing in to Firebase...');
-      
       // Create a Google credential with the token
       const googleCredential = GoogleAuthProvider.credential(idToken);
 
@@ -146,11 +133,9 @@ class GoogleAuthService {
       const userCredential = await signInWithCredential(auth, googleCredential);
       const firebaseUser = userCredential.user;
       
-      logger.log('Google sign-in successful:', firebaseUser.uid);
-      
       // Create or update user document (allows new users — no account required)
       await this.createOrUpdateUserDocument(firebaseUser);
-      
+
       return { 
         success: true, 
         user: firebaseUser
@@ -212,15 +197,12 @@ class GoogleAuthService {
   // Sign out from Google and Firebase
   async signOut() {
     try {
-      logger.log('Signing out from Google and Firebase...');
-      
       // Only sign out from Google if not in Expo Go
       if (!isExpoGo) {
         const GoogleSigninModule = await this.loadGoogleSignIn();
         await GoogleSigninModule.signOut();
       }
       
-      logger.log('Sign out successful');
       return { success: true };
       
     } catch (error) {
@@ -282,20 +264,17 @@ class GoogleAuthService {
       };
 
       // Check if user already exists in Firestore
-      const existingUser = await firestoreService.getUser(firebaseUser.uid);
-      logger.log('[GOOGLE AUTH] createOrUpdateUserDocument: uid', firebaseUser.uid, 'existingUser:', !!existingUser);
-      
+      const existingUser = await apiService.getUser(firebaseUser.uid);
+
       if (existingUser) {
         // User exists - update login time and provider info
-        await firestoreService.updateUser(firebaseUser.uid, {
+        await apiService.updateUser(firebaseUser.uid, {
           ...userData,
           onboardingCompleted: existingUser.onboardingCompleted, // Preserve onboarding status
         });
-        logger.log('[GOOGLE AUTH] Updated existing user document');
       } else {
         // New Google user - updateUser now creates doc if missing
-        logger.log('[GOOGLE AUTH] No document for new Google user — calling updateUser (will create doc)');
-        await firestoreService.updateUser(firebaseUser.uid, userData);
+        await apiService.updateUser(firebaseUser.uid, userData);
       }
       
     } catch (error) {

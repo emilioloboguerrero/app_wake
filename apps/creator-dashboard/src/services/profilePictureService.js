@@ -1,13 +1,7 @@
-import { storage } from '../config/firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { updateProfile } from 'firebase/auth';
-import { auth } from '../config/firebase';
-import { updateUser } from './firestoreService';
-import { serverTimestamp } from 'firebase/firestore';
+import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
 
 class ProfilePictureService {
-  // Resize to 400×400 max, convert to JPEG at 0.8 quality — matches mobile app behavior
   async compressImage(imageFile) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -54,46 +48,37 @@ class ProfilePictureService {
 
     const processedFile = await this.compressImage(imageFile);
 
-    // Mirror the mobile app path: profiles/{userId}/profile.jpg
-    const storagePath = `profiles/${userId}/profile.jpg`;
-    const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, processedFile);
-
-    return new Promise((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          if (onProgress) {
-            onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          }
-        },
-        (error) => {
-          logger.error('Error uploading profile picture:', error);
-          reject(error);
-        },
-        async () => {
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-
-            const currentUser = auth.currentUser;
-            if (currentUser) {
-              await updateProfile(currentUser, { photoURL: downloadURL });
-            }
-
-            await updateUser(userId, {
-              profilePictureUrl: downloadURL,
-              profilePicturePath: storagePath,
-              profilePictureUpdatedAt: serverTimestamp()
-            });
-
-            resolve(downloadURL);
-          } catch (error) {
-            logger.error('Error updating profile after upload:', error);
-            reject(error);
-          }
-        }
-      );
+    const { data } = await apiClient.post('/users/me/profile-picture/upload-url', {
+      contentType: 'image/jpeg',
     });
+
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', 'image/jpeg');
+
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress((e.loaded / e.total) * 100);
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Error de red al subir la imagen'));
+      xhr.send(processedFile);
+    });
+
+    const confirmResult = await apiClient.post('/users/me/profile-picture/confirm', {
+      storagePath: data.storagePath,
+    });
+
+    return confirmResult.data.profilePictureUrl;
   }
 }
 

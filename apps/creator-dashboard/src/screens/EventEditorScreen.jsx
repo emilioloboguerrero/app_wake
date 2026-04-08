@@ -1,25 +1,31 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor,
   useSensor, useSensors
 } from '@dnd-kit/core';
 import {
   SortableContext, sortableKeyboardCoordinates,
-  verticalListSortingStrategy, useSortable, arrayMove
+  verticalListSortingStrategy, arrayMove
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
+import apiClient from '../utils/apiClient';
 import DashboardLayout from '../components/DashboardLayout';
-import ScreenSkeleton from '../components/ScreenSkeleton';
+import { GlowingEffect, SkeletonCard, InlineError } from '../components/ui';
 import ErrorBoundary from '../components/ErrorBoundary';
+import {
+  FIELD_TYPES, DEFAULT_FIELD_IDS, DEFAULT_FIELDS,
+  relativeLuminance, extractAccentFromImage,
+  SortableField, LockedField, FieldTypePicker, NumberStepper,
+} from '../components/events/eventFieldComponents';
 import logger from '../utils/logger';
 import DatePicker from '../components/DatePicker';
+import MediaPickerModal from '../components/MediaPickerModal';
+import ContextualHint from '../components/hints/ContextualHint';
 import './EventEditorScreen.css';
 
 // ─── Helpers ──────────────────────────────────────────────────────
@@ -29,299 +35,6 @@ function formatDateForInput(ts) {
   return d.toISOString().split('T')[0];
 }
 
-function relativeLuminance(r, g, b) {
-  return [r, g, b]
-    .map(v => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); })
-    .reduce((acc, c, i) => acc + c * [0.2126, 0.7152, 0.0722][i], 0);
-}
-
-const FIELD_TYPES = [
-  { type: 'text',        label: 'Texto corto' },
-  { type: 'email',       label: 'Email' },
-  { type: 'tel',         label: 'Teléfono' },
-  { type: 'number',      label: 'Número' },
-  { type: 'select',      label: 'Selección' },
-  { type: 'radio',       label: 'Radio' },
-  { type: 'multiselect', label: 'Selección múltiple' },
-  { type: 'textarea',    label: 'Párrafo' },
-  { type: 'date',        label: 'Fecha' },
-];
-
-const TYPE_LABELS = Object.fromEntries(FIELD_TYPES.map(f => [f.type, f.label]));
-
-// Default V1 fields — always present, cannot be removed
-const DEFAULT_FIELD_IDS = ['f_nombre', 'f_email', 'f_telefono', 'f_edad', 'f_genero'];
-const DEFAULT_FIELDS = [
-  { id: 'f_nombre',   type: 'text',   label: 'Nombre',   placeholder: 'Tu nombre completo', required: true,  locked: true },
-  { id: 'f_email',    type: 'email',  label: 'Email',    placeholder: 'correo@ejemplo.com', required: true,  locked: true },
-  { id: 'f_telefono', type: 'tel',    label: 'Teléfono', placeholder: '+57 300 000 0000',   required: false, locked: true },
-  { id: 'f_edad',     type: 'number', label: 'Edad',     placeholder: '25',                 required: false, locked: true },
-  { id: 'f_genero',   type: 'select', label: 'Género',   placeholder: '',                   required: false, locked: true, options: ['Masculino', 'Femenino', 'Prefiero no decir'] },
-];
-
-// ─── SortableField ─────────────────────────────────────────────────
-function SortableField({ field, onUpdate, onRemove }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: field.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.45 : 1,
-    zIndex: isDragging ? 9 : undefined,
-  };
-  const [expanded, setExpanded] = useState(false);
-  const hasOptions = ['select', 'radio', 'multiselect'].includes(field.type);
-
-  return (
-    <div ref={setNodeRef} style={style} className={`ee-field-card${isDragging ? ' ee-field-card--dragging' : ''}`}>
-      <div className="ee-field-card-header">
-        <button
-          className="ee-field-drag"
-          {...attributes}
-          {...listeners}
-          aria-label="Arrastrar"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="9" cy="5" r="1.2" fill="currentColor" /><circle cx="15" cy="5" r="1.2" fill="currentColor" />
-            <circle cx="9" cy="12" r="1.2" fill="currentColor" /><circle cx="15" cy="12" r="1.2" fill="currentColor" />
-            <circle cx="9" cy="19" r="1.2" fill="currentColor" /><circle cx="15" cy="19" r="1.2" fill="currentColor" />
-          </svg>
-        </button>
-        <span className="ee-field-type-badge">{TYPE_LABELS[field.type]}</span>
-        <input
-          className="ee-field-label-input"
-          placeholder="Etiqueta del campo…"
-          value={field.label}
-          onChange={e => onUpdate({ label: e.target.value })}
-        />
-        <div className="ee-field-actions">
-          <button
-            className="ee-field-expand-btn"
-            onClick={() => setExpanded(e => !e)}
-            aria-label={expanded ? 'Colapsar' : 'Expandir'}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              {expanded
-                ? <polyline points="18 15 12 9 6 15" />
-                : <polyline points="6 9 12 15 18 9" />}
-            </svg>
-          </button>
-          <button className="ee-field-remove-btn" onClick={onRemove} aria-label="Eliminar campo">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="ee-field-card-body">
-          <div className="ee-field-row">
-            <label className="ee-field-sub-label">Placeholder</label>
-            <input
-              className="ee-field-input"
-              placeholder="Texto de ayuda…"
-              value={field.placeholder || ''}
-              onChange={e => onUpdate({ placeholder: e.target.value })}
-            />
-          </div>
-          <div className="ee-field-row ee-field-row--toggle">
-            <span className="ee-field-sub-label">Obligatorio</span>
-            <button
-              className={`ee-toggle${field.required ? ' ee-toggle--on' : ''}`}
-              onClick={() => onUpdate({ required: !field.required })}
-              aria-pressed={field.required}
-            >
-              <span className="ee-toggle-thumb" />
-            </button>
-          </div>
-          {hasOptions && (
-            <div className="ee-field-options">
-              <label className="ee-field-sub-label">Opciones</label>
-              {(field.options || []).map((opt, i) => (
-                <div key={i} className="ee-option-row">
-                  <input
-                    className="ee-field-input"
-                    placeholder={`Opción ${i + 1}`}
-                    value={opt}
-                    onChange={e => {
-                      const o = [...(field.options || [])];
-                      o[i] = e.target.value;
-                      onUpdate({ options: o });
-                    }}
-                  />
-                  <button
-                    className="ee-option-remove"
-                    onClick={() => {
-                      const o = (field.options || []).filter((_, j) => j !== i);
-                      onUpdate({ options: o });
-                    }}
-                    aria-label="Eliminar opción"
-                  >×</button>
-                </div>
-              ))}
-              <button
-                className="ee-add-option-btn"
-                onClick={() => onUpdate({ options: [...(field.options || []), ''] })}
-              >
-                + Agregar opción
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── LockedField ───────────────────────────────────────────────────
-function LockedField({ field, onUpdate }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasOptions = ['select', 'radio', 'multiselect'].includes(field.type);
-
-  return (
-    <div className="ee-field-card ee-field-card--locked">
-      <div className="ee-field-card-header">
-        <span className="ee-field-lock-icon" aria-label="Campo base">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <rect x="3" y="11" width="18" height="11" rx="2" />
-            <path d="M7 11V7a5 5 0 0110 0v4" />
-          </svg>
-        </span>
-        <span className="ee-field-type-badge">{TYPE_LABELS[field.type]}</span>
-        <span className="ee-field-label-locked">{field.label}</span>
-        <div className="ee-field-actions">
-          <button
-            className="ee-field-expand-btn"
-            onClick={() => setExpanded(e => !e)}
-            aria-label={expanded ? 'Colapsar' : 'Expandir'}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              {expanded
-                ? <polyline points="18 15 12 9 6 15" />
-                : <polyline points="6 9 12 15 18 9" />}
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="ee-field-card-body">
-          <div className="ee-field-row">
-            <label className="ee-field-sub-label">Placeholder</label>
-            <input
-              className="ee-field-input"
-              placeholder="Texto de ayuda…"
-              value={field.placeholder || ''}
-              onChange={e => onUpdate({ placeholder: e.target.value })}
-            />
-          </div>
-          <div className="ee-field-row ee-field-row--toggle">
-            <span className="ee-field-sub-label">Obligatorio</span>
-            <button
-              className={`ee-toggle${field.required ? ' ee-toggle--on' : ''}`}
-              onClick={() => onUpdate({ required: !field.required })}
-              aria-pressed={field.required}
-            >
-              <span className="ee-toggle-thumb" />
-            </button>
-          </div>
-          {hasOptions && (
-            <div className="ee-field-options">
-              <label className="ee-field-sub-label">Opciones</label>
-              {(field.options || []).map((opt, i) => (
-                <div key={i} className="ee-option-row">
-                  <input
-                    className="ee-field-input"
-                    placeholder={`Opción ${i + 1}`}
-                    value={opt}
-                    onChange={e => {
-                      const o = [...(field.options || [])];
-                      o[i] = e.target.value;
-                      onUpdate({ options: o });
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── FieldTypePicker ───────────────────────────────────────────────
-function FieldTypePicker({ onPick, onClose }) {
-  return (
-    <div className="ee-picker-backdrop" onClick={onClose}>
-      <div className="ee-picker-panel ee-fade-in" onClick={e => e.stopPropagation()}>
-        <p className="ee-picker-title">Tipo de campo</p>
-        <div className="ee-picker-grid">
-          {FIELD_TYPES.map(ft => (
-            <button key={ft.type} className="ee-picker-btn" onClick={() => onPick(ft.type)}>
-              {ft.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── NumberStepper ─────────────────────────────────────────────────
-function NumberStepper({ value, onChange, placeholder, min = 1 }) {
-  const num = value === '' ? '' : Number(value);
-
-  function decrement() {
-    if (value === '') return;
-    const next = Math.max(min, num - 1);
-    onChange(next === min && num === min ? '' : String(next));
-  }
-
-  function increment() {
-    const next = value === '' ? min : num + 1;
-    onChange(String(next));
-  }
-
-  return (
-    <div className="ee-number-stepper">
-      <button
-        type="button"
-        className="ee-number-stepper-btn"
-        onClick={decrement}
-        disabled={value === '' || num <= min}
-        aria-label="Reducir"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
-      <input
-        className="ee-number-stepper-input"
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        placeholder={placeholder}
-        value={value}
-        onChange={e => {
-          const v = e.target.value.replace(/[^0-9]/g, '');
-          onChange(v);
-        }}
-      />
-      <button
-        type="button"
-        className="ee-number-stepper-btn"
-        onClick={increment}
-        aria-label="Aumentar"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-      </button>
-    </div>
-  );
-}
 
 // ─── Main Screen ───────────────────────────────────────────────────
 export default function EventEditorScreen() {
@@ -330,6 +43,7 @@ export default function EventEditorScreen() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   // Form state
   const [title, setTitle] = useState('');
@@ -352,12 +66,12 @@ export default function EventEditorScreen() {
 
   // UI state
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentEventId, setCurrentEventId] = useState(eventId || null);
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
-  const imageInputRef = useRef(null);
 
   const accentCss = `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})`;
   const cssVars = {
@@ -376,7 +90,8 @@ export default function EventEditorScreen() {
 
   useEffect(() => {
     if (!eventData) return;
-    if (eventData.creator_id !== user?.uid) {
+    if (!user) return;
+    if (eventData.creator_id !== user.uid) {
       navigate('/events');
       return;
     }
@@ -404,30 +119,7 @@ export default function EventEditorScreen() {
 
   useEffect(() => {
     if (!imagePreview) return;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      try {
-        const size = 64;
-        const canvas = document.createElement('canvas');
-        canvas.width = size; canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, size, size);
-        const { data } = ctx.getImageData(0, 0, size, size);
-        let bestR = 255, bestG = 255, bestB = 255, bestScore = -1;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
-          if (a < 128) continue;
-          const max = Math.max(r, g, b), min = Math.min(r, g, b);
-          if (max < 40 || max > 245) continue;
-          const sat = max === 0 ? 0 : (max - min) / max;
-          const score = sat * (max / 255);
-          if (score > bestScore) { bestScore = score; bestR = r; bestG = g; bestB = b; }
-        }
-        setAccentRgb([bestR, bestG, bestB]);
-      } catch {}
-    };
-    img.src = imagePreview;
+    return extractAccentFromImage(imagePreview, setAccentRgb);
   }, [imagePreview]);
 
   const sensors = useSensors(
@@ -469,39 +161,45 @@ export default function EventEditorScreen() {
     setFields(prev => prev.filter(f => f.id !== id));
   }
 
-  function handleImageChange(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(reader.result);
-    reader.readAsDataURL(file);
+  function handleMediaSelect(media) {
+    setImageFile(null);
+    setImageUrl(media.url);
+    setImagePreview(media.url);
   }
 
-  async function uploadImage(evId) {
+  async function uploadImageForEvent(evId) {
     if (!imageFile) return imageUrl;
-    const storageRef = ref(storage, `events/${evId}/cover`);
-    return new Promise((resolve, reject) => {
-      const task = uploadBytesResumable(storageRef, imageFile);
-      task.on(
-        'state_changed',
-        snap => setUploadProgress(Math.round(snap.bytesTransferred / snap.totalBytes * 100)),
-        reject,
-        async () => {
-          const url = await getDownloadURL(task.snapshot.ref);
-          setImageFile(null);
-          setImageUrl(url);
-          setUploadProgress(null);
-          resolve(url);
-        }
-      );
+    const contentType = imageFile.type || 'image/jpeg';
+    const { data } = await apiClient.post(`/creator/events/${evId}/image/upload-url`, { contentType });
+    await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.uploadUrl);
+      xhr.setRequestHeader('Content-Type', contentType);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.timeout = 120000;
+      xhr.ontimeout = () => reject(new Error('Upload timed out'));
+      xhr.send(imageFile);
     });
+    const confirmRes = await apiClient.post(`/creator/events/${evId}/image/confirm`, { storagePath: data.storagePath });
+    setImageFile(null);
+    setUploadProgress(null);
+    const url = confirmRes.data.imageUrl;
+    setImageUrl(url);
+    return url;
   }
 
   async function handleSave(targetStatus = status) {
-    if (!title.trim()) { setSaveError('El título es obligatorio'); return; }
+    const errors = {};
+    if (!title.trim()) errors.title = 'El titulo es obligatorio';
+    if (!date) errors.date = 'La fecha es obligatoria';
+    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un numero positivo';
+    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
+    setFieldErrors({});
     setSaving(true);
-    setSaveError(null);
     try {
       let evId = currentEventId;
       let isNewDoc = false;
@@ -510,8 +208,6 @@ export default function EventEditorScreen() {
         setCurrentEventId(evId);
         isNewDoc = true;
       }
-
-      const finalImageUrl = await uploadImage(evId);
 
       const validFields = fields
         .filter(f => f.locked || f.label.trim())
@@ -540,23 +236,29 @@ export default function EventEditorScreen() {
         },
         status: targetStatus,
         fields: validFields,
-        image_url: finalImageUrl,
+        image_url: imageUrl,
       };
 
-      if (!isNewDoc) {
-        await eventService.updateEvent(evId, eventData);
-      } else {
+      if (isNewDoc) {
         eventData.creator_id = user.uid;
         eventData.registration_count = 0;
         await eventService.createEvent(evId, eventData);
         navigate(`/events/${evId}/edit`, { replace: true });
       }
 
+      const finalImageUrl = await uploadImageForEvent(evId);
+
+      if (!isNewDoc) {
+        await eventService.updateEvent(evId, { ...eventData, image_url: finalImageUrl });
+      } else if (finalImageUrl !== imageUrl) {
+        await eventService.updateEvent(evId, { image_url: finalImageUrl });
+      }
+
       queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user.uid) });
       setStatus(targetStatus);
     } catch (err) {
       logger.error('[EventEditor] save failed', err);
-      setSaveError('Error al guardar. Intenta de nuevo.');
+      showToast('No pudimos guardar el evento. Intenta de nuevo.', 'error');
       setUploadProgress(null);
     } finally {
       setSaving(false);
@@ -571,7 +273,7 @@ export default function EventEditorScreen() {
   if (isEdit && eventLoading) {
     return (
       <DashboardLayout screenName="Evento" showBackButton backPath="/events">
-        <ScreenSkeleton />
+        <SkeletonCard style={{ height: '80vh' }} />
       </DashboardLayout>
     );
   }
@@ -587,12 +289,6 @@ export default function EventEditorScreen() {
       backPath="/events"
     >
       <div className="ee-screen" style={{ ...cssVars, '--ee-accent-text': accentText }}>
-        {/* Ambient orbs */}
-        <div className="ee-orbs" aria-hidden="true">
-          <div className="ee-orb ee-orb-1" />
-          <div className="ee-orb ee-orb-2" />
-        </div>
-
         {/* Top action bar */}
         <div className="ee-top-bar">
           <div className="ee-status-pills">
@@ -637,12 +333,11 @@ export default function EventEditorScreen() {
           </div>
         </div>
 
-        {saveError && <p className="ee-save-error">{saveError}</p>}
-
         {/* Two-panel layout */}
         <div className="ee-panels">
           {/* ── Left: Metadata ── */}
-          <div className="ee-panel ee-panel--meta">
+          <div className="ee-panel ee-panel--meta" style={{ position: 'relative' }}>
+            <GlowingEffect />
             <h2 className="ee-panel-title">Detalles del evento</h2>
 
             {/* Cover image */}
@@ -668,23 +363,16 @@ export default function EventEditorScreen() {
               ) : (
                 <button
                   className="ee-image-upload-area"
-                  onClick={() => imageInputRef.current?.click()}
+                  onClick={() => setShowMediaPicker(true)}
                 >
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <rect x="3" y="3" width="18" height="18" rx="2" />
                     <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" strokeWidth="0" />
                     <polyline points="21 15 16 10 5 21" />
                   </svg>
-                  <span>Subir imagen</span>
+                  <span>Seleccionar imagen</span>
                 </button>
               )}
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                className="ee-input-hidden"
-                onChange={handleImageChange}
-              />
             </div>
 
             {/* Title */}
@@ -694,8 +382,10 @@ export default function EventEditorScreen() {
                 className="ee-input"
                 placeholder="Ej. Run Club Marzo 2026"
                 value={title}
-                onChange={e => setTitle(e.target.value)}
+                onChange={e => { setTitle(e.target.value); setFieldErrors(prev => ({ ...prev, title: undefined })); }}
+                aria-describedby={fieldErrors.title ? 'title-error' : undefined}
               />
+              <InlineError message={fieldErrors.title} field="title" />
             </div>
 
             {/* Description */}
@@ -712,13 +402,14 @@ export default function EventEditorScreen() {
 
             {/* Date */}
             <div className="ee-field-group">
-              <label className="ee-label">Fecha</label>
+              <label className="ee-label">Fecha <span className="ee-required">*</span></label>
               <DatePicker
                 value={date}
-                onChange={e => setDate(e.target.value)}
+                onChange={e => { setDate(e.target.value); setFieldErrors(prev => ({ ...prev, date: undefined })); }}
                 placeholder="Selecciona la fecha del evento"
                 allowFuture
               />
+              <InlineError message={fieldErrors.date} field="date" />
             </div>
 
             {/* Location */}
@@ -737,10 +428,11 @@ export default function EventEditorScreen() {
               <label className="ee-label">Cupos máximos</label>
               <NumberStepper
                 value={maxRegistrations}
-                onChange={setMaxRegistrations}
+                onChange={(v) => { setMaxRegistrations(v); setFieldErrors(prev => ({ ...prev, capacity: undefined })); }}
                 placeholder="Ilimitado"
                 min={1}
               />
+              <InlineError message={fieldErrors.capacity} field="capacity" />
             </div>
 
             {/* Confirmation message */}
@@ -788,39 +480,12 @@ export default function EventEditorScreen() {
               </div>
             </div>
 
-            {/* Access */}
-            <div className="ee-field-group">
-              <label className="ee-label">Acceso</label>
-              <div className="ee-access-toggle">
-                <button
-                  className={`ee-access-opt${access === 'public' ? ' ee-access-opt--on' : ''}`}
-                  onClick={() => setAccess('public')}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
-                  </svg>
-                  Público
-                </button>
-                <button
-                  className={`ee-access-opt${access === 'wake_users_only' ? ' ee-access-opt--on' : ''}`}
-                  onClick={() => setAccess('wake_users_only')}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  </svg>
-                  Solo usuarios Wake
-                </button>
-              </div>
-              {access === 'wake_users_only' && (
-                <p className="ee-access-note">
-                  Los usuarios deben tener cuenta en Wake para registrarse.
-                </p>
-              )}
-            </div>
+            {/* Acceso section hidden for now */}
           </div>
 
           {/* ── Right: Field Builder ── */}
-          <div className="ee-panel ee-panel--builder">
+          <div className="ee-panel ee-panel--builder" style={{ position: 'relative' }}>
+            <GlowingEffect />
             <div className="ee-panel-title-row">
               <h2 className="ee-panel-title">Campos del formulario</h2>
               {(() => {
@@ -839,6 +504,7 @@ export default function EventEditorScreen() {
                   key={field.id}
                   field={field}
                   onUpdate={changes => updateField(field.id, changes)}
+                  onRemove={() => removeField(field.id)}
                 />
               ))}
             </div>
@@ -884,6 +550,13 @@ export default function EventEditorScreen() {
           />
         )}
 
+        <MediaPickerModal
+          isOpen={showMediaPicker}
+          onClose={() => setShowMediaPicker(false)}
+          onSelect={handleMediaSelect}
+          accept="image/*"
+        />
+
         {lightboxOpen && imagePreview && (
           <div className="ee-lightbox" onClick={() => setLightboxOpen(false)}>
             <button className="ee-lightbox-close" aria-label="Cerrar">
@@ -900,6 +573,7 @@ export default function EventEditorScreen() {
           </div>
         )}
       </div>
+      <ContextualHint screenKey="event-editor" />
     </DashboardLayout>
     </ErrorBoundary>
   );

@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
 import { HeaderStreakBadge } from './HeaderStreakBadge';
 import HeaderStreakInfoModal from './HeaderStreakInfoModal';
-import logger from '../utils/logger';
 // Fixed header container that stays above ScrollView
 export const FixedWakeHeader = ({ 
   showBackButton = false,
@@ -19,15 +18,7 @@ export const FixedWakeHeader = ({
   menuButton = null,
   backgroundColor = '#1a1a1a'
 }) => {
-  const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] FixedWakeHeader render started - ${componentStartTime.toFixed(2)}ms`);
-  
-  const insetsStartTime = performance.now();
   const insets = useSafeAreaInsets();
-  const insetsDuration = performance.now() - insetsStartTime;
-  if (insetsDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: useSafeAreaInsets took ${insetsDuration.toFixed(2)}ms`);
-  }
   
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -165,20 +156,10 @@ export const FixedWakeHeader = ({
       />
     </View>
   );
-  
-  const componentEndTime = performance.now();
-  const componentDuration = componentEndTime - componentStartTime;
-  logger.debug(`[CHILD] [CHECKPOINT] FixedWakeHeader render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-  if (componentDuration > 50) {
-    logger.warn(`[CHILD] ⚠️ SLOW: FixedWakeHeader render took ${componentDuration.toFixed(2)}ms (threshold: 50ms)`);
-  }
 };
 
 // Header spacer component to push content down when using fixed header
 export const WakeHeaderSpacer = () => {
-  const componentStartTime = performance.now();
-  logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render started - ${componentStartTime.toFixed(2)}ms`);
-  
   const insets = useSafeAreaInsets();
   // Use hook for reactive dimensions that update on orientation change
   const { height: screenHeight } = useWindowDimensions();
@@ -187,13 +168,6 @@ export const WakeHeaderSpacer = () => {
   const safeAreaTop = Platform.OS === 'web' ? 0 : Math.max(0, insets.top - 8);
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const totalHeight = headerHeight + safeAreaTop;
-  
-  const componentEndTime = performance.now();
-  const componentDuration = componentEndTime - componentStartTime;
-  logger.debug(`[CHILD] [CHECKPOINT] WakeHeaderSpacer render completed - ${componentEndTime.toFixed(2)}ms (took ${componentDuration.toFixed(2)}ms)`);
-  if (componentDuration > 10) {
-    logger.warn(`[CHILD] ⚠️ SLOW: WakeHeaderSpacer render took ${componentDuration.toFixed(2)}ms (threshold: 10ms)`);
-  }
   
   return <View style={{ height: totalHeight }} />;
 };
@@ -236,16 +210,16 @@ const styles = StyleSheet.create({
   },
   resetButton: {
     position: 'absolute',
-    backgroundColor: 'rgba(255, 68, 68, 0.2)',
+    backgroundColor: 'rgba(224, 84, 84, 0.2)',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 68, 68, 0.4)',
+    borderColor: 'rgba(224, 84, 84, 0.4)',
     zIndex: 1001,
   },
   resetButtonText: {
-    color: '#ff4444',
+    color: 'rgba(224, 84, 84, 0.9)',
     fontSize: 14,
     fontWeight: '600',
   },
