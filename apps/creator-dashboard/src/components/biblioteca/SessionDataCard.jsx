@@ -7,7 +7,7 @@ const spring = { duration: 0.42, ease: [0.22, 1, 0.36, 1] };
 const fast = { duration: 0.25, ease: [0.22, 1, 0.36, 1] };
 
 const STRENGTH_PRESET = {
-  measures: ['reps', 'weight'],
+  measures: ['reps', 'weight', 'intensity'],
   objectives: ['reps', 'intensity', 'previous'],
 };
 

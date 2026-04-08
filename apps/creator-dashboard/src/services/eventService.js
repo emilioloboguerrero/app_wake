@@ -50,11 +50,18 @@ class EventService {
   }
 
   async getEventRegistrations(eventId, opts = {}) {
+    const all = [];
+    let pageToken = opts.pageToken ?? null;
     const params = {};
     if (opts.checkedIn != null) params.checkedIn = opts.checkedIn;
-    if (opts.pageToken) params.pageToken = opts.pageToken;
-    const result = await apiClient.get(`/creator/events/${eventId}/registrations`, { params });
-    return (result?.data ?? []).map((r) => ({ id: r.registrationId, ...r }));
+    do {
+      if (pageToken) params.pageToken = pageToken;
+      const result = await apiClient.get(`/creator/events/${eventId}/registrations`, { params });
+      const page = result?.data ?? [];
+      all.push(...page.map((r) => ({ id: r.registrationId, ...r })));
+      pageToken = result?.nextPageToken ?? null;
+    } while (pageToken);
+    return all;
   }
 
   async getEventWaitlist(eventId) {

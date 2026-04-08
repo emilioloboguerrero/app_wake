@@ -67,17 +67,43 @@
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ─── One-on-one view layout (3 col × 2 row) ─────────────────── */
+/*  A = col1 row1  |  B = cols2-3 row1                            */
+/*  C = cols1-3 row2  (full-width adherence chart)                */
+.bento-grid--one-on-one {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 210px 1fr;
+  grid-template-areas:
+    "A B B"
+    "C C C";
+}
+
+/* ─── Programs view layout (3 col × 2 row) ───────────────────── */
+/*  A = col1 row1  |  B = cols2-3 row1                            */
+/*  C = cols1-2 row2  |  D = col3 row2                            */
+.bento-grid--programs {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 210px 1fr;
+  grid-template-areas:
+    "A B B"
+    "C C D";
+}
+
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .bento-grid--5-panel,
-  .bento-grid--7-panel {
+  .bento-grid--7-panel,
+  .bento-grid--one-on-one,
+  .bento-grid--programs {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
 
   .bento-grid--5-panel > *,
-  .bento-grid--7-panel > * {
+  .bento-grid--7-panel > *,
+  .bento-grid--one-on-one > *,
+  .bento-grid--programs > * {
     grid-area: unset !important;
     min-height: 140px;
   }

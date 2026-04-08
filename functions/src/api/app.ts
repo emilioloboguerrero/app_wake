@@ -39,6 +39,10 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 const ALLOWED_ORIGINS = new Set([
   "https://wakelab.co",
   "https://www.wakelab.co",
+  "https://wolf-20b8b.web.app",
+  "https://wolf-20b8b.firebaseapp.com",
+  "https://wake-staging.web.app",
+  "https://wake-staging.firebaseapp.com",
 ]);
 const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
 
@@ -72,9 +76,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // ─── Health ────────────────────────────────────────────────────────────────
-app.get("/v1/health", (_req: Request, res: Response) => {
+const healthHandler = (_req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
+};
+app.get("/v1/health", healthHandler);
+app.get("/api/v1/health", healthHandler);
 
 // ─── Swagger UI (emulator only — not exposed in production) ───────────────
 if (isEmulator) {
@@ -90,7 +96,7 @@ const PUBLIC_PATHS = [
   /^\/app-resources/, // GET /app-resources
 ];
 
-app.use("/v1", async (req: Request, _res: Response, next: NextFunction) => {
+const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
   // Skip auth for public endpoints and OPTIONS
   if (req.method === "OPTIONS" || PUBLIC_PATHS.some((p) => p.test(req.path))) {
     next();
@@ -112,22 +118,25 @@ app.use("/v1", async (req: Request, _res: Response, next: NextFunction) => {
   } catch (err) {
     next(err);
   }
-});
+};
 
-// ─── Route mounting ────────────────────────────────────────────────────────
-app.use("/v1", profileRouter);
-app.use("/v1", nutritionRouter);
-app.use("/v1", workoutRouter);
-app.use("/v1", progressRouter);
-app.use("/v1", creatorRouter);
-app.use("/v1", eventsRouter);
-app.use("/v1", paymentsRouter);
-app.use("/v1", analyticsRouter);
-app.use("/v1", apiKeysRouter);
-app.use("/v1", appResourcesRouter);
-app.use("/v1", bookingsRouter);
-app.use("/v1", notificationsRouter);
-app.use("/v1", videoExchangesRouter);
+// Mount under both /v1 (direct Cloud Run) and /api/v1 (Firebase Hosting rewrite)
+for (const prefix of ["/v1", "/api/v1"]) {
+  app.use(prefix, authMiddleware);
+  app.use(prefix, profileRouter);
+  app.use(prefix, nutritionRouter);
+  app.use(prefix, workoutRouter);
+  app.use(prefix, progressRouter);
+  app.use(prefix, creatorRouter);
+  app.use(prefix, eventsRouter);
+  app.use(prefix, paymentsRouter);
+  app.use(prefix, analyticsRouter);
+  app.use(prefix, apiKeysRouter);
+  app.use(prefix, appResourcesRouter);
+  app.use(prefix, bookingsRouter);
+  app.use(prefix, notificationsRouter);
+  app.use(prefix, videoExchangesRouter);
+}
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

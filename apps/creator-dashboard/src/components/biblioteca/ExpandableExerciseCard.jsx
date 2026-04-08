@@ -6,8 +6,8 @@ import { GlowingEffect } from '../ui';
 import ExercisePicker from './ExercisePicker';
 import './ExpandableExerciseCard.css';
 
-const DEFAULT_MEASURE_LABELS = { reps: 'Repeticiones', weight: 'Peso' };
-const DEFAULT_OBJECTIVE_LABELS = { reps: 'Repeticiones', intensity: 'Intensidad', previous: 'Anterior' };
+const DEFAULT_MEASURE_LABELS = { reps: 'Repeticiones', weight: 'Peso', intensity: 'RPE' };
+const DEFAULT_OBJECTIVE_LABELS = { reps: 'Repeticiones', intensity: 'RPE', previous: 'Anterior' };
 
 const getMeasureLabel = (key, custom = {}) => custom[key] || DEFAULT_MEASURE_LABELS[key] || key;
 const getObjectiveLabel = (key, custom = {}) => custom[key] || DEFAULT_OBJECTIVE_LABELS[key] || key;

@@ -14,6 +14,29 @@ const router = Router();
 const MAX_MODULES_PER_COURSE = 20;
 const MAX_SESSIONS_PER_MODULE = 50;
 
+// ─── 1RM helpers ─────────────────────────────────────────────────────────────
+function parseReportedIntensity(val: string | null | undefined): number | null {
+  if (!val) return null;
+  const n = parseFloat(val);
+  return n >= 1 && n <= 10 ? n : null;
+}
+
+function parsePlannedIntensity(val: string | null | undefined): number | null {
+  if (!val) return null;
+  const match = String(val).trim().match(/^(\d+(?:\.\d+)?)(?:\/10)?$/);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  return n >= 1 && n <= 10 ? n : null;
+}
+
+// intensity=null → pure Epley (same as intensity=10)
+function calculate1RM(weight: number, reps: number, intensity: number | null): number {
+  const numerator = weight * (1 + 0.0333 * reps);
+  if (intensity === null) return numerator;
+  const denominator = 1 - 0.025 * (10 - intensity);
+  return numerator / denominator;
+}
+
 // ─── Week helpers (must match creator.ts and client-side getMondayWeek) ──────
 function getMondayWeek(date: Date = new Date()): string {
   const d = new Date(date);
@@ -1149,7 +1172,7 @@ router.post("/workout/complete", async (req, res) => {
     libraryId?: string;
     exerciseName?: string;
     primaryMuscles?: string[];
-    sets?: Array<{ reps?: number; weight?: number; intensity?: string | null; rir?: number | null }>;
+    sets?: Array<{ reps?: number; weight?: number; intensity?: string | null; plannedIntensity?: string | null; rir?: number | null }>;
     [key: string]: unknown;
   }>;
 
@@ -1245,7 +1268,11 @@ router.post("/workout/complete", async (req, res) => {
       const reps = set.reps ?? 0;
       if (weight <= 0 || reps <= 0) continue;
 
-      const estimate = weight * (1 + 0.0333 * reps);
+      const intensity =
+        parseReportedIntensity(set.intensity) ??
+        parsePlannedIntensity(set.plannedIntensity) ??
+        null;
+      const estimate = calculate1RM(weight, reps, intensity);
 
       if (estimate > bestEstimate1RM) {
         bestEstimate1RM = estimate;
@@ -1575,11 +1602,32 @@ router.get("/workout/session/active", async (req, res) => {
 
   const checkpoint = doc.data()!;
 
-  // 24h staleness check — discard old checkpoints
+  // 24h staleness check — record abandonment then discard
   const savedAt = checkpoint.savedAt as string | undefined;
   if (savedAt) {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
+      const completedSetsCount = checkpoint.completedSets
+        ? Object.keys(checkpoint.completedSets as Record<string, unknown>).length
+        : 0;
+      db.collection("users")
+        .doc(auth.userId)
+        .collection("abandonedSessions")
+        .doc((checkpoint.sessionId as string) || "unknown")
+        .set({
+          sessionId: (checkpoint.sessionId as string) || null,
+          courseId: (checkpoint.courseId as string) || null,
+          sessionName: (checkpoint.sessionName as string) || null,
+          startedAt: (checkpoint.startedAt as string) || null,
+          elapsedSeconds: (checkpoint.elapsedSeconds as number) || 0,
+          completedSetsCount,
+          completionPct: null,
+          userId: auth.userId,
+          abandonedAt: new Date().toISOString(),
+          detectedBy: "stale_check",
+          created_at: FieldValue.serverTimestamp(),
+        }, { merge: true })
+        .catch(() => {});
       doc.ref.delete().catch(() => {});
       res.json({ data: { checkpoint: null } });
       return;
@@ -1626,6 +1674,70 @@ router.get("/workout/prs", async (req, res) => {
   }));
 
   res.json({ data: prs });
+});
+
+// POST /workout/session/abandon — record a user-discarded or stale session
+router.post("/workout/session/abandon", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 50, "rate_limit_first_party");
+
+  const body = validateBody<{
+    sessionId: string;
+    courseId: string;
+    sessionName: string;
+    startedAt: string;
+    elapsedSeconds: number;
+    completedSetsCount: number;
+    totalSetsCount?: number;
+    lastExerciseKey?: string;
+  }>(
+    {
+      sessionId: "string",
+      courseId: "string",
+      sessionName: "string",
+      startedAt: "string",
+      elapsedSeconds: "number",
+      completedSetsCount: "number",
+      totalSetsCount: "optional_number",
+      lastExerciseKey: "optional_string",
+    },
+    req.body
+  );
+
+  const completionPct =
+    body.totalSetsCount && body.totalSetsCount > 0
+      ? Math.round((body.completedSetsCount / body.totalSetsCount) * 100)
+      : null;
+
+  const batch = db.batch();
+
+  batch.set(
+    db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("abandonedSessions")
+      .doc(body.sessionId),
+    {
+      ...body,
+      userId: auth.userId,
+      abandonedAt: new Date().toISOString(),
+      completionPct,
+      detectedBy: "user_discard",
+      created_at: FieldValue.serverTimestamp(),
+    }
+  );
+
+  batch.delete(
+    db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("activeSession")
+      .doc("current")
+  );
+
+  await batch.commit();
+
+  res.json({ data: { recorded: true } });
 });
 
 // Aliases: /workout/checkpoint → /workout/session/checkpoint|active
@@ -1696,10 +1808,32 @@ router.get("/workout/checkpoint", async (req, res) => {
 
   const checkpoint = doc.data()!;
 
+  // 24h staleness check — record abandonment then discard
   const savedAt = checkpoint.savedAt as string | undefined;
   if (savedAt) {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
+      const completedSetsCount = checkpoint.completedSets
+        ? Object.keys(checkpoint.completedSets as Record<string, unknown>).length
+        : 0;
+      db.collection("users")
+        .doc(auth.userId)
+        .collection("abandonedSessions")
+        .doc((checkpoint.sessionId as string) || "unknown")
+        .set({
+          sessionId: (checkpoint.sessionId as string) || null,
+          courseId: (checkpoint.courseId as string) || null,
+          sessionName: (checkpoint.sessionName as string) || null,
+          startedAt: (checkpoint.startedAt as string) || null,
+          elapsedSeconds: (checkpoint.elapsedSeconds as number) || 0,
+          completedSetsCount,
+          completionPct: null,
+          userId: auth.userId,
+          abandonedAt: new Date().toISOString(),
+          detectedBy: "stale_check",
+          created_at: FieldValue.serverTimestamp(),
+        }, { merge: true })
+        .catch(() => {});
       doc.ref.delete().catch(() => {});
       res.json({ data: { checkpoint: null } });
       return;

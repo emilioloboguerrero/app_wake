@@ -1630,7 +1630,6 @@ const CreatorProfileScreen = ({ navigation, route }) => {
               {programsLoading ? (
                 <View style={styles.programsLoadingContainer}>
                   <WakeLoader size={80} />
-                  <Text style={styles.programsLoadingText}>Cargando programas...</Text>
                 </View>
               ) : programsError ? (
                 <Text style={styles.programsErrorText}>{programsError}</Text>

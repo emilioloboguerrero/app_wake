@@ -135,7 +135,6 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           <View style={{ height: headerTotalHeight }} />
           <View style={{ marginTop: getGapAfterHeader() }}>
             <WakeLoader size={80} />
-            <Text style={styles.loadingText}>Cargando historial...</Text>
           </View>
         </View>
       </SafeAreaView>

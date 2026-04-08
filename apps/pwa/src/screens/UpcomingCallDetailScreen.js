@@ -374,7 +374,7 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
         edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
       >
         <FixedWakeHeader showBackButton onBackPress={() => navigation.goBack()} />
-        <LoadingSpinner text="Cargando reserva..." containerStyle={{ flex: 1, justifyContent: 'center' }} />
+        <LoadingSpinner containerStyle={{ flex: 1, justifyContent: 'center' }} />
       </SafeAreaView>
     );
   }

@@ -37,6 +37,14 @@ function getPlannedExerciseDisplayName(ex) {
   return String(t).trim() || 'Sin nombre';
 }
 
+function parseRpeValue(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  return (isNaN(v) || v < 1 || v > 10) ? null : v;
+}
+
 function getPerformedExerciseDisplayName(data, key) {
   if (data?.exerciseName && String(data.exerciseName).trim()) return String(data.exerciseName).trim();
   if (key && key.includes('_')) return key.replace(/^[^_]+_/, '').trim();
@@ -393,16 +401,26 @@ export default function SessionPerformanceModal({
                           <div className="session-performance-compare-col session-performance-compare-col--performed">
                             {item.performedSets.length > 0 ? (
                               <ul className="session-performance-set-list session-performance-set-list--performed">
-                                {item.performedSets.map((set, i) => (
+                                {item.performedSets.map((set, i) => {
+                                  const plannedSet = item.plannedSets[i];
+                                  const reportedRpe = parseRpeValue(set.intensity);
+                                  const plannedRpe = parseRpeValue(plannedSet?.intensity);
+                                  const delta = (reportedRpe != null && plannedRpe != null) ? Math.round(reportedRpe - plannedRpe) : null;
+                                  return (
                                   <li key={i} className="session-performance-set-item">
                                     <span className="session-performance-set-num">{i + 1}.</span>
                                     <span className="session-performance-set-values">
                                       {set.reps != null && set.reps !== '' ? `${set.reps} rep` : '—'}
                                       {(set.weight != null && set.weight !== '') && ` · ${set.weight} kg`}
-                                      {(set.intensity != null && set.intensity !== '') && ` · ${set.intensity}`}
+                                      {reportedRpe != null ? (
+                                        <>{' · '}<span className={`spm-rpe-tag${delta == null ? '' : delta > 0 ? ' spm-rpe-tag--over' : delta < 0 ? ' spm-rpe-tag--under' : ' spm-rpe-tag--on'}`}>
+                                          RPE {reportedRpe}{delta != null && <span className="spm-rpe-delta">{delta > 0 ? `+${delta}` : delta}</span>}
+                                        </span></>
+                                      ) : (set.intensity != null && set.intensity !== '') && ` · ${set.intensity}`}
                                     </span>
                                   </li>
-                                ))}
+                                  );
+                                })}
                               </ul>
                             ) : (
                               <p className="session-performance-empty-col">No realizado</p>

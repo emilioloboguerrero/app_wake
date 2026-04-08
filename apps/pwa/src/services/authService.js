@@ -19,6 +19,7 @@ import Constants from 'expo-constants';
 import logger from '../utils/logger';
 import apiClient from '../utils/apiClient';
 import { queryClient } from '../config/queryClient';
+import { isWeb } from '../utils/platform';
 
 // Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -184,8 +185,8 @@ class AuthService {
       // Delete all user data from Firestore (except purchases as per requirements)
       await apiService.deleteAllUserData(userId);
 
-      // Revoke OAuth tokens (if applicable)
-      if (!isExpoGo) {
+      // Revoke OAuth tokens (native only — web uses Firebase Auth session)
+      if (!isExpoGo && !isWeb) {
         try {
           const isGoogleSignedIn = await googleAuthService.isSignedIn();
           if (isGoogleSignedIn) {

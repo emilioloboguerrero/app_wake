@@ -485,6 +485,40 @@
   font-style: italic;
 }
 
+/* RPE badge */
+.spm-rpe-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.spm-rpe-tag--over {
+  background: rgba(251, 146, 60, 0.18);
+  color: #fdba74;
+}
+
+.spm-rpe-tag--under {
+  background: rgba(148, 163, 184, 0.12);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.spm-rpe-tag--on {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.spm-rpe-delta {
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
 .session-performance-empty-col:not(:only-child) {
   padding-top: 6px;
 }

@@ -6,8 +6,13 @@ async function getFFmpeg() {
   if (loadPromise) return loadPromise;
 
   loadPromise = (async () => {
-    const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-    const { toBlobURL } = await import('@ffmpeg/util');
+    // Load @ffmpeg/ffmpeg and @ffmpeg/util from CDN at runtime to avoid
+    // Metro bundling issues (worker.js contains dynamic import() syntax
+    // that Metro cannot parse).
+    const ffmpegModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js');
+    const utilModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
+    const { FFmpeg } = ffmpegModule;
+    const { toBlobURL } = utilModule;
     const ffmpeg = new FFmpeg();
     const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
     await ffmpeg.load({
@@ -36,7 +41,8 @@ export async function compressVideo(blob, onProgress) {
     });
   }
 
-  const { fetchFile } = await import('@ffmpeg/util');
+  const utilModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
+  const { fetchFile } = utilModule;
   const inputName = 'input' + (blob.type.includes('webm') ? '.webm' : '.mp4');
   await ffmpeg.writeFile(inputName, await fetchFile(blob));
 
@@ -57,7 +63,6 @@ export async function compressVideo(blob, onProgress) {
   const data = await ffmpeg.readFile('output.mp4');
   const file = new File([data.buffer], 'video.mp4', { type: 'video/mp4' });
 
-  // Cleanup
   await ffmpeg.deleteFile(inputName);
   await ffmpeg.deleteFile('output.mp4');
 
@@ -72,7 +77,8 @@ export async function compressVideo(blob, onProgress) {
 export async function generateThumbnail(videoBlob) {
   const ffmpeg = await getFFmpeg();
 
-  const { fetchFile } = await import('@ffmpeg/util');
+  const utilModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
+  const { fetchFile } = utilModule;
   await ffmpeg.writeFile('thumb_input.mp4', await fetchFile(videoBlob));
 
   await ffmpeg.exec([

@@ -156,7 +156,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
           );
         }
       } else if (urlFields.has(field)) {
-        if (typeof value !== "string" || value.length > 2048) {
+        if (value !== null && (typeof value !== "string" || value.length > 2048)) {
           throw new WakeApiServerError(
             "VALIDATION_ERROR", 400,
             `${field} debe ser un string de máximo 2048 caracteres`, field

@@ -173,45 +173,23 @@ class PurchaseService {
         };
       }
 
-      const requestBody = { userId, courseId, payer_email: payerEmail };
-
-      const response = await fetch(
-        "https://us-central1-wolf-20b8b.cloudfunctions.net/createSubscriptionCheckout",
-        {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(requestBody),
-        }
-      );
-
       let result;
-      let responseText;
       try {
-        responseText = await response.text();
-        result = JSON.parse(responseText);
-      } catch (jsonError) {
-        logger.error('❌ [prepareSubscription] Failed to parse response:', {
-          error: jsonError.message,
-          responseText: responseText,
-          status: response.status,
-        });
-        return {
-          success: false,
-          error: `Error del servidor (${response.status}): ${response.statusText}. Respuesta: ${responseText?.substring(0, 200)}`,
-        };
+        result = await apiClient.post('/payments/subscription', { courseId, payer_email: payerEmail });
+      } catch (error) {
+        if (error.code === 'CONFLICT') {
+          return {
+            success: false,
+            requiresAlternateEmail: true,
+            error: error.message || "Por favor ingresa tu correo de Mercado Pago",
+          };
+        }
+        throw error;
       }
 
-      if (response.status === 409) {
-        return {
-          success: false,
-          requiresAlternateEmail: result.requireAlternateEmail || true,
-          error: result.error || "Por favor ingresa tu correo de Mercado Pago",
-        };
-      }
-
-      const initPoint = result?.data?.init_point || result?.init_point;
-      if (!response.ok || !initPoint) {
-        throw new Error(result?.error?.message || result?.error || "Error creating subscription checkout");
+      const initPoint = result?.data?.init_point;
+      if (!initPoint) {
+        throw new Error("Error creating subscription checkout");
       }
 
       return {
@@ -228,50 +206,27 @@ class PurchaseService {
   }
 
   /**
-   * Prepare purchase - creates unique payment window
-   * Routes to subscription or one-time payment based on course access_duration
+   * Prepare purchase - creates payment preference or subscription checkout link.
    * @param {string} userId - User ID
    * @param {string} courseId - Course ID
+   * @param {Object} opts - { accessDuration, payerEmail } — pass from component to skip API round-trips
    * @returns {Promise<Object>} Checkout result
    */
-  async preparePurchase(userId, courseId) {
+  async preparePurchase(userId, courseId, { accessDuration, payerEmail } = {}) {
     try {
-      const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
-
-      if (!courseDetails) {
-        return {
-          success: false,
-          error: "Course not found",
-        };
+      if (accessDuration === "monthly") {
+        return await this.prepareSubscription(userId, courseId, payerEmail || null);
       }
 
-      if (courseDetails.access_duration === "monthly") {
-        const userDoc = await apiClient.get('/users/me').then(r => r?.data ?? null);
-        const payerEmail = userDoc?.email || null;
-        return await this.prepareSubscription(userId, courseId, payerEmail);
-      } else {
-        const body = { userId, courseId };
-        const response = await fetch(
-          "https://us-central1-wolf-20b8b.cloudfunctions.net/createPaymentPreference",
-          {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(body),
-          }
-        );
-
-        const result = await response.json();
-
-        const initPoint = result?.data?.init_point || result?.init_point;
-        if (!response.ok || !initPoint) {
-          throw new Error(result?.error?.message || result?.error || "Error creating payment");
-        }
-
-        return {
-          success: true,
-          checkoutURL: initPoint,
-        };
+      const result = await apiClient.post('/payments/preference', { courseId });
+      const initPoint = result?.data?.init_point;
+      if (!initPoint) {
+        throw new Error("Error creating payment");
       }
+      return {
+        success: true,
+        checkoutURL: initPoint,
+      };
     } catch (error) {
       return {
         success: false,

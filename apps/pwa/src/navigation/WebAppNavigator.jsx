@@ -45,6 +45,8 @@ import OnboardingEducation from '../screens/onboarding/education/OnboardingEduca
 import EventsManagementScreen from '../screens/EventsManagementScreen.web';
 import EventCheckinScreen from '../screens/EventCheckinScreen.web';
 import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
+import PaymentSuccessScreen from '../screens/PaymentSuccessScreen.web';
+import PaymentCancelledScreen from '../screens/PaymentCancelledScreen.web';
 
 import apiService from '../services/apiService';
 import logger from '../utils/logger';
@@ -773,6 +775,24 @@ const WebAppNavigator = () => {
             <CreatorRouteGuard>
               {React.createElement(withErrorBoundary(EventRegistrationsScreen, 'EventRegistrations'))}
             </CreatorRouteGuard>
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/payment/success"
+        element={
+          <AuthenticatedLayout>
+            <PaymentSuccessScreen />
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/payment/cancelled"
+        element={
+          <AuthenticatedLayout>
+            <PaymentCancelledScreen />
           </AuthenticatedLayout>
         }
       />

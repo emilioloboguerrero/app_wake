@@ -4,6 +4,9 @@
 # Claude Code
 .claude/
 
+# Local Figma reference files (not part of the repo)
+fig/
+
 # Firestore exports (production data — never commit)
 firestore-dump.json
 **/serviceAccountKey*.json

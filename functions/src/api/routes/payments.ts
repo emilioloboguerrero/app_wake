@@ -81,9 +81,9 @@ router.post("/payments/preference", async (req, res) => {
       }],
       external_reference: externalReference,
       back_urls: {
-        success: `https://wolf-20b8b.web.app/app/course/${courseId}`,
-        failure: `https://wolf-20b8b.web.app/app/course/${courseId}`,
-        pending: `https://wolf-20b8b.web.app/app/course/${courseId}`,
+        success: `https://wolf-20b8b.web.app/app/payment/success?courseId=${courseId}`,
+        failure: `https://wolf-20b8b.web.app/app/payment/cancelled?courseId=${courseId}`,
+        pending: `https://wolf-20b8b.web.app/app/payment/cancelled?courseId=${courseId}`,
       },
       auto_return: "approved",
     },

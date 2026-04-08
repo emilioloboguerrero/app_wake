@@ -29,7 +29,8 @@ import apiService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { auth } from '../config/firebase';
-import { updateProfile, EmailAuthProvider, GoogleAuthProvider } from 'firebase/auth';
+import { updateProfile, EmailAuthProvider, GoogleAuthProvider, reauthenticateWithPopup } from 'firebase/auth';
+import { isWeb } from '../utils/platform';
 import googleAuthService from '../services/googleAuthService';
 import apiClient from '../utils/apiClient';
 import tutorialManager from '../services/tutorialManager';
@@ -649,10 +650,9 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     try {
       setDeleteAccountLoading(true);
       
-      // TODO: no endpoint for saveAccountDeletionFeedback — no REST endpoint for account deletion feedback
       await apiService.saveAccountDeletionFeedback(
         auth.currentUser.uid,
-        feedbackToSave
+        { reason: selectedDeleteReason, details: selectedDeleteReason === 'Otros' ? feedbackToSave : null }
       );
 
       // Show final delete button
@@ -698,16 +698,27 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       } else if (providerId === 'google.com') {
         // Google authentication - reauthenticate with Google
         try {
-          const GoogleSigninModule = await googleAuthService.loadGoogleSignIn();
-          await GoogleSigninModule.hasPlayServices({ showPlayServicesUpdateDialog: true });
-          const signInResult = await GoogleSigninModule.signIn();
-          const idToken = signInResult.data?.idToken || signInResult.idToken;
-          if (idToken) {
-            credential = GoogleAuthProvider.credential(idToken);
+          if (isWeb) {
+            const provider = new GoogleAuthProvider();
+            await reauthenticateWithPopup(auth.currentUser, provider);
+            // reauthenticateWithPopup handles the credential internally — no separate credential needed
+            credential = null;
           } else {
-            throw new Error('No se obtuvo el token de Google');
+            const GoogleSigninModule = await googleAuthService.loadGoogleSignIn();
+            await GoogleSigninModule.hasPlayServices({ showPlayServicesUpdateDialog: true });
+            const signInResult = await GoogleSigninModule.signIn();
+            const idToken = signInResult.data?.idToken || signInResult.idToken;
+            if (idToken) {
+              credential = GoogleAuthProvider.credential(idToken);
+            } else {
+              throw new Error('No se obtuvo el token de Google');
+            }
           }
         } catch (error) {
+          if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+            setDeleteAccountLoading(false);
+            return;
+          }
           logger.error('Google reauthentication error:', error);
           throw new Error('No se pudo reautenticar con Google. Por favor intenta de nuevo.');
         }
@@ -1385,23 +1396,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                         styles.deleteAccountButtonInModal,
                         (deleteAccountLoading || (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim())) && styles.deleteAccountButtonDisabled
                       ]}
-                      onPress={() => {
-                        Alert.alert(
-                          'Última confirmación',
-                          '¿Estás seguro de que deseas eliminar tu cuenta permanentemente? Esta acción no se puede deshacer.',
-                          [
-                            {
-                              text: 'Cancelar',
-                              style: 'cancel'
-                            },
-                            {
-                              text: 'Eliminar',
-                              style: 'destructive',
-                              onPress: handleDeleteAccountConfirm
-                            }
-                          ]
-                        );
-                      }}
+                      onPress={handleDeleteAccountConfirm}
                       disabled={deleteAccountLoading || (auth.currentUser?.providerData[0]?.providerId === 'password' && !deletePassword.trim())}
                     >
                       <Text style={[

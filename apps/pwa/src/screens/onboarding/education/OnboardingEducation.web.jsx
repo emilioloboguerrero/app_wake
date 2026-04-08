@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { updateProfile } from 'firebase/auth';
+import { useQueryClient } from '@tanstack/react-query';
 import AuroraBackground from './components/AuroraBackground';
 import countriesRaw from '../../../../assets/data/countries.json';
 import citiesData from '../../../../assets/data/cities.json';
@@ -10,6 +11,7 @@ import { auth } from '../../../config/firebase';
 import apiClient from '../../../utils/apiClient';
 import profilePictureService from '../../../services/profilePictureService';
 import logger from '../../../utils/logger';
+import { queryKeys } from '../../../config/queryClient';
 import './OnboardingEducation.css';
 
 let _logoUri = null;
@@ -367,6 +369,7 @@ function AmbientParticles() {
 
 export default function OnboardingEducation({ onComplete }) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [phase, setPhase] = useState('welcome');
   const [eduStep, setEduStep] = useState(0);
   const [titleVisible, setTitleVisible] = useState(true);
@@ -405,6 +408,25 @@ export default function OnboardingEducation({ onComplete }) {
     setProfile(p => ({ ...p, [key]: val }));
   }, []);
 
+  // Username uniqueness check
+  const [usernameStatus, setUsernameStatus] = useState(null); // null | 'checking' | 'available' | 'taken'
+  const usernameTimer = useRef(null);
+
+  const checkUsername = useCallback((value) => {
+    const clean = value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (clean.length < 3) { setUsernameStatus(null); return; }
+    setUsernameStatus('checking');
+    if (usernameTimer.current) clearTimeout(usernameTimer.current);
+    usernameTimer.current = setTimeout(async () => {
+      try {
+        const res = await apiClient.get('/users/me/username-check', { params: { username: clean } });
+        setUsernameStatus(res?.data?.available ? 'available' : 'taken');
+      } catch {
+        setUsernameStatus(null);
+      }
+    }, 500);
+  }, []);
+
   const getCities = useCallback(() => {
     if (!profile.country) return [];
     return (citiesData[profile.country] || []).slice(0, 200);
@@ -414,7 +436,8 @@ export default function OnboardingEducation({ onComplete }) {
     profile.name.trim() && profile.username.trim() &&
     profile.birthDate && profile.gender &&
     profile.country && profile.city &&
-    profile.weight && profile.height
+    profile.weight && profile.height &&
+    usernameStatus !== 'taken' && usernameStatus !== 'checking'
   );
 
   // ── Navigation ──
@@ -475,13 +498,15 @@ export default function OnboardingEducation({ onComplete }) {
         onboardingCompleted: true,
       });
 
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(uid) });
+
       // Update localStorage cache
       const statusCache = JSON.stringify({ onboardingCompleted: true, profileCompleted: true, cachedAt: Date.now() });
       try { localStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
     } catch (err) {
       logger.error('[ONBOARDING_EDU] saveProfile error:', err);
     }
-  }, [user, profile]);
+  }, [user, profile, queryClient]);
 
   const goToCompletion = useCallback(() => {
     setPhase('completion');
@@ -843,8 +868,21 @@ export default function OnboardingEducation({ onComplete }) {
                       type="text"
                       placeholder="@usuario"
                       value={profile.username}
-                      onChange={e => setField('username', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                      onChange={e => {
+                        const v = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                        setField('username', v);
+                        checkUsername(v);
+                      }}
                     />
+                    {usernameStatus === 'checking' && (
+                      <span className="pwa-ob-field-hint">Verificando...</span>
+                    )}
+                    {usernameStatus === 'taken' && (
+                      <span className="pwa-ob-field-hint pwa-ob-field-error">Este usuario ya esta en uso</span>
+                    )}
+                    {usernameStatus === 'available' && (
+                      <span className="pwa-ob-field-hint pwa-ob-field-success">Usuario disponible</span>
+                    )}
                   </motion.div>
                 </div>
               </motion.div>
@@ -873,11 +911,6 @@ export default function OnboardingEducation({ onComplete }) {
                   >
                     <div
                       className={`pwa-ob-input pwa-ob-date-display ${profile.birthDate ? 'filled' : ''}`}
-                      onClick={() => {
-                        const el = dateRef.current;
-                        if (!el) return;
-                        try { el.showPicker(); } catch { el.focus(); }
-                      }}
                     >
                       {profile.birthDate ? formatDate(profile.birthDate) : 'Fecha de nacimiento'}
                       <input

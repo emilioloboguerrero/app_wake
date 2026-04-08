@@ -19,7 +19,7 @@ function evaluateRules(labData) {
     alerts.push({
       id: 'rpe-deficit',
       severity: 'warning',
-      text: `Intensidad alta (RPE ${rpe.toFixed(1)}) con adherencia nutricional del ${Math.round(nutritionAdherence)}%`,
+      text: `RPE alto (${rpe.toFixed(1)}) con adherencia nutricional del ${Math.round(nutritionAdherence)}%`,
     });
   }
 

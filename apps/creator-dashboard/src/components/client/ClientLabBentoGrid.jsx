@@ -267,7 +267,7 @@ export default function ClientLabBentoGrid({ data, isLoading, range }) {
         <div className="clbg-card-inner">
           <div className="clbg-card-header">
             <Activity size={14} className="clbg-card-icon" />
-            <span className="clbg-card-label">Intensidad</span>
+            <span className="clbg-card-label">RPE</span>
           </div>
           <div className="clbg-card-value">
             {rpeAverage != null ? (

@@ -2,7 +2,7 @@
   "name": "functions",
   "scripts": {
     "lint": "eslint --ext .js,.ts .",
-    "build": "npx tsc && cp -r src/assets lib/assets 2>/dev/null || true",
+    "build": "npx tsc && cp -r src/assets lib/assets 2>/dev/null || true && cp ../hosting/index.html lib/landing-index.html 2>/dev/null || true",
     "build:watch": "npx tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",

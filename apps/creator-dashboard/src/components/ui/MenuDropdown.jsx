@@ -25,6 +25,9 @@ export default function MenuDropdown({ trigger, items }) {
       top = triggerRect.bottom + gap;
     }
 
+    // Clamp top so the menu never goes off-screen
+    top = Math.max(8, Math.min(top, vp.h - menuRect.height - 8));
+
     let left = 'auto';
     let right = 'auto';
 

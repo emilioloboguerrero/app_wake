@@ -73,7 +73,7 @@
   },
   "firestore": {
     "rules": "config/firebase/firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "indexes": "config/firebase/firestore.indexes.json"
   },
   "storage": {
     "rules": "config/firebase/storage.rules"

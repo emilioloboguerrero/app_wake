@@ -372,7 +372,6 @@ const CourseStructureScreen = ({ navigation, route }) => {
           <WakeHeaderSpacer />
           <View style={styles.loadingContainer}>
             <WakeLoader size={80} />
-            <Text style={styles.loadingText}>Cargando estructura...</Text>
           </View>
         </WakeHeaderContent>
       </SafeAreaView>

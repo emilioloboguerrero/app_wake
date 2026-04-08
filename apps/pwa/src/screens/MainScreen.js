@@ -1432,7 +1432,6 @@ const MainScreen = ({ navigation, route }) => {
               ) : (
                 <LoadingSpinner
                   size="large"
-                  text="Cargando programas..."
                   containerStyle={styles.loadingContainer}
                 />
               )

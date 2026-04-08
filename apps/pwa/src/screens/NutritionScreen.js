@@ -277,7 +277,6 @@ export function NutritionScreenBase({ navigation }) {
       <View style={styles.container}>
         <View style={styles.loadingWrap}>
           <WakeLoader size={80} />
-          <Text style={styles.loadingText}>Cargando…</Text>
         </View>
       </View>
     );

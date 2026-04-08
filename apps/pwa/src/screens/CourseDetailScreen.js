@@ -805,8 +805,11 @@ useEffect(() => {
       successAlertShownRef.current = false;
 
       // Prepare purchase (creates payment preference)
-      const purchaseResult = await purchaseService.preparePurchase(effectiveUser.uid, course.id);
-      
+      const purchaseResult = await purchaseService.preparePurchase(effectiveUser.uid, course.id, {
+        accessDuration: course.access_duration,
+        payerEmail: effectiveUser.email || null,
+      });
+
       if (!purchaseResult.success) {
         // Handle special case: requires alternate email for subscription
         if (purchaseResult.requiresAlternateEmail) {
@@ -829,7 +832,13 @@ useEffect(() => {
         return;
       }
 
-      // Open payment modal with checkout URL
+      // On web: redirect directly — more reliable than going through EpaycoWebView's useEffect
+      if (isWeb) {
+        window.location.href = purchaseResult.checkoutURL;
+        return;
+      }
+
+      // Native: open in-app WebView modal
       setCheckoutURL(purchaseResult.checkoutURL);
       setShowPaymentModal(true);
       setPurchasing(false);
@@ -902,7 +911,13 @@ useEffect(() => {
         return;
       }
 
-      // Success - open payment modal
+      // On web: redirect directly
+      if (isWeb) {
+        window.location.href = subscriptionResult.checkoutURL;
+        return;
+      }
+
+      // Native: open in-app WebView modal
       setCheckoutURL(subscriptionResult.checkoutURL);
       setShowPaymentModal(true);
       setPurchasing(false);
@@ -1253,9 +1268,8 @@ useEffect(() => {
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        <LoadingSpinner 
-          size="large" 
-          text="Cargando programa..." 
+        <LoadingSpinner
+          size="large"
           containerStyle={styles.loadingContainer}
         />
       </SafeAreaView>
@@ -1271,9 +1285,8 @@ useEffect(() => {
           showBackButton={true}
           onBackPress={() => navigation.goBack()}
         />
-        <LoadingSpinner 
-          size="large" 
-          text="Verificando acceso..." 
+        <LoadingSpinner
+          size="large"
           containerStyle={styles.loadingContainer}
         />
       </SafeAreaView>

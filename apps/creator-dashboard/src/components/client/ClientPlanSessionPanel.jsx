@@ -30,7 +30,7 @@ function SetRow({ set, setIndex, onChange, onDelete }) {
         className="cpsp-set-input"
         value={set.intensity ?? ''}
         onChange={(e) => onChange(setIndex, 'intensity', e.target.value)}
-        placeholder="Intensidad"
+        placeholder="RPE"
       />
       <button className="cpsp-set-delete" onClick={() => onDelete(setIndex)} aria-label="Eliminar serie">
         <Trash2 size={12} />
@@ -59,7 +59,7 @@ function ExerciseCard({ exercise, exerciseIndex, onUpdateSet, onAddSet, onDelete
           <div className="cpsp-sets-header">
             <span>#</span>
             <span>Reps</span>
-            <span>Intensidad</span>
+            <span>RPE</span>
             <span></span>
           </div>
           {sets.map((set, si) => (

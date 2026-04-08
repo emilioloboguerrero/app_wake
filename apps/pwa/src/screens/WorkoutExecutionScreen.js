@@ -2103,6 +2103,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       'rest_time': 'Descanso (seg)',
       'sets': 'Series',
       'duration': 'Duración (min)',
+      'intensity': 'RPE (/10)',
       'previous': 'Anterior'
     };
     return fieldNames[field] || field.charAt(0).toUpperCase() + field.slice(1);
@@ -3304,7 +3305,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       primary: { [selectedExercise.libraryId]: selectedExercise.name },
       alternatives: {},
       order: editingExercises.length,
-      measures: ["reps", "weight"],
+      measures: ["reps", "weight", "intensity"],
       objectives: ["reps", "intensity"],
       sets: [{
         id: `set_${Date.now()}`,
@@ -3881,7 +3882,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             ...set,
                             weight: actualSetData.weight || '',
                             reps: actualSetData.reps || '',
-                            intensity: actualSetData.intensity || set.intensity || '',
+                            intensity: actualSetData.intensity || '',
+                            plannedIntensity: set.intensity || '',
                             rir: actualSetData.rir || '',
                             time: actualSetData.time || '',
                             distance: actualSetData.distance || '',
@@ -4542,7 +4544,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       'time': 'Tiempo',
       'calories': 'Calorías',
       'previous': 'Anterior',
-      'intensity': 'Intensidad'
+      'intensity': 'RPE'
     };
     const translated = translations[metric.toLowerCase()] || metric;
     return translated.charAt(0).toUpperCase() + translated.slice(1);
@@ -4564,6 +4566,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (prevSetData && currentExercise.measures) {
         const parts = [];
         currentExercise.measures.forEach(m => {
+          if (m === 'intensity') return;
           const val = prevSetData[m];
           if (val) {
             let str = val.toString();
@@ -5703,7 +5706,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                               {getMetricValueForCard(objective)}
                             </Text>
-                            
+                            {objective === 'previous' && (() => {
+                              const prevData = currentExercise?.previousData;
+                              const prevSet = prevData?.bestSet || prevData?.sets?.[currentSetIndex];
+                              const rpe = prevSet?.intensity ? parseFloat(prevSet.intensity) : null;
+                              if (!rpe || rpe < 1 || rpe > 10) return null;
+                              return (
+                                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>
+                                  RPE: {rpe}
+                                </Text>
+                              );
+                            })()}
+
                             {/* Info icon indicator */}
                             {hasInfo && (
                               <View style={styles.infoIconContainer}>
@@ -5906,7 +5920,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               {loadingAlternatives ? (
                 <View style={styles.loadingContainer}>
                   <WakeLoader size={80} />
-                  <Text style={styles.loadingText}>Cargando alternativas...</Text>
                 </View>
               ) : alternativeExercises.length > 0 ? (
                 alternativeExercises.map((exercise, index) => (
@@ -6276,9 +6289,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           <View style={loadingOverlayStyles.loadingContent}>
             <WakeLoader size={80} />
             <Text style={loadingOverlayStyles.loadingText}>Guardando entrenamiento</Text>
-            <Text style={loadingOverlayStyles.loadingSubtext}>
-              Calculando volúmenes y actualizando progreso...
-            </Text>
           </View>
         </View>
       </Modal>

@@ -651,6 +651,25 @@
   border-color: rgba(239,68,68,0.25);
 }
 
+.profile-delete-account-button {
+  padding: 10px 20px;
+  background: transparent;
+  color: rgba(255,255,255,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-md, 10px);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-base, 200ms) cubic-bezier(0.22,1,0.36,1);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
+  align-self: flex-start;
+}
+
+.profile-delete-account-button:hover {
+  color: rgba(239,68,68,0.5);
+  border-color: rgba(239,68,68,0.12);
+}
+
 /* ─── Responsive ────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .profile-screen {

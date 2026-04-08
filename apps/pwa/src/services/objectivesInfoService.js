@@ -35,7 +35,7 @@ const OBJECTIVES_INFO = {
     description: 'Muestra los valores que registraste la última vez que realizaste esta misma serie o ejercicio —como peso, repeticiones o tiempo.\n\nEl objetivo es darte una referencia personal para comparar tu rendimiento actual y ayudarte a decidir si mantener, aumentar o ajustar la intensidad.\n\nVer tu serie anterior te permite seguir tu progreso y entrenar de forma más consciente.',
   },
   'intensity': {
-    title: 'Intensidad',
+    title: 'RPE',
     description: 'Es el nivel de esfuerzo que deberías alcanzar en esta serie.',
     hasVideos: true, // Flag indicating videos are available
     disclaimers: [

@@ -72,7 +72,7 @@ const getMeasureDisplayNameDefault = (measure) => {
 
 const getObjectiveDisplayNameDefault = (objective) => {
   if (objective === 'reps') return 'Repeticiones';
-  if (objective === 'intensity') return 'Intensidad';
+  if (objective === 'intensity') return 'RPE';
   if (objective === 'previous') return 'Anterior';
   return objective;
 };

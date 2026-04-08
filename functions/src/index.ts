@@ -1098,6 +1098,8 @@ export const processPaymentWebhook = functions
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
           status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
           payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+          amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
+          currency_id: paymentData.currency_id ?? null,
         });
 
         response.status(200).send("OK");
@@ -1159,6 +1161,8 @@ export const processPaymentWebhook = functions
             processed_at: admin.firestore.FieldValue.serverTimestamp(),
             status: "approved", userId, courseId, isSubscription, isRenewal: false,
             payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+            amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
+            currency_id: paymentData.currency_id ?? null,
           },
           {merge: true}
         );
@@ -2070,8 +2074,8 @@ export const processRestTimerNotifications = onSchedule(
 
     if (pendingSnap.empty) return;
 
-    const pub = vapidPublicKey.value();
-    const priv = vapidPrivateKey.value();
+    const pub = vapidPublicKey.value().replace(/=+$/, "");
+    const priv = vapidPrivateKey.value().replace(/=+$/, "");
     if (!pub || !priv) {
       functions.logger.error("VAPID keys not configured");
       return;
@@ -2169,41 +2173,34 @@ export const api = onRequest(
 );
 
 // ─── Event page with dynamic OG tags ────────────────────────────────────────
-import * as fs from "node:fs";
-import * as path from "node:path";
 
 let cachedIndexHtml: string | null = null;
 
-function getIndexHtml(): string {
+async function getIndexHtml(): Promise<string> {
   if (cachedIndexHtml) return cachedIndexHtml;
-  const candidates = [
-    path.resolve(__dirname, "../../hosting/index.html"),
-    path.resolve(__dirname, "../../../hosting/index.html"),
-  ];
-  for (const p of candidates) {
-    try {
-      cachedIndexHtml = fs.readFileSync(p, "utf-8");
+
+  // Fetch live from hosting — always in sync with deployed assets
+  try {
+    const resp = await fetch("https://wakelab.co/index.html");
+    if (resp.ok) {
+      cachedIndexHtml = await resp.text();
       return cachedIndexHtml;
-    } catch {
-      // try next
     }
+  } catch {
+    // fall through to redirect fallback
   }
+
+  // Fallback: redirect to homepage if fetch fails
   cachedIndexHtml = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta property="og:title" content="Wake" />
-  <meta property="og:description" content="Entrena con quienes te inspiran" />
-  <meta property="og:image" content="/app_icon.png" />
-  <meta property="og:url" content="https://wakelab.co" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Wake" />
-  <meta name="twitter:description" content="Entrena con quienes te inspiran" />
-  <meta name="twitter:image" content="/app_icon.png" />
   <title>Wake</title>
 </head>
-<body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
+<body>
+  <script>window.location.replace("https://wakelab.co");</script>
+</body>
 </html>`;
   return cachedIndexHtml;
 }
@@ -2226,7 +2223,7 @@ function formatEventDate(value: unknown): string {
 export const eventPage = onRequest(
   {
     region: "us-central1",
-    memory: "128MiB",
+    memory: "256MiB",
     timeoutSeconds: 10,
     concurrency: 80,
   },
@@ -2239,7 +2236,7 @@ export const eventPage = onRequest(
     }
     const eventId = match[1];
 
-    let html = getIndexHtml();
+    let html = await getIndexHtml();
 
     try {
       const eventDoc = await db.collection("events").doc(eventId).get();
@@ -2546,6 +2543,69 @@ export const sendCallReminders = onSchedule(
 );
 
 // ─── Scheduled: cleanup old video exchange messages (30-day retention) ────
+
+export const detectAbandonedSessions = onSchedule(
+  {
+    schedule: "every 6 hours",
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+
+    const snapshot = await db.collectionGroup("activeSession").get();
+    if (snapshot.empty) return;
+
+    const batch = db.batch();
+    let count = 0;
+
+    for (const doc of snapshot.docs) {
+      if (doc.id !== "current") continue;
+      const data = doc.data();
+      const savedAt = data.savedAt as string | undefined;
+      if (!savedAt || savedAt >= fourHoursAgo) continue;
+
+      const userId = doc.ref.parent.parent?.id;
+      if (!userId) continue;
+
+      const completedSetsCount = data.completedSets
+        ? Object.keys(data.completedSets as Record<string, unknown>).length
+        : 0;
+
+      batch.set(
+        db
+          .collection("users")
+          .doc(userId)
+          .collection("abandonedSessions")
+          .doc((data.sessionId as string) || doc.id),
+        {
+          sessionId: (data.sessionId as string) || null,
+          courseId: (data.courseId as string) || null,
+          sessionName: (data.sessionName as string) || null,
+          startedAt: (data.startedAt as string) || null,
+          elapsedSeconds: (data.elapsedSeconds as number) || 0,
+          completedSetsCount,
+          completionPct: null,
+          userId,
+          abandonedAt: new Date().toISOString(),
+          detectedBy: "scheduled_scan",
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      batch.delete(doc.ref);
+      count++;
+      if (count >= 400) break;
+    }
+
+    if (count > 0) {
+      await batch.commit();
+      functions.logger.info(`detectAbandonedSessions: recorded ${count} abandoned sessions`);
+    }
+  }
+);
 
 export const cleanupVideoExchanges = onSchedule(
   {

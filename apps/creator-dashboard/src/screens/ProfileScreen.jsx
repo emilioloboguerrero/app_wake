@@ -588,6 +588,17 @@ const ProfileScreen = () => {
                 <button className="profile-logout-button" onClick={handleSignOut}>
                   Cerrar sesion
                 </button>
+
+                <button
+                  className="profile-delete-account-button"
+                  onClick={() => {
+                    const subject = encodeURIComponent('Solicitud de eliminación de cuenta');
+                    const body = encodeURIComponent(`Hola,\n\nQuiero solicitar la eliminación de mi cuenta de Wake.\n\nCorreo: ${user?.email || ''}\nID: ${user?.uid || ''}\n\nEntiendo que esta acción es permanente e irreversible.`);
+                    window.open(`mailto:emilioloboguerrero@gmail.com?subject=${subject}&body=${body}`, '_blank');
+                  }}
+                >
+                  Solicitar eliminación de cuenta
+                </button>
               </div>
             </div>
 

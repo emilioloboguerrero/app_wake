@@ -6,6 +6,8 @@ import SupportScreen from './screens/SupportScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import CreatorsPage from './screens/CreatorsPage';
 import EventSignupScreen from './screens/EventSignupScreen';
+import LandingDesignScreen from './screens/LandingDesignScreen';
+import HeroShell from './screens/heroes/HeroShell';
 import { getMainHeroLandingImages, getLandingCards, getDosFormasImage } from './services/heroImagesService';
 import heroLogo from './assets/hero-logo.svg';
 import heroFallback from './assets/hero-fallback.png';
@@ -396,6 +398,23 @@ function AppContent() {
       window.removeEventListener('scroll', check);
     };
   }, [location.pathname]);
+
+  if (location.pathname === '/design') {
+    return (
+      <Routes>
+        <Route path="/design" element={<LandingDesignScreen />} />
+      </Routes>
+    );
+  }
+
+  if (location.pathname.startsWith('/heroes')) {
+    return (
+      <Routes>
+        <Route path="/heroes/:heroId" element={<HeroShell />} />
+        <Route path="/heroes" element={<Navigate to="/heroes/main" replace />} />
+      </Routes>
+    );
+  }
 
   if (location.pathname.startsWith('/e/')) {
     return (

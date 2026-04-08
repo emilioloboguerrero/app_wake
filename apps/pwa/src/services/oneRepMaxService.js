@@ -64,6 +64,9 @@ class OneRepMaxService {
    */
   calculate1RM(actualWeight, actualReps, objectiveIntensity) {
     const numerator = actualWeight * (1 + 0.0333 * actualReps);
+    if (objectiveIntensity === null || objectiveIntensity === undefined) {
+      return Math.round(numerator * 10) / 10;
+    }
     const denominator = 1 - 0.025 * (10 - objectiveIntensity);
     return Math.round((numerator / denominator) * 10) / 10;
   }
@@ -104,9 +107,8 @@ class OneRepMaxService {
         const reps = Number(bestSet?.reps) || 0;
 
         if (weight > 0 && reps > 0) {
-          const estimated1RM = this.calculate1RM(weight, reps, 8);
           estimates[pr.exerciseKey] = {
-            current: estimated1RM,
+            current: pr.estimate1RM > 0 ? pr.estimate1RM : this.calculate1RM(weight, reps, null),
             lastUpdated: pr.date ?? null,
             achievedWith: bestSet,
           };

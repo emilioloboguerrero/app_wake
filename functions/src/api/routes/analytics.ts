@@ -301,14 +301,15 @@ function computeRevenue(
   };
 }
 
-function computeRevenueTrend(paymentDocs: FirebaseFirestore.QueryDocumentSnapshot[]) {
+function computeRevenueTrend(paymentDocs: FirebaseFirestore.QueryDocumentSnapshot[], courseId?: string) {
   const months: Record<string, { gross: number; count: number }> = {};
 
   for (const doc of paymentDocs) {
     const data = doc.data();
     if (data.status !== "approved" && data.status !== "completed") continue;
+    if (courseId && data.courseId !== courseId) continue;
 
-    const createdAt = data.created_at ?? data.createdAt ?? data.paidAt;
+    const createdAt = data.processed_at ?? data.created_at ?? data.createdAt ?? data.paidAt;
     let monthStr: string;
     if (createdAt && typeof createdAt.toDate === "function") {
       monthStr = createdAt.toDate().toISOString().slice(0, 7);
@@ -344,7 +345,7 @@ function computeClientTrend(
 
   const entries = clientsSnap.docs.map(d => {
     const data = d.data();
-    const createdAt = data.created_at ?? data.createdAt ?? data.enrolledAt;
+    const createdAt = data.processed_at ?? data.created_at ?? data.createdAt ?? data.enrolledAt;
     let dateStr: string;
     if (createdAt && typeof createdAt.toDate === "function") {
       dateStr = createdAt.toDate().toISOString().slice(0, 7);
@@ -1202,8 +1203,9 @@ router.get("/analytics/client-trend", async (req, res) => {
 router.get("/analytics/revenue-trend", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
+  const courseId = typeof req.query.courseId === "string" ? req.query.courseId : undefined;
   const paymentDocs = await getCreatorPayments(auth.userId);
-  res.json({ data: computeRevenueTrend(paymentDocs) });
+  res.json({ data: computeRevenueTrend(paymentDocs, courseId) });
 });
 
 // GET /analytics/expiring-access
@@ -1228,60 +1230,348 @@ router.get("/analytics/calendar-preview", async (req, res) => {
 // Combines all 7 creator analytics sections into a single response.
 // Shared Firestore data (courses, clients, payments) is fetched once.
 
+// ─── Dashboard v2 helpers ──────────────────────────────────────────────────
+
+async function computeOneOnOneView(
+  clientsSnap: FirebaseFirestore.QuerySnapshot,
+  ooCourseDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+  dates: string[],
+  thirtyDaysAgoStr: string,
+  creatorId: string,
+  now: Date,
+) {
+  const fortyEightHoursLater = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  const prevPeriodStart = new Date(new Date(thirtyDaysAgoStr).getTime() - 30 * 24 * 60 * 60 * 1000);
+  const prevPeriodStartStr = prevPeriodStart.toISOString().slice(0, 10);
+
+  const clientDocs = clientsSnap.docs;
+  const clientUserIds = clientDocs
+    .map((d) => (d.data().clientUserId ?? d.data().userId) as string)
+    .filter(Boolean);
+
+  const ooIds = ooCourseDocs.map((d) => d.id);
+
+  // Parallel: calls + video exchanges + session history
+  const [callsSnap, videoSnap, sessionsByUser] = await Promise.all([
+    db.collection("call_bookings")
+      .where("creatorId", "==", creatorId)
+      .where("slotStartUtc", ">=", now.toISOString())
+      .where("slotStartUtc", "<=", fortyEightHoursLater.toISOString())
+      .orderBy("slotStartUtc", "asc")
+      .get(),
+    db.collection("video_exchanges")
+      .where("creatorId", "==", creatorId)
+      .get(),
+    Promise.all(
+      clientUserIds.map((uid) =>
+        db.collection("users").doc(uid).collection("sessionHistory")
+          .where("date", ">=", thirtyDaysAgoStr)
+          .get()
+          .then((snap) => ({ uid, docs: snap.docs }))
+      )
+    ),
+  ]);
+
+  const upcomingCalls = callsSnap.docs.map((d) => {
+    const data = d.data();
+    const slotStart = data.slotStartUtc as string;
+    return {
+      id: d.id,
+      clientName: (data.clientDisplayName ?? data.clientName ?? "Cliente") as string,
+      slotStartUtc: slotStart,
+      slotEndUtc: (data.slotEndUtc ?? "") as string,
+      isToday: slotStart?.slice(0, 10) === now.toISOString().slice(0, 10),
+    };
+  });
+
+  const unreadVideoExchanges = videoSnap.docs.filter((d) => {
+    const ub = d.data().unreadByCreator;
+    return typeof ub === "number" && ub > 0;
+  }).length;
+
+  // Build session maps per course
+  const clientsByCourse: Record<string, Set<string>> = {};
+  const trainedByCourseDate: Record<string, Record<string, Set<string>>> = {};
+  for (const id of ooIds) {
+    clientsByCourse[id] = new Set();
+    trainedByCourseDate[id] = {};
+    for (const date of dates) trainedByCourseDate[id][date] = new Set();
+  }
+
+  for (const { uid, docs } of sessionsByUser) {
+    for (const doc of docs) {
+      const data = doc.data();
+      const courseId = data.courseId as string | undefined;
+      const date = data.date as string | undefined;
+      if (!courseId || !ooIds.includes(courseId) || !date) continue;
+      clientsByCourse[courseId].add(uid);
+      if (date in trainedByCourseDate[courseId]) {
+        trainedByCourseDate[courseId][date].add(uid);
+      }
+    }
+  }
+
+  // Plans metadata
+  const getClientDate = (d: FirebaseFirestore.DocumentData): string | null => {
+    if (d.created_at?.toDate) return (d.created_at.toDate() as Date).toISOString().slice(0, 10);
+    if (typeof d.created_at === "string") return d.created_at.slice(0, 10);
+    return null;
+  };
+
+  const plans = ooCourseDocs.map((doc) => {
+    const data = doc.data();
+    // Prefer clients explicitly linked by courseId, fall back to session-derived count
+    const linkedDocs = clientDocs.filter((cd) =>
+      (cd.data().courseId ?? cd.data().planId) === doc.id
+    );
+    const totalClients = Math.max(linkedDocs.length, clientsByCourse[doc.id].size);
+    const newLast30d = linkedDocs.filter((cd) => {
+      const dt = getClientDate(cd.data());
+      return dt && dt >= thirtyDaysAgoStr;
+    }).length;
+    const prevPeriod = linkedDocs.filter((cd) => {
+      const dt = getClientDate(cd.data());
+      return dt && dt >= prevPeriodStartStr && dt < thirtyDaysAgoStr;
+    }).length;
+    const pctChange = prevPeriod > 0
+      ? Math.round(((newLast30d - prevPeriod) / prevPeriod) * 100)
+      : newLast30d > 0 ? 100 : 0;
+    return {
+      courseId: doc.id,
+      title: (data.title as string) ?? "",
+      imageUrl: (data.image_url as string) ?? null,
+      totalClients,
+      newLast30d,
+      pctChange,
+    };
+  });
+
+  // Client count series (cumulative per course per day)
+  const clientCountSeries = dates.map((date) => {
+    const byCourse: Record<string, number> = {};
+    for (const doc of ooCourseDocs) {
+      const linked = clientDocs.filter((cd) => {
+        const d = cd.data();
+        if ((d.courseId ?? d.planId) !== doc.id) return false;
+        const dt = getClientDate(d);
+        return dt ? dt <= date : false;
+      });
+      byCourse[doc.id] = linked.length;
+    }
+    return { date, byCourse };
+  });
+
+  // Adherence series (% of clients per course who trained each day)
+  const adherenceSeries = dates.map((date) => {
+    const byCourse: Record<string, number> = {};
+    for (const id of ooIds) {
+      const total = clientsByCourse[id].size;
+      if (total === 0) { byCourse[id] = 0; continue; }
+      const trained = trainedByCourseDate[id][date]?.size ?? 0;
+      byCourse[id] = Math.round((trained / total) * 100);
+    }
+    return { date, byCourse };
+  });
+
+  return { upcomingCalls, unreadVideoExchanges, plans, adherenceSeries, clientCountSeries };
+}
+
+async function computeProgramsView(
+  ltCourseDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+  paymentDocs: FirebaseFirestore.QueryDocumentSnapshot[],
+  dates: string[],
+  thirtyDaysAgoStr: string,
+  now: Date,
+) {
+  const ltIds = ltCourseDocs.map((d) => d.id);
+  const courseMap = Object.fromEntries(ltCourseDocs.map((d) => [d.id, d.data()]));
+
+  const weekAgoIso = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const thirtyDaysAgoIso = new Date(thirtyDaysAgoStr + "T00:00:00Z").toISOString();
+  const prevMonthStartIso = new Date(new Date(thirtyDaysAgoStr).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const thisMonthStr = now.toISOString().slice(0, 7);
+  const lastMonthStr = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
+
+  const approvedDocs = paymentDocs.filter((d) => {
+    const s = d.data().status;
+    return s === "approved" || s === "completed";
+  });
+
+  const getPayDate = (doc: FirebaseFirestore.QueryDocumentSnapshot): string => {
+    const data = doc.data();
+    const ts = data.processed_at ?? data.created_at ?? data.createdAt ?? data.paidAt;
+    if (ts?.toDate) return (ts.toDate() as Date).toISOString();
+    if (typeof ts === "string") return ts;
+    return "";
+  };
+
+  const getUserId = (data: FirebaseFirestore.DocumentData): string | null => {
+    if (data.userId) return data.userId as string;
+    const extRef = data.external_reference as string | undefined;
+    if (!extRef) return null;
+    const parts = extRef.split("|");
+    return parts.length >= 3 ? parts[1] : null;
+  };
+
+  // Revenue
+  const { trend: revenueTrend } = computeRevenueTrend(paymentDocs);
+  const thisMonthGross = approvedDocs
+    .filter((d) => getPayDate(d).startsWith(thisMonthStr))
+    .reduce((s, d) => s + (d.data().amount ?? 0), 0);
+  const lastMonthGross = approvedDocs
+    .filter((d) => getPayDate(d).startsWith(lastMonthStr))
+    .reduce((s, d) => s + (d.data().amount ?? 0), 0);
+  const netThisMonth = Math.round(thisMonthGross * (1 - WAKE_CUT_PERCENT / 100));
+  const netLastMonth = Math.round(lastMonthGross * (1 - WAKE_CUT_PERCENT / 100));
+  const revenuePctChange = netLastMonth > 0
+    ? Math.round(((netThisMonth - netLastMonth) / netLastMonth) * 100)
+    : netThisMonth > 0 ? 100 : 0;
+
+  // Enrollment per course
+  const enrollment = ltIds.map((courseId) => {
+    const pays = approvedDocs.filter((d) => d.data().courseId === courseId);
+    return {
+      courseId,
+      title: (courseMap[courseId]?.title as string) ?? "",
+      imageUrl: (courseMap[courseId]?.image_url as string) ?? null,
+      totalEnrolled: pays.length,
+      newThisWeek: pays.filter((d) => getPayDate(d) >= weekAgoIso).length,
+      newThisMonth: pays.filter((d) => getPayDate(d) >= thirtyDaysAgoIso).length,
+      prevMonth: pays.filter((d) => {
+        const dt = getPayDate(d);
+        return dt >= prevMonthStartIso && dt < thirtyDaysAgoIso;
+      }).length,
+    };
+  }).map((e) => ({
+    ...e,
+    pctChange: e.prevMonth > 0
+      ? Math.round(((e.newThisMonth - e.prevMonth) / e.prevMonth) * 100)
+      : e.newThisMonth > 0 ? 100 : 0,
+  }));
+
+  // Adherence series — derive enrolled userIds from payments (cap at 30 per course)
+  const enrolledByCourse: Record<string, string[]> = {};
+  for (const courseId of ltIds) {
+    const pays = approvedDocs.filter((d) => d.data().courseId === courseId);
+    const uids = [...new Set(
+      pays.map((d) => getUserId(d.data())).filter((id): id is string => !!id)
+    )];
+    enrolledByCourse[courseId] = uids.slice(0, 30);
+  }
+
+  const allUserIds = [...new Set(Object.values(enrolledByCourse).flat())];
+  const sessionsByUser = allUserIds.length > 0
+    ? await Promise.all(
+        allUserIds.map((uid) =>
+          db.collection("users").doc(uid).collection("sessionHistory")
+            .where("date", ">=", thirtyDaysAgoStr)
+            .get()
+            .then((snap) => ({ uid, docs: snap.docs }))
+        )
+      )
+    : [];
+
+  const trainedByCourseDate: Record<string, Record<string, Set<string>>> = {};
+  for (const id of ltIds) {
+    trainedByCourseDate[id] = {};
+    for (const date of dates) trainedByCourseDate[id][date] = new Set();
+  }
+  for (const { uid, docs } of sessionsByUser) {
+    for (const doc of docs) {
+      const data = doc.data();
+      const courseId = data.courseId as string | undefined;
+      const date = data.date as string | undefined;
+      if (!courseId || !ltIds.includes(courseId) || !date) continue;
+      if (date in trainedByCourseDate[courseId]) trainedByCourseDate[courseId][date].add(uid);
+    }
+  }
+
+  const adherenceSeries = dates.map((date) => {
+    const byCourse: Record<string, number> = {};
+    for (const id of ltIds) {
+      const total = enrolledByCourse[id].length;
+      if (total === 0) { byCourse[id] = 0; continue; }
+      const trained = trainedByCourseDate[id][date]?.size ?? 0;
+      byCourse[id] = Math.round((trained / total) * 100);
+    }
+    return { date, byCourse };
+  });
+
+  // Cumulative enrollment per program per day (sparkline data)
+  const enrollmentSeries = dates.map((date) => {
+    const byCourse: Record<string, number> = {};
+    for (const courseId of ltIds) {
+      const pays = approvedDocs.filter((d) => d.data().courseId === courseId);
+      byCourse[courseId] = pays.filter((d) => getPayDate(d).slice(0, 10) <= date).length;
+    }
+    return { date, byCourse };
+  });
+
+  return {
+    revenue: { netThisMonth, pctChange: revenuePctChange, trend: revenueTrend.slice(-6) },
+    enrollment,
+    enrollmentSeries,
+    adherenceSeries,
+  };
+}
+
+// ─── GET /analytics/dashboard ──────────────────────────────────────────────
+
 router.get("/analytics/dashboard", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  // Fetch shared data in parallel
-  const [paymentDocs, clientsSnap, coursesSnap, callsSnap] = await Promise.all([
-    getCreatorPayments(auth.userId),
-    getCreatorClients(auth.userId),
-    getCreatorCourses(auth.userId),
-    db.collection("call_bookings").where("creatorId", "==", auth.userId).get(),
+  const creatorId = auth.userId;
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0, 10);
+
+  // Build 30-day date array
+  const dates: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+
+  const [paymentDocs, clientsSnap, coursesSnap] = await Promise.all([
+    getCreatorPayments(creatorId),
+    getCreatorClients(creatorId),
+    getCreatorCourses(creatorId),
   ]);
 
-  // Run computation groups in parallel — partial failures don't block others
-  const [revenueResult, revenueTrendResult, adherenceResult, clientActivityResult, clientTrendResult, expiringResult, calendarResult] =
-    await Promise.allSettled([
-      Promise.resolve(computeRevenue(paymentDocs, clientsSnap, callsSnap)),
-      Promise.resolve(computeRevenueTrend(paymentDocs)),
-      computeAdherence(coursesSnap, clientsSnap),
-      computeClientActivity(clientsSnap),
-      Promise.resolve(computeClientTrend(clientsSnap, paymentDocs)),
-      computeExpiringAccess(coursesSnap, clientsSnap),
-      computeCalendarPreview(auth.userId),
-    ]);
+  const ooCourseDocs = coursesSnap.docs.filter((d) => {
+    const dt = d.data().deliveryType ?? d.data().delivery_type;
+    return dt === "one_on_one";
+  });
+  const ltCourseDocs = coursesSnap.docs.filter((d) => {
+    const dt = d.data().deliveryType ?? d.data().delivery_type;
+    return dt === "low_ticket" || dt === "general";
+  });
 
-  const unwrap = <T>(r: PromiseSettledResult<T>): T | null =>
-    r.status === "fulfilled" ? r.value : null;
-  const errorOf = (r: PromiseSettledResult<unknown>): string | undefined =>
-    r.status === "rejected" ? String(r.reason) : undefined;
+  const hasOneOnOne = ooCourseDocs.length > 0 || clientsSnap.size > 0;
+  const hasPrograms = ltCourseDocs.length > 0;
+
+  const [oResult, pResult] = await Promise.allSettled([
+    hasOneOnOne
+      ? computeOneOnOneView(clientsSnap, ooCourseDocs, dates, thirtyDaysAgoStr, creatorId, now)
+      : Promise.resolve(null),
+    hasPrograms
+      ? computeProgramsView(ltCourseDocs, paymentDocs, dates, thirtyDaysAgoStr, now)
+      : Promise.resolve(null),
+  ]);
 
   const errors: Record<string, string> = {};
-  const maybeError = (key: string, r: PromiseSettledResult<unknown>) => {
-    const e = errorOf(r);
-    if (e) errors[key] = e;
-  };
-
-  maybeError("revenue", revenueResult);
-  maybeError("revenueTrend", revenueTrendResult);
-  maybeError("adherence", adherenceResult);
-  maybeError("clientActivity", clientActivityResult);
-  maybeError("clientTrend", clientTrendResult);
-  maybeError("expiringAccess", expiringResult);
-  maybeError("calendarPreview", calendarResult);
+  if (oResult.status === "rejected") errors.oneOnOne = String(oResult.reason);
+  if (pResult.status === "rejected") errors.programs = String(pResult.reason);
 
   res.json({
     data: {
-      revenue: unwrap(revenueResult),
-      revenueTrend: unwrap(revenueTrendResult),
-      adherence: unwrap(adherenceResult),
-      clientActivity: unwrap(clientActivityResult),
-      clientTrend: unwrap(clientTrendResult),
-      expiringAccess: unwrap(expiringResult),
-      calendarPreview: unwrap(calendarResult),
+      hasOneOnOne,
+      hasPrograms,
+      oneOnOne: oResult.status === "fulfilled" ? oResult.value : null,
+      programs: pResult.status === "fulfilled" ? pResult.value : null,
+      ...(Object.keys(errors).length > 0 ? { errors } : {}),
     },
-    ...(Object.keys(errors).length > 0 ? { errors } : {}),
   });
 });
 

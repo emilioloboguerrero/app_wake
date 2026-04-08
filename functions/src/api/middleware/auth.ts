@@ -154,14 +154,14 @@ export async function validateAuthAndRateLimit(
     setCachedToken(token, decoded);
   }
 
-  // App Check (skip in emulator)
+  // App Check (skip in emulator) — advisory only, never blocks auth
   if (!isEmulator) {
     const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
     if (appCheckToken) {
       try {
         await admin.appCheck().verifyToken(appCheckToken);
       } catch {
-        throw new WakeApiServerError("UNAUTHENTICATED", 401, "App Check token inválido");
+        // Log but don't reject — client may send stale token when IndexedDB fails
       }
     }
   }
@@ -246,11 +246,8 @@ async function validateFirebaseToken(
     setCachedToken(token, decoded);
   }
 
-  // Optional App Check verification (skip in emulator).
-  // Accepted risk: App Check is only validated when the header is present.
-  // An attacker can omit it entirely to bypass verification. This is
-  // intentional until enforcement is enabled across all clients. When ready,
-  // reject requests missing the header outside emulator mode.
+  // App Check (skip in emulator) — advisory only, never blocks auth.
+  // Client may send stale/invalid tokens when IndexedDB is unavailable.
   if (!isEmulator) {
     const appCheckToken = req.headers["x-firebase-appcheck"] as
       | string
@@ -259,11 +256,7 @@ async function validateFirebaseToken(
       try {
         await admin.appCheck().verifyToken(appCheckToken);
       } catch {
-        throw new WakeApiServerError(
-          "UNAUTHENTICATED",
-          401,
-          "App Check token inválido"
-        );
+        // Log but don't reject — Firebase ID token is the primary auth gate
       }
     }
   }

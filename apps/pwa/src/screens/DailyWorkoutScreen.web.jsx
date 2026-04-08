@@ -218,7 +218,25 @@ const DailyWorkoutScreen = () => {
     if (cp) {
       // Validate
       if (cp.userId !== currentUser.uid) { try { localStorage.removeItem('wake_session_checkpoint'); } catch {} return; }
-      if (Date.now() - new Date(cp.savedAt).getTime() > 24 * 60 * 60 * 1000) { try { localStorage.removeItem('wake_session_checkpoint'); } catch {} return; }
+      if (Date.now() - new Date(cp.savedAt).getTime() > 24 * 60 * 60 * 1000) {
+        const completedSetsCount = cp.completedSets ? Object.keys(cp.completedSets).length : 0;
+        const totalSets = (cp.exercises || []).reduce((sum, ex) => sum + (ex.sets?.length || 0), 0);
+        import('../utils/apiClient.js').then(mod => {
+          const client = mod.default || mod.apiClient;
+          client.post('/workout/session/abandon', {
+            sessionId: cp.sessionId || '',
+            courseId: cp.courseId || '',
+            sessionName: cp.sessionName || '',
+            startedAt: cp.startedAt || new Date().toISOString(),
+            elapsedSeconds: cp.elapsedSeconds || 0,
+            completedSetsCount,
+            totalSetsCount: totalSets,
+            lastExerciseKey: cp.exercises?.[cp.currentExerciseIndex || 0]?.exerciseId || null,
+          }).catch(() => {});
+        });
+        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+        return;
+      }
       if (cp.courseId !== courseId) return; // Different course — keep checkpoint but don't show
       setRecoveryCheckpoint(cp);
       return;
@@ -262,13 +280,30 @@ const DailyWorkoutScreen = () => {
   }, [recoveryCheckpoint, course, courseId, navigate]);
 
   const handleRecoveryDiscard = useCallback(() => {
+    if (recoveryCheckpoint) {
+      const totalSets = (recoveryCheckpoint.exercises || []).reduce(
+        (sum, ex) => sum + (ex.sets?.length || 0), 0
+      );
+      const completedSetsCount = recoveryCheckpoint.completedSets
+        ? Object.keys(recoveryCheckpoint.completedSets).length
+        : 0;
+      import('../utils/apiClient.js').then(mod => {
+        const client = mod.default || mod.apiClient;
+        client.post('/workout/session/abandon', {
+          sessionId: recoveryCheckpoint.sessionId || '',
+          courseId: recoveryCheckpoint.courseId || '',
+          sessionName: recoveryCheckpoint.sessionName || '',
+          startedAt: recoveryCheckpoint.startedAt || new Date().toISOString(),
+          elapsedSeconds: recoveryCheckpoint.elapsedSeconds || 0,
+          completedSetsCount,
+          totalSetsCount: totalSets,
+          lastExerciseKey: recoveryCheckpoint.exercises?.[recoveryCheckpoint.currentExerciseIndex || 0]?.exerciseId || null,
+        }).catch(() => {});
+      });
+    }
     try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
-    import('../utils/apiClient.js').then(mod => {
-      const client = mod.default || mod.apiClient;
-      client.delete('/workout/session/active');
-    });
     setRecoveryCheckpoint(null);
-  }, []);
+  }, [recoveryCheckpoint]);
 
   const navigation = {
     navigate: (routeName, params) => {

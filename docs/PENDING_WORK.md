@@ -1,433 +1,678 @@
-# Wake — Pending & Partial Implementation Tracker
+# Wake — Pending Work
 
-Single source of truth for everything that has been designed/specified but not yet implemented or only partially implemented. Created 2026-03-20 by consolidating all docs.
+Last updated: 2026-04-06. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
-## 1. API Testing & QA (NOT STARTED)
+## Status Key
 
-The entire API infrastructure branch (`api-infrastructure`) has been built but **nothing has been tested end-to-end**. This must be validated before any new feature work begins.
+`NOT STARTED` · `IN PROGRESS` · `IMPLEMENTED — NOT TESTED` · `COMPLETED`
 
-### Approach
-1. ~~Complete staging environment setup~~ — done, live at `https://wake-staging.web.app`
-2. Walk through every domain systematically — hit each endpoint, verify responses, check error handling
-3. Test both apps (PWA + creator dashboard) against the API
-4. Fix bugs found during testing
-5. Merge `api-infrastructure` into `main` once stable
-6. (Future) Add GitHub Actions CI/CD for auto-deploy to staging on push to `main`
+---
 
-### Testing Checklists
+## Conversion & Growth
 
-**Auth & Profile:**
-- [ ] Sign up new user → `onUserCreated` trigger fires → user doc created
-- [ ] Login → token validation → profile fetch via API
-- [ ] Profile update (name, picture, settings)
-- [ ] Username availability check
+### 1. Consumer Landing Redesign `NOT STARTED`
 
-**Nutrition:**
-- [ ] Food search (FatSecret proxy)
-- [ ] Food detail / barcode lookup
-- [ ] Diary CRUD (add, edit, delete entries)
-- [ ] Saved foods CRUD
-- [ ] Nutrition plan assignment read
+Full rebuild of `apps/landing`. The current landing is the primary user acquisition surface and is underperforming — every new user passes through it before signing up and the current state does not match the product.
 
-**Progress/Lab:**
-- [ ] Body log CRUD
-- [ ] Readiness CRUD
-- [ ] Exercise history read
-- [ ] Session history read with pagination
+**Design direction:**
+- Dark cinematic premium — aligned with Wake design system (`#1a1a1a` canvas, white opacity tones)
+- References: [Cursor](https://cursor.com), [Linear](https://linear.app), [Loom](https://loom.com)
+- Component inspiration: [Aceternity UI](https://ui.aceternity.com/components)
+- Strong visual impact above the fold, intentional scroll progression, clear CTAs
+- Fast — Lighthouse performance score >90
 
-**Workout:**
-- [ ] Daily workout fetch
-- [ ] Session completion (sets, exercises, full session)
-- [ ] Exercise last performance lookup
+**Sections:**
+- Hero — headline, subheadline, primary CTA (sign up / ver planes)
+- Product showcase — workout execution, nutrition tracking, progress lab
+- Programs / creator showcase
+- Social proof (once available)
+- Pricing
+- Footer with links
 
-**Creator:**
-- [ ] Client list with filtering
-- [ ] Program CRUD (create, edit, duplicate, delete)
-- [ ] Library sessions/modules CRUD
-- [ ] Nutrition plan/meal library CRUD
-- [ ] Booking/availability management
-- [ ] Client enrollment (one-on-one invite)
-- [ ] Cross-creator isolation (creator A cannot access creator B's data)
+**Technical notes:**
+- Vite + React 18, `base: /`
+- PostHog events: `landing.page_viewed`, `landing.cta_clicked`, `landing.signup_cta_clicked`, `landing.pricing_viewed`
+
+**Checklist:**
+- [ ] Design direction locked (wireframe / moodboard)
+- [ ] Hero section
+- [ ] Product showcase
+- [ ] Programs section
+- [ ] Pricing section
+- [ ] Social proof section
+- [ ] Footer
+- [ ] Mobile responsive
+- [ ] Lighthouse >90
+- [ ] PostHog events
+
+---
+
+### 2. Creator Landing (New) `NOT STARTED`
+
+No acquisition surface currently exists for creators. Creators are the supply side of the platform — they bring programs, clients, and content. This is a prerequisite to any creator marketing.
+
+**What it is:** A dedicated landing page targeting fitness coaches. Explains the platform from a creator perspective — tools, revenue potential, client management.
+
+**Design direction:**
+- Same dark aesthetic, creator-focused messaging
+- Highlight: program builder, nutrition plans, 1:1 client management, events, revenue
+- CTA: "Crea tu cuenta de creador" or gated waitlist/apply flow
+
+**Sections:**
+- Hero — creator value prop
+- Features (program builder, nutrition, 1:1, bookings, events)
+- Revenue model explanation
+- Creator showcase / testimonials (when available)
+- CTA
+
+**Checklist:**
+- [ ] Decide: page within consumer landing or separate route
+- [ ] Copy direction
+- [ ] Hero + features sections
+- [ ] Revenue section
+- [ ] CTA / sign up
+- [ ] Mobile responsive
+
+---
+
+### 3b. Subscription Management Screen `NOT STARTED`
+
+In-app screen for users to view and manage their active subscription. Currently there is no visibility into subscription state inside the app.
+
+**Screen (`/app/subscription`, accessible from profile):**
+- Plan name, status (activo / cancelado / vencido), next billing date, amount
+- Cancelar button → confirmation modal → reason selector → API call → Firestore update
+
+**API needed:**
+- `GET /payments/subscription` — current subscription status
+- `POST /payments/subscription/cancel` — cancel with reason
+
+**Checklist:**
+- [ ] `GET /payments/subscription` endpoint
+- [ ] `POST /payments/subscription/cancel` endpoint
+- [ ] Subscription screen UI in PWA
+- [ ] Cancel flow (modal + reason selector)
+- [ ] Firestore update on cancel
+
+---
+
+### 3c. Stripe Migration `DECISION PENDING`
+
+Potential future replacement of MercadoPago with Stripe for better subscription UX (Customer Portal, upgrade/downgrade, dunning). Not urgent — current MP flow works. Requires a business decision before any code.
+
+| Factor | MercadoPago | Stripe |
+|---|---|---|
+| Colombia coverage | Native, preferred by local banks | Available, less familiar |
+| Subscription management | All custom-built | Customer Portal out of the box |
+| Developer experience | Moderate | Excellent |
+| Migration effort | — | 2–3 weeks (new functions, webhook, keys) |
+
+**Prerequisites:** confirm Colombian user card acceptance on Stripe, decide parallel vs hard-cutover.
+
+**Checklist:**
+- [ ] Business decision made
+- [ ] Stripe account + Colombia configuration
+- [ ] Cloud Functions for Stripe checkout and webhook
+- [ ] Stripe Customer Portal integration
+- [ ] Migrate existing subscribers
+- [ ] Deprecate MercadoPago subscription functions
+
+---
+
+## Product Quality
+
+### 5. PWA UI Redesign `NOT STARTED`
+
+Systematic review of the entire PWA to establish a consistent visual identity. Current state is functional but bland — no accent color system, inconsistent animations, generic component feel.
+
+**Goals:**
+- Universal runtime accent color (extracted from active course image — already used in some screens, needs to be the standard everywhere)
+- Animation consistency: all entrances use fade + translateY, spring easing `cubic-bezier(0.22,1,0.36,1)` — audit every screen
+- Spacing, typography hierarchy, component patterns normalized
+- Not a full rewrite — surface-level visual changes only, starting with highest-traffic screens
+
+**Scope (screen order):**
+1. Home / daily overview
+2. Workout execution
+3. Nutrition diary
+4. Progress / Lab
+5. Profile
+6. Onboarding (already mostly solid — light review only)
+
+**Components to normalize:**
+- Cards (course cards, session cards, exercise cards)
+- Buttons (primary, secondary, ghost)
+- Input fields
+- Modals and bottom sheets
+- Empty states
+- Loading skeletons
+
+**Checklist:**
+- [ ] Audit accent color usage — finalize universal context/hook
+- [ ] Home screen
+- [ ] Workout execution screen
+- [ ] Nutrition diary screen
+- [ ] Progress / Lab screens
+- [ ] Profile screen
+- [ ] Button variants normalized
+- [ ] Card variants normalized
+- [ ] Modal and bottom sheet patterns
+- [ ] Animation audit — all screens comply
+- [ ] Empty states
+- [ ] `docs/STANDARDS.md` updated if system expands
+
+---
+
+### 5. App-wide Optimization `NOT STARTED`
+
+Reduce Firestore read costs, bundle sizes, and initial load times across all apps. Low user count makes this the right time — fix habits before growth makes it expensive.
+
+**PWA (Metro/Expo):**
+- Bundle analysis — identify large dependencies
+- Dead code removal — unused imports, legacy utilities, commented logic
+- Firestore query audit — over-fetching, missing composite indexes
+- Image optimization — check sizes loaded in workout/program screens
+- React Query staleTime audit against actual data change frequency
+
+**Creator Dashboard (Vite):**
+- Vite bundle analysis (`vite-bundle-visualizer`)
+- Lazy-load heavy routes (program builder, library)
+- Firestore query audit — client list, program tree fetches
+- Verify `react-window` coverage for all long lists
+
+**Landing (Vite):**
+- Lighthouse audit — performance, LCP, CLS
+- Asset optimization — fonts, hero images/videos
+- Verify no unnecessary Firestore reads on load
+
+**Functions:**
+- Cold start analysis — minimize bundle size in Cloud Functions
+- Identify and remove unused dependencies from `functions/package.json`
+
+**Checklist:**
+- [ ] Metro bundle visualization (PWA)
+- [ ] Vite bundle visualization (creator-dashboard, landing)
+- [ ] Lighthouse audit (landing)
+- [ ] Top 5 most expensive Firestore queries identified and optimized
+- [ ] Dead code removal pass — all three apps
+- [ ] Image/asset audit
+- [ ] React Query staleTime audit
+- [ ] Functions cold start review
+- [ ] Firestore indexes reviewed (`firestore.indexes.json`)
+
+---
+
+## Analytics & Intelligence
+
+### 6. PostHog Analytics `NOT STARTED`
+
+Full-scale product analytics. Goal: understand user behavior, feature usage, funnels, and retention to inform all future product decisions.
+
+**Locked decisions:**
+- `posthog-js` in all three apps (PWA, creator-dashboard, landing)
+- All apps send to the same PostHog project, distinguished by `app` super property
+- US region: `https://us.i.posthog.com`
+- API key per-app: `VITE_POSTHOG_KEY` / Expo `Constants.expoConfig.extra.posthogKey`
+- `autocapture: false` — manual only, at service layer
+- `capture_pageview: false` — fire `screen.viewed` manually on route changes
+- `person_profiles: 'identified_only'`
+- Event naming: `domain.action`
+- No PII in event properties — userId and role only
+- `posthog.identify(userId, { role })` on login; `posthog.reset()` on logout
+- Super properties on every event: `{ app, platform: 'web', app_version, env }`
+- `env: 'staging'` on wake-staging
+
+**Session replay:**
+- `maskAllInputs: true` always
+- `data-ph-no-capture` on: body log values, readiness scores, progress photos
+- Sample rates: landing 100%, creator-dashboard 50%, PWA 20%
+
+**Event taxonomy:**
+
+Auth (fires in `authService.js`, `googleAuthService.js`, `appleAuthService.js`):
+| Event | Properties |
+|---|---|
+| `auth.signup_started` | `method` |
+| `auth.signup_completed` | `method` |
+| `auth.login` | `method: email/google/apple` |
+| `auth.logout` | — |
+| `auth.password_reset_requested` | — |
+
+Onboarding PWA (fires in `OnboardingFlow.web.jsx`):
+| Event | Properties |
+|---|---|
+| `onboarding.step_completed` | `step_index`, `step_name` |
+| `onboarding.completed` | `primary_goal`, `training_experience`, `training_days_per_week`, `equipment` |
+
+Workout PWA (fires in `sessionService.js`):
+| Event | Properties |
+|---|---|
+| `workout.session_started` | `course_id`, `week_index`, `session_index`, `exercise_count` |
+| `workout.set_completed` | `exercise_key`, `reps`, `weight`, `is_pr` |
+| `workout.session_completed` | `duration_seconds`, `sets_completed`, `exercises_completed`, `course_id` |
+| `workout.session_abandoned` | `duration_seconds`, `completion_pct`, `last_exercise_key` |
+
+Note: `workout.set_completed` is the highest-volume event. Monitor quota — sample or remove if user base scales significantly.
+
+Nutrition PWA (fires in `nutritionFirestoreService.js`):
+| Event | Properties |
+|---|---|
+| `nutrition.diary_entry_added` | `meal_type`, `source: search/barcode/saved` |
+| `nutrition.diary_entry_deleted` | `meal_type` |
+| `nutrition.food_searched` | `query_length` (NOT the string) |
+| `nutrition.barcode_scanned` | `success` |
+| `nutrition.saved_food_used` | — |
+
+Progress PWA (fires in `bodyProgressService.js`, `readinessService.js`, `oneRepMaxService.js`):
+| Event | Properties |
+|---|---|
+| `progress.body_log_added` | — |
+| `progress.readiness_added` | `score` |
+| `progress.pr_achieved` | `exercise_key` |
+
+Program / Purchase PWA (fires in `purchaseService.js`):
+| Event | Properties |
+|---|---|
+| `program.viewed` | `course_id`, `delivery_type` |
+| `program.purchase_started` | `course_id`, `delivery_type`, `access_duration` |
+| `program.purchase_completed` | `course_id`, `delivery_type`, `access_duration` |
+| `program.subscription_cancelled` | `course_id`, `reason` |
+
+Video PWA:
+| Event | Properties |
+|---|---|
+| `video.played` | `video_id`, `context: workout/library/exchange/recipe` |
+
+Creator dashboard (fires in respective service files):
+| Event | Properties | Service |
+|---|---|---|
+| `creator.client_added` | `delivery_type` | `oneOnOneService.js` |
+| `creator.program_created` | `delivery_type` | `programService.js` |
+| `creator.program_published` | `delivery_type` | `programService.js` |
+| `creator.session_built` | `exercise_count` | library service |
+| `creator.module_built` | `session_count` | library service |
+| `creator.nutrition_plan_created` | — | `plansService.js` |
+| `creator.nutrition_plan_assigned` | — | `plansService.js` |
+| `creator.call_booked` | — | `callBookingService.js` |
+| `creator.event_created` | `capacity` | `eventService.js` |
+
+Landing:
+| Event | Properties |
+|---|---|
+| `landing.page_viewed` | — |
+| `landing.cta_clicked` | `cta_label` |
+| `landing.signup_cta_clicked` | `source_section` |
+| `landing.pricing_viewed` | — |
+
+Navigation (all apps) — `screen.viewed { screen_name }` on every route change:
+- PWA: history listener in `App.web.js`
+- Creator dashboard: history listener in `App.jsx`
+- Landing: on mount in `App.jsx`
+
+**Feature flags:** Set up infrastructure at init, no active flags yet. Future use: `rpe-input-enabled`, `feedback-board-enabled`, new onboarding A/B.
+
+**Key dashboards to build post-instrumentation:**
+- Acquisition funnel: `landing.cta_clicked → auth.signup_completed → onboarding.completed → workout.session_completed`
+- Workout completion rate: `workout.session_started → workout.session_completed`
+- Growth: signups/day, method breakdown, onboarding completion rate
+- Engagement: DAU/WAU/MAU, workouts/day, diary entries/day
+- Retention cohort: first event `auth.signup_completed`, return event `workout.session_completed`
+- Feature adoption: `screen.viewed` breakdown by `screen_name`
+
+**Workout abandonment detection (new Cloud Function):**
+- Auto-save/checkpoint is fully implemented (localStorage + API + `RecoveryModal.jsx`)
+- What's missing: no "abandoned" record when a stale checkpoint expires; no `workout.session_abandoned` event
+- Build: scheduled Cloud Function (hourly) scans `activeSession` docs with `savedAt` > 4h
+- Per stale session: write `abandonedSessions/{userId}/{sessionId}` with `{ courseId, startedAt, savedAt, durationMs, completionPct, lastExerciseKey }`, fire `workout.session_abandoned` to PostHog via server-side SDK, delete stale `activeSession`
+
+**Privacy (Colombia — Ley 1581 de 2012):**
+- Privacy policy must name PostHog, describe anonymized behavioral data, disclose US data processing
+- Opt-out toggle in profile/settings: `posthog.opt_out_capturing()` / `posthog.opt_in_capturing()`
+- `maskAllInputs: true` + `data-ph-no-capture` on sensitive elements covers session replay compliance
+
+**Implementation order:**
+1. `analyticsService.js` in PWA — init, super properties, identify/reset
+2. Auth events + `screen.viewed`
+3. Core funnel: `auth.signup_completed`, `onboarding.completed`, `program.purchase_completed`, `workout.session_completed`
+4. Verify in PostHog live view — build acquisition funnel + retention cohort
+5. Remaining PWA events (nutrition, progress, video, program.viewed)
+6. Replicate to creator-dashboard and landing
+7. Session replay — verify masking
+8. Workout abandonment detection (Cloud Function)
+9. Feature flags infrastructure
+
+---
+
+### 7. Platform Security Audit `NOT STARTED`
+
+Full security review before scaling. Goal: identify and mitigate all exploitable surfaces before traffic grows.
+
+**Firestore rules:**
+- Verify all collections have explicit deny-by-default
+- Test cross-user isolation — creator A cannot access creator B's data
+- Subcollection rules don't inherit parent over-permissions
+- `api_keys` collection access controls
+- Emulator-based test suite for critical paths
+
+**API security:**
+- Auth bypass attempts on all protected routes
+- IDOR (Insecure Direct Object Reference) on all resource ID parameters
+- Input validation completeness — every body validated before use
+- Rate limiting coverage — all public/semi-public endpoints protected
+- Secrets never returned in API responses (API key plaintext, tokens)
+
+**Client security:**
+- Firebase config exposure (expected — confirm no secret keys)
+- XSS — any `dangerouslySetInnerHTML` usage
+- Sensitive data in localStorage / sessionStorage
+- Storage path enforcement — users can only write to their own paths
+
+**Auth:**
+- Token refresh behavior — expired token handling in both apps
+- Role claim validation — `creator` vs `user` enforcement on all creator routes
+- Admin action protection
 
 **Payments:**
-- [ ] Payment preference creation
-- [ ] Subscription checkout
-- [ ] Webhook processing (use MercadoPago sandbox)
-- [ ] Subscription status updates
+- HMAC-SHA256 webhook validation applied on all webhook paths
+- `external_reference` format validated before processing
+- Idempotency (`processed_payments`) working correctly
+- No payment amounts accepted from client — always calculated server-side
 
-**Cross-cutting:**
-- [ ] Offline queue: queue requests while offline, replay on reconnect
-- [ ] Rate limiting: verify 429 responses and client retry behavior
-- [ ] API key auth: create key, use key, verify scoping
-- [ ] Error responses match standard shape across all endpoints
+**Output:** Security findings report by severity (Critical / High / Medium / Low) + applied fixes for Critical and High.
 
----
-
-## 2. PostHog Analytics System (NOT IMPLEMENTED)
-
-Full-scale product analytics using PostHog. Goal: understand user behavior, feature usage, funnels, retention, and inform product decisions.
-
-### Why PostHog
-- Self-serve analytics (no custom dashboards needed for basic questions)
-- Feature flags, session replay, and funnels built-in
-- Generous free tier (1M events/month)
-- JS SDK works in both Vite apps and Expo web
-
-### Implementation Plan
-
-**Infrastructure:**
-- Install `posthog-js` in PWA, creator-dashboard, and landing
-- Create shared initialization config (project API key, host)
-- Identify users on login (`posthog.identify(userId, { role, creatorDeliveryType, ... })`)
-- Reset on logout (`posthog.reset()`)
-- Respect user privacy: no PII in event properties (no email, no name — only userId and role)
-
-**Key Events to Track (to be refined during planning):**
-- **Acquisition:** landing page views, CTA clicks, sign-up started, sign-up completed, onboarding step completions
-- **Activation:** first workout completed, first diary entry, first program purchased
-- **Engagement:** daily active sessions, workout completions, diary entries per day, program progress
-- **Creator-specific:** client added, program created, session built, nutrition plan assigned, call booked
-- **Retention signals:** days since last session, streak length, return after inactivity
-
-**Dashboards to build (in PostHog, not in-app):**
-- User funnel: landing → signup → onboarding complete → first workout
-- Daily/weekly active users
-- Feature usage heatmap
-- Creator engagement metrics
-- Retention cohorts
-
-### Considerations
-- Add analytics calls at the **service layer** (not in components) so they survive UI refactors
-- Keep event naming consistent: `domain.action` format (e.g., `workout.completed`, `nutrition.diary_entry_added`)
-- Don't instrument everything at once — start with the funnel events, expand based on questions
+**Checklist:**
+- [ ] Firestore rules test suite (Firebase emulator)
+- [ ] API IDOR audit on all resource endpoints
+- [ ] Input validation completeness review
+- [ ] Rate limiting coverage review
+- [ ] Auth bypass attempts on protected routes
+- [ ] Storage rules review
+- [ ] Payment webhook security review
+- [ ] Client-side sensitive data audit
+- [ ] Document findings
+- [ ] Fix all Critical and High severity issues
 
 ---
 
-## 3. Feedback Board (NOT IMPLEMENTED)
+## New Features
 
-In-app feature request and bug report board for both PWA and creator dashboard. Users/creators propose features, others vote to prioritize.
+### 8. Cardio Tracking System V1 `NOT STARTED`
 
-### Concept
-- Board visible inside each app (PWA and creator dashboard, separate views)
-- Anyone can submit a feature request or bug report
-- Other users can upvote (one vote per user per item)
-- Items sorted by vote count (most voted first)
-- Optional: status labels (proposed, planned, in progress, shipped)
-- Admin view for us to update statuses
+A parallel tracking system for cardio alongside the existing strength system. The goal is a full-stack cardio product (think TrainingPeaks / Runna within Wake) — GPS tracking, wearable integrations, history, and metrics. This is a large, multi-phase build and should be treated as its own product track.
 
-### Data Model
+**V1 scope:**
+- Manual cardio session logging (type, duration, distance, heart rate, notes)
+- GPS route tracking — web (Geolocation API) and native (`expo-location`)
+- Basic cardio history and metrics (weekly volume, pace, zone distribution)
+- Wearable integrations: Garmin Connect, Whoop, Oura, Fitbit (OAuth + sync)
+- Cardio tab in PWA alongside the workout tab
+- Creator dashboard: read-only view of client cardio data
 
-**Firestore collection: `feedback_board/{itemId}`**
+**Out of V1:**
+- AI-generated cardio plans
+- Creator-assigned cardio programs
+- Detailed zone training or VO2 max estimation (beyond displayed metrics)
+
+**Data model (new Firestore collections):**
 ```
-{
-  title: string,
-  description: string,
-  type: "feature" | "bug",
-  app: "pwa" | "creator",        // which app it was submitted from
-  status: "proposed" | "planned" | "in_progress" | "shipped",
-  authorId: string,
-  authorRole: "user" | "creator",
-  voteCount: number,
-  createdAt: timestamp,
-  updatedAt: timestamp
-}
+users/{userId}/cardioSessions/{sessionId}
+  type: 'run' | 'cycle' | 'swim' | 'walk' | 'hike' | 'other'
+  source: 'manual' | 'gps' | 'garmin' | 'whoop' | 'oura' | 'fitbit'
+  startedAt, endedAt
+  duration: number (seconds)
+  distance: number (meters)
+  avgHeartRate, maxHeartRate
+  calories: number
+  route: GeoJSON | null
+  laps: []
+  notes: string
+  rawData: {}  // provider-specific, for future normalization
+
+users/{userId}/wearableConnections/{provider}
+  provider: 'garmin' | 'whoop' | 'oura' | 'fitbit'
+  accessToken, refreshToken, tokenExpiry
+  lastSyncAt: timestamp
+  providerUserId: string
 ```
 
-**Firestore subcollection: `feedback_board/{itemId}/votes/{oderId}`**
-```
-{
-  oderId: string,
-  votedAt: timestamp
-}
-```
+**Wearable integration approach:**
+- Each provider requires OAuth 2.0 — store tokens in Firestore
+- Sync strategy: webhook where provider supports push; scheduled pull (Cloud Function, daily) as fallback
+- Normalize all provider data to `cardioSessions` schema on ingest
+- Garmin: Health API + Connect IQ
+- Whoop: WHOOP API v1
+- Oura: Oura Cloud API v2
+- Fitbit: Fitbit Web API
 
-Vote count maintained via Cloud Function or transaction (increment on vote, decrement on unvote). One vote per user per item enforced by using `userId` as the vote document ID.
+**New route file:** `functions/src/api/routes/cardio.ts`
 
-### API Endpoints (under `/api/v1/feedback`)
-- `GET /feedback?app=pwa&sort=votes` — list items, paginated
-- `POST /feedback` — submit new item
-- `POST /feedback/:id/vote` — upvote (toggle)
-- `PATCH /feedback/:id` — update status (admin only)
+API endpoints:
+- `GET /cardio/sessions` — history, cursor-paginated (page size 20)
+- `POST /cardio/sessions` — manual log
+- `GET /cardio/sessions/:id` — detail with route GeoJSON
+- `DELETE /cardio/sessions/:id`
+- `POST /cardio/connect/:provider` — OAuth initiation
+- `GET /cardio/connect/:provider/callback` — OAuth callback + token storage
+- `DELETE /cardio/connect/:provider` — disconnect
+- `POST /cardio/sync/:provider` — manual sync trigger
 
-### UI
-- Simple list view with vote button, title, description preview, status badge
-- Submit form: title + description + type selector
-- Sorting: by votes (default), by recent
-- Filtering: by type (feature/bug), by status
+**Checklist:**
+- [ ] Data model finalized and Firestore rules written
+- [ ] Manual cardio logging (PWA)
+- [ ] GPS tracking on web (Geolocation API)
+- [ ] GPS tracking on native (`expo-location`)
+- [ ] Cardio history screen with metrics
+- [ ] Weekly volume and pace charts
+- [ ] Cardio tab in PWA navigation
+- [ ] Garmin OAuth + sync
+- [ ] Whoop OAuth + sync
+- [ ] Oura OAuth + sync
+- [ ] Fitbit OAuth + sync
+- [ ] Creator dashboard — client cardio read view
+- [ ] Storage rules for route data
 
 ---
 
-## 4. Creator Email Platform (NOT IMPLEMENTED)
+### 9. Recipe Videos (Nutrition) `NOT STARTED`
 
-Complete email marketing system for creators — manual campaigns, reusable templates, and automated sequences. Designed as a platform-level feature used across events, programs, 1:1 clients, and general marketing. Built on Resend (already integrated via `RESEND_API_KEY`).
+Creators upload short-form recipe videos attached to meals. Users see and play these videos when browsing nutrition or viewing assigned meal plans.
 
-### Where email is used across Wake
+**Flow:**
+1. Creator opens a meal in the nutrition library → uploads recipe video
+2. Video stored: `creator_nutrition_library/{creatorId}/recipe_videos/{videoId}.mp4`
+3. User sees "Ver receta" on any meal with an attached video
+4. Video plays in the existing video player component
 
-| Area | Manual campaigns | Automated sequences |
-|---|---|---|
-| **Events** | Post-event thanks, announcements | Confirmation on register, reminder 24h before, post-event survey, waitlist notification |
-| **Programs** | Updates to all enrollees | Welcome on enrollment, weekly motivation, expiry warning |
-| **1:1 clients** | Check-in messages | Onboarding sequence, progress milestones |
-| **General** | Promotions, announcements | Re-engagement for inactive users |
-
-### Data Model
-
-**Templates:**
+**Data model (additive to existing meals):**
 ```
-creator_emails/{creatorId}/templates/{templateId}
-  name: string
-  subject: string
-  body: string (HTML)
-  variables: string[]              // e.g. ["nombre", "evento", "fecha"]
-  created_at, updated_at
+creator_nutrition_library/{creatorId}/meals/{mealId}
+  + recipeVideoUrl: string | null
+  + recipeStoragePath: string | null
+  + recipeThumbnailUrl: string | null
 ```
 
-**Campaigns (manual sends):**
-```
-creator_emails/{creatorId}/campaigns/{campaignId}
-  templateId: string | null        // or inline subject + body
-  subject: string
-  body: string
-  audience: {
-    type: 'event_registrants' | 'program_enrollees' | 'clients' | 'all_contacts'
-    resourceId: string | null      // specific event/program ID
-    filters: { ... }               // e.g. { checked_in: true, field_f_genero: 'Femenino' }
-  }
-  status: 'draft' | 'scheduled' | 'sending' | 'sent'
-  scheduled_at: timestamp | null   // null = send now
-  stats: { total, sent, opened, clicked, failed }
-  created_at
-```
+Alternatively, a standalone `recipes` subcollection with `mealIds` linking. Decide at implementation time based on how creators conceptualize recipes vs meals.
 
-**Sequences (automated):**
-```
-creator_emails/{creatorId}/sequences/{sequenceId}
-  name: string
-  status: 'active' | 'paused' | 'draft'
-  trigger: {
-    type: 'event_register' | 'event_checkin' | 'program_enroll' | 'client_added' |
-          'user_signup' | 'user_inactive_7d' | 'subscription_cancelled'
-    resourceId: string | null
-  }
-  steps: [
-    { delay_hours: number, subject: string, body: string, templateId?: string }
-  ]
-  created_at
-```
+**Technical notes:**
+- Reuse `videoExchangeCompressor.js` for client-side compression before upload
+- Reuse signed URL upload pattern (`POST /upload-url` → direct upload → `POST /upload-url/confirm`)
+- PostHog event: `video.played { context: 'recipe' }`
 
-**Sequence enrollments:**
-```
-email_sequence_enrollments/{enrollmentId}
-  creatorId: string
-  sequenceId: string
-  recipientEmail: string
-  recipientName: string
-  currentStep: number
-  enrolledAt: timestamp
-  nextSendAt: timestamp
-  status: 'active' | 'completed' | 'cancelled'
-```
-
-**Send log (single source of truth for all emails):**
-```
-email_sends/{sendId}
-  creatorId: string
-  campaignId | sequenceId: string
-  recipientEmail: string
-  resendMessageId: string
-  status: 'queued' | 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced'
-  sent_at, opened_at, clicked_at
-```
-
-### Audience Resolver
-
-Cross-platform function that takes an audience definition and returns `{ email, name, variables }[]`. Same resolver used by campaigns and sequences.
-
-| audience.type | Firestore source | Key filters |
-|---|---|---|
-| `event_registrants` | `event_signups/{resourceId}/registrations` | `checked_in`, custom field values |
-| `program_enrollees` | `users` where `courses.{resourceId}` exists | `status`, `deliveryType` |
-| `clients` | `one_on_one_clients` where `creatorId` matches | `status` |
-| `all_contacts` | Union of all above, deduplicated by email | — |
-
-### Phase 1: Manual Campaigns (BUILD FIRST)
-
-**Creator dashboard UI:**
-- New screen: `/creators/emails` — campaign list with status and stats
-- New screen: `/creators/emails/new` — compose email
-  - Subject line input
-  - Rich text body (bold, italic, links, variables like `{{nombre}}`)
-  - Audience picker: source type → specific resource → optional filters
-  - "Enviar ahora" button
-- Campaign detail: sent count, open rate, click rate (from Resend webhooks)
-
-**API endpoints:**
-- `GET /creator/emails/campaigns` — list campaigns with stats
-- `POST /creator/emails/campaigns` — create campaign (draft)
-- `PATCH /creator/emails/campaigns/:id` — update draft
-- `POST /creator/emails/campaigns/:id/send` — trigger send
-- `GET /creator/emails/campaigns/:id` — detail with per-recipient status
-
-**Backend:**
-- Cloud Function processes send: resolve audience → loop recipients → call Resend API → write `email_sends` records
-- Resend webhook handler (`POST /webhooks/resend`) updates `email_sends` with delivery/open/click events
-- Batch sends (Resend batch API or chunked loop with rate limiting)
-
-**Phase 1 checklist:**
-- [ ] Firestore collections: `creator_emails`, `email_sends`
-- [ ] Audience resolver function (event_registrants + clients initially)
-- [ ] Campaign CRUD API endpoints
-- [ ] Send processor (Cloud Function)
-- [ ] Resend webhook handler for delivery tracking
-- [ ] Creator dashboard: campaign list screen
-- [ ] Creator dashboard: compose + audience picker screen
-- [ ] Creator dashboard: campaign detail with stats
-
-### Phase 2: Templates + Scheduling
-
-- Save any campaign as a reusable template
-- Pre-built starter templates: "Confirmacion de registro", "Recordatorio 24h", "Gracias por asistir"
-- Schedule picker: send at specific date/time
-- Cloud Scheduler function checks for `scheduled_at` <= now and fires sends
-- Template management screen in creator dashboard
-
-**Phase 2 checklist:**
-- [ ] Template CRUD (Firestore + API)
-- [ ] Template picker in compose screen
-- [ ] Schedule picker UI + `scheduled_at` field
-- [ ] Scheduled send processor (pub/sub or Cloud Scheduler)
-
-### Phase 3: Automated Sequences
-
-- Sequence builder UI: list of steps with configurable delays
-- Trigger system: Firestore `onCreate` / Cloud Function listeners that check for matching active sequences and create enrollments
-- Execution engine: scheduled Cloud Function (runs hourly) processes enrollments where `nextSendAt` <= now
-- Pause/resume sequences
-- Per-step analytics (sent, opened per step)
-
-**Trigger events (expand over time):**
-- `event_register` — user registers for event
-- `event_checkin` — user checks in at event
-- `program_enroll` — user enrolls in program
-- `client_added` — creator adds 1:1 client
-- `user_signup` — new user created
-- `user_inactive_7d` — no activity in 7 days
-- `subscription_cancelled` — subscription cancelled
-
-**Phase 3 checklist:**
-- [ ] Sequence CRUD (Firestore + API)
-- [ ] Enrollment trigger logic
-- [ ] Scheduled sender for sequence steps
-- [ ] Cancellation logic (unsubscribe, sequence complete, manual)
-- [ ] Sequence builder UI in creator dashboard
-- [ ] Per-step analytics
-
-### Key Design Decisions
-
-- **`email_sends` is the spine** — every email from any source (campaign or sequence) gets a record here. Analytics, billing, deliverability monitoring all read from one place.
-- **Audience resolver is abstract** — adding a new audience type is one function, not a schema change.
-- **Resend handles the hard parts** — deliverability, open/click tracking, bounce handling, unsubscribe compliance. We don't build email infrastructure.
-- **Variables are universal** — `{{nombre}}`, `{{evento}}`, `{{fecha}}` work identically in campaigns, sequences, and templates.
-- **Unsubscribe is mandatory** — store opt-out per creator per recipient (Resend manages the link). Never email someone who opted out.
-- **Rate limiting** — batch sends respect Resend rate limits. Queue excess and process over time.
+**Checklist:**
+- [ ] Decide: attach to meal vs standalone recipe collection
+- [ ] Creator dashboard: video upload in meal editor
+- [ ] Signed URL upload flow for recipe videos
+- [ ] Storage rules update
+- [ ] PWA: "Ver receta" button on meals
+- [ ] Video playback in nutrition context
+- [ ] Thumbnail generation or static fallback
 
 ---
 
-## 5. Video Exchange System (IMPLEMENTED — NOT TESTED)
+### 10. Video Exchange System `IMPLEMENTED — NOT TESTED`
 
-One-on-one only. Client uploads form-check videos, creator responds with feedback videos.
+One-on-one only. Client uploads form-check videos; creator responds with feedback videos.
 
-### Data Model
+**Data model:**
 - Storage: `users/{userId}/session_videos/{sessionId}/{videoId}.mp4`
 - Firestore: `users/{userId}/sessionHistory/{sessionId}/sessionVideos/{videoId}`
   - Required: `storagePath`, `url`, `createdAt`, `uploadedBy`
   - Optional: `exerciseKey`, `setIndex`, `exerciseId`, `responseToVideoId`
-- Use Firebase Storage resumable uploads (`uploadBytesResumable`)
 - Client-side compression to 720p before upload
+- Firebase Storage resumable uploads (`uploadBytesResumable`)
+
+**Checklist:**
+- [ ] Upload flow (PWA) — end-to-end test
+- [ ] Video display in session history (PWA)
+- [ ] Creator response video upload (creator dashboard)
+- [ ] Creator notification when client uploads video
 
 ---
 
-## 6. RPE (Reported Intensity) Integration (NOT IMPLEMENTED)
+### 11. Creator Email Platform `NOT STARTED`
 
-Add user-reported intensity (RPE) as a default measure so users can log their perceived exertion per set. When available, use it instead of planned intensity for all 1RM calculations and analytics.
+Complete email marketing for creators — manual campaigns, templates, and automated sequences. Built on Resend (`RESEND_API_KEY` in Secret Manager).
 
-### Current State
-
-- **Measures** (user inputs): `["reps", "weight"]`
-- **Objectives** (coach plans): `["reps", "intensity"]`
-- Intensity is planned by the coach but never reported by the user
-- Client-side 1RM (`oneRepMaxService.js`) uses planned intensity: `weight * (1 + 0.0333 * reps) / (1 - 0.025 * (10 - intensity))`
-- Server-side 1RM (`workout.ts`) ignores intensity entirely: `weight * (1 + 0.0333 * reps)` (pure Epley)
-
-### Locked Decisions
-
-- **Default measures become**: `["reps", "weight", "intensity"]` — intensity appears as a user input field alongside reps and weight
-- **Field naming**: The reported intensity uses the same field name `intensity` in the set's measure data. The planned intensity remains on the set's objective data. No new field name needed — the distinction is positional (measures vs objectives)
-- **1RM priority (client-side)**: Use reported intensity (from measures) when available. Fall back to planned intensity (from objectives). Fall back to pure Epley (no intensity adjustment) when neither exists
-- **Server-side formula**: Update `workout.ts` to use the same intensity-adjusted formula as the client. Use reported > planned > no-adjustment fallback chain
-- **Lab screen (PWA)**: LabRpeChart shows reported RPE when available (more accurate than planned)
-- **Creator dashboard Lab**: Show both planned and reported RPE for comparison — lets creators see if their programming matches client perception
-- **Fallback chain (only giving vs only collecting)**:
-  - Coach sets intensity, user doesn't report → use planned
-  - No planned intensity, user reports → use reported
-  - Neither exists → pure Epley (current server behavior)
-  - Both exist → use reported (user's perception is ground truth)
-
-### Implementation Plan
-
-**Phase 1: Data model + PWA input**
-- [ ] Update default measures to `["reps", "weight", "intensity"]` in `WorkoutExecutionScreen.js` (line 3401)
-- [ ] Ensure the intensity input field renders in the set row during workout execution (same "X/10" format)
-- [ ] Reported intensity gets saved with set data on session completion (`sessionService.js` `convertWorkoutToSession`)
-- [ ] Existing exercises without intensity in measures continue to work (backward compatible — only new defaults change)
-
-**Phase 2: 1RM calculation updates**
-- [ ] Update `oneRepMaxService.js` `calculate1RM` to accept both reported and planned intensity, apply fallback chain
-- [ ] Update `calculateWeightSuggestion` — still uses planned intensity (weight suggestions are about what the coach wants, not what the user felt)
-- [ ] Update server-side 1RM in `workout.ts` (line 690) to use the intensity-adjusted formula with the same fallback chain
-- [ ] Server needs access to planned intensity per set — include in `plannedSnapshot` or pass alongside set data in `POST /workout/complete`
-
-**Phase 3: Lab + analytics**
-- [ ] PWA Lab: LabRpeChart prefers reported intensity over planned
-- [ ] Creator dashboard: show reported vs planned RPE overlay/comparison in client exercise history
-- [ ] RepEstimatesCard: 1RM used for estimates should reflect the intensity-adjusted calculation
-
-### Data Flow After Implementation
-
+**Data model:**
 ```
-Coach sets objectives: { reps: "8-10", intensity: "8/10" }
-                              ↓
-User executes set, inputs measures: { reps: "9", weight: "80", intensity: "7/10" }
-                              ↓
-Session completion sends both:
-  set.reps = "9", set.weight = "80", set.intensity = "7/10"  (reported)
-  planned set: intensity = "8/10"  (from objectives)
-                              ↓
-Server 1RM: uses reported 7/10 → adjusts estimate accordingly
-  (user felt it was 7/10, meaning they had more in the tank than the coach planned)
-                              ↓
-Lab: shows reported RPE trend over time
-Creator dashboard: shows planned 8/10 vs reported 7/10 comparison
+creator_emails/{creatorId}/templates/{templateId}   — reusable templates
+creator_emails/{creatorId}/campaigns/{campaignId}   — manual sends
+creator_emails/{creatorId}/sequences/{sequenceId}   — automated flows
+email_sequence_enrollments/{enrollmentId}           — per-user sequence state
+email_sends/{sendId}                                — every sent email (single source of truth for analytics)
 ```
 
-### Notes
+**Audience types:** `event_registrants`, `program_enrollees`, `clients`, `all_contacts`
 
-- The intensity field in measures uses the same "X/10" format and parsing (`parseIntensity`) as objectives
-- Volume calculation threshold (`intensity >= 7` for effective sets in `sessionService.js`) should use reported intensity when available
-- No migration needed for existing data — old sessions without reported intensity continue to use planned or pure Epley
-- Creator dashboard exercise editor (`useExerciseSets.js`) is unaffected — coaches still set planned intensity via objectives
+Variables: `{{nombre}}`, `{{evento}}`, `{{fecha}}` work in all contexts (campaigns, sequences, templates).
+
+**Phase 1 — Manual campaigns (build first):**
+- [ ] Firestore collections
+- [ ] Audience resolver function (event_registrants + clients initially)
+- [ ] Campaign CRUD API (`/creator/emails/campaigns`)
+- [ ] Send processor Cloud Function (resolve audience → Resend batch API → write `email_sends`)
+- [ ] Resend webhook for delivery/open/click tracking
+- [ ] Creator dashboard: campaign list screen
+- [ ] Creator dashboard: compose + audience picker screen
+- [ ] Creator dashboard: campaign detail with stats
+
+**Phase 2 — Templates + scheduling:**
+- [ ] Template CRUD (Firestore + API)
+- [ ] Template picker in compose screen
+- [ ] Schedule picker UI + `scheduled_at` send processing
+
+**Phase 3 — Automated sequences:**
+- [ ] Sequence CRUD + builder UI
+- [ ] Trigger listeners: `event_register`, `program_enroll`, `client_added`, `user_inactive_7d`, `subscription_cancelled`
+- [ ] Hourly Cloud Function enrollment processor
+- [ ] Cancellation / unsubscribe logic
+- [ ] Per-step analytics
 
 ---
 
-## Priority Order
+### 13. Feedback Board `NOT STARTED`
 
-1. **Section 1** — Test & stabilize API infrastructure (everything depends on this)
-2. **Section 5** — Test video exchange end-to-end
-3. **Section 6** — RPE integration (core workout accuracy improvement, small surface area, no new collections)
-4. **Section 2** — PostHog analytics (gives visibility into user behavior, informs all future decisions)
-5. **Section 4 Phase 1** — Creator email platform: manual campaigns (immediate creator value, lays foundation for sequences)
-6. **Section 3** — Feedback board (self-contained feature, gives users a voice)
-7. **Section 4 Phase 2** — Email templates + scheduling
-8. **Section 4 Phase 3** — Automated email sequences (builds on stable campaign infrastructure)
+In-app feature request and bug report board. Users and creators submit items; others upvote to prioritize.
+
+**Data model:**
+```
+feedback_board/{itemId}
+  title, description
+  type: 'feature' | 'bug'
+  app: 'pwa' | 'creator'
+  status: 'proposed' | 'planned' | 'in_progress' | 'shipped'
+  authorId, authorRole, voteCount, createdAt, updatedAt
+
+feedback_board/{itemId}/votes/{userId}
+  votedAt: timestamp
+```
+
+**API:** `GET /feedback?app=pwa&sort=votes`, `POST /feedback`, `POST /feedback/:id/vote` (toggle), `PATCH /feedback/:id` (admin only)
+
+**Checklist:**
+- [ ] Firestore schema + rules
+- [ ] API endpoints
+- [ ] PWA: feedback list + submit form
+- [ ] Creator dashboard: feedback list
+- [ ] Vote toggle (one per user per item)
+- [ ] Admin status update
+
+---
+
+## Platform
+
+### 14. Third-party API Integration `NOT STARTED`
+
+Developer portal for external integrations with the Wake API. Backend infrastructure already exists — `api_keys` Firestore collection, SHA-256 key hashing, and API key auth in `auth.ts`.
+
+**What remains:**
+- Creator dashboard UI: create/revoke API keys, view scopes, usage overview
+- Webhook registration (register URLs, subscribe to events)
+- Webhook delivery Cloud Function
+- Per-key rate limit tracking (currently global)
+- Developer documentation (endpoint reference, auth guide, webhook guide)
+
+**Checklist:**
+- [ ] Creator dashboard: API keys management screen
+- [ ] Webhook registration (Firestore + UI)
+- [ ] Webhook delivery Cloud Function
+- [ ] Per-key rate limit tracking
+- [ ] Developer docs
+
+---
+
+## Priority Matrix
+
+Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast to build and test, 1 = months of work). For a solo dev, simplicity weighs heavier than a team — time is the real constraint.
+
+| Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
+|---|---|---|---|---|---|
+| Consumer Landing Redesign | 5 | 5 | 5 | 3 | **4.70** |
+| Creator Dashboard Rebuild | 5 | 5 | 5 | 1 | **4.40** |
+| Creator Landing | 5 | 4 | 4 | 3 | **4.20** |
+| PWA UI Redesign | 4 | 5 | 4 | 2 | **3.95** |
+| Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
+| Recipe Videos | 3 | 4 | 2 | 5 | **3.30** |
+| PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
+| Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
+| Video Exchange (test) | 2 | 3 | 3 | 5 | **2.95** |
+| Security Audit | 3 | 1 | 4 | 3 | **2.75** |
+| App-wide Optimization | 3 | 3 | 2 | 3 | **2.75** |
+| Creator Email Platform | 3 | 3 | 2 | 2 | **2.60** |
+| Stripe Migration (3c) | 3 | 4 | 1 | 1 | **2.40** |
+| Feedback Board | 2 | 2 | 1 | 4 | **2.05** |
+| Third-party API | 2 | 1 | 1 | 3 | **1.65** |
+
+Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
+
+---
+
+## Execution Order
+
+```
+1.  Consumer Landing Redesign     — top of funnel, every new user passes through it
+2.  Creator Dashboard Rebuild     — urgent; creators are supply side, current state is broken and slow
+3.  Video Exchange (test)         — already built, just validate
+4.  Recipe Videos                 — ~2 days, reuses existing infra
+5.  Creator Landing               — no creator acquisition surface; build after dashboard is solid
+6.  PWA UI Redesign               — right time with small user base, no tech debt pressure
+7.  PostHog Analytics             — before driving traffic you need visibility
+8.  Security Audit                — before scaling, know your exposure
+9.  App-wide Optimization         — before cardio ships, clean the foundation
+10. Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 7–9
+11. Subscription Mgmt Screen (3b) — status + cancel UI, contained build
+12. Creator Email Platform Ph.1   — unlocks creator marketing
+13. Stripe Migration (3c)         — decision-dependent, not urgent
+14. Feedback Board                — until user base warrants it
+15. Third-party API               — premature at current user count
+```
+
+**Track notes:**
+- **Items 1 and 2 can run in parallel** — completely separate codebases (landing and creator-dashboard). Landing is Vite, creator dashboard is Vite. No shared state.
+- **Items 3–6 are quick wins** (2–4 days each). Clear the board before the larger PWA and Cardio efforts.
+- **Creator Landing (#7) comes after Creator Dashboard (#2)** — no point driving creator traffic before the product they land on is solid.
+- **Cardio V1 (#12)** is a long-track build. Start architecture and wearable OAuth research during items 8–11. GPS and provider flows take time to get right.
+- **Stripe Migration (#15)** is gated on a business decision — don't start until that decision is made.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026.

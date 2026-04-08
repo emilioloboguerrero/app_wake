@@ -696,7 +696,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
               {state.loading ? (
                 <LoadingSpinner
                   size="large"
-                  text="Cargando..."
                   containerStyle={styles.programsLoadingContainer}
                 />
               ) : state.error ? (
@@ -728,7 +727,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
               {state.loading ? (
                 <LoadingSpinner
                   size="large"
-                  text="Cargando programas..."
                   containerStyle={styles.programsLoadingContainer}
                 />
               ) : state.error ? (

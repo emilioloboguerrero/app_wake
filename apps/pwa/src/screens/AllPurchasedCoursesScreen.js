@@ -142,9 +142,8 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
           <Text style={styles.screenTitle}>Todos mis programas</Text>
 
           {loading ? (
-            <LoadingSpinner 
-              size="large" 
-              text="Cargando todos tus cursos..." 
+            <LoadingSpinner
+              size="large"
               containerStyle={styles.loadingContainer}
             />
           ) : error ? (

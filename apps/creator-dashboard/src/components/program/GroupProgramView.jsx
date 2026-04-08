@@ -9,7 +9,7 @@ import KeepAlivePane from '../ui/KeepAlivePane';
 import { BentoCard } from '../ui/BentoGrid';
 import GlowingEffect from '../ui/GlowingEffect';
 import NumberTicker from '../ui/NumberTicker';
-import DemographicsCard from './DemographicsCard';
+import ProgramRevenueCard from './ProgramRevenueCard';
 import ProgramTrainingTab from './ProgramTrainingTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
@@ -395,8 +395,8 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                 </div>
               </div>
 
-              {/* Right -- Demographics */}
-              <DemographicsCard programId={programId} accentRgb={accentRgb} />
+              {/* Right -- Revenue */}
+              <ProgramRevenueCard programId={programId} accentRgb={accentRgb} />
 
             </div>
 

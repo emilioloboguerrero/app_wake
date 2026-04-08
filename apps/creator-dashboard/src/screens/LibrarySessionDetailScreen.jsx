@@ -1229,11 +1229,11 @@ const LibrarySessionDetailScreen = () => {
   const templateSeededRef = useRef(false);
   useEffect(() => {
     if (templateSeededRef.current || !user?.uid || !sessionId) return;
-    if (sessionDefaultTemplate) { templateSeededRef.current = true; return; }
+    if (sessionDefaultTemplate && Array.isArray(sessionDefaultTemplate.measures) && sessionDefaultTemplate.measures.includes('intensity')) { templateSeededRef.current = true; return; }
     if (!sessionQueryData) return;
     templateSeededRef.current = true;
     const DEFAULT_TEMPLATE = {
-      measures: ['reps', 'weight'],
+      measures: ['reps', 'weight', 'intensity'],
       objectives: ['reps', 'intensity', 'previous'],
       customMeasureLabels: {},
       customObjectiveLabels: {},
@@ -1352,10 +1352,11 @@ const LibrarySessionDetailScreen = () => {
     const exerciseFromLib = library && library[exerciseData.name];
 
     const tpl = sessionDefaultTemplate || {};
+    const baseMeasures = exerciseFromLib?.measures?.length > 0 ? exerciseFromLib.measures : (tpl.measures?.length > 0 ? tpl.measures : ['reps', 'weight', 'intensity']);
     const newExercisePayload = {
       primary: { [exerciseData.libraryId]: exerciseData.name },
       alternatives: {},
-      measures: exerciseFromLib?.measures?.length > 0 ? exerciseFromLib.measures : (tpl.measures || []),
+      measures: baseMeasures.includes('intensity') ? baseMeasures : [...baseMeasures, 'intensity'],
       objectives: exerciseFromLib?.objectives?.length > 0 ? exerciseFromLib.objectives : (tpl.objectives || []),
       customMeasureLabels: exerciseFromLib?.customMeasureLabels || tpl.customMeasureLabels || {},
       customObjectiveLabels: exerciseFromLib?.customObjectiveLabels || tpl.customObjectiveLabels || {},
@@ -1597,7 +1598,7 @@ const LibrarySessionDetailScreen = () => {
   const getObjectiveDisplayName = (objective) => {
     if (draftCustomObjectiveLabels[objective]) return draftCustomObjectiveLabels[objective];
     if (objective === 'reps') return 'Repeticiones';
-    if (objective === 'intensity') return 'Intensidad';
+    if (objective === 'intensity') return 'RPE';
     if (objective === 'previous') return 'Anterior';
     return objective;
   };

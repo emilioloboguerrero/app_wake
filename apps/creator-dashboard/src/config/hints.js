@@ -5,7 +5,7 @@
 export const HINTS = {
   dashboard: {
     title: 'Tu centro de control',
-    body: 'Personaliza los paneles arrastrando widgets. Cada metrica se actualiza en tiempo real.',
+    body: 'Dos vistas: 1 a 1 para gestionar clientes individuales, Programas para ver ventas y adherencia. La vista activa se recuerda entre sesiones.',
   },
   programas: {
     title: 'Programas grupales',
