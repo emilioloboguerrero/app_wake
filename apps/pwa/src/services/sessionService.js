@@ -406,7 +406,14 @@ class SessionService {
           // Could not get current session for startTime
         }
       }
-      
+
+      // Always ensure required fields exist (fixes checkpoint recovery path
+      // where exercises have exerciseId but courseId/completedAt/duration are missing)
+      actualSessionData.courseId = actualSessionData.courseId || courseId;
+      actualSessionData.completedAt = actualSessionData.completedAt || new Date().toISOString();
+      actualSessionData.duration = actualSessionData.duration ?? 0;
+      actualSessionData.sessionId = actualSessionData.sessionId || actualSessionData.id || `session_${Date.now()}`;
+
       // Merge user notes
       actualSessionData.userNotes = options.userNotes ?? actualSessionData.userNotes ?? '';
 

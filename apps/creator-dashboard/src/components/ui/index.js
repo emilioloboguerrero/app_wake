@@ -69,3 +69,6 @@ export { Tree, TreeFolder, TreeFile, CollapseButton } from './FileTree';
 
 // 1X — Keep-alive tab pane (strips entry animations after first play)
 export { default as KeepAlivePane } from './KeepAlivePane';
+
+// 1Y — Drag session preview (floating card during native drag)
+export { default as DragSessionPreview } from './DragSessionPreview';

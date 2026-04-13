@@ -38,8 +38,8 @@ import WakeLoader from '../components/WakeLoader';
 import WakeEmptyState from '../components/WakeEmptyState.web';
 import WakeToast, { useWakeToast } from '../components/WakeToast.web';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
-import { Video, ResizeMode } from 'expo-av';
 import { BrowserMultiFormatReader } from '@zxing/browser';
+import { getEmbedUrl, extractYouTubeId } from '../utils/videoUtils';
 import { NotFoundException } from '@zxing/library';
 
 const ICON_WHITE = 'rgba(255,255,255,0.95)';
@@ -145,6 +145,28 @@ function sumDiary(diaryEntries) {
     fat += Number(e.fat) || 0;
   });
   return { calories, protein, carbs, fat };
+}
+
+function groupEntriesByRecipe(entries) {
+  const result = [];
+  const recipeMap = new Map();
+  for (const entry of entries) {
+    const rName = entry.recipe_name;
+    if (rName) {
+      if (!recipeMap.has(rName)) {
+        const group = { type: 'recipe', recipe_name: rName, recipe_video_url: entry.recipe_video_url || null, entries: [] };
+        recipeMap.set(rName, group);
+        result.push(group);
+      }
+      recipeMap.get(rName).entries.push(entry);
+      if (entry.recipe_video_url && !recipeMap.get(rName).recipe_video_url) {
+        recipeMap.get(rName).recipe_video_url = entry.recipe_video_url;
+      }
+    } else {
+      result.push({ type: 'single', entry });
+    }
+  }
+  return result;
 }
 
 function optionMacros(option) {
@@ -846,7 +868,7 @@ const NutritionScreen = () => {
   const [opcionesCardIndex, setOpcionesCardIndex] = useState(0);
   const [addOptionLoading, setAddOptionLoading] = useState(false);
   const [opcionesSelectedByCard, setOpcionesSelectedByCard] = useState({});
-  const [recipeVideoModalUrl, setRecipeVideoModalUrl] = useState(null);
+  const [collapsedRecipes, setCollapsedRecipes] = useState({});
   const opcionesScrollX = useRef(new Animated.Value(0)).current;
   const opcionesScrollRef = useRef(null);
 
@@ -1088,6 +1110,8 @@ const NutritionScreen = () => {
           : foodItems;
       if (toAdd.length === 0) return;
       const meal = getMealIdForCategory(category);
+      const recipeVideoUrl = option.recipe_video_url || null;
+      const recipeName = option.recipe_name || option.label || option.name || null;
       setAddOptionLoading(true);
       try {
         const entries = toAdd.map((it) => {
@@ -1107,6 +1131,8 @@ const NutritionScreen = () => {
             serving_unit: it.serving_unit ?? null,
             grams_per_unit: it.grams_per_unit ?? null,
             servings: it.servings ?? null,
+            ...(recipeVideoUrl ? { recipe_video_url: recipeVideoUrl } : {}),
+            ...(recipeName ? { recipe_name: recipeName } : {}),
           };
         });
         await nutritionDb.addDiaryEntries(userId, entries);
@@ -1140,6 +1166,8 @@ const NutritionScreen = () => {
                 .filter((it) => it && it.recipe !== true)
             : items.filter((it) => it && it.recipe !== true);
         if (toAdd.length === 0) return;
+        const mealRecipeName = meal.name || null;
+        const mealRecipeVideoUrl = meal.recipe_video_url || null;
         const entries = toAdd.map((it) => {
           const number_of_units = it.number_of_units ?? it.units ?? it.amount ?? 1;
           return {
@@ -1157,6 +1185,8 @@ const NutritionScreen = () => {
             serving_unit: it.serving_unit ?? null,
             grams_per_unit: it.grams_per_unit ?? null,
             servings: it.servings ?? null,
+            ...(mealRecipeName ? { recipe_name: mealRecipeName } : {}),
+            ...(mealRecipeVideoUrl ? { recipe_video_url: mealRecipeVideoUrl } : {}),
           };
         });
         await nutritionDb.addDiaryEntries(userId, entries);
@@ -1290,6 +1320,35 @@ const NutritionScreen = () => {
     const idx = servings.findIndex((s) => s.serving_id === savedFood.serving_id);
     openFoodDetail(savedFood.food_id, savedFood.name, savedFood.food_category ?? null, servings, idx >= 0 ? idx : 0, String(savedFood.number_of_units ?? 1));
   }, [openFoodDetail]);
+
+  const recipeVideoRef = useRef(null);
+  const openRecipeVideoFullscreen = useCallback((url) => {
+    if (!url) return;
+    const embedUrl = getEmbedUrl(url);
+    const src = embedUrl
+      ? embedUrl + (embedUrl.includes('?') ? '&autoplay=1' : '?autoplay=1')
+      : url;
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:16px;';
+    const frame = document.createElement('div');
+    frame.style.cssText = 'width:100%;max-width:720px;aspect-ratio:16/9;border-radius:12px;overflow:hidden;';
+    const iframe = document.createElement('iframe');
+    iframe.src = src;
+    iframe.allow = 'autoplay; encrypted-media; fullscreen';
+    iframe.allowFullscreen = true;
+    iframe.style.cssText = 'width:100%;height:100%;border:none;';
+    frame.appendChild(iframe);
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '\u2715';
+    closeBtn.style.cssText = 'position:absolute;top:16px;right:16px;width:40px;height:40px;border-radius:20px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.8);font-size:18px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+    const close = () => { overlay.remove(); recipeVideoRef.current = null; };
+    closeBtn.onclick = close;
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    overlay.appendChild(frame);
+    overlay.appendChild(closeBtn);
+    document.body.appendChild(overlay);
+    recipeVideoRef.current = overlay;
+  }, []);
 
   const handleEditDiaryEntry = useCallback((entry) => {
     const storedServings = entry.servings;
@@ -2292,42 +2351,139 @@ const NutritionScreen = () => {
                                 {`${Math.round(mealTotals.calories)} kcal  ·  ${Math.round(mealTotals.protein)}g P  ·  ${Math.round(mealTotals.carbs)}g C  ·  ${Math.round(mealTotals.fat)}g G`}
                               </Text>
                             )}
-                            {mealEntries.map((entry) => {
-                              const serving = formatDiaryServing(entry);
-                              const isNew = newlyAddedIds.has(entry.id);
-                              return (
-                                <View
-                                  key={entry.id}
-                                  style={styles.diaryItemRow}
-                                  {...(isNew ? { className: 'wake-item-enter' } : {})}
-                                >
-                                  <TouchableOpacity
-                                    style={styles.diaryItemContent}
-                                    onPress={() => handleEditDiaryEntry(entry)}
-                                    activeOpacity={0.7}
+                            {groupEntriesByRecipe(mealEntries).map((item, gIdx) => {
+                              if (item.type === 'single') {
+                                const entry = item.entry;
+                                const serving = formatDiaryServing(entry);
+                                const isNew = newlyAddedIds.has(entry.id);
+                                const hasRecipeVideo = !!entry.recipe_video_url;
+                                return (
+                                  <View
+                                    key={entry.id}
+                                    style={styles.diaryItemRow}
+                                    {...(isNew ? { className: 'wake-item-enter' } : {})}
                                   >
-                                    <Text style={styles.diaryItemEmoji} selectable={false}>{getFoodEmoji(entry)}</Text>
-                                    <Text style={styles.diaryItemName} numberOfLines={2}>{entry.name ?? 'Alimento'}</Text>
-                                    {serving && (
-                                      <View style={styles.diaryItemRight}>
-                                        <Text style={styles.diaryItemAmount}>{serving.main}</Text>
-                                        {serving.sub && (
-                                          <Text style={styles.diaryItemSub}>{serving.sub}</Text>
+                                    <TouchableOpacity
+                                      style={styles.diaryItemContent}
+                                      onPress={() => handleEditDiaryEntry(entry)}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text style={styles.diaryItemEmoji} selectable={false}>{getFoodEmoji(entry)}</Text>
+                                      <View style={styles.diaryItemNameWrap}>
+                                        <Text style={styles.diaryItemName} numberOfLines={2}>{entry.name ?? 'Alimento'}</Text>
+                                        {hasRecipeVideo && (
+                                          <Text style={styles.diaryItemRecipeBadge}>receta</Text>
                                         )}
                                       </View>
+                                      {serving && (
+                                        <View style={styles.diaryItemRight}>
+                                          <Text style={styles.diaryItemAmount}>{serving.main}</Text>
+                                          {serving.sub && (
+                                            <Text style={styles.diaryItemSub}>{serving.sub}</Text>
+                                          )}
+                                        </View>
+                                      )}
+                                    </TouchableOpacity>
+                                    {hasRecipeVideo && (
+                                      <TouchableOpacity
+                                        style={styles.diaryItemVideoBtn}
+                                        onPress={() => openRecipeVideoFullscreen(entry.recipe_video_url)}
+                                        activeOpacity={0.7}
+                                        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                                      >
+                                        <Text style={styles.diaryItemVideoBtnIcon}>▶</Text>
+                                      </TouchableOpacity>
                                     )}
-                                  </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={styles.diaryItemMenuBtn}
+                                      onPress={(e) => {
+                                        setMenuAnchor({ pageY: e.nativeEvent.pageY });
+                                        setMenuEntryId(entry.id);
+                                      }}
+                                      activeOpacity={0.7}
+                                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                      <Text style={styles.diaryItemMenuIcon}>⋮</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                );
+                              }
+                              const collapseKey = `${mealId}::${item.recipe_name}`;
+                              const isCollapsed = collapsedRecipes[collapseKey] !== false;
+                              const groupTotals = sumDiary(item.entries);
+                              return (
+                                <View key={`rg-${gIdx}-${item.recipe_name}`} style={styles.recipeGroup}>
                                   <TouchableOpacity
-                                    style={styles.diaryItemMenuBtn}
-                                    onPress={(e) => {
-                                      setMenuAnchor({ pageY: e.nativeEvent.pageY });
-                                      setMenuEntryId(entry.id);
-                                    }}
+                                    style={styles.recipeGroupHeader}
+                                    onPress={() => setCollapsedRecipes((prev) => ({ ...prev, [collapseKey]: !isCollapsed }))}
                                     activeOpacity={0.7}
-                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                   >
-                                    <Text style={styles.diaryItemMenuIcon}>⋮</Text>
+                                    <Text style={[styles.recipeGroupChevron, !isCollapsed && styles.recipeGroupChevronOpen]}>›</Text>
+                                    <View style={styles.recipeGroupHeaderInfo}>
+                                      <Text style={styles.recipeGroupTitle} numberOfLines={1}>{item.recipe_name}</Text>
+                                      <Text style={styles.recipeGroupMacros}>
+                                        {`${Math.round(groupTotals.calories)} kcal  ·  ${Math.round(groupTotals.protein)}g P  ·  ${Math.round(groupTotals.carbs)}g C  ·  ${Math.round(groupTotals.fat)}g G`}
+                                      </Text>
+                                    </View>
+                                    {item.recipe_video_url && (
+                                      <TouchableOpacity
+                                        style={styles.recipeGroupPlayBtn}
+                                        onPress={(e) => { e.stopPropagation(); openRecipeVideoFullscreen(item.recipe_video_url); }}
+                                        activeOpacity={0.7}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                      >
+                                        <Text style={styles.recipeGroupPlayIcon}>▶</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                    <View style={styles.recipeGroupCount}>
+                                      <Text style={styles.recipeGroupCountText}>{item.entries.length}</Text>
+                                    </View>
                                   </TouchableOpacity>
+                                  {!isCollapsed && (
+                                    <View style={styles.recipeGroupItems}>
+                                      {item.entries.map((entry) => {
+                                        const serving = formatDiaryServing(entry);
+                                        const isNew = newlyAddedIds.has(entry.id);
+                                        return (
+                                          <View
+                                            key={entry.id}
+                                            style={styles.recipeGroupItemRow}
+                                            {...(isNew ? { className: 'wake-item-enter' } : {})}
+                                          >
+                                            <TouchableOpacity
+                                              style={styles.diaryItemContent}
+                                              onPress={() => handleEditDiaryEntry(entry)}
+                                              activeOpacity={0.7}
+                                            >
+                                              <Text style={styles.diaryItemEmoji} selectable={false}>{getFoodEmoji(entry)}</Text>
+                                              <View style={styles.diaryItemNameWrap}>
+                                                <Text style={styles.diaryItemName} numberOfLines={2}>{entry.name ?? 'Alimento'}</Text>
+                                              </View>
+                                              {serving && (
+                                                <View style={styles.diaryItemRight}>
+                                                  <Text style={styles.diaryItemAmount}>{serving.main}</Text>
+                                                  {serving.sub && (
+                                                    <Text style={styles.diaryItemSub}>{serving.sub}</Text>
+                                                  )}
+                                                </View>
+                                              )}
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                              style={styles.diaryItemMenuBtn}
+                                              onPress={(e) => {
+                                                setMenuAnchor({ pageY: e.nativeEvent.pageY });
+                                                setMenuEntryId(entry.id);
+                                              }}
+                                              activeOpacity={0.7}
+                                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            >
+                                              <Text style={styles.diaryItemMenuIcon}>⋮</Text>
+                                            </TouchableOpacity>
+                                          </View>
+                                        );
+                                      })}
+                                    </View>
+                                  )}
                                 </View>
                               );
                             })}
@@ -2842,6 +2998,7 @@ const NutritionScreen = () => {
                           setOpcionesCardIndex(
                             Math.min(idx, Math.max(0, opcionesOptions.length - 1)),
                           );
+
                         }}
                         onScrollEndDrag={(e) => {
                           const x = e.nativeEvent.contentOffset.x;
@@ -2849,6 +3006,7 @@ const NutritionScreen = () => {
                           setOpcionesCardIndex(
                             Math.min(idx, Math.max(0, opcionesOptions.length - 1)),
                           );
+
                         }}
                       >
                         {opcionesOptions.length === 0 ? (
@@ -2928,41 +3086,42 @@ const NutritionScreen = () => {
                                   </View>
                                 ) : (
                                   <>
-                                    {opt.recipe_video_url ? (
-                                      <TouchableOpacity
-                                        style={[
-                                          styles.mealBanner,
-                                          {
-                                            backgroundColor:
-                                              MEAL_BANNER_COLORS[
-                                                (selectedCategoryIndex * 31 +
-                                                  idx * 7 +
-                                                  13) %
-                                                  MEAL_BANNER_COLORS.length
-                                              ],
-                                          },
-                                        ]}
-                                        onPress={() =>
-                                          setRecipeVideoModalUrl(
-                                            opt.recipe_video_url,
-                                          )
-                                        }
-                                        activeOpacity={0.9}
-                                      >
-                                        <View style={styles.recipeVideoPlayWrap}>
-                                          <View
-                                            style={styles.recipeVideoPlayCircle}
-                                          >
-                                            <Text style={styles.recipeVideoPlayIcon}>
-                                              ▶
-                                            </Text>
+                                    {opt.recipe_video_url ? (() => {
+                                      const ytId = extractYouTubeId(opt.recipe_video_url);
+                                      const thumbUrl = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : null;
+                                      return (
+                                        <TouchableOpacity
+                                          style={[
+                                            styles.mealBanner,
+                                            {
+                                              backgroundColor:
+                                                MEAL_BANNER_COLORS[
+                                                  (selectedCategoryIndex * 31 +
+                                                    idx * 7 +
+                                                    13) %
+                                                    MEAL_BANNER_COLORS.length
+                                                ],
+                                            },
+                                          ]}
+                                          onPress={() => openRecipeVideoFullscreen(opt.recipe_video_url)}
+                                          activeOpacity={0.9}
+                                        >
+                                          {thumbUrl && (
+                                            <img
+                                              src={thumbUrl}
+                                              alt=""
+                                              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                            />
+                                          )}
+                                          <View style={styles.recipeVideoPlayWrap}>
+                                            <View style={styles.recipeVideoPlayCircle}>
+                                              <Text style={styles.recipeVideoPlayIcon}>▶</Text>
+                                            </View>
+                                            <Text style={styles.recipeVideoPlayLabel}>Ver video</Text>
                                           </View>
-                                          <Text style={styles.recipeVideoPlayLabel}>
-                                            Ver vídeo
-                                          </Text>
-                                        </View>
-                                      </TouchableOpacity>
-                                    ) : (
+                                        </TouchableOpacity>
+                                      );
+                                    })() : (
                                       <MealImageBanner
                                         items={items}
                                         colorIndex={idx}
@@ -4255,32 +4414,6 @@ const NutritionScreen = () => {
       </WakeModalOverlay>
 
       <WakeModalOverlay
-        visible={!!recipeVideoModalUrl}
-        onClose={() => setRecipeVideoModalUrl(null)}
-        contentPlacement="full"
-        closeOnBackdropClick={true}
-      >
-        <View style={styles.recipeVideoFullscreenWrap}>
-          {recipeVideoModalUrl ? (
-            <Video
-              source={{ uri: recipeVideoModalUrl }}
-              style={styles.recipeVideoFullscreenVideo}
-              useNativeControls
-              shouldPlay
-              resizeMode={ResizeMode.CONTAIN}
-            />
-          ) : null}
-          <TouchableOpacity
-            style={styles.recipeVideoCloseBtn}
-            onPress={() => setRecipeVideoModalUrl(null)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.recipeVideoCloseBtnText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      </WakeModalOverlay>
-
-      <WakeModalOverlay
         visible={!!menuEntryId}
         onClose={() => setMenuEntryId(null)}
         contentPlacement="full"
@@ -4492,6 +4625,79 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
     marginBottom: 4,
   },
+  recipeGroup: {
+    borderLeftWidth: 3,
+    borderLeftColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 4,
+    marginVertical: 4,
+    paddingLeft: 12,
+  },
+  recipeGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingRight: 4,
+  },
+  recipeGroupChevron: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.35)',
+    width: 16,
+    textAlign: 'center',
+  },
+  recipeGroupChevronOpen: {
+    transform: [{ rotate: '90deg' }],
+  },
+  recipeGroupHeaderInfo: {
+    flex: 1,
+  },
+  recipeGroupTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  recipeGroupMacros: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.3)',
+    marginTop: 2,
+  },
+  recipeGroupPlayBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recipeGroupPlayIcon: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.6)',
+    marginLeft: 2,
+  },
+  recipeGroupCount: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  recipeGroupCountText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.3)',
+  },
+  recipeGroupItems: {
+    paddingBottom: 4,
+  },
+  recipeGroupItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
   diaryItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4505,12 +4711,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginRight: 12,
   },
-  diaryItemName: {
+  diaryItemNameWrap: {
     flex: 1,
+    marginRight: 12,
+  },
+  diaryItemName: {
     fontSize: 15,
     fontWeight: '500',
     color: 'rgba(255,255,255,0.92)',
-    marginRight: 12,
+  },
+  diaryItemRecipeBadge: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.45)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  diaryItemVideoBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  diaryItemVideoBtnIcon: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    marginLeft: 1,
   },
   diaryItemRight: {
     alignItems: 'flex-end',
@@ -4815,6 +5045,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1,
   },
   recipeVideoPlayCircle: {
     width: 64,
@@ -4833,35 +5064,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.9)',
     marginTop: 8,
-  },
-  recipeVideoFullscreenWrap: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#000',
-  },
-  recipeVideoFullscreenVideo: {
-    width: '100%',
-    height: '100%',
-  },
-  recipeVideoCloseBtn: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  recipeVideoCloseBtnText: {
-    fontSize: 22,
-    color: '#fff',
-    fontWeight: '600',
   },
   opcionesCardEmpty: {
     fontSize: 14,

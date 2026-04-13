@@ -204,7 +204,8 @@ router.post("/events/:eventId/register", async (req, res) => {
     }
   }
 
-  const checkInToken = crypto.randomUUID();
+  const qrEnabled = event.settings?.enable_qr_checkin === true;
+  const checkInToken = qrEnabled ? crypto.randomUUID() : null;
 
   const regRef = await db
     .collection("event_signups")
@@ -217,7 +218,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       phoneNumber: body.phoneNumber ?? null,
       responses: body.fieldValues ?? {},
       fieldValues: body.fieldValues ?? {},
-      check_in_token: checkInToken,
+      ...(checkInToken ? { check_in_token: checkInToken } : {}),
       checked_in: false,
       created_at: FieldValue.serverTimestamp(),
     });
@@ -227,7 +228,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       registrationId: regRef.id,
       status: "registered",
       waitlistPosition: null,
-      checkInToken,
+      ...(checkInToken ? { checkInToken } : {}),
     },
   });
 });
@@ -823,7 +824,10 @@ router.post(
     }
 
     const waitlistData = waitlistDoc.data()!;
-    const checkInToken = crypto.randomUUID();
+
+    const eventDoc = await db.collection("events").doc(req.params.eventId).get();
+    const qrEnabled = eventDoc.data()?.settings?.enable_qr_checkin === true;
+    const checkInToken = qrEnabled ? crypto.randomUUID() : null;
 
     // Only copy safe fields from waitlist entry
     const regRef = await db
@@ -835,7 +839,7 @@ router.post(
         displayName: waitlistData.displayName ?? null,
         phoneNumber: waitlistData.phoneNumber ?? null,
         fieldValues: waitlistData.fieldValues ?? {},
-        check_in_token: checkInToken,
+        ...(checkInToken ? { check_in_token: checkInToken } : {}),
         checked_in: false,
         admitted_from_waitlist: true,
         created_at: FieldValue.serverTimestamp(),

@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
-import { MenuDropdown, ConfirmDeleteModal, GlowingEffect, ShimmerSkeleton, Tooltip } from './ui';
+import { MenuDropdown, ConfirmDeleteModal, GlowingEffect, ShimmerSkeleton, Tooltip, DragSessionPreview } from './ui';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../utils/plannedVolumeUtils';
 import { extractAccentFromImage } from './events/eventFieldComponents';
@@ -95,6 +95,8 @@ const PlanWeeksGrid = ({
   const [addingToModuleId, setAddingToModuleId] = useState(null);
   const [addingToDayIndex, setAddingToDayIndex] = useState(null);
   const [dragMoveTarget, setDragMoveTarget] = useState(null); // { sourceModuleId, sourceSessionId, sourceSession, targetModuleId, targetDayIndex }
+  const [draggingSession, setDraggingSession] = useState(null); // session object while dragging
+  const [movingToCell, setMovingToCell] = useState(null); // { moduleId, dayIndex, title } — shimmer in target cell
 
   // ─── Duplicate week state ───────────────────────────────────────────────
   const [isDuplicatingWeek, setIsDuplicatingWeek] = useState(false);
@@ -331,6 +333,7 @@ const PlanWeeksGrid = ({
   // ─── Session drag (move/duplicate) ──────────────────────────────────────
 
   const handleSessionDragStart = (e, moduleId, session) => {
+    e.stopPropagation();
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: DRAG_TYPE_MOVE_SESSION,
@@ -341,12 +344,18 @@ const PlanWeeksGrid = ({
       source_library_session_id: session.source_library_session_id ?? session.librarySessionRef ?? null,
       image_url: session.image_url ?? null,
     }));
+    const img = new Image();
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    e.dataTransfer.setDragImage(img, 0, 0);
+    e.currentTarget.classList.add('plan-weeks-session-card--dragging');
+    setDraggingSession(session);
   };
 
   const handleMoveSession = async () => {
     if (!dragMoveTarget) return;
-    const { sourceModuleId, sourceSessionId, targetModuleId, targetDayIndex } = dragMoveTarget;
+    const { sourceModuleId, sourceSessionId, targetModuleId, targetDayIndex, sourceSession: srcData } = dragMoveTarget;
     setDragMoveTarget(null);
+    setMovingToCell({ moduleId: targetModuleId, dayIndex: targetDayIndex, title: srcData?.title || 'Sesion' });
     try {
       if (sourceModuleId === targetModuleId) {
         await plansService.updateSession(planId, sourceModuleId, sourceSessionId, {
@@ -366,6 +375,8 @@ const PlanWeeksGrid = ({
       showToast('Sesión movida', 'success');
     } catch (err) {
       showToast(err.message || 'No pudimos mover la sesión.', 'error');
+    } finally {
+      setMovingToCell(null);
     }
   };
 
@@ -373,6 +384,7 @@ const PlanWeeksGrid = ({
     if (!dragMoveTarget) return;
     const { sourceModuleId, sourceSessionId, targetModuleId, targetDayIndex, sourceSession: srcData } = dragMoveTarget;
     setDragMoveTarget(null);
+    setMovingToCell({ moduleId: targetModuleId, dayIndex: targetDayIndex, title: srcData?.title || 'Sesion' });
     try {
       await plansService.createSession(
         planId, targetModuleId, srcData?.title || 'Sesion',
@@ -383,6 +395,8 @@ const PlanWeeksGrid = ({
       showToast('Sesión duplicada', 'success');
     } catch (err) {
       showToast(err.message || 'No pudimos duplicar la sesión.', 'error');
+    } finally {
+      setMovingToCell(null);
     }
   };
 
@@ -566,6 +580,7 @@ const PlanWeeksGrid = ({
                               const session = getSessionForDay(mod, dayIndex);
                               const isEmpty = !session;
                               const isAddingToThisCell = addingToModuleId === mod.id && addingToDayIndex === dayIndex;
+                              const isMovingToThisCell = movingToCell?.moduleId === mod.id && movingToCell?.dayIndex === dayIndex;
                               const linked = session ? isSessionLinked(session) : false;
 
                               return (
@@ -587,6 +602,7 @@ const PlanWeeksGrid = ({
                                         } : undefined}
                                         draggable={!session._optimistic}
                                         onDragStart={!session._optimistic ? (e) => handleSessionDragStart(e, mod.id, session) : undefined}
+                                        onDragEnd={(e) => { e.currentTarget.classList.remove('plan-weeks-session-card--dragging'); setDraggingSession(null); }}
                                         onMouseEnter={(e) => handleSessionHoverStart(session, e)}
                                         onMouseLeave={handleSessionHoverEnd}
                                       >
@@ -631,6 +647,12 @@ const PlanWeeksGrid = ({
                                           <span>Guardando...</span>
                                         </div>
                                       )}
+                                    </div>
+                                  ) : isMovingToThisCell ? (
+                                    <div className="plan-weeks-session-card plan-weeks-session-card--incoming">
+                                      <div className="plan-weeks-session-card-body">
+                                        <ShimmerSkeleton width="70%" height="14px" borderRadius="4px" />
+                                      </div>
                                     </div>
                                   ) : (
                                     <button
@@ -720,6 +742,8 @@ const PlanWeeksGrid = ({
         }
         isDeleting={isDeleting}
       />
+
+      <DragSessionPreview session={draggingSession} />
 
       {/* ── Move/Duplicate choice overlay ────────────────────── */}
       {dragMoveTarget && (

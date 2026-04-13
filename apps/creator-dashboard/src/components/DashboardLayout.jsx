@@ -19,6 +19,7 @@ import {
   BookOpen,
   CalendarCheck,
   KeyRound,
+  Shield,
 } from 'lucide-react';
 
 const TYPE_BUG = 'bug';
@@ -93,6 +94,16 @@ const DEV_NAV_ITEMS = [
   },
 ];
 
+const ADMIN_NAV_ITEMS = [
+  {
+    key: 'app-resources',
+    label: 'Recursos',
+    path: '/admin/resources',
+    match: (p) => p.startsWith('/admin/resources'),
+    icon: <Shield size={ICON_SIZE} />,
+  },
+];
+
 const NAV_HIDDEN_KEY = 'wake_creator_nav_hidden';
 
 const getHiddenNav = () => {
@@ -120,7 +131,7 @@ const DashboardLayout = ({
   headerImageIcon = null,
   headerRight = null,
 }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -379,6 +390,24 @@ const DashboardLayout = ({
             </button>
           ))}
         </div>
+
+        {/* Admin section */}
+        {isAdmin && (
+          <div className="dl-sidebar__dev">
+            <p className="dl-sidebar__dev-label">Admin</p>
+            {ADMIN_NAV_ITEMS.map(item => (
+              <button
+                key={item.key}
+                className={`dl-nav-item ${item.match(location.pathname, location.state) ? 'dl-nav-item--active' : ''}`}
+                onClick={() => navTo(item.path)}
+                aria-current={item.match(location.pathname, location.state) ? 'page' : undefined}
+              >
+                <span className="dl-nav-item__icon">{item.icon}</span>
+                <span className="dl-nav-item__label">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="dl-sidebar__footer">

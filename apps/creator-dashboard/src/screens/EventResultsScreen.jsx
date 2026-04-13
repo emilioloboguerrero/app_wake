@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, Fragment } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import eventService from '../services/eventService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import {
@@ -715,6 +715,18 @@ export default function EventResultsScreen() {
   const imageInputRef = useRef(null);
   const savedRef = useRef(null);
 
+  // ─── Email tab state ───────────────────────────────────────────
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [emailAudienceMode, setEmailAudienceMode] = useState('all'); // all | checked_in | no_show | filtered | manual
+  const [emailFilters, setEmailFilters] = useState({}); // { fieldId: value }
+  const [emailManualIds, setEmailManualIds] = useState(new Set());
+  const [emailImages, setEmailImages] = useState([]); // [{ url, id }]
+  const [emailMediaPickerOpen, setEmailMediaPickerOpen] = useState(false);
+  const [emailAudienceModalOpen, setEmailAudienceModalOpen] = useState(false);
+  const [emailPreviewOpen, setEmailPreviewOpen] = useState(false);
+  const [emailConfirmOpen, setEmailConfirmOpen] = useState(false);
+
   useEffect(() => {
     if (!event) return;
     if (event.creator_id !== user?.uid) {
@@ -1045,6 +1057,139 @@ export default function EventResultsScreen() {
 
   const checkinBadgeColor = checkinRate >= 80 ? 'green' : checkinRate >= 50 ? 'yellow' : 'red';
 
+  // ─── Email: filterable fields ─────────────────────────────────────
+  const filterableFields = useMemo(() => {
+    if (!event?.fields) return [];
+    return event.fields.filter(f =>
+      ['select', 'radio', 'multiselect', 'checkbox'].includes(f.type) ||
+      f.id === 'f_genero'
+    );
+  }, [event]);
+
+  const numberFields = useMemo(() => {
+    if (!event?.fields) return [];
+    return event.fields.filter(f => f.type === 'number' || f.id === 'f_edad');
+  }, [event]);
+
+  // ─── Email: resolve recipients based on audience mode + filters ───
+  const emailRecipients = useMemo(() => {
+    let pool = registrations;
+
+    // Step 1: audience mode filter
+    if (emailAudienceMode === 'checked_in') {
+      pool = pool.filter(r => r.checked_in);
+    } else if (emailAudienceMode === 'no_show') {
+      pool = pool.filter(r => !r.checked_in);
+    } else if (emailAudienceMode === 'manual') {
+      pool = pool.filter(r => emailManualIds.has(r.id));
+    }
+
+    // Step 2: field filters (applied in all modes except manual)
+    if (emailAudienceMode !== 'manual' && Object.keys(emailFilters).length > 0) {
+      pool = pool.filter(r => {
+        return Object.entries(emailFilters).every(([fieldId, filterValue]) => {
+          if (!filterValue || filterValue === '__all__') return true;
+          const val = r.responses?.[fieldId] ?? r[fieldId];
+          // Number range filter (lte:X or gt:X)
+          if (typeof filterValue === 'string' && filterValue.startsWith('lte:')) {
+            const threshold = Number(filterValue.slice(4));
+            return Number(val) <= threshold;
+          }
+          if (typeof filterValue === 'string' && filterValue.startsWith('gt:')) {
+            const threshold = Number(filterValue.slice(3));
+            return Number(val) > threshold;
+          }
+          if (Array.isArray(val)) return val.includes(filterValue);
+          return String(val) === String(filterValue);
+        });
+      });
+    }
+
+    // Step 3: only keep those with a valid email
+    return pool.filter(r => {
+      if (typeof r.email === 'string' && r.email.includes('@')) return true;
+      if (r.responses) {
+        return Object.entries(r.responses).some(
+          ([k, v]) => k.toLowerCase().includes('email') && typeof v === 'string' && v.includes('@')
+        );
+      }
+      return false;
+    });
+  }, [registrations, emailAudienceMode, emailFilters, emailManualIds]);
+
+  // ─── Email: send mutation ─────────────────────────────────────────
+  const sendEmailMutation = useMutation({
+    mutationFn: async () => {
+      const recipientIds = emailAudienceMode === 'all' && Object.keys(emailFilters).every(k => emailFilters[k] === '__all__')
+        ? undefined
+        : emailRecipients.map(r => r.id);
+
+      // Convert plain text body to simple HTML (preserve line breaks)
+      const bodyHtml = emailBody
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br/>')
+        .replace(/\{\{nombre\}\}/g, '{{nombre}}');
+
+      // Build image HTML
+      const imagesHtml = emailImages.length > 0
+        ? emailImages.map(img =>
+            `<div style="margin:16px 0;"><img src="${img.url}" alt="" style="max-width:100%;border-radius:12px;display:block;" /></div>`
+          ).join('')
+        : '';
+
+      const wrappedHtml = `<div style="color:rgba(255,255,255,0.85);font-size:1rem;line-height:1.6;">${bodyHtml}${imagesHtml}</div>`;
+
+      return apiClient.post('/creator/email/send', {
+        subject: emailSubject,
+        bodyHtml: wrappedHtml,
+        recipients: {
+          type: 'event',
+          eventId,
+          ...(recipientIds ? { recipientIds } : {}),
+        },
+      });
+    },
+    onSuccess: (res) => {
+      showToast(`Email enviado a ${res.data.recipientCount} personas`);
+      setEmailSubject('');
+      setEmailBody('');
+      setEmailImages([]);
+      setEmailConfirmOpen(false);
+      setEmailAudienceMode('all');
+      setEmailFilters({});
+      setEmailManualIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['email', 'sends', eventId] });
+    },
+    onError: () => {
+      // Error is displayed inline in the confirm modal — keep it open
+    },
+  });
+
+  // ─── Email: send history query ────────────────────────────────────
+  const { data: emailSends = [], isLoading: emailSendsLoading } = useQuery({
+    queryKey: ['email', 'sends', eventId],
+    queryFn: async () => {
+      const res = await apiClient.get('/creator/email/sends');
+      // Filter to only sends for this event
+      return (res.data || []).filter(s => s.sourceId === eventId);
+    },
+    enabled: !!user && !!eventId && visitedTabs.has('email'),
+    staleTime: 30_000,
+  });
+
+  const toggleManualRecipient = useCallback((regId) => {
+    setEmailManualIds(prev => {
+      const next = new Set(prev);
+      if (next.has(regId)) next.delete(regId);
+      else next.add(regId);
+      return next;
+    });
+  }, []);
+
+  const canSendEmail = emailSubject.trim() && emailBody.trim() && emailRecipients.length > 0;
+
   const cssVars = {
     '--er-accent-r': accentRgb[0],
     '--er-accent-g': accentRgb[1],
@@ -1272,6 +1417,7 @@ export default function EventResultsScreen() {
               items={[
                 { id: 'analytics', label: 'Analytics' },
                 { id: 'registros', label: 'Registros' },
+                { id: 'email', label: 'Email' },
                 { id: 'editar', label: 'Editar' },
               ]}
               activeId={activeTab}
@@ -1749,6 +1895,453 @@ export default function EventResultsScreen() {
               </KeepAlivePane>
             )}
 
+            {/* ── Email tab ── */}
+            {visitedTabs.has('email') && (
+              <KeepAlivePane active={activeTab === 'email'}>
+                <div className="em-tab">
+
+                  {/* ── Compose + Recipients ── */}
+                  <div className="em-compose-area em-enter">
+                    <div className="em-compose-main" style={{ position: 'relative' }}>
+                      <GlowingEffect />
+
+                      <div className="em-subject-row">
+                        <input
+                          className="em-subject-input"
+                          placeholder={`Asunto — ej. Novedades sobre ${event?.title || 'el evento'}`}
+                          value={emailSubject}
+                          onChange={e => setEmailSubject(e.target.value)}
+                          maxLength={200}
+                        />
+                        {emailSubject.length >= 160 && (
+                          <span className="em-subject-counter">{emailSubject.length}/200</span>
+                        )}
+                      </div>
+
+                      <div className="em-compose-divider" />
+
+                      <textarea
+                        className="em-body-input"
+                        placeholder={"Hola {{nombre}},\n\nEscribe tu mensaje aqui...\n\nUsa {{nombre}} para personalizar con el nombre de cada persona."}
+                        value={emailBody}
+                        onChange={e => setEmailBody(e.target.value)}
+                        rows={10}
+                      />
+
+                      {emailImages.length > 0 && (
+                        <div className="em-attached-images">
+                          {emailImages.map((img, i) => (
+                            <div key={img.url} className="em-attached-img">
+                              <img src={img.url} alt="" />
+                              <button
+                                className="em-attached-img-remove"
+                                onClick={() => setEmailImages(prev => prev.filter((_, j) => j !== i))}
+                              >
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="em-toolbar">
+                        <button className="em-toolbar-btn" onClick={() => setEmailMediaPickerOpen(true)}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" strokeWidth="0" />
+                            <polyline points="21 15 16 10 5 21" />
+                          </svg>
+                          Imagen
+                        </button>
+                        <button
+                          className="em-toolbar-btn"
+                          onClick={() => setEmailPreviewOpen(true)}
+                          disabled={!emailBody.trim()}
+                          title={!emailBody.trim() ? 'Escribe un mensaje para ver la vista previa' : undefined}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                          Vista previa
+                        </button>
+
+                        <div className="em-toolbar-spacer" />
+
+                        <button
+                          className="em-send-btn"
+                          onClick={() => { sendEmailMutation.reset(); setEmailConfirmOpen(true); }}
+                          disabled={!canSendEmail || sendEmailMutation.isPending}
+                          title={!canSendEmail ? (!emailSubject.trim() ? 'Agrega un asunto' : !emailBody.trim() ? 'Escribe un mensaje' : 'Sin destinatarios') : undefined}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                          </svg>
+                          {sendEmailMutation.isPending ? 'Enviando...' : `Enviar a ${emailRecipients.length}`}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* ── Recipients list ── */}
+                    <div className="em-recipients-panel" style={{ position: 'relative' }}>
+                      <GlowingEffect />
+                      <div className="em-recipients-header">
+                        <div className="em-recipients-header-left">
+                          <span className="em-recipients-count">{emailRecipients.length}</span>
+                          <span className="em-recipients-label">Destinatarios</span>
+                        </div>
+                        <button className="em-audience-config-btn" onClick={() => setEmailAudienceModalOpen(true)}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+                          </svg>
+                          Configurar audiencia
+                        </button>
+                      </div>
+
+                      {/* Active filters summary */}
+                      {(emailAudienceMode !== 'all' || Object.values(emailFilters).some(v => v && v !== '__all__')) && (
+                        <div className="em-active-filters">
+                          {emailAudienceMode === 'checked_in' && <span className="em-active-tag">Asistieron</span>}
+                          {emailAudienceMode === 'no_show' && <span className="em-active-tag">No asistieron</span>}
+                          {emailAudienceMode === 'manual' && <span className="em-active-tag">{emailManualIds.size} seleccionados</span>}
+                          {Object.entries(emailFilters).map(([fieldId, value]) => {
+                            if (!value || value === '__all__') return null;
+                            const field = event?.fields?.find(f => f.id === fieldId);
+                            const label = field?.label || fieldId;
+                            const displayValue = value.startsWith('lte:') ? `${label} <= ${value.slice(4)}` :
+                              value.startsWith('gt:') ? `${label} > ${value.slice(3)}` :
+                              `${label}: ${value}`;
+                            return <span key={fieldId} className="em-active-tag">{displayValue}</span>;
+                          })}
+                        </div>
+                      )}
+
+                      <div className="em-recipients-list">
+                        {emailRecipients.length === 0 ? (
+                          <div className="em-recipients-empty">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                            </svg>
+                            <p>Sin destinatarios</p>
+                          </div>
+                        ) : (
+                          emailRecipients.map(r => {
+                            const name = getDisplayName(r, columns);
+                            const email = r.email || (r.responses && Object.entries(r.responses).find(([k, v]) => k.toLowerCase().includes('email') && typeof v === 'string')?.[1]) || '';
+                            return (
+                              <div key={r.id} className="em-recipient-row">
+                                <div className="em-recipient-avatar">{name.charAt(0).toUpperCase()}</div>
+                                <div className="em-recipient-info">
+                                  <span className="em-recipient-name">{name}</span>
+                                  <span className="em-recipient-email">{email}</span>
+                                </div>
+                                {r.checked_in && <span className="em-recipient-badge-check">Asistio</span>}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Send history ── */}
+                  {emailSends.length > 0 && (
+                    <div className="em-history em-enter" style={{ animationDelay: '80ms' }}>
+                      <div className="em-history-header">
+                        <h3 className="em-history-title">Enviados</h3>
+                        <button
+                          className="em-ghost-btn"
+                          onClick={() => queryClient.invalidateQueries({ queryKey: ['email', 'sends', eventId] })}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="23 4 23 10 17 10" />
+                            <polyline points="1 20 1 14 7 14" />
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                          </svg>
+                          Actualizar
+                        </button>
+                      </div>
+                      <div className="em-history-timeline">
+                        {emailSends.map(send => (
+                          <div key={send.sendId} className="em-history-card">
+                            <div className={`em-history-dot em-history-dot--${send.status}`} />
+                            <div className="em-history-card-body">
+                              <div className="em-history-card-top">
+                                <span className="em-history-card-subject">{send.subject}</span>
+                                <span className={`em-history-badge em-history-badge--${send.status}`}>
+                                  {send.status === 'completed' ? 'Enviado' : send.status === 'processing' ? 'Enviando' : send.status === 'queued' ? 'En cola' : 'Fallido'}
+                                </span>
+                              </div>
+                              <div className="em-history-card-meta">
+                                <span>{send.stats?.total || 0} destinatarios</span>
+                                {send.stats?.sent > 0 && <span className="em-history-card-sent">{send.stats.sent} enviados</span>}
+                                {send.stats?.failed > 0 && <span className="em-history-card-failed">{send.stats.failed} fallidos</span>}
+                                {send.createdAt && (
+                                  <span className="em-history-card-date">
+                                    {new Date(send.createdAt._seconds ? send.createdAt._seconds * 1000 : send.createdAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </KeepAlivePane>
+            )}
+
+            {/* ── Audience config modal ── */}
+            {emailAudienceModalOpen && (
+              <div className="er-modal-backdrop" onClick={() => setEmailAudienceModalOpen(false)}>
+                <div className="em-audience-modal em-enter" onClick={e => e.stopPropagation()}>
+                  <button className="er-modal-close" onClick={() => setEmailAudienceModalOpen(false)} aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+
+                  <div className="em-aud-header">
+                    <div className="em-aud-icon">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                      </svg>
+                    </div>
+                    <h3 className="em-aud-title">Configurar audiencia</h3>
+                    <p className="em-aud-sub">Selecciona a quienes les quieres enviar el email</p>
+                  </div>
+
+                  {/* Audience mode */}
+                  <div className="em-aud-section">
+                    <span className="em-aud-label">Grupo</span>
+                    <div className="em-aud-options">
+                      {[
+                        { id: 'all', label: 'Todos los registrados', desc: `${registrations.length} personas` },
+                        { id: 'checked_in', label: 'Solo los que asistieron', desc: `${registrations.filter(r => r.checked_in).length} personas` },
+                        { id: 'no_show', label: 'Solo los que no asistieron', desc: `${registrations.filter(r => !r.checked_in).length} personas` },
+                        { id: 'manual', label: 'Seleccionar manualmente', desc: emailManualIds.size > 0 ? `${emailManualIds.size} seleccionados` : 'Elige uno por uno' },
+                      ].map(opt => (
+                        <button
+                          key={opt.id}
+                          className={`em-aud-option${emailAudienceMode === opt.id ? ' em-aud-option--on' : ''}`}
+                          onClick={() => {
+                            setEmailAudienceMode(opt.id);
+                            if (opt.id !== 'manual') setEmailManualIds(new Set());
+                          }}
+                        >
+                          <div className={`em-aud-radio${emailAudienceMode === opt.id ? ' em-aud-radio--on' : ''}`} />
+                          <div className="em-aud-option-text">
+                            <span className="em-aud-option-label">{opt.label}</span>
+                            <span className="em-aud-option-desc">{opt.desc}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Field filters */}
+                  {emailAudienceMode !== 'manual' && (filterableFields.length > 0 || numberFields.length > 0) && (
+                    <div className="em-aud-section">
+                      <span className="em-aud-label">Filtrar por campos</span>
+                      <div className="em-aud-filters">
+                        {filterableFields.map(field => {
+                          const options = field.id === 'f_genero'
+                            ? ['Masculino', 'Femenino', 'Otro', 'Prefiero no decir']
+                            : (field.options || []);
+                          if (options.length === 0) return null;
+                          return (
+                            <div key={field.id} className="em-aud-filter-row">
+                              <span className="em-aud-filter-name">{field.label}</span>
+                              <select
+                                className="em-aud-select"
+                                value={emailFilters[field.id] || '__all__'}
+                                onChange={e => setEmailFilters(prev => ({ ...prev, [field.id]: e.target.value }))}
+                              >
+                                <option value="__all__">Todos</option>
+                                {options.filter(Boolean).map(opt => (
+                                  <option key={opt} value={opt}>{opt}</option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+                        {numberFields.map(field => {
+                          const values = registrations
+                            .map(r => Number(r.responses?.[field.id] ?? r[field.id]))
+                            .filter(n => !isNaN(n));
+                          if (values.length < 3) return null;
+                          values.sort((a, b) => a - b);
+                          const median = values[Math.floor(values.length / 2)];
+                          return (
+                            <div key={field.id} className="em-aud-filter-row">
+                              <span className="em-aud-filter-name">{field.label}</span>
+                              <select
+                                className="em-aud-select"
+                                value={emailFilters[field.id] || '__all__'}
+                                onChange={e => setEmailFilters(prev => ({ ...prev, [field.id]: e.target.value }))}
+                              >
+                                <option value="__all__">Todos</option>
+                                <option value={`lte:${median}`}>&le; {median}</option>
+                                <option value={`gt:${median}`}>&gt; {median}</option>
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Manual selection */}
+                  {emailAudienceMode === 'manual' && (
+                    <div className="em-aud-section">
+                      <div className="em-aud-manual-header">
+                        <span className="em-aud-label">Seleccionar personas</span>
+                        <div className="em-aud-manual-actions">
+                          <button className="em-ghost-btn" onClick={() => {
+                            const allIds = new Set(registrations.filter(r => {
+                              if (typeof r.email === 'string' && r.email.includes('@')) return true;
+                              if (r.responses) return Object.entries(r.responses).some(([k, v]) => k.toLowerCase().includes('email') && typeof v === 'string' && v.includes('@'));
+                              return false;
+                            }).map(r => r.id));
+                            setEmailManualIds(allIds);
+                          }}>Todos</button>
+                          <button className="em-ghost-btn" onClick={() => setEmailManualIds(new Set())}>Ninguno</button>
+                        </div>
+                      </div>
+                      <div className="em-aud-manual-list">
+                        {registrations.map(r => {
+                          const name = getDisplayName(r, columns);
+                          const email = r.email || (r.responses && Object.entries(r.responses).find(([k, v]) => k.toLowerCase().includes('email') && typeof v === 'string')?.[1]) || '';
+                          if (!email || !email.includes('@')) return null;
+                          const selected = emailManualIds.has(r.id);
+                          return (
+                            <label key={r.id} className={`em-aud-person${selected ? ' em-aud-person--on' : ''}`}>
+                              <div className={`em-aud-check${selected ? ' em-aud-check--on' : ''}`}>
+                                {selected && (
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                )}
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleManualRecipient(r.id)}
+                                className="em-aud-hidden-input"
+                              />
+                              <div className="em-aud-person-info">
+                                <span className="em-aud-person-name">{name}</span>
+                                <span className="em-aud-person-email">{email}</span>
+                              </div>
+                              {r.checked_in && <span className="em-aud-person-badge">Asistio</span>}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Result */}
+                  <div className="em-aud-result">
+                    <span className="em-aud-result-count">{emailRecipients.length}</span>
+                    <span className="em-aud-result-label">persona{emailRecipients.length !== 1 ? 's' : ''} recibiran el email</span>
+                  </div>
+
+                  <button className="em-send-btn em-aud-done-btn" onClick={() => setEmailAudienceModalOpen(false)}>
+                    Listo
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Email preview modal ── */}
+            {emailPreviewOpen && (
+              <div className="er-modal-backdrop" onClick={() => setEmailPreviewOpen(false)}>
+                <div className="em-preview-modal em-enter" onClick={e => e.stopPropagation()}>
+                  <button className="er-modal-close" onClick={() => setEmailPreviewOpen(false)} aria-label="Cerrar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                  <div className="em-preview-chrome">
+                    <span className="em-preview-dot" />
+                    <span className="em-preview-dot" />
+                    <span className="em-preview-dot" />
+                  </div>
+                  <div className="em-preview-envelope">
+                    <div className="em-preview-meta">
+                      <span className="em-preview-from">Wake &lt;notificaciones@wakelab.co&gt;</span>
+                      <span className="em-preview-to">para: {emailRecipients[0]?.email || 'destinatario@ejemplo.com'}</span>
+                    </div>
+                    <div className="em-preview-subject-line">{emailSubject || '(sin asunto)'}</div>
+                  </div>
+                  <div className="em-preview-frame">
+                    <div className="em-preview-body">
+                      {emailBody.split('\n').map((line, i) => (
+                        <p key={i}>{line.replace(/\{\{nombre\}\}/g, emailRecipients[0]?.name?.split(' ')[0] || 'Juan') || '\u00A0'}</p>
+                      ))}
+                      {emailImages.map((img, i) => (
+                        <img key={i} src={img.url} alt="" style={{ maxWidth: '100%', borderRadius: 12, display: 'block', margin: '16px 0' }} />
+                      ))}
+                    </div>
+                    <div className="em-preview-footer-bar">
+                      Cancelar suscripcion · Enviado por Wake · wakelab.co
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Email send confirmation modal ── */}
+            {emailConfirmOpen && (
+              <div className="er-modal-backdrop" onClick={() => !sendEmailMutation.isPending && setEmailConfirmOpen(false)}>
+                <div className="em-confirm-modal em-enter" role="dialog" aria-label="Confirmar envio de email" onClick={e => e.stopPropagation()}>
+                  <div className={`em-confirm-icon${sendEmailMutation.isError ? ' em-confirm-icon--error' : ''}`}>
+                    {sendEmailMutation.isError ? (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
+                      </svg>
+                    ) : (
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                      </svg>
+                    )}
+                  </div>
+                  <h3 className="em-confirm-title">{sendEmailMutation.isError ? 'Error al enviar' : 'Enviar email'}</h3>
+                  {sendEmailMutation.isError ? (
+                    <p className="em-confirm-text em-confirm-text--error">
+                      {sendEmailMutation.error?.message || 'No pudimos enviar el email. Intenta de nuevo.'}
+                    </p>
+                  ) : (
+                    <p className="em-confirm-text">
+                      <strong>{emailRecipients.length}</strong> persona{emailRecipients.length !== 1 ? 's' : ''} recibiran <strong>"{emailSubject}"</strong>
+                    </p>
+                  )}
+                  <div className="em-confirm-actions">
+                    <button className="em-ghost-btn em-ghost-btn--lg" onClick={() => { sendEmailMutation.reset(); setEmailConfirmOpen(false); }} disabled={sendEmailMutation.isPending}>
+                      {sendEmailMutation.isError ? 'Cerrar' : 'Cancelar'}
+                    </button>
+                    <button className="em-send-btn" onClick={() => sendEmailMutation.mutate()} disabled={sendEmailMutation.isPending}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                      </svg>
+                      {sendEmailMutation.isPending ? 'Enviando...' : sendEmailMutation.isError ? 'Reintentar' : 'Confirmar envio'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ── Editar tab ── */}
             {visitedTabs.has('editar') && (
               <KeepAlivePane active={activeTab === 'editar'}>
@@ -2016,6 +2609,16 @@ export default function EventResultsScreen() {
           setImagePreview(media.url);
           setImageUrl(media.url);
           setImageFile(null);
+        }}
+      />
+
+      <MediaPickerModal
+        isOpen={emailMediaPickerOpen}
+        onClose={() => setEmailMediaPickerOpen(false)}
+        accept="image/*"
+        onSelect={(media) => {
+          setEmailImages(prev => [...prev, { url: media.url }]);
+          setEmailMediaPickerOpen(false);
         }}
       />
 

@@ -14,7 +14,7 @@ const ACCEPTED = {
   '*': () => true,
 };
 
-export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = 'image/*' }) {
+export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = 'image/*', multiple = false }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -24,6 +24,7 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
   const [showLinkInput, setShowLinkInput] = useState(false);
   const [linkValue, setLinkValue] = useState('');
   const [linkError, setLinkError] = useState('');
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const fileInputRef = useRef(null);
   const dropZoneRef = useRef(null);
   const backdropRef = useRef(null);
@@ -43,6 +44,7 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
     setShowLinkInput(false);
     setLinkValue('');
     setLinkError('');
+    setSelectedIds(new Set());
     listFiles()
       .then((files) => setItems(files))
       .catch((e) => {
@@ -137,9 +139,27 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
   const handleSelect = useCallback((item) => {
     if (isVideoPicker && !item.contentType?.startsWith('video/')) return;
     if (isImagePicker && !item.contentType?.startsWith('image/')) return;
+    if (multiple) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.id)) next.delete(item.id);
+        else next.add(item.id);
+        return next;
+      });
+      return;
+    }
     onSelect({ id: item.id, url: item.url, name: item.name, contentType: item.contentType });
     onClose();
-  }, [isVideoPicker, isImagePicker, onSelect, onClose]);
+  }, [isVideoPicker, isImagePicker, multiple, onSelect, onClose]);
+
+  const handleConfirmMultiple = useCallback(() => {
+    if (!selectedIds.size) return;
+    const selected = items.filter((it) => selectedIds.has(it.id));
+    selected.forEach((item) => {
+      onSelect({ id: item.id, url: item.url, name: item.name, contentType: item.contentType });
+    });
+    onClose();
+  }, [selectedIds, items, onSelect, onClose]);
 
   const handleLinkSubmit = useCallback(() => {
     const trimmed = linkValue.trim();
@@ -336,12 +356,14 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
               {filteredItems.map((item, index) => {
                 const isImg = item.contentType?.startsWith('image/');
                 const disabled = !acceptFn(item);
+                const isSelected = multiple && selectedIds.has(item.id);
                 return (
                   <div
                     key={item.id}
                     role="button"
                     tabIndex={disabled ? -1 : 0}
-                    className={`mp-card ${disabled ? 'mp-card--disabled' : ''}`}
+                    aria-pressed={multiple ? isSelected : undefined}
+                    className={`mp-card ${disabled ? 'mp-card--disabled' : ''} ${isSelected ? 'mp-card--selected' : ''}`}
                     onClick={() => !disabled && handleSelect(item)}
                     onKeyDown={(e) => { if (!disabled && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); handleSelect(item); } }}
                     style={{ animationDelay: `${Math.min(index, 15) * 40}ms` }}
@@ -354,6 +376,15 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
                           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                             <path d="M8 5.14v13.72a1 1 0 001.5.86l11.35-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z" fill="currentColor"/>
                           </svg>
+                        </div>
+                      )}
+                      {multiple && (
+                        <div className={`mp-card-check ${isSelected ? 'mp-card-check--on' : ''}`} aria-hidden="true">
+                          {isSelected && (
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                              <path d="M2.5 7.5l3 3 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
                         </div>
                       )}
                       <div className="mp-card-overlay">
@@ -380,12 +411,39 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
         </div>
 
         {/* Footer */}
-        {items.length > 0 && (
-          <div className="mp-footer">
-            <span className="mp-footer-hint">
-              Arrastra archivos o usa <kbd>Subir</kbd> para agregar nuevos
+        {multiple ? (
+          <div className="mp-footer mp-footer--actions">
+            <span className="mp-footer-count">
+              {selectedIds.size === 0
+                ? 'Selecciona una o mas imagenes'
+                : `${selectedIds.size} seleccionada${selectedIds.size === 1 ? '' : 's'}`}
             </span>
+            <div className="mp-footer-actions">
+              {selectedIds.size > 0 && (
+                <button
+                  className="mp-footer-clear"
+                  onClick={() => setSelectedIds(new Set())}
+                >
+                  Limpiar
+                </button>
+              )}
+              <button
+                className="mp-footer-confirm"
+                onClick={handleConfirmMultiple}
+                disabled={selectedIds.size === 0}
+              >
+                Agregar{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+              </button>
+            </div>
           </div>
+        ) : (
+          items.length > 0 && (
+            <div className="mp-footer">
+              <span className="mp-footer-hint">
+                Arrastra archivos o usa <kbd>Subir</kbd> para agregar nuevos
+              </span>
+            </div>
+          )
         )}
       </div>
     </div>

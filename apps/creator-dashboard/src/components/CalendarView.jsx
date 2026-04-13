@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySidebar';
-import { GlowingEffect, ShimmerSkeleton } from './ui';
+import { GlowingEffect, ShimmerSkeleton, DragSessionPreview } from './ui';
 import logger from '../utils/logger';
 import './CalendarView.css';
 
@@ -26,11 +26,11 @@ const PROGRAM_COLORS = [
   'rgba(255, 140, 0, 0.6)',    // Dark orange
 ];
 
-const CalendarView = ({ 
+const CalendarView = ({
   clientUserId = null,
-  onDateSelect, 
-  plannedSessions = [], 
-  programColors = {}, 
+  onDateSelect,
+  plannedSessions = [],
+  programColors = {},
   completedSessionIds = new Set(),
   completedSessionsByDate = {},
   onMonthChange,
@@ -50,6 +50,7 @@ const CalendarView = ({
   onDeletePlanSession,
   onMovePlanSessionDay,
   onMovePlanSessionToWeek,
+  onDuplicatePlanSession,
   onAddLibrarySessionToPlanDay,
   onAddPlanSessionToDay,
   assignedPrograms = [],
@@ -88,6 +89,9 @@ const CalendarView = ({
   const [draggedOverDay, setDraggedOverDay] = useState(null);
   const [selectedDayInfo, setSelectedDayInfo] = useState(null);
   const [sessionMenuContext, setSessionMenuContext] = useState(null);
+  const [dragMoveTarget, setDragMoveTarget] = useState(null); // { session, sourceWeekKey, weekContent, sourceDayIndex, targetWeekKey, targetDayIndex, targetPlanAssignment }
+  const [draggingSession, setDraggingSession] = useState(null);
+  const [movingToDay, setMovingToDay] = useState(null); // { weekKey, dayIndex }
   const openSessionMenuId = sessionMenuContext?.id ?? null;
   const [planBarMenuContext, setPlanBarMenuContext] = useState(null);
 
@@ -451,25 +455,17 @@ const CalendarView = ({
       if (type === DRAG_TYPE_CLIENT_PLAN_SESSION && dragData.session && dragData.sourceWeekKey != null) {
         const targetWeekKey = getMondayWeek(date);
         const targetDayIndex = (date.getDay() + 6) % 7;
-        if (dragData.sourceWeekKey === targetWeekKey) {
-          if (onMovePlanSessionDay && targetDayIndex !== dragData.sourceDayIndex) {
-            onMovePlanSessionDay({
-              session: dragData.session,
-              weekKey: targetWeekKey,
-              weekContent: dragData.weekContent,
-              targetDayIndex
-            });
-          }
-        } else if (onMovePlanSessionToWeek) {
-          const targetAssignment = planAssignments[targetWeekKey];
-          onMovePlanSessionToWeek({
-            session: dragData.session,
-            sourceWeekKey: dragData.sourceWeekKey,
-            targetWeekKey,
-            targetDayIndex,
-            targetPlanAssignment: targetAssignment || null
-          });
-        }
+        if (dragData.sourceWeekKey === targetWeekKey && targetDayIndex === dragData.sourceDayIndex) return;
+        const targetAssignment = planAssignments[targetWeekKey] || null;
+        setDragMoveTarget({
+          session: dragData.session,
+          sourceWeekKey: dragData.sourceWeekKey,
+          weekContent: dragData.weekContent,
+          sourceDayIndex: dragData.sourceDayIndex,
+          targetWeekKey,
+          targetDayIndex,
+          targetPlanAssignment: targetAssignment,
+        });
         return;
       }
 
@@ -750,6 +746,7 @@ const CalendarView = ({
             const hasDayContent = hasSessions || hasPlanAssignments || hasPlanSessions || hasHistoryOnlySessions;
             const weekdayIdxForCell = getWeekdayIndex(cell);
             const isAddingToThisDay = isAddingSessionToPlanDay && addingToWeekKey != null && addingToDayIndex != null && weekKey === addingToWeekKey && weekdayIdxForCell === addingToDayIndex;
+            const isMovingToThisDay = movingToDay && weekKey === movingToDay.weekKey && weekdayIdxForCell === movingToDay.dayIndex;
 
             // Days under a plan bar get gradient (no solid primaryColor)
             const dayStyle = hasPlanAssignments ? { '--calendar-plan-gradient-start': PLAN_BAR_COLOR } : undefined;
@@ -784,6 +781,11 @@ const CalendarView = ({
                   <div className="calendar-day-adding-indicator" role="status" aria-live="polite">
                     <span className="calendar-saving-bar-spinner" aria-hidden />
                     <span>Añadiendo...</span>
+                  </div>
+                )}
+                {isMovingToThisDay && (
+                  <div className="calendar-day-moving-shimmer" role="status" aria-live="polite">
+                    <ShimmerSkeleton width="100%" height={22} borderRadius={5} />
                   </div>
                 )}
                 {/* Plan sessions (from week plan) - colored cards, draggable, Editar / Eliminar */}
@@ -840,8 +842,14 @@ const CalendarView = ({
                               weekContent,
                               sourceDayIndex: weekdayIdx
                             }));
-                            e.dataTransfer.effectAllowed = 'move';
+                            e.dataTransfer.effectAllowed = 'copyMove';
+                            const img = new Image();
+                            img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                            e.dataTransfer.setDragImage(img, 0, 0);
+                            e.currentTarget.classList.add('calendar-day-session-card--dragging');
+                            setDraggingSession(session);
                           }}
+                          onDragEnd={(e) => { e.currentTarget.classList.remove('calendar-day-session-card--dragging'); setDraggingSession(null); }}
                         >
                           {hasNotes && <span className="calendar-day-session-card-notes-dot" aria-hidden />}
                           <span className="calendar-day-session-card-name">{sessionName}</span>
@@ -1290,6 +1298,88 @@ const CalendarView = ({
                   <p>No hay contenido planificado para este día.</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <DragSessionPreview session={draggingSession} />
+
+      {/* Move/Duplicate choice overlay for dragged sessions */}
+      {dragMoveTarget && (
+        <div className="cfo-overlay" onClick={() => setDragMoveTarget(null)}>
+          <div className="cfo-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <GlowingEffect spread={40} borderWidth={1} />
+            <div className="cfo-topbar">
+              <div />
+              <button type="button" className="cfo-close" onClick={() => setDragMoveTarget(null)} aria-label="Cerrar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="cfo-body">
+              <div className="cfo-step" key="move-choice">
+                <div className="cfo-step__header">
+                  <h1 className="cfo-step__title">¿Mover o duplicar?</h1>
+                  <p className="cfo-step__desc">¿Qué quieres hacer con <strong>{dragMoveTarget?.session?.title || dragMoveTarget?.session?.session_name || 'esta sesión'}</strong>?</p>
+                </div>
+                <div className="cfo-step__content">
+                  <div className="cfo-choice">
+                    <button type="button" className="cfo-choice-card" onClick={async () => {
+                      const t = dragMoveTarget;
+                      setDragMoveTarget(null);
+                      setMovingToDay({ weekKey: t.targetWeekKey, dayIndex: t.targetDayIndex });
+                      try {
+                        if (t.sourceWeekKey === t.targetWeekKey) {
+                          if (onMovePlanSessionDay) await onMovePlanSessionDay({ session: t.session, weekKey: t.targetWeekKey, weekContent: t.weekContent, targetDayIndex: t.targetDayIndex });
+                        } else if (onMovePlanSessionToWeek) {
+                          await onMovePlanSessionToWeek({ session: t.session, sourceWeekKey: t.sourceWeekKey, targetWeekKey: t.targetWeekKey, targetDayIndex: t.targetDayIndex, targetPlanAssignment: t.targetPlanAssignment });
+                        }
+                      } finally {
+                        setMovingToDay(null);
+                      }
+                    }}>
+                      <span className="cfo-choice-card__icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 9l4-4 4 4M9 5v14M15 19l4-4-4-4M19 15H5" />
+                        </svg>
+                      </span>
+                      <span className="cfo-choice-card__text">
+                        <span className="cfo-choice-card__label">Mover aquí</span>
+                        <span className="cfo-choice-card__desc">La sesión se mueve a esta posición</span>
+                      </span>
+                    </button>
+                    <button type="button" className="cfo-choice-card" onClick={async () => {
+                      const t = dragMoveTarget;
+                      setDragMoveTarget(null);
+                      setMovingToDay({ weekKey: t.targetWeekKey, dayIndex: t.targetDayIndex });
+                      try {
+                        if (onDuplicatePlanSession) {
+                          await onDuplicatePlanSession({
+                            session: t.session,
+                            sourceWeekKey: t.sourceWeekKey,
+                            weekContent: t.weekContent,
+                            targetWeekKey: t.targetWeekKey,
+                            targetDayIndex: t.targetDayIndex,
+                            targetPlanAssignment: t.targetPlanAssignment,
+                          });
+                        }
+                      } finally {
+                        setMovingToDay(null);
+                      }
+                    }}>
+                      <span className="cfo-choice-card__icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2M8 16h10a2 2 0 002-2V8a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                      <span className="cfo-choice-card__text">
+                        <span className="cfo-choice-card__label">Duplicar aquí</span>
+                        <span className="cfo-choice-card__desc">Se crea una copia en esta posición</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

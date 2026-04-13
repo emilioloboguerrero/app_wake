@@ -4,18 +4,25 @@
 
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.3.0/workbox-sw.js');
 
-const { precacheAndRoute } = workbox.precaching;
 const { registerRoute } = workbox.routing;
-const { CacheFirst, NetworkOnly } = workbox.strategies;
+const { CacheFirst, NetworkOnly, NetworkFirst } = workbox.strategies;
 const { ExpirationPlugin } = workbox.expiration;
 const { CacheableResponsePlugin } = workbox.cacheableResponse;
 
-// ─── Precache app shell ───────────────────────────────────────────────────
-// Workbox injects the precache manifest here during build
-// For now, precache the known static assets manually
-precacheAndRoute(self.__WB_MANIFEST || [
-  { url: '/app/index.html', revision: null },
-]);
+// ─── App shell: NetworkFirst for navigations ──────────────────────────────
+// Never precache /app/index.html — it references hashed bundle filenames
+// that get deleted on the next deploy. A stale precached shell causes
+// "Unexpected token '<'" errors when the old bundle URL 404s and Hosting's
+// SPA rewrite returns the current index.html as HTML.
+registerRoute(
+  ({ request, url }) =>
+    request.mode === 'navigate' && url.pathname.startsWith('/app'),
+  new NetworkFirst({
+    cacheName: 'wake-app-shell-v1',
+    networkTimeoutSeconds: 5,
+    plugins: [new CacheableResponsePlugin({ statuses: [200] })],
+  })
+);
 
 // ─── Cache strategies ─────────────────────────────────────────────────────
 
@@ -104,25 +111,25 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// ─── Install: do NOT skipWaiting ──────────────────────────────────────────
-// Per OFFLINE_ARCHITECTURE.md §5.4: activate on next load to avoid
-// mid-session cache/bundle version mismatch
-self.addEventListener('install', () => {
-  // Let the new worker wait until all tabs are closed
+// ─── Install: skipWaiting to evict stale precached shell ─────────────────
+// Existing users have a precached /app/index.html pointing at deleted bundle
+// hashes. We must activate immediately to clear it; otherwise they stay
+// broken until every PWA tab is closed.
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
 });
 
-// ─── Activate: clean up old caches ───────────────────────────────────────
+// ─── Activate: clean up ALL old caches (including workbox-precache) ──────
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
         keys
-          .filter((key) =>
-            !key.startsWith('workbox-') &&
-            key !== 'wake-storage-images-v2'
-          )
+          .filter((key) => key !== 'wake-storage-images-v2' && key !== 'wake-app-shell-v1')
           .map((key) => caches.delete(key))
-      )
-    )
+      );
+      await self.clients.claim();
+    })()
   );
 });

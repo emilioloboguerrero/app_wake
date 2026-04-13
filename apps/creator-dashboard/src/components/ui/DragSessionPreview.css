@@ -1,0 +1,38 @@
+.drag-session-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 99999;
+  pointer-events: none;
+  min-width: 120px;
+  max-width: 200px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(30, 30, 30, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  will-change: transform;
+  animation: drag-preview-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes drag-preview-in {
+  from {
+    opacity: 0;
+    transform: translate(var(--x, 0), var(--y, 0)) scale(0.85);
+  }
+}
+
+.drag-session-preview-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}

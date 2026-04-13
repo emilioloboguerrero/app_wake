@@ -253,6 +253,22 @@ class ClientPlanContentService {
     await this.deleteSession(clientId, programId, sourceWeekKey, sessionId);
   }
 
+  async duplicateSessionToWeek(clientId, programId, sourceWeekKey, targetWeekKey, sessionId, targetDayIndex) {
+    await this.flushWeek(clientId, sourceWeekKey);
+    this.cache.invalidate(`${clientId}/${sourceWeekKey}`);
+
+    const sourceContent = await this.getClientPlanContent(clientId, programId, sourceWeekKey);
+    if (!sourceContent?.sessions) throw new Error('Source week not found');
+    const session = sourceContent.sessions.find((s) => s.id === sessionId);
+    if (!session) throw new Error('Session not found in source week');
+
+    const sourceLibId = session.source_library_session_id ?? session.librarySessionRef ?? null;
+
+    if (sourceLibId) {
+      await this.addLibrarySessionToWeek(clientId, programId, targetWeekKey, sourceLibId, targetDayIndex);
+    }
+  }
+
   async deleteClientPlanContent(clientId, programId, weekKey) {
     this.cache.invalidate(`${clientId}/${weekKey}`);
     try {

@@ -3,7 +3,6 @@
 /* The list wrapper must not scroll horizontally — constrain to parent */
 .plan-weeks-list-wrap {
   min-width: 0;
-  overflow-x: hidden;
 }
 
 /* Days header: fluid columns matching the week-days grid */
@@ -67,15 +66,7 @@
               box-shadow 0.15s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Spring animation on session card after drop */
-@keyframes sessionDropIn {
-  from { opacity: 0; transform: scale(0.92) translateY(8px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.plan-weeks-session-card {
-  animation: sessionDropIn 0.42s cubic-bezier(0.22, 1, 0.36, 1);
-}
+/* Session card animation removed — CSS transform blocks native drag on WebKit */
 
 /* Overlay shown while async operations are in flight */
 .plan-weeks-grid-overlay {

@@ -10,6 +10,7 @@ import ExercisesPanel from '../components/biblioteca/ExercisesPanel';
 import SessionsPanel from '../components/biblioteca/SessionsPanel';
 import PlansPanel from '../components/biblioteca/PlansPanel';
 import NutritionPlansPanel from '../components/biblioteca/NutritionPlansPanel';
+import RecetasPanel from '../components/biblioteca/RecetasPanel';
 import CreatePlanOverlay from '../components/biblioteca/CreatePlanOverlay';
 import SimpleCreateOverlay from '../components/biblioteca/SimpleCreateOverlay';
 import libraryService from '../services/libraryService';
@@ -34,6 +35,7 @@ const TRAINING_TABS = [
 
 const NUTRITION_TABS = [
   { id: 'planes_nutri', label: 'Planes nutricionales' },
+  { id: 'recetas', label: 'Recetas' },
 ];
 
 const SearchIcon = () => (
@@ -122,6 +124,7 @@ const BibliotecaScreen = () => {
   const [showCreateLibrary, setShowCreateLibrary] = useState(false);
   const [showCreateSession, setShowCreateSession] = useState(false);
   const [showCreateNutriPlan, setShowCreateNutriPlan] = useState(false);
+  const [showCreateMeal, setShowCreateMeal] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [successFor, setSuccessFor] = useState(null);
@@ -184,6 +187,23 @@ const BibliotecaScreen = () => {
     },
   });
 
+  const createMealMutation = useMutation({
+    mutationKey: ['nutrition-meals', 'create'],
+    mutationFn: (name) => nutritionDb.createMeal(user.uid, { name, items: [] }),
+    onSuccess: (mealId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meals(user?.uid) });
+      setSuccessFor('meal');
+      setTimeout(() => {
+        setShowCreateMeal(false);
+        setSuccessFor(null);
+        if (mealId) navigate(`/nutrition/meals/${mealId}`);
+      }, 1600);
+    },
+    onError: () => {
+      showToast('No pudimos crear la receta. Intenta de nuevo.', 'error');
+    },
+  });
+
   // --- Navigation ---
 
   const activeFilterCount = filters.sort !== 'name_asc' ? 1 : 0;
@@ -217,6 +237,7 @@ const BibliotecaScreen = () => {
       ejercicios: 'ejercicios',
       sesiones: 'sesiones',
       planes: 'planes',
+      recetas: 'recetas',
       planes_nutri: 'planes nutricionales',
     };
     return `Buscar ${labels[activeSubTab] || 'contenido'}...`;
@@ -228,18 +249,22 @@ const BibliotecaScreen = () => {
   const openCreateSession = useCallback(() => setShowCreateSession(true), []);
   const openCreateNutriPlan = useCallback(() => setShowCreateNutriPlan(true), []);
 
+  const openCreateMeal = useCallback(() => setShowCreateMeal(true), []);
+
   const handlePrimaryAction = useCallback(() => {
     if (activeSubTab === 'ejercicios') openCreateLibrary();
     else if (activeSubTab === 'sesiones') openCreateSession();
     else if (activeSubTab === 'planes') setShowCreatePlan(true);
+    else if (activeSubTab === 'recetas') openCreateMeal();
     else if (activeSubTab === 'planes_nutri') openCreateNutriPlan();
-  }, [activeSubTab, openCreateLibrary, openCreateSession, openCreateNutriPlan]);
+  }, [activeSubTab, openCreateLibrary, openCreateSession, openCreateMeal, openCreateNutriPlan]);
 
   const getPrimaryLabel = () => {
     const labels = {
       ejercicios: 'Nueva biblioteca',
       sesiones: 'Nueva sesion',
       planes: 'Nuevo plan',
+      recetas: 'Nueva receta',
       planes_nutri: 'Crear plan',
     };
     return labels[activeSubTab] || 'Crear';
@@ -392,6 +417,11 @@ const BibliotecaScreen = () => {
                   <PlansPanel searchQuery={searchQuery} sortKey={filters.sort} />
                 </KeepAlivePane>
               )}
+              {visitedTabs.has('recetas') && (
+                <KeepAlivePane active={activeSubTab === 'recetas'}>
+                  <RecetasPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateMeal={openCreateMeal} />
+                </KeepAlivePane>
+              )}
               {visitedTabs.has('planes_nutri') && (
                 <KeepAlivePane active={activeSubTab === 'planes_nutri'}>
                   <NutritionPlansPanel searchQuery={searchQuery} sortKey={filters.sort} onCreatePlan={openCreateNutriPlan} />
@@ -435,6 +465,21 @@ const BibliotecaScreen = () => {
           onSubmit={(name) => createSessionMutation.mutate(name)}
           isPending={createSessionMutation.isPending}
           isSuccess={successFor === 'session'}
+        />
+
+        <SimpleCreateOverlay
+          isOpen={showCreateMeal}
+          onClose={() => setShowCreateMeal(false)}
+          title="Nueva receta"
+          description="Dale un nombre a tu receta. Luego agrega los alimentos y un video."
+          placeholder="Ej: Bowl de avena, Batido proteico..."
+          ctaLabel="Crear receta"
+          creatingText="Creando receta"
+          successTitle="Receta creada"
+          successDesc="Agrega alimentos y un video de preparacion."
+          onSubmit={(name) => createMealMutation.mutate(name)}
+          isPending={createMealMutation.isPending}
+          isSuccess={successFor === 'meal'}
         />
 
         <SimpleCreateOverlay

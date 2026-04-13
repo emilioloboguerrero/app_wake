@@ -1,20 +1,18 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys, cacheConfig } from '../config/queryClient';
+import { queryKeys } from '../config/queryClient';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import MediaPickerModal from '../components/MediaPickerModal';
-import MediaDropZone from '../components/ui/MediaDropZone';
 import * as nutritionApi from '../services/nutritionApiService';
 import * as nutritionDb from '../services/nutritionFirestoreService';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
-import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
+import { detectVideoSource, getEmbedUrl, isValidExternalVideoUrl } from '../utils/videoUtils';
 import { FullScreenError } from '../components/ui';
 import ContextualHint from '../components/hints/ContextualHint';
 import './LibrarySessionDetailScreen.css';
@@ -111,17 +109,30 @@ export default function MealEditorScreen() {
   });
   const [isEditingMealName, setIsEditingMealName] = useState(false);
   const seededRef = useRef(false);
+  const justSeededRef = useRef(false);
   const lastSavedRef = useRef({ name: '', itemsJson: '', video_url: '' });
+  const pendingSaveRef = useRef(null);
   const [mealSortBy, setMealSortBy] = useState('name'); // 'name' | 'calories' | 'protein' | 'carbs' | 'fat'
   const [mealSortMenuOpen, setMealSortMenuOpen] = useState(false);
   const [videoMediaPickerOpen, setVideoMediaPickerOpen] = useState(false);
+  const [videoUrlDirty, setVideoUrlDirty] = useState(false);
+  const videoUrlError = useMemo(() => {
+    if (!videoUrlDirty) return '';
+    const url = (mealFormVideoUrl ?? '').trim();
+    if (!url) return '';
+    if (!isValidExternalVideoUrl(url)) return 'Solo se permiten enlaces de YouTube o Vimeo';
+    return '';
+  }, [mealFormVideoUrl, videoUrlDirty]);
 
   const queryClient = useQueryClient();
   const { data: mealData, isLoading: mealLoading, error: mealError, refetch: refetchMeal } = useQuery({
     queryKey: queryKeys.nutrition.meal(creatorId, mealId),
     queryFn: () => nutritionDb.getMealById(creatorId, mealId),
     enabled: !!mealId && mealId !== 'new' && !!creatorId,
-    ...cacheConfig.otherPrograms,
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
   useEffect(() => {
     if (!mealId || mealId === 'new') navigate('/biblioteca?domain=nutricion', { replace: true });
@@ -129,6 +140,7 @@ export default function MealEditorScreen() {
   useEffect(() => {
     if (mealData && !seededRef.current) {
       seededRef.current = true;
+      justSeededRef.current = true;
       const videoUrl = mealData.video_url ?? mealData.videoUrl ?? '';
       setMealFormName(mealData.name ?? '');
       setMealFormItems(Array.isArray(mealData.items) ? mealData.items : []);
@@ -141,19 +153,46 @@ export default function MealEditorScreen() {
     if (!mealId || !creatorId || mealLoading) return;
     const name = mealFormName.trim();
     const itemsJson = JSON.stringify(mealFormItems);
-    const video_url = (mealFormVideoUrl ?? '').trim();
-    if (name === lastSavedRef.current.name && itemsJson === lastSavedRef.current.itemsJson && video_url === lastSavedRef.current.video_url) return;
-    const t = setTimeout(async () => {
+    const rawUrl = (mealFormVideoUrl ?? '').trim();
+    const video_url = rawUrl && isValidExternalVideoUrl(rawUrl) ? rawUrl : (rawUrl ? lastSavedRef.current.video_url : '');
+    if (name === lastSavedRef.current.name && itemsJson === lastSavedRef.current.itemsJson && video_url === lastSavedRef.current.video_url) {
+      pendingSaveRef.current = null;
+      return;
+    }
+    if (justSeededRef.current) {
+      justSeededRef.current = false;
+      lastSavedRef.current = { name, itemsJson, video_url };
+      return;
+    }
+    const video_source = video_url ? detectVideoSource(video_url) : null;
+    const doSave = async () => {
+      pendingSaveRef.current = null;
+      queryClient.setQueryData(queryKeys.nutrition.meal(creatorId, mealId), (old) => old ? {
+        ...old,
+        name,
+        items: mealFormItems,
+        video_url: video_url || null,
+        video_source,
+      } : old);
       try {
-        await nutritionDb.updateMeal(creatorId, mealId, { name, items: mealFormItems, video_url: video_url || null });
+        await nutritionDb.updateMeal(creatorId, mealId, { name, items: mealFormItems, video_url: video_url || null, video_source });
         lastSavedRef.current = { name, itemsJson, video_url };
+        queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meals(creatorId) });
       } catch (e) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meal(creatorId, mealId) });
         logger.error(e);
-        showToast('No pudimos guardar la receta. Intenta de nuevo.', 'error');
       }
-    }, 700);
+    };
+    pendingSaveRef.current = doSave;
+    const t = setTimeout(doSave, 700);
     return () => clearTimeout(t);
   }, [mealId, creatorId, mealLoading, mealFormName, mealFormItems, mealFormVideoUrl, showToast]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingSaveRef.current) pendingSaveRef.current();
+    };
+  }, []);
 
   async function handleMealFormSearch() {
     if (!mealFormSearchQuery.trim()) return;
@@ -257,18 +296,6 @@ export default function MealEditorScreen() {
     return { calories, protein, carbs, fat };
   }, [mealFormItems]);
 
-  const pieData = useMemo(() => {
-    const p = Number(totals.protein) || 0;
-    const c = Number(totals.carbs) || 0;
-    const f = Number(totals.fat) || 0;
-    const totalG = p + c + f;
-    if (totalG <= 0) return [];
-    return [
-      { name: 'Proteína', value: p, grams: p },
-      { name: 'Carbohidratos', value: c, grams: c },
-      { name: 'Grasa', value: f, grams: f },
-    ].filter((d) => d.value > 0);
-  }, [totals]);
 
   const sortedSearchResults = useMemo(() => {
     const list = [...mealFormSearchResults];
@@ -345,164 +372,72 @@ export default function MealEditorScreen() {
     >
       <div className="library-session-detail-container">
         <div className="library-session-detail-body">
-          <div className="library-session-sidebar">
-            <div className="library-session-sidebar-header">
-              <h3 className="library-session-sidebar-title">Alimentos disponibles</h3>
-            </div>
-            <div className="library-session-search-container meal-editor-search-block">
-              <div className="meal-editor-search-row-top">
-                <div className="library-session-search-input-container meal-editor-search-input-wrap">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="library-session-search-icon">
-                    <path d="M21 21L15 15M17 10C17 13.866 13.866 17 10 17C6.13401 17 3 13.866 3 10C3 6.13401 6.13401 3 10 3C13.866 3 17 6.13401 17 10Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <input
-                    type="text"
-                    className="library-session-search-input"
-                    placeholder="Buscar alimento (ej. pollo)"
-                    value={mealFormSearchQuery}
-                    onChange={(e) => setMealFormSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleMealFormSearch()}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="meal-editor-add-own-btn"
-                  onClick={() => setManualFoodModalOpen(true)}
-                  aria-label="Añadir alimento propio"
-                  title="Añadir alimento propio"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+          <div className="library-session-sidebar plan-editor-sidebar">
+            <div className="pe-left-search">
+              <div className="pe-search-input-wrap">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input
+                  type="text"
+                  placeholder="Buscar alimento..."
+                  value={mealFormSearchQuery}
+                  onChange={(e) => setMealFormSearchQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleMealFormSearch()}
+                />
+                <button type="button" className="pe-search-action" onClick={() => setManualFoodModalOpen(true)} title="Alimento propio">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
               </div>
-              <div className="meal-editor-search-row-bottom">
-                <button
-                  type="button"
-                  className="meal-editor-search-btn"
-                  onClick={handleMealFormSearch}
-                  disabled={mealFormSearchLoading}
-                >
-                  {mealFormSearchLoading ? '…' : 'Buscar'}
-                </button>
-                <div className="meal-editor-sort-wrap">
-                  <button
-                    type="button"
-                    className="meal-editor-sort-btn"
-                    onClick={() => setMealSortMenuOpen((o) => !o)}
-                    aria-label="Ordenar"
-                    title="Ordenar"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                  </button>
-                  {mealSortMenuOpen && (
-                    <>
-                      <div className="meal-editor-sort-backdrop" onClick={() => setMealSortMenuOpen(false)} />
-                      <div className="meal-editor-sort-menu">
-                        {[
-                          { id: 'name', label: 'Nombre' },
-                          { id: 'calories', label: 'Calorías' },
-                          { id: 'protein', label: 'Proteína' },
-                          { id: 'carbs', label: 'Carbos' },
-                          { id: 'fat', label: 'Grasa' },
-                        ].map((opt) => (
-                          <button
-                            key={opt.id}
-                            type="button"
-                            className={`meal-editor-sort-opt ${mealSortBy === opt.id ? 'active' : ''}`}
-                            onClick={() => { setMealSortBy(opt.id); setMealSortMenuOpen(false); }}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
             </div>
-            <div className="library-session-sidebar-content">
-              {sortedSearchResults.length === 0 && (
-                <div className="library-session-empty-state">
-                  <p>Escribe y pulsa Buscar para buscar en la base de datos, o usa + para añadir un alimento propio.</p>
-                </div>
-              )}
-              {sortedSearchResults.map((f) => {
-                const per100 = getPer100g(f);
-                const portionOptions = getServingsWithStandardOptions(f);
-                const hasServings = portionOptions.length > 0;
-                return (
-                  <div
-                    key={f.food_id}
-                    className="meal-editor-food-card"
-                    draggable={hasServings}
-                    onDragStart={(e) => hasServings && e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }))}
-                    onClick={() => {
-                      if (!hasServings) return;
-                      const first = portionOptions[0];
-                      addFoodToMeal(f, first, 1);
-                    }}
-                  >
-                    <span className="meal-editor-food-card-name">{f.food_name}</span>
-                    {per100 && (
-                      <span className="meal-editor-food-card-per100">
-                        {per100.calories} kcal · P:{per100.protein}g C:{per100.carbs}g G:{per100.fat}g
-                        <span className="meal-editor-food-card-per100-label">/100g</span>
-                      </span>
-                    )}
+            <div className="pe-left-list">
+              {mealFormSearchLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="pe-food-card pe-food-card--skeleton" style={{ animationDelay: `${i * 60}ms` }}>
+                    <div className="pe-skeleton-line pe-skeleton-line--name" />
+                    <div className="pe-skeleton-line pe-skeleton-line--meta" />
                   </div>
-                );
-              })}
+                ))
+              ) : sortedSearchResults.length === 0 ? (
+                <p className="pe-left-empty">Escribe y pulsa Enter para buscar alimentos, o usa + para crear uno propio.</p>
+              ) : (
+                <>
+                  {sortedSearchResults.map((f) => {
+                    const per100 = getPer100g(f);
+                    const portionOptions = getServingsWithStandardOptions(f);
+                    const hasServings = portionOptions.length > 0;
+                    return (
+                      <div
+                        key={f.food_id}
+                        className="pe-food-card"
+                        draggable={hasServings}
+                        onDragStart={(e) => {
+                          if (!hasServings) return;
+                          e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }));
+                          e.dataTransfer.effectAllowed = 'copy';
+                        }}
+                        onClick={() => {
+                          if (!hasServings) return;
+                          addFoodToMeal(f, portionOptions[0], 1);
+                        }}
+                      >
+                        <span className="pe-food-card-name">{f.food_name}</span>
+                        {per100 && (
+                          <div className="pe-food-card-meta">
+                            <span>{per100.calories} kcal</span>
+                            <span>P {per100.protein}g</span>
+                            <span>C {per100.carbs}g</span>
+                            <span>G {per100.fat}g</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <p className="pe-drag-hint">Click o arrastra para agregar</p>
+                </>
+              )}
             </div>
           </div>
 
           <div className="library-session-main">
-            <div className="meal-editor-video-card">
-              <h3 className="meal-editor-video-card-title">Vídeo de la receta</h3>
-              <p className="meal-editor-video-card-hint">
-                Pega un enlace (YouTube, Vimeo, etc.) o elige un vídeo de tu carpeta de medios.
-              </p>
-              <MediaDropZone onSelect={(item) => setMealFormVideoUrl(item.url ?? '')} accept="video/*">
-              <div className="meal-editor-video-link-row">
-                <button
-                  type="button"
-                  className="meal-editor-video-upload-btn"
-                  onClick={() => setVideoMediaPickerOpen(true)}
-                >
-                  <svg className="meal-editor-video-upload-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span>Subir video</span>
-                </button>
-                <input
-                  type="url"
-                  className="meal-editor-video-input"
-                  placeholder="https://www.youtube.com/watch?v=…"
-                  value={mealFormVideoUrl}
-                  onChange={(e) => setMealFormVideoUrl(e.target.value)}
-                />
-              </div>
-              {mealFormVideoUrl.trim() && (
-                <div className="meal-editor-video-preview">
-                  {(() => {
-                    const url = mealFormVideoUrl.trim();
-                    const source = detectVideoSource(url);
-                    const isExternal = source === 'youtube' || source === 'vimeo';
-                    if (isExternal) {
-                      return <iframe src={getEmbedUrl(url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video receta" className="meal-editor-video-player" />;
-                    }
-                    return <video src={url} controls playsInline className="meal-editor-video-player" />;
-                  })()}
-                  <div className="meal-editor-video-actions">
-                    <button type="button" className="meal-editor-video-action-btn" onClick={() => setVideoMediaPickerOpen(true)}>Cambiar</button>
-                    <button type="button" className="meal-editor-video-action-btn meal-editor-video-action-btn--danger" onClick={() => setMealFormVideoUrl('')}>Eliminar</button>
-                  </div>
-                </div>
-              )}
-              </MediaDropZone>
-            </div>
             <div
               className={`library-session-exercises-container meal-editor-items-container ${mealFormItems.length === 0 ? 'empty' : ''}`}
               onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('meal-editor-dropzone-active'); }}
@@ -629,78 +564,47 @@ export default function MealEditorScreen() {
               <div className="meal-editor-calories-value">{totals.calories}</div>
               <div className="meal-editor-calories-label">kcal</div>
             </div>
-            <div className="library-session-sidebar-right-header">
-              <h3 className="library-session-sidebar-right-title">Macros</h3>
-              <p className="library-session-sidebar-right-subtitle">Distribución y gramos de la comida</p>
+            <div className="meal-editor-macro-cards">
+              <div className="meal-editor-macro-card">
+                <span className="meal-editor-macro-card-value">{totals.protein.toFixed(0)}g</span>
+                <span className="meal-editor-macro-card-label">Proteina</span>
+              </div>
+              <div className="meal-editor-macro-card">
+                <span className="meal-editor-macro-card-value">{totals.carbs.toFixed(0)}g</span>
+                <span className="meal-editor-macro-card-label">Carbos</span>
+              </div>
+              <div className="meal-editor-macro-card">
+                <span className="meal-editor-macro-card-value">{totals.fat.toFixed(0)}g</span>
+                <span className="meal-editor-macro-card-label">Grasa</span>
+              </div>
             </div>
-            <div className="library-session-sidebar-right-content">
-              {pieData.length === 0 ? (
-                <div className="library-session-volume-empty">
-                  Añade alimentos a la comida para ver la distribución de macros.
-                </div>
-              ) : (
-                <div className="library-session-volume-card library-session-volume-pie-card meal-editor-macros-card" style={{ width: '100%' }}>
-                  <div className="meal-editor-macros-card-top">
-                    <div className="library-session-pie-chart-wrap">
-                      <ResponsiveContainer width="100%" height={160}>
-                        <PieChart className="library-session-pie-chart">
-                          <defs>
-                            {[0, 1, 2].map((i) => (
-                              <linearGradient key={i} id={`meal-editor-pie-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor={`rgba(255,255,255,${0.22 + i * 0.06})`} />
-                                <stop offset="50%" stopColor={`rgba(255,255,255,${0.12 + i * 0.04})`} />
-                                <stop offset="100%" stopColor={`rgba(255,255,255,${0.05 + i * 0.03})`} />
-                              </linearGradient>
-                            ))}
-                          </defs>
-                          <Pie
-                            key={`macro-${pieData.map((d) => d.value).join('-')}`}
-                            data={pieData}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={40}
-                            outerRadius={64}
-                            paddingAngle={2}
-                            dataKey="value"
-                            nameKey="name"
-                            label={false}
-                          >
-                            {pieData.map((_, i) => (
-                              <Cell key={i} fill={`url(#meal-editor-pie-grad-${i})`} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            content={({ active, payload }) => {
-                              if (!active || !payload?.length) return null;
-                              const { name, value, grams } = payload[0].payload;
-                              return (
-                                <div className="library-session-pie-tooltip">
-                                  <span className="library-session-pie-tooltip-name">{name}</span>
-                                  <span className="library-session-pie-tooltip-sets">{Number(grams ?? 0).toFixed(0)} g</span>
-                                </div>
-                              );
-                            }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                  <div className="meal-editor-macros-list">
-                    <div className="meal-editor-macro-row">
-                      <span className="meal-editor-macro-name">Proteína</span>
-                      <span className="meal-editor-macro-grams">{totals.protein.toFixed(0)} g</span>
-                    </div>
-                    <div className="meal-editor-macro-row">
-                      <span className="meal-editor-macro-name">Carbohidratos</span>
-                      <span className="meal-editor-macro-grams">{totals.carbs.toFixed(0)} g</span>
-                    </div>
-                    <div className="meal-editor-macro-row">
-                      <span className="meal-editor-macro-name">Grasa</span>
-                      <span className="meal-editor-macro-grams">{totals.fat.toFixed(0)} g</span>
-                    </div>
-                  </div>
-                </div>
+            <div className="meal-editor-video-card">
+              <h3 className="meal-editor-video-card-title">Video</h3>
+              <div className="meal-editor-video-link-row">
+                <input
+                  type="url"
+                  className={`meal-editor-video-input${videoUrlError ? ' meal-editor-video-input--error' : ''}`}
+                  placeholder="YouTube o Vimeo..."
+                  value={mealFormVideoUrl}
+                  onChange={(e) => { setVideoUrlDirty(true); setMealFormVideoUrl(e.target.value); }}
+                />
+              </div>
+              {videoUrlError && (
+                <p className="meal-editor-video-error">{videoUrlError}</p>
               )}
+              {mealFormVideoUrl.trim() && !videoUrlError && (() => {
+                const url = mealFormVideoUrl.trim();
+                const embedUrl = getEmbedUrl(url);
+                if (!embedUrl) return null;
+                return (
+                  <div className="meal-editor-video-preview">
+                    <iframe src={embedUrl} allow="autoplay; encrypted-media" allowFullScreen title="Video receta" className="meal-editor-video-player" />
+                    <div className="meal-editor-video-actions">
+                      <button type="button" className="meal-editor-video-action-btn meal-editor-video-action-btn--danger" onClick={() => { setVideoUrlDirty(true); setMealFormVideoUrl(''); }}>Eliminar</button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -804,11 +708,15 @@ export default function MealEditorScreen() {
         </div>
       </Modal>
 
+      {/* MediaPickerModal kept for potential future use with links tab */}
       <MediaPickerModal
         isOpen={videoMediaPickerOpen}
         onClose={() => setVideoMediaPickerOpen(false)}
         onSelect={(item) => {
-          setMealFormVideoUrl(item.url ?? '');
+          const url = item.url ?? '';
+          if (isValidExternalVideoUrl(url)) {
+            setMealFormVideoUrl(url);
+          }
           setVideoMediaPickerOpen(false);
         }}
         creatorId={creatorId}

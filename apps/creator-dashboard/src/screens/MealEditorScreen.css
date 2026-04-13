@@ -1,5 +1,54 @@
 /* Meal editor: reuses library-session layout; these are meal-specific overrides */
 
+/* Meal editor column overrides */
+.library-session-detail-container:has(.meal-editor-items-container) .library-session-sidebar {
+  flex: 0 0 280px;
+  min-width: 280px;
+}
+
+.library-session-detail-container:has(.meal-editor-items-container) .library-session-main {
+  flex: 1;
+  border-radius: 16px;
+}
+
+.library-session-detail-container:has(.meal-editor-items-container) .library-session-sidebar-right {
+  width: auto;
+  min-width: 320px;
+  flex: 0 0 340px;
+}
+
+/* Right panel */
+.meal-editor-macro-cards {
+  display: flex;
+  gap: 8px;
+  padding: 16px;
+}
+
+.meal-editor-macro-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.meal-editor-macro-card-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.1;
+}
+
+.meal-editor-macro-card-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+}
+
 /* Right panel: big calories on top */
 .meal-editor-calories-hero {
   text-align: center;
@@ -284,26 +333,127 @@
   color: rgba(255, 255, 255, 0.95);
 }
 
-/* Center column: items container fills remaining space; video card sizes to content */
+/* Center column: items container fills remaining space */
 .library-session-main .meal-editor-items-container {
   flex: 1;
   min-height: 0;
 }
 
-/* Video card (center column, above ingredients) — height from content */
-.meal-editor-video-card {
-  background: rgba(255, 255, 255, 0.06);
+/* Center column: item cards */
+.plan-editor-option-item-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 20px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.plan-editor-option-item-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.plan-editor-option-item-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.plan-editor-option-item-card-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.plan-editor-option-item-portion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.plan-editor-option-item-portion-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-editor-option-item-portion-select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 8px;
+  min-width: 120px;
+  max-width: 180px;
+  cursor: pointer;
+}
+
+.plan-editor-option-item-portion-select:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.plan-editor-option-item-portion-units {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 8px;
+  width: 56px;
+  text-align: center;
+}
+
+.plan-editor-option-item-portion-units:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.plan-editor-option-item-portion-labels {
+  display: flex;
+  gap: 8px;
+}
+
+.plan-editor-option-item-portion-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.plan-editor-option-item-portion-labels .plan-editor-option-item-portion-label:first-child {
+  min-width: 120px;
+  max-width: 180px;
+}
+
+/* Video card (right panel bottom) */
+.meal-editor-video-card {
+  background: rgba(255, 255, 255, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px;
+  margin-top: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 200px;
 }
 
 .meal-editor-video-card-title {
-  font-size: clamp(14px, 3.5vw, 16px);
+  font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.6);
   margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .meal-editor-video-card-hint {
@@ -316,12 +466,12 @@
 .meal-editor-video-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.9);
-  font-size: clamp(13px, 3vw, 14px);
+  font-size: 13px;
   font-family: inherit;
 }
 
@@ -335,11 +485,25 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+.meal-editor-video-input--error {
+  border-color: rgba(220, 38, 38, 0.5);
+}
+
+.meal-editor-video-input--error:focus {
+  border-color: rgba(220, 38, 38, 0.6);
+}
+
+.meal-editor-video-error {
+  font-size: 12px;
+  color: rgba(220, 80, 80, 0.9);
+  margin: 6px 0 0 0;
+  line-height: 1.3;
+}
+
 .meal-editor-video-link-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
 }
 
 .meal-editor-video-link-row .meal-editor-video-input {
@@ -381,7 +545,8 @@
   margin-top: 12px;
   border-radius: 10px;
   overflow: hidden;
-  aspect-ratio: 9 / 14;
+  flex: 1;
+  min-height: 180px;
   background: rgba(255, 255, 255, 0.03);
 }
 

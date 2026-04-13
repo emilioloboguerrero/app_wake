@@ -386,6 +386,25 @@
   color: rgba(255, 255, 255, 0.95);
 }
 
+.pe-opt-recipe-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.pe-opt-tab.active .pe-opt-recipe-tag {
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .pe-opt-tab-add {
   padding: 5px 8px;
   background: none;
@@ -495,6 +514,73 @@
   font-size: 11px;
   color: rgba(255, 255, 255, 0.3);
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Recipe block — expanded view with sub-items */
+.pe-recipe-block {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.pe-recipe-block:last-child {
+  border-bottom: none;
+}
+
+.pe-recipe-block-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  transition: background 0.1s;
+}
+
+.pe-recipe-block-header:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pe-recipe-block-header .pe-item-remove {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pe-recipe-block-header:hover .pe-item-remove {
+  opacity: 1;
+}
+
+.pe-recipe-block-items {
+  padding: 0 16px 8px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pe-recipe-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.pe-recipe-sub-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pe-recipe-sub-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+.pe-recipe-sub-kcal {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
   flex-shrink: 0;
 }
 

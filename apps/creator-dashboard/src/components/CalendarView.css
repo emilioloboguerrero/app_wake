@@ -73,6 +73,19 @@
   border-width: 1.5px;
 }
 
+.calendar-day-moving-shimmer {
+  position: relative;
+  z-index: 2;
+  margin-top: 4px;
+  padding: 0 2px;
+  animation: calendar-moving-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes calendar-moving-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
 /* Header Controls */
 .calendar-header-controls {
   display: flex;
@@ -505,6 +518,11 @@
   flex: 1;
   min-height: 0;
   overflow: visible;
+}
+
+.calendar-day-session-card--dragging {
+  opacity: 0.35;
+  border-style: dashed;
 }
 
 .calendar-day-session-card {

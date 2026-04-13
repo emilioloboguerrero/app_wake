@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useDroppable } from '@dnd-kit/core';
 import Modal from './Modal';
 import MediaPickerModal from './MediaPickerModal';
 import Input from './Input';
@@ -10,7 +9,7 @@ import { DRAG_TYPE_LIBRARY_SESSION, DRAG_TYPE_PLAN } from './PlanningLibrarySide
 import programService from '../services/programService';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
-import { GlowingEffect } from './ui';
+import { GlowingEffect, DragSessionPreview } from './ui';
 import '../screens/ProgramDetailScreen.css';
 import '../screens/SharedScreenLayout.css';
 import './PlanWeeksGrid.css';
@@ -18,25 +17,6 @@ import './ProgramWeeksGrid.css';
 
 const SLOTS = [1, 2, 3, 4, 5, 6, 7];
 const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
-
-const DroppableDayCell = ({ moduleId, slotIndex, children, className = '', onNativeDragOver, onNativeDragLeave, onNativeDrop }) => {
-  const { isOver, setNodeRef } = useDroppable({
-    id: `day-cell-${moduleId}-${slotIndex}`,
-    data: { moduleId, slotIndex },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`${className} ${isOver ? 'plan-weeks-cell-dndkit-over' : ''}`}
-      onDragOver={onNativeDragOver}
-      onDragLeave={onNativeDragLeave}
-      onDrop={onNativeDrop}
-    >
-      {children}
-    </div>
-  );
-};
 
 /**
  * Weeks grid for low-ticket program content: rows = weeks (modules), columns = position 1-7.
@@ -75,9 +55,12 @@ const ProgramWeeksGrid = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAssigningPlan, setIsAssigningPlan] = useState(false);
   const [isMovingOrAddingItem, setIsMovingOrAddingItem] = useState(false);
-  const [isDraggingSession, setIsDraggingSession] = useState(false);
   const [dragOverWeekId, setDragOverWeekId] = useState(null);
   const [dragOverBelow, setDragOverBelow] = useState(false);
+  const [dragMoveTarget, setDragMoveTarget] = useState(null); // { sourceModuleId, sourceSessionId, sourceSession, targetModuleId, targetSlotIndex, fromSlotIndex }
+  const [draggingSession, setDraggingSession] = useState(null);
+  const [movingToCell, setMovingToCell] = useState(null);
+  const isDraggingSessionRef = useRef(false);
 
   useEffect(() => {
     if (!openMenuSession) return;
@@ -290,65 +273,84 @@ const ProgramWeeksGrid = ({
     return (module?.sessions || []).slice().sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
   };
 
-  const handleDropReorderSession = async (moduleId, toSlotIndex, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.classList.remove('plan-weeks-cell-drag-over');
-    try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
-      if (data.type !== DRAG_TYPE_PROGRAM_SESSION || data.moduleId !== moduleId) return;
-      const fromSlotIndex = data.fromSlotIndex;
-      if (fromSlotIndex === toSlotIndex) return;
-      if (fromSlotIndex < 0 || fromSlotIndex > 6 || toSlotIndex < 0 || toSlotIndex > 6) return;
-      const mod = modules.find((m) => m.id === moduleId);
-      if (!mod) return;
-      const movedSession = getSessionForSlot(mod, fromSlotIndex);
-      if (!movedSession) return;
-      const sessionAtTarget = getSessionForSlot(mod, toSlotIndex);
-      setIsMovingOrAddingItem(true);
-      try {
-        const sessionOrders = [{ sessionId: movedSession.id, order: toSlotIndex }];
-        if (sessionAtTarget) sessionOrders.push({ sessionId: sessionAtTarget.id, order: fromSlotIndex });
-        await programService.updateSessionOrder(programId, moduleId, sessionOrders);
-        await refreshModules();
-        await new Promise((r) => setTimeout(r, 0));
-      } finally {
-        setIsMovingOrAddingItem(false);
-      }
-    } catch (err) {
-      setIsMovingOrAddingItem(false);
-      logger.warn('Session reorder failed:', err);
-      showToast(err?.message || 'No pudimos cambiar el orden. Intenta de nuevo.', 'error');
-    }
-  };
-
-  const handleDropMoveSessionToWeek = async (toModuleId, toSlotIndex, e) => {
+  const handleDropSessionOnCell = (moduleId, toSlotIndex, e) => {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.classList.remove('plan-weeks-cell-drag-over');
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       if (data.type !== DRAG_TYPE_PROGRAM_SESSION || !data.moduleId || !data.sessionId) return;
-      const fromModuleId = data.moduleId;
-      if (fromModuleId === toModuleId) return;
+      const fromSlotIndex = data.fromSlotIndex;
+      if (data.moduleId === moduleId && fromSlotIndex === toSlotIndex) return;
       if (toSlotIndex < 0 || toSlotIndex > 6) return;
-      const sessionAtTarget = getSessionForSlot(modules.find((m) => m.id === toModuleId), toSlotIndex);
+      const targetMod = modules.find((m) => m.id === moduleId);
+      const sessionAtTarget = getSessionForSlot(targetMod, toSlotIndex);
       if (sessionAtTarget) {
         showToast('Ese día ya tiene una sesión. Mueve o elimina esa sesión primero.', 'error');
         return;
       }
-      setIsMovingOrAddingItem(true);
-      try {
-        await programService.moveSession(programId, fromModuleId, toModuleId, data.sessionId, toSlotIndex);
-        await refreshModules();
-        await new Promise((r) => setTimeout(r, 0));
-      } finally {
-        setIsMovingOrAddingItem(false);
+      const sourceMod = modules.find((m) => m.id === data.moduleId);
+      const sourceSession = sourceMod?.sessions?.find((s) => s.id === data.sessionId);
+      setDragMoveTarget({
+        sourceModuleId: data.moduleId,
+        sourceSessionId: data.sessionId,
+        sourceSession: sourceSession || { id: data.sessionId, title: data.title },
+        targetModuleId: moduleId,
+        targetSlotIndex: toSlotIndex,
+        fromSlotIndex,
+      });
+    } catch (_) {}
+  };
+
+  const handleMoveSession = async () => {
+    if (!dragMoveTarget) return;
+    const { sourceModuleId, sourceSessionId, targetModuleId, targetSlotIndex } = dragMoveTarget;
+    setDragMoveTarget(null);
+    setMovingToCell({ moduleId: targetModuleId, slotIndex: targetSlotIndex });
+    setIsMovingOrAddingItem(true);
+    try {
+      if (sourceModuleId === targetModuleId) {
+        await programService.updateSessionOrder(programId, sourceModuleId, [
+          { sessionId: sourceSessionId, order: targetSlotIndex },
+        ]);
+      } else {
+        await programService.moveSession(programId, sourceModuleId, targetModuleId, sourceSessionId, targetSlotIndex);
       }
+      await refreshModules();
+      showToast('Sesión movida', 'success');
     } catch (err) {
+      showToast(err?.message || 'No pudimos mover la sesión. Intenta de nuevo.', 'error');
+    } finally {
       setIsMovingOrAddingItem(false);
-      logger.warn('Move session to week failed:', err);
-      showToast(err?.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
+      setMovingToCell(null);
+    }
+  };
+
+  const handleDuplicateSession = async () => {
+    if (!dragMoveTarget) return;
+    const { sourceModuleId, sourceSessionId, sourceSession, targetModuleId, targetSlotIndex } = dragMoveTarget;
+    setDragMoveTarget(null);
+    setMovingToCell({ moduleId: targetModuleId, slotIndex: targetSlotIndex });
+    setIsMovingOrAddingItem(true);
+    try {
+      const srcMod = modules.find((m) => m.id === sourceModuleId);
+      const fullSession = srcMod?.sessions?.find((s) => s.id === sourceSessionId) || sourceSession;
+      await programService.createSession(
+        programId,
+        targetModuleId,
+        fullSession.title || fullSession.name || 'Sesión',
+        targetSlotIndex,
+        fullSession.image_url ?? null,
+        fullSession.librarySessionRef ?? null,
+        targetSlotIndex
+      );
+      await refreshModules();
+      showToast('Sesión duplicada', 'success');
+    } catch (err) {
+      showToast(err?.message || 'No pudimos duplicar la sesión. Intenta de nuevo.', 'error');
+    } finally {
+      setIsMovingOrAddingItem(false);
+      setMovingToCell(null);
     }
   };
 
@@ -453,8 +455,8 @@ const ProgramWeeksGrid = ({
   };
 
   const handleDragOverWeek = (e, moduleId) => {
+    if (isDraggingSessionRef.current) return;
     e.preventDefault();
-    e.stopPropagation();
     if (e.dataTransfer.types.includes('application/json')) {
       e.dataTransfer.dropEffect = 'copy';
       setDragOverWeekId(moduleId);
@@ -462,8 +464,8 @@ const ProgramWeeksGrid = ({
   };
 
   const handleDragOverBelow = (e) => {
+    if (isDraggingSessionRef.current) return;
     e.preventDefault();
-    e.stopPropagation();
     if (e.dataTransfer.types.includes('application/json')) {
       e.dataTransfer.dropEffect = 'copy';
       setDragOverBelow(true);
@@ -524,11 +526,6 @@ const ProgramWeeksGrid = ({
         <div className="plan-weeks-grid-overlay" aria-busy aria-live="polite">
           <span className="plan-weeks-grid-overlay-spinner" aria-hidden />
           <span className="plan-weeks-grid-overlay-text">{overlayMessage}</span>
-        </div>
-      )}
-      {isDraggingSession && (
-        <div className="plan-weeks-drag-hint" role="status" aria-live="polite">
-          Suelta en un día para cambiar el orden
         </div>
       )}
       <div className="plan-weeks-grid-header">
@@ -623,6 +620,7 @@ const ProgramWeeksGrid = ({
                 {SLOTS.map((_, slotIndex) => {
                   const session = getSessionForSlot(mod, slotIndex);
                   const isEmpty = !session;
+                  const isMovingToThisCell = movingToCell?.moduleId === mod.id && movingToCell?.slotIndex === slotIndex;
                   const handleCellDrop = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -634,11 +632,7 @@ const ProgramWeeksGrid = ({
                         return;
                       }
                       if (data.type === DRAG_TYPE_PROGRAM_SESSION) {
-                        if (data.moduleId === mod.id) {
-                          handleDropReorderSession(mod.id, slotIndex, e);
-                        } else {
-                          handleDropMoveSessionToWeek(mod.id, slotIndex, e);
-                        }
+                        handleDropSessionOnCell(mod.id, slotIndex, e);
                         return;
                       }
                       if (data.type === DRAG_TYPE_LIBRARY_SESSION && data.librarySessionRef && isEmpty) {
@@ -648,24 +642,21 @@ const ProgramWeeksGrid = ({
                   };
                   const handleCellDragOver = (e) => {
                     e.preventDefault();
-                    e.stopPropagation();
                     if (e.dataTransfer.types.includes('application/json')) {
                       e.dataTransfer.dropEffect = 'copy';
                       e.currentTarget.classList.add('plan-weeks-cell-drag-over');
                     }
                   };
                   return (
-                    <DroppableDayCell
+                    <div
                       key={slotIndex}
-                      moduleId={mod.id}
-                      slotIndex={slotIndex}
                       className="plan-weeks-day-cell"
-                      onNativeDragOver={handleCellDragOver}
-                      onNativeDragLeave={(e) => {
+                      onDragOver={handleCellDragOver}
+                      onDragLeave={(e) => {
                         handleDragLeave(e);
                         setDragOverWeekId(null);
                       }}
-                      onNativeDrop={handleCellDrop}
+                      onDrop={handleCellDrop}
                     >
                       {session ? (
                         <div
@@ -675,24 +666,29 @@ const ProgramWeeksGrid = ({
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
                           } : undefined}
+                          draggable="true"
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('application/json', JSON.stringify({
+                              type: DRAG_TYPE_PROGRAM_SESSION,
+                              moduleId: mod.id,
+                              sessionId: session.id,
+                              fromSlotIndex: slotIndex,
+                              title: session.title || session.name || null,
+                              image_url: session.image_url ?? null,
+                              librarySessionRef: session.librarySessionRef ?? null,
+                            }));
+                            e.dataTransfer.effectAllowed = 'copyMove';
+                            const img = new Image();
+                            img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                            e.dataTransfer.setDragImage(img, 0, 0);
+                            e.currentTarget.classList.add('plan-weeks-session-card--dragging');
+                            isDraggingSessionRef.current = true;
+                            setDraggingSession(session);
+                          }}
+                          onDragEnd={(e) => { e.currentTarget.classList.remove('plan-weeks-session-card--dragging'); isDraggingSessionRef.current = false; setDraggingSession(null); }}
                         >
                           <GlowingEffect spread={30} proximity={60} borderWidth={1} />
-                          <div
-                            className="plan-weeks-session-card-body"
-                            draggable
-                            onDragStart={(e) => {
-                              setIsDraggingSession(true);
-                              e.dataTransfer.setData('application/json', JSON.stringify({
-                                type: DRAG_TYPE_PROGRAM_SESSION,
-                                moduleId: mod.id,
-                                sessionId: session.id,
-                                fromSlotIndex: slotIndex,
-                              }));
-                              e.dataTransfer.effectAllowed = 'move';
-                            }}
-                            onDragEnd={() => setIsDraggingSession(false)}
-                            title="Arrastra para cambiar orden"
-                          >
+                          <div className="plan-weeks-session-card-body">
                             <span className="plan-weeks-session-title">
                               {session.title || session.name || `Sesión ${session.id?.slice(0, 8)}`}
                             </span>
@@ -713,8 +709,8 @@ const ProgramWeeksGrid = ({
                                   setMenuAnchorEl(e.currentTarget);
                                 }
                               }}
-                              title="Más opciones"
-                              aria-label="Más opciones"
+                              title="Mas opciones"
+                              aria-label="Mas opciones"
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M12 13C12.5523 13 13 12.5523 13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12C11 12.5523 11.4477 13 12 13Z" stroke="currentColor" strokeWidth="2"/>
@@ -722,6 +718,12 @@ const ProgramWeeksGrid = ({
                                 <path d="M12 20C12.5523 20 13 19.5523 13 19C13 18.4477 12.5523 18 12 18C11.4477 18 11 18.4477 11 19C11 19.5523 11.4477 20 12 20Z" stroke="currentColor" strokeWidth="2"/>
                               </svg>
                             </button>
+                          </div>
+                        </div>
+                      ) : isMovingToThisCell ? (
+                        <div className="plan-weeks-session-card plan-weeks-session-card--incoming">
+                          <div className="plan-weeks-session-card-body">
+                            <ShimmerSkeleton width="70%" height="14px" borderRadius="4px" />
                           </div>
                         </div>
                       ) : (
@@ -734,7 +736,7 @@ const ProgramWeeksGrid = ({
                           +
                         </button>
                       )}
-                    </DroppableDayCell>
+                    </div>
                   );
                 })}
               </div>
@@ -956,6 +958,57 @@ const ProgramWeeksGrid = ({
         creatorId={creatorId}
         accept="image/*"
       />
+
+      <DragSessionPreview session={draggingSession} />
+
+      {/* Move/Duplicate choice overlay */}
+      {dragMoveTarget && (
+        <div className="cfo-overlay" onClick={() => setDragMoveTarget(null)}>
+          <div className="cfo-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <GlowingEffect spread={40} borderWidth={1} />
+            <div className="cfo-topbar">
+              <div />
+              <button type="button" className="cfo-close" onClick={() => setDragMoveTarget(null)} aria-label="Cerrar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="cfo-body">
+              <div className="cfo-step" key="move-choice">
+                <div className="cfo-step__header">
+                  <h1 className="cfo-step__title">¿Mover o duplicar?</h1>
+                  <p className="cfo-step__desc">¿Qué quieres hacer con <strong>{dragMoveTarget?.sourceSession?.title || dragMoveTarget?.sourceSession?.name || 'esta sesión'}</strong>?</p>
+                </div>
+                <div className="cfo-step__content">
+                  <div className="cfo-choice">
+                    <button type="button" className="cfo-choice-card" onClick={handleMoveSession}>
+                      <span className="cfo-choice-card__icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M5 9l4-4 4 4M9 5v14M15 19l4-4-4-4M19 15H5" />
+                        </svg>
+                      </span>
+                      <span className="cfo-choice-card__text">
+                        <span className="cfo-choice-card__label">Mover aquí</span>
+                        <span className="cfo-choice-card__desc">La sesión se mueve a esta posición</span>
+                      </span>
+                    </button>
+                    <button type="button" className="cfo-choice-card" onClick={handleDuplicateSession}>
+                      <span className="cfo-choice-card__icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2M8 16h10a2 2 0 002-2V8a2 2 0 00-2-2H8a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                        </svg>
+                      </span>
+                      <span className="cfo-choice-card__text">
+                        <span className="cfo-choice-card__label">Duplicar aquí</span>
+                        <span className="cfo-choice-card__desc">Se crea una copia en esta posición</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

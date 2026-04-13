@@ -31,12 +31,13 @@ export async function getMealById(_creatorId, mealId) {
 }
 
 export async function createMeal(_creatorId, data) {
+  const video_url = data.video_url ?? data.videoUrl ?? null;
   const result = await apiClient.post('/creator/nutrition/meals', {
     name: data.name ?? '',
     items: data.items ?? [],
     ...(data.description !== undefined ? { description: data.description } : {}),
-    ...(data.video_url !== undefined ? { video_url: data.video_url } : {}),
-    ...(data.videoUrl !== undefined ? { video_url: data.videoUrl } : {}),
+    ...(video_url != null ? { video_url } : {}),
+    ...(data.video_source !== undefined ? { video_source: data.video_source } : {}),
   });
   return result?.data?.mealId;
 }
@@ -45,8 +46,9 @@ export async function updateMeal(_creatorId, mealId, data) {
   const body = {};
   if (data.name !== undefined) body.name = data.name;
   if (data.description !== undefined) body.description = data.description;
-  if (data.video_url !== undefined) body.video_url = data.video_url;
-  if (data.videoUrl !== undefined) body.video_url = data.videoUrl;
+  const video_url = data.video_url ?? data.videoUrl;
+  if (video_url !== undefined) body.video_url = video_url;
+  if (data.video_source !== undefined) body.video_source = data.video_source;
   if (data.items !== undefined) body.items = data.items;
   await apiClient.patch(`/creator/nutrition/meals/${mealId}`, body);
 }

@@ -25,6 +25,7 @@ import {
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
+import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
 
 const db = admin.firestore();
 
@@ -1897,14 +1898,7 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
   }
 });
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+const escapeHtml = sharedEscapeHtml;
 
 // ─── sendEventConfirmationEmail ────────────────────────────────────────────
 // Fires on every new registration and sends an HTML email with the event
@@ -2074,8 +2068,8 @@ export const processRestTimerNotifications = onSchedule(
 
     if (pendingSnap.empty) return;
 
-    const pub = vapidPublicKey.value().replace(/=+$/, "");
-    const priv = vapidPrivateKey.value().replace(/=+$/, "");
+    const pub = vapidPublicKey.value().trim().replace(/=+$/, "");
+    const priv = vapidPrivateKey.value().trim().replace(/=+$/, "");
     if (!pub || !priv) {
       functions.logger.error("VAPID keys not configured");
       return;
@@ -2142,6 +2136,305 @@ export const processRestTimerNotifications = onSchedule(
     );
   }
 );
+
+// ─── Scheduled: process email send queue every 1 minute ─────────────────
+//
+// Uses the Resend batch API (up to 100 emails per API call) so we stay under
+// the 5 req/sec rate limit automatically. Each tick processes up to
+// MAX_BATCHES_PER_TICK batches per send doc, draining large sends quickly.
+//
+// Retry behavior: transient Resend errors (rate limit, quota, timeout, 5xx,
+// network) keep the recipient in "pending" state with attemptCount++ and a
+// nextRetryAt timestamp. On the next tick where nextRetryAt <= now, the
+// recipient is retried. After MAX_ATTEMPTS total attempts, the recipient is
+// marked "failed" permanently.
+//
+// Permanent errors (validation, invalid email, unauthorized, sender-not-
+// verified) skip retries and go straight to "failed".
+//
+// Future improvement (not done per user request): move the broadcast sender
+// to a separate subdomain like broadcasts.wakelab.co so marketing reputation
+// is isolated from apex transactional reputation. Requires DNS verification
+// in Resend; skipped to avoid extra ops work.
+
+const RETRY_BACKOFF_MINUTES = [2, 5, 15, 60]; // entries[i] = wait after attempt i
+const MAX_ATTEMPTS = RETRY_BACKOFF_MINUTES.length + 1; // first attempt + 4 retries = 5
+const BATCH_SIZE = 100; // Resend batch API max
+const PENDING_FETCH_LIMIT = 200; // oversample so we can filter out in-backoff docs
+const MAX_BATCHES_PER_TICK = 5; // bounds tick duration; 500 emails/tick/send
+
+type TransientOrPermanent = "transient" | "permanent";
+
+function classifyResendError(message: string | null | undefined): TransientOrPermanent {
+  if (!message) return "transient";
+  const m = message.toLowerCase();
+  // Clearly permanent — retrying won't help
+  if (m.includes("validation")) return "permanent";
+  if (m.includes("invalid") && (m.includes("email") || m.includes("address") || m.includes("from"))) {
+    return "permanent";
+  }
+  if (m.includes("not verified") || m.includes("domain is not verified")) return "permanent";
+  if (m.includes("forbidden") || m.includes("unauthorized") || m.includes("api key")) {
+    return "permanent";
+  }
+  if (m.includes("not found")) return "permanent";
+  // Clearly transient — worth retrying
+  if (m.includes("rate") || m.includes("too many")) return "transient";
+  if (m.includes("quota")) return "transient";
+  if (m.includes("timeout") || m.includes("timed out")) return "transient";
+  if (m.includes("temporarily")) return "transient";
+  if (m.includes("network")) return "transient";
+  if (/\b5\d\d\b/.test(m)) return "transient"; // 500, 502, 503, etc.
+  // Default: retry. Better to try again than lose a valid email on an
+  // unexpected error message we haven't seen before.
+  return "transient";
+}
+
+function computeNextRetryAt(attemptCount: number): admin.firestore.Timestamp {
+  // attemptCount is the number of attempts *already made* (post-increment).
+  // RETRY_BACKOFF_MINUTES[0] is the wait after the 1st attempt, etc.
+  const idx = Math.min(attemptCount - 1, RETRY_BACKOFF_MINUTES.length - 1);
+  const minutes = RETRY_BACKOFF_MINUTES[Math.max(0, idx)];
+  return admin.firestore.Timestamp.fromMillis(Date.now() + minutes * 60_000);
+}
+
+export const processEmailQueue = onSchedule(
+  {
+    schedule: "every 1 minutes",
+    region: "us-central1",
+    secrets: [resendApiKey],
+    memory: "256MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    // Find queued or processing sends
+    const sendsSnap = await db
+      .collection("email_sends")
+      .where("status", "in", ["queued", "processing"])
+      .limit(5)
+      .get();
+
+    if (sendsSnap.empty) return;
+
+    const {Resend} = await import("resend");
+    const apiKey = resendApiKey.value();
+    if (!apiKey) {
+      functions.logger.error("processEmailQueue: RESEND_API_KEY not configured");
+      return;
+    }
+    const resend = new Resend(apiKey);
+
+    for (const sendDoc of sendsSnap.docs) {
+      const sendData = sendDoc.data();
+
+      // Mark as processing
+      if (sendData.status === "queued") {
+        await sendDoc.ref.update({status: "processing"});
+      }
+
+      const creatorId = sendData.creatorId as string;
+      const subject = sendData.subject as string;
+      const bodyHtml = sendData.bodyHtml as string;
+      const fromAddress = (sendData.fromAddress as string) || "Wake <notificaciones@wakelab.co>";
+      const sendType = (sendData.type as string) || "event_broadcast";
+
+      let sentThisTick = 0;
+      let failedThisTick = 0;
+      let retriedThisTick = 0;
+      let batchesThisTick = 0;
+
+      for (let b = 0; b < MAX_BATCHES_PER_TICK; b++) {
+        // Fetch pending recipients (oversample, then filter by nextRetryAt
+        // in memory to avoid needing a composite index).
+        const pendingSnap = await sendDoc.ref
+          .collection("recipients")
+          .where("status", "==", "pending")
+          .limit(PENDING_FETCH_LIMIT)
+          .get();
+
+        if (pendingSnap.empty) {
+          // No more pending — mark send completed
+          await sendDoc.ref.update({
+            status: "completed",
+            completedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          functions.logger.info("processEmailQueue: send completed", {sendId: sendDoc.id});
+          break;
+        }
+
+        const nowMs = Date.now();
+        const readyDocs = pendingSnap.docs.filter((d) => {
+          const nra = d.data().nextRetryAt as admin.firestore.Timestamp | null | undefined;
+          if (!nra) return true; // legacy doc or fresh — ready
+          return nra.toMillis() <= nowMs;
+        });
+
+        if (readyDocs.length === 0) {
+          // All pending docs are in backoff — stop this tick, wait for next
+          functions.logger.info("processEmailQueue: all pending in backoff", {
+            sendId: sendDoc.id,
+            pendingCount: pendingSnap.size,
+          });
+          break;
+        }
+
+        const batchDocs = readyDocs.slice(0, BATCH_SIZE);
+        batchesThisTick++;
+
+        // Build the Resend batch payload
+        const batchPayload = batchDocs.map((doc) => {
+          const r = doc.data();
+          const email = r.email as string;
+          const name = (r.name as string) || "";
+
+          const unsubToken = crypto.createHash("sha256")
+            .update(`${email}:${creatorId}`)
+            .digest("hex");
+          const unsubUrl = `https://wakelab.co/api/v1/email/unsubscribe?token=${unsubToken}&email=${encodeURIComponent(email)}&creatorId=${creatorId}`;
+
+          const firstName = name.split(" ")[0] || "";
+          let personalizedHtml = bodyHtml;
+          personalizedHtml = personalizedHtml.replace(
+            /\{\{nombre\}\}/g,
+            firstName ? escapeHtmlSimple(firstName) : ""
+          );
+          const fullHtml = buildEmailShell(personalizedHtml, unsubUrl);
+
+          return {
+            from: fromAddress,
+            to: email,
+            subject,
+            html: fullHtml,
+            headers: {
+              "List-Unsubscribe": `<${unsubUrl}>`,
+              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            },
+            tags: [
+              {name: "category", value: sendType === "event_broadcast" ? "broadcast" : "transactional"},
+              {name: "send_id", value: sendDoc.id},
+              {name: "creator_id", value: creatorId},
+            ],
+          };
+        });
+
+        // Fire the batch. Resend SDK returns { data, error } on the single
+        // send path; batch.send follows the same convention. We also wrap in
+        // try/catch in case the SDK throws on network failure.
+        let batchErrorMsg: string | null = null;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const response: any = await resend.batch.send(batchPayload as any);
+          if (response && response.error) {
+            batchErrorMsg = response.error.message || "Resend batch error";
+          }
+        } catch (err: unknown) {
+          batchErrorMsg = err instanceof Error ? err.message : "Unknown batch error";
+        }
+
+        // Apply results to all recipient docs in this batch atomically
+        const writeBatch = db.batch();
+        if (!batchErrorMsg) {
+          // All succeeded
+          for (const doc of batchDocs) {
+            writeBatch.update(doc.ref, {
+              status: "sent",
+              sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+          await writeBatch.commit();
+          sentThisTick += batchDocs.length;
+        } else {
+          // Classify and either schedule retry or mark failed
+          const errorKind = classifyResendError(batchErrorMsg);
+          let retriedNow = 0;
+          let failedNow = 0;
+          for (const doc of batchDocs) {
+            const data = doc.data();
+            const prevAttempts = (data.attemptCount as number | undefined) || 0;
+            const newAttemptCount = prevAttempts + 1;
+
+            if (errorKind === "transient" && newAttemptCount < MAX_ATTEMPTS) {
+              writeBatch.update(doc.ref, {
+                // Stay pending, but push out nextRetryAt
+                attemptCount: newAttemptCount,
+                nextRetryAt: computeNextRetryAt(newAttemptCount),
+                lastError: batchErrorMsg,
+              });
+              retriedNow++;
+            } else {
+              writeBatch.update(doc.ref, {
+                status: "failed",
+                attemptCount: newAttemptCount,
+                error: batchErrorMsg,
+                lastError: batchErrorMsg,
+              });
+              failedNow++;
+            }
+          }
+          await writeBatch.commit();
+          retriedThisTick += retriedNow;
+          failedThisTick += failedNow;
+
+          functions.logger.warn("processEmailQueue: batch failed", {
+            sendId: sendDoc.id,
+            batchSize: batchDocs.length,
+            errorKind,
+            retried: retriedNow,
+            failed: failedNow,
+            error: batchErrorMsg,
+          });
+
+          // If the error was transient and everything got retried, stop this
+          // tick — no point burning through more batches when Resend is
+          // already rate-limiting/throttling us. Next tick, backoff kicks in.
+          if (errorKind === "transient") break;
+        }
+      }
+
+      // Aggregate stats update — one write at the end of all batches
+      if (sentThisTick > 0 || failedThisTick > 0) {
+        await sendDoc.ref.update({
+          "stats.sent": admin.firestore.FieldValue.increment(sentThisTick),
+          "stats.failed": admin.firestore.FieldValue.increment(failedThisTick),
+        });
+      }
+
+      functions.logger.info("processEmailQueue: tick processed", {
+        sendId: sendDoc.id,
+        batches: batchesThisTick,
+        sent: sentThisTick,
+        failed: failedThisTick,
+        retried: retriedThisTick,
+      });
+    }
+  }
+);
+
+const escapeHtmlSimple = sharedEscapeHtml;
+
+function buildEmailShell(bodyHtml: string, unsubscribeUrl: string): string {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1a1a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);">
+        <tr><td style="background:#1e1e1e;padding:48px 36px 40px;">
+          ${bodyHtml}
+        </td></tr>
+        <tr><td style="background:#1e1e1e;padding:16px 36px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">
+          <p style="margin:0;font-size:0.75rem;color:rgba(255,255,255,0.22);">
+            <a href="${unsubscribeUrl}" style="color:rgba(255,255,255,0.35);text-decoration:underline;">Cancelar suscripción</a>
+            &middot; Enviado por Wake &middot; <a href="https://wakelab.co" style="color:rgba(255,255,255,0.22);text-decoration:none;">wakelab.co</a>
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
 
 // ─── Gen2 API ─────────────────────────────────────────────────────────────
 // Single Gen2 function export — Express routes live in src/api/routes/
@@ -2417,7 +2710,7 @@ export const sendCallReminders = onSchedule(
       isCreator: boolean
     ): string {
       const bodyText = isCreator
-        ? `Tienes una llamada con ${otherName}.`
+        ? `Tienes una llamada programada con ${otherName}.`
         : `Tienes una llamada con ${otherName}.`;
       const greeting = recipientName
         ? `¡Hola, ${recipientName.split(" ")[0]}!`
@@ -2455,7 +2748,7 @@ export const sendCallReminders = onSchedule(
     async function sendReminderEmail(to: string, subject: string, html: string) {
       if (!to) return;
       try {
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        const resend = new Resend(resendApiKeyV2.value());
         await resend.emails.send({
           from: "Wake Coaching <coaching@wakelab.co>",
           to,

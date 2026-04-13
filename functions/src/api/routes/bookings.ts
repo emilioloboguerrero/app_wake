@@ -7,6 +7,7 @@ import { validateAuth } from "../middleware/auth.js";
 import { validateBody, validateDateFormat } from "../middleware/validate.js";
 import { checkRateLimit } from "../middleware/rateLimit.js";
 import { WakeApiServerError } from "../errors.js";
+import { escapeHtml } from "../services/emailHelpers.js";
 
 const router = Router();
 
@@ -20,15 +21,6 @@ const TIME_RE = /^\d{2}:\d{2}$/;
 const VALID_DURATIONS = new Set([15, 30, 45, 60]);
 
 // ─── Email helpers ──────────────────────────────────────────────────────────
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function formatDateTimeColombia(isoUtc: string): string {
   const d = new Date(isoUtc);

@@ -23,6 +23,7 @@ import EventsScreen from './screens/EventsScreen';
 import EventResultsScreen from './screens/EventResultsScreen';
 import EventCheckinScreen from './screens/EventCheckinScreen';
 import ApiKeysScreen from './screens/ApiKeysScreen';
+import AppResourcesScreen from './screens/AppResourcesScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -314,6 +315,15 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <DebugScreenTracker name="EventCheckinScreen"><EventCheckinScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            {/* ── Admin routes ────────────────────────────────── */}
+            <Route
+              path="/admin/resources"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="AppResourcesScreen"><AppResourcesScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />

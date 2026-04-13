@@ -77,6 +77,7 @@ export async function getAssignmentsByUser(userId) {
   const dateStr = toDateStr(new Date());
   try {
     const result = await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
+    if (!result.data) return [];
     return [shapeAssignment(result.data)];
   } catch (err) {
     if (err instanceof WakeApiError && err.code === 'NOT_FOUND') return [];
@@ -89,8 +90,8 @@ export async function hasActiveNutritionAssignment(userId, onDate = null) {
   const tag = '[hasActiveNutritionAssignment]';
   const dateStr = toDateStr(onDate);
   try {
-    await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
-    return true;
+    const result = await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
+    return !!result.data;
   } catch (err) {
     if (err instanceof WakeApiError && err.code === 'NOT_FOUND') return false;
     logger.error(tag, 'userId=', userId, 'error=', err?.message ?? err, err);
@@ -103,6 +104,7 @@ export async function getEffectivePlanForUser(_userId, onDate = null) {
   try {
     const result = await apiClient.get('/nutrition/assignment', { params: { date: dateStr } });
     const d = result.data;
+    if (!d) return { plan: null, assignment: null };
     return {
       plan: shapePlan({ ...d.plan, planId: d.assignmentId }),
       assignment: {
@@ -162,6 +164,8 @@ export async function addDiaryEntry(_userId, data) {
     serving_unit: data.serving_unit ?? null,
     grams_per_unit: data.grams_per_unit ?? null,
     ...(data.servings ? { servings: data.servings } : {}),
+    ...(data.recipe_video_url ? { recipe_video_url: data.recipe_video_url } : {}),
+    ...(data.recipe_name ? { recipe_name: data.recipe_name } : {}),
     lastKnownActivityDate: getLastKnownActivityDate(_userId),
   };
   const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -216,6 +220,8 @@ export async function addDiaryEntries(_userId, entries) {
       serving_unit: data.serving_unit ?? null,
       grams_per_unit: data.grams_per_unit ?? null,
       ...(data.servings ? { servings: data.servings } : {}),
+      ...(data.recipe_video_url ? { recipe_video_url: data.recipe_video_url } : {}),
+      ...(data.recipe_name ? { recipe_name: data.recipe_name } : {}),
     })),
     lastKnownActivityDate: getLastKnownActivityDate(_userId),
   }, { idempotent: false });

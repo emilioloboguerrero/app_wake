@@ -962,66 +962,98 @@ export default function PlanEditorScreen() {
                   )}
                 </div>
               </div>
+              <div className="pe-left-filter">
+                <button type="button" className={`pe-filter-tab${leftPanelTab === 'alimentos' ? ' active' : ''}`} onClick={() => setLeftPanelTab('alimentos')}>Alimentos</button>
+                <button type="button" className={`pe-filter-tab${leftPanelTab === 'recetas' ? ' active' : ''}`} onClick={() => setLeftPanelTab('recetas')}>Recetas</button>
+              </div>
               <div className="pe-left-list">
-                {foodSearchLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="pe-food-card pe-food-card--skeleton" style={{ animationDelay: `${i * 60}ms` }}>
-                      <div className="pe-skeleton-line pe-skeleton-line--name" />
-                      <div className="pe-skeleton-line pe-skeleton-line--meta" />
-                    </div>
-                  ))
-                ) : sortedFoodSearchResults.length === 0 && customFoods.length === 0 ? (
-                  <p className="pe-left-empty">Escribe y pulsa Enter para buscar alimentos, o usa + para crear uno propio.</p>
-                ) : (
-                  <>
-                    {sortedFoodSearchResults.map((f, fi) => {
-                      const portionOptions = getServingsWithStandardOptions(f);
-                      const hasServings = portionOptions.length > 0;
-                      const per100 = getPer100g(f);
-                      return (
+                {leftPanelTab === 'alimentos' ? (
+                  foodSearchLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} className="pe-food-card pe-food-card--skeleton" style={{ animationDelay: `${i * 60}ms` }}>
+                        <div className="pe-skeleton-line pe-skeleton-line--name" />
+                        <div className="pe-skeleton-line pe-skeleton-line--meta" />
+                      </div>
+                    ))
+                  ) : sortedFoodSearchResults.length === 0 && customFoods.length === 0 ? (
+                    <p className="pe-left-empty">Escribe y pulsa Enter para buscar alimentos, o usa + para crear uno propio.</p>
+                  ) : (
+                    <>
+                      {sortedFoodSearchResults.map((f, fi) => {
+                        const portionOptions = getServingsWithStandardOptions(f);
+                        const hasServings = portionOptions.length > 0;
+                        const per100 = getPer100g(f);
+                        return (
+                          <div
+                            key={`${f.food_id}-${fi}`}
+                            draggable={hasServings}
+                            className="pe-food-card"
+                            onDragStart={(e) => {
+                              if (!hasServings) return;
+                              e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }));
+                              e.dataTransfer.effectAllowed = 'copy';
+                            }}
+                          >
+                            <span className="pe-food-card-name">{f.food_name}</span>
+                            {per100 && (
+                              <div className="pe-food-card-meta">
+                                <span>{per100.calories} kcal</span>
+                                <span>P {per100.protein}g</span>
+                                <span>C {per100.carbs}g</span>
+                                <span>G {per100.fat}g</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {customFoods.map((item, idx) => (
                         <div
-                          key={`${f.food_id}-${fi}`}
-                          draggable={hasServings}
+                          key={`custom-${item.food_id}-${idx}`}
+                          draggable
                           className="pe-food-card"
                           onDragStart={(e) => {
-                            if (!hasServings) return;
-                            e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }));
+                            e.dataTransfer.setData('application/json', JSON.stringify({ custom_food_item: item }));
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
                         >
-                          <span className="pe-food-card-name">{f.food_name}</span>
-                          {per100 && (
+                          <span className="pe-food-card-name">{item.name}</span>
+                          <div className="pe-food-card-meta">
+                            <span>{item.calories ?? '?'} kcal</span>
+                            {item.protein != null && <span>P {item.protein}g</span>}
+                            {item.carbs != null && <span>C {item.carbs}g</span>}
+                            {item.fat != null && <span>G {item.fat}g</span>}
+                          </div>
+                        </div>
+                      ))}
+                      {(sortedFoodSearchResults.length > 0 || customFoods.length > 0) && <p className="pe-drag-hint">Arrastra al centro para agregar</p>}
+                    </>
+                  )
+                ) : (
+                  filteredMeals.length === 0 ? (
+                    <p className="pe-left-empty">{recipeSearchQuery.trim() ? 'No se encontraron recetas.' : 'No tienes recetas creadas todavia.'}</p>
+                  ) : (
+                    <>
+                      {filteredMeals.map((meal) => (
+                        <div
+                          key={meal.id}
+                          draggable
+                          className="pe-food-card"
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('application/json', JSON.stringify({ meal_id: meal.id, meal_name: meal.name || '' }));
+                            e.dataTransfer.effectAllowed = 'copy';
+                          }}
+                        >
+                          <span className="pe-food-card-name">{meal.name || 'Receta'}</span>
+                          {Array.isArray(meal.items) && meal.items.length > 0 && (
                             <div className="pe-food-card-meta">
-                              <span>{per100.calories} kcal</span>
-                              <span>P {per100.protein}g</span>
-                              <span>C {per100.carbs}g</span>
-                              <span>G {per100.fat}g</span>
+                              <span>{meal.items.length} {meal.items.length === 1 ? 'alimento' : 'alimentos'}</span>
                             </div>
                           )}
                         </div>
-                      );
-                    })}
-                    {customFoods.map((item, idx) => (
-                      <div
-                        key={`custom-${item.food_id}-${idx}`}
-                        draggable
-                        className="pe-food-card"
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('application/json', JSON.stringify({ custom_food_item: item }));
-                          e.dataTransfer.effectAllowed = 'copy';
-                        }}
-                      >
-                        <span className="pe-food-card-name">{item.name}</span>
-                        <div className="pe-food-card-meta">
-                          <span>{item.calories ?? '?'} kcal</span>
-                          {item.protein != null && <span>P {item.protein}g</span>}
-                          {item.carbs != null && <span>C {item.carbs}g</span>}
-                          {item.fat != null && <span>G {item.fat}g</span>}
-                        </div>
-                      </div>
-                    ))}
-                    {(sortedFoodSearchResults.length > 0 || customFoods.length > 0) && <p className="pe-drag-hint">Arrastra al centro para agregar</p>}
-                  </>
+                      ))}
+                      <p className="pe-drag-hint">Arrastra al centro para agregar</p>
+                    </>
+                  )
                 )}
               </div>
             </div>
@@ -1069,7 +1101,9 @@ export default function PlanEditorScreen() {
                         <span className="pe-category-name">{cat.label || 'Categoria'}</span>
                       )}
                       <div className="pe-options-tabs">
-                        {(cat.options || []).map((opt, oi) => (
+                        {(cat.options || []).map((opt, oi) => {
+                          const isRecipeOpt = (opt.items || []).some((it) => it.recipe === true);
+                          return (
                           <button
                             key={`${ci}-${opt.id || oi}`}
                             type="button"
@@ -1080,8 +1114,9 @@ export default function PlanEditorScreen() {
                             onDrop={(e) => { e.stopPropagation(); e.currentTarget.classList.remove('pe-opt-dropzone-active'); e.currentTarget.closest('.pe-category')?.classList.remove('pe-dropzone-active'); applyDropToOption(e, ci, oi); }}
                           >
                             {opt.label || `Opc ${oi + 1}`}
-                          </button>
-                        ))}
+                            {isRecipeOpt && <span className="pe-opt-recipe-tag">receta</span>}
+                          </button>);
+                        })}
                         <button type="button" className="pe-opt-tab-add" onClick={() => addOption(ci)}>+</button>
                       </div>
                       {editingCategoryIndex !== ci && deletingCategoryIndex !== ci && (
@@ -1114,10 +1149,30 @@ export default function PlanEditorScreen() {
                       >
                         {(cat.options || [])[selectedOption(ci)]?.items?.map((item, ii) => (
                           item.recipe === true ? (
-                            <div key={`${ci}-${selectedOption(ci)}-r-${ii}`} className="pe-item-row pe-recipe">
-                              <span className="pe-item-name">{item.name || 'Receta'}</span>
-                              <span className="pe-recipe-label">receta</span>
-                              <button type="button" className="pe-item-remove" onClick={() => removeOptionItem(ci, selectedOption(ci), ii)} aria-label="Quitar">&times;</button>
+                            <div key={`${ci}-${selectedOption(ci)}-r-${ii}`} className="pe-recipe-block">
+                              <div className="pe-recipe-block-header">
+                                <span className="pe-item-name">{item.name || 'Receta'}</span>
+                                <span className="pe-recipe-label">receta</span>
+                                <button type="button" className="pe-item-remove" onClick={() => removeOptionItem(ci, selectedOption(ci), ii)} aria-label="Quitar">&times;</button>
+                              </div>
+                              {(() => {
+                                const meal = mealsMap.get(item.meal_id);
+                                const subItems = meal?.items;
+                                if (!Array.isArray(subItems) || subItems.length === 0) return null;
+                                return (
+                                  <div className="pe-recipe-block-items">
+                                    {subItems.map((sub, si) => (
+                                      <div key={si} className="pe-recipe-sub-item">
+                                        <span className="pe-recipe-sub-name">{sub.name || 'Alimento'}</span>
+                                        <span className="pe-recipe-sub-meta">
+                                          {sub.number_of_units ?? 1} {sub.serving_unit ? `· ${sub.serving_unit}` : ''}
+                                        </span>
+                                        <span className="pe-recipe-sub-kcal">{sub.calories ?? '?'} kcal</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           ) : (
                             <div key={`${ci}-${selectedOption(ci)}-f-${ii}`} className="pe-item-row">

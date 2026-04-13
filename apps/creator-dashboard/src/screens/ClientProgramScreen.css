@@ -367,7 +367,6 @@ body.header-scrolled .client-program-tab-bar {
   flex-direction: column;
   padding: 0 0 0 24px;
   min-width: 0;
-  overflow: auto;
 }
 
 .client-program-tab-content {

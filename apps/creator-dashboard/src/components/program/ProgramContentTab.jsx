@@ -42,6 +42,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
 import PlanningLibrarySidebar, { DRAG_TYPE_LIBRARY_SESSION } from '../PlanningLibrarySidebar';
 import { Tree, TreeFolder, TreeFile } from '../ui/FileTree';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
@@ -1098,13 +1099,13 @@ const ProgramContentTab = ({
         <p className="pd-drag-hint" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', marginBottom: '1rem' }}>
           Arrastra sesiones desde tu biblioteca al dia que quieras.
         </p>
-        <DndContext
-          sensors={librarySensors}
-          collisionDetection={pointerWithin}
-          onDragStart={handleLibraryDragStart}
-          onDragEnd={handleLibraryDragEnd}
-        >
-          <div className="plan-structure-layout client-program-planning-layout">
+        <div className="plan-structure-layout client-program-planning-layout">
+          <DndContext
+            sensors={librarySensors}
+            collisionDetection={pointerWithin}
+            onDragStart={handleLibraryDragStart}
+            onDragEnd={handleLibraryDragEnd}
+          >
             <div className="plan-structure-sidebars client-program-planning-left">
               <PlanningLibrarySidebar
                 creatorId={user?.uid}
@@ -1112,47 +1113,47 @@ const ProgramContentTab = ({
                 onSearchChange={setStructureSearchQuery}
               />
             </div>
-            <div className="plan-structure-main client-program-planning-main">
-              {isLoadingGridModules ? (
-                <div className="modules-loading"><p>Cargando semanas...</p></div>
-              ) : (
-                <ProgramWeeksGrid
-                  programId={programId}
-                  modules={gridModulesData}
-                  onAddWeek={handleAddWeekForGrid}
-                  onDeleteWeek={() => {
-                    queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
-                    queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
-                  }}
-                  onSessionClick={handleSessionClickFromGrid}
-                  onOpenWeekVolume={openWeekVolumeDrawer}
-                  libraryService={libraryService}
-                  plansService={plansService}
-                  creatorId={user?.uid}
-                  isAddingWeek={isAddingWeek}
-                  queryClient={queryClient}
-                  queryKeys={queryKeys}
-                />
-              )}
-            </div>
+            <DragOverlay dropAnimation={{ duration: 350, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
+              {activeDragSession ? (
+                <div className="library-drag-overlay-card">
+                  {activeDragSession.image_url ? (
+                    <img src={activeDragSession.image_url} alt="" className="library-drag-overlay-avatar library-drag-overlay-avatar--img" />
+                  ) : (
+                    <div className="library-drag-overlay-avatar">
+                      {activeDragSession.title?.charAt(0) || 'S'}
+                    </div>
+                  )}
+                  <span className="library-drag-overlay-title">
+                    {activeDragSession.title || 'Sesion'}
+                  </span>
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+          <div className="plan-structure-main client-program-planning-main">
+            {isLoadingGridModules ? (
+              <div className="modules-loading"><p>Cargando semanas...</p></div>
+            ) : (
+              <ProgramWeeksGrid
+                programId={programId}
+                modules={gridModulesData}
+                onAddWeek={handleAddWeekForGrid}
+                onDeleteWeek={() => {
+                  queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
+                  queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
+                }}
+                onSessionClick={handleSessionClickFromGrid}
+                onOpenWeekVolume={openWeekVolumeDrawer}
+                libraryService={libraryService}
+                plansService={plansService}
+                creatorId={user?.uid}
+                isAddingWeek={isAddingWeek}
+                queryClient={queryClient}
+                queryKeys={queryKeys}
+              />
+            )}
           </div>
-          <DragOverlay dropAnimation={{ duration: 350, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }}>
-            {activeDragSession ? (
-              <div className="library-drag-overlay-card">
-                {activeDragSession.image_url ? (
-                  <img src={activeDragSession.image_url} alt="" className="library-drag-overlay-avatar library-drag-overlay-avatar--img" />
-                ) : (
-                  <div className="library-drag-overlay-avatar">
-                    {activeDragSession.title?.charAt(0) || 'S'}
-                  </div>
-                )}
-                <span className="library-drag-overlay-title">
-                  {activeDragSession.title || 'Sesion'}
-                </span>
-              </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+        </div>
         <WeekVolumeDrawer
           isOpen={weekVolumeDrawerOpen}
           onClose={() => setWeekVolumeDrawerOpen(false)}

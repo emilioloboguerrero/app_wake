@@ -7,6 +7,7 @@ import type { Query } from "../firestore.js";
 import { validateAuthAndRateLimit } from "../middleware/auth.js";
 import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
 import { WakeApiServerError } from "../errors.js";
+import { escapeHtml } from "../services/emailHelpers.js";
 
 const router = Router();
 
@@ -566,7 +567,8 @@ router.post("/creator/clients/lookup", async (req, res) => {
   }
 
   if (userSnap.empty) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "No se encontró ningún usuario con ese email o username");
+    res.json({ data: null });
+    return;
   }
 
   const userDoc = userSnap.docs[0];
@@ -1482,6 +1484,7 @@ router.post("/creator/nutrition/meals", async (req, res) => {
     items?: unknown[];
     category?: string;
     video_url?: string;
+    video_source?: string;
   }>(
     {
       name: "string",
@@ -1493,6 +1496,7 @@ router.post("/creator/nutrition/meals", async (req, res) => {
       items: "optional_array",
       category: "optional_string",
       video_url: "optional_string",
+      video_source: "optional_string",
     },
     req.body
   );
@@ -7947,11 +7951,11 @@ router.post("/creator/request-api-access", async (req, res) => {
       <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:32px;background:#1a1a1a;color:#fff;border-radius:12px;">
         <h2 style="margin:0 0 16px;font-size:18px;color:#fff;">Solicitud de acceso a API</h2>
         <p style="margin:0 0 8px;color:rgba(255,255,255,0.7);font-size:14px;">
-          <strong style="color:#fff;">${creatorName}</strong> esta solicitando acceso a las integraciones de API.
+          <strong style="color:#fff;">${escapeHtml(String(creatorName))}</strong> esta solicitando acceso a las integraciones de API.
         </p>
         <p style="margin:0 0 24px;color:rgba(255,255,255,0.5);font-size:13px;">
-          Email: ${creatorEmail}<br/>
-          User ID: ${auth.userId}
+          Email: ${escapeHtml(String(creatorEmail))}<br/>
+          User ID: ${escapeHtml(auth.userId)}
         </p>
         <hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:16px 0;"/>
         <p style="margin:0;color:rgba(255,255,255,0.3);font-size:12px;">Wake Platform</p>

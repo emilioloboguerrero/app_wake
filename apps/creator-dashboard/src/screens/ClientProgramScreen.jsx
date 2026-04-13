@@ -1178,6 +1178,7 @@ const ClientProgramScreen = () => {
         fromClientCopy: weekContent?.fromClientCopy ?? true
       }
     }));
+    setIsMovingPlanSession(true);
     try {
       if (!weekContent.fromClientCopy) {
         await clientPlanContentService.copyFromPlan(
@@ -1203,6 +1204,8 @@ const ClientProgramScreen = () => {
         ...(prevContent != null && { [weekKey]: prevContent })
       }));
       showToast(error.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
+    } finally {
+      setIsMovingPlanSession(false);
     }
   };
 
@@ -1256,6 +1259,91 @@ const ClientProgramScreen = () => {
     } catch (error) {
       logger.error('Error moving plan session to week:', error);
       showToast(error.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
+    } finally {
+      setIsMovingPlanSession(false);
+    }
+  };
+
+  const handleDuplicatePlanSession = async ({
+    session,
+    sourceWeekKey,
+    weekContent,
+    targetWeekKey,
+    targetDayIndex,
+    targetPlanAssignment
+  }) => {
+    if (!client?.clientUserId || !selectedProgramId || !session?.id) return;
+    setIsMovingPlanSession(true);
+    try {
+      if (sourceWeekKey === targetWeekKey) {
+        // Duplicate within the same week — add library session at new dayIndex
+        if (!weekContent?.fromClientCopy) {
+          await clientPlanContentService.copyFromPlan(
+            client.clientUserId,
+            selectedProgramId,
+            sourceWeekKey,
+            weekContent.planId,
+            weekContent.moduleId,
+            user?.uid
+          );
+        }
+        const sourceLibId = session.source_library_session_id ?? session.librarySessionRef ?? null;
+        if (sourceLibId) {
+          await clientPlanContentService.addLibrarySessionToWeek(
+            client.clientUserId, selectedProgramId, targetWeekKey, sourceLibId, targetDayIndex
+          );
+        }
+      } else {
+        // Duplicate across weeks
+        let targetAssignment = targetPlanAssignment;
+        if (targetPlanAssignment) {
+          const modules = await plansService.getModulesByPlan(targetPlanAssignment.planId);
+          const mod = resolveModule(modules, targetPlanAssignment);
+          if (mod) targetAssignment = { ...targetPlanAssignment, moduleId: mod.id };
+        }
+        // Ensure source week is a client copy so we can read the session
+        if (!weekContent?.fromClientCopy) {
+          await clientPlanContentService.copyFromPlan(
+            client.clientUserId,
+            selectedProgramId,
+            sourceWeekKey,
+            weekContent.planId,
+            weekContent.moduleId,
+            user?.uid
+          );
+        }
+        await clientPlanContentService.duplicateSessionToWeek(
+          client.clientUserId, selectedProgramId, sourceWeekKey, targetWeekKey, session.id, targetDayIndex
+        );
+      }
+      // Reload affected week(s)
+      const reloadWeek = async (wk) => {
+        const content = await clientPlanContentService.getClientPlanContent(client.clientUserId, selectedProgramId, wk);
+        if (content?.sessions) {
+          return { sessions: content.sessions, title: content.title, fromClientCopy: true, planId: content.source_plan_id, moduleId: content.source_module_id };
+        }
+        const ass = planAssignments[wk];
+        if (ass?.planId) {
+          const modules = await plansService.getModulesByPlan(ass.planId);
+          const mod = resolveModule(modules, ass);
+          if (mod) {
+            const sessions = await plansService.getSessionsByModule(ass.planId, mod.id);
+            return { sessions: sessions || [], title: mod.title, fromClientCopy: false, planId: ass.planId, moduleId: mod.id };
+          }
+        }
+        return null;
+      };
+      const weeksToReload = sourceWeekKey === targetWeekKey ? [targetWeekKey] : [sourceWeekKey, targetWeekKey];
+      const results = await Promise.all(weeksToReload.map(reloadWeek));
+      setWeekContentByWeekKey((prev) => {
+        const next = { ...prev };
+        weeksToReload.forEach((wk, i) => { if (results[i]) next[wk] = results[i]; });
+        return next;
+      });
+      showToast('Sesión duplicada', 'success');
+    } catch (error) {
+      logger.error('Error duplicating plan session:', error);
+      showToast(error.message || 'No pudimos duplicar la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsMovingPlanSession(false);
     }
@@ -1553,6 +1641,7 @@ const ClientProgramScreen = () => {
                   onDeletePlanSession={handleDeletePlanSession}
                   onMovePlanSessionDay={handleMovePlanSessionDay}
                   onMovePlanSessionToWeek={handleMovePlanSessionToWeek}
+                  onDuplicatePlanSession={handleDuplicatePlanSession}
                   onAddLibrarySessionToPlanDay={handleAddLibrarySessionToPlanDay}
                   onAddPlanSessionToDay={handleAddPlanSessionToDay}
                   assignedPrograms={assignedPrograms}

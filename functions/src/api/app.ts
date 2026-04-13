@@ -19,6 +19,7 @@ import appResourcesRouter from "./routes/appResources.js";
 import bookingsRouter from "./routes/bookings.js";
 import notificationsRouter from "./routes/notifications.js";
 import videoExchangesRouter from "./routes/videoExchanges.js";
+import emailRouter from "./routes/email.js";
 
 export const app = express();
 
@@ -93,7 +94,8 @@ const PUBLIC_PATHS = [
   /^\/events\/[^/]+$/, // GET /events/:eventId
   /^\/events\/[^/]+\/register$/, // POST /events/:eventId/register
   /^\/events\/[^/]+\/waitlist$/, // POST /events/:eventId/waitlist
-  /^\/app-resources/, // GET /app-resources
+  /^\/app-resources$/, // GET /app-resources (exact match only)
+  /^\/email\/unsubscribe$/, // GET /email/unsubscribe (public one-click unsub)
 ];
 
 const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
@@ -136,6 +138,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, bookingsRouter);
   app.use(prefix, notificationsRouter);
   app.use(prefix, videoExchangesRouter);
+  app.use(prefix, emailRouter);
 }
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────

@@ -12,8 +12,8 @@ const vapidPublicKey = defineSecret("VAPID_PUBLIC_KEY");
 const vapidPrivateKey = defineSecret("VAPID_PRIVATE_KEY");
 
 function getVapid() {
-  const pub = vapidPublicKey.value();
-  const priv = vapidPrivateKey.value();
+  const pub = vapidPublicKey.value().trim().replace(/=+$/, "");
+  const priv = vapidPrivateKey.value().trim().replace(/=+$/, "");
   if (!pub || !priv) {
     throw new WakeApiServerError(
       "INTERNAL_ERROR",

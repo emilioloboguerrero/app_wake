@@ -66,6 +66,8 @@ router.post("/nutrition/diary", async (req, res) => {
     serving_unit?: string;
     grams_per_unit?: number;
     servings?: unknown[];
+    recipe_video_url?: string;
+    recipe_name?: string;
     lastKnownActivityDate?: string;
   }>(
     {
@@ -83,6 +85,8 @@ router.post("/nutrition/diary", async (req, res) => {
       serving_unit: "optional_string",
       grams_per_unit: "optional_number",
       servings: "optional_array",
+      recipe_video_url: "optional_string",
+      recipe_name: "optional_string",
       lastKnownActivityDate: "optional_string",
     },
     req.body,
@@ -143,6 +147,8 @@ router.post("/nutrition/diary/batch", async (req, res) => {
       serving_unit: entry.serving_unit ?? null,
       grams_per_unit: entry.grams_per_unit ?? null,
       ...(Array.isArray(entry.servings) ? { servings: entry.servings } : {}),
+      ...(entry.recipe_video_url ? { recipe_video_url: entry.recipe_video_url } : {}),
+      ...(entry.recipe_name ? { recipe_name: entry.recipe_name } : {}),
       userId: auth.userId,
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -176,7 +182,7 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
   }
 
   // Allowlist fields instead of spreading req.body
-  const allowedFields = ["date", "meal", "food_id", "serving_id", "number_of_units", "name", "calories", "protein", "carbs", "fat", "serving_unit", "grams_per_unit", "servings"];
+  const allowedFields = ["date", "meal", "food_id", "serving_id", "number_of_units", "name", "calories", "protein", "carbs", "fat", "serving_unit", "grams_per_unit", "servings", "recipe_video_url", "recipe_name"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -605,9 +611,8 @@ router.get("/nutrition/assignment", async (req, res) => {
   });
 
   if (matchingDocs.length === 0) {
-    throw new WakeApiServerError(
-      "NOT_FOUND", 404, "No hay plan de nutrición activo para esta fecha"
-    );
+    res.json({ data: null });
+    return;
   }
 
   const assignment = matchingDocs[0];

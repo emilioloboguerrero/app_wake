@@ -15,9 +15,19 @@ router.get("/users/me", async (req, res) => {
 
   const auth = await validateAuthAndRateLimit(req);
 
-  const data = auth.userData;
+  let data = auth.userData;
   if (!data) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+    // User doc doesn't exist yet (race with onUserCreated trigger).
+    // Bootstrap it now so all subsequent calls find a document.
+    const authUser = await admin.auth().getUser(auth.userId);
+    const bootstrap = {
+      role: "user" as const,
+      email: authUser.email ?? null,
+      displayName: authUser.displayName ?? null,
+      created_at: FieldValue.serverTimestamp(),
+    };
+    await db.collection("users").doc(auth.userId).set(bootstrap, { merge: true });
+    data = { ...bootstrap, created_at: new Date() };
   }
 
   // Auto-heal: if no pinned nutrition assignment, check for active ones
@@ -36,7 +46,7 @@ router.get("/users/me", async (req, res) => {
     if (activeDoc) {
       pinnedNutritionAssignmentId = activeDoc.id;
       // Persist so future calls skip the extra query
-      db.collection("users").doc(auth.userId).update({ pinnedNutritionAssignmentId }).catch(() => {});
+      db.collection("users").doc(auth.userId).set({ pinnedNutritionAssignmentId }, { merge: true }).catch(() => {});
     }
   }
 
@@ -221,7 +231,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   }
 
   updates.updated_at = FieldValue.serverTimestamp();
-  await db.collection("users").doc(auth.userId).update(updates);
+  await db.collection("users").doc(auth.userId).set(updates, { merge: true });
 
   res.json({ data: { userId: auth.userId, updatedAt: new Date().toISOString() } });
 });

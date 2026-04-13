@@ -1,66 +1,148 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion } from 'motion/react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
-import { GlowingEffect, AnimatedList, NumberTicker, ProgressRing } from '../ui';
+import { useToast } from '../../contexts/ToastContext';
+import { GlowingEffect, MenuDropdown, ConfirmDeleteModal } from '../ui';
+import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import PanelShell from './PanelShell';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
 
-function MacroRing({ label, grams, total, color }) {
-  const percent = total > 0 ? Math.round((grams / total) * 100) : 0;
+function MacroPie({ protein = 0, carbs = 0, fat = 0, id }) {
+  const data = useMemo(() => {
+    return [
+      { name: 'Proteina', value: protein, grams: protein },
+      { name: 'Carbohidratos', value: carbs, grams: carbs },
+      { name: 'Grasa', value: fat, grams: fat },
+    ].filter((d) => d.value > 0);
+  }, [protein, carbs, fat]);
+
+  if (data.length === 0) return null;
+
   return (
-    <div className="bib-nutri-ring">
-      <ProgressRing percent={percent} size={48} strokeWidth={4} color={color} />
-      <span className="bib-nutri-ring-label">{label}</span>
-      <span className="bib-nutri-ring-grams">{Number(grams || 0).toFixed(0)} g</span>
+    <div style={{ width: 72, height: 72, flexShrink: 0 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <defs>
+            {[0, 1, 2].map((i) => (
+              <linearGradient key={i} id={`meal-pie-grad-${id}-${i}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={`rgba(255,255,255,${0.22 + i * 0.06})`} />
+                <stop offset="50%" stopColor={`rgba(255,255,255,${0.12 + i * 0.04})`} />
+                <stop offset="100%" stopColor={`rgba(255,255,255,${0.05 + i * 0.03})`} />
+              </linearGradient>
+            ))}
+          </defs>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="50%"
+            innerRadius={18}
+            outerRadius={32}
+            paddingAngle={2}
+            dataKey="value"
+            nameKey="name"
+            label={false}
+            isAnimationActive={false}
+          >
+            {data.map((_, i) => (
+              <Cell key={i} fill={`url(#meal-pie-grad-${id}-${i})`} />
+            ))}
+          </Pie>
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const { name, grams } = payload[0].payload;
+              return (
+                <div className="library-session-pie-tooltip">
+                  <span className="library-session-pie-tooltip-name">{name}</span>
+                  <span className="library-session-pie-tooltip-sets">{Number(grams ?? 0).toFixed(0)} g</span>
+                </div>
+              );
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
     </div>
   );
 }
 
-export default function RecetasPanel({ searchQuery = '' }) {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const creatorId = user?.uid ?? '';
+const DotsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <circle cx="12" cy="5" r="1.5" />
+    <circle cx="12" cy="12" r="1.5" />
+    <circle cx="12" cy="19" r="1.5" />
+  </svg>
+);
 
-  const [selectedId, setSelectedId] = useState(null);
+export default function RecetasPanel({ searchQuery = '', sortKey, onCreateMeal }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { showToast } = useToast();
+  const creatorId = user?.uid ?? '';
 
   const { data: meals = [], isLoading, isError } = useQuery({
     queryKey: queryKeys.nutrition.meals(creatorId),
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
     ...cacheConfig.otherPrograms,
-  });
-
-  const selectedMealQuery = useQuery({
-    queryKey: queryKeys.nutrition.meal(creatorId, selectedId),
-    queryFn: () => nutritionDb.getMealById(creatorId, selectedId),
-    enabled: !!selectedId && !!creatorId,
-    ...cacheConfig.otherPrograms,
+    refetchOnMount: true,
   });
 
   const q = searchQuery.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!q) return meals;
-    return meals.filter((i) => (i.name ?? '').toLowerCase().includes(q));
-  }, [meals, q]);
+    let result = q ? meals.filter((i) => (i.name ?? '').toLowerCase().includes(q)) : [...meals];
+    if (sortKey === 'name_asc') result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    else if (sortKey === 'name_desc') result.sort((a, b) => (b.name || '').localeCompare(a.name || ''));
+    else if (sortKey === 'date_newest') result.sort((a, b) => (b.created_at?._seconds || 0) - (a.created_at?._seconds || 0));
+    else if (sortKey === 'date_oldest') result.sort((a, b) => (a.created_at?._seconds || 0) - (b.created_at?._seconds || 0));
+    return result;
+  }, [meals, q, sortKey]);
 
-  const selectedDetail = selectedMealQuery.data;
-  const detailLoading = selectedMealQuery.isLoading;
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const macros = useMemo(() => {
-    if (!selectedDetail) return null;
-    const its = Array.isArray(selectedDetail.items) ? selectedDetail.items : [];
-    const protein = its.reduce((s, i) => s + (Number(i.protein) || 0), 0);
-    const carbs = its.reduce((s, i) => s + (Number(i.carbs) || 0), 0);
-    const fat = its.reduce((s, i) => s + (Number(i.fat) || 0), 0);
-    const calories = its.reduce((s, i) => s + (Number(i.calories) || 0), 0);
-    return { protein, carbs, fat, calories };
-  }, [selectedDetail]);
+  const deleteMutation = useMutation({
+    mutationFn: (mealId) => nutritionDb.deleteMeal(creatorId, mealId),
+    onSuccess: () => {
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meals(creatorId) });
+      showToast('Receta eliminada.', 'success');
+    },
+    onError: (err) => showToast(err?.message || 'No pudimos eliminar la receta. Intenta de nuevo.', 'error'),
+  });
 
-  const totalMacroG = macros ? macros.protein + macros.carbs + macros.fat : 0;
+  const confirmDelete = useCallback(() => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate(deleteTarget.id);
+  }, [deleteTarget, deleteMutation]);
+
+  const renderSkeleton = useCallback(() => (
+    <div className="bib-nutri-list">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className="bib-card bib-nutri-plan-card"
+          aria-hidden="true"
+          style={{ opacity: 1 - i * 0.12 }}
+        >
+          <div className="bib-nutri-plan-card__left">
+            <ShimmerSkeleton height="14px" width={`${50 + (i % 3) * 12}%`} borderRadius="4px" />
+            <ShimmerSkeleton height="11px" width={`${65 + (i % 2) * 15}%`} borderRadius="3px" />
+          </div>
+          <div className="bib-nutri-plan-card__right">
+            <ShimmerSkeleton width="64px" height="64px" borderRadius="50%" />
+            <ShimmerSkeleton height="15px" width="58px" borderRadius="4px" />
+          </div>
+        </div>
+      ))}
+    </div>
+  ), []);
 
   return (
+    <>
     <PanelShell
       isLoading={isLoading && !meals.length}
       isError={isError}
@@ -68,115 +150,98 @@ export default function RecetasPanel({ searchQuery = '' }) {
       emptyTitle="Tu biblioteca de recetas esta vacia"
       emptySub="Crea tu primera receta y empieza a armar planes."
       emptyCta="+ Crear receta"
-      onCta={() => navigate('/nutrition/meals/new')}
+      onCta={onCreateMeal}
       onRetry={() => window.location.reload()}
+      renderSkeleton={renderSkeleton}
     >
-      <div className="bib-nutri-master-detail">
-        <div className="bib-nutri-left">
-          {filtered.length === 0 ? (
-            <div className="bib-nutri-list-empty">
-              <p>{searchQuery ? `Sin resultados para «${searchQuery}»` : 'Sin recetas.'}</p>
-            </div>
-          ) : (
-            <AnimatedList stagger={50}>
+      <div className="bib-nutri-list">
+        {filtered.length === 0 ? (
+          <div className="bib-nutri-list-empty">
+            <p>{searchQuery ? `Sin resultados para "${searchQuery}"` : 'Sin recetas.'}</p>
+          </div>
+        ) : (
+          <div className="bib-nutri-list">
+            <AnimatePresence mode="popLayout">
               {filtered.map((item) => {
-                const isSelected = selectedId === item.id;
-                const kcal = Math.round((item.items || []).reduce((s, i) => s + (Number(i.calories) || 0), 0));
+                const items = item.items ?? [];
+                const kcal = Math.round(items.reduce((s, i) => s + (Number(i.calories) || 0), 0));
+                const p = items.reduce((s, i) => s + (Number(i.protein) || 0), 0);
+                const c = items.reduce((s, i) => s + (Number(i.carbs) || 0), 0);
+                const f = items.reduce((s, i) => s + (Number(i.fat) || 0), 0);
+                const hasMacros = p + c + f > 0;
+                const hasVideo = !!(item.video_url || item.videoUrl);
+                const itemCount = items.length;
+
                 return (
-                  <div
+                  <motion.div
                     key={item.id}
-                    className={`bib-card bib-nutri-list-card ${isSelected ? 'bib-card--selected' : ''}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedId(isSelected ? null : item.id)}
-                    onKeyDown={(e) => e.key === 'Enter' && setSelectedId(isSelected ? null : item.id)}
+                    layout
+                    exit={{ opacity: 0, scale: 0.92, x: -30, filter: 'blur(4px)' }}
+                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                   >
-                    <GlowingEffect spread={18} borderWidth={1} />
-                    <span className="bib-nutri-card-name">{item.name}</span>
-                    {kcal > 0 && <span className="bib-nutri-card-kcal">{kcal} kcal</span>}
-                    <span className="bib-nutri-card-meta">
-                      {(item.items ?? []).length} alimento{(item.items ?? []).length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
+                    <div
+                      className="bib-card bib-nutri-plan-card"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/nutrition/meals/${item.id}`)}
+                      onKeyDown={(e) => e.key === 'Enter' && navigate(`/nutrition/meals/${item.id}`)}
+                    >
+                      <GlowingEffect spread={18} borderWidth={1} />
+                      <div className="bib-nutri-plan-card__left">
+                        <span className="bib-nutri-card-name">{item.name}</span>
+                        <span className="bib-nutri-card-meta">
+                          {itemCount} alimento{itemCount !== 1 ? 's' : ''}
+                          {hasVideo ? ' · video' : ''}
+                        </span>
+                      </div>
+                      {hasMacros && (
+                        <div className="bib-nutri-plan-card__right">
+                          <div className="bib-nutri-plan-card__macros">
+                            <MacroPie protein={p} carbs={c} fat={f} id={item.id} />
+                            <div className="bib-nutri-plan-card__macro-labels">
+                              <span className="bib-nutri-plan-card__macro">
+                                {Math.round(p)}P
+                              </span>
+                              <span className="bib-nutri-plan-card__macro">
+                                {Math.round(c)}C
+                              </span>
+                              <span className="bib-nutri-plan-card__macro">
+                                {Math.round(f)}G
+                              </span>
+                            </div>
+                          </div>
+                          {kcal > 0 && (
+                            <span className="bib-nutri-plan-card__kcal">{kcal} kcal</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="bib-plan-menu" onClick={(e) => e.stopPropagation()}>
+                        <MenuDropdown
+                          trigger={<button type="button" className="bib-plan-menu-btn"><DotsIcon /></button>}
+                          items={[
+                            { label: 'Editar', onClick: () => navigate(`/nutrition/meals/${item.id}`) },
+                            { label: 'Eliminar', onClick: () => setDeleteTarget(item), danger: true },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
                 );
               })}
-            </AnimatedList>
-          )}
-        </div>
-
-        <div className="bib-nutri-right">
-          {!selectedId ? (
-            <div className="bib-detail-empty">
-              <div className="bib-detail-empty-icon">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-8v4h4l-5 8z" fill="rgba(255,255,255,0.15)"/>
-                </svg>
-              </div>
-              <p className="bib-detail-empty-text">Selecciona una receta para ver sus detalles</p>
-            </div>
-          ) : detailLoading ? (
-            <div className="bib-nutri-detail-skeletons">
-              <div className="bib-skeleton-list" style={{ gap: 12 }}>
-                {[1, 2, 3].map((i) => <div key={i} className="bib-card" style={{ height: 48 }} />)}
-              </div>
-            </div>
-          ) : !selectedDetail ? (
-            <div className="bib-detail-empty">
-              <p className="bib-detail-empty-text">No se encontró el elemento seleccionado.</p>
-            </div>
-          ) : (
-            <>
-              <div className="bib-nutri-detail" key={selectedId}>
-                <div className="bib-nutri-detail-header">
-                  <GlowingEffect spread={24} borderWidth={1} />
-                  <h2 className="bib-nutri-detail-title">{selectedDetail.name}</h2>
-                  {selectedDetail.description && <p className="bib-nutri-detail-desc">{selectedDetail.description}</p>}
-                  <button
-                    type="button"
-                    className="bib-nutri-edit-btn"
-                    onClick={() => navigate(`/nutrition/meals/${selectedId}`)}
-                  >
-                    Editar
-                  </button>
-                </div>
-                <div className="bib-nutri-items">
-                  {(selectedDetail.items ?? []).length === 0 ? (
-                    <p className="bib-nutri-no-items">Esta receta no tiene alimentos todavía.</p>
-                  ) : (
-                    <AnimatedList stagger={40}>
-                      {(selectedDetail.items ?? []).map((item, i) => (
-                        <div key={i} className="bib-nutri-item">
-                          <GlowingEffect spread={14} borderWidth={1} />
-                          <span className="bib-nutri-item-name">{item.name}</span>
-                          <span className="bib-nutri-item-sub">{item.calories ?? 0} kcal</span>
-                        </div>
-                      ))}
-                    </AnimatedList>
-                  )}
-                </div>
-              </div>
-
-              <div className="bib-nutri-macros">
-                {macros ? (
-                  <>
-                    <div className="bib-nutri-cal-display">
-                      <span className="bib-nutri-cal-value"><NumberTicker value={Math.round(macros.calories)} duration={900} /></span>
-                      <span className="bib-nutri-cal-unit">kcal</span>
-                    </div>
-                    <div className="bib-nutri-rings">
-                      <MacroRing label="Prot" grams={macros.protein} total={totalMacroG} color="rgba(100,200,150,0.85)" />
-                      <MacroRing label="Carbs" grams={macros.carbs} total={totalMacroG} color="rgba(100,160,240,0.85)" />
-                      <MacroRing label="Grasa" grams={macros.fat} total={totalMacroG} color="rgba(240,160,80,0.85)" />
-                    </div>
-                  </>
-                ) : (
-                  <p className="bib-nutri-macros-empty">Sin datos de macros</p>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+            </AnimatePresence>
+          </div>
+        )}
       </div>
     </PanelShell>
+
+    <ConfirmDeleteModal
+      isOpen={!!deleteTarget}
+      onClose={() => setDeleteTarget(null)}
+      onConfirm={confirmDelete}
+      title="Eliminar receta"
+      message={`Se eliminara "${deleteTarget?.name ?? ''}" permanentemente.`}
+      isPending={deleteMutation.isPending}
+    />
+    </>
   );
 }

@@ -1,151 +1,271 @@
 /**
- * LandingDesignScreen — Wake landing.
+ * LandingDesignScreen — Wake landing (Flora-inspired structure).
  *
  * Sections:
- *   Nav
- *   Hero        — small headline + sub, no CTA
- *   Demo        — large product screen frame
- *   Trusted     — marquee of creator avatars
- *   Workflows   — scroll-pinned, sticky right column with active workflow visual
- *   Bento       — "una suscripción para todo" feature grid
- *   Cases       — case studies cards
- *   Blog        — read about us
- *   Footer
+ *   Nav        — minimal, single CTA
+ *   Hero       — pill, headline, sub, CTA, hero video
+ *   Process    — 3 steps (Planea / Entrena / Progresa)
+ *   Workflows  — category showcase with media
+ *   AllInOne   — "Una suscripción para todo" feature grid
+ *   Cases      — athlete case studies
+ *   Press      — media mentions
+ *   FinalCTA   — closing line + CTAs
+ *   Footer     — link grid + ghost wordmark
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import './LandingDesignScreen.css';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
+import ScrollFlowSection from '../components/ScrollFlowSection';
 
-/* ── IMAGES ───────────────────────────────────────────────────────── */
-const IMG = {
-  demo:    'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1400&q=70&fit=crop',
-  flow1:   'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=900&q=70&fit=crop',
-  flow2:   'https://images.unsplash.com/photo-1534258936925-c58bed479fcb?w=900&q=70&fit=crop',
-  flow3:   'https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=900&q=70&fit=crop',
-  flow4:   'https://images.unsplash.com/photo-1576678927484-cc907957088c?w=900&q=70&fit=crop',
-  flow5:   'https://images.unsplash.com/photo-1599058945522-28d584b6f0ff?w=900&q=70&fit=crop',
-  case1:   'https://images.unsplash.com/photo-1550259979-ed79b48d2a30?w=700&q=70&fit=crop',
-  case2:   'https://images.unsplash.com/photo-1541534741688-6078c738800b?w=700&q=70&fit=crop',
-  case3:   'https://images.unsplash.com/photo-1583500178690-f7fd39c44dba?w=700&q=70&fit=crop',
-  blog:    'https://images.unsplash.com/photo-1517438476312-10d79c077509?w=1100&q=70&fit=crop',
-  avatars: [
-    'https://images.unsplash.com/photo-1607746882042-944635dfe10e?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1527980965255-d3b416303d12?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1531123897727-8f129e1688ce?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1488161628813-04466f872be2?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=160&q=70&fit=crop',
-    'https://images.unsplash.com/photo-1463453091185-61582044d556?w=160&q=70&fit=crop',
-  ],
-};
-
-/* ── COPY ─────────────────────────────────────────────────────────── */
 const COPY = {
   brand: 'WAKE',
   nav: [
-    { label: 'Atletas',   href: '/creators' },
-    { label: 'Programas', href: '#workflows' },
-    { label: 'Precios',   href: '#bento' },
-    { label: 'Manifesto', href: '#blog' },
+    { label: 'Atletas',   href: '#workflows' },
+    { label: 'Funciones', href: '#allinone' },
+    { label: 'Casos',     href: '#cases' },
+    { label: 'Prensa',    href: '#press' },
   ],
-  navSecondary: 'Iniciar sesión',
   navCta: 'Empezar gratis',
 
   hero: {
-    pill: { tag: 'Nuevo', text: 'Conoce a Wake AI, tu coach inteligente', cta: 'Probar' },
-    headlinePre: 'Tu',
-    headlineItalic: 'entorno',
-    headlinePost: 'de entrenamiento.',
-    sub: 'Convierte tu disciplina en resultados, más rápido que nunca. Cada herramienta de entrenamiento, en un solo proceso unificado.',
+    pill: { tag: 'Nuevo', text: 'Conoce a tu coach inteligente', cta: 'Probar' },
+    line1: 'Tu',
+    line2Em: 'entorno',
+    line3: 'de entreno.',
+    sub: 'Da vida a tu disciplina más rápido que nunca. Cada herramienta de entrenamiento, un solo proceso.',
     cta: 'Empezar gratis',
+    chips: ['Programas a medida', 'Nutrición diaria', 'Análisis semanal'],
   },
 
-  trusted: 'Entrenado por los mejores atletas del mundo',
-
-  workflows: {
-    eyebrow: 'CADA RUTINA',
-    headline: 'Cada flujo, hecho para ti.',
-    items: [
-      { id: 'fuerza',     name: 'Fuerza',         body: 'Periodización por bloques, RPE y autorregulación.', img: IMG.flow1 },
-      { id: 'hipertrofia',name: 'Hipertrofia',    body: 'Volumen semanal, MEV/MRV y progresión por grupo.',  img: IMG.flow2 },
-      { id: 'resistencia',name: 'Resistencia',    body: 'Zonas, polarizado y sesiones por sistema.',         img: IMG.flow3 },
-      { id: 'movilidad',  name: 'Movilidad',      body: 'Rangos diarios y mantenimiento articular.',         img: IMG.flow4 },
-      { id: 'nutricion',  name: 'Nutrición',      body: 'Macros, timing y ajustes a tu déficit.',            img: IMG.flow5 },
+  process: {
+    eyebrow: '[ CÓMO FUNCIONA ]',
+    headline: 'Tres pasos.',
+    headlineEm: 'Cero fricción.',
+    steps: [
+      { num: '01', name: 'Planea',   body: 'Explora cientos de rutinas con atletas reales y modelos adaptados a tu nivel.' },
+      { num: '02', name: 'Entrena',  body: 'Itera en tiempo real con tu coach. Cada serie, cada repetición, registrada.' },
+      { num: '03', name: 'Progresa', body: 'Convierte cada sesión en datos accionables y récords históricos.' },
     ],
   },
 
-  bento: {
-    eyebrow: 'UNA SUSCRIPCIÓN',
-    headline: 'Todo lo que necesitas, en un solo lugar.',
-    sub: 'Programas, nutrición, registro y progreso. Sin apps extras.',
-    cards: [
-      { title: 'Programas',     body: 'De atletas reales.' },
-      { title: 'Nutrición',     body: 'Macros y comidas.' },
-      { title: 'Registro',      body: 'Cada serie y rep.' },
-      { title: 'Récords',       body: '1RM, volumen, PRs.' },
-      { title: 'Análisis',      body: 'Insights semanales.' },
-      { title: 'Comunidad',     body: 'Atletas como tú.' },
+  workflows: {
+    eyebrow: '[ FLUJOS ]',
+    headline: 'Flujos de entrenamiento',
+    headlineEm: 'que escalan.',
+    sub: 'Atletas desde Bogotá hasta Buenos Aires usan Wake para llevar su disciplina al siguiente nivel.',
+    cta: 'Empezar gratis',
+    secondary: 'Ver todos los flujos',
+    categories: [
+      {
+        id: 'fuerza',
+        tab: 'Fuerza',
+        title: 'Periodización por bloques.',
+        body: 'Planifica ciclos completos, ajusta RPE y autorregula cada sesión sin perder el hilo.',
+        flow: {
+          nodes: [
+            { label: 'Programa' },
+            { label: 'Semana 1-4' },
+            { label: 'Semana 5-8' },
+            { label: 'Deload' },
+          ],
+          positions: [
+            { x: -140, y: -40 },
+            { x: 20, y: -80 },
+            { x: 20, y: 40 },
+            { x: 160, y: -20 },
+          ],
+          edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 2, to: 4 }, { from: 3, to: 4 }],
+        },
+      },
+      {
+        id: 'hipertrofia',
+        tab: 'Hipertrofia',
+        title: 'Volumen MEV a MRV.',
+        body: 'Controla el volumen semanal por grupo muscular y progresa sin estancarte.',
+        flow: {
+          nodes: [
+            { label: 'Atleta' },
+            { label: 'Push' },
+            { label: 'Pull' },
+            { label: 'Legs' },
+          ],
+          positions: [
+            { x: -140, y: -10 },
+            { x: 40, y: -80 },
+            { x: 40, y: 0 },
+            { x: 40, y: 80 },
+          ],
+          edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 1, to: 4 }],
+        },
+      },
+      {
+        id: 'resistencia',
+        tab: 'Resistencia',
+        title: 'Zonas y polarizado.',
+        body: 'Estructura tu base aeróbica con sesiones por sistema energético y métricas reales.',
+        flow: {
+          nodes: [
+            { label: 'Z2 Base' },
+            { label: 'Z3-Z4' },
+            { label: 'Z5 VO2' },
+            { label: 'Long run' },
+          ],
+          positions: [
+            { x: -130, y: -60 },
+            { x: -130, y: 50 },
+            { x: 70, y: -60 },
+            { x: 70, y: 50 },
+          ],
+          edges: [{ from: 1, to: 3 }, { from: 2, to: 4 }, { from: 1, to: 4 }, { from: 2, to: 3 }],
+        },
+      },
+      {
+        id: 'movilidad',
+        tab: 'Movilidad',
+        title: 'Mantenimiento articular.',
+        body: 'Rangos diarios, recuperación activa y trabajo correctivo en cinco minutos.',
+        flow: {
+          nodes: [
+            { label: 'Evaluación' },
+            { label: 'Cadera' },
+            { label: 'T-spine' },
+            { label: 'Hombro' },
+          ],
+          positions: [
+            { x: -140, y: -10 },
+            { x: 40, y: -80 },
+            { x: 40, y: 0 },
+            { x: 40, y: 80 },
+          ],
+          edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 1, to: 4 }],
+        },
+      },
+      {
+        id: 'nutricion',
+        tab: 'Nutrición',
+        title: 'Macros y timing.',
+        body: 'Ajusta calorías, distribuye proteína y construye comidas que sí entiendes.',
+        flow: {
+          nodes: [
+            { label: 'Objetivo' },
+            { label: 'Plan' },
+            { label: 'Comida' },
+            { label: 'Diario' },
+          ],
+          positions: [
+            { x: -140, y: -10 },
+            { x: -20, y: -70 },
+            { x: -20, y: 50 },
+            { x: 140, y: -10 },
+          ],
+          edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 2, to: 4 }, { from: 3, to: 4 }],
+        },
+      },
+      {
+        id: 'competicion',
+        tab: 'Competición',
+        title: 'Picos de forma.',
+        body: 'Carga, descarga y peaking calibrados al día exacto de tu evento.',
+        flow: {
+          nodes: [
+            { label: 'Base' },
+            { label: 'Carga' },
+            { label: 'Peak' },
+            { label: 'Meet day' },
+          ],
+          positions: [
+            { x: -160, y: 0 },
+            { x: -50, y: -50 },
+            { x: 50, y: 30 },
+            { x: 160, y: -10 },
+          ],
+          edges: [{ from: 1, to: 2 }, { from: 2, to: 3 }, { from: 3, to: 4 }],
+        },
+      },
+    ],
+  },
+
+  allinone: {
+    eyebrow: '[ TODO EN UNO ]',
+    headline: 'Una suscripción',
+    headlineEm: 'para todo.',
+    sub: 'Un plan. Cada herramienta. Sin cinco apps, sin hojas de cálculo, sin excusas.',
+    primaryCta: 'Empezar gratis',
+    secondaryCta: 'Hablar con ventas',
+    features: [
+      { title: 'Programas',     body: 'De atletas reales que entrenan así.' },
+      { title: 'Nutrición',     body: 'Macros, comidas y ajustes diarios.' },
+      { title: 'Registro',      body: 'Cada serie, cada repetición, cada peso.' },
+      { title: 'Récords',       body: '1RM, volumen y PRs históricos.' },
+      { title: 'Análisis',      body: 'Insights semanales que sí entiendes.' },
+      { title: 'Comunidad',     body: 'Atletas como tú, no influencers.' },
+      { title: 'Movilidad',     body: 'Rutinas diarias de mantenimiento.' },
+      { title: 'Recuperación',  body: 'Sueño, descanso y readiness.' },
+      { title: 'Coach AI',      body: 'Ajustes personalizados en tiempo real.' },
+      { title: 'Reservas',      body: 'Llamadas con tu atleta favorito.' },
+      { title: 'Eventos',       body: 'Retos y meets de la comunidad.' },
+      { title: 'Pagos',         body: 'Una suscripción, todo incluido.' },
     ],
   },
 
   cases: {
-    eyebrow: 'CASOS DE ESTUDIO',
-    headline: 'Equipos creativos haciéndolo real.',
-    cards: [
-      { tag: 'Powerlifting · Bogotá', name: 'Marco Vélez',   body: 'Cómo Marco lleva 200 atletas en un solo lugar.', img: IMG.case1 },
-      { tag: 'IFBB · Medellín',       name: 'Lucía Ramírez', body: 'Periodización para sus clientes de competición.', img: IMG.case2 },
-      { tag: 'Triatlón · Cali',       name: 'Diego Soto',    body: 'Volumen, zonas y recuperación, todo junto.',     img: IMG.case3 },
+    eyebrow: '[ CASOS DE ESTUDIO ]',
+    headline: 'Casos de equipos',
+    headlineEm: 'que entrenan en serio.',
+    sub: 'Atletas profesionales y entrenadores que reemplazaron cinco apps por una.',
+    cta: 'Hablar con ventas',
+    items: [
+      { tag: 'Powerlifting',  org: 'Equipo Vélez',     title: 'Cómo Marco lleva 200 atletas desde un solo lugar.' },
+      { tag: 'IFBB Pro',      org: 'Studio Ramírez',   title: 'Periodización de competición sin perder el detalle.' },
+      { tag: 'Triatlón',      org: 'Soto Endurance',   title: 'Volumen, zonas y recuperación en la misma vista.' },
     ],
   },
 
-  blog: {
-    eyebrow: 'LEE SOBRE NOSOTROS',
-    headline: 'Por qué construimos Wake.',
-    body: 'La industria fitness se rompió en mil apps. Nosotros la reunimos en una.',
-    cta: 'Leer el manifesto',
+  press: {
+    eyebrow: '[ PRENSA ]',
+    headline: 'Hablan',
+    headlineEm: 'de nosotros.',
+    sub: 'Cobertura de los medios más relevantes del fitness y la tecnología.',
+    items: [
+      { source: 'TechCrunch', title: 'Wake redefine el entrenamiento personal en LATAM.' },
+      { source: 'Forbes',     title: '10 startups que están cambiando el fitness en 2026.' },
+      { source: 'Wired',      title: 'La nueva generación de coaches digitales.' },
+      { source: 'GQ',         title: 'Por qué los atletas profesionales están dejando Instagram.' },
+      { source: 'Men\u2019s Health', title: 'La app que entrena como un coach de élite.' },
+      { source: 'Semana',     title: 'Wake: la apuesta colombiana por el fitness serio.' },
+    ],
+  },
+
+  finalCta: {
+    pre: 'Una nueva',
+    em: 'disciplina',
+    post: 'merece un nuevo entorno.',
+    primary: 'Empezar gratis',
+    secondary: 'Hablar con ventas',
   },
 
   footer: {
     cols: [
-      { title: 'Producto',  links: ['Atletas', 'Programas', 'Precios', 'Cambios'] },
-      { title: 'Compañía',  links: ['Manifesto', 'Carreras', 'Contacto'] },
-      { title: 'Recursos',  links: ['Blog', 'Soporte', 'Términos', 'Privacidad'] },
+      { title: 'Producto',  links: ['Funciones', 'Precios', 'Cambios', 'Equipos'] },
+      { title: 'Compañía',  links: ['Manifesto', 'Carreras', 'Blog', 'Contacto'] },
+      { title: 'Recursos',  links: ['Artículos', 'Soporte', 'Estado', 'Marca'] },
+      { title: 'Legal',     links: ['Privacidad', 'Términos'] },
     ],
-    line: '© Wake 2026 · Hecho en Colombia',
+    line: '© Wake 2026',
+    place: 'Hecho en Colombia',
   },
 };
 
 /* ─────────────────────────────────────────────────────────────────── */
 export default function LandingDesignScreen() {
-  // reveal on scroll
   useEffect(() => {
     const obs = new IntersectionObserver(
-      (entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('lds-vis'); obs.unobserve(e.target); } }),
+      (entries) => entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add('lds-vis'); obs.unobserve(e.target); }
+      }),
       { threshold: 0.15 }
     );
     document.querySelectorAll('.lds-eu').forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-  }, []);
-
-  // workflow scroll tracking
-  const [activeFlow, setActiveFlow] = useState(0);
-  const flowRefs = useRef([]);
-  useEffect(() => {
-    const obs = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            const i = Number(e.target.getAttribute('data-flow-i'));
-            setActiveFlow(i);
-          }
-        });
-      },
-      { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
-    );
-    flowRefs.current.forEach((el) => el && obs.observe(el));
     return () => obs.disconnect();
   }, []);
 
@@ -157,146 +277,169 @@ export default function LandingDesignScreen() {
         <nav className="lds-nav-links">
           {COPY.nav.map((l) => <a key={l.label} href={l.href}>{l.label}</a>)}
         </nav>
-        <div className="lds-nav-actions">
-          <a href="/app" className="lds-nav-secondary">{COPY.navSecondary}</a>
-          <a href="/app" className="lds-nav-cta">{COPY.navCta}</a>
-        </div>
+        <a href="/app" className="lds-nav-cta">{COPY.navCta}</a>
       </header>
 
       {/* ── HERO ── */}
       <section className="lds-hero">
-        <div className="lds-hero-dots" />
         <div className="lds-hero-inner">
-          <h1 className="lds-hero-headline lds-eu" style={{ animationDelay: '0.06s' }}>
-            {COPY.hero.headlinePre}{' '}
-            <em>{COPY.hero.headlineItalic}</em>{' '}
-            {COPY.hero.headlinePost}
+          <a href="/app" className="lds-pill lds-eu">
+            <span className="lds-pill-tag">{COPY.hero.pill.tag}</span>
+            <span className="lds-pill-text">{COPY.hero.pill.text}</span>
+            <span className="lds-pill-cta">{COPY.hero.pill.cta}</span>
+          </a>
+
+          <h1 className="lds-hero-headline">
+            <span className="lds-eu" style={{ animationDelay: '0.05s' }}>{COPY.hero.line1}</span>
+            <em className="lds-eu lds-shimmer" style={{ animationDelay: '0.12s' }} data-text={COPY.hero.line2Em}>{COPY.hero.line2Em}</em>
+            <span className="lds-eu" style={{ animationDelay: '0.19s' }}>{COPY.hero.line3}</span>
           </h1>
-          <p className="lds-hero-sub lds-eu" style={{ animationDelay: '0.14s' }}>{COPY.hero.sub}</p>
+
+          <p className="lds-hero-sub lds-eu" style={{ animationDelay: '0.28s' }}>{COPY.hero.sub}</p>
+
+          <div className="lds-hero-actions lds-eu" style={{ animationDelay: '0.34s' }}>
+            <a href="/app" className="lds-cta-primary">{COPY.hero.cta}</a>
+          </div>
+
+          <div className="lds-hero-chips lds-eu" style={{ animationDelay: '0.4s' }}>
+            {COPY.hero.chips.map((c) => <span key={c} className="lds-chip">{c}</span>)}
+          </div>
+
+          {/* Hero media placeholder */}
+          <div className="lds-hero-media lds-eu" style={{ animationDelay: '0.46s' }}>
+            <video
+              className="lds-hero-video"
+              autoPlay
+              loop
+              muted
+              playsInline
+              poster=""
+              src=""
+            />
+            <div className="lds-media-placeholder">[ HERO VIDEO ]</div>
+          </div>
         </div>
       </section>
 
-      {/* ── DEMO ── */}
-      <section className="lds-demo">
-        <div className="lds-demo-frame lds-eu">
-          <div className="lds-demo-bar">
-            <span /><span /><span />
-          </div>
-          <img src={IMG.demo} alt="Wake product" loading="lazy" decoding="async" />
+      {/* ── PROCESS ── */}
+      <section className="lds-process">
+        <div className="lds-process-head lds-eu">
+          <span className="lds-eyebrow">{COPY.process.eyebrow}</span>
+          <h2 className="lds-h2">
+            {COPY.process.headline} <em>{COPY.process.headlineEm}</em>
+          </h2>
         </div>
-      </section>
-
-      {/* ── TRUSTED MARQUEE ── */}
-      <section className="lds-trusted">
-        <p className="lds-trusted-label">{COPY.trusted}</p>
-        <div className="lds-trusted-track">
-          <div className="lds-trusted-row">
-            {[...IMG.avatars, ...IMG.avatars, ...IMG.avatars].map((src, i) => (
-              <div key={i} className="lds-avatar"><img src={src} alt="" loading="lazy" decoding="async" /></div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── WORKFLOWS (one viewport, scroll-driven highlight) ── */}
-      <section
-        className="lds-workflows"
-        id="workflows"
-        style={{ height: `${COPY.workflows.items.length * 100}vh` }}
-      >
-        <div className="lds-wf-pin">
-          <div className="lds-wf-head">
-            <span className="lds-eyebrow">{COPY.workflows.eyebrow}</span>
-            <h2 className="lds-h2">{COPY.workflows.headline}</h2>
-          </div>
-          <div className="lds-wf-grid">
-            <ul className="lds-wf-list">
-              {COPY.workflows.items.map((it, i) => (
-                <li key={it.id} className={`lds-wf-item ${activeFlow === i ? 'is-active' : ''}`}>
-                  <h3>{it.name}</h3>
-                </li>
-              ))}
-            </ul>
-            <div className="lds-wf-card">
-              {COPY.workflows.items.map((it, i) => (
-                <img
-                  key={it.id}
-                  src={it.img}
-                  alt={it.name}
-                  className={activeFlow === i ? 'is-active' : ''}
-                />
-              ))}
+        <div className="lds-process-grid">
+          {COPY.process.steps.map((s, i) => (
+            <div key={s.num} className="lds-process-card lds-eu" style={{ animationDelay: `${i * 0.08}s` }}>
+              <span className="lds-process-num">{s.num}</span>
+              <h3>{s.name}</h3>
+              <p>{s.body}</p>
             </div>
-          </div>
+          ))}
         </div>
-        {/* invisible scroll triggers — drive activeFlow */}
-        {COPY.workflows.items.map((_, i) => (
-          <div
-            key={i}
-            ref={(el) => (flowRefs.current[i] = el)}
-            data-flow-i={i}
-            className="lds-wf-step"
-            style={{ top: `${i * 100}vh` }}
-          />
-        ))}
       </section>
 
-      {/* ── BENTO ── */}
-      <section className="lds-bento" id="bento">
-        <div className="lds-bento-head lds-eu">
-          <span className="lds-eyebrow">{COPY.bento.eyebrow}</span>
-          <h2 className="lds-h2">{COPY.bento.headline}</h2>
-          <p className="lds-sub">{COPY.bento.sub}</p>
+      {/* ── WORKFLOWS SHOWCASE (Flora-style scroll) ── */}
+      <ScrollFlowSection
+        eyebrow={COPY.workflows.eyebrow}
+        headline={COPY.workflows.headline}
+        headlineEm={COPY.workflows.headlineEm}
+        sub={COPY.workflows.sub}
+        cta={COPY.workflows.cta}
+        secondary={COPY.workflows.secondary}
+        categories={COPY.workflows.categories}
+      />
+
+      {/* ── ALL IN ONE ── */}
+      <section className="lds-allinone" id="allinone">
+        <div className="lds-ai-head lds-eu">
+          <span className="lds-eyebrow">{COPY.allinone.eyebrow}</span>
+          <h2 className="lds-h2">
+            {COPY.allinone.headline} <em>{COPY.allinone.headlineEm}</em>
+          </h2>
+          <p className="lds-sub">{COPY.allinone.sub}</p>
+          <div className="lds-wf-actions">
+            <a href="/app" className="lds-cta-primary">{COPY.allinone.primaryCta}</a>
+            <a href="#" className="lds-cta-ghost">{COPY.allinone.secondaryCta} →</a>
+          </div>
         </div>
-        <div className="lds-bento-grid">
-          {COPY.bento.cards.map((c, i) => (
-            <div key={c.title} className={`lds-bento-card lds-bento-${i} lds-eu`} style={{ animationDelay: `${i * 0.05}s` }}>
-              <h3>{c.title}</h3>
-              <p>{c.body}</p>
+        <div className="lds-ai-grid">
+          {COPY.allinone.features.map((f, i) => (
+            <div key={f.title} className="lds-ai-card lds-eu" style={{ animationDelay: `${(i % 6) * 0.04}s` }}>
+              <div className="lds-ai-icon">[ ICON ]</div>
+              <h3>{f.title}</h3>
+              <p>{f.body}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ── CASES ── */}
-      <section className="lds-cases">
+      <section className="lds-cases" id="cases">
         <div className="lds-cases-head lds-eu">
           <span className="lds-eyebrow">{COPY.cases.eyebrow}</span>
-          <h2 className="lds-h2">{COPY.cases.headline}</h2>
+          <h2 className="lds-h2">
+            {COPY.cases.headline} <em>{COPY.cases.headlineEm}</em>
+          </h2>
+          <p className="lds-sub">{COPY.cases.sub}</p>
+          <a href="#" className="lds-cta-ghost">{COPY.cases.cta} →</a>
         </div>
         <div className="lds-cases-grid">
-          {COPY.cases.cards.map((c, i) => (
-            <a key={c.name} href="/creators" className="lds-case-card lds-eu" style={{ animationDelay: `${i * 0.08}s` }}>
-              <img src={c.img} alt="" loading="lazy" decoding="async" />
-              <div className="lds-case-overlay" />
-              <div className="lds-case-content">
-                <span className="lds-case-tag">{c.tag}</span>
-                <h3>{c.name}</h3>
-                <p>{c.body}</p>
+          {COPY.cases.items.map((c, i) => (
+            <article key={c.title} className="lds-case-card lds-eu" style={{ animationDelay: `${i * 0.08}s` }}>
+              <div className="lds-case-media">
+                <div className="lds-media-placeholder">[ MEDIA ]</div>
               </div>
-            </a>
+              <div className="lds-case-meta">
+                <span className="lds-case-tag">{c.tag}</span>
+                <span className="lds-case-org">{c.org}</span>
+              </div>
+              <h3 className="lds-case-title">{c.title}</h3>
+            </article>
           ))}
         </div>
       </section>
 
-      {/* ── BLOG ── */}
-      <section className="lds-blog" id="blog">
-        <a href="#" className="lds-blog-card lds-eu">
-          <div className="lds-blog-image"><img src={IMG.blog} alt="" loading="lazy" decoding="async" /></div>
-          <div className="lds-blog-text">
-            <span className="lds-eyebrow">{COPY.blog.eyebrow}</span>
-            <h2 className="lds-h2">{COPY.blog.headline}</h2>
-            <p className="lds-sub">{COPY.blog.body}</p>
-            <span className="lds-blog-cta">{COPY.blog.cta} →</span>
-          </div>
-        </a>
+      {/* ── PRESS ── */}
+      <section className="lds-press" id="press">
+        <div className="lds-press-head lds-eu">
+          <span className="lds-eyebrow">{COPY.press.eyebrow}</span>
+          <h2 className="lds-h2">
+            {COPY.press.headline} <em>{COPY.press.headlineEm}</em>
+          </h2>
+          <p className="lds-sub">{COPY.press.sub}</p>
+        </div>
+        <ul className="lds-press-list">
+          {COPY.press.items.map((p, i) => (
+            <li key={p.title} className="lds-press-item lds-eu" style={{ animationDelay: `${i * 0.04}s` }}>
+              <span className="lds-press-source">{p.source}</span>
+              <span className="lds-press-title">{p.title}</span>
+              <span className="lds-press-arrow">→</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ── FINAL CTA ── */}
+      <section className="lds-final">
+        <h2 className="lds-final-line lds-eu">
+          {COPY.finalCta.pre} <em>{COPY.finalCta.em}</em> {COPY.finalCta.post}
+          <span className="lds-dot" aria-hidden="true" />
+        </h2>
+        <div className="lds-final-actions lds-eu" style={{ animationDelay: '0.15s' }}>
+          <a href="/app" className="lds-cta-primary">{COPY.finalCta.primary}</a>
+          <a href="#" className="lds-cta-ghost">{COPY.finalCta.secondary} →</a>
+        </div>
       </section>
 
       {/* ── FOOTER ── */}
       <footer className="lds-footer">
         <div className="lds-footer-grid">
           <div className="lds-footer-brand">
-            <span className="lds-nav-brand">{COPY.brand}</span>
+            <img src={wakeLogo} alt="Wake" />
+            <p>{COPY.footer.line}</p>
+            <p className="lds-footer-place">{COPY.footer.place}</p>
           </div>
           {COPY.footer.cols.map((col) => (
             <div key={col.title} className="lds-footer-col">
@@ -307,7 +450,7 @@ export default function LandingDesignScreen() {
             </div>
           ))}
         </div>
-        <div className="lds-footer-line">{COPY.footer.line}</div>
+        <div className="lds-footer-ghost" aria-hidden="true">{COPY.brand}</div>
       </footer>
     </div>
   );

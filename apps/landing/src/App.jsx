@@ -7,6 +7,7 @@ import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import CreatorsPage from './screens/CreatorsPage';
 import EventSignupScreen from './screens/EventSignupScreen';
 import LandingDesignScreen from './screens/LandingDesignScreen';
+import TestLandingScreen from './screens/TestLandingScreen';
 import HeroShell from './screens/heroes/HeroShell';
 import { getMainHeroLandingImages, getLandingCards, getDosFormasImage } from './services/heroImagesService';
 import heroLogo from './assets/hero-logo.svg';
@@ -424,6 +425,14 @@ function AppContent() {
     );
   }
 
+  if (location.pathname === '/') {
+    return (
+      <Routes>
+        <Route path="/" element={<TestLandingScreen />} />
+      </Routes>
+    );
+  }
+
   return (
     <div className="app-layout">
       <Header />
@@ -433,7 +442,7 @@ function AppContent() {
       </a>
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/test" element={<Home />} />
           <Route path="/creators" element={<CreatorsPage />} />
           <Route path="/support" element={<SupportScreen />} />
           <Route path="/legal" element={<LegalDocumentsScreen />} />
