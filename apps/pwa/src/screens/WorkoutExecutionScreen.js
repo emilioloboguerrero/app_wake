@@ -784,19 +784,28 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
   
-  // Build workout from checkpoint if restoring an interrupted session
+  // Build workout from checkpoint if restoring an interrupted session.
+  // Prefer the full initialWorkout (fetched from the program tree on resume) so
+  // exercise details — videos, objectives, muscle activation, measures — are present.
+  // Only fall back to checkpoint stubs when the full workout is unavailable.
   const restoredWorkout = useMemo(() => {
     if (!routeCheckpoint?.exercises) return null;
+    if (initialWorkout?.exercises?.length) {
+      return {
+        ...initialWorkout,
+        id: initialWorkout.id || routeCheckpoint.sessionId,
+        name: initialWorkout.name || initialWorkout.title || routeCheckpoint.sessionName,
+      };
+    }
     return {
       ...initialWorkout,
-      id: routeCheckpoint.sessionId || initialWorkout?.id,
-      name: routeCheckpoint.sessionName || initialWorkout?.name,
+      id: routeCheckpoint.sessionId,
+      name: routeCheckpoint.sessionName,
       exercises: routeCheckpoint.exercises.map(ex => ({
         id: ex.exerciseId,
         exerciseId: ex.exerciseId,
         name: ex.exerciseName,
         sets: ex.sets,
-        ...(initialWorkout?.exercises?.find(e => (e.id || e.exerciseId) === ex.exerciseId) || {}),
       })),
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1195,9 +1204,23 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (!isWeb) return;
     const onVisChange = () => {
-      if (document.visibilityState === 'hidden') saveCheckpointToLocalStorage();
+      if (document.visibilityState === 'hidden') {
+        saveCheckpointToLocalStorage();
+        // Cancel any pending API-checkpoint timer so it can't fire with a
+        // stale closure after the tab has been backgrounded for hours.
+        if (checkpointApiTimerRef.current) {
+          clearTimeout(checkpointApiTimerRef.current);
+          checkpointApiTimerRef.current = null;
+        }
+      }
     };
-    const onPageHide = () => saveCheckpointToLocalStorage();
+    const onPageHide = () => {
+      saveCheckpointToLocalStorage();
+      if (checkpointApiTimerRef.current) {
+        clearTimeout(checkpointApiTimerRef.current);
+        checkpointApiTimerRef.current = null;
+      }
+    };
     document.addEventListener('visibilitychange', onVisChange);
     window.addEventListener('pagehide', onPageHide);
     return () => {
@@ -2341,6 +2364,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
     } catch (error) {
       logger.error('❌ Error saving set data:', error);
+      // Always dismiss the modal so the UI never gets stuck on a failed save.
+      Animated.parallel([
+        Animated.timing(modalOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(modalTranslateY, { toValue: 300, duration: 200, useNativeDriver: true }),
+      ]).start();
+      setIsSetInputVisible(false);
+      setCurrentSetInputData({});
       Alert.alert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
     }
   }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData, debouncedCheckpointToLocalStorage, debouncedApiCheckpoint]);

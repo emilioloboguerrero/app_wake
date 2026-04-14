@@ -8,6 +8,7 @@ import LoadingScreen from './LoadingScreen';
 import logger from '../utils/logger';
 import firestoreService from '../services/apiService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
+import sessionService from '../services/sessionService';
 import { useAuth } from '../contexts/AuthContext';
 import WeekDateSelector, { toYYYYMMDD } from '../components/WeekDateSelector.web';
 import RecoveryModal from '../components/workout/RecoveryModal';
@@ -256,28 +257,45 @@ const DailyWorkoutScreen = () => {
     });
   }, [user, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleRecoveryResume = useCallback(() => {
-    if (!recoveryCheckpoint || !course) return;
+  const [recoveryResuming, setRecoveryResuming] = useState(false);
+
+  const handleRecoveryResume = useCallback(async () => {
+    if (!recoveryCheckpoint || !course || recoveryResuming) return;
+    setRecoveryResuming(true);
     const cId = course.courseId || course.id || courseId;
+    let fullWorkout = null;
+    try {
+      const state = await sessionService.getCurrentSession(user.uid, cId, {
+        manualSessionId: recoveryCheckpoint.sessionId,
+        forceRefresh: true,
+      });
+      if (state?.workout?.exercises?.length) fullWorkout = state.workout;
+    } catch (e) {
+      logger.error('[DailyWorkout.web] resume: failed to fetch full session', e);
+    }
+
+    const workoutForNav = fullWorkout || {
+      id: recoveryCheckpoint.sessionId,
+      name: recoveryCheckpoint.sessionName,
+      exercises: recoveryCheckpoint.exercises.map(ex => ({
+        id: ex.exerciseId,
+        exerciseId: ex.exerciseId,
+        name: ex.exerciseName,
+        sets: ex.sets,
+      })),
+    };
+
     navigate(`/course/${cId}/workout/execution`, {
       state: {
         course,
-        workout: {
-          id: recoveryCheckpoint.sessionId,
-          name: recoveryCheckpoint.sessionName,
-          exercises: recoveryCheckpoint.exercises.map(ex => ({
-            id: ex.exerciseId,
-            exerciseId: ex.exerciseId,
-            name: ex.exerciseName,
-            sets: ex.sets,
-          })),
-        },
+        workout: workoutForNav,
         sessionId: recoveryCheckpoint.sessionId,
         checkpoint: recoveryCheckpoint,
       },
     });
     setRecoveryCheckpoint(null);
-  }, [recoveryCheckpoint, course, courseId, navigate]);
+    setRecoveryResuming(false);
+  }, [recoveryCheckpoint, course, courseId, navigate, user, recoveryResuming]);
 
   const handleRecoveryDiscard = useCallback(() => {
     if (recoveryCheckpoint) {
