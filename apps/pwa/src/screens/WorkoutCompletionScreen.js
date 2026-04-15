@@ -572,11 +572,12 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
   const handleSaveNotes = async () => {
     const currentUser = user || auth.currentUser;
-    if (!currentUser?.uid || !sessionData?.sessionId) return;
+    const completionId = sessionData?.completionDocId || sessionData?.sessionId;
+    if (!currentUser?.uid || !completionId) return;
     setNotesSaving(true);
     setNotesSaved(false);
     try {
-      await exerciseHistoryService.updateSessionNotes(currentUser.uid, sessionData.sessionId, completionNotes);
+      await exerciseHistoryService.updateSessionNotes(currentUser.uid, completionId, completionNotes);
       setNotesSaved(true);
       setInitialNotes(completionNotes);
       setTimeout(() => setNotesSaved(false), 2500);

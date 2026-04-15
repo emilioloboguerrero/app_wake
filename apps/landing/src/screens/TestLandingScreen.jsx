@@ -752,7 +752,7 @@ const NAV_LINKS = [
   { label: 'Devs', href: '/developers' },
 ];
 
-function Nav() {
+export function Nav() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {

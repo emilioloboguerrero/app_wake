@@ -46,8 +46,15 @@ class ApiClient {
 
   async #getToken() {
     if (this.#mode === 'apikey') return this.#apiKey;
-    const user = auth.currentUser;
-    if (!user) throw new WakeApiError('UNAUTHENTICATED', 'No authenticated user', 401);
+    let user = auth.currentUser;
+    if (!user) {
+      await Promise.race([
+        auth.authStateReady(),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+      user = auth.currentUser;
+      if (!user) throw new WakeApiError('UNAUTHENTICATED', 'No authenticated user', 401);
+    }
     const now = Date.now();
     if (this.#tokenCache && now < this.#tokenCache.expiresAt - REFRESH_MARGIN_MS) {
       return this.#tokenCache.value;

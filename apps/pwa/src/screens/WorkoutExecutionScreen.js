@@ -1241,10 +1241,38 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [sessionNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restore state from checkpoint (C5)
+  // Remap checkpoint indices (exerciseIndex_setIndex) to current workout indices
+  // by exerciseId. Necessary because the freshly fetched workout on resume may
+  // order exercises differently than the checkpoint — mismatched indices would
+  // leave setData keys pointing at the wrong exercises, causing the completion
+  // filter to drop every exercise and save an empty session.
   useEffect(() => {
     if (!routeCheckpoint) return;
     if (routeCheckpoint.completedSets && Object.keys(routeCheckpoint.completedSets).length > 0) {
-      setSetData(routeCheckpoint.completedSets);
+      const cpExercises = routeCheckpoint.exercises || [];
+      const currentExercises = workout?.exercises || [];
+      const oldToNew = new Map();
+      cpExercises.forEach((cpEx, oldIdx) => {
+        if (!cpEx?.exerciseId) return;
+        const newIdx = currentExercises.findIndex(
+          e => (e.id || e.exerciseId) === cpEx.exerciseId
+        );
+        if (newIdx !== -1) oldToNew.set(oldIdx, newIdx);
+      });
+
+      const remapped = {};
+      Object.entries(routeCheckpoint.completedSets).forEach(([key, value]) => {
+        const [exIdxStr, setIdxStr] = key.split('_');
+        const oldExIdx = parseInt(exIdxStr, 10);
+        const newExIdx = oldToNew.has(oldExIdx) ? oldToNew.get(oldExIdx) : oldExIdx;
+        remapped[`${newExIdx}_${setIdxStr}`] = value;
+      });
+      setSetData(remapped);
+
+      const oldCurEx = routeCheckpoint.currentExerciseIndex;
+      if (typeof oldCurEx === 'number' && oldToNew.has(oldCurEx)) {
+        setCurrentExerciseIndex(oldToNew.get(oldCurEx));
+      }
     }
     if (routeCheckpoint.userNotes) {
       setSessionNotes(routeCheckpoint.userNotes);
@@ -3937,6 +3965,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       })
                     };
                     
+                    // Guard: if the user recorded set data but nothing survived
+                    // filtering, abort instead of saving an empty session.
+                    // This catches index-alignment bugs on the resume path.
+                    if (
+                      workoutWithSetData.exercises.length === 0 &&
+                      Object.values(setData).some(v => v && (v.reps || v.weight || v.time || v.distance))
+                    ) {
+                      logger.error('❌ completeSession aborted: setData present but all exercises filtered out', {
+                        setDataKeys: Object.keys(setData).length,
+                        workoutExerciseCount: workout.exercises?.length,
+                      });
+                      Alert.alert(
+                        'Error al guardar',
+                        'No pudimos alinear los datos de la sesión. Cierra y vuelve a abrir el entrenamiento para reintentar.'
+                      );
+                      return;
+                    }
+
                     const result = await sessionService.completeSession(
                       currentUser.uid,
                       course.courseId,

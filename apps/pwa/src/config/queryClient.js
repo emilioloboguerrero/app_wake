@@ -1,16 +1,7 @@
-import { QueryClient, QueryCache } from '@tanstack/react-query';
-import { WakeApiError } from '../utils/apiClient';
+import { QueryClient } from '@tanstack/react-query';
 import { STALE_TIMES, GC_TIMES } from './queryConfig';
 
 export const queryClient = new QueryClient({
-  queryCache: new QueryCache({
-    onError: (error) => {
-      if (error instanceof WakeApiError &&
-          (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
-        require('../services/authService').default.signOutUser();
-      }
-    },
-  }),
   defaultOptions: {
     queries: {
       staleTime: STALE_TIMES.userProfile,
