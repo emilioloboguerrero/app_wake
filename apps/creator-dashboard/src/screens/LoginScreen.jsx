@@ -10,28 +10,7 @@ import { ASSET_BASE } from '../config/assets';
 import logger from '../utils/logger';
 import './LoginScreen.css';
 
-const HERO_IMAGE = 'https://images.unsplash.com/photo-1642615835477-d303d7dc9ee9?w=2160&q=80';
-
-const TESTIMONIALS = [
-  {
-    avatar: 'https://randomuser.me/api/portraits/women/44.jpg',
-    name: 'Valentina R.',
-    handle: '@valfit_co',
-    text: 'Wake me permitio organizar todos mis programas y clientes en un solo lugar. Mis atletas lo aman.',
-  },
-  {
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg',
-    name: 'Andres M.',
-    handle: '@andres.coach',
-    text: 'Desde que uso Wake, mis clientes tienen mejor adherencia. La experiencia es increible.',
-  },
-  {
-    avatar: 'https://randomuser.me/api/portraits/women/68.jpg',
-    name: 'Camila S.',
-    handle: '@cami.wellness',
-    text: 'Simple, bonito y funcional. Exactamente lo que necesitaba para escalar mi negocio fitness.',
-  },
-];
+const HERO_IMAGE = `${ASSET_BASE}IMG_4441.JPG`;
 
 const GoogleIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="ln-google-icon" viewBox="0 0 48 48">
@@ -54,17 +33,6 @@ const EyeOffIcon = () => (
     <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
     <line x1="1" y1="1" x2="23" y2="23" />
   </svg>
-);
-
-const TestimonialCard = ({ testimonial }) => (
-  <div className="ln-testimonial-card">
-    <img src={testimonial.avatar} alt="" className="ln-testimonial-avatar" />
-    <div className="ln-testimonial-body">
-      <div className="ln-testimonial-name">{testimonial.name}</div>
-      <div className="ln-testimonial-handle">{testimonial.handle}</div>
-      <div className="ln-testimonial-text">{testimonial.text}</div>
-    </div>
-  </div>
 );
 
 const LoginScreen = () => {
@@ -539,11 +507,6 @@ const LoginScreen = () => {
           style={{ backgroundImage: `url(${HERO_IMAGE})` }}
         >
           <div className="ln-hero-overlay" />
-        </div>
-        <div className="ln-testimonials">
-          {TESTIMONIALS.map((t, i) => (
-            <TestimonialCard key={i} testimonial={t} />
-          ))}
         </div>
       </section>
     </div>
