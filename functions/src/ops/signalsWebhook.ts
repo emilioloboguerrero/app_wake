@@ -15,8 +15,9 @@ export async function handleSignalsWebhook(
     projectId: string;
   }
 ): Promise<void> {
-  const provided = req.header("x-telegram-bot-api-secret-token");
-  if (provided !== opts.webhookSecret) {
+  const provided = (req.header("x-telegram-bot-api-secret-token") ?? "").trim();
+  const expected = (opts.webhookSecret ?? "").trim();
+  if (!expected || provided !== expected) {
     res.status(403).send("forbidden");
     return;
   }
