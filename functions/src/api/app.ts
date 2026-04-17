@@ -149,7 +149,7 @@ app.use((_req: Request, res: Response) => {
 });
 
 // ─── Global error handler ──────────────────────────────────────────────────
-app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof WakeApiServerError) {
     if (err.status === 429) {
       const retryAfter = err.retryAfter;
@@ -168,8 +168,13 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     return;
   }
 
-  // Unexpected error
-  console.error("Unhandled API error:", err);
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  const userId = req.auth?.userId ?? "anon";
+  console.error(
+    `[api] ${req.method} ${req.path} — ${message} (user=${userId})`,
+    stack ? { stack } : undefined
+  );
   res.status(500).json({
     error: { code: "INTERNAL_ERROR", message: "Error interno del servidor" },
   });

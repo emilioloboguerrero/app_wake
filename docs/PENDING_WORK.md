@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-04-06. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-04-17. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -11,43 +11,6 @@ Last updated: 2026-04-06. Single source of truth for all unimplemented, partial,
 ---
 
 ## Conversion & Growth
-
-### 1. Consumer Landing Redesign `NOT STARTED`
-
-Full rebuild of `apps/landing`. The current landing is the primary user acquisition surface and is underperforming — every new user passes through it before signing up and the current state does not match the product.
-
-**Design direction:**
-- Dark cinematic premium — aligned with Wake design system (`#1a1a1a` canvas, white opacity tones)
-- References: [Cursor](https://cursor.com), [Linear](https://linear.app), [Loom](https://loom.com)
-- Component inspiration: [Aceternity UI](https://ui.aceternity.com/components)
-- Strong visual impact above the fold, intentional scroll progression, clear CTAs
-- Fast — Lighthouse performance score >90
-
-**Sections:**
-- Hero — headline, subheadline, primary CTA (sign up / ver planes)
-- Product showcase — workout execution, nutrition tracking, progress lab
-- Programs / creator showcase
-- Social proof (once available)
-- Pricing
-- Footer with links
-
-**Technical notes:**
-- Vite + React 18, `base: /`
-- PostHog events: `landing.page_viewed`, `landing.cta_clicked`, `landing.signup_cta_clicked`, `landing.pricing_viewed`
-
-**Checklist:**
-- [ ] Design direction locked (wireframe / moodboard)
-- [ ] Hero section
-- [ ] Product showcase
-- [ ] Programs section
-- [ ] Pricing section
-- [ ] Social proof section
-- [ ] Footer
-- [ ] Mobile responsive
-- [ ] Lighthouse >90
-- [ ] PostHog events
-
----
 
 ### 2. Creator Landing (New) `NOT STARTED`
 
@@ -630,7 +593,6 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 
 | Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
 |---|---|---|---|---|---|
-| Consumer Landing Redesign | 5 | 5 | 5 | 3 | **4.70** |
 | Creator Dashboard Rebuild | 5 | 5 | 5 | 1 | **4.40** |
 | Creator Landing | 5 | 4 | 4 | 3 | **4.20** |
 | PWA UI Redesign | 4 | 5 | 4 | 2 | **3.95** |
@@ -652,24 +614,23 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  Consumer Landing Redesign     — top of funnel, every new user passes through it
-2.  Video Exchange (test)         — already built, just validate
-3.  Creator Landing               — no creator acquisition surface; build after dashboard is solid
-4.  PWA UI Redesign               — right time with small user base, no tech debt pressure
-5.  PostHog Analytics             — before driving traffic you need visibility
-6.  Security Audit                — before scaling, know your exposure
-7.  App-wide Optimization         — before cardio ships, clean the foundation
-8.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 5–7
-9.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-10. Creator Email Platform Ph.1   — unlocks creator marketing
-11. Stripe Migration (3c)         — decision-dependent, not urgent
-12. Feedback Board                — until user base warrants it
-13. Third-party API               — premature at current user count
+1.  Video Exchange (test)         — already built, just validate
+2.  Creator Landing               — no creator acquisition surface; build after dashboard is solid
+3.  PWA UI Redesign               — right time with small user base, no tech debt pressure
+4.  PostHog Analytics             — before driving traffic you need visibility
+5.  Security Audit                — before scaling, know your exposure
+6.  App-wide Optimization         — before cardio ships, clean the foundation
+7.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 4–6
+8.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
+9.  Creator Email Platform Ph.1   — unlocks creator marketing
+10. Stripe Migration (3c)         — decision-dependent, not urgent
+11. Feedback Board                — until user base warrants it
+12. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Items 2–3 are quick wins** (2–4 days each). Clear the board before the larger PWA and Cardio efforts.
-- **Creator Landing (#3) comes after Creator Dashboard** — no point driving creator traffic before the product they land on is solid.
-- **Cardio V1 (#8)** is a long-track build. Start architecture and wearable OAuth research during items 6–7. GPS and provider flows take time to get right.
-- **Stripe Migration (#11)** is gated on a business decision — don't start until that decision is made.
-- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026.
+- **Items 1–2 are quick wins** (2–4 days each). Clear the board before the larger PWA and Cardio efforts.
+- **Creator Landing (#2) comes after Creator Dashboard** — no point driving creator traffic before the product they land on is solid.
+- **Cardio V1 (#7)** is a long-track build. Start architecture and wearable OAuth research during items 5–6. GPS and provider flows take time to get right.
+- **Stripe Migration (#10)** is gated on a business decision — don't start until that decision is made.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17.
