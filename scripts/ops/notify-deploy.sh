@@ -38,29 +38,53 @@ if [ -n "$TREE_STATUS" ]; then
   fi
 fi
 
-if ! git push origin HEAD > /dev/null 2>&1; then
-  echo "[notify-deploy] git push failed (continuing anyway)" >&2
-fi
-
 COMMIT_HASH="$(git rev-parse --short HEAD 2>/dev/null)"
 COMMIT_SUBJECT="$(git log -1 --pretty=%s 2>/dev/null)"
 AUTHOR="$(git log -1 --pretty=%an 2>/dev/null)"
 
-FIREBASE_PROJECT="$(firebase use 2>/dev/null | tail -1)"
+FIREBASE_PROJECT="${GCLOUD_PROJECT:-${FIREBASE_PROJECT_ID:-}}"
+if [ -z "$FIREBASE_PROJECT" ] && [ -f "$REPO_ROOT/.firebaserc" ]; then
+  FIREBASE_PROJECT="$(
+    awk -F'"' '/"default"[[:space:]]*:/{print $4; exit}' \
+      "$REPO_ROOT/.firebaserc" 2>/dev/null
+  )"
+fi
 [ -z "$FIREBASE_PROJECT" ] && FIREBASE_PROJECT="unknown"
 
 MSG="[wake-deploys] ${TARGET} · deployed
 commit ${COMMIT_HASH} — \"${COMMIT_SUBJECT}\"
 by ${AUTHOR} · ${FIREBASE_PROJECT}"
 
-TG_RESPONSE="$(curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_SIGNALS_BOT_TOKEN}/sendMessage" \
-  --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-  --data-urlencode "text=${MSG}" 2>&1)"
+# Parallel: Telegram post and git push (independent, both safe to run concurrently)
+TG_LOG="$(mktemp -t notify-deploy-tg.XXXXXX)"
+PUSH_LOG="$(mktemp -t notify-deploy-push.XXXXXX)"
+trap 'rm -f "$TG_LOG" "$PUSH_LOG"' EXIT
 
-if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
-  echo "[notify-deploy] ${TARGET} (${COMMIT_HASH}) posted to wake_ops" >&2
-else
-  echo "[notify-deploy] telegram post failed: $TG_RESPONSE" >&2
-fi
+{
+  TG_RESPONSE="$(curl -s --max-time 10 -X POST \
+    "https://api.telegram.org/bot${TELEGRAM_SIGNALS_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+    --data-urlencode "text=${MSG}" 2>&1)"
+  if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
+    echo "[notify-deploy] ${TARGET} (${COMMIT_HASH}) posted to wake_ops"
+  else
+    echo "[notify-deploy] telegram post failed: $TG_RESPONSE"
+  fi
+} > "$TG_LOG" 2>&1 &
+TG_PID=$!
+
+{
+  if ! git push origin HEAD 2>&1; then
+    echo "[notify-deploy] git push failed (continuing anyway)"
+  fi
+} > "$PUSH_LOG" 2>&1 &
+PUSH_PID=$!
+
+wait "$TG_PID" 2>/dev/null
+wait "$PUSH_PID" 2>/dev/null
+
+# Surface worker logs (non-empty lines only)
+grep -v '^$' "$TG_LOG" >&2 2>/dev/null || true
+grep -v '^$' "$PUSH_LOG" >&2 2>/dev/null || true
 
 exit 0
