@@ -195,8 +195,6 @@ export async function runLogsDigest(opts: {
     batch.set(refs[i], updated);
   }
 
-  await batch.commit();
-
   newOnes.sort((a, b) => b.entry.count - a.entry.count);
   spiking.sort(
     (a, b) =>
@@ -241,5 +239,8 @@ export async function runLogsDigest(opts: {
     }
   }
 
-  await sendTelegram(botToken, chatId, lines.join("\n").trim());
+  await Promise.all([
+    batch.commit(),
+    sendTelegram(botToken, chatId, lines.join("\n").trim()),
+  ]);
 }
