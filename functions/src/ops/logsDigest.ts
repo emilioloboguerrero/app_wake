@@ -229,11 +229,20 @@ function buildOverallLogsUrl(projectId: string, sinceIso: string): string {
 
 async function fetchRecentDeploys(
   logging: Logging,
+  projectId: string,
   sinceIso: string
 ): Promise<DeployEvent[]> {
+  // Exact logName matches are dramatically faster than substring scans.
+  const logNames = [
+    `projects/${projectId}/logs/cloudaudit.googleapis.com%2Factivity`,
+    `projects/${projectId}/logs/cloudaudit.googleapis.com%2Fsystem_event`,
+  ]
+    .map((n) => `"${n}"`)
+    .join(" OR ");
+
   const filter = [
     `timestamp >= "${sinceIso}"`,
-    "logName:\"cloudaudit.googleapis.com\"",
+    `logName=(${logNames})`,
     "protoPayload.methodName:(\"UpdateFunction\" OR \"CreateFunction\" OR \"CreateVersion\" OR \"CreateRelease\")",
   ].join(" AND ");
 
@@ -242,6 +251,7 @@ async function fetchRecentDeploys(
       filter,
       orderBy: "timestamp desc",
       pageSize: 50,
+      gaxOptions: {timeout: 15_000},
     });
     const deploys: DeployEvent[] = [];
     for (const entry of entries) {
@@ -308,12 +318,16 @@ export async function runLogsDigest(opts: {
 
   functions.logger.info("wake-logs-digest: querying", {filter});
 
-  const [entries, deploys] = await Promise.all([
-    logging
-      .getEntries({filter, orderBy: "timestamp desc", pageSize: MAX_ENTRIES})
-      .then(([e]) => e),
-    fetchRecentDeploys(logging, since),
-  ]);
+  const [entries] = await logging.getEntries({
+    filter,
+    orderBy: "timestamp desc",
+    pageSize: MAX_ENTRIES,
+    gaxOptions: {timeout: 45_000},
+  });
+
+  // Deploys query runs after the main query so it cannot starve it.
+  // fetchRecentDeploys swallows its own errors, including its internal timeout.
+  const deploys = await fetchRecentDeploys(logging, projectId, since);
 
   functions.logger.info("wake-logs-digest: fetched", {
     count: entries.length,
