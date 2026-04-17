@@ -207,6 +207,8 @@
   position: absolute;
   inset: 0;
   z-index: 0;
+  opacity: var(--hero-opacity, 1);
+  will-change: opacity;
 }
 
 .tl-slide {
@@ -240,10 +242,11 @@
   z-index: 1;
   width: clamp(400px, 70vh, 900px);
   height: auto;
-  opacity: 0.22;
+  opacity: calc(var(--hero-opacity, 1) * 0.22);
   -webkit-user-select: none;
   user-select: none;
   pointer-events: none;
+  will-change: opacity;
 }
 
 .tl-hero-statement {
@@ -259,6 +262,8 @@
   padding: 0 40px;
   letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
+  opacity: var(--hero-opacity, 1);
+  will-change: opacity;
 }
 
 /* ── Transition spacer ── */
@@ -283,6 +288,7 @@
   top: 0;
   height: 100vh;
   overflow: hidden;
+  contain: layout paint;
 }
 
 .ps-sticky-bg {
@@ -307,6 +313,17 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
+  background:
+    radial-gradient(ellipse 55% 55% at 50% 50%, rgba(255, 87, 168, 0.14), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 35% 45%, rgba(255, 87, 168, 0.06), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 65% 55%, rgba(255, 87, 168, 0.06), transparent 70%);
+  animation: ps-aurora-breathe 9s ease-in-out infinite;
+  transform: translateZ(0);
+}
+
+@keyframes ps-aurora-breathe {
+  0%, 100% { opacity: 0.85; transform: translateZ(0) scale(1); }
+  50% { opacity: 1; transform: translateZ(0) scale(1.04); }
 }
 
 .ps-grid {
@@ -341,13 +358,26 @@
   width: 280px;
   flex-shrink: 0;
   will-change: transform, opacity;
-  filter: drop-shadow(0 30px 60px rgba(0, 0, 0, 0.55));
+  transform: translateZ(0);
 }
 
 .ps-phone-frame {
   position: relative;
   width: 100%;
   aspect-ratio: 450 / 920;
+}
+
+/* Compositor-friendly shadow: rounded-rect element matching the iPhone shape
+   receives a box-shadow once; it then rides along with the phone's transform
+   instead of re-rasterising a drop-shadow filter every frame. */
+.ps-phone-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 13%;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .ps-phone-overlay {
@@ -553,6 +583,7 @@
   top: 0;
   height: 100vh;
   overflow: hidden;
+  contain: layout paint;
 }
 
 .tl-ag-track {
@@ -581,7 +612,7 @@
   margin: 0;
   -webkit-font-smoothing: antialiased;
   pointer-events: none;
-  mix-blend-mode: difference;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.85), 0 0 60px rgba(0, 0, 0, 0.6);
 }
 
 /* ── Scroll hint ── */
@@ -609,17 +640,18 @@
 .tl-ag-scroll-line::after {
   content: '';
   position: absolute;
-  top: -100%;
+  top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.6), transparent);
+  will-change: transform;
   animation: tl-scroll-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 @keyframes tl-scroll-pulse {
-  0% { top: -100%; }
-  100% { top: 200%; }
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(200%); }
 }
 
 /* ── Individual images ── */
@@ -691,6 +723,9 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  contain: layout paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 100vw 100vh;
 }
 
 .tl-reveal-aurora {
@@ -700,7 +735,18 @@
   height: 100%;
   z-index: 0;
   pointer-events: none;
+  opacity: 0.4;
+  background:
+    radial-gradient(ellipse 55% 55% at 50% 50%, rgba(255, 87, 168, 0.14), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 35% 45%, rgba(255, 87, 168, 0.06), transparent 70%),
+    radial-gradient(ellipse 40% 40% at 65% 55%, rgba(255, 87, 168, 0.06), transparent 70%);
+  animation: ps-aurora-breathe 9s ease-in-out infinite;
+  transform: translateZ(0);
   transition: opacity 1.5s ease;
+}
+
+.tl-reveal-aurora-bright {
+  opacity: 1;
 }
 
 /* Pulse rings that expand on reveal */
@@ -708,14 +754,16 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 0;
-  height: 0;
+  width: 160vmax;
+  height: 160vmax;
   border-radius: 50%;
   border: 1px solid rgba(255, 87, 168, 0.2);
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0);
+  transform-origin: center;
   z-index: 1;
   pointer-events: none;
   opacity: 0;
+  will-change: transform, opacity;
 }
 
 .tl-reveal-pulse-2 {
@@ -733,13 +781,11 @@
 
 @keyframes tl-pulse-expand {
   0% {
-    width: 0;
-    height: 0;
+    transform: translate(-50%, -50%) scale(0);
     opacity: 0.6;
   }
   100% {
-    width: 160vmax;
-    height: 160vmax;
+    transform: translate(-50%, -50%) scale(1);
     opacity: 0;
   }
 }
@@ -786,6 +832,8 @@
   background: #1a1a1a;
   display: flex;
   justify-content: center;
+  content-visibility: auto;
+  contain-intrinsic-size: 100vw 220px;
 }
 
 .tl-cta-button {
@@ -816,6 +864,8 @@
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding: 48px 60px;
   font-family: 'Montserrat', sans-serif;
+  content-visibility: auto;
+  contain-intrinsic-size: 100vw 260px;
 }
 
 .tl-footer-top {

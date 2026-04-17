@@ -14,6 +14,8 @@ import {defineSecret} from "firebase-functions/params";
 import * as webpush from "web-push";
 import "./init.js";
 import {app} from "./api/app.js";
+import {runLogsDigest} from "./ops/logsDigest.js";
+import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
 import {
   type ParsedReference,
   type MercadoPagoPreapproval,
@@ -2977,6 +2979,58 @@ export const cleanupVideoExchanges = onSchedule(
       exchangesDeleted,
       messagesDeleted,
       messagesSaved,
+    });
+  }
+);
+
+// ─── Wake ops: secrets ─────────────────────────────────────────────────────
+const telegramSignalsBotToken = defineSecret("TELEGRAM_SIGNALS_BOT_TOKEN");
+const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
+const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+
+// ─── Scheduled: wake ops daily log digest ─────────────────────────────────
+export const wakeLogsDigestCron = onSchedule(
+  {
+    schedule: "every day 19:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [telegramSignalsBotToken, telegramChatId],
+    memory: "256MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    try {
+      await runLogsDigest({
+        botToken: telegramSignalsBotToken.value(),
+        chatId: telegramChatId.value(),
+        projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
+      });
+    } catch (err) {
+      functions.logger.error("wakeLogsDigestCron failed", err);
+      throw err;
+    }
+  }
+);
+
+// ─── Webhook: signals bot command handler ──────────────────────────────────
+export const wakeSignalsWebhook = onRequest(
+  {
+    region: "us-central1",
+    secrets: [
+      telegramSignalsBotToken,
+      telegramChatId,
+      telegramWebhookSecret,
+    ],
+    memory: "256MiB",
+    timeoutSeconds: 120,
+    cors: false,
+  },
+  async (req, res) => {
+    await handleSignalsWebhook(req, res, {
+      botToken: telegramSignalsBotToken.value(),
+      allowedChatId: telegramChatId.value(),
+      webhookSecret: telegramWebhookSecret.value(),
+      projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
     });
   }
 );

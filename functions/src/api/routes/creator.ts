@@ -2565,8 +2565,8 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
           return {
-            id: eDoc.id,
             ...eDoc.data(),
+            id: eDoc.id,
             sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
           };
         })
@@ -2867,8 +2867,8 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
       return {
-        id: eDoc.id,
         ...eDoc.data(),
+        id: eDoc.id,
         sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
       };
     })
@@ -3486,9 +3486,9 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
       return {
+        ...eDoc.data(),
         exerciseId: eDoc.id,
         id: eDoc.id,
-        ...eDoc.data(),
         sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })),
       };
     })

@@ -102,95 +102,10 @@ function AnimatedPhrase({ chunks, visible }) {
   );
 }
 
-function AuroraCanvas({ className, intensity = 1 }) {
-  const canvasRef = useRef(null);
-  const intensityRef = useRef(intensity);
-  useEffect(() => { intensityRef.current = intensity; }, [intensity]);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let frame = null;
-    let time = 0;
-    let visible = false;
-    let docVisible = !document.hidden;
-
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const resize = () => {
-      const w = canvas.offsetWidth;
-      const h = canvas.offsetHeight;
-      if (w === 0 || h === 0) return;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
-    };
-
-    const draw = () => {
-      const k = intensityRef.current;
-      time += 1;
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-      const blobs = [
-        { x: 0.5, y: 0.5, r: 0.45, speed: 0.0002, phase: 0 },
-        { x: 0.35, y: 0.45, r: 0.3, speed: 0.0003, phase: 1.5 },
-        { x: 0.65, y: 0.55, r: 0.3, speed: 0.00035, phase: 3 },
-      ];
-      for (const blob of blobs) {
-        const x = w * (blob.x + Math.sin(time * blob.speed + blob.phase) * 0.08);
-        const y = h * (blob.y + Math.cos(time * blob.speed * 0.7 + blob.phase) * 0.06);
-        const r = Math.min(w, h) * blob.r;
-        const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-        grad.addColorStop(0, `rgba(255, 87, 168, ${0.07 * k})`);
-        grad.addColorStop(0.4, `rgba(255, 87, 168, ${0.03 * k})`);
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, w, h);
-      }
-      frame = requestAnimationFrame(draw);
-    };
-
-    const start = () => {
-      if (frame == null && visible && docVisible) {
-        frame = requestAnimationFrame(draw);
-      }
-    };
-    const stop = () => {
-      if (frame != null) {
-        cancelAnimationFrame(frame);
-        frame = null;
-      }
-    };
-
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        visible = entry.isIntersecting;
-        if (visible) start();
-        else stop();
-      },
-      { rootMargin: '100px' }
-    );
-    io.observe(canvas);
-
-    const ro = new ResizeObserver(() => resize());
-    ro.observe(canvas);
-    resize();
-
-    const onVisibility = () => {
-      docVisible = !document.hidden;
-      if (docVisible) start();
-      else stop();
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      stop();
-      io.disconnect();
-      ro.disconnect();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
-  return <canvas ref={canvasRef} className={className} />;
+// Static CSS-based aurora glow. Replaces the per-frame canvas version so the
+// compositor owns the animation — no main-thread work during scroll.
+function Aurora({ className }) {
+  return <div className={className} aria-hidden="true" />;
 }
 
 function PhoneShowcaseSection() {
@@ -221,8 +136,7 @@ function PhoneShowcaseSection() {
   // Phone entry — waits off-screen for most of pre-pin, then slides in
   // horizontal over the final stretch. Rotation kicks in the instant the
   // phone arrives and takes its time expanding into place.
-  const phoneXNum = useTransform(enterProgress, [0, 0.75, 1], [110, 110, 0]);
-  const phoneX = useTransform(phoneXNum, (v) => `${v}vw`);
+  const phoneX = useTransform(enterProgress, [0, 0.75, 1], ['110vw', '110vw', '0vw']);
   const phoneRotateZ = useTransform(scrollYProgress, [0, 0.12], [-90, 0]);
   const desktopPhoneScale = useTransform(scrollYProgress, [0, 0.12], [0.70, 1]);
   const mobilePhoneScale = useTransform(scrollYProgress, [0, 0.12], [0.60, 1]);
@@ -231,19 +145,17 @@ function PhoneShowcaseSection() {
   // Phone Y — slides up off the top of the viewport at the end, letting the
   // athletes gallery behind (via margin-top: -100vh) be revealed.
   // Mobile: bottom-cut during phrases → rises to center → continues off screen.
-  const mobilePhoneYNum = useTransform(
+  const mobilePhoneY = useTransform(
     scrollYProgress,
     [0, 0.08, 0.16, 0.60, 0.66, 1.0],
-    [0, 0, 36, 36, 0, -120]
+    ['0vh', '0vh', '36vh', '36vh', '0vh', '-120vh']
   );
-  const mobilePhoneY = useTransform(mobilePhoneYNum, (v) => `${v}vh`);
   // Desktop: stays centered until the exit, then slides up off screen.
-  const desktopPhoneYNum = useTransform(
+  const desktopPhoneY = useTransform(
     scrollYProgress,
     [0, 0.66, 1.0],
-    [0, 0, -120]
+    ['0vh', '0vh', '-120vh']
   );
-  const desktopPhoneY = useTransform(desktopPhoneYNum, (v) => `${v}vh`);
   const phoneY = isMobile ? mobilePhoneY : desktopPhoneY;
 
   // Sticky background stays opaque throughout. At progress 1.0, ps-sticky
@@ -283,15 +195,14 @@ function PhoneShowcaseSection() {
 
   // Phrase 3 starts sliding up slightly AFTER the phone begins moving, so the
   // phone "catches up" and covers the text before they swipe up together.
-  const phrase3YNum = useTransform(scrollYProgress, [0, 0.70, 1.0], [0, 0, -100]);
-  const phrase3Y = useTransform(phrase3YNum, (v) => `${v}vh`);
+  const phrase3Y = useTransform(scrollYProgress, [0, 0.70, 1.0], ['0vh', '0vh', '-100vh']);
 
   return (
     <section className="ps-section" ref={sectionRef}>
       <div className="ps-sticky">
         <div className="ps-sticky-bg" aria-hidden="true" />
         <motion.div className="ps-aurora-wrap" style={{ opacity: auroraOpacity }}>
-          <AuroraCanvas className="ps-aurora" intensity={1.8} />
+          <Aurora className="ps-aurora" />
         </motion.div>
         <div className="ps-grid">
           {/* ── Phone column ── */}
@@ -390,7 +301,7 @@ function RevealSection() {
 
   return (
     <section className="tl-reveal" ref={ref}>
-      <AuroraCanvas className="tl-reveal-aurora" intensity={triggered ? 1.8 : 0.5} />
+      <Aurora className={`tl-reveal-aurora ${triggered ? 'tl-reveal-aurora-bright' : ''}`} />
 
       {/* Pulse ring on reveal */}
       <div className={`tl-reveal-pulse ${triggered ? 'tl-reveal-pulse-go' : ''}`} />
@@ -440,42 +351,30 @@ const HERO_PATHS = [
 const hp = (i) => HERO_PATHS[i % HERO_PATHS.length];
 
 const ATHLETE_IMAGES = [
-  // layer 0 — massive (near-viewport, very slow)
+  // layer 0 — massive (near-viewport, very slow; barely visible at 0.35 opacity)
   { src: hp(0), layer: 0, top: '-5%', left: '2vw' },
-  { src: hp(1), layer: 0, top: '10%', left: '120vw' },
   { src: hp(2), layer: 0, top: '-8%', left: '250vw' },
-  { src: hp(3), layer: 0, top: '5%', left: '380vw' },
   { src: hp(4), layer: 0, top: '-3%', left: '510vw' },
-  { src: hp(5), layer: 0, top: '8%', left: '650vw' },
+  { src: hp(5), layer: 0, top: '8%', left: '680vw' },
   // layer 1 — large
   { src: hp(6), layer: 1, top: '5%', left: '40vw' },
-  { src: hp(7), layer: 1, top: '42%', left: '150vw' },
-  { src: hp(8), layer: 1, top: '8%', left: '230vw' },
+  { src: hp(7), layer: 1, top: '42%', left: '170vw' },
   { src: hp(9), layer: 1, top: '50%', left: '320vw' },
-  { src: hp(10), layer: 1, top: '15%', left: '420vw' },
-  { src: hp(11), layer: 1, top: '45%', left: '530vw' },
-  { src: hp(12), layer: 1, top: '6%', left: '620vw' },
-  { src: hp(13), layer: 1, top: '52%', left: '710vw' },
+  { src: hp(10), layer: 1, top: '15%', left: '450vw' },
+  { src: hp(12), layer: 1, top: '6%', left: '600vw' },
+  { src: hp(13), layer: 1, top: '52%', left: '720vw' },
   // layer 2 — medium
   { src: hp(14), layer: 2, top: '55%', left: '10vw' },
-  { src: hp(15), layer: 2, top: '3%', left: '90vw' },
   { src: hp(16), layer: 2, top: '48%', left: '180vw' },
-  { src: hp(17), layer: 2, top: '10%', left: '280vw' },
   { src: hp(18), layer: 2, top: '58%', left: '370vw' },
-  { src: hp(19), layer: 2, top: '20%', left: '460vw' },
-  { src: hp(20), layer: 2, top: '52%', left: '550vw' },
-  { src: hp(21), layer: 2, top: '5%', left: '640vw' },
-  { src: hp(22), layer: 2, top: '60%', left: '720vw' },
+  { src: hp(19), layer: 2, top: '20%', left: '480vw' },
+  { src: hp(21), layer: 2, top: '5%', left: '620vw' },
   // layer 3 — small, fast
   { src: hp(23), layer: 3, top: '65%', left: '25vw' },
-  { src: hp(24), layer: 3, top: '8%', left: '115vw' },
   { src: hp(25), layer: 3, top: '70%', left: '200vw' },
-  { src: hp(0), layer: 3, top: '15%', left: '340vw' },
-  { src: hp(1), layer: 3, top: '60%', left: '440vw' },
-  { src: hp(2), layer: 3, top: '30%', left: '500vw' },
+  { src: hp(1), layer: 3, top: '60%', left: '420vw' },
   { src: hp(3), layer: 3, top: '72%', left: '580vw' },
-  { src: hp(4), layer: 3, top: '12%', left: '660vw' },
-  { src: hp(5), layer: 3, top: '55%', left: '730vw' },
+  { src: hp(4), layer: 3, top: '12%', left: '700vw' },
 ];
 
 // Speed multiplier per layer: back=slowest, front=fastest
@@ -490,6 +389,7 @@ function AthletesGallery() {
   useEffect(() => {
     let ticking = false;
     let sectionH = 0;
+    let sectionTop = 0;
     let totalTravel = 0;
     let vh = window.innerHeight;
     let imageEntries = [];
@@ -501,6 +401,7 @@ function AthletesGallery() {
       if (!section || !track) return;
       vh = window.innerHeight;
       sectionH = section.offsetHeight;
+      sectionTop = section.getBoundingClientRect().top + window.scrollY;
       totalTravel = track.scrollWidth - vh;
       imageEntries = Array.from(track.querySelectorAll('.tl-ag-img')).map((el) => ({
         el,
@@ -509,12 +410,11 @@ function AthletesGallery() {
     };
 
     const update = () => {
-      const section = sectionRef.current;
       const track = trackRef.current;
-      if (!section || !track) return;
+      if (!track) return;
 
-      const rect = section.getBoundingClientRect();
-      const scrolled = -rect.top;
+      // Cheap: a scrollY read plus arithmetic. No layout-triggering rect read.
+      const scrolled = window.scrollY - sectionTop;
 
       const fadeStart = vh * -0.9;
       const fadeEnd = vh * -0.2;
@@ -728,7 +628,6 @@ function LandingFooter() {
 export default function ShowcaseLandingScreen() {
   const [images, setImages] = useState(FALLBACK_IMAGES);
   const [current, setCurrent] = useState(0);
-  const [heroOpacity, setHeroOpacity] = useState(1);
 
   useEffect(() => {
     getMainHeroLandingImages().then((imgs) => {
@@ -744,8 +643,17 @@ export default function ShowcaseLandingScreen() {
     return () => clearInterval(id);
   }, [images.length]);
 
-  // Fade hero on scroll
+  // Preload the next slide into HTTP cache so the swap is instant.
   useEffect(() => {
+    if (images.length <= 1) return;
+    const next = (current + 1) % images.length;
+    const img = new Image();
+    img.src = images[next];
+  }, [current, images]);
+
+  // Hero fade — driven by a CSS variable on <html>. No React re-render per scroll tick.
+  useEffect(() => {
+    const root = document.documentElement;
     let ticking = false;
     const onScroll = () => {
       if (ticking) return;
@@ -756,37 +664,32 @@ export default function ShowcaseLandingScreen() {
         const fadeStart = vh * 0.3;
         const fadeEnd = vh * 0.85;
         const p = Math.min(Math.max((y - fadeStart) / (fadeEnd - fadeStart), 0), 1);
-        setHeroOpacity(1 - p);
+        root.style.setProperty('--hero-opacity', String(1 - p));
         ticking = false;
       });
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      root.style.removeProperty('--hero-opacity');
+    };
   }, []);
 
   return (
     <div className="test-landing">
       <Nav />
       <section className="tl-hero">
-        <div
-          className="tl-slideshow"
-          style={{ opacity: heroOpacity }}
-        >
-          {images.map((url, i) => (
-            <div
-              key={url}
-              className={`tl-slide ${i === current ? 'tl-slide-active' : ''}`}
-            >
-              <img
-                src={url}
-                alt=""
-                loading={i === 0 ? 'eager' : 'lazy'}
-                decoding="async"
-                fetchpriority={i === 0 ? 'high' : 'low'}
-              />
-            </div>
-          ))}
+        <div className="tl-slideshow">
+          <div key={images[current]} className="tl-slide tl-slide-active">
+            <img
+              src={images[current]}
+              alt=""
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+            />
+          </div>
           <div className="tl-slideshow-overlay" />
         </div>
         <img
@@ -794,14 +697,8 @@ export default function ShowcaseLandingScreen() {
           alt=""
           className="tl-hero-icon"
           aria-hidden="true"
-          style={{ opacity: 0.22 * heroOpacity }}
         />
-        <h1
-          className="tl-hero-statement"
-          style={{ opacity: heroOpacity }}
-        >
-          Sé lo que admiras.
-        </h1>
+        <h1 className="tl-hero-statement">Sé lo que admiras.</h1>
       </section>
 
       <div className="tl-transition" />

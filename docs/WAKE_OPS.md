@@ -72,15 +72,15 @@ Stateless jobs that post raw, structured signals to the bus. No AI, no reasoning
 
 | | |
 |---|---|
-| Type | Cloud Function, `pubsub.schedule` |
-| Trigger | Daily at 00:00 UTC (19:00 Bogotá) |
+| Type | Cloud Function Gen1, `pubsub.schedule` |
+| Trigger | Daily at 19:00 Bogotá |
 | Source | Cloud Logging API, project `wolf-20b8b` |
 | Scope | `severity >= WARNING` across all functions (Gen1 + Gen2 `api`), last 24h |
-| Output | Top N error signatures grouped by function, with delta vs 7-day rolling average |
-| State | `ops/state/logs-fingerprints.json` — rolling fingerprint → `firstSeen`, `lastSeen`, `count24h`, `count7d` |
-| Report artifact | `ops/reports/wake-logs/YYYY-MM-DD.md` — full daily report committed to repo |
+| Output | Full digest posted to `wake_ops` via `@signals_wake` — top error signatures grouped by function, with NEW vs SPIKING sections |
+| State | `ops_logs_state` Firestore collection: one doc per fingerprint with `firstSeen`, `lastSeen`, `counts` (7-day rolling window) |
+| Reports | None as files — the Telegram message IS the report. Historical browsing via Telegram scrollback + Cloud Logging queries. |
 
-**Fingerprint rule:** `{functionName} + {errorType} + normalize(message)` where `normalize` strips UUIDs, timestamps, email addresses, and numeric IDs. Same bug recurring = same fingerprint.
+**Fingerprint rule:** `sha1({functionName} + {errorType} + normalize(message))` where `normalize` strips UUIDs, timestamps, email addresses, and long numeric IDs. Same bug recurring = same fingerprint.
 
 **Telegram payload example:**
 
@@ -142,6 +142,29 @@ by emilio · wolf-20b8b
 
 Fields: target (from hook arg), short commit hash, commit subject, git author, Firebase project.
 
+#### `wake-signals-webhook` (on-demand trigger)
+
+Sits alongside the scheduled collectors. Lets you run any collector on demand by sending a command to `@signals_wake` in the `wake_ops` group.
+
+| | |
+|---|---|
+| Type | Cloud Function Gen2, HTTPS (Telegram webhook target) |
+| Trigger | Telegram POSTs to this URL when someone sends a `/command` to `@signals_wake` |
+| Auth | Verifies `X-Telegram-Bot-Api-Secret-Token` header against `TELEGRAM_WEBHOOK_SECRET`; rejects requests from any chat other than `TELEGRAM_CHAT_ID` |
+| Available commands | `/logs` — run the logs digest immediately · `/all` — run every collector in sequence · `/help` — list commands |
+| Output | Posts the collector's normal digest output back to the group, prefixed with a `[signals_wake] running /cmd...` ack |
+| Command registry | `functions/src/ops/commands.ts` — adding a new collector = one entry in this registry, and `/all` picks it up automatically |
+
+**Why this exists:** scheduled runs are great for daily digests but no use when you want to see what's happening *right now* — especially during incident investigation or local development. The webhook gives you manual escape hatches without building separate admin tooling.
+
+**One-time setup (after first deploy):**
+
+```bash
+bash scripts/ops/register-signals-webhook.sh
+```
+
+Script calls Telegram's `setWebhook` + `setMyCommands` so the bot's webhook URL points at the Cloud Function and commands autocomplete in the Telegram UI. Idempotent — safe to re-run if the URL changes.
+
 ### 3. Smart agent — `wake-ops-agent`
 
 **Hybrid architecture — each mode hosted where it makes economic sense:**
@@ -194,21 +217,13 @@ These are zero-cost today and high-cost to retrofit. Following them lets the fut
 
 ### Directory layout
 
-All ops artifacts live under `ops/` at the repo root:
+Wake Ops stores nothing in the repo filesystem beyond code. All runtime state lives in Firebase:
 
-```
-ops/
-  reports/
-    wake-logs/
-      2026-04-17.md
-      2026-04-18.md
-  state/
-    logs-fingerprints.json
-```
+- **Deploy history:** git commits with messages matching `^deploy(...):` — query via `git log --grep "^deploy("`
+- **Log digest state:** `ops_logs_state` Firestore collection — one doc per error fingerprint
+- **Log digest reports:** Telegram group scrollback (messages tagged `[wake-logs-digest]`)
 
-One `ops/` root lets a future meta-assistant read `ops/**/*.md` and reason across all projects.
-
-Deploy history is **not** stored as a file — it lives in git commits with messages matching `^deploy(...):` (see deploy notifier above). Query via `git log --grep "^deploy("`.
+If a future meta-assistant needs to reason across projects, it reads git log and queries Firestore / Telegram. No filesystem sync needed.
 
 ### Secrets
 
@@ -216,9 +231,10 @@ Stored in **Firebase Secret Manager** (never `.env`, never committed):
 
 | Secret | Used by | Stored in |
 |---|---|---|
-| `TELEGRAM_SIGNALS_BOT_TOKEN` | Collectors (log digest, future Cloud Function signals) | Firebase Secret Manager |
+| `TELEGRAM_SIGNALS_BOT_TOKEN` | Collectors (log digest, future Cloud Function signals) + signals webhook | Firebase Secret Manager |
 | `TELEGRAM_AGENT_BOT_TOKEN` | Agent Mode B (@mention Cloud Function) | Firebase Secret Manager |
-| `TELEGRAM_CHAT_ID` | Collectors + agent modes | Firebase Secret Manager |
+| `TELEGRAM_CHAT_ID` | Collectors + agent modes + signals webhook auth check | Firebase Secret Manager |
+| `TELEGRAM_WEBHOOK_SECRET` | Signals webhook (verifies requests come from Telegram, not random internet) | Firebase Secret Manager |
 | `ANTHROPIC_API_KEY` | Agent Mode B only (@mention Cloud Function) | Firebase Secret Manager |
 
 The local `notify-deploy.sh` script (run by the Firebase `postdeploy` hook on your machine) reads `TELEGRAM_SIGNALS_BOT_TOKEN` / `TELEGRAM_CHAT_ID` from a gitignored `.env.ops` in the repo root.
@@ -242,8 +258,9 @@ Phased. Each step is independently testable.
 
 ### Phase 2 — Dumb collectors
 
-3. `wake-logs-digest-cron` Cloud Function — builds, fingerprints, posts, writes report, commits state
+3. `wake-logs-digest-cron` Cloud Function — queries Cloud Logging, fingerprints errors, updates Firestore state, posts digest
 4. `wake-deploys-notify` — `scripts/ops/notify-deploy.sh` + `postdeploy` hooks wired into `firebase.json` for `functions` and `hosting` targets; logs + commits + posts on every `firebase deploy`
+5. `wake-signals-webhook` Cloud Function + `scripts/ops/register-signals-webhook.sh` — lets you run any collector on demand via `/logs`, `/all`, `/help` commands to `@signals_wake`
 
 ### Phase 3 — Smart agent (hybrid)
 
