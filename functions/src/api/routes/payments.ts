@@ -41,7 +41,7 @@ router.get("/users/me/subscriptions", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
   });
 });
 

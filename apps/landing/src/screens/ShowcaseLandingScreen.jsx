@@ -20,22 +20,10 @@ const FALLBACK_IMAGES = [
 
 /* ═══════════════════════════════════════════
    PHONE SHOWCASE SECTION
-   Scroll-driven sticky showcase.
-   Timeline:
-     0.00 – 0.05  phone + opener fade in (phone rotated 90°)
-     0.05 – 0.15  opener held
-     0.15 – 0.20  opener fades out
-     0.20 – 0.30  phone rotates 90° → 0°
-     0.30 – 0.38  phase 1 fades in
-     0.38 – 0.48  phase 1 held
-     0.48 – 0.52  swipe to phase 2 (TikTok-style vertical)
-     0.52 – 0.62  phase 2 held
-     0.62 – 0.66  swipe to phase 3
-     0.62 – 1.00  phase 3 held
-     0.78 – 1.00  phone slides up off screen; phrase 3 follows at 0.82.
-                  At progress 1.0 ps-sticky un-pins and slides up as a
-                  curtain; tl-ag-sticky pins in the same moment thanks
-                  to tl-ag's margin-top: -100vh — seamless handoff.
+   Scroll-driven sticky showcase. Phone arrives rotated 90° with the
+   Wake logo already on screen, rotates upright, then swipes through
+   the three app phases before sliding up off-screen to reveal the
+   athletes gallery pinned behind it.
    Layout:
      Desktop ≥900px : 2-col grid, phone LEFT, copy RIGHT
      Mobile  <900px : single col, copy TOP, phone BOTTOM (cut off)
@@ -47,14 +35,8 @@ const PHONE_SCREENS = [
   '/fallback/flow/events.webp',
 ];
 
-// Continuous ticker shown while the phone is rotated 90° (pre-boot). The
-// stack translates vertically, which reads as a horizontal swipe because the
-// phone is rotated. Slides are sized so 2–3 words are always visible at once,
-// creating a fluid scrolling-row feel. Final transition lands on the Wake logo.
-const HORIZONTAL_WORDS = ['Los', 'mejores', 'atletas', 'están', 'en'];
-
 const OPENER = (
-  <>Somos la <strong>plataforma</strong> para el <strong>rendimiento</strong></>
+  <>Somos la <strong>plataforma</strong> detrás del <strong>rendimiento</strong> para los <strong>mejores atletas</strong></>
 );
 
 // Each phrase is an array of { text, bold } chunks so we can split letters for
@@ -236,14 +218,14 @@ function PhoneShowcaseSection() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Phone entry — waits off-screen through nearly the whole pre-pin scroll,
-  // then slides in small and horizontal in the final stretch. Scale stays
-  // small throughout the entry and only expands during the rotation.
-  const phoneXNum = useTransform(enterProgress, [0, 0.85, 1], [110, 110, 0]);
+  // Phone entry — waits off-screen for most of pre-pin, then slides in
+  // horizontal over the final stretch. Rotation kicks in the instant the
+  // phone arrives and takes its time expanding into place.
+  const phoneXNum = useTransform(enterProgress, [0, 0.75, 1], [110, 110, 0]);
   const phoneX = useTransform(phoneXNum, (v) => `${v}vw`);
-  const phoneRotateZ = useTransform(scrollYProgress, [0.10, 0.15], [-90, 0]);
-  const desktopPhoneScale = useTransform(scrollYProgress, [0.10, 0.15], [0.70, 1]);
-  const mobilePhoneScale = useTransform(scrollYProgress, [0.10, 0.15], [0.60, 1]);
+  const phoneRotateZ = useTransform(scrollYProgress, [0, 0.12], [-90, 0]);
+  const desktopPhoneScale = useTransform(scrollYProgress, [0, 0.12], [0.70, 1]);
+  const mobilePhoneScale = useTransform(scrollYProgress, [0, 0.12], [0.60, 1]);
   const phoneScale = isMobile ? mobilePhoneScale : desktopPhoneScale;
 
   // Phone Y — slides up off the top of the viewport at the end, letting the
@@ -251,14 +233,14 @@ function PhoneShowcaseSection() {
   // Mobile: bottom-cut during phrases → rises to center → continues off screen.
   const mobilePhoneYNum = useTransform(
     scrollYProgress,
-    [0, 0.13, 0.20, 0.72, 0.78, 1.0],
+    [0, 0.08, 0.16, 0.60, 0.66, 1.0],
     [0, 0, 36, 36, 0, -120]
   );
   const mobilePhoneY = useTransform(mobilePhoneYNum, (v) => `${v}vh`);
   // Desktop: stays centered until the exit, then slides up off screen.
   const desktopPhoneYNum = useTransform(
     scrollYProgress,
-    [0, 0.78, 1.0],
+    [0, 0.66, 1.0],
     [0, 0, -120]
   );
   const desktopPhoneY = useTransform(desktopPhoneYNum, (v) => `${v}vh`);
@@ -268,27 +250,24 @@ function PhoneShowcaseSection() {
   // un-pins and slides up as a curtain, revealing tl-ag-sticky (which starts
   // pinning at the exact same scrollY thanks to tl-ag's margin-top: -100vh).
 
-  // Opener — desktop: enters from below, holds, exits upward.
-  // Mobile: fully opaque until phone covers it, then cuts out while covered (before phone moves away)
-  const desktopOpenerOpacity = useTransform(scrollYProgress, [0, 0.04, 0.15, 0.20], [0, 1, 1, 0]);
-  const mobileOpenerOpacity = useTransform(scrollYProgress, [0, 0.16, 0.19, 1], [1, 1, 0, 0]);
-  const mobileOpenerVisibility = useTransform(scrollYProgress, (v) => (v >= 0.19 ? 'hidden' : 'visible'));
+  // Opener — fully visible as the section enters, fades/slides out during
+  // early pin. Mobile hides via visibility when the phone covers it.
+  const desktopOpenerOpacity = useTransform(scrollYProgress, [0, 0.11, 0.13], [1, 1, 0]);
+  const mobileOpenerOpacity = useTransform(scrollYProgress, [0, 0.11, 0.13, 1], [1, 1, 0, 0]);
+  const mobileOpenerVisibility = useTransform(scrollYProgress, (v) => (v >= 0.13 ? 'hidden' : 'visible'));
   const openerOpacity = isMobile ? mobileOpenerOpacity : desktopOpenerOpacity;
-  const openerY = useTransform(scrollYProgress, [0, 0.05, 0.15, 0.20], [40, 0, 0, -40]);
+  const openerY = useTransform(scrollYProgress, [0, 0.11, 0.13], [0, 0, -40]);
 
 
-  // Phone-screen stack — translates vertically (reads as horizontal from the
-  // viewer because the phone is rotated). Word slides are 50% tall so two
-  // fit on the phone at once, creating a continuous ticker. Sweeps linearly
-  // from 200% (first pair of words in view) to 0% (Wake logo), then on
-  // through the app phases.
+  // Phone-screen stack — starts on the Wake logo (visible as the phone
+  // rotates in), then sweeps up through the app phases.
   const stackY = useTransform(
     scrollYProgress,
-    [0, 0.10, 0.20, 0.24, 0.34, 0.38, 0.48, 0.52],
-    ['387.5%', '0%', '0%', '-100%', '-100%', '-200%', '-200%', '-300%']
+    [0, 0.12, 0.16, 0.28, 0.32, 0.44, 0.48],
+    ['0%', '0%', '-100%', '-100%', '-200%', '-200%', '-300%']
   );
-  // Aurora background — fully visible during opener, snaps off when phone covers it at scroll 0.15
-  const auroraOpacity = useTransform(scrollYProgress, (v) => (v < 0.15 ? 1 : 0));
+  // Aurora background — fully visible during opener, snaps off when phone covers it
+  const auroraOpacity = useTransform(scrollYProgress, (v) => (v < 0.13 ? 1 : 0));
 
   // Active phrase index — driven by scroll. Phrase 1 appears as the phone
   // settles into its bottom-cut position (~0.20), in sync with the screen
@@ -296,15 +275,15 @@ function PhoneShowcaseSection() {
   const [activePhrase, setActivePhrase] = useState(-1);
   useMotionValueEvent(scrollYProgress, 'change', (v) => {
     let next = -1;
-    if (v >= 0.48) next = 2;
-    else if (v >= 0.34) next = 1;
-    else if (v >= 0.20) next = 0;
+    if (v >= 0.44) next = 2;
+    else if (v >= 0.28) next = 1;
+    else if (v >= 0.12) next = 0;
     setActivePhrase((prev) => (prev === next ? prev : next));
   });
 
   // Phrase 3 starts sliding up slightly AFTER the phone begins moving, so the
   // phone "catches up" and covers the text before they swipe up together.
-  const phrase3YNum = useTransform(scrollYProgress, [0, 0.82, 1.0], [0, 0, -100]);
+  const phrase3YNum = useTransform(scrollYProgress, [0, 0.70, 1.0], [0, 0, -100]);
   const phrase3Y = useTransform(phrase3YNum, (v) => `${v}vh`);
 
   return (
@@ -330,15 +309,6 @@ function PhoneShowcaseSection() {
               <div className="ps-phone-frame">
                 <div className="ps-phone-screen">
                   <motion.div className="ps-screen-stack" style={{ y: stackY }}>
-                    {HORIZONTAL_WORDS.map((word, i) => (
-                      <div
-                        key={word}
-                        className="ps-screen-slide ps-screen-slide-boot ps-screen-slide-word"
-                        style={{ top: `${-75 * (HORIZONTAL_WORDS.length - i)}%` }}
-                      >
-                        <span className="ps-screen-phrase">{word}</span>
-                      </div>
-                    ))}
                     <div className="ps-screen-slide ps-screen-slide-boot" style={{ top: '0%' }}>
                       <img src={wakeLogo} alt="Wake" className="ps-screen-boot-logo" />
                     </div>

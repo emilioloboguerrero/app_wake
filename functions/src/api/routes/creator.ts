@@ -52,7 +52,7 @@ router.get("/creator/clients", async (req, res) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    const clientDocs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const clientDocs = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }));
     const userIds = [...new Set(
       clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
     )];
@@ -111,7 +111,7 @@ router.get("/creator/clients", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   // Enrich each client with their one_on_one enrolled programs
-  const clientDocs = docs.map((d) => ({ id: d.id, ...d.data() }));
+  const clientDocs = docs.map((d) => ({ ...d.data(), id: d.id }));
   const userIds = [...new Set(clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean))];
 
   const userDocsMap: Record<string, Record<string, unknown>> = {};
@@ -273,7 +273,7 @@ router.get("/creator/clients-overview", async (req, res) => {
 
   const creatorCourseIds = new Set(coursesSnap.docs.map((d) => d.id));
 
-  const clientDocs = clientsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const clientDocs = clientsSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
   const clientUserIds = [...new Set(
     clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
   )];
@@ -763,7 +763,7 @@ router.get("/creator/clients/:clientId", async (req, res) => {
       planAssignments: v.planAssignments ?? null,
     }));
 
-  const notes = notesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const notes = notesSnap.docs.map(d => ({ ...d.data(), id: d.id }));
 
   res.json({
     data: {
@@ -854,7 +854,7 @@ router.get("/creator/courses", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
   });
 });
 
@@ -1208,28 +1208,28 @@ router.post("/creator/programs/:programId/duplicate", async (req, res) => {
 
   for (const mDoc of modulesSnap.docs) {
     const newModRef = newRef.collection("modules").doc();
-    batch.set(newModRef, { ...mDoc.data(), created_at: FieldValue.serverTimestamp() });
+    batch.set(newModRef, { ...mDoc.data(), id: newModRef.id, created_at: FieldValue.serverTimestamp() });
     count++;
     if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
 
     const sessionsSnap = await mDoc.ref.collection("sessions").get();
     for (const sDoc of sessionsSnap.docs) {
       const newSessRef = newModRef.collection("sessions").doc();
-      batch.set(newSessRef, { ...sDoc.data(), created_at: FieldValue.serverTimestamp() });
+      batch.set(newSessRef, { ...sDoc.data(), id: newSessRef.id, created_at: FieldValue.serverTimestamp() });
       count++;
       if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
 
       const exSnap = await sDoc.ref.collection("exercises").get();
       for (const eDoc of exSnap.docs) {
         const newExRef = newSessRef.collection("exercises").doc();
-        batch.set(newExRef, { ...eDoc.data(), created_at: FieldValue.serverTimestamp() });
+        batch.set(newExRef, { ...eDoc.data(), id: newExRef.id, created_at: FieldValue.serverTimestamp() });
         count++;
         if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
 
         const setsSnap = await eDoc.ref.collection("sets").get();
         for (const setDoc of setsSnap.docs) {
           const newSetRef = newExRef.collection("sets").doc();
-          batch.set(newSetRef, { ...setDoc.data(), created_at: FieldValue.serverTimestamp() });
+          batch.set(newSetRef, { ...setDoc.data(), id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
           count++;
           if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
         }
@@ -1327,7 +1327,7 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
   });
 });
 
@@ -2230,7 +2230,7 @@ router.get("/creator/clients/:clientId/nutrition/diary", async (req, res) => {
 
   query = query.orderBy("date", "desc").limit(30);
   const snapshot = await query.get();
-  res.json({ data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  res.json({ data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })) });
 });
 
 // ─── Week Key Utilities (ported from apps/creator-dashboard/src/utils/weekCalculation.js) ──
@@ -2326,10 +2326,10 @@ async function readSessionTree(
       const exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
         })
       );
-      return { id: sDoc.id, ...sDoc.data(), exercises };
+      return { ...sDoc.data(), id: sDoc.id, exercises };
     })
   );
 }
@@ -2407,7 +2407,7 @@ async function ensureClientCopy(
           exercises = await Promise.all(
             libExSnap.docs.map(async (eDoc) => {
               const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-              return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+              return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
             })
           );
         }
@@ -2416,7 +2416,7 @@ async function ensureClientCopy(
       exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
         })
       );
       // Resolve library session metadata if needed
@@ -2567,7 +2567,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
           return {
             id: eDoc.id,
             ...eDoc.data(),
-            sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })),
+            sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
           };
         })
       );
@@ -2599,7 +2599,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
                   const setRef = exRef.collection("sets").doc();
                   batch.set(setRef, { ...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
                   batchCount++;
-                  sets.push({ id: setRef.id, ...setDoc.data() });
+                  sets.push({ ...setDoc.data(), id: setRef.id });
                 }
                 if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
@@ -2767,7 +2767,7 @@ router.get("/creator/clients/:clientId/client-sessions", async (req, res) => {
   query = query.orderBy("date", "asc").limit(100);
   const snap = await query.get();
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
 });
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId
@@ -2869,12 +2869,12 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
       return {
         id: eDoc.id,
         ...eDoc.data(),
-        sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })),
+        sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
       };
     })
   );
 
-  res.json({ data: { id: doc.id, ...doc.data(), exercises } });
+  res.json({ data: { ...doc.data(), id: doc.id, exercises } });
 });
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId/content
@@ -3123,7 +3123,7 @@ router.get("/creator/plans/:planId", async (req, res) => {
     })
   );
 
-  res.json({ data: { id: planDoc.id, ...planDoc.data(), modules } });
+  res.json({ data: { ...planDoc.data(), id: planDoc.id, modules } });
 });
 
 // PATCH /creator/plans/:planId
@@ -3344,6 +3344,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/duplicate", async (req, re
 
   batch.set(newModRef, {
     ...sourceModData,
+    id: newModRef.id,
     title: `Semana ${modulesCount + 1}`,
     order: maxOrder + 1,
     created_at: FieldValue.serverTimestamp(),
@@ -3354,14 +3355,14 @@ router.post("/creator/plans/:planId/modules/:moduleId/duplicate", async (req, re
   for (let si = 0; si < sessionsSnap.docs.length; si++) {
     const sDoc = sessionsSnap.docs[si];
     const newSessRef = newModRef.collection("sessions").doc();
-    batch.set(newSessRef, { ...sDoc.data(), created_at: FieldValue.serverTimestamp() });
+    batch.set(newSessRef, { ...sDoc.data(), id: newSessRef.id, created_at: FieldValue.serverTimestamp() });
     count++;
     if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
 
     const exSnap = exercisesBySession[si];
     for (const eDoc of exSnap.docs) {
       const newExRef = newSessRef.collection("exercises").doc();
-      batch.set(newExRef, { ...eDoc.data(), created_at: FieldValue.serverTimestamp() });
+      batch.set(newExRef, { ...eDoc.data(), id: newExRef.id, created_at: FieldValue.serverTimestamp() });
       count++;
       if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
 
@@ -3369,7 +3370,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/duplicate", async (req, re
       if (sSnap) {
         for (const setDoc of sSnap.docs) {
           const newSetRef = newExRef.collection("sets").doc();
-          batch.set(newSetRef, { ...setDoc.data(), created_at: FieldValue.serverTimestamp() });
+          batch.set(newSetRef, { ...setDoc.data(), id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
           count++;
           if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
         }
@@ -3488,7 +3489,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
         exerciseId: eDoc.id,
         id: eDoc.id,
         ...eDoc.data(),
-        sets: setsSnap.docs.map((s) => ({ setId: s.id, id: s.id, ...s.data() })),
+        sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })),
       };
     })
   );
@@ -3522,7 +3523,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
               const setRef = exRef.collection("sets").doc();
               batch.set(setRef, { ...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
               batchCount++;
-              sets.push({ setId: setRef.id, id: setRef.id, ...sDoc.data() });
+              sets.push({ ...sDoc.data(), setId: setRef.id, id: setRef.id });
             }
             if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
@@ -3549,7 +3550,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
   }
 
   exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
-  res.json({ data: { sessionId: sessionDoc.id, id: sessionDoc.id, ...sessionDoc.data(), exercises } });
+  res.json({ data: { ...sessionDoc.data(), sessionId: sessionDoc.id, id: sessionDoc.id, exercises } });
 });
 
 // PATCH /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
@@ -3998,10 +3999,10 @@ router.get("/creator/library/sessions", async (req, res) => {
       const exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { exerciseId: eDoc.id, id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ setId: s.id, id: s.id, ...s.data() })) };
+          return { ...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })) };
         })
       );
-      return { sessionId: d.id, id: d.id, ...d.data(), exercises };
+      return { ...d.data(), sessionId: d.id, id: d.id, exercises };
     })
   );
 
@@ -4094,11 +4095,11 @@ router.get("/creator/library/sessions/:sessionId", async (req, res) => {
   const exercises = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { exerciseId: eDoc.id, id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ setId: s.id, id: s.id, ...s.data() })) };
+      return { ...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })) };
     })
   );
 
-  res.json({ data: { sessionId: doc.id, id: doc.id, ...doc.data(), exercises } });
+  res.json({ data: { ...doc.data(), sessionId: doc.id, id: doc.id, exercises } });
 });
 
 // PATCH /creator/library/sessions/:sessionId
@@ -4339,7 +4340,7 @@ router.get("/creator/library/modules", async (req, res) => {
     .orderBy("created_at", "desc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ moduleId: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), moduleId: d.id })) });
 });
 
 router.post("/creator/library/modules", async (req, res) => {
@@ -4363,7 +4364,7 @@ router.get("/creator/library/modules/:moduleId", async (req, res) => {
   const doc = await db.collection("creator_libraries").doc(auth.userId).collection("modules").doc(req.params.moduleId).get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
 
-  res.json({ data: { moduleId: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), moduleId: doc.id } });
 });
 
 router.patch("/creator/library/modules/:moduleId", async (req, res) => {
@@ -5076,7 +5077,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
   // Light session read: only session-level docs (no exercises/sets — calendar only needs title/id/dayIndex)
   const readSessionList = async (sessionsCol: FirebaseFirestore.CollectionReference): Promise<Array<Record<string, unknown>>> => {
     const snap = await sessionsCol.orderBy("order", "asc").get();
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
   };
 
   const [/* weeksDone */, dateSessionsSnap, historySnap] = await Promise.all([
@@ -5201,7 +5202,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
   ]);
 
 
-  const dateSessions: Array<Record<string, unknown>> = dateSessionsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const dateSessions: Array<Record<string, unknown>> = dateSessionsSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
 
   // Enrich date-assigned sessions with image_url from library sessions
   const libSessionRefs = dateSessions.filter(
@@ -5266,7 +5267,7 @@ router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async 
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este plan no tiene semanas");
   }
 
-  const modules = modulesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const modules = modulesSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
   const weekKeys = getConsecutiveWeekKeys(startWeekKey, modules.length);
 
   // 2. Ensure client is enrolled
@@ -5467,7 +5468,7 @@ router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessi
   const exercises = await Promise.all(
     libExSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+      return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
     })
   );
 
@@ -6017,7 +6018,7 @@ router.get("/creator/programs/:programId/modules", async (req, res) => {
     .orderBy("order", "asc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ moduleId: d.id, id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), moduleId: d.id, id: d.id })) });
 });
 
 // POST /creator/programs/:programId/modules
@@ -6121,7 +6122,7 @@ router.get("/creator/programs/:programId/modules/:moduleId/sessions", async (req
     .orderBy("order", "asc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ sessionId: d.id, id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), sessionId: d.id, id: d.id })) });
 });
 
 // POST /creator/programs/:programId/modules/:moduleId/sessions
@@ -6273,7 +6274,7 @@ router.get("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/e
         exerciseId: d.id,
         id: d.id,
         ...d.data(),
-        sets: setsSnap.docs.map((s) => ({ setId: s.id, id: s.id, ...s.data() })),
+        sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })),
       };
     })
   );
@@ -6596,7 +6597,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
             exercises = await Promise.all(
               libExSnap.docs.map(async (eDoc) => {
                 const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-                return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+                return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
               })
             );
           }
@@ -6605,7 +6606,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
         exercises = await Promise.all(
           exSnap.docs.map(async (eDoc) => {
             const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-            return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+            return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
           })
         );
         if (sourceLibId) {
@@ -6771,7 +6772,7 @@ router.get("/creator/exercises/libraries", async (req, res) => {
     .where("creator_id", "==", auth.userId)
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
 });
 
 // GET /creator/exercises/libraries/:libraryId — single library by ID
@@ -6784,7 +6785,7 @@ router.get("/creator/exercises/libraries/:libraryId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), id: doc.id } });
 });
 
 // POST /creator/exercises/libraries — create new library
@@ -7071,7 +7072,7 @@ router.get("/creator/library/objective-presets", async (req, res) => {
     .orderBy("created_at", "desc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
 });
 
 // POST /creator/library/objective-presets — create preset
@@ -7237,7 +7238,7 @@ async function ensureProgramCopy(
           exercises = await Promise.all(
             libExSnap.docs.map(async (eDoc) => {
               const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-              return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+              return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
             })
           );
         }
@@ -7246,7 +7247,7 @@ async function ensureProgramCopy(
       exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
         })
       );
       if (sourceLibId && creatorId) {
@@ -7342,7 +7343,7 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
 
   const readSessionList = async (sessionsCol: FirebaseFirestore.CollectionReference): Promise<Array<Record<string, unknown>>> => {
     const snap = await sessionsCol.orderBy("order", "asc").get();
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
   };
 
   await Promise.all(
@@ -7460,7 +7461,7 @@ router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este plan no tiene semanas");
   }
 
-  const modules = modulesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const modules = modulesSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
   const weekKeys = getConsecutiveWeekKeys(startWeekKey, modules.length);
 
   // 2. Write planAssignments to the course document
@@ -7566,7 +7567,7 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
       let exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
         })
       );
 
@@ -7597,7 +7598,7 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
                   const setRef = exRef.collection("sets").doc();
                   batch.set(setRef, { ...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
                   batchCount++;
-                  sets.push({ id: setRef.id, ...setDoc.data() });
+                  sets.push({ ...setDoc.data(), id: setRef.id });
                 }
                 if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
 
@@ -7788,7 +7789,7 @@ router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, 
   const exercises = await Promise.all(
     libExSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { id: eDoc.id, ...eDoc.data(), sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })) };
+      return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
     })
   );
 

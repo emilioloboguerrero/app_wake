@@ -1117,7 +1117,7 @@ router.get("/workout/courses/:courseId", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
-  res.json({ data: { id: courseDoc.id, ...courseDoc.data() } });
+  res.json({ data: { ...courseDoc.data(), id: courseDoc.id } });
 });
 
 // POST /workout/complete — atomic session completion
@@ -1445,7 +1445,7 @@ router.get("/workout/sessions", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: docs.map((d) => ({ ...d.data(), id: d.id })),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -1467,7 +1467,7 @@ router.get("/workout/sessions/:completionId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), id: doc.id } });
 });
 
 // PATCH /workout/sessions/:completionId/notes
@@ -2143,7 +2143,7 @@ router.get("/workout/programs/:courseId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  res.json({ data: { id: courseDoc.id, ...courseDoc.data() } });
+  res.json({ data: { ...courseDoc.data(), id: courseDoc.id } });
 });
 
 // GET /workout/programs/:courseId/modules — list modules for a course
@@ -2213,7 +2213,7 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
         moduleEntry.sessions = await Promise.all(
           sessionsSnap.docs.map(async (sDoc) => {
             const exercises = await loadExerciseTree(sDoc.ref);
-            return { id: sDoc.id, ...sDoc.data(), exercises };
+            return { ...sDoc.data(), id: sDoc.id, exercises };
           })
         );
       }
@@ -2234,7 +2234,7 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     .get();
 
   if (!includeSessions) {
-    const modules = modulesSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const modules = modulesSnap.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
     res.json({ data: modules });
     return;
   }
@@ -2250,10 +2250,10 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
       const sessions = await Promise.all(
         sessionsSnap.docs.map(async (sDoc) => {
           const exercises = await loadExerciseTree(sDoc.ref);
-          return { id: sDoc.id, ...sDoc.data(), exercises };
+          return { ...sDoc.data(), id: sDoc.id, exercises };
         })
       );
-      return { id: mDoc.id, ...mDoc.data(), sessions };
+      return { ...mDoc.data(), id: mDoc.id, sessions };
     })
   );
   res.json({ data: modules });
@@ -2286,7 +2286,7 @@ router.get(
         .get();
 
       if (overrideDoc.exists) {
-        res.json({ data: { id: overrideDoc.id, ...overrideDoc.data() } });
+        res.json({ data: { ...overrideDoc.data(), id: overrideDoc.id } });
         return;
       }
     }
@@ -2322,7 +2322,7 @@ router.get(
         .get();
 
       if (overrideDoc.exists) {
-        res.json({ data: { id: overrideDoc.id, ...overrideDoc.data() } });
+        res.json({ data: { ...overrideDoc.data(), id: overrideDoc.id } });
         return;
       }
     }
@@ -2360,7 +2360,7 @@ router.get(
         .get();
 
       if (overrideDoc.exists) {
-        res.json({ data: { id: overrideDoc.id, ...overrideDoc.data() } });
+        res.json({ data: { ...overrideDoc.data(), id: overrideDoc.id } });
         return;
       }
     }
@@ -2416,7 +2416,7 @@ router.get("/workout/client-programs/:programId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa de cliente no encontrado");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), id: doc.id } });
 });
 
 // POST /workout/client-programs/:programId
@@ -2534,7 +2534,7 @@ router.get("/workout/planned-session", async (req, res) => {
   }
 
   const doc = snap.docs[0];
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), id: doc.id } });
 });
 
 // GET /workout/calendar/planned — planned session dates in range
@@ -2745,7 +2745,7 @@ async function loadExerciseTree(parentRef: FirebaseFirestore.DocumentReference) 
       return {
         id: eDoc.id,
         ...eDoc.data(),
-        sets: setsSnap.docs.map((s) => ({ id: s.id, ...s.data() })),
+        sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
       };
     })
   );
@@ -2765,7 +2765,7 @@ router.get("/workout/client-session-content/:clientSessionId", async (req, res) 
   }
 
   const exercises = await loadExerciseTree(docRef);
-  res.json({ data: { id: doc.id, ...doc.data(), exercises } });
+  res.json({ data: { ...doc.data(), id: doc.id, exercises } });
 });
 
 // GET /workout/client-plan-content/:userId/:programId/:weekKey
@@ -2790,7 +2790,7 @@ router.get("/workout/client-plan-content/:userId/:programId/:weekKey", async (re
   const sessions = await Promise.all(
     sessionsSnap.docs.map(async (sDoc) => {
       const exercises = await loadExerciseTree(sDoc.ref);
-      return { id: sDoc.id, ...sDoc.data(), exercises };
+      return { ...sDoc.data(), id: sDoc.id, exercises };
     })
   );
 
@@ -2816,7 +2816,7 @@ router.get("/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", 
   }
 
   const exercises = await loadExerciseTree(sessionRef);
-  res.json({ data: { id: sessionDoc.id, ...sessionDoc.data(), exercises } });
+  res.json({ data: { ...sessionDoc.data(), id: sessionDoc.id, exercises } });
 });
 
 // GET /library/sessions/:sessionId — library session with full exercise tree
@@ -2841,7 +2841,7 @@ router.get("/library/sessions/:sessionId", async (req, res) => {
   }
 
   const exercises = await loadExerciseTree(sessionRef);
-  res.json({ data: { id: doc.id, ...doc.data(), exercises } });
+  res.json({ data: { ...doc.data(), id: doc.id, exercises } });
 });
 
 export default router;

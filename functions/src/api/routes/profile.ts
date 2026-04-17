@@ -677,7 +677,7 @@ router.get("/courses", async (req, res) => {
   const snapshot = await query.get();
 
   res.json({
-    data: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
+    data: snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id })),
   });
 });
 

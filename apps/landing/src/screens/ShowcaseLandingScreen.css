@@ -274,7 +274,7 @@
 .ps-section {
   position: relative;
   width: 100%;
-  height: 700vh;
+  height: 300vh;
   z-index: 2;
 }
 
@@ -483,8 +483,7 @@
   position: absolute;
   left: 2vw;
   right: 6vw;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 32%;
   margin: 0;
   font-family: 'Montserrat', sans-serif;
   font-size: clamp(28px, 3.2vw, 48px);
@@ -545,7 +544,7 @@
   width: 100%;
   height: 400vh;
   background: #1a1a1a;
-  margin-top: -50vh;
+  margin-top: -70vh;
   z-index: 3;
 }
 
@@ -908,7 +907,7 @@
 
   /* Phone showcase — mobile */
   .ps-section {
-    height: 700vh;
+    height: 300vh;
   }
 
   .ps-grid {
@@ -942,13 +941,12 @@
     margin-top: 0;
   }
 
-  /* Opener: large, centered in viewport; phone slides in over it */
+  /* Opener: positioned near the top of the viewport */
   .ps-opener {
     position: absolute;
     left: 24px;
     right: 24px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 22%;
     margin: 0;
     font-size: clamp(28px, 7vw, 40px);
     font-weight: 500;

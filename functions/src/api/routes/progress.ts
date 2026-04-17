@@ -41,7 +41,7 @@ router.get("/progress/body-log", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: docs.map((d) => ({ ...d.data(), id: d.id })),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -66,7 +66,7 @@ router.get("/progress/body-log/:date", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), id: doc.id } });
 });
 
 // PUT /progress/body-log/:date (idempotent)
@@ -287,7 +287,7 @@ router.get("/progress/readiness", async (req, res) => {
   const snapshot = await query.get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
   });
 });
 
@@ -305,7 +305,7 @@ router.get("/progress/readiness/:date", async (req, res) => {
     .doc(req.params.date)
     .get();
 
-  res.json({ data: doc.exists ? { id: doc.id, ...doc.data() } : null });
+  res.json({ data: doc.exists ? { ...doc.data(), id: doc.id } : null });
 });
 
 // PUT /progress/readiness/:date (idempotent)
@@ -398,7 +398,7 @@ router.get("/progress/user-sessions", async (req, res) => {
     .limit(limitParam)
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, ...d.data() })) });
+  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
 });
 
 // GET /progress/session/:sessionId — single session history entry
@@ -417,7 +417,7 @@ router.get("/progress/session/:sessionId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  res.json({ data: { id: doc.id, ...doc.data() } });
+  res.json({ data: { ...doc.data(), id: doc.id } });
 });
 
 // GET /progress/prs — alias for GET /workout/prs

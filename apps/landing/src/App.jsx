@@ -9,7 +9,6 @@ import LandingDesignScreen from './screens/LandingDesignScreen';
 import TestLandingScreen, { Nav } from './screens/TestLandingScreen';
 import NotFoundScreen from './screens/NotFoundScreen';
 import ShowcaseLandingScreen from './screens/ShowcaseLandingScreen';
-import HeroShell from './screens/heroes/HeroShell';
 
 function AppContent() {
   const location = useLocation();
@@ -18,15 +17,6 @@ function AppContent() {
     return (
       <Routes>
         <Route path="/design" element={<LandingDesignScreen />} />
-      </Routes>
-    );
-  }
-
-  if (location.pathname.startsWith('/heroes')) {
-    return (
-      <Routes>
-        <Route path="/heroes/:heroId" element={<HeroShell />} />
-        <Route path="/heroes" element={<Navigate to="/heroes/main" replace />} />
       </Routes>
     );
   }

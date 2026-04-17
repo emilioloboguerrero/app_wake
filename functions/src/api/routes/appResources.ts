@@ -25,7 +25,7 @@ router.get("/app-resources", async (req, res) => {
   }
 
   const snapshot = await db.collection("app_resources").get();
-  const resources = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const resources = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }));
 
   // Only cache if within size bounds
   const jsonStr = JSON.stringify(resources);

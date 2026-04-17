@@ -133,7 +133,7 @@ router.get("/video-exchanges", async (req, res) => {
   query = query.orderBy("lastMessageAt", "desc").limit(100);
 
   const snap = await query.get();
-  let exchanges = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  let exchanges = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
 
   // Filter oneOnOneClientId client-side to avoid extra composite index
   if (oneOnOneClientId) {
@@ -156,7 +156,7 @@ router.get("/video-exchanges/:id", async (req, res) => {
     .orderBy("createdAt", "asc")
     .get();
 
-  const messages = messagesSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const messages = messagesSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
 
   res.json({ data: { exchange, messages } });
 });
