@@ -568,7 +568,7 @@ const AddExerciseCard = memo(({ exercise, index, isExpanded, onCardTap, onVideoT
 });
 
 // Custom hook for set data management (consolidated state)
-const useSetData = (workout) => {
+const useSetData = (workout, routeCheckpoint, setCurrentExerciseIndex) => {
   const [setData, setSetData] = useState({});
   const [setValidationErrors, setSetValidationErrors] = useState({});
   
@@ -579,67 +579,96 @@ const useSetData = (workout) => {
     return !isNaN(numValue) && numValue >= 0; // Must be a positive number
   };
   
-  // Initialize set data structure based on measures or database fields
-  // CRITICAL: Defer this expensive operation to avoid blocking React commit phase
+  // Initialize set data structure based on measures or database fields.
+  // When resuming from a checkpoint, merge checkpoint values into the template
+  // so that (a) every set key exists with the correct field names and
+  // (b) user-entered data from the checkpoint is preserved.
   useEffect(() => {
-    const effectStartTime = performance.now();
     if (workout?.exercises && Object.keys(setData).length === 0) {
       let isMounted = true;
-      // Defer expensive data initialization to avoid blocking paint
       const timeoutId = setTimeout(() => {
         if (!isMounted) return;
-        const deferredStartTime = performance.now();
-      const initialSetData = {};
-      workout.exercises.forEach((exercise, exerciseIndex) => {
-        if (exercise.sets) {
-          exercise.sets.forEach((set, setIndex) => {
-            const key = `${exerciseIndex}_${setIndex}`;
-            const setFields = {};
-            
-            if (exercise.measures && exercise.measures.length > 0) {
-              exercise.measures.forEach(field => {
-                setFields[field] = '';
-              });
-            } else {
-              Object.keys(set).forEach(field => {
-                const skipFields = [
-                  'id', 'order', 'notes', 'description', 'title', 'name',
-                  'created_at', 'updated_at', 'createdAt', 'updatedAt',
-                  'type', 'status', 'category', 'tags', 'metadata'
-                ];
-                
-                if (!skipFields.includes(field)) {
-                  setFields[field] = '';
-                }
-              });
-            }
-            
-            initialSetData[key] = setFields;
+
+        // Build the remapped checkpoint data first (if resuming)
+        let checkpointData = null;
+        if (routeCheckpoint?.completedSets && Object.keys(routeCheckpoint.completedSets).length > 0) {
+          const cpExercises = routeCheckpoint.exercises || [];
+          const currentExercises = workout.exercises || [];
+          const oldToNew = new Map();
+          cpExercises.forEach((cpEx, oldIdx) => {
+            if (!cpEx?.exerciseId) return;
+            const newIdx = currentExercises.findIndex(
+              e => (e.id || e.exerciseId) === cpEx.exerciseId
+            );
+            if (newIdx !== -1) oldToNew.set(oldIdx, newIdx);
           });
+          checkpointData = {};
+          Object.entries(routeCheckpoint.completedSets).forEach(([key, value]) => {
+            const [exIdxStr, setIdxStr] = key.split('_');
+            const oldExIdx = parseInt(exIdxStr, 10);
+            const newExIdx = oldToNew.has(oldExIdx) ? oldToNew.get(oldExIdx) : oldExIdx;
+            checkpointData[`${newExIdx}_${setIdxStr}`] = value;
+          });
+
+          // Remap current exercise index if exercises were reordered
+          const oldCurEx = routeCheckpoint.currentExerciseIndex;
+          if (typeof oldCurEx === 'number' && oldToNew.has(oldCurEx)) {
+            setCurrentExerciseIndex(oldToNew.get(oldCurEx));
+          }
         }
-      });
-        
-        // Use startTransition to mark this as non-urgent
+
+        const initialSetData = {};
+        workout.exercises.forEach((exercise, exerciseIndex) => {
+          if (exercise.sets) {
+            exercise.sets.forEach((set, setIndex) => {
+              const key = `${exerciseIndex}_${setIndex}`;
+              const setFields = {};
+
+              if (exercise.measures && exercise.measures.length > 0) {
+                exercise.measures.forEach(field => {
+                  setFields[field] = '';
+                });
+              } else {
+                Object.keys(set).forEach(field => {
+                  const skipFields = [
+                    'id', 'order', 'notes', 'description', 'title', 'name',
+                    'created_at', 'updated_at', 'createdAt', 'updatedAt',
+                    'type', 'status', 'category', 'tags', 'metadata'
+                  ];
+                  if (!skipFields.includes(field)) {
+                    setFields[field] = '';
+                  }
+                });
+              }
+
+              // Merge checkpoint data over the template (preserves user-entered values)
+              if (checkpointData && checkpointData[key]) {
+                const cpValues = checkpointData[key];
+                Object.keys(setFields).forEach(field => {
+                  if (cpValues[field] !== undefined && cpValues[field] !== '') {
+                    setFields[field] = cpValues[field];
+                  }
+                });
+              }
+
+              initialSetData[key] = setFields;
+            });
+          }
+        });
+
         if (isMounted) {
           startTransition(() => {
-      setSetData(initialSetData);
+            setSetData(initialSetData);
           });
         }
-        
-        const deferredDuration = performance.now() - deferredStartTime;
-        if (deferredDuration > 50) {
-        }
       }, 0);
-      
+
       return () => {
         isMounted = false;
         clearTimeout(timeoutId);
       };
     }
-    const effectDuration = performance.now() - effectStartTime;
-    if (effectDuration > 50) {
-    }
-  }, [workout]);
+  }, [workout]); // eslint-disable-line react-hooks/exhaustive-deps
   
   const updateSetData = useCallback((exerciseIndex, setIndex, field, value) => {
     const key = `${exerciseIndex}_${setIndex}`;
@@ -974,7 +1003,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   
   // TEST VERSION 8: Re-enable useSetData hook
   // Use consolidated set data management
-  const { setData, setValidationErrors, updateSetData: updateSetDataLocal, hasValidationErrors, setSetData } = useSetData(workout);
+  const { setData, setValidationErrors, updateSetData: updateSetDataLocal, hasValidationErrors, setSetData } = useSetData(workout, routeCheckpoint, setCurrentExerciseIndex);
   
   // TEST VERSION 7: Re-enable swap modal video player
   // Swap modal video player callback - memoized
@@ -1162,7 +1191,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           intensity: s.intensity || null,
         })),
       })),
-      completedSets: { ...setData },
+      completedSets: Object.fromEntries(
+        Object.entries(setData).filter(([, v]) =>
+          v && typeof v === 'object' && Object.values(v).some(val => val !== '' && val !== null && val !== undefined)
+        )
+      ),
       userNotes: sessionNotes,
       elapsedSeconds: totalElapsedSeconds,
     };
@@ -1193,12 +1226,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }, 10_000);
   }, [buildCheckpoint]);
 
-  // Write initial checkpoint on mount
+  // Write initial checkpoint once setData is populated (not just on workout load,
+  // because setData initialization is deferred with setTimeout)
+  const setDataReady = Object.keys(setData).length > 0;
   useEffect(() => {
-    if (workout?.exercises?.length) {
+    if (workout?.exercises?.length && setDataReady) {
       saveCheckpointToLocalStorage();
     }
-  }, [!!workout]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setDataReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Checkpoint on visibility change / pagehide (localStorage only, no API)
   useEffect(() => {
@@ -1240,40 +1275,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }, 2000);
   }, [sessionNotes]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Restore state from checkpoint (C5)
-  // Remap checkpoint indices (exerciseIndex_setIndex) to current workout indices
-  // by exerciseId. Necessary because the freshly fetched workout on resume may
-  // order exercises differently than the checkpoint — mismatched indices would
-  // leave setData keys pointing at the wrong exercises, causing the completion
-  // filter to drop every exercise and save an empty session.
+  // Restore non-setData state from checkpoint (notes, timer, position).
+  // setData restoration is handled in the initialization effect above to avoid
+  // the race condition where deferred init would overwrite restored values.
   useEffect(() => {
     if (!routeCheckpoint) return;
-    if (routeCheckpoint.completedSets && Object.keys(routeCheckpoint.completedSets).length > 0) {
-      const cpExercises = routeCheckpoint.exercises || [];
-      const currentExercises = workout?.exercises || [];
-      const oldToNew = new Map();
-      cpExercises.forEach((cpEx, oldIdx) => {
-        if (!cpEx?.exerciseId) return;
-        const newIdx = currentExercises.findIndex(
-          e => (e.id || e.exerciseId) === cpEx.exerciseId
-        );
-        if (newIdx !== -1) oldToNew.set(oldIdx, newIdx);
-      });
-
-      const remapped = {};
-      Object.entries(routeCheckpoint.completedSets).forEach(([key, value]) => {
-        const [exIdxStr, setIdxStr] = key.split('_');
-        const oldExIdx = parseInt(exIdxStr, 10);
-        const newExIdx = oldToNew.has(oldExIdx) ? oldToNew.get(oldExIdx) : oldExIdx;
-        remapped[`${newExIdx}_${setIdxStr}`] = value;
-      });
-      setSetData(remapped);
-
-      const oldCurEx = routeCheckpoint.currentExerciseIndex;
-      if (typeof oldCurEx === 'number' && oldToNew.has(oldCurEx)) {
-        setCurrentExerciseIndex(oldToNew.get(oldCurEx));
-      }
-    }
     if (routeCheckpoint.userNotes) {
       setSessionNotes(routeCheckpoint.userNotes);
     }
@@ -2218,13 +2224,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setConfirmModalVisible(false);
           setConfirmModalConfig(null);
           try {
-            
+
             // Cancel the current session and clear local data
             await sessionManager.cancelSession();
-            
+            try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+            import('../utils/apiClient.js').then(mod => {
+              const client = mod.default || mod.apiClient;
+              client.delete('/workout/session/active').catch(() => {});
+            });
+
             // Navigate back to daily workout screen
             navigation.goBack();
-            
+
           } catch (error) {
             logger.error('❌ Error discarding workout:', error);
             // Show error using modal on web
@@ -2258,13 +2269,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             style: 'destructive',
             onPress: async () => {
               try {
-                
+
                 // Cancel the current session and clear local data
                 await sessionManager.cancelSession();
-                
+                try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+                import('../utils/apiClient.js').then(mod => {
+                  const client = mod.default || mod.apiClient;
+                  client.delete('/workout/session/active').catch(() => {});
+                });
+
                 // Navigate back to daily workout screen
                 navigation.goBack();
-                
+
               } catch (error) {
                 logger.error('❌ Error discarding workout:', error);
                 Alert.alert('Error', 'No se pudo descartar el entrenamiento.');
@@ -4509,6 +4525,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
       async function startWorkoutSession(resolvedUser) {
         let session = await sessionManager.getCurrentSession();
+
+        // Discard stale session from a different course/workout
+        if (session && session.courseId && session.courseId !== course.courseId) {
+          session = null;
+        }
 
         if (!session) {
           const currentUserForSession = resolvedUser || user || auth.currentUser;

@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { isSafariWeb, isWeb } from '../utils/platform';
+import { isWeb } from '../utils/platform';
 
 const AuthContext = createContext({});
 
@@ -12,37 +12,20 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const resolvedRef = useRef(false);
 
   useEffect(() => {
-    const safari = isSafariWeb();
-    resolvedRef.current = false;
-
-    const resolve = (authUser) => {
-      if (resolvedRef.current) return;
-      resolvedRef.current = true;
+    // onAuthStateChanged is the single source of truth.
+    // It fires once Firebase restores persisted auth from IndexedDB — no
+    // artificial timeouts that could resolve to null before restoration finishes.
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
       setUser(authUser);
       setLoading(false);
-    };
-
-    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
-      resolve(authUser);
     }, () => {
-      resolve(null);
+      setUser(null);
+      setLoading(false);
     });
 
-    // Single fallback timeout — Safari IndexedDB can stall onAuthStateChanged
-    const fallbackMs = safari ? 3000 : 10000;
-    const timeout = setTimeout(() => {
-      if (!resolvedRef.current) {
-        resolve(auth.currentUser);
-      }
-    }, fallbackMs);
-
-    return () => {
-      clearTimeout(timeout);
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize web push notifications on login (web only)

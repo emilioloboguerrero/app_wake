@@ -13,11 +13,10 @@ import {
   Platform,
 } from 'react-native';
 import WakeLoader from '../components/WakeLoader';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
@@ -27,12 +26,8 @@ const PAGE_SIZE = 20; // Number of sessions to load per page
 
 const SessionsScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  // Match actual header height: web header uses full insets.top; native uses insets.top - 8
-  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  
+
+
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
     () => createStyles(screenWidth, screenHeight),
@@ -270,8 +265,7 @@ const SessionsScreen = ({ navigation }) => {
         ItemSeparatorComponent={() => <View style={styles.sessionSeparator} />}
         ListHeaderComponent={() => (
           <>
-            {/* Spacer for fixed header - matches header height */}
-            <View style={{ height: headerTotalHeight }} />
+            <WakeHeaderSpacer />
             {/* Same gap between header and content as WakeHeaderContent (getGapAfterHeader is PWA-aware on web) */}
             <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
               <Text style={styles.title}>Sesiones</Text>

@@ -17,20 +17,17 @@ import {
   Platform,
 } from 'react-native';
 import WakeLoader from '../components/WakeLoader';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
-import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
 import logger from '../utils/logger.js';
 
 const PRsScreen = ({ navigation, route }) => {
-  const insets = useSafeAreaInsets();
-  
   // Safety check for navigation - provide fallback if undefined
   // Log when navigation is undefined to help debug
   if (!navigation) {
@@ -76,9 +73,6 @@ const PRsScreen = ({ navigation, route }) => {
   
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const styles = useMemo(() => createStyles(screenWidth, screenHeight), [screenWidth, screenHeight]);
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   const { user: contextUser } = useAuth();
   const user = contextUser || auth.currentUser;
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
@@ -208,8 +202,7 @@ const PRsScreen = ({ navigation, route }) => {
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* Spacer for fixed header - matches header height */}
-          <View style={{ height: headerTotalHeight }} />
+          <WakeHeaderSpacer />
           <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
           <TouchableOpacity
             style={styles.titleContainer}

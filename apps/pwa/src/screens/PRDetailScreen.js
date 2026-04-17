@@ -6,14 +6,12 @@ import {
   SafeAreaView,
   TouchableOpacity,
   Alert,
-  useWindowDimensions,
   Modal,
   Pressable,
   TouchableWithoutFeedback,
   ScrollView,
   Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import oneRepMaxService from '../services/oneRepMaxService';
 import ExerciseDetailContent from '../components/ExerciseDetailContent';
@@ -21,11 +19,6 @@ import { FixedWakeHeader } from '../components/WakeHeader';
 import logger from '../utils/logger.js';
 
 const PRDetailScreen = ({ navigation, route }) => {
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   // Safety check for route
   if (!route || !route.params) {
     logger.error('❌ PRDetailScreen: route or route.params is undefined', { route, navigation });
@@ -100,7 +93,7 @@ const PRDetailScreen = ({ navigation, route }) => {
       {/* Shared Content Component */}
       <View className={Platform.OS === 'web' ? 'pr-detail-chart' : undefined} style={{ flex: 1 }}>
       <ExerciseDetailContent
-        headerSpacerHeight={headerTotalHeight}
+        showHeaderSpacer
         exerciseKey={exerciseKey}
         exerciseName={exerciseName}
         libraryId={libraryId}

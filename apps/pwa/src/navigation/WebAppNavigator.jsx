@@ -49,11 +49,8 @@ import PaymentSuccessScreen from '../screens/PaymentSuccessScreen.web';
 import PaymentCancelledScreen from '../screens/PaymentCancelledScreen.web';
 
 import apiService from '../services/apiService';
-import logger from '../utils/logger';
 import DebugScreenTracker from '../components/DebugScreenTracker.web';
-import { isSafariWeb } from '../utils/platform';
 import { isAdmin, isCreator } from '../utils/roleHelper';
-import { auth } from '../config/firebase';
 import BottomTabBar from '../components/BottomTabBar.web';
 import ReadinessCheckModal from '../components/ReadinessCheckModal.web';
 import { getTodayReadiness } from '../services/readinessService';
@@ -106,6 +103,8 @@ const getScreenEnterClass = (currentPath, prevPath) => {
 };
 
 // Layout component for authenticated routes
+// Auth state comes exclusively from AuthContext (single source of truth).
+// No duplicate Firebase checks, no polling, no competing timeouts.
 const AuthenticatedLayout = ({ children }) => {
   const { user, loading } = useAuth();
   const location = useLocation();
@@ -124,99 +123,24 @@ const AuthenticatedLayout = ({ children }) => {
       refreshResolveRef.current = resolve;
     });
     checkedUserIdRef.current = null;
-    skipCacheNextRef.current = true; // Prefer Firestore on this run (Safari cache can be stale)
+    skipCacheNextRef.current = true;
     setRefreshKey((k) => k + 1);
     return promise;
   }, []);
 
-  // Check Firebase user directly - this is the source of truth
-  // Use useState to store Firebase user and update it when needed
-  const [firebaseUser, setFirebaseUser] = React.useState(() => {
-    try {
-
-      return auth.currentUser;
-    } catch (error) {
-      logger.error('[AUTH LAYOUT] Error getting Firebase user:', error);
-      return null;
-    }
-  });
-  
-  // Track if we've already checked Firebase user to prevent infinite loops
-  const firebaseUserCheckedRef = React.useRef(false);
-  
-  // Update firebaseUser once on mount and when user/auth state changes
-  React.useEffect(() => {
-    if (firebaseUserCheckedRef.current) return; // Only check once
-    
-    try {
-
-      const currentUser = auth.currentUser;
-      if (currentUser && currentUser !== firebaseUser) {
-        setFirebaseUser(currentUser);
-        firebaseUserCheckedRef.current = true;
-      } else if (!currentUser) {
-        firebaseUserCheckedRef.current = true; // Mark as checked even if no user
-      }
-    } catch (error) {
-      firebaseUserCheckedRef.current = true; // Mark as checked on error
-    }
-  }, []); // Only run once on mount
-  
-  // Re-check Firebase user periodically if AuthContext is still loading
-  // But only if we don't have a user from context yet
-  React.useEffect(() => {
-    if (loading && !user && !firebaseUser) {
-      // Only set up interval if we don't have a Firebase user yet
-      const interval = setInterval(() => {
-        try {
-    
-          const currentUser = auth.currentUser;
-          if (currentUser && currentUser !== firebaseUser) {
-            setFirebaseUser(currentUser);
-            // Stop interval once we have a user
-            clearInterval(interval);
-          }
-        } catch (error) {
-          // Ignore errors
-        }
-      }, 1000); // Check every 1 second instead of 500ms
-      
-      // Stop interval after 5 seconds max
-      const timeout = setTimeout(() => {
-        clearInterval(interval);
-      }, 5000);
-      
-      return () => {
-        clearInterval(interval);
-        clearTimeout(timeout);
-      };
-    }
-  }, [loading, user, firebaseUser]);
-
-  // Use effective uid from context or Firebase so we run profile fetch even when context lags
-  const effectiveUidForFetch = user?.uid || firebaseUser?.uid;
+  const uid = user?.uid;
 
   React.useEffect(() => {
-    // Skip if already checked for this user (refreshUserProfile clears ref to force refetch)
-    if (effectiveUidForFetch && checkedUserIdRef.current === effectiveUidForFetch) {
-      return;
-    }
-
-    // Skip if no user and we've already cleared
-    if (!effectiveUidForFetch && checkedUserIdRef.current === null) {
-      return;
-    }
+    if (uid && checkedUserIdRef.current === uid) return;
+    if (!uid && checkedUserIdRef.current === null) return;
 
     let mounted = true;
     let timeoutId = null;
-    
+
     const checkUserProfile = async () => {
-      // Start fetch whenever we have a uid (from context or Firebase). Do not require !loading:
-      // if AuthContext is still loading but we have firebaseUser/directFirebaseCheck we'd otherwise
-      // show "Waiting for profile" forever without ever starting the fetch.
-      if (effectiveUidForFetch) {
+      if (uid) {
         setProfileLoading(true);
-        checkedUserIdRef.current = effectiveUidForFetch;
+        checkedUserIdRef.current = uid;
 
         timeoutId = setTimeout(() => {
           if (mounted) {
@@ -224,14 +148,14 @@ const AuthenticatedLayout = ({ children }) => {
             setProfileLoading(false);
           }
         }, 10000);
-        
+
         try {
           const skipCache = skipCacheNextRef.current;
           if (skipCache) skipCacheNextRef.current = false;
 
           if (!skipCache) {
             let cached = null;
-            try { cached = localStorage.getItem(`onboarding_status_${effectiveUidForFetch}`); } catch (_) {}
+            try { cached = localStorage.getItem(`onboarding_status_${uid}`); } catch (_) {}
             if (cached) {
               const status = JSON.parse(cached);
               const cacheAge = Date.now() - (status.cachedAt || 0);
@@ -249,18 +173,18 @@ const AuthenticatedLayout = ({ children }) => {
             }
           }
 
-          const profilePromise = apiService.getUser(effectiveUidForFetch);
+          const profilePromise = apiService.getUser(uid);
           const timeoutPromise = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Firestore timeout')), 5000)
           );
-          
+
           const profile = await Promise.race([profilePromise, timeoutPromise]);
-          
+
           if (mounted) {
             if (profile) {
               setUserProfile(profile);
               try {
-                localStorage.setItem(`onboarding_status_${effectiveUidForFetch}`, JSON.stringify({
+                localStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
                   onboardingCompleted: profile.onboardingCompleted ?? false,
                   profileCompleted: profile.profileCompleted ?? false,
                   cachedAt: Date.now(),
@@ -272,8 +196,6 @@ const AuthenticatedLayout = ({ children }) => {
           }
         } catch (error) {
           if (mounted) {
-            // localStorage cache is untrusted — use as hint only, default to incomplete
-            // This prevents a poisoned cache from letting users skip onboarding
             setUserProfile({ profileCompleted: false, onboardingCompleted: false });
           }
         } finally {
@@ -285,7 +207,7 @@ const AuthenticatedLayout = ({ children }) => {
           refreshResolveRef.current = null;
           if (resolve) resolve();
         }
-      } else if (!effectiveUidForFetch) {
+      } else {
         setUserProfile(null);
         setProfileLoading(false);
         checkedUserIdRef.current = null;
@@ -296,51 +218,12 @@ const AuthenticatedLayout = ({ children }) => {
     };
 
     checkUserProfile();
-    
+
     return () => {
       mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [effectiveUidForFetch, refreshKey]);
-
-  // Determine if we have a user (from context or Firebase)
-  // CRITICAL: If Firebase has a user, proceed even if AuthContext is still loading
-  // This prevents infinite loading when onAuthStateChanged doesn't fire immediately
-  const hasUser = user || firebaseUser;
-  const hasFirebaseUser = !!firebaseUser;
-  
-  // Also check Firebase directly as a fallback
-  const directFirebaseCheck = React.useMemo(() => {
-    try {
-
-      return auth.currentUser;
-    } catch {
-      return null;
-    }
-  }, []);
-  
-  const finalHasUser = hasUser || directFirebaseCheck;
-  
-  // Show loading ONLY if:
-  // 1. AuthContext is loading AND Firebase doesn't have a user (genuine loading state)
-  // 2. But add a timeout to prevent infinite loading
-  const shouldShowLoading = loading && !hasFirebaseUser;
-  
-  // Add timeout to prevent infinite loading. Safari: use 2s (AuthContext gives up at 3s).
-  // Other browsers: 5s to allow IndexedDB restore.
-  const loadingTimeoutMs = isSafariWeb() ? 2000 : 5000;
-  const [loadingTimeout, setLoadingTimeout] = React.useState(false);
-  
-  React.useEffect(() => {
-    if (shouldShowLoading) {
-      const timeout = setTimeout(() => {
-        setLoadingTimeout(true);
-      }, loadingTimeoutMs);
-      return () => clearTimeout(timeout);
-    } else {
-      setLoadingTimeout(false);
-    }
-  }, [shouldShowLoading, loadingTimeoutMs]);
+  }, [uid, refreshKey]);
 
   const [showReadiness, setShowReadiness] = React.useState(false);
   const [readinessMandatory, setReadinessMandatory] = React.useState(false);
@@ -351,14 +234,13 @@ const AuthenticatedLayout = ({ children }) => {
   const readinessCheckedRef = React.useRef(false);
   React.useEffect(() => {
     if (readinessCheckedRef.current) return;
-    if (!finalHasUser || profileLoading || userProfile === null) return;
+    if (!user || profileLoading || userProfile === null) return;
     const needsOnboardingCheck = userProfile && (
       userProfile.onboardingCompleted === false ||
       (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
     );
     if (needsOnboardingCheck) return;
     readinessCheckedRef.current = true;
-    const uid = finalHasUser.uid;
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -369,7 +251,7 @@ const AuthenticatedLayout = ({ children }) => {
       const cached = localStorage.getItem(lsKey);
       if (cached === 'done' || cached === 'skipped') return;
     } catch (_) {}
-    getTodayReadiness(uid, dateStr).then((existing) => {
+    getTodayReadiness(user.uid, dateStr).then((existing) => {
       if (existing) {
         try { localStorage.setItem(lsKey, 'done'); } catch (_) {}
       } else {
@@ -377,39 +259,24 @@ const AuthenticatedLayout = ({ children }) => {
         setTimeout(() => setShowReadiness(true), 800);
       }
     }).catch(() => {});
-  }, [finalHasUser?.uid, profileLoading, userProfile]);
+  }, [user?.uid, profileLoading, userProfile]);
 
-  if (shouldShowLoading && !loadingTimeout) {
+  // Auth loading — wait for AuthContext to resolve
+  if (loading) {
     return <LoadingScreen />;
   }
 
-  // Once we've waited the loading timeout (2s Safari / 5s other) and still have no user, go to login.
-  // Don't wait for AuthContext's fallback — Safari may never fire onAuthStateChanged.
-  if (loadingTimeout && !finalHasUser) {
+  // Not authenticated
+  if (!user) {
     return <Navigate to="/login" replace />;
   }
 
-  // Use finalHasUser which includes direct Firebase check
-  // Redirect to login if not authenticated (after checking both AuthContext and Firebase)
-  if (!finalHasUser && !loading) {
-    return <Navigate to="/login" replace />;
-  }
-  
-  // If still loading and no user (and we haven't timed out yet), show loading screen
-  if (!finalHasUser && loading) {
-    return <LoadingScreen />;
-  }
-  
-  const effectiveUid = finalHasUser?.uid || hasUser?.uid;
-  // Wait for profile when we have an authenticated user: either still loading or not yet known
-  // Never redirect to onboarding when userProfile is null - we might be a returning user (profile just hasn't loaded yet)
-  if (finalHasUser && (profileLoading || userProfile === null)) {
+  // Wait for profile fetch
+  if (profileLoading || userProfile === null) {
     return <LoadingScreen />;
   }
 
-  // Onboarding: only redirect based on explicit profile data (userProfile is now set from Firestore or "new user" default)
-  // - profileCompleted: false/undefined = user has not filled base profile (name, etc.)
-  // - onboardingCompleted: false = user has not finished the onboarding questions flow
+  // Onboarding routing
   const needsOnboarding = userProfile && (
     userProfile.onboardingCompleted === false ||
     (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
@@ -417,28 +284,23 @@ const AuthenticatedLayout = ({ children }) => {
   const hasCompletedOnboarding = userProfile && userProfile.onboardingCompleted === true;
 
   if (isOnOnboardingPath) {
-    // We're on /onboarding: only render onboarding screen if they still need it
     if (hasCompletedOnboarding) {
       return <Navigate to="/" replace />;
     }
-    // Profile already done but questions not: send to questions flow (e.g. after refresh)
     if (userProfile.profileCompleted && !userProfile.onboardingCompleted) {
       return <Navigate to="/onboarding/questions" replace />;
     }
   } else if (isOnOnboardingQuestionsPath) {
-    // On questions flow: allow even if refetch hasn't updated profile yet
     if (hasCompletedOnboarding) {
       return <Navigate to="/" replace />;
     }
   } else {
-    // We're on another route: redirect to onboarding only when profile explicitly says incomplete
     if (needsOnboarding) {
       return <Navigate to="/onboarding" replace />;
     }
   }
   const userRole = userProfile?.role ?? null;
 
-  // Render tab bar in a portal to document.body so position:fixed is relative to viewport
   const tabBarEl =
     typeof document !== 'undefined' && document.body
       ? createPortal(<BottomTabBar />, document.body)
@@ -486,42 +348,17 @@ const NutritionRouteWrapper = () => {
   return React.createElement(withErrorBoundary(NutritionScreen, 'Nutrition'));
 };
 
-// Main App Routes - SIMPLIFIED
+// Main App Routes
 const WebAppNavigator = () => {
   const location = useLocation();
   const isLoginRoute = location.pathname === '/login';
   const { user, loading } = useAuth();
-  
-  // Check Firebase user directly as fallback
-  const [firebaseUserForLogin, setFirebaseUserForLogin] = React.useState(() => {
-    try {
 
-      return auth.currentUser;
-    } catch {
-      return null;
-    }
-  });
-  
-  // Update Firebase user check
-  React.useEffect(() => {
-    try {
-
-      const currentUser = auth.currentUser;
-      if (currentUser !== firebaseUserForLogin) {
-        setFirebaseUserForLogin(currentUser);
-      }
-    } catch {
-      // Ignore errors
-    }
-  }, [firebaseUserForLogin]);
-  
-  // For login route, check if user is already logged in and redirect
   if (isLoginRoute) {
-    const hasUser = user || firebaseUserForLogin;
-    if (!loading && hasUser) {
+    if (!loading && user) {
       return <Navigate to="/" replace />;
     }
-    
+
     return (
       <Routes>
         <Route path="/login" element={<LoginScreen />} />

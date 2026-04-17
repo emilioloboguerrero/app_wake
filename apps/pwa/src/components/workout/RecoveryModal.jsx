@@ -12,10 +12,13 @@ function getTimeAgo(isoString) {
 }
 
 export default function RecoveryModal({ checkpoint, onResume, onDiscard }) {
-  const completedCount = useMemo(
-    () => (checkpoint?.completedSets ? Object.keys(checkpoint.completedSets).length : 0),
-    [checkpoint]
-  );
+  const completedCount = useMemo(() => {
+    if (!checkpoint?.completedSets) return 0;
+    return Object.values(checkpoint.completedSets).filter(setData => {
+      if (!setData || typeof setData !== 'object') return false;
+      return Object.values(setData).some(v => v !== '' && v !== null && v !== undefined);
+    }).length;
+  }, [checkpoint]);
 
   const timeAgo = useMemo(
     () => getTimeAgo(checkpoint?.startedAt || checkpoint?.savedAt),

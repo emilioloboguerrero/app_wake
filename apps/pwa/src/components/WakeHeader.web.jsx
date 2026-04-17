@@ -31,6 +31,8 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
 
 // Push header bar down on non-iPhone (Mac/Android) where safe area is 0.
 const HEADER_TOP_OFFSET_NON_IOS = 24;
+// Extra push for the header bar in browser mode (non-PWA) so items don't sit flush against the top, without matching the full PWA offset.
+const HEADER_TOP_OFFSET_BROWSER_EXTRA = 34;
 // When env(safe-area-inset-top) is 0 in standalone (e.g. iOS localhost PWA), use this so layout matches production (iPhone 17 / Dynamic Island ~59px).
 const STANDALONE_SAFE_AREA_TOP_FALLBACK = 59;
 
@@ -66,7 +68,11 @@ export const FixedWakeHeader = ({
   }
   const safeAreaTop = initialSafeTopRef.current;
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
-  const extraTop = isIOS ? 0 : HEADER_TOP_OFFSET_NON_IOS;
+  const isBrowser = !isPWA();
+  // Base offset. In browser (non-PWA), always add an extra push so items don't feel glued to the top — smaller than PWA's natural offset.
+  const baseExtra = isIOS ? 0 : HEADER_TOP_OFFSET_NON_IOS;
+  const browserExtra = isBrowser ? HEADER_TOP_OFFSET_BROWSER_EXTRA : 0;
+  const extraTop = baseExtra + browserExtra;
   const totalTop = safeAreaTop + extraTop;
   const logoWidth = Math.min(screenWidth * 0.35, 120);
   const logoHeight = logoWidth * 0.57;
@@ -375,17 +381,15 @@ export const FixedWakeHeader = ({
 // Extra top space for content area when not iPhone (Mac/Android) so content doesn't sit right under the header.
 const CONTENT_TOP_PADDING_NON_IOS = 100;
 
-// Header spacer: matches FixedWakeHeader (32px + safe area top). On non-iOS adds extra height so content has top padding. Does not include HEADER_TOP_OFFSET_NON_IOS so content stays in place when only the bar is pushed down.
-// 59px fallback only when standalone (iOS PWA) so env(safe-area-inset-top) can be 0 at first paint; desktop and Android use rawTop so they don't get extra space.
+// Header spacer: matches FixedWakeHeader (32px + safe area top). On non-iOS adds extra height so content has top padding.
+// Fallback fires whenever rawTop is 0 — covers iOS PWA (env() resolves late) AND no-notch devices / desktop browsers where env(safe-area-inset-top) is always 0, so content doesn't feel cramped.
 export const WakeHeaderSpacer = () => {
   const insets = useSafeAreaInsets();
   const ref = React.useRef(null);
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
   const rawTop = Math.max(0, Number(insets?.top) || 0);
-  const isStandalone =
-    (typeof navigator !== 'undefined' && navigator.standalone === true) || isPWA();
   const effectiveTop =
-    rawTop === 0 && isStandalone ? STANDALONE_SAFE_AREA_TOP_FALLBACK : rawTop;
+    rawTop === 0 ? STANDALONE_SAFE_AREA_TOP_FALLBACK : rawTop;
   if (ref.current === null) {
     const headerHeight = 32 + effectiveTop;
     const extra = isIOS ? 0 : CONTENT_TOP_PADDING_NON_IOS;

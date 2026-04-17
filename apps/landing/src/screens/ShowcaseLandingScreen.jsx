@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { motion, useScroll, useTransform, useMotionValueEvent } from 'motion/react';
 import { getMainHeroLandingImages } from '../services/heroImagesService';
 import wakeIcon from '../assets/hero-logo.svg';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
@@ -31,10 +31,11 @@ const FALLBACK_IMAGES = [
      0.48 – 0.52  swipe to phase 2 (TikTok-style vertical)
      0.52 – 0.62  phase 2 held
      0.62 – 0.66  swipe to phase 3
-     0.66 – 0.76  phase 3 held
-     0.76 – 0.82  phrase fades out
-     0.78 – 0.92  card explosion
-     0.92 – 1.00  phone + cards fade out
+     0.62 – 1.00  phase 3 held
+     0.78 – 1.00  phone slides up off screen; phrase 3 follows at 0.82.
+                  At progress 1.0 ps-sticky un-pins and slides up as a
+                  curtain; tl-ag-sticky pins in the same moment thanks
+                  to tl-ag's margin-top: -100vh — seamless handoff.
    Layout:
      Desktop ≥900px : 2-col grid, phone LEFT, copy RIGHT
      Mobile  <900px : single col, copy TOP, phone BOTTOM (cut off)
@@ -46,15 +47,78 @@ const PHONE_SCREENS = [
   '/fallback/flow/events.webp',
 ];
 
+// Continuous ticker shown while the phone is rotated 90° (pre-boot). The
+// stack translates vertically, which reads as a horizontal swipe because the
+// phone is rotated. Slides are sized so 2–3 words are always visible at once,
+// creating a fluid scrolling-row feel. Final transition lands on the Wake logo.
+const HORIZONTAL_WORDS = ['Los', 'mejores', 'atletas', 'están', 'en'];
+
 const OPENER = (
-  <>Somos la <strong>plataforma</strong> detrás del rendimiento de los <strong>mejores atletas</strong></>
+  <>Somos la <strong>plataforma</strong> para el <strong>rendimiento</strong></>
 );
 
+// Each phrase is an array of { text, bold } chunks so we can split letters for
+// the per-letter fade-in stagger while preserving bold emphasis runs.
 const PHRASES = [
-  <><strong>Entrenas</strong> con los programas que ellos diseñan semana a semana</>,
-  <>Comes con los <strong>planes de nutrición</strong> que ellos te arman</>,
-  <>Vas a los parches y <strong>eventos</strong> que ellos organizan en persona</>,
+  [
+    { text: 'Entrenas', bold: true },
+    { text: ' con los programas que ellos diseñan semana a semana', bold: false },
+  ],
+  [
+    { text: 'Comes con los ', bold: false },
+    { text: 'planes de nutrición', bold: true },
+    { text: ' que ellos te arman', bold: false },
+  ],
+  [
+    { text: 'Vas a los parches y ', bold: false },
+    { text: 'eventos', bold: true },
+    { text: ' que ellos organizan en persona', bold: false },
+  ],
 ];
+
+function AnimatedPhrase({ chunks, visible }) {
+  const tokens = [];
+  chunks.forEach((chunk) => {
+    const parts = chunk.text.split(/(\s+)/);
+    parts.forEach((part) => {
+      if (part.length === 0) return;
+      if (/^\s+$/.test(part)) tokens.push({ type: 'space', text: part });
+      else tokens.push({ type: 'word', text: part, bold: chunk.bold });
+    });
+  });
+
+  let charIdx = 0;
+  return (
+    <>
+      {tokens.map((token, ti) => {
+        if (token.type === 'space') return <span key={`s-${ti}`}>{token.text}</span>;
+        const Tag = token.bold ? 'strong' : 'span';
+        return (
+          <Tag key={`w-${ti}`} className="ps-phrase-word">
+            {token.text.split('').map((char, li) => {
+              const myIdx = charIdx++;
+              return (
+                <motion.span
+                  key={li}
+                  className="ps-phrase-letter"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: -8 }}
+                  transition={{
+                    duration: visible ? 0.45 : 0.2,
+                    delay: visible ? myIdx * 0.022 : 0,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                >
+                  {char}
+                </motion.span>
+              );
+            })}
+          </Tag>
+        );
+      })}
+    </>
+  );
+}
 
 function AuroraCanvas({ className, intensity = 1 }) {
   const canvasRef = useRef(null);
@@ -149,9 +213,17 @@ function AuroraCanvas({ className, intensity = 1 }) {
 
 function PhoneShowcaseSection() {
   const sectionRef = useRef(null);
+  // Main tracker: runs while the section is sticky-pinned (0 → 1 during pin).
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ['start start', 'end end'],
+  });
+  // Entry tracker: 0 when section first appears at the bottom of the viewport,
+  // 1 when section top meets viewport top (pin begins). Drives the phone's
+  // arrival so the entering animation plays while the page is still scrolling.
+  const { scrollYProgress: enterProgress } = useScroll({
+    target: sectionRef,
+    offset: ['start end', 'start start'],
   });
 
   const [isMobile, setIsMobile] = useState(() =>
@@ -164,41 +236,37 @@ function PhoneShowcaseSection() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Phone — rotation, scale, opacity (Z axis only, no 3D)
-  const phoneRotateZ = useTransform(scrollYProgress, [0, 0.20, 0.30], [90, 90, 0]);
-  // After phrase 3 (at 0.78): phone first moves up to center, THEN scales up (camera enters screen)
-  const desktopPhoneScale = useTransform(
-    scrollYProgress,
-    [0, 0.05, 0.30, 0.76, 0.88],
-    [0.85, 0.92, 1, 1, 10]
-  );
-  const mobilePhoneScale = useTransform(
-    scrollYProgress,
-    [0, 0.20, 0.30, 0.76, 0.88],
-    [0.55, 0.55, 1, 1, 10]
-  );
+  // Phone entry — waits off-screen through nearly the whole pre-pin scroll,
+  // then slides in small and horizontal in the final stretch. Scale stays
+  // small throughout the entry and only expands during the rotation.
+  const phoneXNum = useTransform(enterProgress, [0, 0.85, 1], [110, 110, 0]);
+  const phoneX = useTransform(phoneXNum, (v) => `${v}vw`);
+  const phoneRotateZ = useTransform(scrollYProgress, [0.10, 0.15], [-90, 0]);
+  const desktopPhoneScale = useTransform(scrollYProgress, [0.10, 0.15], [0.70, 1]);
+  const mobilePhoneScale = useTransform(scrollYProgress, [0.10, 0.15], [0.60, 1]);
   const phoneScale = isMobile ? mobilePhoneScale : desktopPhoneScale;
 
-  // Mobile: phone slides in horizontally from left (-110vw → 0) over 0.05–0.15
-  const mobilePhoneXNum = useTransform(scrollYProgress, [0, 0.05, 0.15], [-110, -110, 0]);
-  const mobilePhoneX = useTransform(mobilePhoneXNum, (v) => `${v}vw`);
-
-  // Mobile: bottom-cut during phrases; rises to viewport center first (0.78–0.85), then scale takes over
+  // Phone Y — slides up off the top of the viewport at the end, letting the
+  // athletes gallery behind (via margin-top: -100vh) be revealed.
+  // Mobile: bottom-cut during phrases → rises to center → continues off screen.
   const mobilePhoneYNum = useTransform(
     scrollYProgress,
-    [0, 0.20, 0.30, 0.72, 0.78],
-    [0, 0, 36, 36, 0]
+    [0, 0.13, 0.20, 0.72, 0.78, 1.0],
+    [0, 0, 36, 36, 0, -120]
   );
   const mobilePhoneY = useTransform(mobilePhoneYNum, (v) => `${v}vh`);
+  // Desktop: stays centered until the exit, then slides up off screen.
+  const desktopPhoneYNum = useTransform(
+    scrollYProgress,
+    [0, 0.78, 1.0],
+    [0, 0, -120]
+  );
+  const desktopPhoneY = useTransform(desktopPhoneYNum, (v) => `${v}vh`);
+  const phoneY = isMobile ? mobilePhoneY : desktopPhoneY;
 
-  // Fade synced with the zoom: image + black phone screen background fade as the camera
-  // enters. Starts during phrase 3, fully gone by the time the zoom completes.
-  const screenOpacity = useTransform(scrollYProgress, [0.66, 0.88], [1, 0]);
-  const stickyBgOpacity = useTransform(scrollYProgress, [0.66, 0.88], [1, 0]);
-  const screenBg = useTransform(screenOpacity, (v) => `rgba(10,10,10,${v})`);
-
-  // Phone frame (iPhone SVG bezel) fades out during zoom so we're looking at just screen content
-  const overlayOpacity = useTransform(scrollYProgress, [0.76, 0.84], [1, 0]);
+  // Sticky background stays opaque throughout. At progress 1.0, ps-sticky
+  // un-pins and slides up as a curtain, revealing tl-ag-sticky (which starts
+  // pinning at the exact same scrollY thanks to tl-ag's margin-top: -100vh).
 
   // Opener — desktop: enters from below, holds, exits upward.
   // Mobile: fully opaque until phone covers it, then cuts out while covered (before phone moves away)
@@ -209,26 +277,40 @@ function PhoneShowcaseSection() {
   const openerY = useTransform(scrollYProgress, [0, 0.05, 0.15, 0.20], [40, 0, 0, -40]);
 
 
-  // Shared vertical-swipe translate for phone screens + copy phrases.
-  // Percent strings — motion translates by % of each element's own height.
+  // Phone-screen stack — translates vertically (reads as horizontal from the
+  // viewer because the phone is rotated). Word slides are 50% tall so two
+  // fit on the phone at once, creating a continuous ticker. Sweeps linearly
+  // from 200% (first pair of words in view) to 0% (Wake logo), then on
+  // through the app phases.
   const stackY = useTransform(
     scrollYProgress,
-    [0, 0.30, 0.34, 0.44, 0.48, 0.58, 0.62],
-    ['0%', '0%', '-100%', '-100%', '-200%', '-200%', '-300%']
+    [0, 0.10, 0.20, 0.24, 0.34, 0.38, 0.48, 0.52],
+    ['387.5%', '0%', '0%', '-100%', '-100%', '-200%', '-200%', '-300%']
   );
   // Aurora background — fully visible during opener, snaps off when phone covers it at scroll 0.15
   const auroraOpacity = useTransform(scrollYProgress, (v) => (v < 0.15 ? 1 : 0));
 
-  // Each phrase shows only during its window — phrase 3 stays visible until zoom covers it
-  const phrase1Op = useTransform(scrollYProgress, (v) => (v >= 0.34 && v < 0.48 ? 1 : 0));
-  const phrase2Op = useTransform(scrollYProgress, (v) => (v >= 0.48 && v < 0.62 ? 1 : 0));
-  const phrase3Op = useTransform(scrollYProgress, (v) => (v >= 0.62 && v < 0.80 ? 1 : 0));
-  const phraseOps = [phrase1Op, phrase2Op, phrase3Op];
+  // Active phrase index — driven by scroll. Phrase 1 appears as the phone
+  // settles into its bottom-cut position (~0.20), in sync with the screen
+  // transition starting from logo to workout.
+  const [activePhrase, setActivePhrase] = useState(-1);
+  useMotionValueEvent(scrollYProgress, 'change', (v) => {
+    let next = -1;
+    if (v >= 0.48) next = 2;
+    else if (v >= 0.34) next = 1;
+    else if (v >= 0.20) next = 0;
+    setActivePhrase((prev) => (prev === next ? prev : next));
+  });
+
+  // Phrase 3 starts sliding up slightly AFTER the phone begins moving, so the
+  // phone "catches up" and covers the text before they swipe up together.
+  const phrase3YNum = useTransform(scrollYProgress, [0, 0.82, 1.0], [0, 0, -100]);
+  const phrase3Y = useTransform(phrase3YNum, (v) => `${v}vh`);
 
   return (
     <section className="ps-section" ref={sectionRef}>
       <div className="ps-sticky">
-        <motion.div className="ps-sticky-bg" style={{ opacity: stickyBgOpacity }} aria-hidden="true" />
+        <div className="ps-sticky-bg" aria-hidden="true" />
         <motion.div className="ps-aurora-wrap" style={{ opacity: auroraOpacity }}>
           <AuroraCanvas className="ps-aurora" intensity={1.8} />
         </motion.div>
@@ -241,12 +323,22 @@ function PhoneShowcaseSection() {
               style={{
                 rotateZ: phoneRotateZ,
                 scale: phoneScale,
-                ...(isMobile ? { x: mobilePhoneX, y: mobilePhoneY } : {}),
+                y: phoneY,
+                x: phoneX,
               }}
             >
               <div className="ps-phone-frame">
-                <motion.div className="ps-phone-screen" style={{ opacity: screenOpacity, background: screenBg }}>
+                <div className="ps-phone-screen">
                   <motion.div className="ps-screen-stack" style={{ y: stackY }}>
+                    {HORIZONTAL_WORDS.map((word, i) => (
+                      <div
+                        key={word}
+                        className="ps-screen-slide ps-screen-slide-boot ps-screen-slide-word"
+                        style={{ top: `${-75 * (HORIZONTAL_WORDS.length - i)}%` }}
+                      >
+                        <span className="ps-screen-phrase">{word}</span>
+                      </div>
+                    ))}
                     <div className="ps-screen-slide ps-screen-slide-boot" style={{ top: '0%' }}>
                       <img src={wakeLogo} alt="Wake" className="ps-screen-boot-logo" />
                     </div>
@@ -267,13 +359,12 @@ function PhoneShowcaseSection() {
                       </div>
                     ))}
                   </motion.div>
-                </motion.div>
-                <motion.img
+                </div>
+                <img
                   src="/fallback/phone/iPhone 17 - Black - Portrait.svg"
                   alt=""
                   className="ps-phone-overlay"
                   aria-hidden="true"
-                  style={{ opacity: overlayOpacity }}
                 />
               </div>
             </motion.div>
@@ -292,13 +383,13 @@ function PhoneShowcaseSection() {
         </div>
 
         <div className="ps-phrase-window">
-          {PHRASES.map((text, i) => (
+          {PHRASES.map((chunks, i) => (
             <motion.p
               key={i}
               className="ps-phrase-slide"
-              style={{ opacity: phraseOps[i] }}
+              style={i === 2 ? { y: phrase3Y } : undefined}
             >
-              {text}
+              <AnimatedPhrase chunks={chunks} visible={activePhrase === i} />
             </motion.p>
           ))}
         </div>
@@ -469,8 +560,13 @@ function AthletesGallery() {
         hintRef.current.style.opacity = Math.max(0, 1 - rawFade * 3);
       }
 
-      const denom = Math.max(1, sectionH - vh);
-      const moveProgress = scrolled <= 0 ? 0 : Math.min(scrolled / denom, 1);
+      // Lateral drift spans from section-enters-viewport to section-fully-exits.
+      // startOffset (1vh) shifts the start earlier; exitOffset (1vh) extends past
+      // the sticky un-pin so horizontal + vertical scroll overlap at the end.
+      const startOffset = vh;
+      const exitOffset = vh;
+      const denom = Math.max(1, sectionH - vh + startOffset + exitOffset);
+      const moveProgress = Math.max(0, Math.min((scrolled + startOffset) / denom, 1));
 
       for (let i = 0; i < imageEntries.length; i++) {
         const { el, speed } = imageEntries[i];

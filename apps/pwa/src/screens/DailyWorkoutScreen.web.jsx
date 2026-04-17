@@ -218,9 +218,15 @@ const DailyWorkoutScreen = () => {
 
     if (cp) {
       // Validate
-      if (cp.userId !== currentUser.uid) { try { localStorage.removeItem('wake_session_checkpoint'); } catch {} return; }
+      if (cp.userId !== currentUser.uid) {
+        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+        import('@react-native-async-storage/async-storage').then(m => m.default.removeItem('current_session').catch(() => {}));
+        return;
+      }
       if (Date.now() - new Date(cp.savedAt).getTime() > 24 * 60 * 60 * 1000) {
-        const completedSetsCount = cp.completedSets ? Object.keys(cp.completedSets).length : 0;
+        const completedSetsCount = cp.completedSets
+          ? Object.values(cp.completedSets).filter(s => s && typeof s === 'object' && Object.values(s).some(v => v !== '' && v !== null && v !== undefined)).length
+          : 0;
         const totalSets = (cp.exercises || []).reduce((sum, ex) => sum + (ex.sets?.length || 0), 0);
         import('../utils/apiClient.js').then(mod => {
           const client = mod.default || mod.apiClient;
@@ -236,6 +242,8 @@ const DailyWorkoutScreen = () => {
           }).catch(() => {});
         });
         try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+        // Also clear AsyncStorage so sessionManager.getCurrentSession() doesn't return stale data
+        import('@react-native-async-storage/async-storage').then(m => m.default.removeItem('current_session').catch(() => {}));
         return;
       }
       if (cp.courseId !== courseId) return; // Different course — keep checkpoint but don't show
@@ -247,7 +255,7 @@ const DailyWorkoutScreen = () => {
     import('../utils/apiClient.js').then(mod => {
       const client = mod.default || mod.apiClient;
       client.get('/workout/session/active').then(res => {
-        const serverCp = res?.checkpoint;
+        const serverCp = res?.data?.checkpoint;
         if (!serverCp) return;
         if (serverCp.userId && serverCp.userId !== currentUser.uid) return;
         if (Date.now() - new Date(serverCp.savedAt).getTime() > 24 * 60 * 60 * 1000) return;
@@ -274,16 +282,28 @@ const DailyWorkoutScreen = () => {
       logger.error('[DailyWorkout.web] resume: failed to fetch full session', e);
     }
 
-    const workoutForNav = fullWorkout || {
-      id: recoveryCheckpoint.sessionId,
-      name: recoveryCheckpoint.sessionName,
-      exercises: recoveryCheckpoint.exercises.map(ex => ({
+    const fallbackExercises = (recoveryCheckpoint.exercises || [])
+      .filter(ex => ex?.exerciseId)
+      .map(ex => ({
         id: ex.exerciseId,
         exerciseId: ex.exerciseId,
         name: ex.exerciseName,
-        sets: ex.sets,
-      })),
+        sets: ex.sets || [],
+      }));
+
+    const workoutForNav = fullWorkout || {
+      id: recoveryCheckpoint.sessionId,
+      name: recoveryCheckpoint.sessionName,
+      exercises: fallbackExercises,
     };
+
+    if (!workoutForNav.exercises?.length) {
+      logger.error('[DailyWorkout.web] resume: no exercises in checkpoint or server');
+      try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+      setRecoveryCheckpoint(null);
+      setRecoveryResuming(false);
+      return;
+    }
 
     navigate(`/course/${cId}/workout/execution`, {
       state: {
@@ -297,13 +317,13 @@ const DailyWorkoutScreen = () => {
     setRecoveryResuming(false);
   }, [recoveryCheckpoint, course, courseId, navigate, user, recoveryResuming]);
 
-  const handleRecoveryDiscard = useCallback(() => {
+  const handleRecoveryDiscard = useCallback(async () => {
     if (recoveryCheckpoint) {
       const totalSets = (recoveryCheckpoint.exercises || []).reduce(
         (sum, ex) => sum + (ex.sets?.length || 0), 0
       );
       const completedSetsCount = recoveryCheckpoint.completedSets
-        ? Object.keys(recoveryCheckpoint.completedSets).length
+        ? Object.values(recoveryCheckpoint.completedSets).filter(s => s && typeof s === 'object' && Object.values(s).some(v => v !== '' && v !== null && v !== undefined)).length
         : 0;
       import('../utils/apiClient.js').then(mod => {
         const client = mod.default || mod.apiClient;
@@ -320,6 +340,12 @@ const DailyWorkoutScreen = () => {
       });
     }
     try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+    // Clear AsyncStorage current_session (written by sessionRecoveryService on startup)
+    // so sessionManager.getCurrentSession() doesn't return the abandoned session
+    try {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      await AsyncStorage.removeItem('current_session');
+    } catch {}
     setRecoveryCheckpoint(null);
   }, [recoveryCheckpoint]);
 

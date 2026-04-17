@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { auth } from '../config/firebase';
 import apiClient from '../utils/apiClient';
@@ -19,7 +18,7 @@ import { queryKeys } from '../config/queryClient';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
 import { getMondayWeek, formatWeekDisplay, getWeeksBetween } from '../utils/weekCalculation';
-import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
@@ -33,11 +32,8 @@ import WakeLoader from '../components/WakeLoader';
 
 const WeeklyVolumeHistoryScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  
+
+
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
     () => createStyles(screenWidth, screenHeight),
@@ -132,7 +128,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.loadingContainer}>
-          <View style={{ height: headerTotalHeight }} />
+          <WakeHeaderSpacer />
           <View style={{ marginTop: getGapAfterHeader() }}>
             <WakeLoader size={80} />
           </View>
@@ -149,7 +145,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.emptyContainer}>
-          <View style={{ height: headerTotalHeight }} />
+          <WakeHeaderSpacer />
           <View style={{ marginTop: getGapAfterHeader() }}>
             <Text style={styles.emptyText}>No se pudo cargar el historial. Inténtalo de nuevo.</Text>
             <TouchableOpacity
@@ -172,7 +168,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
           onBackPress={() => navigation.goBack()}
         />
         <View style={styles.emptyContainer}>
-          <View style={{ height: headerTotalHeight }} />
+          <WakeHeaderSpacer />
           <View style={{ marginTop: getGapAfterHeader() }}>
             <Text style={styles.emptyTitle}>No hay datos de volumen</Text>
             <Text style={styles.emptyText}>
@@ -193,7 +189,7 @@ const WeeklyVolumeHistoryScreen = ({ navigation }) => {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           {/* Spacer for fixed header - matches header height */}
-          <View style={{ height: headerTotalHeight }} />
+          <WakeHeaderSpacer />
           <View style={{ marginTop: getGapAfterHeader(), paddingTop: Math.max(48, screenHeight * 0.1) }}>
           <Text style={styles.title}>Historial de Volumen</Text>
 

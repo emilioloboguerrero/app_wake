@@ -122,6 +122,10 @@ class AuthService {
           sessionManager.clearUserCache(userId)
         ]);
       }
+
+      // Clear localStorage workout checkpoint (survives IndexedDB eviction on Safari)
+      try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+
       
     } catch (error) {
       logger.error('[AUTH] signOutUser error:', error);
@@ -203,6 +207,7 @@ class AuthService {
         sessionManager.clearUserCache(userId),
         authStorage.clearAuthState()
       ]);
+      try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
 
       // Delete Firebase Auth account
       await deleteUser(currentUser);

@@ -1608,7 +1608,9 @@ router.get("/workout/session/active", async (req, res) => {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
       const completedSetsCount = checkpoint.completedSets
-        ? Object.keys(checkpoint.completedSets as Record<string, unknown>).length
+        ? Object.values(checkpoint.completedSets as Record<string, Record<string, unknown>>).filter(
+            (s) => s && typeof s === "object" && Object.values(s).some((v) => v !== "" && v !== null && v !== undefined)
+          ).length
         : 0;
       db.collection("users")
         .doc(auth.userId)
@@ -1814,7 +1816,9 @@ router.get("/workout/checkpoint", async (req, res) => {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
       const completedSetsCount = checkpoint.completedSets
-        ? Object.keys(checkpoint.completedSets as Record<string, unknown>).length
+        ? Object.values(checkpoint.completedSets as Record<string, Record<string, unknown>>).filter(
+            (s) => s && typeof s === "object" && Object.values(s).some((v) => v !== "" && v !== null && v !== undefined)
+          ).length
         : 0;
       db.collection("users")
         .doc(auth.userId)

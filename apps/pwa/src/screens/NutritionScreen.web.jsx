@@ -19,7 +19,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
 import { FixedWakeHeader, WakeHeaderContent } from '../components/WakeHeader';
-import { isPWA } from '../utils/platform';
 import WeekDateSelector from '../components/WeekDateSelector.web';
 import BottomSpacer from '../components/BottomSpacer';
 import WakeModalOverlay from '../components/WakeModalOverlay.web';
@@ -55,11 +54,11 @@ function NutritionTopSpacer() {
   const ref = React.useRef(null);
   const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
   const rawTop = Math.max(0, Number(insets?.top) || 0);
-  const useMinForRealDevice = Platform.OS === 'web' && (isIOS || isPWA());
-  // 59px fallback only on iOS or PWA (standalone) so iPhone PWA layout is correct; desktop/Android use 0 when rawTop is 0.
+  // Fallback fires whenever rawTop is 0 (iOS PWA late env(), no-notch devices, desktop) OR when the reported inset is unrealistically small on a real device.
+  const useMinForRealDevice = Platform.OS === 'web';
   const effectiveTop =
     rawTop === 0
-      ? (isIOS || isPWA() ? NUTRITION_SPACER_SAFE_TOP_FALLBACK : 0)
+      ? NUTRITION_SPACER_SAFE_TOP_FALLBACK
       : useMinForRealDevice && rawTop < NUTRITION_SPACER_MIN_TOP
         ? NUTRITION_SPACER_SAFE_TOP_FALLBACK
         : rawTop;
@@ -69,7 +68,7 @@ function NutritionTopSpacer() {
   if (ref.current === null || computedHeight > ref.current) {
     ref.current = computedHeight;
   }
-  const totalHeight = Number.isFinite(ref.current) ? ref.current : 32 + (isIOS || isPWA() ? NUTRITION_SPACER_SAFE_TOP_FALLBACK : 0);
+  const totalHeight = Number.isFinite(ref.current) ? ref.current : 32 + NUTRITION_SPACER_SAFE_TOP_FALLBACK;
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
 }
 

@@ -13,12 +13,14 @@ class SessionManager {
       // Get all keys and filter for this user's progress
       const keys = await AsyncStorage.getAllKeys();
       const userProgressKeys = keys.filter(key => key.startsWith(`progress_${userId}_`));
-      
+
       // Remove all user-specific progress caches
       await Promise.all(userProgressKeys.map(key => AsyncStorage.removeItem(key)));
-      
+
+      // Also clear localStorage checkpoint (survives IndexedDB eviction on Safari iOS)
+      try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
     } catch (error) {
-      logger.error('❌ Error clearing session progress cache:', error);
+      logger.error('Error clearing session progress cache:', error);
     }
   }
 
@@ -95,7 +97,7 @@ class SessionManager {
       // Fallback: check cloud checkpoint (cross-device recovery)
       try {
         const res = await apiClient.get('/workout/checkpoint');
-        const checkpoint = res?.data ?? null;
+        const checkpoint = res?.data?.checkpoint ?? null;
         if (checkpoint) {
           await AsyncStorage.setItem('current_session', JSON.stringify(checkpoint));
           return checkpoint;
@@ -116,9 +118,10 @@ class SessionManager {
   async cancelSession() {
     try {
       await AsyncStorage.removeItem('current_session');
-      apiClient.delete('/workout/checkpoint').catch(e => logger.error('⚠️ Checkpoint delete failed (cancel):', e));
+      try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+      apiClient.delete('/workout/checkpoint').catch(e => logger.error('Checkpoint delete failed (cancel):', e));
     } catch (error) {
-      logger.error('❌ Error cancelling session:', error);
+      logger.error('Error cancelling session:', error);
     }
   }
   

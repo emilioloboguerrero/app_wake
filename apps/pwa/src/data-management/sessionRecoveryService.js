@@ -43,9 +43,9 @@ class SessionRecoveryService {
   async recoverFromServerCheckpoint() {
     try {
       const response = await apiClient.get('/workout/checkpoint');
-      if (!response?.data) return;
+      if (!response?.data?.checkpoint) return;
 
-      const checkpoint = response.data;
+      const checkpoint = response.data.checkpoint;
       // Write into AsyncStorage so the workout screen can detect and offer resume.
       await AsyncStorage.setItem('current_session', JSON.stringify(checkpoint));
     } catch (error) {

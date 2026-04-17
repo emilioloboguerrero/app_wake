@@ -16,12 +16,11 @@ import {
   Linking,
   Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import firestoreService from '../services/apiService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
-import { FixedWakeHeader, getGapAfterHeader } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import WakeLoader from '../components/WakeLoader';
@@ -44,10 +43,6 @@ const statusColors = {
 
 const SubscriptionsScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
-  const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
-  const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
-  const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
   const { user: contextUser } = useAuth();
   
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
@@ -64,8 +59,8 @@ const SubscriptionsScreen = ({ navigation }) => {
 
   // Create styles with current dimensions - memoized to prevent recalculation
   const styles = useMemo(
-    () => createStyles(screenWidth, screenHeight, headerTotalHeight),
-    [screenWidth, screenHeight, headerTotalHeight],
+    () => createStyles(screenWidth, screenHeight),
+    [screenWidth, screenHeight],
   );
 
   const createInitialSurveyAnswers = () => ({
@@ -559,8 +554,7 @@ const SubscriptionsScreen = ({ navigation }) => {
         onBackPress={() => navigation.goBack()}
       />
       <ScrollView contentContainerStyle={styles.contentContainer}>
-        {/* Spacer for fixed header - matches header height */}
-        <View style={{ height: headerTotalHeight }} />
+        <WakeHeaderSpacer />
         <View style={{ marginTop: getGapAfterHeader(), flex: 1 }}>
         <View style={styles.titleWrapper}>
           <TouchableOpacity
@@ -723,7 +717,7 @@ const SubscriptionsScreen = ({ navigation }) => {
   );
 };
 
-const createStyles = (screenWidth, screenHeight, headerTotalHeight) => StyleSheet.create({
+const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1a1a',

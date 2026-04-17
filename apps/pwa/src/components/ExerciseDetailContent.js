@@ -23,7 +23,7 @@ import ExerciseHistoryCard from '../components/ExerciseHistoryCard';
 import ExerciseProgressChart from '../components/ExerciseProgressChart';
 import SvgInfo from '../components/icons/SvgInfo';
 import { filterSessionsByPeriod } from '../utils/sessionFilter';
-import { getGapAfterHeader } from './WakeHeader';
+import { WakeHeaderSpacer, getGapAfterHeader } from './WakeHeader';
 import logger from '../utils/logger.js';
 import WakeLoader from './WakeLoader';
 
@@ -38,7 +38,7 @@ const ExerciseDetailContent = ({
   showResetButton = false,
   showInfoModal = true,
   showTitle = true,
-  headerSpacerHeight = 0
+  showHeaderSpacer = false
 }) => {
   // Use hook for reactive dimensions that update on orientation change
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -181,13 +181,10 @@ const ExerciseDetailContent = ({
   return (
     <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
       <View style={styles.content}>
-        {/* Spacer for fixed header - matches header height */}
-        {headerSpacerHeight > 0 && <View style={{ height: headerSpacerHeight }} />}
-        {/* Same gap between header and content as WakeHeaderContent (getGapAfterHeader is PWA-aware on web) */}
-        {headerSpacerHeight > 0 && <View style={{ marginTop: getGapAfterHeader(), height: Math.max(48, screenHeight * 0.1) }} />}
-        
-        {/* Top padding when used in modal (no title, no header spacer) */}
-        {!showTitle && headerSpacerHeight === 0 && (
+        {showHeaderSpacer && <WakeHeaderSpacer />}
+        {showHeaderSpacer && <View style={{ marginTop: getGapAfterHeader(), height: Math.max(48, screenHeight * 0.1) }} />}
+
+        {!showTitle && !showHeaderSpacer && (
           <View style={{ height: Math.max(10, screenHeight * 0.01) }} />
         )}
         
