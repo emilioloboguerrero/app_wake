@@ -20,6 +20,7 @@ interface StateDoc {
   sampleMessage: string;
   firstSeen: admin.firestore.Timestamp;
   lastSeen: admin.firestore.Timestamp;
+  reportedAt?: admin.firestore.Timestamp;
   countsByDay: {[date: string]: number};
 }
 
@@ -476,7 +477,8 @@ export async function runLogsDigest(opts: {
 
   const newOnes: Array<{entry: AggregatedError}> = [];
   const spiking: Array<{entry: AggregatedError; avg: number}> = [];
-  const baseline: Array<{entry: AggregatedError}> = [];
+  const recurring: Array<{entry: AggregatedError}> = [];
+  const chronic: Array<{entry: AggregatedError}> = [];
 
   const batch = db.batch();
 
@@ -497,19 +499,22 @@ export async function runLogsDigest(opts: {
     const priorCounts = prev7Keys.map((k) => countsByDay[k] ?? 0);
     const priorAvg = priorCounts.reduce((a, b) => a + b, 0) / 7;
 
-    const isNew =
-      !existing ||
-      existing.firstSeen.toMillis() >= now - 86_400_000;
-
+    // NEW: never reported before. Once a digest reports a fingerprint, we
+    // stamp reportedAt and it becomes RECURRING/CHRONIC/SPIKING from then on.
+    const isNew = !existing?.reportedAt;
     const isSpiking =
       !isNew && priorAvg > 0 && agg.count >= Math.max(5, 2 * priorAvg);
+    const firstSeenMs = existing?.firstSeen.toMillis() ?? now;
+    const isChronic = firstSeenMs < now - 86_400_000;
 
     if (isNew) {
       newOnes.push({entry: agg});
     } else if (isSpiking) {
       spiking.push({entry: agg, avg: priorAvg});
+    } else if (isChronic) {
+      chronic.push({entry: agg});
     } else {
-      baseline.push({entry: agg});
+      recurring.push({entry: agg});
     }
 
     const updated: StateDoc = {
@@ -518,6 +523,7 @@ export async function runLogsDigest(opts: {
       sampleMessage: agg.sampleMessage,
       firstSeen: existing?.firstSeen ?? nowTs,
       lastSeen: nowTs,
+      reportedAt: existing?.reportedAt ?? nowTs,
       countsByDay,
     };
     batch.set(refs[i], updated);
@@ -534,7 +540,8 @@ export async function runLogsDigest(opts: {
       b.entry.count / Math.max(b.avg, 1) -
       a.entry.count / Math.max(a.avg, 1)
   );
-  baseline.sort((a, b) => rankByImpact(a.entry, b.entry));
+  recurring.sort((a, b) => rankByImpact(a.entry, b.entry));
+  chronic.sort((a, b) => rankByImpact(a.entry, b.entry));
 
   const formatEntry = (e: AggregatedError, extra?: string): string => {
     const severityTag =
@@ -567,6 +574,8 @@ export async function runLogsDigest(opts: {
     `${totalErrors} err / ${totalWarns} warn`,
     `${newOnes.length} new`,
     `${spiking.length} spiking`,
+    `${recurring.length} recurring`,
+    `${chronic.length} chronic`,
   ];
   lines.push(`[wake-logs-digest] ${todayKey} · prod · ${headerParts.join(" · ")}`);
 
@@ -596,9 +605,17 @@ export async function runLogsDigest(opts: {
     lines.push("");
   }
 
-  if (baseline.length > 0) {
-    lines.push(`RECURRING (${baseline.length})`);
-    for (const s of baseline) {
+  if (recurring.length > 0) {
+    lines.push(`RECURRING — first seen in last 24h (${recurring.length})`);
+    for (const s of recurring) {
+      lines.push(formatEntry(s.entry));
+    }
+    lines.push("");
+  }
+
+  if (chronic.length > 0) {
+    lines.push(`CHRONIC — first seen earlier (${chronic.length})`);
+    for (const s of chronic) {
       lines.push(formatEntry(s.entry));
     }
     lines.push("");
