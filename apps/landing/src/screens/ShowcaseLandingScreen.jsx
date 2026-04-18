@@ -136,10 +136,10 @@ function PhoneShowcaseSection() {
   // Phone entry — waits off-screen for most of pre-pin, then slides in
   // horizontal over the final stretch. Rotation kicks in the instant the
   // phone arrives and takes its time expanding into place.
-  const phoneX = useTransform(enterProgress, [0, 0.75, 1], ['110vw', '110vw', '0vw']);
-  const phoneRotateZ = useTransform(scrollYProgress, [0, 0.12], [-90, 0]);
-  const desktopPhoneScale = useTransform(scrollYProgress, [0, 0.12], [0.70, 1]);
-  const mobilePhoneScale = useTransform(scrollYProgress, [0, 0.12], [0.60, 1]);
+  const phoneX = useTransform(enterProgress, [0, 0.45, 1], ['110vw', '110vw', '0vw']);
+  const phoneRotateZ = useTransform(scrollYProgress, [0, 0.14], [-90, 0]);
+  const desktopPhoneScale = useTransform(scrollYProgress, [0, 0.14], [0.70, 1]);
+  const mobilePhoneScale = useTransform(scrollYProgress, [0, 0.14], [0.60, 1]);
   const phoneScale = isMobile ? mobilePhoneScale : desktopPhoneScale;
 
   // Phone Y — slides up off the top of the viewport at the end, letting the
@@ -147,13 +147,13 @@ function PhoneShowcaseSection() {
   // Mobile: bottom-cut during phrases → rises to center → continues off screen.
   const mobilePhoneY = useTransform(
     scrollYProgress,
-    [0, 0.08, 0.16, 0.60, 0.66, 1.0],
+    [0, 0.09, 0.18, 0.78, 0.85, 1.0],
     ['0vh', '0vh', '36vh', '36vh', '0vh', '-120vh']
   );
   // Desktop: stays centered until the exit, then slides up off screen.
   const desktopPhoneY = useTransform(
     scrollYProgress,
-    [0, 0.66, 1.0],
+    [0, 0.82, 1.0],
     ['0vh', '0vh', '-120vh']
   );
   const phoneY = isMobile ? mobilePhoneY : desktopPhoneY;
@@ -164,38 +164,38 @@ function PhoneShowcaseSection() {
 
   // Opener — fully visible as the section enters, fades/slides out during
   // early pin. Mobile hides via visibility when the phone covers it.
-  const desktopOpenerOpacity = useTransform(scrollYProgress, [0, 0.11, 0.13], [1, 1, 0]);
-  const mobileOpenerOpacity = useTransform(scrollYProgress, [0, 0.11, 0.13, 1], [1, 1, 0, 0]);
-  const mobileOpenerVisibility = useTransform(scrollYProgress, (v) => (v >= 0.13 ? 'hidden' : 'visible'));
+  const desktopOpenerOpacity = useTransform(scrollYProgress, [0, 0.13, 0.15], [1, 1, 0]);
+  const mobileOpenerOpacity = useTransform(scrollYProgress, [0, 0.13, 0.15, 1], [1, 1, 0, 0]);
+  const mobileOpenerVisibility = useTransform(scrollYProgress, (v) => (v >= 0.15 ? 'hidden' : 'visible'));
   const openerOpacity = isMobile ? mobileOpenerOpacity : desktopOpenerOpacity;
-  const openerY = useTransform(scrollYProgress, [0, 0.11, 0.13], [0, 0, -40]);
+  const openerY = useTransform(scrollYProgress, [0, 0.13, 0.15], [0, 0, -40]);
 
 
   // Phone-screen stack — starts on the Wake logo (visible as the phone
   // rotates in), then sweeps up through the app phases.
   const stackY = useTransform(
     scrollYProgress,
-    [0, 0.12, 0.16, 0.28, 0.32, 0.44, 0.48],
+    [0, 0.14, 0.18, 0.36, 0.40, 0.58, 0.62],
     ['0%', '0%', '-100%', '-100%', '-200%', '-200%', '-300%']
   );
   // Aurora background — fully visible during opener, snaps off when phone covers it
-  const auroraOpacity = useTransform(scrollYProgress, (v) => (v < 0.13 ? 1 : 0));
+  const auroraOpacity = useTransform(scrollYProgress, (v) => (v < 0.15 ? 1 : 0));
 
   // Active phrase index — driven by scroll. Phrase 1 appears as the phone
-  // settles into its bottom-cut position (~0.20), in sync with the screen
+  // settles into its bottom-cut position, in sync with the screen
   // transition starting from logo to workout.
   const [activePhrase, setActivePhrase] = useState(-1);
   useMotionValueEvent(scrollYProgress, 'change', (v) => {
     let next = -1;
-    if (v >= 0.44) next = 2;
-    else if (v >= 0.28) next = 1;
-    else if (v >= 0.12) next = 0;
+    if (v >= 0.58) next = 2;
+    else if (v >= 0.36) next = 1;
+    else if (v >= 0.14) next = 0;
     setActivePhrase((prev) => (prev === next ? prev : next));
   });
 
   // Phrase 3 starts sliding up slightly AFTER the phone begins moving, so the
   // phone "catches up" and covers the text before they swipe up together.
-  const phrase3Y = useTransform(scrollYProgress, [0, 0.70, 1.0], ['0vh', '0vh', '-100vh']);
+  const phrase3Y = useTransform(scrollYProgress, [0, 0.85, 1.0], ['0vh', '0vh', '-100vh']);
 
   return (
     <section className="ps-section" ref={sectionRef}>

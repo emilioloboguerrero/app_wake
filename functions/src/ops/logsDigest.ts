@@ -6,7 +6,7 @@ import {sendTelegram} from "./telegram.js";
 
 const STATE_COLLECTION = "ops_logs_state";
 const DAYS_TO_KEEP = 14;
-const MAX_LIST_WITH_URL = 5;
+const MAX_LIST_PER_SECTION = 8;
 const BASELINE_LIST = 5;
 const SAMPLE_LEN = 220;
 const TELEGRAM_MAX = 4000;
@@ -77,17 +77,36 @@ function inferErrorType(message: string, severity: string): string {
   return ERROR_TYPE_RE.exec(message)?.[1] ?? severity;
 }
 
+function formatErr(err: any): string {
+  if (!err) return "";
+  if (typeof err === "string") return err;
+  if (typeof err !== "object") return String(err);
+  if (typeof err.stack === "string") return err.stack;
+  if (typeof err.message === "string") return err.message;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
 function extractMessage(entry: any): string {
   if (typeof entry.textPayload === "string") return entry.textPayload;
+
   const j = entry.jsonPayload;
   if (j && typeof j === "object") {
-    if (typeof j.message === "string") return j.message;
+    const msg = typeof j.message === "string" ? j.message : "";
+    const errText = formatErr(j.err ?? j.error);
+    if (msg && errText && !errText.includes(msg)) return `${msg}: ${errText}`;
+    if (errText) return errText;
+    if (msg) return msg;
     try {
       return JSON.stringify(j);
     } catch {
       return String(j);
     }
   }
+
   const p = entry.protoPayload;
   if (p && typeof p === "object") {
     try {
@@ -97,6 +116,27 @@ function extractMessage(entry: any): string {
     }
   }
   return "";
+}
+
+// Reduce a raw error+stack to one line: "<header> @ <app-frame>".
+// Frames inside node_modules are dropped; the first app frame (under
+// /workspace/lib/) is kept so the digest points to our code, not the framework.
+function condenseStack(raw: string): string {
+  if (!raw) return raw;
+  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return raw;
+  const header = lines[0].replace(/^Error:\s*Error:\s*/, "Error: ");
+  let appFrame = "";
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.startsWith("at ")) continue;
+    if (line.includes("node_modules")) continue;
+    if (!line.includes("/workspace/")) continue;
+    const m = /\/workspace\/(?:lib\/)?([^\s)]+)/.exec(line);
+    appFrame = m ? m[1] : line.replace(/^at\s+/, "").replace(/\/workspace\//, "");
+    break;
+  }
+  return appFrame ? `${header} @ ${appFrame}` : header;
 }
 
 function extractFunctionName(entry: any): string {
@@ -187,51 +227,6 @@ function isErrorSeverity(severity: string): boolean {
   return s === "ERROR" || s === "CRITICAL" || s === "ALERT" || s === "EMERGENCY";
 }
 
-function buildLogsUrl(
-  projectId: string,
-  functionLabel: string,
-  errorType: string,
-  sinceIso: string
-): string {
-  // Match on the resource type and a fragment of the sample so the console
-  // filters to approximately the same group. Best-effort; the operator can
-  // refine in the console.
-  const isApiRoute = functionLabel.startsWith("api ");
-  const clauses: string[] = ["severity>=WARNING"];
-  if (isApiRoute) {
-    const parts = functionLabel.split(" ");
-    const route = parts.slice(2).join(" ");
-    clauses.push("resource.labels.service_name=\"api\"");
-    clauses.push(`httpRequest.requestUrl:"${route}"`);
-  } else if (functionLabel === "api") {
-    clauses.push("resource.labels.service_name=\"api\"");
-  } else {
-    clauses.push(`resource.labels.function_name="${functionLabel}"`);
-  }
-  if (errorType && errorType !== "WARNING" && errorType !== "ERROR") {
-    clauses.push(`textPayload:"${errorType}"`);
-  }
-  const query = clauses.join(" AND ");
-  const encoded = encodeURIComponent(query);
-  const timeEncoded = encodeURIComponent(sinceIso);
-  return (
-    `https://console.cloud.google.com/logs/query;` +
-    `query=${encoded};` +
-    `startTime=${timeEncoded}?project=${projectId}`
-  );
-}
-
-function buildOverallLogsUrl(projectId: string, sinceIso: string): string {
-  const query =
-    "severity>=WARNING AND " +
-    "(resource.type=\"cloud_function\" OR resource.type=\"cloud_run_revision\")";
-  return (
-    `https://console.cloud.google.com/logs/query;` +
-    `query=${encodeURIComponent(query)};` +
-    `startTime=${encodeURIComponent(sinceIso)}?project=${projectId}`
-  );
-}
-
 async function listLogEntries(
   accessToken: string,
   projectId: string,
@@ -308,6 +303,11 @@ async function fetchRecentDeploys(
   }
 }
 
+// One `firebase deploy --only functions` updates ~20 functions, each emitting
+// its own audit event. Cluster events of the same kind within a 5-minute
+// window into a single "deploy" so the digest reflects user actions.
+const DEPLOY_CLUSTER_WINDOW_MS = 5 * 60_000;
+
 function summarizeDeploys(deploys: DeployEvent[]): string[] {
   if (deploys.length === 0) return [];
   const byKind = new Map<string, DeployEvent[]>();
@@ -316,13 +316,23 @@ function summarizeDeploys(deploys: DeployEvent[]): string[] {
     arr.push(d);
     byKind.set(d.kind, arr);
   }
+
   const lines: string[] = [];
   for (const [kind, arr] of byKind) {
     arr.sort((a, b) => a.timeMs - b.timeMs);
-    const first = hhmm(arr[0].timeMs);
-    const last = hhmm(arr[arr.length - 1].timeMs);
-    const window = first === last ? first : `${first}–${last}`;
-    lines.push(`• ${kind}: ${arr.length} (${window})`);
+    const clusters: {start: number; end: number; count: number}[] = [];
+    for (const d of arr) {
+      const last = clusters[clusters.length - 1];
+      if (last && d.timeMs - last.end < DEPLOY_CLUSTER_WINDOW_MS) {
+        last.end = d.timeMs;
+        last.count += 1;
+      } else {
+        clusters.push({start: d.timeMs, end: d.timeMs, count: 1});
+      }
+    }
+    const times = clusters.map((c) => hhmm(c.start)).join(", ");
+    const noun = clusters.length === 1 ? "deploy" : "deploys";
+    lines.push(`• ${kind}: ${clusters.length} ${noun} (${times})`);
   }
   return lines;
 }
@@ -371,8 +381,6 @@ export async function runLogsDigest(opts: {
       isAbort ?
         `Logging API did not respond within ${QUERY_TIMEOUT_MS / 1000}s.` :
         `Logging API error: ${msg.slice(0, 200)}`,
-      "",
-      `All logs: ${buildOverallLogsUrl(projectId, since)}`,
     ].join("\n");
     await sendTelegram(botToken, chatId, fallback);
     return;
@@ -434,7 +442,7 @@ export async function runLogsDigest(opts: {
         fingerprint: fp,
         functionName: functionLabel,
         errorType,
-        sampleMessage: normalizeForDisplay(messageRaw).slice(0, SAMPLE_LEN),
+        sampleMessage: normalizeForDisplay(condenseStack(messageRaw)).slice(0, SAMPLE_LEN),
         count: 1,
         errorCount: isErr ? 1 : 0,
         warnCount: isErr ? 0 : 1,
@@ -517,11 +525,7 @@ export async function runLogsDigest(opts: {
   );
   baseline.sort((a, b) => rankByImpact(a.entry, b.entry));
 
-  const formatEntry = (
-    e: AggregatedError,
-    extra?: string,
-    withUrl = false
-  ): string[] => {
+  const formatEntry = (e: AggregatedError, extra?: string): string => {
     const severityTag =
       e.errorCount > 0 && e.warnCount > 0 ?
         `${e.errorCount} err, ${e.warnCount} warn` :
@@ -534,14 +538,16 @@ export async function runLogsDigest(opts: {
         `, burst ${hhmm(e.firstMs)}` :
         `, ${hhmm(e.firstMs)}–${hhmm(e.lastMs)}`;
     const suffix = extra ? `, ${extra}` : "";
-    const head =
-      `• ${e.functionName} — ${e.errorType}: ${e.sampleMessage} ` +
-      `(${severityTag}${users}${timeRange}${suffix})`;
-    const out = [head];
-    if (withUrl) {
-      out.push(`  ↳ ${buildLogsUrl(projectId, e.functionName, e.errorType, since)}`);
-    }
-    return out;
+    // Drop the "ErrorType:" prefix when the sample already begins with it.
+    const sample = e.sampleMessage;
+    const prefix =
+      sample.toLowerCase().startsWith(`${e.errorType.toLowerCase()}:`) ?
+        "" :
+        `${e.errorType}: `;
+    return (
+      `• ${e.functionName} — ${prefix}${sample} ` +
+      `(${severityTag}${users}${timeRange}${suffix})`
+    );
   };
 
   const lines: string[] = [];
@@ -564,23 +570,23 @@ export async function runLogsDigest(opts: {
 
   if (newOnes.length > 0) {
     lines.push("NEW");
-    for (const s of newOnes.slice(0, MAX_LIST_WITH_URL)) {
-      lines.push(...formatEntry(s.entry, undefined, true));
+    for (const s of newOnes.slice(0, MAX_LIST_PER_SECTION)) {
+      lines.push(formatEntry(s.entry));
     }
-    if (newOnes.length > MAX_LIST_WITH_URL) {
-      lines.push(`  …and ${newOnes.length - MAX_LIST_WITH_URL} more`);
+    if (newOnes.length > MAX_LIST_PER_SECTION) {
+      lines.push(`  …and ${newOnes.length - MAX_LIST_PER_SECTION} more`);
     }
     lines.push("");
   }
 
   if (spiking.length > 0) {
     lines.push("SPIKING (vs 7d avg)");
-    for (const s of spiking.slice(0, MAX_LIST_WITH_URL)) {
+    for (const s of spiking.slice(0, MAX_LIST_PER_SECTION)) {
       const pct = Math.round((s.entry.count / Math.max(s.avg, 1) - 1) * 100);
-      lines.push(...formatEntry(s.entry, `avg ${s.avg.toFixed(1)}, +${pct}%`, true));
+      lines.push(formatEntry(s.entry, `avg ${s.avg.toFixed(1)}, +${pct}%`));
     }
-    if (spiking.length > MAX_LIST_WITH_URL) {
-      lines.push(`  …and ${spiking.length - MAX_LIST_WITH_URL} more`);
+    if (spiking.length > MAX_LIST_PER_SECTION) {
+      lines.push(`  …and ${spiking.length - MAX_LIST_PER_SECTION} more`);
     }
     lines.push("");
   }
@@ -588,7 +594,7 @@ export async function runLogsDigest(opts: {
   if (baseline.length > 0) {
     lines.push(`BASELINE (top ${BASELINE_LIST})`);
     for (const s of baseline.slice(0, BASELINE_LIST)) {
-      lines.push(...formatEntry(s.entry));
+      lines.push(formatEntry(s.entry));
     }
     if (baseline.length > BASELINE_LIST) {
       lines.push(`  …and ${baseline.length - BASELINE_LIST} more recurring`);
@@ -596,11 +602,9 @@ export async function runLogsDigest(opts: {
     lines.push("");
   }
 
-  lines.push(`All logs: ${buildOverallLogsUrl(projectId, since)}`);
-
   let body = lines.join("\n").trim();
   if (body.length > TELEGRAM_MAX) {
-    const marker = "\n…[truncated — open All logs URL for full view]";
+    const marker = "\n…[truncated]";
     body = body.slice(0, TELEGRAM_MAX - marker.length) + marker;
   }
 

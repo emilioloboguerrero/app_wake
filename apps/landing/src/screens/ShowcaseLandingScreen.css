@@ -279,7 +279,7 @@
 .ps-section {
   position: relative;
   width: 100%;
-  height: 600vh;
+  height: 800vh;
   z-index: 2;
 }
 
@@ -957,7 +957,7 @@
 
   /* Phone showcase — mobile */
   .ps-section {
-    height: 500vh;
+    height: 700vh;
   }
 
   .ps-grid {
