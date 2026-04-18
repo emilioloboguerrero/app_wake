@@ -48,14 +48,17 @@ export async function handleSignalsWebhook(
   const botToken = opts.botToken;
   const chatId = opts.allowedChatId;
 
-  res.status(200).send("ok");
-
+  // Cloud Run Gen2 throttles CPU after the response is sent, so we run the
+  // command to completion *before* replying to Telegram's webhook. The
+  // webhook waits ~75s before retrying, which is well above our 10s/query
+  // budgets.
   if (!handler) {
     await sendTelegram(
       botToken,
       chatId,
       `[signals_wake] unknown command: /${commandName}. Try /help.`
     ).catch(() => undefined);
+    res.status(200).send("ok");
     return;
   }
 
@@ -82,4 +85,6 @@ export async function handleSignalsWebhook(
       `[signals_wake] /${commandName} failed: ${errMsg.slice(0, 500)}`
     ).catch(() => undefined);
   }
+
+  res.status(200).send("ok");
 }
