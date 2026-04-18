@@ -115,18 +115,14 @@ function extractMessage(entry: any): string {
     }
   }
 
-  // Cloud Run request logs: no textPayload/jsonPayload, but httpRequest
-  // carries everything we need (status, method, path).
+  // Cloud Run request logs: no textPayload/jsonPayload. The route is already
+  // captured in the functionLabel (via httpRequest.requestUrl), so the sample
+  // only needs status + method.
   const hr = entry.httpRequest;
-  if (hr && hr.requestUrl && hr.requestMethod) {
+  if (hr && hr.requestMethod) {
     const status = hr.status ?? "?";
     const method = String(hr.requestMethod).toUpperCase();
-    try {
-      const url = new URL(hr.requestUrl);
-      return `HTTP ${status} ${method} ${url.pathname}`;
-    } catch {
-      return `HTTP ${status} ${method} ${hr.requestUrl}`;
-    }
+    return `HTTP ${status} ${method}`;
   }
 
   return "";

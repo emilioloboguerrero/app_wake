@@ -7,6 +7,9 @@ const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
 const LONG_NUMBER_RE = /\b\d{6,}\b/g;
 const HEX_HASH_RE = /\b[0-9a-f]{20,}\b/gi;
 const USER_TAG_RE = /\(user=[^)]+\)/g;
+// Firebase document IDs (and similar generated IDs): 15–32 char alphanumeric
+// tokens that contain both letters and digits. Excludes ordinary English words.
+const GENERATED_ID_RE = /\b(?=[A-Za-z0-9]{15,32}\b)(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]+\b/g;
 
 // Normalize for fingerprinting: strip high-entropy tokens that would
 // otherwise cause the same underlying bug to fingerprint as many.
@@ -17,6 +20,7 @@ export function normalizeForFingerprint(message: string): string {
     .replace(TIMESTAMP_RE, "{ts}")
     .replace(EMAIL_RE, "{email}")
     .replace(HEX_HASH_RE, "{hash}")
+    .replace(GENERATED_ID_RE, "{id}")
     .replace(LONG_NUMBER_RE, "{n}")
     .replace(/\s+/g, " ")
     .trim()
