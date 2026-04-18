@@ -6,11 +6,10 @@ import {sendTelegram} from "./telegram.js";
 
 const STATE_COLLECTION = "ops_logs_state";
 const DAYS_TO_KEEP = 14;
-const MAX_LIST_PER_SECTION = 8;
-const BASELINE_LIST = 5;
 const SAMPLE_LEN = 220;
 const TELEGRAM_MAX = 4000;
 const QUERY_TIMEOUT_MS = 10_000;
+const LOGGING_PAGE_SIZE = 1000;
 const LOGGING_SCOPE = "https://www.googleapis.com/auth/logging.read";
 
 const googleAuth = new GoogleAuth({scopes: [LOGGING_SCOPE]});
@@ -115,6 +114,21 @@ function extractMessage(entry: any): string {
       return String(p);
     }
   }
+
+  // Cloud Run request logs: no textPayload/jsonPayload, but httpRequest
+  // carries everything we need (status, method, path).
+  const hr = entry.httpRequest;
+  if (hr && hr.requestUrl && hr.requestMethod) {
+    const status = hr.status ?? "?";
+    const method = String(hr.requestMethod).toUpperCase();
+    try {
+      const url = new URL(hr.requestUrl);
+      return `HTTP ${status} ${method} ${url.pathname}`;
+    } catch {
+      return `HTTP ${status} ${method} ${hr.requestUrl}`;
+    }
+  }
+
   return "";
 }
 
@@ -246,6 +260,7 @@ async function listLogEntries(
         resourceNames: [`projects/${projectId}`],
         filter,
         orderBy: "timestamp desc",
+        pageSize: LOGGING_PAGE_SIZE,
       }),
       signal: controller.signal,
     });
@@ -569,35 +584,26 @@ export async function runLogsDigest(opts: {
   lines.push("");
 
   if (newOnes.length > 0) {
-    lines.push("NEW");
-    for (const s of newOnes.slice(0, MAX_LIST_PER_SECTION)) {
+    lines.push(`NEW (${newOnes.length})`);
+    for (const s of newOnes) {
       lines.push(formatEntry(s.entry));
-    }
-    if (newOnes.length > MAX_LIST_PER_SECTION) {
-      lines.push(`  …and ${newOnes.length - MAX_LIST_PER_SECTION} more`);
     }
     lines.push("");
   }
 
   if (spiking.length > 0) {
-    lines.push("SPIKING (vs 7d avg)");
-    for (const s of spiking.slice(0, MAX_LIST_PER_SECTION)) {
+    lines.push(`SPIKING vs 7d avg (${spiking.length})`);
+    for (const s of spiking) {
       const pct = Math.round((s.entry.count / Math.max(s.avg, 1) - 1) * 100);
       lines.push(formatEntry(s.entry, `avg ${s.avg.toFixed(1)}, +${pct}%`));
-    }
-    if (spiking.length > MAX_LIST_PER_SECTION) {
-      lines.push(`  …and ${spiking.length - MAX_LIST_PER_SECTION} more`);
     }
     lines.push("");
   }
 
   if (baseline.length > 0) {
-    lines.push(`BASELINE (top ${BASELINE_LIST})`);
-    for (const s of baseline.slice(0, BASELINE_LIST)) {
+    lines.push(`RECURRING (${baseline.length})`);
+    for (const s of baseline) {
       lines.push(formatEntry(s.entry));
-    }
-    if (baseline.length > BASELINE_LIST) {
-      lines.push(`  …and ${baseline.length - BASELINE_LIST} more recurring`);
     }
     lines.push("");
   }
