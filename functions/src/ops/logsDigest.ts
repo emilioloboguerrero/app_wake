@@ -6,7 +6,6 @@ import {sendTelegram} from "./telegram.js";
 
 const STATE_COLLECTION = "ops_logs_state";
 const DAYS_TO_KEEP = 14;
-const MAX_ENTRIES = 1000;
 const MAX_LIST_WITH_URL = 5;
 const BASELINE_LIST = 5;
 const SAMPLE_LEN = 220;
@@ -321,18 +320,15 @@ export async function runLogsDigest(opts: {
   const [entries] = await logging.getEntries({
     filter,
     orderBy: "timestamp desc",
-    pageSize: MAX_ENTRIES,
-    gaxOptions: {timeout: 45_000},
   });
+
+  functions.logger.info("wake-logs-digest: fetched main", {count: entries.length});
 
   // Deploys query runs after the main query so it cannot starve it.
   // fetchRecentDeploys swallows its own errors, including its internal timeout.
   const deploys = await fetchRecentDeploys(logging, projectId, since);
 
-  functions.logger.info("wake-logs-digest: fetched", {
-    count: entries.length,
-    deploys: deploys.length,
-  });
+  functions.logger.info("wake-logs-digest: fetched deploys", {count: deploys.length});
 
   if (entries.length === 0) {
     const deployLines = summarizeDeploys(deploys);
