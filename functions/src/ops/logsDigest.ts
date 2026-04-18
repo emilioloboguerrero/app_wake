@@ -1,5 +1,5 @@
 import * as admin from "firebase-admin";
-import {Logging} from "@google-cloud/logging";
+import {GoogleAuth} from "google-auth-library";
 import * as functions from "firebase-functions";
 import {fingerprintError, normalizeForDisplay} from "./fingerprint.js";
 import {sendTelegram} from "./telegram.js";
@@ -10,6 +10,10 @@ const MAX_LIST_WITH_URL = 5;
 const BASELINE_LIST = 5;
 const SAMPLE_LEN = 220;
 const TELEGRAM_MAX = 4000;
+const QUERY_TIMEOUT_MS = 10_000;
+const LOGGING_SCOPE = "https://www.googleapis.com/auth/logging.read";
+
+const googleAuth = new GoogleAuth({scopes: [LOGGING_SCOPE]});
 
 interface StateDoc {
   functionName: string;
@@ -74,26 +78,34 @@ function inferErrorType(message: string, severity: string): string {
 }
 
 function extractMessage(entry: any): string {
-  const data = entry.data;
-  if (typeof data === "string") return data;
-  if (data && typeof data === "object") {
-    if (typeof data.message === "string") return data.message;
+  if (typeof entry.textPayload === "string") return entry.textPayload;
+  const j = entry.jsonPayload;
+  if (j && typeof j === "object") {
+    if (typeof j.message === "string") return j.message;
     try {
-      return JSON.stringify(data);
+      return JSON.stringify(j);
     } catch {
-      return String(data);
+      return String(j);
+    }
+  }
+  const p = entry.protoPayload;
+  if (p && typeof p === "object") {
+    try {
+      return JSON.stringify(p).slice(0, 500);
+    } catch {
+      return String(p);
     }
   }
   return "";
 }
 
-function extractFunctionName(metadata: any): string {
-  const labels = metadata?.resource?.labels || {};
+function extractFunctionName(entry: any): string {
+  const labels = entry?.resource?.labels || {};
   return (
     labels.function_name ||
     labels.service_name ||
     labels.cloud_function_name ||
-    metadata?.resource?.type ||
+    entry?.resource?.type ||
     "unknown"
   );
 }
@@ -118,8 +130,8 @@ function normalizeRoute(path: string): string {
   return result.length > 80 ? result.slice(0, 80) + "..." : result;
 }
 
-function extractRouteFromHttpRequest(metadata: any): {method: string; route: string; status?: number} | null {
-  const hr = metadata?.httpRequest;
+function extractRouteFromHttpRequest(entry: any): {method: string; route: string; status?: number} | null {
+  const hr = entry?.httpRequest;
   if (!hr || !hr.requestUrl) return null;
   try {
     const url = new URL(hr.requestUrl);
@@ -142,37 +154,31 @@ function extractRouteFromMessage(message: string): {method: string; route: strin
 
 function deriveFunctionLabel(
   rawFunctionName: string,
-  metadata: any,
+  entry: any,
   message: string
 ): string {
   if (rawFunctionName !== "api") return rawFunctionName;
-  const fromHttp = extractRouteFromHttpRequest(metadata);
+  const fromHttp = extractRouteFromHttpRequest(entry);
   if (fromHttp) return `api ${fromHttp.method} ${fromHttp.route}`;
   const fromMsg = extractRouteFromMessage(message);
   if (fromMsg) return `api ${fromMsg.method} ${fromMsg.route}`;
   return "api";
 }
 
-function extractUserId(message: string, metadata: any): string | null {
+function extractUserId(message: string, entry: any): string | null {
   const tagMatch = USER_TAG_RE.exec(message);
   if (tagMatch) {
     const u = tagMatch[1].trim();
     if (u && u !== "anon") return u;
   }
-  const labels = metadata?.labels;
+  const labels = entry?.labels;
   if (labels && typeof labels.userId === "string") return labels.userId;
   return null;
 }
 
-function entryTimeMs(metadata: any): number {
-  const ts = metadata?.timestamp;
-  if (!ts) return Date.now();
+function entryTimeMs(entry: any): number {
+  const ts = entry?.timestamp;
   if (typeof ts === "string") return new Date(ts).getTime();
-  if (typeof ts === "object" && ts.seconds !== undefined) {
-    const secs = typeof ts.seconds === "number" ? ts.seconds : Number(ts.seconds);
-    const nanos = typeof ts.nanos === "number" ? ts.nanos : 0;
-    return secs * 1000 + Math.floor(nanos / 1_000_000);
-  }
   return Date.now();
 }
 
@@ -226,12 +232,44 @@ function buildOverallLogsUrl(projectId: string, sinceIso: string): string {
   );
 }
 
+async function listLogEntries(
+  accessToken: string,
+  projectId: string,
+  filter: string,
+  timeoutMs: number
+): Promise<any[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch("https://logging.googleapis.com/v2/entries:list", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        resourceNames: [`projects/${projectId}`],
+        filter,
+        orderBy: "timestamp desc",
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Logging API ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const json: any = await res.json();
+    return Array.isArray(json.entries) ? json.entries : [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchRecentDeploys(
-  logging: Logging,
+  accessToken: string,
   projectId: string,
   sinceIso: string
 ): Promise<DeployEvent[]> {
-  // Exact logName matches are dramatically faster than substring scans.
   const logNames = [
     `projects/${projectId}/logs/cloudaudit.googleapis.com%2Factivity`,
     `projects/${projectId}/logs/cloudaudit.googleapis.com%2Fsystem_event`,
@@ -246,23 +284,17 @@ async function fetchRecentDeploys(
   ].join(" AND ");
 
   try {
-    const [entries] = await logging.getEntries({
-      filter,
-      orderBy: "timestamp desc",
-      pageSize: 50,
-      gaxOptions: {timeout: 15_000},
-    });
+    const entries = await listLogEntries(accessToken, projectId, filter, QUERY_TIMEOUT_MS);
     const deploys: DeployEvent[] = [];
     for (const entry of entries) {
-      const metadata: any = entry.metadata;
-      const payload: any = entry.data;
+      const payload: any = entry.protoPayload || {};
       const method = String(payload?.methodName || "");
       const resource = String(payload?.resourceName || "");
       let kind = "deploy";
       if (method.includes("Function")) kind = "functions";
       else if (method.includes("Version") || method.includes("Release")) kind = "hosting";
       deploys.push({
-        timeMs: entryTimeMs(metadata),
+        timeMs: entryTimeMs(entry),
         kind,
         resource: resource.split("/").pop() || resource,
       });
@@ -302,7 +334,6 @@ export async function runLogsDigest(opts: {
 }): Promise<void> {
   const {botToken, chatId, projectId} = opts;
   const db = admin.firestore();
-  const logging = new Logging({projectId});
 
   const now = Date.now();
   const nowDate = new Date(now);
@@ -317,17 +348,41 @@ export async function runLogsDigest(opts: {
 
   functions.logger.info("wake-logs-digest: querying", {filter});
 
-  const [entries] = await logging.getEntries({
-    filter,
-    orderBy: "timestamp desc",
+  const tokenStart = Date.now();
+  const client = await googleAuth.getClient();
+  const tokenRes = await client.getAccessToken();
+  const accessToken = tokenRes.token;
+  if (!accessToken) {
+    throw new Error("failed to acquire access token for Logging API");
+  }
+  functions.logger.info("wake-logs-digest: token", {ms: Date.now() - tokenStart});
+
+  let entries: any[];
+  const queryStart = Date.now();
+  try {
+    entries = await listLogEntries(accessToken, projectId, filter, QUERY_TIMEOUT_MS);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    functions.logger.error("wake-logs-digest: main query failed", {error: msg});
+    const fallback = [
+      `[wake-logs-digest] ${todayKey} · prod`,
+      "",
+      isAbort ?
+        `Logging API did not respond within ${QUERY_TIMEOUT_MS / 1000}s.` :
+        `Logging API error: ${msg.slice(0, 200)}`,
+      "",
+      `All logs: ${buildOverallLogsUrl(projectId, since)}`,
+    ].join("\n");
+    await sendTelegram(botToken, chatId, fallback);
+    return;
+  }
+  functions.logger.info("wake-logs-digest: fetched main", {
+    count: entries.length,
+    ms: Date.now() - queryStart,
   });
 
-  functions.logger.info("wake-logs-digest: fetched main", {count: entries.length});
-
-  // Deploys query runs after the main query so it cannot starve it.
-  // fetchRecentDeploys swallows its own errors, including its internal timeout.
-  const deploys = await fetchRecentDeploys(logging, projectId, since);
-
+  const deploys = await fetchRecentDeploys(accessToken, projectId, since);
   functions.logger.info("wake-logs-digest: fetched deploys", {count: deploys.length});
 
   if (entries.length === 0) {
@@ -349,9 +404,8 @@ export async function runLogsDigest(opts: {
   let totalWarns = 0;
 
   for (const entry of entries) {
-    const metadata: any = entry.metadata;
-    const rawFunctionName = extractFunctionName(metadata);
-    const severity = String(metadata?.severity || "WARNING");
+    const rawFunctionName = extractFunctionName(entry);
+    const severity = String(entry?.severity || "WARNING");
     const isErr = isErrorSeverity(severity);
     if (isErr) totalErrors += 1;
     else totalWarns += 1;
@@ -359,11 +413,11 @@ export async function runLogsDigest(opts: {
     const messageRaw = extractMessage(entry);
     if (!messageRaw) continue;
 
-    const functionLabel = deriveFunctionLabel(rawFunctionName, metadata, messageRaw);
+    const functionLabel = deriveFunctionLabel(rawFunctionName, entry, messageRaw);
     const errorType = inferErrorType(messageRaw, severity);
     const fp = fingerprintError(functionLabel, errorType, messageRaw);
-    const userId = extractUserId(messageRaw, metadata);
-    const timeMs = entryTimeMs(metadata);
+    const userId = extractUserId(messageRaw, entry);
+    const timeMs = entryTimeMs(entry);
 
     const existing = perFp.get(fp);
     if (existing) {
