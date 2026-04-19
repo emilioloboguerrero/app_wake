@@ -34,6 +34,7 @@ import ClientesScreen from './screens/ClientesScreen';
 
 import BibliotecaGuideTest from './screens/biblioteca-guide/BibliotecaGuideTest';
 import DebugScreenTracker from './components/DebugScreenTracker';
+import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
 
 const RedirectLibrarySessionEdit = () => {
@@ -338,14 +339,16 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <MediaUploadProvider>
-          <AppContent />
-          <UploadStatusCard />
-        </MediaUploadProvider>
-      </ToastProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <MediaUploadProvider>
+            <AppContent />
+            <UploadStatusCard />
+          </MediaUploadProvider>
+        </ToastProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

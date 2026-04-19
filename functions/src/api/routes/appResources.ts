@@ -1,7 +1,7 @@
-import { Router } from "express";
-import { checkIpRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
-import { db, FieldValue } from "../firestore.js";
+import {Router} from "express";
+import {checkIpRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
+import {db, FieldValue} from "../firestore.js";
 
 const router = Router();
 
@@ -20,22 +20,22 @@ router.get("/app-resources", async (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=300");
 
   if (cachedResources && now < cachedResources.expiresAt) {
-    res.json({ data: cachedResources.data });
+    res.json({data: cachedResources.data});
     return;
   }
 
   const snapshot = await db.collection("app_resources").get();
-  const resources = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }));
+  const resources = snapshot.docs.map((d) => ({...d.data(), id: d.id}));
 
   // Only cache if within size bounds
   const jsonStr = JSON.stringify(resources);
   if (jsonStr.length <= MAX_CACHE_SIZE_BYTES) {
-    cachedResources = { data: resources, expiresAt: now + CACHE_TTL_MS, sizeBytes: jsonStr.length };
+    cachedResources = {data: resources, expiresAt: now + CACHE_TTL_MS, sizeBytes: jsonStr.length};
   } else {
     cachedResources = null;
   }
 
-  res.json({ data: resources });
+  res.json({data: resources});
 });
 
 // PUT /app-resources/landing (admin only — manages landing page assets)
@@ -45,9 +45,9 @@ router.put("/app-resources/landing", async (req, res, next) => {
       throw new WakeApiServerError("FORBIDDEN", 403, "Solo administradores pueden modificar recursos");
     }
 
-    const { mainHeroLanding, cards, dosFormas } = req.body;
+    const {mainHeroLanding, cards, dosFormas} = req.body;
 
-    const update: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
+    const update: Record<string, unknown> = {updatedAt: FieldValue.serverTimestamp()};
 
     if (mainHeroLanding !== undefined) {
       if (!Array.isArray(mainHeroLanding) || mainHeroLanding.some((u: unknown) => typeof u !== "string")) {
@@ -70,13 +70,13 @@ router.put("/app-resources/landing", async (req, res, next) => {
       update.dosFormas = dosFormas;
     }
 
-    await db.collection("app_resources").doc("landing").set(update, { merge: true });
+    await db.collection("app_resources").doc("landing").set(update, {merge: true});
 
     // Bust cache so the public GET picks up changes immediately
     cachedResources = null;
 
     const doc = await db.collection("app_resources").doc("landing").get();
-    res.json({ data: { id: "landing", ...doc.data() } });
+    res.json({data: {id: "landing", ...doc.data()}});
   } catch (err) {
     next(err);
   }

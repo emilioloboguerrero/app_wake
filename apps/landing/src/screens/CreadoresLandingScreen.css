@@ -1,0 +1,1083 @@
+/* ═══════════════════════════════════════════
+   CREATOR LANDING — /creadores
+   Dark cinematic premium minimalist.
+   ═══════════════════════════════════════════ */
+
+.cl {
+  background: #1a1a1a;
+  color: #fff;
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── HERO ─── */
+.cl-hero {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 120px 40px 80px;
+  overflow: hidden;
+}
+
+.cl-hero-aurora {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 30%, rgba(255, 87, 168, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 70% 60%, rgba(87, 120, 255, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(255, 255, 255, 0.03) 0%, transparent 70%);
+  filter: blur(30px);
+  opacity: 0.8;
+  pointer-events: none;
+  animation: auroraDrift 20s ease-in-out infinite alternate;
+}
+
+@keyframes auroraDrift {
+  from { transform: translate(-2%, -1%) scale(1); }
+  to   { transform: translate(2%, 1%) scale(1.05); }
+}
+
+.cl-hero-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 960px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.cl-hero-title {
+  font-size: clamp(2.4rem, 6.5vw, 4.6rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  margin: 0;
+  text-shadow: 0 2px 28px rgba(0, 0, 0, 0.5);
+}
+
+.cl-hero-sub {
+  font-size: clamp(1rem, 1.8vw, 1.25rem);
+  font-weight: 400;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+  max-width: 640px;
+}
+
+.cl-hero-cta {
+  display: inline-block;
+  margin-top: 16px;
+  padding: 18px 36px;
+  background: #fff;
+  color: #111;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border-radius: 14px;
+  transition: transform 0.2s, opacity 0.2s;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.cl-hero-cta:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.cl-hero-cta:active {
+  transform: scale(0.98);
+}
+
+/* ─── SECTION ─── */
+.cl-section {
+  padding: 80px 40px;
+  position: relative;
+}
+
+.cl-section-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 80px;
+  align-items: center;
+}
+
+.cl-section-reverse .cl-section-inner {
+  grid-template-columns: 1.25fr 1fr;
+}
+
+.cl-section-reverse .cl-section-copy {
+  order: 2;
+}
+
+.cl-section-reverse .cl-section-window {
+  order: 1;
+}
+
+.cl-section-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 480px;
+}
+
+.cl-section-heading {
+  font-size: clamp(1.8rem, 3.6vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+
+.cl-section-body {
+  font-size: 1rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+.cl-section-window {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .cl-section {
+    padding: 56px 20px;
+  }
+  .cl-section-inner,
+  .cl-section-reverse .cl-section-inner {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .cl-section-reverse .cl-section-copy { order: 1; }
+  .cl-section-reverse .cl-section-window { order: 2; }
+}
+
+/* ─── WINDOW FRAME ─── */
+.cl-window {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 40px 100px rgba(0, 0, 0, 0.65),
+    0 10px 30px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+
+.cl-window-chrome {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cl-window-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.cl-window-dots span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cl-window-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cl-window-body {
+  padding: 0;
+  min-height: 480px;
+}
+
+/* ─── SHARED SNAPSHOT (sidebar + main) ─── */
+.cl-snap {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 480px;
+  height: 100%;
+}
+
+.cl-snap-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+  background: rgba(255, 255, 255, 0.018);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+  min-width: 0;
+}
+
+.cl-snap-side-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 4px 8px 6px;
+}
+
+.cl-snap-side-count {
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.cl-snap-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cl-snap-search svg {
+  color: rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
+}
+
+.cl-snap-add {
+  appearance: none;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.55);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: default;
+  text-align: left;
+}
+
+.cl-snap-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.cl-snap-tab {
+  flex: 1;
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.cl-snap-tab-active {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+}
+
+.cl-snap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.cl-snap-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 0.83rem;
+  color: rgba(255, 255, 255, 0.62);
+  min-width: 0;
+}
+
+.cl-snap-item-active {
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+}
+
+.cl-snap-item-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
+}
+
+.cl-snap-item-active .cl-snap-item-dot {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.cl-snap-item-num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.35);
+  font-variant-numeric: tabular-nums;
+  min-width: 22px;
+}
+
+.cl-snap-item-active .cl-snap-item-num {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cl-snap-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cl-snap-item-label {
+  font-size: 0.83rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-snap-item-sub {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.38);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-snap-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 24px 24px;
+  min-width: 0;
+}
+
+/* ─── SECTION 1: EXERCISE EDITOR ─── */
+.cl-ex-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 14px;
+}
+
+.cl-ex-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+
+.cl-ex-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(135, 230, 175, 0.85);
+  background: rgba(135, 230, 175, 0.1);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.cl-ex-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 12px;
+}
+
+.cl-ex-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cl-ex-card-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cl-ex-video {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.cl-ex-video-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cl-ex-video-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cl-ex-video-name {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cl-ex-video-size {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cl-ex-muscles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cl-ex-muscle {
+  display: grid;
+  grid-template-columns: 1fr 50px 32px;
+  align-items: center;
+  gap: 10px;
+}
+
+.cl-ex-muscle-name {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-ex-muscle-track {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cl-ex-muscle-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.5));
+  border-radius: 3px;
+}
+
+.cl-ex-muscle-pct {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-ex-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cl-ex-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 500;
+}
+
+.cl-ex-chip-add {
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.38);
+}
+
+/* ─── SECTION 2: PROGRAM BUILDER ─── */
+.cl-pb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 14px;
+}
+
+.cl-pb-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.cl-pb-tag {
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+}
+
+.cl-pb-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.cl-pb-day {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  min-height: 70px;
+}
+
+.cl-pb-day-rest {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.06);
+  align-items: center;
+  justify-content: center;
+}
+
+.cl-pb-day-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cl-pb-day-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cl-pb-day-muscle {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.42);
+  line-height: 1.3;
+}
+
+.cl-pb-day-rest-label {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.28);
+  margin-top: 4px;
+}
+
+.cl-pb-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+}
+
+.cl-pb-exercises {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cl-pb-ex {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.cl-pb-ex-handle {
+  color: rgba(255, 255, 255, 0.28);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.cl-pb-ex-name {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cl-pb-ex-scheme {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+/* ─── SECTION 3: NUTRITION PLAN ─── */
+.cl-np-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 14px;
+}
+
+.cl-np-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 4px;
+}
+
+.cl-np-sub {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+}
+
+.cl-np-kcal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
+}
+
+.cl-np-kcal-num {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.cl-np-kcal-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 4px;
+}
+
+.cl-np-macros {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.cl-np-macro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+}
+
+.cl-np-macro-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cl-np-macro-label {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 500;
+  flex: 1;
+}
+
+.cl-np-macro-value {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.cl-np-meals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cl-np-meal {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  padding: 12px 14px;
+}
+
+.cl-np-meal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.cl-np-meal-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.cl-np-meal-kcal {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.cl-np-meal-foods {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cl-np-food {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.8rem;
+}
+
+.cl-np-food-name {
+  color: rgba(255, 255, 255, 0.78);
+  font-weight: 500;
+}
+
+.cl-np-food-qty {
+  color: rgba(255, 255, 255, 0.42);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+}
+
+/* ─── SECTION 4: DUAL MODE ─── */
+.cl-dm-client.cl-snap-item {
+  display: grid;
+  grid-template-columns: 26px 1fr 8px;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+}
+
+.cl-dm-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.cl-dm-avatar-lg {
+  width: 44px;
+  height: 44px;
+  font-size: 1.1rem;
+}
+
+.cl-dm-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.cl-dm-dot-active {
+  background: rgba(135, 230, 175, 0.9);
+  box-shadow: 0 0 0 2px rgba(135, 230, 175, 0.18);
+}
+
+.cl-dm-client-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 14px;
+}
+
+.cl-dm-client-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cl-dm-client-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 2px;
+}
+
+.cl-dm-client-meta {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cl-dm-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  background: rgba(135, 230, 175, 0.12);
+  color: rgba(135, 230, 175, 0.85);
+  border-radius: 999px;
+}
+
+.cl-dm-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cl-dm-action {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.78);
+  padding: 7px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.cl-dm-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 4px;
+  margin-top: 4px;
+}
+
+.cl-dm-tab {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 6px 10px 8px;
+  position: relative;
+}
+
+.cl-dm-tab-active {
+  color: #fff;
+}
+
+.cl-dm-tab-active::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -5px;
+  height: 2px;
+  background: #fff;
+  border-radius: 2px;
+}
+
+.cl-dm-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.cl-dm-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.cl-dm-day-off {
+  background: transparent;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.cl-dm-day-letter {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cl-dm-day-session {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cl-dm-day-off .cl-dm-day-session {
+  color: rgba(255, 255, 255, 0.22);
+  font-weight: 400;
+}
+
+.cl-dm-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.cl-dm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+}
+
+.cl-dm-stat-num {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+}
+
+.cl-dm-stat-label {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+}
+
+/* ─── CLOSE ─── */
+.cl-close {
+  position: relative;
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 40px;
+  overflow: hidden;
+}
+
+.cl-close-aurora {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255, 87, 168, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 50% 50%, rgba(255, 255, 255, 0.03) 0%, transparent 70%);
+  filter: blur(30px);
+  pointer-events: none;
+  animation: auroraDrift 20s ease-in-out infinite alternate;
+}
+
+.cl-close-cta {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  padding: 22px 44px;
+  background: #fff;
+  color: #111;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border-radius: 16px;
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.cl-close-cta:hover {
+  opacity: 0.92;
+  transform: translateY(-2px);
+}
+
+.cl-close-cta:active {
+  transform: scale(0.98);
+}
+
+/* ─── RESPONSIVE: snapshot windows ─── */
+@media (max-width: 640px) {
+  .cl-snap {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .cl-snap-side {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .cl-snap-list {
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .cl-ex-grid,
+  .cl-pb-week-grid,
+  .cl-np-macros,
+  .cl-dm-week,
+  .cl-dm-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .cl-dm-week {
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .cl-snap-main {
+    padding: 18px 16px 20px;
+  }
+}

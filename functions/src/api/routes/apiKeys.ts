@@ -1,10 +1,10 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
 const db = admin.firestore();
@@ -32,11 +32,11 @@ router.get("/api-keys", async (req, res) => {
       revoked: data.revoked ?? false,
       createdAt: data.created_at ?? data.createdAt,
       lastUsedAt: data.last_used_at ?? data.lastUsedAt ?? null,
-      ...(data.useCase ? { useCase: data.useCase } : {}),
+      ...(data.useCase ? {useCase: data.useCase} : {}),
     };
   });
 
-  res.json({ data: keys });
+  res.json({data: keys});
 });
 
 // POST /api-keys
@@ -48,9 +48,9 @@ router.post("/api-keys", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ name: string; scope?: string[]; useCase?: string }>(
-    { name: "string", scope: "optional_array", useCase: "optional_string" },
+    {name: "string", scope: "optional_array", useCase: "optional_string"},
     req.body,
-    { maxStringLength: 100, maxArrayLength: 10 }
+    {maxStringLength: 100, maxArrayLength: 10}
   );
   const scopes = body.scope ?? ["read"];
 
@@ -105,7 +105,7 @@ router.post("/api-keys", async (req, res) => {
       name: body.name,
       scope: scopes,
       status: "active",
-      ...(useCase ? { useCase } : {}),
+      ...(useCase ? {useCase} : {}),
     },
   });
 });
@@ -130,7 +130,7 @@ router.delete("/api-keys/:keyId", async (req, res) => {
     revoked_at: new Date().toISOString(),
   });
 
-  res.json({ data: { revoked: true } });
+  res.json({data: {revoked: true}});
 });
 
 export default router;

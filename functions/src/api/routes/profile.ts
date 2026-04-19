@@ -1,18 +1,17 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
-import { db, FieldValue } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuth, validateAuthAndRateLimit } from "../middleware/auth.js";
-import { validateBody, validateStoragePath } from "../middleware/validate.js";
-import { WakeApiServerError } from "../errors.js";
-import { calculateExpirationDate } from "../services/paymentHelpers.js";
-import { assignCourseToUser } from "../services/courseAssignment.js";
+import {db, FieldValue} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuth, validateAuthAndRateLimit} from "../middleware/auth.js";
+import {validateBody, validateStoragePath} from "../middleware/validate.js";
+import {WakeApiServerError} from "../errors.js";
+import {calculateExpirationDate} from "../services/paymentHelpers.js";
+import {assignCourseToUser} from "../services/courseAssignment.js";
 
 const router = Router();
 
 // GET /users/me
 router.get("/users/me", async (req, res) => {
-
   const auth = await validateAuthAndRateLimit(req);
 
   let data = auth.userData;
@@ -26,8 +25,8 @@ router.get("/users/me", async (req, res) => {
       displayName: authUser.displayName ?? null,
       created_at: FieldValue.serverTimestamp(),
     };
-    await db.collection("users").doc(auth.userId).set(bootstrap, { merge: true });
-    data = { ...bootstrap, created_at: new Date() };
+    await db.collection("users").doc(auth.userId).set(bootstrap, {merge: true});
+    data = {...bootstrap, created_at: new Date()};
   }
 
   // Auto-heal: if no pinned nutrition assignment, check for active ones
@@ -46,7 +45,7 @@ router.get("/users/me", async (req, res) => {
     if (activeDoc) {
       pinnedNutritionAssignmentId = activeDoc.id;
       // Persist so future calls skip the extra query
-      db.collection("users").doc(auth.userId).set({ pinnedNutritionAssignmentId }, { merge: true }).catch(() => {});
+      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true}).catch(() => {});
     }
   }
 
@@ -94,7 +93,7 @@ router.post("/users/me/init", async (req, res) => {
   const userDoc = await userRef.get();
 
   if (userDoc.exists) {
-    res.json({ data: { userId: auth.userId, created: false } });
+    res.json({data: {userId: auth.userId, created: false}});
     return;
   }
 
@@ -105,7 +104,7 @@ router.post("/users/me/init", async (req, res) => {
     const authRecord = await admin.auth().getUser(auth.userId);
     email = authRecord.email ?? null;
     displayName = authRecord.displayName ?? null;
-  } catch { /* user may not exist in Auth yet */ }
+  } catch {/* user may not exist in Auth yet */}
 
   await userRef.set({
     email,
@@ -116,7 +115,7 @@ router.post("/users/me/init", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { userId: auth.userId, created: true } });
+  res.status(201).json({data: {userId: auth.userId, created: true}});
 });
 
 // PATCH /users/me
@@ -231,17 +230,17 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   }
 
   updates.updated_at = FieldValue.serverTimestamp();
-  await db.collection("users").doc(auth.userId).set(updates, { merge: true });
+  await db.collection("users").doc(auth.userId).set(updates, {merge: true});
 
-  res.json({ data: { userId: auth.userId, updatedAt: new Date().toISOString() } });
+  res.json({data: {userId: auth.userId, updatedAt: new Date().toISOString()}});
 });
 
 // POST /users/me/profile-picture/upload-url
 router.post("/users/me/profile-picture/upload-url", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req, 10);
 
-  const { contentType } = validateBody<{ contentType: string }>(
-    { contentType: "string" },
+  const {contentType} = validateBody<{ contentType: string }>(
+    {contentType: "string"},
     req.body
   );
 
@@ -266,15 +265,15 @@ router.post("/users/me/profile-picture/upload-url", async (req, res) => {
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath } });
+  res.json({data: {uploadUrl: url, storagePath}});
 });
 
 // POST /users/me/profile-picture/confirm
 router.post("/users/me/profile-picture/confirm", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
-  const { storagePath } = validateBody<{ storagePath: string }>(
-    { storagePath: "string" },
+  const {storagePath} = validateBody<{ storagePath: string }>(
+    {storagePath: "string"},
     req.body
   );
 
@@ -296,7 +295,7 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { profilePictureUrl: publicUrl } });
+  res.json({data: {profilePictureUrl: publicUrl}});
 });
 
 // GET /users/:userId/public-profile
@@ -372,7 +371,7 @@ router.post("/users/me/courses/:courseId/trial", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { success: true, expirationDate: expiresAt.toISOString() } });
+  res.json({data: {success: true, expirationDate: expiresAt.toISOString()}});
 });
 
 // POST /users/me/move-course — add/move a course to the user's courses map
@@ -380,7 +379,7 @@ router.post("/users/me/move-course", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{ courseId: string }>(
-    { courseId: "string" },
+    {courseId: "string"},
     req.body
   );
 
@@ -397,7 +396,7 @@ router.post("/users/me/move-course", async (req, res) => {
   const expiresAt = calculateExpirationDate(course.access_duration);
   await assignCourseToUser(auth.userId, body.courseId, course, expiresAt);
 
-  res.json({ data: { success: true } });
+  res.json({data: {success: true}});
 });
 
 // POST /users/me/courses/:programId/backfill — backfill a course entry for orphaned client_programs
@@ -405,7 +404,7 @@ router.post("/users/me/courses/:programId/backfill", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{ courseData: Record<string, unknown> }>(
-    { courseData: "object" },
+    {courseData: "object"},
     req.body
   );
 
@@ -427,13 +426,13 @@ router.post("/users/me/courses/:programId/backfill", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { success: true } });
+  res.json({data: {success: true}});
 });
 
 // POST /auth/logout — no-op; Firebase Auth is stateless
 router.post("/auth/logout", async (req, res) => {
   await validateAuth(req);
-  res.json({ data: { logged_out: true } });
+  res.json({data: {logged_out: true}});
 });
 
 // PATCH /creator/profile
@@ -443,7 +442,7 @@ router.patch("/creator/profile", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "Solo creadores pueden actualizar su perfil de creador");
   }
 
-  const { cards } = req.body;
+  const {cards} = req.body;
 
   if (cards === undefined) {
     throw new WakeApiServerError(
@@ -486,7 +485,7 @@ router.patch("/creator/profile", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updatedAt: new Date().toISOString() } });
+  res.json({data: {updatedAt: new Date().toISOString()}});
 });
 
 // GET /users/me/full — returns full user document including all fields
@@ -526,7 +525,7 @@ router.get("/users/me/username-check", async (req, res) => {
 
   const available = snapshot.empty || snapshot.docs[0].id === auth.userId;
 
-  res.json({ data: { available } });
+  res.json({data: {available}});
 });
 
 // DELETE /users/me — account deletion
@@ -563,7 +562,7 @@ router.delete("/users/me", async (req, res) => {
   // Delete Firebase Auth record
   try {
     await admin.auth().deleteUser(auth.userId);
-  } catch { /* Auth record may already be deleted */ }
+  } catch {/* Auth record may already be deleted */}
 
   res.status(204).send();
 });
@@ -573,7 +572,7 @@ router.post("/users/me/delete-feedback", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req, 10);
 
   const body = validateBody<{ feedback: Record<string, unknown> }>(
-    { feedback: "object" },
+    {feedback: "object"},
     req.body
   );
 
@@ -584,7 +583,7 @@ router.post("/users/me/delete-feedback", async (req, res) => {
     submittedAt: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { saved: true } });
+  res.status(201).json({data: {saved: true}});
 });
 
 // DELETE /users/me/courses/:courseId — remove a course from user's courses map
@@ -632,7 +631,7 @@ router.patch("/users/me/courses/:courseId/version", async (req, res) => {
   updates.updated_at = FieldValue.serverTimestamp();
   await db.collection("users").doc(auth.userId).update(updates);
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // PATCH /users/me/courses/:courseId/status — update course status
@@ -641,7 +640,7 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
 
   const courseId = req.params.courseId;
   const body = validateBody<{ status: string; expiresAt?: string }>(
-    { status: "string", expiresAt: "optional_string" },
+    {status: "string", expiresAt: "optional_string"},
     req.body
   );
 
@@ -656,7 +655,7 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
 
   await db.collection("users").doc(auth.userId).update(updates);
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // GET /courses — course listing, optional ?creatorId=X filter
@@ -677,7 +676,7 @@ router.get("/courses", async (req, res) => {
   const snapshot = await query.get();
 
   res.json({
-    data: snapshot.docs.map((doc) => ({ ...doc.data(), id: doc.id })),
+    data: snapshot.docs.map((doc) => ({...doc.data(), id: doc.id})),
   });
 });
 
@@ -712,7 +711,7 @@ router.get("/storage/download-url", async (req, res) => {
     expires: Date.now() + 60 * 60 * 1000,
   });
 
-  res.json({ data: { url } });
+  res.json({data: {url}});
 });
 
 // POST /purchases — log a purchase record
@@ -746,7 +745,7 @@ router.post("/purchases", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({data: {id: docRef.id}});
 });
 
 export default router;

@@ -14,7 +14,7 @@ const LINKS = [
   },
   {
     label: 'Creator',
-    href: '/creators',
+    href: '/creadores',
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="8" r="3.5" />

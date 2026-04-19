@@ -1,10 +1,10 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as webpush from "web-push";
-import { defineSecret } from "firebase-functions/params";
-import { db, FieldValue, Timestamp } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
-import { WakeApiServerError } from "../errors.js";
+import {defineSecret} from "firebase-functions/params";
+import {db, FieldValue, Timestamp} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody} from "../middleware/validate.js";
+import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
 
@@ -21,7 +21,7 @@ function getVapid() {
       "VAPID keys no configuradas"
     );
   }
-  return { publicKey: pub, privateKey: priv };
+  return {publicKey: pub, privateKey: priv};
 }
 
 // POST /notifications/subscribe — store push subscription
@@ -62,13 +62,13 @@ router.post("/notifications/subscribe", async (req, res, next) => {
 
     await subRef.set({
       endpoint: body.endpoint,
-      keys: { p256dh: keys.p256dh, auth: keys.auth },
+      keys: {p256dh: keys.p256dh, auth: keys.auth},
       userAgent: body.userAgent || null,
       isActive: true,
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    res.status(201).json({ data: { id: subRef.id } });
+    res.status(201).json({data: {id: subRef.id}});
   } catch (err) {
     next(err);
   }
@@ -139,13 +139,13 @@ router.post("/notifications/test", async (req, res, next) => {
             .doc(auth.userId)
             .collection("web_push_subscriptions")
             .doc(id),
-          { isActive: false }
+          {isActive: false}
         );
       }
       await batch.commit();
     }
 
-    res.status(200).json({ data: { sent, deactivated: deactivateIds.length } });
+    res.status(200).json({data: {sent, deactivated: deactivateIds.length}});
   } catch (err) {
     next(err);
   }
@@ -186,7 +186,7 @@ router.post("/notifications/schedule-timer", async (req, res, next) => {
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    res.status(201).json({ data: { id: timerRef.id } });
+    res.status(201).json({data: {id: timerRef.id}});
   } catch (err) {
     next(err);
   }

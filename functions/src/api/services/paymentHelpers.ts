@@ -1,4 +1,4 @@
-import { MercadoPagoConfig } from "mercadopago";
+import {MercadoPagoConfig} from "mercadopago";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -37,10 +37,10 @@ const REFERENCE_DELIMITER = "|";
 const REFERENCE_MAX_LENGTH = 256;
 
 const DURATION_DAYS: Record<string, number> = {
-  monthly: 30,
+  "monthly": 30,
   "3-month": 90,
   "6-month": 180,
-  yearly: 365,
+  "yearly": 365,
 };
 
 // ─── External reference ──────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ export function parseExternalReference(reference: string): ParsedReference {
   if (paymentTypeRaw !== "otp" && paymentTypeRaw !== "sub") {
     throw new Error(`Unsupported payment type: ${paymentTypeRaw}`);
   }
-  return { userId, courseId, paymentType: paymentTypeRaw };
+  return {userId, courseId, paymentType: paymentTypeRaw};
 }
 
 // ─── Expiration ──────────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ export function getClient(accessToken: string): MercadoPagoConfig {
   if (!accessToken) {
     throw new Error("Mercado Pago access token missing");
   }
-  return new MercadoPagoConfig({ accessToken });
+  return new MercadoPagoConfig({accessToken});
 }
 
 // ─── Misc ────────────────────────────────────────────────────────────────────
@@ -136,5 +136,9 @@ export function getClient(accessToken: string): MercadoPagoConfig {
 export function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string") return error;
-  try { return JSON.stringify(error); } catch { return "Unknown error"; }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
 }

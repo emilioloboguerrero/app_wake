@@ -633,7 +633,7 @@ export default function OnboardingEducation({ onComplete }) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, ease, delay: 0.6 }}
               >
-                Entrena con <span className="pwa-ob-bold">quienes admiras</span>
+                Sé lo que <span className="pwa-ob-bold">admiras</span>
               </motion.p>
             </div>
 

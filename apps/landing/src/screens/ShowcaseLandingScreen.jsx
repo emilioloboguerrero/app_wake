@@ -510,11 +510,11 @@ function AthletesGallery() {
    NAV
    ═══════════════════════════════════════════ */
 const NAV_LINKS = [
-  { label: 'Creadores', href: '/creators' },
+  { label: 'Creadores', href: '/creadores' },
   { label: 'Devs', href: '/developers' },
 ];
 
-function Nav() {
+export function Nav() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -600,7 +600,7 @@ function CtaSection() {
 /* ═══════════════════════════════════════════
    FOOTER
    ═══════════════════════════════════════════ */
-function LandingFooter() {
+export function LandingFooter() {
   return (
     <footer className="tl-footer">
       <div className="tl-footer-top">
@@ -609,7 +609,7 @@ function LandingFooter() {
         </div>
         <div className="tl-footer-links">
           <a href="/app" className="tl-footer-link">App</a>
-          <a href="/creators" className="tl-footer-link">Creadores</a>
+          <a href="/creadores" className="tl-footer-link">Creadores</a>
           <a href="/support" className="tl-footer-link">Soporte</a>
           <a href="/legal" className="tl-footer-link">Legal</a>
         </div>

@@ -1,10 +1,10 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
-import { db, FieldValue } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { validateBody, validateStoragePath } from "../middleware/validate.js";
-import { WakeApiServerError } from "../errors.js";
+import {db, FieldValue} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {validateBody, validateStoragePath} from "../middleware/validate.js";
+import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
 
@@ -26,7 +26,7 @@ async function getExchangeOrThrow(exchangeId: string, userId: string) {
   if (data.creatorId !== userId && data.clientId !== userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Intercambio no encontrado");
   }
-  return { id: doc.id, ...data } as { id: string; creatorId: string; clientId: string; status: string; [key: string]: unknown };
+  return {id: doc.id, ...data} as { id: string; creatorId: string; clientId: string; status: string; [key: string]: unknown };
 }
 
 function senderRole(userId: string, exchange: Record<string, unknown>): "creator" | "client" {
@@ -108,7 +108,7 @@ router.post("/video-exchanges", async (req, res) => {
 
   const ref = await db.collection("video_exchanges").add(exchangeData);
 
-  res.status(201).json({ data: { exchangeId: ref.id, ...exchangeData } });
+  res.status(201).json({data: {exchangeId: ref.id, ...exchangeData}});
 });
 
 // ─── GET /video-exchanges — List threads ──────────────────────────────────
@@ -116,7 +116,7 @@ router.post("/video-exchanges", async (req, res) => {
 router.get("/video-exchanges", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
-  const { oneOnOneClientId, status } = req.query as Record<string, string | undefined>;
+  const {oneOnOneClientId, status} = req.query as Record<string, string | undefined>;
 
   let query: FirebaseFirestore.Query = db.collection("video_exchanges");
 
@@ -133,14 +133,14 @@ router.get("/video-exchanges", async (req, res) => {
   query = query.orderBy("lastMessageAt", "desc").limit(100);
 
   const snap = await query.get();
-  let exchanges = snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  let exchanges = snap.docs.map((d) => ({...d.data(), id: d.id}));
 
   // Filter oneOnOneClientId client-side to avoid extra composite index
   if (oneOnOneClientId) {
     exchanges = exchanges.filter((e: Record<string, unknown>) => e.oneOnOneClientId === oneOnOneClientId);
   }
 
-  res.json({ data: exchanges });
+  res.json({data: exchanges});
 });
 
 // ─── GET /video-exchanges/:id — Thread + messages ─────────────────────────
@@ -156,9 +156,9 @@ router.get("/video-exchanges/:id", async (req, res) => {
     .orderBy("createdAt", "asc")
     .get();
 
-  const messages = messagesSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  const messages = messagesSnap.docs.map((d) => ({...d.data(), id: d.id}));
 
-  res.json({ data: { exchange, messages } });
+  res.json({data: {exchange, messages}});
 });
 
 // ─── PATCH /video-exchanges/:id — Close / mark read ──────────────────────
@@ -203,7 +203,7 @@ router.patch("/video-exchanges/:id", async (req, res) => {
 
   await db.collection("video_exchanges").doc(req.params.id).update(updates);
 
-  res.json({ data: { id: req.params.id, ...updates } });
+  res.json({data: {id: req.params.id, ...updates}});
 });
 
 // ─── DELETE /video-exchanges/:id — Soft delete ────────────────────────────
@@ -216,7 +216,7 @@ router.delete("/video-exchanges/:id", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "Solo el creador puede eliminar la conversacion");
   }
 
-  await db.collection("video_exchanges").doc(req.params.id).update({ status: "closed" });
+  await db.collection("video_exchanges").doc(req.params.id).update({status: "closed"});
 
   res.status(204).send();
 });
@@ -300,7 +300,7 @@ router.post("/video-exchanges/:id/messages", async (req, res) => {
     [unreadField]: FieldValue.increment(1),
   });
 
-  res.status(201).json({ data: { messageId: msgRef.id, ...messageData } });
+  res.status(201).json({data: {messageId: msgRef.id, ...messageData}});
 });
 
 // ─── PATCH /video-exchanges/:id/messages/:msgId — Toggle saved ────────────
@@ -314,7 +314,7 @@ router.patch("/video-exchanges/:id/messages/:msgId", async (req, res) => {
   }
 
   const body = validateBody<{ savedByCreator: boolean }>(
-    { savedByCreator: "boolean" },
+    {savedByCreator: "boolean"},
     req.body
   );
 
@@ -329,9 +329,9 @@ router.patch("/video-exchanges/:id/messages/:msgId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Mensaje no encontrado");
   }
 
-  await msgRef.update({ savedByCreator: body.savedByCreator });
+  await msgRef.update({savedByCreator: body.savedByCreator});
 
-  res.json({ data: { id: req.params.msgId, savedByCreator: body.savedByCreator } });
+  res.json({data: {id: req.params.msgId, savedByCreator: body.savedByCreator}});
 });
 
 // ─── POST /video-exchanges/:id/upload-url — Signed upload URL ─────────────
@@ -344,7 +344,7 @@ router.post("/video-exchanges/:id/upload-url", async (req, res) => {
     contentType: string;
     fileType: string;
   }>(
-    { contentType: "string", fileType: "string" },
+    {contentType: "string", fileType: "string"},
     req.body
   );
 
@@ -376,9 +376,9 @@ router.post("/video-exchanges/:id/upload-url", async (req, res) => {
   }
 
   const messageId = db.collection("_").doc().id;
-  const ext = body.fileType === "video"
-    ? (body.contentType === "video/webm" ? "webm" : "mp4")
-    : "jpg";
+  const ext = body.fileType === "video" ?
+    (body.contentType === "video/webm" ? "webm" : "mp4") :
+    "jpg";
   const filename = body.fileType === "video" ? `video.${ext}` : `thumbnail.${ext}`;
   const storagePath = `video_exchanges/${req.params.id}/${messageId}/${filename}`;
 
@@ -392,7 +392,7 @@ router.post("/video-exchanges/:id/upload-url", async (req, res) => {
     contentType: body.contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath, messageId } });
+  res.json({data: {uploadUrl: url, storagePath, messageId}});
 });
 
 // ─── POST /video-exchanges/:id/upload-url/confirm — Confirm upload ────────
@@ -405,7 +405,7 @@ router.post("/video-exchanges/:id/upload-url/confirm", async (req, res) => {
     storagePath: string;
     messageId: string;
   }>(
-    { storagePath: "string", messageId: "string" },
+    {storagePath: "string", messageId: "string"},
     req.body
   );
 
@@ -419,7 +419,7 @@ router.post("/video-exchanges/:id/upload-url/confirm", async (req, res) => {
 
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(body.storagePath)}?alt=media`;
 
-  res.json({ data: { url: publicUrl, storagePath: body.storagePath } });
+  res.json({data: {url: publicUrl, storagePath: body.storagePath}});
 });
 
 export default router;

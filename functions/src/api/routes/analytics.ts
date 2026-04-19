@@ -1,8 +1,8 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
-import { validateAuthAndRateLimit } from "../middleware/auth.js";
-import { validateDateFormat } from "../middleware/validate.js";
-import { WakeApiServerError } from "../errors.js";
+import {validateAuthAndRateLimit} from "../middleware/auth.js";
+import {validateDateFormat} from "../middleware/validate.js";
+import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
 const db = admin.firestore();
@@ -111,7 +111,7 @@ router.get("/analytics/weekly-volume", async (req, res) => {
     ...w,
   }));
 
-  res.json({ data: result });
+  res.json({data: result});
 });
 
 // GET /analytics/muscle-breakdown
@@ -182,7 +182,7 @@ router.get("/analytics/muscle-breakdown", async (req, res) => {
 
   res.json({
     data: {
-      period: { startDate, endDate },
+      period: {startDate, endDate},
       muscles,
       totalSessions,
       totalSets,
@@ -235,7 +235,7 @@ async function getCreatorCourses(creatorId: string): Promise<FirebaseFirestore.Q
     .where("creator_id", "==", creatorId)
     .get();
 
-  coursesCache.set(creatorId, { snap, expiresAt: Date.now() + 30_000 });
+  coursesCache.set(creatorId, {snap, expiresAt: Date.now() + 30_000});
   return snap;
 }
 
@@ -248,7 +248,7 @@ async function getCreatorClients(creatorId: string): Promise<FirebaseFirestore.Q
     .where("creatorId", "==", creatorId)
     .get();
 
-  clientsCache.set(creatorId, { snap, expiresAt: Date.now() + 30_000 });
+  clientsCache.set(creatorId, {snap, expiresAt: Date.now() + 30_000});
   return snap;
 }
 
@@ -271,7 +271,7 @@ async function getCreatorPayments(creatorId: string) {
     allDocs.push(...snap.docs);
   }
 
-  paymentsCache.set(creatorId, { docs: allDocs, expiresAt: Date.now() + 30_000 });
+  paymentsCache.set(creatorId, {docs: allDocs, expiresAt: Date.now() + 30_000});
   return allDocs;
 }
 
@@ -296,8 +296,8 @@ function computeRevenue(
   const netRevenue = Math.round(grossRevenue * (1 - WAKE_CUT_PERCENT / 100));
 
   return {
-    lowTicket: { salesCount, grossRevenue, netRevenue },
-    oneOnOne: { clientCount: clientsSnap.size, callCount: callsSnap.size },
+    lowTicket: {salesCount, grossRevenue, netRevenue},
+    oneOnOne: {clientCount: clientsSnap.size, callCount: callsSnap.size},
   };
 }
 
@@ -319,7 +319,7 @@ function computeRevenueTrend(paymentDocs: FirebaseFirestore.QueryDocumentSnapsho
       continue;
     }
 
-    if (!months[monthStr]) months[monthStr] = { gross: 0, count: 0 };
+    if (!months[monthStr]) months[monthStr] = {gross: 0, count: 0};
     months[monthStr].gross += data.amount ?? 0;
     months[monthStr].count++;
   }
@@ -333,7 +333,7 @@ function computeRevenueTrend(paymentDocs: FirebaseFirestore.QueryDocumentSnapsho
       sales: val.count,
     }));
 
-  return { trend };
+  return {trend};
 }
 
 function computeClientTrend(
@@ -343,7 +343,7 @@ function computeClientTrend(
   const months: Record<string, number> = {};
   let cumulative = 0;
 
-  const entries = clientsSnap.docs.map(d => {
+  const entries = clientsSnap.docs.map((d) => {
     const data = d.data();
     const createdAt = data.processed_at ?? data.created_at ?? data.createdAt ?? data.enrolledAt;
     let dateStr: string;
@@ -355,7 +355,7 @@ function computeClientTrend(
       dateStr = "unknown";
     }
     return dateStr;
-  }).filter(d => d !== "unknown").sort();
+  }).filter((d) => d !== "unknown").sort();
 
   for (const month of entries) {
     months[month] = (months[month] ?? 0) + 1;
@@ -365,7 +365,7 @@ function computeClientTrend(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([month, count]) => {
       cumulative += count;
-      return { month, newClients: count, totalClients: cumulative };
+      return {month, newClients: count, totalClients: cumulative};
     });
 
   const programSales: Record<string, number> = {};
@@ -386,9 +386,9 @@ function computeClientTrend(
 
   const salesTrend = Object.entries(programSales)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, count]) => ({ month, programsSold: count }));
+    .map(([month, count]) => ({month, programsSold: count}));
 
-  return { clientTrend, salesTrend, totalOneOnOne: clientsSnap.size, totalProgramsSold: paymentDocs.length };
+  return {clientTrend, salesTrend, totalOneOnOne: clientsSnap.size, totalProgramsSold: paymentDocs.length};
 }
 
 async function computeClientActivity(clientsSnap: FirebaseFirestore.QuerySnapshot) {
@@ -425,7 +425,7 @@ async function computeClientActivity(clientsSnap: FirebaseFirestore.QuerySnapsho
       let lastSessionDate: string | null = null;
 
       if (sessionsThisWeek > 0) {
-        const dates = historySnap.docs.map(d => d.data().date as string).sort().reverse();
+        const dates = historySnap.docs.map((d) => d.data().date as string).sort().reverse();
         lastSessionDate = dates[0];
       } else {
         const recentSnap = await db
@@ -448,19 +448,19 @@ async function computeClientActivity(clientsSnap: FirebaseFirestore.QuerySnapsho
         status = daysSince <= 14 ? "inactive" : "ghost";
       }
 
-      return { userId, displayName, lastSessionDate, sessionsThisWeek, status };
+      return {userId, displayName, lastSessionDate, sessionsThisWeek, status};
     })
   );
   const clients = clientResults.filter((c): c is ClientActivity => c !== null);
 
-  const order = { active: 0, inactive: 1, ghost: 2 };
+  const order = {active: 0, inactive: 1, ghost: 2};
   clients.sort((a, b) => order[a.status] - order[b.status] || b.sessionsThisWeek - a.sessionsThisWeek);
 
-  const activeCount = clients.filter(c => c.status === "active").length;
-  const inactiveCount = clients.filter(c => c.status === "inactive").length;
-  const ghostCount = clients.filter(c => c.status === "ghost").length;
+  const activeCount = clients.filter((c) => c.status === "active").length;
+  const inactiveCount = clients.filter((c) => c.status === "inactive").length;
+  const ghostCount = clients.filter((c) => c.status === "ghost").length;
 
-  return { clients, summary: { activeCount, inactiveCount, ghostCount, total: clients.length } };
+  return {clients, summary: {activeCount, inactiveCount, ghostCount, total: clients.length}};
 }
 
 async function computeAdherence(
@@ -468,9 +468,9 @@ async function computeAdherence(
   clientsSnap: FirebaseFirestore.QuerySnapshot,
   programIdFilter?: string,
 ) {
-  const programDocs = programIdFilter
-    ? coursesSnap.docs.filter(d => d.id === programIdFilter)
-    : coursesSnap.docs;
+  const programDocs = programIdFilter ?
+    coursesSnap.docs.filter((d) => d.id === programIdFilter) :
+    coursesSnap.docs;
 
   const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string);
 
@@ -543,8 +543,8 @@ async function computeAdherence(
       const expectedPerWeek = sessionsPerWeek * Math.max(1, clientUserIds.length);
 
       const expectedTotal = programSessionCount * clientUserIds.length;
-      const workoutAdh = expectedTotal > 0
-        ? Math.min(100, Math.round((programCompleted / expectedTotal) * 100)) : 0;
+      const workoutAdh = expectedTotal > 0 ?
+        Math.min(100, Math.round((programCompleted / expectedTotal) * 100)) : 0;
 
       // ── Nutrition adherence per program ──
       // Check each client's nutrition targets + diary for this period
@@ -577,7 +577,7 @@ async function computeAdherence(
         const dailyTotals: Record<string, { calories: number; protein: number }> = {};
         for (const dd of diarySnap.docs) {
           const d = dd.data();
-          if (!dailyTotals[d.date]) dailyTotals[d.date] = { calories: 0, protein: 0 };
+          if (!dailyTotals[d.date]) dailyTotals[d.date] = {calories: 0, protein: 0};
           dailyTotals[d.date].calories += d.calories ?? 0;
           dailyTotals[d.date].protein += d.protein ?? 0;
         }
@@ -590,9 +590,9 @@ async function computeAdherence(
         }
       }));
 
-      const programNutrAdherence = hasAnyNutritionPlan && nutrDaysTotal > 0
-        ? Math.round((nutrDaysWithin / nutrDaysTotal) * 100)
-        : null;
+      const programNutrAdherence = hasAnyNutritionPlan && nutrDaysTotal > 0 ?
+        Math.round((nutrDaysWithin / nutrDaysTotal) * 100) :
+        null;
 
       // Weekly workout adherence
       const weeklyHistory: WeeklyPoint[] = weekStarts.map((ws) => ({
@@ -625,8 +625,8 @@ async function computeAdherence(
       nutrCount++;
     }
   }
-  const overallWorkoutAdherence = totalExpected > 0
-    ? Math.round((totalCompleted / totalExpected) * 100) : 0;
+  const overallWorkoutAdherence = totalExpected > 0 ?
+    Math.round((totalCompleted / totalExpected) * 100) : 0;
   const overallNutritionAdherence = nutrCount > 0 ? Math.round(nutrSum / nutrCount) : null;
 
   const clientCreatedDates: string[] = [];
@@ -648,22 +648,22 @@ async function computeAdherence(
     weekEnd.setDate(weekEnd.getDate() + 6);
     const weekEndStr = weekEnd.toISOString().slice(0, 10);
     const count = clientCreatedDates.filter((d) => d <= weekEndStr).length;
-    enrollmentByWeek.push({ week: ws, clients: count });
+    enrollmentByWeek.push({week: ws, clients: count});
   }
 
-  return { overallWorkoutAdherence, overallNutritionAdherence, byProgram, enrollmentHistory: enrollmentByWeek };
+  return {overallWorkoutAdherence, overallNutritionAdherence, byProgram, enrollmentHistory: enrollmentByWeek};
 }
 
 async function computeExpiringAccess(
   coursesSnap: FirebaseFirestore.QuerySnapshot,
   clientsSnap: FirebaseFirestore.QuerySnapshot,
 ) {
-  const courseIds = new Set(coursesSnap.docs.map(d => d.id));
-  if (courseIds.size === 0) return { expiring: [], count: 0 };
+  const courseIds = new Set(coursesSnap.docs.map((d) => d.id));
+  if (courseIds.size === 0) return {expiring: [], count: 0};
 
   const now = new Date();
   const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const clientUserIds = clientsSnap.docs.map(d => (d.data().clientUserId ?? d.data().userId) as string);
+  const clientUserIds = clientsSnap.docs.map((d) => (d.data().clientUserId ?? d.data().userId) as string);
 
   interface ExpiringAccess {
     userId: string; displayName: string; courseId: string;
@@ -675,7 +675,7 @@ async function computeExpiringAccess(
   for (let i = 0; i < clientUserIds.length; i += batchSize) {
     const batch = clientUserIds.slice(i, i + batchSize);
     const userDocs = await Promise.all(
-      batch.map(uid => db.collection("users").doc(uid).get())
+      batch.map((uid) => db.collection("users").doc(uid).get())
     );
 
     for (const userDoc of userDocs) {
@@ -708,7 +708,7 @@ async function computeExpiringAccess(
   }
 
   expiring.sort((a, b) => a.daysLeft - b.daysLeft);
-  return { expiring, count: expiring.length };
+  return {expiring, count: expiring.length};
 }
 
 async function computeCalendarPreview(creatorId: string) {
@@ -726,7 +726,7 @@ async function computeCalendarPreview(creatorId: string) {
     .orderBy("slotStartUtc", "asc")
     .get();
 
-  const events = bookingsSnap.docs.map(doc => {
+  const events = bookingsSnap.docs.map((doc) => {
     const data = doc.data();
     const slotDate = (data.slotStartUtc as string).slice(0, 10);
     return {
@@ -741,8 +741,8 @@ async function computeCalendarPreview(creatorId: string) {
   });
 
   return {
-    today: events.filter(e => e.isToday),
-    tomorrow: events.filter(e => !e.isToday),
+    today: events.filter((e) => e.isToday),
+    tomorrow: events.filter((e) => !e.isToday),
   };
 }
 
@@ -759,7 +759,7 @@ router.get("/analytics/revenue", async (req, res) => {
     db.collection("call_bookings").where("creatorId", "==", auth.userId).get(),
   ]);
 
-  res.json({ data: computeRevenue(paymentDocs, clientsSnap, callsSnap) });
+  res.json({data: computeRevenue(paymentDocs, clientsSnap, callsSnap)});
 });
 
 // GET /analytics/adherence
@@ -770,16 +770,16 @@ router.get("/analytics/adherence", async (req, res) => {
   const programIdFilter = req.query.programId as string | undefined;
 
   const [coursesSnap, clientsSnap] = await Promise.all([
-    programIdFilter
-      ? db.collection("courses").doc(programIdFilter).get().then((doc) => {
-          if (!doc.exists || doc.data()?.creator_id !== auth.userId) return { docs: [] as FirebaseFirestore.QueryDocumentSnapshot[] } as unknown as FirebaseFirestore.QuerySnapshot;
-          return { docs: [doc] } as unknown as FirebaseFirestore.QuerySnapshot;
-        })
-      : getCreatorCourses(auth.userId),
+    programIdFilter ?
+      db.collection("courses").doc(programIdFilter).get().then((doc) => {
+        if (!doc.exists || doc.data()?.creator_id !== auth.userId) return {docs: [] as FirebaseFirestore.QueryDocumentSnapshot[]} as unknown as FirebaseFirestore.QuerySnapshot;
+        return {docs: [doc]} as unknown as FirebaseFirestore.QuerySnapshot;
+      }) :
+      getCreatorCourses(auth.userId),
     getCreatorClients(auth.userId),
   ]);
 
-  res.json({ data: await computeAdherence(coursesSnap, clientsSnap, programIdFilter) });
+  res.json({data: await computeAdherence(coursesSnap, clientsSnap, programIdFilter)});
 });
 
 // GET /analytics/client/:clientId/lab
@@ -815,14 +815,14 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   ];
 
   // Expensive queries (skipped in summary mode)
-  const expensiveQueries = isSummary
-    ? [Promise.resolve(null), Promise.resolve(null)]
-    : [
-        db.collection("users").doc(clientId).collection("diary")
-          .where("date", ">=", rangeAgoStr).where("date", "<=", nowStr).limit(300).get(),
-        db.collection("users").doc(clientId).collection("exerciseHistory")
-          .limit(50).get(),
-      ];
+  const expensiveQueries = isSummary ?
+    [Promise.resolve(null), Promise.resolve(null)] :
+    [
+      db.collection("users").doc(clientId).collection("diary")
+        .where("date", ">=", rangeAgoStr).where("date", "<=", nowStr).limit(300).get(),
+      db.collection("users").doc(clientId).collection("exerciseHistory")
+        .limit(50).get(),
+    ];
 
   const [sessionsSnap, bodyLogSnap, readinessSnap, assignmentsSnap, diarySnapOrNull, exerciseHistSnapOrNull] =
     await Promise.all([...coreQueries, ...expensiveQueries]) as [
@@ -854,7 +854,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     if (typeof sessionRpe === "number" && sessionRpe > 0) {
       rpeSum += sessionRpe;
       rpeCount++;
-      rpeTrend.push({ date: data.date, value: sessionRpe });
+      rpeTrend.push({date: data.date, value: sessionRpe});
     }
 
     // Weekly volume
@@ -865,7 +865,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       weekStart.setDate(date.getDate() + mondayOffset);
       const weekKey = weekStart.toISOString().slice(0, 10);
 
-      if (!weekMap[weekKey]) weekMap[weekKey] = { sessions: 0, totalSets: 0, daysTrained: new Set() };
+      if (!weekMap[weekKey]) weekMap[weekKey] = {sessions: 0, totalSets: 0, daysTrained: new Set()};
       weekMap[weekKey].sessions++;
       weekMap[weekKey].daysTrained.add(data.date);
 
@@ -891,7 +891,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
 
   const weeklyVolume = Object.entries(weekMap)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([week, val]) => ({ week, sessions: val.sessions, totalSets: val.totalSets }));
+    .map(([week, val]) => ({week, sessions: val.sessions, totalSets: val.totalSets}));
 
   // ── Adherence heatmap (days trained per week) ────────────────
   const adherenceHeatmap = Object.entries(weekMap)
@@ -904,7 +904,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
         d.setDate(ws.getDate() + i);
         days.push(val.daysTrained.has(d.toISOString().slice(0, 10)));
       }
-      return { weekStart, days };
+      return {weekStart, days};
     });
 
   // ── Workout adherence: completed sessions / planned sessions ──
@@ -933,14 +933,14 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   const weeksInRange = Math.max(1, rangeDays / 7);
   const plannedSessions = Math.round(totalPlannedPerWeek * weeksInRange);
   const completedSessionsCount = sessionsSnap.size;
-  const workoutAdherence = plannedSessions > 0
-    ? Math.min(100, Math.round((completedSessionsCount / plannedSessions) * 100))
-    : null;
+  const workoutAdherence = plannedSessions > 0 ?
+    Math.min(100, Math.round((completedSessionsCount / plannedSessions) * 100)) :
+    null;
 
   // ── Volume by muscle group (sorted) ──────────────────────────
   const volumeByMuscle = Object.entries(muscleVolume)
     .sort((a, b) => b[1] - a[1])
-    .map(([muscle, sets]) => ({ muscle, sets }));
+    .map(([muscle, sets]) => ({muscle, sets}));
 
   // ── RPE average ──────────────────────────────────────────────
   const rpeAverage = rpeCount > 0 ? Math.round((rpeSum / rpeCount) * 10) / 10 : null;
@@ -949,7 +949,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   // ── Body progress ────────────────────────────────────────────
   const bodyProgress = bodyLogSnap.docs.map((d) => {
     const data = d.data();
-    return { date: data.date, weight: data.weight ?? null };
+    return {date: data.date, weight: data.weight ?? null};
   }).reverse();
   const bodyWeight = bodyProgress.length > 0 ? bodyProgress[bodyProgress.length - 1].weight : null;
 
@@ -959,7 +959,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     const data = doc.data();
     const photos = data.photos ?? data.photoUrls ?? [];
     if (Array.isArray(photos) && photos.length > 0) {
-      bodyPhotos.push({ date: data.date, urls: photos });
+      bodyPhotos.push({date: data.date, urls: photos});
     }
   }
 
@@ -990,9 +990,9 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     }
   }
   readinessBreakdown.sort((a, b) => a.date.localeCompare(b.date));
-  const readinessAvg = readinessCount > 0
-    ? Math.round((readinessSum / readinessCount) * 10) / 10
-    : null;
+  const readinessAvg = readinessCount > 0 ?
+    Math.round((readinessSum / readinessCount) * 10) / 10 :
+    null;
 
   // ── PRs: recent from exerciseHistory ─────────────────────────
   interface PREntry {
@@ -1017,7 +1017,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     if (records.length > 0) {
       // Most recent record as PR
       const sorted = [...records]
-        .filter(r => r.date)
+        .filter((r) => r.date)
         .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
 
       if (sorted.length > 0) {
@@ -1055,7 +1055,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   stalledExercises.sort((a, b) => b.weeksSinceLastPR - a.weeksSinceLastPR);
 
   // ── Nutrition: daily averages + trends + adherence ───────────
-  let actual = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  let actual = {calories: 0, protein: 0, carbs: 0, fat: 0};
   const seenDays = new Set<string>();
   const dailyNutrition: Record<string, { calories: number; protein: number; carbs: number; fat: number }> = {};
 
@@ -1068,7 +1068,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     actual.fat += data.fat ?? 0;
 
     if (!dailyNutrition[data.date]) {
-      dailyNutrition[data.date] = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      dailyNutrition[data.date] = {calories: 0, protein: 0, carbs: 0, fat: 0};
     }
     dailyNutrition[data.date].calories += data.calories ?? 0;
     dailyNutrition[data.date].protein += data.protein ?? 0;
@@ -1086,7 +1086,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     };
   }
 
-  let target = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  let target = {calories: 0, protein: 0, carbs: 0, fat: 0};
   const activeAssignment = assignmentsSnap.docs.find((d) => {
     const s = d.data().status;
     return !s || s === "active";
@@ -1139,9 +1139,9 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       if (calOk && proOk) daysWithinTarget++;
     }
   }
-  const nutritionAdherence = hasNutritionTargets && diaryDayCount > 0
-    ? Math.round((daysWithinTarget / diaryDayCount) * 100)
-    : null;
+  const nutritionAdherence = hasNutritionTargets && diaryDayCount > 0 ?
+    Math.round((daysWithinTarget / diaryDayCount) * 100) :
+    null;
 
   res.json({
     data: {
@@ -1185,7 +1185,7 @@ router.get("/analytics/client-activity", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   const clientsSnap = await getCreatorClients(auth.userId);
-  res.json({ data: await computeClientActivity(clientsSnap) });
+  res.json({data: await computeClientActivity(clientsSnap)});
 });
 
 // GET /analytics/client-trend
@@ -1196,7 +1196,7 @@ router.get("/analytics/client-trend", async (req, res) => {
     getCreatorClients(auth.userId),
     getCreatorPayments(auth.userId),
   ]);
-  res.json({ data: computeClientTrend(clientsSnap, paymentDocs) });
+  res.json({data: computeClientTrend(clientsSnap, paymentDocs)});
 });
 
 // GET /analytics/revenue-trend
@@ -1205,7 +1205,7 @@ router.get("/analytics/revenue-trend", async (req, res) => {
   requireCreator(auth);
   const courseId = typeof req.query.courseId === "string" ? req.query.courseId : undefined;
   const paymentDocs = await getCreatorPayments(auth.userId);
-  res.json({ data: computeRevenueTrend(paymentDocs, courseId) });
+  res.json({data: computeRevenueTrend(paymentDocs, courseId)});
 });
 
 // GET /analytics/expiring-access
@@ -1216,14 +1216,14 @@ router.get("/analytics/expiring-access", async (req, res) => {
     getCreatorCourses(auth.userId),
     getCreatorClients(auth.userId),
   ]);
-  res.json({ data: await computeExpiringAccess(coursesSnap, clientsSnap) });
+  res.json({data: await computeExpiringAccess(coursesSnap, clientsSnap)});
 });
 
 // GET /analytics/calendar-preview
 router.get("/analytics/calendar-preview", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  res.json({ data: await computeCalendarPreview(auth.userId) });
+  res.json({data: await computeCalendarPreview(auth.userId)});
 });
 
 // ─── Batch dashboard endpoint ─────────────────────────────────────────────
@@ -1267,7 +1267,7 @@ async function computeOneOnOneView(
         db.collection("users").doc(uid).collection("sessionHistory")
           .where("date", ">=", thirtyDaysAgoStr)
           .get()
-          .then((snap) => ({ uid, docs: snap.docs }))
+          .then((snap) => ({uid, docs: snap.docs}))
       )
     ),
   ]);
@@ -1298,7 +1298,7 @@ async function computeOneOnOneView(
     for (const date of dates) trainedByCourseDate[id][date] = new Set();
   }
 
-  for (const { uid, docs } of sessionsByUser) {
+  for (const {uid, docs} of sessionsByUser) {
     for (const doc of docs) {
       const data = doc.data();
       const courseId = data.courseId as string | undefined;
@@ -1333,9 +1333,9 @@ async function computeOneOnOneView(
       const dt = getClientDate(cd.data());
       return dt && dt >= prevPeriodStartStr && dt < thirtyDaysAgoStr;
     }).length;
-    const pctChange = prevPeriod > 0
-      ? Math.round(((newLast30d - prevPeriod) / prevPeriod) * 100)
-      : newLast30d > 0 ? 100 : 0;
+    const pctChange = prevPeriod > 0 ?
+      Math.round(((newLast30d - prevPeriod) / prevPeriod) * 100) :
+      newLast30d > 0 ? 100 : 0;
     return {
       courseId: doc.id,
       title: (data.title as string) ?? "",
@@ -1358,7 +1358,7 @@ async function computeOneOnOneView(
       });
       byCourse[doc.id] = linked.length;
     }
-    return { date, byCourse };
+    return {date, byCourse};
   });
 
   // Adherence series (% of clients per course who trained each day)
@@ -1366,14 +1366,16 @@ async function computeOneOnOneView(
     const byCourse: Record<string, number> = {};
     for (const id of ooIds) {
       const total = clientsByCourse[id].size;
-      if (total === 0) { byCourse[id] = 0; continue; }
+      if (total === 0) {
+        byCourse[id] = 0; continue;
+      }
       const trained = trainedByCourseDate[id][date]?.size ?? 0;
       byCourse[id] = Math.round((trained / total) * 100);
     }
-    return { date, byCourse };
+    return {date, byCourse};
   });
 
-  return { upcomingCalls, unreadVideoExchanges, plans, adherenceSeries, clientCountSeries };
+  return {upcomingCalls, unreadVideoExchanges, plans, adherenceSeries, clientCountSeries};
 }
 
 async function computeProgramsView(
@@ -1414,7 +1416,7 @@ async function computeProgramsView(
   };
 
   // Revenue
-  const { trend: revenueTrend } = computeRevenueTrend(paymentDocs);
+  const {trend: revenueTrend} = computeRevenueTrend(paymentDocs);
   const thisMonthGross = approvedDocs
     .filter((d) => getPayDate(d).startsWith(thisMonthStr))
     .reduce((s, d) => s + (d.data().amount ?? 0), 0);
@@ -1423,9 +1425,9 @@ async function computeProgramsView(
     .reduce((s, d) => s + (d.data().amount ?? 0), 0);
   const netThisMonth = Math.round(thisMonthGross * (1 - WAKE_CUT_PERCENT / 100));
   const netLastMonth = Math.round(lastMonthGross * (1 - WAKE_CUT_PERCENT / 100));
-  const revenuePctChange = netLastMonth > 0
-    ? Math.round(((netThisMonth - netLastMonth) / netLastMonth) * 100)
-    : netThisMonth > 0 ? 100 : 0;
+  const revenuePctChange = netLastMonth > 0 ?
+    Math.round(((netThisMonth - netLastMonth) / netLastMonth) * 100) :
+    netThisMonth > 0 ? 100 : 0;
 
   // Enrollment per course
   const enrollment = ltIds.map((courseId) => {
@@ -1444,9 +1446,9 @@ async function computeProgramsView(
     };
   }).map((e) => ({
     ...e,
-    pctChange: e.prevMonth > 0
-      ? Math.round(((e.newThisMonth - e.prevMonth) / e.prevMonth) * 100)
-      : e.newThisMonth > 0 ? 100 : 0,
+    pctChange: e.prevMonth > 0 ?
+      Math.round(((e.newThisMonth - e.prevMonth) / e.prevMonth) * 100) :
+      e.newThisMonth > 0 ? 100 : 0,
   }));
 
   // Adherence series — derive enrolled userIds from payments (cap at 30 per course)
@@ -1460,23 +1462,23 @@ async function computeProgramsView(
   }
 
   const allUserIds = [...new Set(Object.values(enrolledByCourse).flat())];
-  const sessionsByUser = allUserIds.length > 0
-    ? await Promise.all(
-        allUserIds.map((uid) =>
-          db.collection("users").doc(uid).collection("sessionHistory")
-            .where("date", ">=", thirtyDaysAgoStr)
-            .get()
-            .then((snap) => ({ uid, docs: snap.docs }))
-        )
+  const sessionsByUser = allUserIds.length > 0 ?
+    await Promise.all(
+      allUserIds.map((uid) =>
+        db.collection("users").doc(uid).collection("sessionHistory")
+          .where("date", ">=", thirtyDaysAgoStr)
+          .get()
+          .then((snap) => ({uid, docs: snap.docs}))
       )
-    : [];
+    ) :
+    [];
 
   const trainedByCourseDate: Record<string, Record<string, Set<string>>> = {};
   for (const id of ltIds) {
     trainedByCourseDate[id] = {};
     for (const date of dates) trainedByCourseDate[id][date] = new Set();
   }
-  for (const { uid, docs } of sessionsByUser) {
+  for (const {uid, docs} of sessionsByUser) {
     for (const doc of docs) {
       const data = doc.data();
       const courseId = data.courseId as string | undefined;
@@ -1490,11 +1492,13 @@ async function computeProgramsView(
     const byCourse: Record<string, number> = {};
     for (const id of ltIds) {
       const total = enrolledByCourse[id].length;
-      if (total === 0) { byCourse[id] = 0; continue; }
+      if (total === 0) {
+        byCourse[id] = 0; continue;
+      }
       const trained = trainedByCourseDate[id][date]?.size ?? 0;
       byCourse[id] = Math.round((trained / total) * 100);
     }
-    return { date, byCourse };
+    return {date, byCourse};
   });
 
   // Cumulative enrollment per program per day (sparkline data)
@@ -1504,11 +1508,11 @@ async function computeProgramsView(
       const pays = approvedDocs.filter((d) => d.data().courseId === courseId);
       byCourse[courseId] = pays.filter((d) => getPayDate(d).slice(0, 10) <= date).length;
     }
-    return { date, byCourse };
+    return {date, byCourse};
   });
 
   return {
-    revenue: { netThisMonth, pctChange: revenuePctChange, trend: revenueTrend.slice(-6) },
+    revenue: {netThisMonth, pctChange: revenuePctChange, trend: revenueTrend.slice(-6)},
     enrollment,
     enrollmentSeries,
     adherenceSeries,
@@ -1552,12 +1556,12 @@ router.get("/analytics/dashboard", async (req, res) => {
   const hasPrograms = ltCourseDocs.length > 0;
 
   const [oResult, pResult] = await Promise.allSettled([
-    hasOneOnOne
-      ? computeOneOnOneView(clientsSnap, ooCourseDocs, dates, thirtyDaysAgoStr, creatorId, now)
-      : Promise.resolve(null),
-    hasPrograms
-      ? computeProgramsView(ltCourseDocs, paymentDocs, dates, thirtyDaysAgoStr, now)
-      : Promise.resolve(null),
+    hasOneOnOne ?
+      computeOneOnOneView(clientsSnap, ooCourseDocs, dates, thirtyDaysAgoStr, creatorId, now) :
+      Promise.resolve(null),
+    hasPrograms ?
+      computeProgramsView(ltCourseDocs, paymentDocs, dates, thirtyDaysAgoStr, now) :
+      Promise.resolve(null),
   ]);
 
   const errors: Record<string, string> = {};
@@ -1570,7 +1574,7 @@ router.get("/analytics/dashboard", async (req, res) => {
       hasPrograms,
       oneOnOne: oResult.status === "fulfilled" ? oResult.value : null,
       programs: pResult.status === "fulfilled" ? pResult.value : null,
-      ...(Object.keys(errors).length > 0 ? { errors } : {}),
+      ...(Object.keys(errors).length > 0 ? {errors} : {}),
     },
   });
 });

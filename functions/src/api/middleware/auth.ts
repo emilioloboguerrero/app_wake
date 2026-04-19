@@ -1,9 +1,9 @@
-import type { Request } from "express";
+import type {Request} from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
-import { db } from "../firestore.js";
-import { WakeApiServerError } from "../errors.js";
-import { checkRateLimit } from "./rateLimit.js";
+import {db} from "../firestore.js";
+import {WakeApiServerError} from "../errors.js";
+import {checkRateLimit} from "./rateLimit.js";
 
 // ─── In-memory token verification cache ───────────────────────────────────
 // Caches decoded ID tokens by a truncated SHA-256 hash of the raw token.
@@ -17,7 +17,9 @@ function getCachedToken(token: string): admin.auth.DecodedIdToken | null {
   const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
   const entry = tokenCache.get(hash);
   if (!entry) return null;
-  if (Date.now() > entry.expiresAt) { tokenCache.delete(hash); return null; }
+  if (Date.now() > entry.expiresAt) {
+    tokenCache.delete(hash); return null;
+  }
   return entry.decoded;
 }
 
@@ -27,7 +29,7 @@ function setCachedToken(token: string, decoded: admin.auth.DecodedIdToken): void
     const firstKey = tokenCache.keys().next().value;
     if (firstKey) tokenCache.delete(firstKey);
   }
-  tokenCache.set(hash, { decoded, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS });
+  tokenCache.set(hash, {decoded, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS});
 }
 
 export interface AuthResult {
@@ -172,9 +174,9 @@ export async function validateAuthAndRateLimit(
   ]);
 
   const userData = userDoc.exists ? userDoc.data()! : null;
-  const role = userData
-    ? ((userData.role as "user" | "creator" | "admin") || "user")
-    : "user";
+  const role = userData ?
+    ((userData.role as "user" | "creator" | "admin") || "user") :
+    "user";
 
   const result: AuthResult = {
     userId: decoded.uid,
@@ -216,7 +218,7 @@ async function validateApiKey(key: string): Promise<AuthResult> {
   }
 
   // Update last_used_at (fire-and-forget)
-  doc.ref.update({ last_used_at: new Date().toISOString() }).catch(() => {});
+  doc.ref.update({last_used_at: new Date().toISOString()}).catch(() => {});
 
   return {
     userId: data.owner_id,
@@ -264,9 +266,9 @@ async function validateFirebaseToken(
   // Lookup user role from Firestore — keep full doc data for reuse by handlers
   const userDoc = await db.collection("users").doc(decoded.uid).get();
   const userData = userDoc.exists ? userDoc.data()! : null;
-  const role = userData
-    ? ((userData.role as "user" | "creator" | "admin") || "user")
-    : "user";
+  const role = userData ?
+    ((userData.role as "user" | "creator" | "admin") || "user") :
+    "user";
 
   return {
     userId: decoded.uid,

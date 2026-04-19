@@ -1,13 +1,13 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
-import { Resend } from "resend";
-import { db, FieldValue, FieldPath } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuthAndRateLimit } from "../middleware/auth.js";
-import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
-import { WakeApiServerError } from "../errors.js";
-import { escapeHtml } from "../services/emailHelpers.js";
+import {Resend} from "resend";
+import {db, FieldValue, FieldPath} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuthAndRateLimit} from "../middleware/auth.js";
+import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
+import {WakeApiServerError} from "../errors.js";
+import {escapeHtml} from "../services/emailHelpers.js";
 
 const router = Router();
 
@@ -52,7 +52,7 @@ router.get("/creator/clients", async (req, res) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    const clientDocs = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }));
+    const clientDocs = snapshot.docs.map((d) => ({...d.data(), id: d.id}));
     const userIds = [...new Set(
       clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
     )];
@@ -83,12 +83,12 @@ router.get("/creator/clients", async (req, res) => {
           clientName: userData.displayName ?? userData.name ?? null,
           clientEmail: userData.email ?? null,
           avatarUrl: userData.profilePictureUrl ?? userData.photoURL ?? null,
-          enrolledProgram: { courseId: programId, ...enrollment },
+          enrolledProgram: {courseId: programId, ...enrollment},
         });
       }
     }
 
-    res.json({ data: results });
+    res.json({data: results});
     return;
   }
 
@@ -111,7 +111,7 @@ router.get("/creator/clients", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   // Enrich each client with their one_on_one enrolled programs
-  const clientDocs = docs.map((d) => ({ ...d.data(), id: d.id }));
+  const clientDocs = docs.map((d) => ({...d.data(), id: d.id}));
   const userIds = [...new Set(clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean))];
 
   const userDocsMap: Record<string, Record<string, unknown>> = {};
@@ -158,7 +158,7 @@ router.get("/creator/clients", async (req, res) => {
     const nd = nDoc.data();
     const clientId = (nd.userId ?? nd.client_id) as string;
     if (clientId) {
-      nutritionByClient[clientId] = { planName: nd.planName ?? nd.plan_name ?? "", assignmentId: nDoc.id };
+      nutritionByClient[clientId] = {planName: nd.planName ?? nd.plan_name ?? "", assignmentId: nDoc.id};
     }
   }
 
@@ -170,7 +170,7 @@ router.get("/creator/clients", async (req, res) => {
     const clientId = (bd.clientUserId ?? bd.client_id) as string;
     if (clientId) {
       if (!callsByClient[clientId]) callsByClient[clientId] = [];
-      callsByClient[clientId].push({ bookingId: bDoc.id, slotStartUtc: slotStart });
+      callsByClient[clientId].push({bookingId: bDoc.id, slotStartUtc: slotStart});
     }
   }
 
@@ -219,7 +219,7 @@ router.get("/creator/clients", async (req, res) => {
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
     const enrolledPrograms = Object.entries(courses)
       .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
-      .map(([courseId, v]) => ({ courseId, title: v.title, status: v.status }));
+      .map(([courseId, v]) => ({courseId, title: v.title, status: v.status}));
 
     // accessEndsAt: earliest expires_at among active one_on_one enrollments for THIS creator
     let accessEndsAt: string | null = null;
@@ -230,7 +230,7 @@ router.get("/creator/clients", async (req, res) => {
       }
     }
 
-    const stats = statsMap[userId] ?? { sessionsCompleted: 0, lastSessionDate: null, weeklyConsistency: 0, latestPR: null };
+    const stats = statsMap[userId] ?? {sessionsCompleted: 0, lastSessionDate: null, weeklyConsistency: 0, latestPR: null};
 
     return {
       ...client,
@@ -273,7 +273,7 @@ router.get("/creator/clients-overview", async (req, res) => {
 
   const creatorCourseIds = new Set(coursesSnap.docs.map((d) => d.id));
 
-  const clientDocs = clientsSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  const clientDocs = clientsSnap.docs.map((d) => ({...d.data(), id: d.id}));
   const clientUserIds = [...new Set(
     clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
   )];
@@ -312,7 +312,7 @@ router.get("/creator/clients-overview", async (req, res) => {
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
     const enrolledPrograms = Object.entries(courses)
       .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
-      .map(([courseId, v]) => ({ courseId, title: v.title, status: v.status }));
+      .map(([courseId, v]) => ({courseId, title: v.title, status: v.status}));
 
     let accessEndsAt: string | null = null;
     for (const [courseId, entry] of Object.entries(courses)) {
@@ -386,7 +386,7 @@ router.get("/creator/clients-overview", async (req, res) => {
     for (const pm of programMetas) {
       const buckets: Record<string, number> = {};
       for (const ws of weekStarts) buckets[ws] = 0;
-      historyByProgram[pm.id] = { total: 0, weekBuckets: buckets };
+      historyByProgram[pm.id] = {total: 0, weekBuckets: buckets};
     }
 
     await Promise.all(clientUserIds.map(async (uid) => {
@@ -448,11 +448,11 @@ router.get("/creator/clients-overview", async (req, res) => {
       const dailyTotals: Record<string, { calories: number; protein: number }> = {};
       for (const dd of diarySnap.docs) {
         const d = dd.data();
-        if (!dailyTotals[d.date]) dailyTotals[d.date] = { calories: 0, protein: 0 };
+        if (!dailyTotals[d.date]) dailyTotals[d.date] = {calories: 0, protein: 0};
         dailyTotals[d.date].calories += d.calories ?? 0;
         dailyTotals[d.date].protein += d.protein ?? 0;
       }
-      clientNutritionData[uid] = { target: { calories: tCal, protein: tPro }, dailyTotals };
+      clientNutritionData[uid] = {target: {calories: tCal, protein: tPro}, dailyTotals};
     }));
 
     const hasAnyNutritionPlan = Object.keys(clientNutritionData).length > 0;
@@ -468,8 +468,8 @@ router.get("/creator/clients-overview", async (req, res) => {
         if (calOk && proOk) globalNutrDaysWithin++;
       }
     }
-    const globalNutrAdherence = hasAnyNutritionPlan && globalNutrDaysTotal > 0
-      ? Math.round((globalNutrDaysWithin / globalNutrDaysTotal) * 100) : null;
+    const globalNutrAdherence = hasAnyNutritionPlan && globalNutrDaysTotal > 0 ?
+      Math.round((globalNutrDaysWithin / globalNutrDaysTotal) * 100) : null;
 
     for (const pm of programMetas) {
       const hist = historyByProgram[pm.id];
@@ -525,10 +525,10 @@ router.get("/creator/clients-overview", async (req, res) => {
       weekEnd.setDate(weekEnd.getDate() + 6);
       const weekEndStr = weekEnd.toISOString().slice(0, 10);
       const count = clientCreatedDates.filter((d) => d <= weekEndStr).length;
-      enrollmentHistory.push({ week: ws, clients: count });
+      enrollmentHistory.push({week: ws, clients: count});
     }
 
-    adherencePayload = { overallWorkoutAdherence, overallNutritionAdherence, byProgram, enrollmentHistory };
+    adherencePayload = {overallWorkoutAdherence, overallNutritionAdherence, byProgram, enrollmentHistory};
   }
 
   res.json({
@@ -545,7 +545,7 @@ router.post("/creator/clients/lookup", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { emailOrUsername } = req.body as { emailOrUsername?: string };
+  const {emailOrUsername} = req.body as { emailOrUsername?: string };
   if (!emailOrUsername?.trim()) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email o username requerido");
   }
@@ -567,7 +567,7 @@ router.post("/creator/clients/lookup", async (req, res) => {
   }
 
   if (userSnap.empty) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
@@ -590,7 +590,7 @@ router.post("/creator/clients/invite", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { email } = req.body as { email?: string };
+  const {email} = req.body as { email?: string };
   if (!email?.trim()) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email requerido");
   }
@@ -662,7 +662,7 @@ router.post("/creator/clients", async (req, res) => {
   requireCreator(auth);
 
   const body = validateBody<{ userId: string }>(
-    { userId: "string" },
+    {userId: "string"},
     req.body
   );
 
@@ -682,7 +682,7 @@ router.post("/creator/clients", async (req, res) => {
 
   if (!existing.empty) {
     const doc = existing.docs[0];
-    res.status(200).json({ data: { id: doc.id, clientId: doc.id } });
+    res.status(200).json({data: {id: doc.id, clientId: doc.id}});
     return;
   }
 
@@ -697,7 +697,7 @@ router.post("/creator/clients", async (req, res) => {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { id: docRef.id, clientId: docRef.id } });
+  res.status(201).json({data: {id: docRef.id, clientId: docRef.id}});
 });
 
 // GET /creator/clients/:clientId — single client detail
@@ -747,8 +747,8 @@ router.get("/creator/clients/:clientId", async (req, res) => {
 
   const userData = userDoc.exists ? userDoc.data()! : {};
   const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
-  const creatorCourseMap = new Map(creatorPrograms.docs.map(d => [d.id, d.data()]));
-  const creatorCourseIds = new Set(creatorPrograms.docs.map(d => d.id));
+  const creatorCourseMap = new Map(creatorPrograms.docs.map((d) => [d.id, d.data()]));
+  const creatorCourseIds = new Set(creatorPrograms.docs.map((d) => d.id));
 
   const enrolledPrograms = Object.entries(courses)
     .filter(([courseId]) => creatorCourseIds.has(courseId))
@@ -763,7 +763,7 @@ router.get("/creator/clients/:clientId", async (req, res) => {
       planAssignments: v.planAssignments ?? null,
     }));
 
-  const notes = notesSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+  const notes = notesSnap.docs.map((d) => ({...d.data(), id: d.id}));
 
   res.json({
     data: {
@@ -807,7 +807,7 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
     creatorId: auth.userId,
   });
 
-  res.status(201).json({ data: { id: noteRef.id, text, createdAt: new Date().toISOString() } });
+  res.status(201).json({data: {id: noteRef.id, text, createdAt: new Date().toISOString()}});
 });
 
 // DELETE /creator/clients/:clientId/notes/:noteId
@@ -822,7 +822,7 @@ router.delete("/creator/clients/:clientId/notes/:noteId", async (req, res) => {
   }
 
   await clientRef.collection("notes").doc(req.params.noteId).delete();
-  res.json({ data: { deleted: true } });
+  res.json({data: {deleted: true}});
 });
 
 // DELETE /creator/clients/:clientId — remove client
@@ -854,7 +854,7 @@ router.get("/creator/courses", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
+    data: snapshot.docs.map((d) => ({...d.data(), id: d.id})),
   });
 });
 
@@ -883,7 +883,7 @@ router.get("/creator/programs", async (req, res) => {
     if (cursor.exists) query = query.startAfter(cursor);
   }
 
-  let enrollmentCounts: Record<string, number> = {};
+  const enrollmentCounts: Record<string, number> = {};
 
   if (!skipEnrollmentCounts) {
     // Parallelize courses query and clients query
@@ -971,7 +971,7 @@ router.get("/creator/programs/:programId", async (req, res) => {
   }
 
   const programData = doc.data()!;
-  res.json({ data: { id: doc.id, ...programData, imageUrl: programData.image_url ?? null } });
+  res.json({data: {id: doc.id, ...programData, imageUrl: programData.image_url ?? null}});
 });
 
 // POST /creator/programs
@@ -1012,16 +1012,16 @@ router.post("/creator/programs", async (req, res) => {
   const docRef = await db.collection("courses").add({
     title: body.title,
     deliveryType: body.deliveryType,
-    ...(body.description !== undefined && { description: body.description }),
-    ...(body.weekly !== undefined && { weekly: body.weekly }),
-    ...(body.price !== undefined && { price: body.price }),
-    ...(body.access_duration !== undefined && { access_duration: body.access_duration }),
-    ...(body.discipline !== undefined && { discipline: body.discipline }),
-    ...(body.weight_suggestions !== undefined && { weight_suggestions: body.weight_suggestions }),
-    ...(body.duration !== undefined && { duration: body.duration }),
-    availableLibraries: Array.isArray(req.body.availableLibraries)
-      ? req.body.availableLibraries.filter((id: unknown) => typeof id === "string")
-      : [],
+    ...(body.description !== undefined && {description: body.description}),
+    ...(body.weekly !== undefined && {weekly: body.weekly}),
+    ...(body.price !== undefined && {price: body.price}),
+    ...(body.access_duration !== undefined && {access_duration: body.access_duration}),
+    ...(body.discipline !== undefined && {discipline: body.discipline}),
+    ...(body.weight_suggestions !== undefined && {weight_suggestions: body.weight_suggestions}),
+    ...(body.duration !== undefined && {duration: body.duration}),
+    availableLibraries: Array.isArray(req.body.availableLibraries) ?
+      req.body.availableLibraries.filter((id: unknown) => typeof id === "string") :
+      [],
     creator_id: auth.userId,
     creatorName,
     status: "draft",
@@ -1034,9 +1034,9 @@ router.post("/creator/programs", async (req, res) => {
       workoutCompletion: [],
       workoutExecution: [],
     },
-    free_trial: req.body.free_trial && typeof req.body.free_trial === "object"
-      ? { active: !!req.body.free_trial.active, duration_days: Math.max(0, parseInt(req.body.free_trial.duration_days, 10) || 0) }
-      : { active: false, duration_days: 0 },
+    free_trial: req.body.free_trial && typeof req.body.free_trial === "object" ?
+      {active: !!req.body.free_trial.active, duration_days: Math.max(0, parseInt(req.body.free_trial.duration_days, 10) || 0)} :
+      {active: false, duration_days: 0},
     version: versionStr,
     published_version: versionStr,
     created_at: FieldValue.serverTimestamp(),
@@ -1044,7 +1044,7 @@ router.post("/creator/programs", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { id: docRef.id } });
+  res.status(201).json({data: {id: docRef.id}});
 });
 
 // PATCH /creator/programs/:programId
@@ -1080,7 +1080,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
   });
 
   // Sync updated fields to enrolled users' course entries
-  const syncFields: Record<string, string> = { image_url: "image_url", title: "title" };
+  const syncFields: Record<string, string> = {image_url: "image_url", title: "title"};
   const userUpdates: Record<string, unknown> = {};
   for (const [field, courseField] of Object.entries(syncFields)) {
     if (updates[field] !== undefined) {
@@ -1102,7 +1102,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     }
   }
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // PATCH /creator/programs/:programId/status
@@ -1110,8 +1110,8 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { status } = validateBody<{ status: string }>(
-    { status: "string" },
+  const {status} = validateBody<{ status: string }>(
+    {status: "string"},
     req.body
   );
 
@@ -1138,7 +1138,7 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { status } });
+  res.json({data: {status}});
 });
 
 // DELETE /creator/programs/:programId
@@ -1173,7 +1173,9 @@ router.delete("/creator/programs/:programId", async (req, res) => {
   for (const d of [...allSets, ...allExercises, ...allSessions, ...modulesSnap.docs]) {
     batch.delete(d.ref);
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
   }
   batch.delete(docRef);
   await batch.commit();
@@ -1208,37 +1210,45 @@ router.post("/creator/programs/:programId/duplicate", async (req, res) => {
 
   for (const mDoc of modulesSnap.docs) {
     const newModRef = newRef.collection("modules").doc();
-    batch.set(newModRef, { ...mDoc.data(), id: newModRef.id, created_at: FieldValue.serverTimestamp() });
+    batch.set(newModRef, {...mDoc.data(), id: newModRef.id, created_at: FieldValue.serverTimestamp()});
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
 
     const sessionsSnap = await mDoc.ref.collection("sessions").get();
     for (const sDoc of sessionsSnap.docs) {
       const newSessRef = newModRef.collection("sessions").doc();
-      batch.set(newSessRef, { ...sDoc.data(), id: newSessRef.id, created_at: FieldValue.serverTimestamp() });
+      batch.set(newSessRef, {...sDoc.data(), id: newSessRef.id, created_at: FieldValue.serverTimestamp()});
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
 
       const exSnap = await sDoc.ref.collection("exercises").get();
       for (const eDoc of exSnap.docs) {
         const newExRef = newSessRef.collection("exercises").doc();
-        batch.set(newExRef, { ...eDoc.data(), id: newExRef.id, created_at: FieldValue.serverTimestamp() });
+        batch.set(newExRef, {...eDoc.data(), id: newExRef.id, created_at: FieldValue.serverTimestamp()});
         count++;
-        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+        if (count >= 450) {
+          await batch.commit(); batch = db.batch(); count = 0;
+        }
 
         const setsSnap = await eDoc.ref.collection("sets").get();
         for (const setDoc of setsSnap.docs) {
           const newSetRef = newExRef.collection("sets").doc();
-          batch.set(newSetRef, { ...setDoc.data(), id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
+          batch.set(newSetRef, {...setDoc.data(), id: newSetRef.id, created_at: FieldValue.serverTimestamp()});
           count++;
-          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+          if (count >= 450) {
+            await batch.commit(); batch = db.batch(); count = 0;
+          }
         }
       }
     }
   }
   if (count > 0) await batch.commit();
 
-  res.status(201).json({ data: { id: newDoc.id } });
+  res.status(201).json({data: {id: newDoc.id}});
 });
 
 // POST /creator/programs/:programId/image/upload-url
@@ -1246,8 +1256,8 @@ router.post("/creator/programs/:programId/image/upload-url", async (req, res) =>
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { contentType } = validateBody<{ contentType: string }>(
-    { contentType: "string" },
+  const {contentType} = validateBody<{ contentType: string }>(
+    {contentType: "string"},
     req.body
   );
 
@@ -1262,7 +1272,7 @@ router.post("/creator/programs/:programId/image/upload-url", async (req, res) =>
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath } });
+  res.json({data: {uploadUrl: url, storagePath}});
 });
 
 // POST /creator/programs/:programId/image/confirm
@@ -1270,8 +1280,8 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { storagePath } = validateBody<{ storagePath: string }>(
-    { storagePath: "string" },
+  const {storagePath} = validateBody<{ storagePath: string }>(
+    {storagePath: "string"},
     req.body
   );
 
@@ -1309,7 +1319,7 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
     await batch.commit();
   }
 
-  res.json({ data: { image_url: publicUrl, image_path: storagePath } });
+  res.json({data: {image_url: publicUrl, image_path: storagePath}});
 });
 
 // GET /creator/clients/:clientId/sessions
@@ -1327,7 +1337,7 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
+    data: snapshot.docs.map((d) => ({...d.data(), id: d.id})),
   });
 });
 
@@ -1375,7 +1385,7 @@ router.get("/creator/instagram-feed", async (req, res) => {
   // Check in-memory cache
   const cached = instagramCache[auth.userId];
   if (cached && cached.expiresAt > Date.now()) {
-    res.json({ data: cached.data });
+    res.json({data: cached.data});
     return;
   }
 
@@ -1395,7 +1405,7 @@ router.get("/creator/instagram-feed", async (req, res) => {
     expiresAt: Date.now() + INSTAGRAM_CACHE_TTL,
   };
 
-  res.json({ data: feedData });
+  res.json({data: feedData});
 });
 
 // ─── Creator Nutrition Library ─────────────────────────────────────────────
@@ -1445,7 +1455,7 @@ router.get("/creator/nutrition/meals", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, mealId: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({id: d.id, mealId: d.id, ...d.data()})),
   });
 });
 
@@ -1465,7 +1475,7 @@ router.get("/creator/nutrition/meals/:mealId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Comida no encontrada");
   }
 
-  res.json({ data: { id: doc.id, mealId: doc.id, ...doc.data() } });
+  res.json({data: {id: doc.id, mealId: doc.id, ...doc.data()}});
 });
 
 // POST /creator/nutrition/meals
@@ -1511,7 +1521,7 @@ router.post("/creator/nutrition/meals", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id, mealId: docRef.id } });
+  res.status(201).json({data: {id: docRef.id, mealId: docRef.id}});
 });
 
 // PATCH /creator/nutrition/meals/:mealId
@@ -1543,7 +1553,7 @@ router.patch("/creator/nutrition/meals/:mealId", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // DELETE /creator/nutrition/meals/:mealId
@@ -1577,7 +1587,7 @@ router.get("/creator/nutrition/plans", async (req, res) => {
     .collection("plans")
     .get();
 
-  const plans = snapshot.docs.map((d) => ({ id: d.id, planId: d.id, ...d.data() }));
+  const plans = snapshot.docs.map((d) => ({id: d.id, planId: d.id, ...d.data()}));
   plans.sort((a, b) => {
     const tA = (a as Record<string, unknown>).created_at ?? (a as Record<string, unknown>).createdAt;
     const tB = (b as Record<string, unknown>).created_at ?? (b as Record<string, unknown>).createdAt;
@@ -1586,7 +1596,7 @@ router.get("/creator/nutrition/plans", async (req, res) => {
     return msB - msA;
   });
 
-  res.json({ data: plans });
+  res.json({data: plans});
 });
 
 // POST /creator/nutrition/plans
@@ -1627,7 +1637,7 @@ router.post("/creator/nutrition/plans", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id, planId: docRef.id } });
+  res.status(201).json({data: {id: docRef.id, planId: docRef.id}});
 });
 
 // GET /creator/nutrition/plans/:planId
@@ -1646,7 +1656,7 @@ router.get("/creator/nutrition/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  res.json({ data: { id: doc.id, planId: doc.id, ...doc.data() } });
+  res.json({data: {id: doc.id, planId: doc.id, ...doc.data()}});
 });
 
 // PATCH /creator/nutrition/plans/:planId
@@ -1677,7 +1687,7 @@ router.patch("/creator/nutrition/plans/:planId", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // DELETE /creator/nutrition/plans/:planId
@@ -1779,7 +1789,7 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
   }
   if (batchCount > 0) await batch.commit();
 
-  res.json({ data: { clientsAffected, skippedInactive } });
+  res.json({data: {clientsAffected, skippedInactive}});
 });
 
 // ─── Client Nutrition Assignments ─────────────────────────────────────────
@@ -1816,7 +1826,7 @@ router.get("/creator/clients/:clientId/nutrition/assignments", async (req, res) 
       .get(),
   ]);
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, assignmentId: d.id, ...d.data() })) });
+  res.json({data: snap.docs.map((d) => ({id: d.id, assignmentId: d.id, ...d.data()}))});
 });
 
 // POST /creator/clients/:clientId/nutrition/assignments
@@ -1826,7 +1836,7 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = validateBody<{ planId: string; startDate?: string; endDate?: string }>(
-    { planId: "string", startDate: "optional_string", endDate: "optional_string" },
+    {planId: "string", startDate: "optional_string", endDate: "optional_string"},
     req.body
   );
 
@@ -1870,13 +1880,13 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
 
     // Pin on user if no existing pinned assignment
     if (!userDoc.data()?.pinnedNutritionAssignmentId) {
-      tx.update(userRef, { pinnedNutritionAssignmentId: assignmentRef.id });
+      tx.update(userRef, {pinnedNutritionAssignmentId: assignmentRef.id});
     }
 
     return assignmentRef.id;
   });
 
-  res.status(201).json({ data: { assignmentId } });
+  res.status(201).json({data: {assignmentId}});
 });
 
 // PATCH /creator/clients/:clientId/nutrition/assignments/:assignmentId
@@ -1944,7 +1954,7 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
     });
   }
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // DELETE /creator/clients/:clientId/nutrition/assignments/:assignmentId
@@ -1980,11 +1990,11 @@ router.get("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
 
   const contentDoc = await db.collection("client_nutrition_plan_content").doc(req.params.assignmentId).get();
   if (!contentDoc.exists) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
-  res.json({ data: contentDoc.data() });
+  res.json({data: contentDoc.data()});
 });
 
 // PUT /creator/clients/:clientId/nutrition/assignments/:assignmentId/content
@@ -2022,12 +2032,12 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
     "plan.daily_protein_g": macros.daily_protein_g,
     "plan.daily_carbs_g": macros.daily_carbs_g,
     "plan.daily_fat_g": macros.daily_fat_g,
-    planName: body.name ?? assignDoc.data()?.planName ?? "",
-    updated_at: FieldValue.serverTimestamp(),
+    "planName": body.name ?? assignDoc.data()?.planName ?? "",
+    "updated_at": FieldValue.serverTimestamp(),
   });
   await batch.commit();
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // PUT /creator/nutrition/assignments/:assignmentId/content — update without clientId (for program assignments)
@@ -2064,12 +2074,12 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
     "plan.daily_protein_g": macros2.daily_protein_g,
     "plan.daily_carbs_g": macros2.daily_carbs_g,
     "plan.daily_fat_g": macros2.daily_fat_g,
-    planName: body.name ?? assignDoc.data()?.planName ?? "",
-    updated_at: FieldValue.serverTimestamp(),
+    "planName": body.name ?? assignDoc.data()?.planName ?? "",
+    "updated_at": FieldValue.serverTimestamp(),
   });
   await batch2.commit();
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // GET /creator/nutrition/assignments/:assignmentId/content — read without clientId (for program assignments)
@@ -2084,11 +2094,11 @@ router.get("/creator/nutrition/assignments/:assignmentId/content", async (req, r
 
   const contentDoc = await db.collection("client_nutrition_plan_content").doc(req.params.assignmentId).get();
   if (!contentDoc.exists) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
-  res.json({ data: contentDoc.data() });
+  res.json({data: contentDoc.data()});
 });
 
 // GET /creator/nutrition/assignments — list all assignments for this creator
@@ -2108,7 +2118,7 @@ router.get("/creator/nutrition/assignments", async (req, res) => {
     ...d.data(),
   }));
 
-  res.json({ data: assignments });
+  res.json({data: assignments});
 });
 
 // GET /creator/nutrition/assignments/:assignmentId
@@ -2121,7 +2131,7 @@ router.get("/creator/nutrition/assignments/:assignmentId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
   }
 
-  res.json({ data: { id: doc.id, assignmentId: doc.id, ...doc.data() } });
+  res.json({data: {id: doc.id, assignmentId: doc.id, ...doc.data()}});
 });
 
 // GET /creator/nutrition/assignments-by-plan?sourcePlanId=...
@@ -2140,7 +2150,7 @@ router.get("/creator/nutrition/assignments-by-plan", async (req, res) => {
     .where("assignedBy", "==", auth.userId)
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ id: d.id, assignmentId: d.id, ...d.data() })) });
+  res.json({data: snap.docs.map((d) => ({id: d.id, assignmentId: d.id, ...d.data()}))});
 });
 
 // ─── Creator Feedback ─────────────────────────────────────────────────────
@@ -2150,8 +2160,8 @@ router.post("/creator/feedback/upload-url", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req, 10);
   requireCreator(auth);
 
-  const { filename, contentType } = validateBody<{ filename: string; contentType: string }>(
-    { filename: "string", contentType: "string" },
+  const {filename, contentType} = validateBody<{ filename: string; contentType: string }>(
+    {filename: "string", contentType: "string"},
     req.body
   );
 
@@ -2172,7 +2182,7 @@ router.post("/creator/feedback/upload-url", async (req, res) => {
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath } });
+  res.json({data: {uploadUrl: url, storagePath}});
 });
 
 // POST /creator/feedback
@@ -2207,7 +2217,7 @@ router.post("/creator/feedback", async (req, res) => {
     created_at: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { feedbackId: docRef.id } });
+  res.status(201).json({data: {feedbackId: docRef.id}});
 });
 
 // GET /creator/clients/:clientId/nutrition/diary
@@ -2216,7 +2226,7 @@ router.get("/creator/clients/:clientId/nutrition/diary", async (req, res) => {
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { date, startDate, endDate } = req.query as Record<string, string>;
+  const {date, startDate, endDate} = req.query as Record<string, string>;
   let query: Query = db
     .collection("users")
     .doc(req.params.clientId)
@@ -2230,7 +2240,7 @@ router.get("/creator/clients/:clientId/nutrition/diary", async (req, res) => {
 
   query = query.orderBy("date", "desc").limit(30);
   const snapshot = await query.get();
-  res.json({ data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })) });
+  res.json({data: snapshot.docs.map((d) => ({...d.data(), id: d.id}))});
 });
 
 // ─── Week Key Utilities (ported from apps/creator-dashboard/src/utils/weekCalculation.js) ──
@@ -2265,7 +2275,7 @@ function getWeekDates(weekKey: string): { start: Date; end: Date } {
   weekStart.setDate(firstMonday.getDate() + (week - 1) * 7);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
-  return { start: weekStart, end: weekEnd };
+  return {start: weekStart, end: weekEnd};
 }
 
 function getWeeksBetween(startDate: Date, endDate: Date): string[] {
@@ -2281,7 +2291,7 @@ function getWeeksBetween(startDate: Date, endDate: Date): string[] {
 function getConsecutiveWeekKeys(startWeekKey: string, count: number): string[] {
   if (count < 1) return [];
   if (count === 1) return [startWeekKey];
-  const { start } = getWeekDates(startWeekKey);
+  const {start} = getWeekDates(startWeekKey);
   const endDate = new Date(start);
   endDate.setDate(start.getDate() + 7 * count - 1);
   return getWeeksBetween(start, endDate);
@@ -2299,7 +2309,7 @@ function getCalendarMonthRange(month: string): { start: Date; end: Date; weekKey
   const trailingCount = Math.max(0, totalCells - startingDayOfWeek - daysInMonth);
   const start = new Date(year, m, 1 - startingDayOfWeek);
   const end = new Date(year, m, daysInMonth + trailingCount);
-  return { start, end, weekKeys: getWeeksBetween(start, end) };
+  return {start, end, weekKeys: getWeeksBetween(start, end)};
 }
 
 function toLocalDateISO(d: Date): string {
@@ -2326,10 +2336,10 @@ async function readSessionTree(
       const exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+          return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
         })
       );
-      return { ...sDoc.data(), id: sDoc.id, exercises };
+      return {...sDoc.data(), id: sDoc.id, exercises};
     })
   );
 }
@@ -2347,7 +2357,7 @@ async function ensureClientCopy(
   // If the doc exists, the week has been personalized — respect it even if empty.
   // An empty personalized week means the user intentionally deleted all sessions.
   if (docSnap.exists) {
-    return { docId, alreadyExisted: true };
+    return {docId, alreadyExisted: true};
   }
 
   // Read planAssignments from user's courses entry
@@ -2365,7 +2375,7 @@ async function ensureClientCopy(
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     });
-    return { docId, alreadyExisted: false };
+    return {docId, alreadyExisted: false};
   }
 
   // Read plan module sessions with exercises and sets
@@ -2380,7 +2390,7 @@ async function ensureClientCopy(
     const sData = sDoc.data();
     // Determine source library session ID (new field or legacy field)
     const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
-    let sessionData: Record<string, unknown> = {
+    const sessionData: Record<string, unknown> = {
       ...sData,
       id: sDoc.id,
       source_plan_session_id: sDoc.id,
@@ -2407,16 +2417,16 @@ async function ensureClientCopy(
           exercises = await Promise.all(
             libExSnap.docs.map(async (eDoc) => {
               const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-              return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+              return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
             })
           );
         }
-      } catch { /* best-effort library resolution */ }
+      } catch {/* best-effort library resolution */}
     } else {
       exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+          return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
         })
       );
       // Resolve library session metadata if needed
@@ -2429,11 +2439,11 @@ async function ensureClientCopy(
             sessionData.title = sData.title ?? libData.title ?? null;
             sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
           }
-        } catch { /* best-effort */ }
+        } catch {/* best-effort */}
       }
     }
 
-    sessions.push({ ...sessionData, exercises });
+    sessions.push({...sessionData, exercises});
   }
 
   // Write to client_plan_content using batches
@@ -2457,22 +2467,22 @@ async function ensureClientCopy(
   for (const session of sessions) {
     const sessionId = (session.id as string) ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
-    const { exercises: exArr, ...sessionFields } = session;
-    batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp() });
+    const {exercises: exArr, ...sessionFields} = session;
+    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp()});
     batchCount++;
 
     if (Array.isArray(exArr)) {
       for (const exercise of exArr as Array<Record<string, unknown>>) {
         const exId = (exercise.id as string) ?? db.collection("_").doc().id;
         const exRef = sessionRef.collection("exercises").doc(exId);
-        const { sets: setsArr, ...exFields } = exercise;
-        batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+        const {sets: setsArr, ...exFields} = exercise;
+        batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
         batchCount++;
 
         if (Array.isArray(setsArr)) {
           for (const set of setsArr as Array<Record<string, unknown>>) {
             const setId = (set.id as string) ?? db.collection("_").doc().id;
-            batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+            batch.set(exRef.collection("sets").doc(setId), {...set, id: setId, created_at: FieldValue.serverTimestamp()});
             batchCount++;
           }
         }
@@ -2487,7 +2497,7 @@ async function ensureClientCopy(
   }
 
   if (batchCount > 0) await batch.commit();
-  return { docId, alreadyExisted: false };
+  return {docId, alreadyExisted: false};
 }
 
 // Delete all subcollections under a client_plan_content doc
@@ -2507,7 +2517,9 @@ async function deleteClientPlanContentDoc(docId: string): Promise<void> {
       for (const setDoc of setsSnap.docs) {
         batch.delete(setDoc.ref);
         count++;
-        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+        if (count >= 450) {
+          await batch.commit(); batch = db.batch(); count = 0;
+        }
       }
       batch.delete(eDoc.ref);
       count++;
@@ -2522,7 +2534,6 @@ async function deleteClientPlanContentDoc(docId: string): Promise<void> {
 
 // GET /creator/clients/:clientId/plan-content/:weekKey?programId=X
 router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) => {
-
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
@@ -2543,11 +2554,11 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
       doc = await db.collection("client_plan_content").doc(docId).get();
     } catch {
       // No plan assigned to this week — return null
-      res.json({ data: null });
+      res.json({data: null});
       return;
     }
     if (!doc.exists) {
-      res.json({ data: null });
+      res.json({data: null});
       return;
     }
   }
@@ -2567,7 +2578,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
           return {
             ...eDoc.data(),
             id: eDoc.id,
-            sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
+            sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id})),
           };
         })
       );
@@ -2590,25 +2601,27 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
               for (const eDoc of libExSnap.docs) {
                 const exRef = sDoc.ref.collection("exercises").doc();
                 const exData = eDoc.data();
-                batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+                batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
                 batchCount++;
 
                 const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
                 const sets: Array<{ id: string; [key: string]: unknown }> = [];
                 for (const setDoc of setsSnap.docs) {
                   const setRef = exRef.collection("sets").doc();
-                  batch.set(setRef, { ...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+                  batch.set(setRef, {...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp()});
                   batchCount++;
-                  sets.push({ ...setDoc.data(), id: setRef.id });
+                  sets.push({...setDoc.data(), id: setRef.id});
                 }
-                if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+                if (batchCount >= 450) {
+                  await batch.commit(); batch = db.batch(); batchCount = 0;
+                }
 
-                backfilled.push({ id: exRef.id, ...exData, sets });
+                backfilled.push({id: exRef.id, ...exData, sets});
               }
               if (batchCount > 0) await batch.commit();
 
               if (sData.librarySessionRef && !sData.source_library_session_id) {
-                await sDoc.ref.update({ source_library_session_id: sData.librarySessionRef });
+                await sDoc.ref.update({source_library_session_id: sData.librarySessionRef});
               }
 
               exercises = backfilled;
@@ -2617,12 +2630,12 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
         }
       }
 
-      exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
-      return { id: sDoc.id, ...sData, exercises };
+      exercises.forEach((e) => normalizeExerciseName(e as Record<string, unknown>));
+      return {id: sDoc.id, ...sData, exercises};
     })
   );
 
-  res.json({ data: { ...docData, programId, sessions } });
+  res.json({data: {...docData, programId, sessions}});
 });
 
 // PUT /creator/clients/:clientId/plan-content/:weekKey
@@ -2673,7 +2686,7 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
     if (!session || typeof session !== "object") continue;
     const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
-    const { exercises: exArr, ...sessionFields } = session as Record<string, unknown>;
+    const {exercises: exArr, ...sessionFields} = session as Record<string, unknown>;
     batch.set(sessionRef, {
       ...sessionFields,
       id: sessionId,
@@ -2687,8 +2700,8 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
         if (!exercise || typeof exercise !== "object") continue;
         const exId = (exercise as Record<string, unknown>).id ?? db.collection("_").doc().id;
         const exRef = sessionRef.collection("exercises").doc(exId as string);
-        const { sets: setsArr, ...exFields } = exercise as Record<string, unknown>;
-        batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+        const {sets: setsArr, ...exFields} = exercise as Record<string, unknown>;
+        batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
         batchCount++;
 
         if (Array.isArray(setsArr)) {
@@ -2696,19 +2709,21 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
             if (!set || typeof set !== "object") continue;
             const setId = (set as Record<string, unknown>).id ?? db.collection("_").doc().id;
             const setRef = exRef.collection("sets").doc(setId as string);
-            batch.set(setRef, { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+            batch.set(setRef, {...set, id: setId, created_at: FieldValue.serverTimestamp()});
             batchCount++;
           }
         }
 
-        if (batchCount >= 450) { await batch.commit(); batchCount = 0; }
+        if (batchCount >= 450) {
+          await batch.commit(); batchCount = 0;
+        }
       }
     }
   }
 
   if (batchCount > 0) await batch.commit();
 
-  res.json({ data: { docId, weekKey: req.params.weekKey, sessionsWritten: sessions.length } });
+  res.json({data: {docId, weekKey: req.params.weekKey, sessionsWritten: sessions.length}});
 });
 
 // PATCH /creator/clients/:clientId/plan-content/:weekKey/sessions/:sessionId
@@ -2741,8 +2756,8 @@ router.patch("/creator/clients/:clientId/plan-content/:weekKey/sessions/:session
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await sessionRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { sessionId: req.params.sessionId, updated: true } });
+  await sessionRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {sessionId: req.params.sessionId, updated: true}});
 });
 
 // ─── Client Sessions (one-on-one scheduled sessions) ─────────────────────
@@ -2753,7 +2768,7 @@ router.get("/creator/clients/:clientId/client-sessions", async (req, res) => {
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { startDate, endDate } = req.query as Record<string, string | undefined>;
+  const {startDate, endDate} = req.query as Record<string, string | undefined>;
   // creator_id filter omitted — verifyClientAccess already confirmed ownership
   // This allows using the existing (client_id, date) composite index
   let query: Query = db
@@ -2767,7 +2782,7 @@ router.get("/creator/clients/:clientId/client-sessions", async (req, res) => {
   query = query.orderBy("date", "asc").limit(100);
   const snap = await query.get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), id: d.id}))});
 });
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId
@@ -2786,7 +2801,7 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { id: req.params.clientSessionId } });
+  res.json({data: {id: req.params.clientSessionId}});
 });
 
 // GET /creator/clients/:clientId/client-sessions/:clientSessionId
@@ -2804,7 +2819,7 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso");
   }
 
-  res.json({ data: { id: doc.id, ...data } });
+  res.json({data: {id: doc.id, ...data}});
 });
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId
@@ -2825,8 +2840,8 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId", asyn
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { id: doc.id, updated: true } });
+  await docRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {id: doc.id, updated: true}});
 });
 
 // DELETE /creator/clients/:clientId/client-sessions/:clientSessionId
@@ -2848,7 +2863,6 @@ router.delete("/creator/clients/:clientId/client-sessions/:clientSessionId", asy
 
 // GET /creator/clients/:clientId/client-sessions/:clientSessionId/content
 router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
-
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
@@ -2857,7 +2871,7 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
   const doc = await docRef.get();
 
   if (!doc.exists) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
@@ -2869,12 +2883,12 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
       return {
         ...eDoc.data(),
         id: eDoc.id,
-        sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
+        sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id})),
       };
     })
   );
 
-  res.json({ data: { ...doc.data(), id: doc.id, exercises } });
+  res.json({data: {...doc.data(), id: doc.id, exercises}});
 });
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId/content
@@ -2884,7 +2898,7 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = req.body ?? {};
-  const { exercises: exercisesArr, ...docFields } = body as {
+  const {exercises: exercisesArr, ...docFields} = body as {
     exercises?: Array<Record<string, unknown>>;
     [key: string]: unknown;
   };
@@ -2901,11 +2915,15 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
       for (const sDoc of setsSnap.docs) {
         delBatch.delete(sDoc.ref);
         delCount++;
-        if (delCount >= 450) { await delBatch.commit(); delBatch = db.batch(); delCount = 0; }
+        if (delCount >= 450) {
+          await delBatch.commit(); delBatch = db.batch(); delCount = 0;
+        }
       }
       delBatch.delete(eDoc.ref);
       delCount++;
-      if (delCount >= 450) { await delBatch.commit(); delBatch = db.batch(); delCount = 0; }
+      if (delCount >= 450) {
+        await delBatch.commit(); delBatch = db.batch(); delCount = 0;
+      }
     }
     if (delCount > 0) await delBatch.commit();
   }
@@ -2926,24 +2944,26 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
     for (const exercise of exercisesArr) {
       const exId = (exercise.id as string) ?? db.collection("_").doc().id;
       const exRef = docRef.collection("exercises").doc(exId);
-      const { sets: setsArr, ...exFields } = exercise;
-      batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+      const {sets: setsArr, ...exFields} = exercise;
+      batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
       batchCount++;
 
       if (Array.isArray(setsArr)) {
         for (const set of setsArr as Array<Record<string, unknown>>) {
           const setId = (set.id as string) ?? db.collection("_").doc().id;
-          batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+          batch.set(exRef.collection("sets").doc(setId), {...set, id: setId, created_at: FieldValue.serverTimestamp()});
           batchCount++;
         }
       }
 
-      if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      if (batchCount >= 450) {
+        await batch.commit(); batch = db.batch(); batchCount = 0;
+      }
     }
   }
 
   if (batchCount > 0) await batch.commit();
-  res.json({ data: { id: req.params.clientSessionId } });
+  res.json({data: {id: req.params.clientSessionId}});
 });
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content
@@ -2960,9 +2980,9 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/conten
     throw new WakeApiServerError("NOT_FOUND", 404, "Contenido de sesión no encontrado");
   }
 
-  const { exercises: _ignored, ...updates } = req.body ?? {};
-  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { id: req.params.clientSessionId, updated: true } });
+  const {exercises: _ignored, ...updates} = req.body ?? {};
+  await docRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {id: req.params.clientSessionId, updated: true}});
 });
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId
@@ -2982,8 +3002,8 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/conten
   }
 
   const updates = req.body ?? {};
-  await exRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { id: req.params.exerciseId, updated: true } });
+  await exRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {id: req.params.exerciseId, updated: true}});
 });
 
 // ─── Creator Plans Hierarchy (modules/sessions/exercises/sets) ────────────
@@ -2993,7 +3013,7 @@ router.post("/creator/plans", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { title, description, discipline } = req.body as {
+  const {title, description, discipline} = req.body as {
     title?: string;
     description?: string;
     discipline?: string;
@@ -3030,7 +3050,7 @@ router.post("/creator/plans", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: planRef.id, firstModuleId: moduleRef.id } });
+  res.status(201).json({data: {id: planRef.id, firstModuleId: moduleRef.id}});
 });
 
 // GET /creator/plans
@@ -3082,7 +3102,7 @@ router.get("/creator/plans", async (req, res) => {
     })
   );
 
-  res.json({ data: plans });
+  res.json({data: plans});
 });
 
 // GET /creator/plans/:planId
@@ -3123,7 +3143,7 @@ router.get("/creator/plans/:planId", async (req, res) => {
     })
   );
 
-  res.json({ data: { ...planDoc.data(), id: planDoc.id, modules } });
+  res.json({data: {...planDoc.data(), id: planDoc.id, modules}});
 });
 
 // PATCH /creator/plans/:planId
@@ -3145,8 +3165,8 @@ router.patch("/creator/plans/:planId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { planId: doc.id, updated: true } });
+  await docRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {planId: doc.id, updated: true}});
 });
 
 // DELETE /creator/plans/:planId
@@ -3173,19 +3193,27 @@ router.delete("/creator/plans/:planId", async (req, res) => {
         for (const setDoc of setsSnap.docs) {
           batch.delete(setDoc.ref);
           count++;
-          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+          if (count >= 450) {
+            await batch.commit(); batch = db.batch(); count = 0;
+          }
         }
         batch.delete(eDoc.ref);
         count++;
-        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+        if (count >= 450) {
+          await batch.commit(); batch = db.batch(); count = 0;
+        }
       }
       batch.delete(sDoc.ref);
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
     batch.delete(mDoc.ref);
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
   }
   batch.delete(docRef);
   count++;
@@ -3205,7 +3233,7 @@ router.post("/creator/plans/:planId/modules", async (req, res) => {
   }
 
   const body = validateBody<{ title: string; order: number }>(
-    { title: "string", order: "number" },
+    {title: "string", order: "number"},
     req.body
   );
 
@@ -3216,7 +3244,7 @@ router.post("/creator/plans/:planId/modules", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { moduleId: ref.id } });
+  res.status(201).json({data: {moduleId: ref.id}});
 });
 
 // PATCH /creator/plans/:planId/modules/:moduleId
@@ -3241,8 +3269,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { moduleId: doc.id, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {moduleId: doc.id, updated: true}});
 });
 
 // DELETE /creator/plans/:planId/modules/:moduleId
@@ -3276,18 +3304,24 @@ router.delete("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
     for (const setDoc of setsSnap.docs) {
       batch.delete(setDoc.ref);
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
   }
   for (const eDoc of allExerciseDocs) {
     batch.delete(eDoc.ref);
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
   }
   for (const sDoc of sessionsSnap.docs) {
     batch.delete(sDoc.ref);
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
   }
   batch.delete(moduleRef);
   count++;
@@ -3355,31 +3389,37 @@ router.post("/creator/plans/:planId/modules/:moduleId/duplicate", async (req, re
   for (let si = 0; si < sessionsSnap.docs.length; si++) {
     const sDoc = sessionsSnap.docs[si];
     const newSessRef = newModRef.collection("sessions").doc();
-    batch.set(newSessRef, { ...sDoc.data(), id: newSessRef.id, created_at: FieldValue.serverTimestamp() });
+    batch.set(newSessRef, {...sDoc.data(), id: newSessRef.id, created_at: FieldValue.serverTimestamp()});
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
 
     const exSnap = exercisesBySession[si];
     for (const eDoc of exSnap.docs) {
       const newExRef = newSessRef.collection("exercises").doc();
-      batch.set(newExRef, { ...eDoc.data(), id: newExRef.id, created_at: FieldValue.serverTimestamp() });
+      batch.set(newExRef, {...eDoc.data(), id: newExRef.id, created_at: FieldValue.serverTimestamp()});
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
 
       const sSnap = setsMap.get(eDoc.ref.path);
       if (sSnap) {
         for (const setDoc of sSnap.docs) {
           const newSetRef = newExRef.collection("sets").doc();
-          batch.set(newSetRef, { ...setDoc.data(), id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
+          batch.set(newSetRef, {...setDoc.data(), id: newSetRef.id, created_at: FieldValue.serverTimestamp()});
           count++;
-          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+          if (count >= 450) {
+            await batch.commit(); batch = db.batch(); count = 0;
+          }
         }
       }
     }
   }
   if (count > 0) await batch.commit();
 
-  res.status(201).json({ data: { moduleId: newModRef.id } });
+  res.status(201).json({data: {moduleId: newModRef.id}});
 });
 
 // POST /creator/plans/:planId/modules/:moduleId/sessions
@@ -3393,7 +3433,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
   }
 
   const body = validateBody<{ title: string; order: number; isRestDay?: boolean; source_library_session_id?: string; dayIndex?: number; image_url?: string }>(
-    { title: "string", order: "number", isRestDay: "optional_boolean", source_library_session_id: "optional_string", dayIndex: "optional_number", image_url: "optional_string" },
+    {title: "string", order: "number", isRestDay: "optional_boolean", source_library_session_id: "optional_string", dayIndex: "optional_number", image_url: "optional_string"},
     req.body
   );
 
@@ -3403,10 +3443,10 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
   const sessionData: Record<string, unknown> = {
     title: body.title,
     order: body.order,
-    ...(body.isRestDay !== undefined && { isRestDay: body.isRestDay }),
-    ...(sourceLibSessionId && { source_library_session_id: sourceLibSessionId }),
-    ...(body.dayIndex !== undefined && { dayIndex: body.dayIndex }),
-    ...(body.image_url !== undefined && { image_url: body.image_url }),
+    ...(body.isRestDay !== undefined && {isRestDay: body.isRestDay}),
+    ...(sourceLibSessionId && {source_library_session_id: sourceLibSessionId}),
+    ...(body.dayIndex !== undefined && {dayIndex: body.dayIndex}),
+    ...(body.image_url !== undefined && {image_url: body.image_url}),
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   };
@@ -3438,22 +3478,24 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
       let batchCount = 0;
       for (const eDoc of libExSnap.docs) {
         const exRef = ref.collection("exercises").doc();
-        const { ...exData } = eDoc.data();
-        batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+        const {...exData} = eDoc.data();
+        batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
         batchCount++;
         const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
         for (const sDoc of setsSnap.docs) {
           const setRef = exRef.collection("sets").doc();
-          batch.set(setRef, { ...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+          batch.set(setRef, {...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp()});
           batchCount++;
         }
-        if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        if (batchCount >= 450) {
+          await batch.commit(); batch = db.batch(); batchCount = 0;
+        }
       }
       if (batchCount > 0) await batch.commit();
     }
   }
 
-  res.status(201).json({ data: { sessionId: ref.id } });
+  res.status(201).json({data: {sessionId: ref.id}});
 });
 
 // GET /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
@@ -3489,7 +3531,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
         ...eDoc.data(),
         exerciseId: eDoc.id,
         id: eDoc.id,
-        sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })),
+        sets: setsSnap.docs.map((s) => ({...s.data(), setId: s.id, id: s.id})),
       };
     })
   );
@@ -3514,18 +3556,20 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
           for (const eDoc of libExSnap.docs) {
             const exRef = sessionRef.collection("exercises").doc();
             const exData = eDoc.data();
-            batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+            batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
             batchCount++;
 
             const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
             const sets: Array<{ setId: string; id: string; [key: string]: unknown }> = [];
             for (const sDoc of setsSnap.docs) {
               const setRef = exRef.collection("sets").doc();
-              batch.set(setRef, { ...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+              batch.set(setRef, {...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp()});
               batchCount++;
-              sets.push({ ...sDoc.data(), setId: setRef.id, id: setRef.id });
+              sets.push({...sDoc.data(), setId: setRef.id, id: setRef.id});
             }
-            if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+            if (batchCount >= 450) {
+              await batch.commit(); batch = db.batch(); batchCount = 0;
+            }
 
             backfilledExercises.push({
               exerciseId: exRef.id,
@@ -3549,8 +3593,8 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
     }
   }
 
-  exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
-  res.json({ data: { ...sessionDoc.data(), sessionId: sessionDoc.id, id: sessionDoc.id, exercises } });
+  exercises.forEach((e) => normalizeExerciseName(e as Record<string, unknown>));
+  res.json({data: {...sessionDoc.data(), sessionId: sessionDoc.id, id: sessionDoc.id, exercises}});
 });
 
 // PATCH /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
@@ -3581,8 +3625,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { sessionId: doc.id, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {sessionId: doc.id, updated: true}});
 });
 
 // DELETE /creator/plans/:planId/modules/:moduleId/sessions/:sessionId
@@ -3611,11 +3655,15 @@ router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", as
     for (const sDoc of setsSnap.docs) {
       batch.delete(sDoc.ref);
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
     batch.delete(eDoc.ref);
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
   }
   batch.delete(sessionRef);
   await batch.commit();
@@ -3653,7 +3701,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     .collection("exercises")
     .add(exData);
 
-  res.status(201).json({ data: { exerciseId: ref.id, id: ref.id } });
+  res.status(201).json({data: {exerciseId: ref.id, id: ref.id}});
 });
 
 router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
@@ -3685,8 +3733,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {exerciseId: req.params.exerciseId, updated: true}});
 });
 
 router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
@@ -3759,9 +3807,9 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets")
-    .add({ ...body, ...customFields, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+    .add({...body, ...customFields, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
 
-  res.status(201).json({ data: { setId: ref.id, id: ref.id } });
+  res.status(201).json({data: {setId: ref.id, id: ref.id}});
 });
 
 router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
@@ -3795,8 +3843,8 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { setId: req.params.setId, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {setId: req.params.setId, updated: true}});
 });
 
 router.delete("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
@@ -3891,7 +3939,7 @@ router.get("/creator/library/exercises", async (req, res) => {
     }
   }
 
-  res.json({ data: Array.from(seen.values()) });
+  res.json({data: Array.from(seen.values())});
 });
 
 // GET /creator/library/sessions
@@ -3914,7 +3962,7 @@ router.get("/creator/library/sessions", async (req, res) => {
       title: (d.data().title as string) ?? "",
       image_url: (d.data().image_url as string) ?? null,
     }));
-    res.json({ data });
+    res.json({data});
     return;
   }
 
@@ -3924,13 +3972,13 @@ router.get("/creator/library/sessions", async (req, res) => {
     const sessionsWithExercises = await Promise.all(
       snap.docs.map(async (d) => {
         const exSnap = await d.ref.collection("exercises").orderBy("order", "asc").get();
-        return { doc: d, exercises: exSnap.docs };
+        return {doc: d, exercises: exSnap.docs};
       })
     );
 
     // Collect unique library IDs from exercise primary references
     const libraryIdsSet = new Set<string>();
-    for (const { exercises } of sessionsWithExercises) {
+    for (const {exercises} of sessionsWithExercises) {
       for (const eDoc of exercises) {
         const primary = eDoc.data().primary;
         if (primary && typeof primary === "object") {
@@ -3954,7 +4002,7 @@ router.get("/creator/library/sessions", async (req, res) => {
     }
 
     // Assemble response with resolved muscle_activation
-    const data = sessionsWithExercises.map(({ doc, exercises }) => {
+    const data = sessionsWithExercises.map(({doc, exercises}) => {
       const sessionData = doc.data();
       return {
         sessionId: doc.id,
@@ -3989,7 +4037,7 @@ router.get("/creator/library/sessions", async (req, res) => {
       };
     });
 
-    res.json({ data });
+    res.json({data});
     return;
   }
 
@@ -3999,14 +4047,14 @@ router.get("/creator/library/sessions", async (req, res) => {
       const exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { ...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })) };
+          return {...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), setId: s.id, id: s.id}))};
         })
       );
-      return { ...d.data(), sessionId: d.id, id: d.id, exercises };
+      return {...d.data(), sessionId: d.id, id: d.id, exercises};
     })
   );
 
-  res.json({ data });
+  res.json({data});
 });
 
 // POST /creator/library/sessions
@@ -4014,8 +4062,8 @@ router.post("/creator/library/sessions", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ title: string; image_url?: string }>({ title: "string", image_url: "optional_string" }, req.body);
-  const sessionData: Record<string, unknown> = { title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() };
+  const body = validateBody<{ title: string; image_url?: string }>({title: "string", image_url: "optional_string"}, req.body);
+  const sessionData: Record<string, unknown> = {title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()};
   if (body.image_url) sessionData.image_url = body.image_url;
 
   // Auto-seed defaultDataTemplate from creator's first objective preset (or sensible default)
@@ -4034,9 +4082,9 @@ router.post("/creator/library/sessions", async (req, res) => {
     .get();
   if (!presetsSnap.empty) {
     const preset = presetsSnap.docs[0].data();
-    const objectives = Array.isArray(preset.objectives) && preset.objectives.includes("previous")
-      ? preset.objectives
-      : [...(Array.isArray(preset.objectives) ? preset.objectives : []), "previous"];
+    const objectives = Array.isArray(preset.objectives) && preset.objectives.includes("previous") ?
+      preset.objectives :
+      [...(Array.isArray(preset.objectives) ? preset.objectives : []), "previous"];
     sessionData.defaultDataTemplate = {
       measures: Array.isArray(preset.measures) && preset.measures.length > 0 ? preset.measures : DEFAULT_TEMPLATE.measures,
       objectives: objectives.length > 0 ? objectives : DEFAULT_TEMPLATE.objectives,
@@ -4053,7 +4101,7 @@ router.post("/creator/library/sessions", async (req, res) => {
     .collection("sessions")
     .add(sessionData);
 
-  res.status(201).json({ data: { sessionId: ref.id, id: ref.id } });
+  res.status(201).json({data: {sessionId: ref.id, id: ref.id}});
 });
 
 // PATCH /creator/library/sessions/reorder
@@ -4061,7 +4109,7 @@ router.patch("/creator/library/sessions/reorder", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { order } = req.body;
+  const {order} = req.body;
   if (!Array.isArray(order) || order.length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "order must be a non-empty array of session IDs");
   }
@@ -4073,16 +4121,15 @@ router.patch("/creator/library/sessions/reorder", async (req, res) => {
 
   const batch = db.batch();
   order.forEach((sessionId: string, index: number) => {
-    batch.update(sessionsCol.doc(sessionId), { order: index, updated_at: FieldValue.serverTimestamp() });
+    batch.update(sessionsCol.doc(sessionId), {order: index, updated_at: FieldValue.serverTimestamp()});
   });
   await batch.commit();
 
-  res.json({ success: true });
+  res.json({success: true});
 });
 
 // GET /creator/library/sessions/:sessionId
 router.get("/creator/library/sessions/:sessionId", async (req, res) => {
-
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
@@ -4095,11 +4142,11 @@ router.get("/creator/library/sessions/:sessionId", async (req, res) => {
   const exercises = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { ...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })) };
+      return {...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), setId: s.id, id: s.id}))};
     })
   );
 
-  res.json({ data: { ...doc.data(), sessionId: doc.id, id: doc.id, exercises } });
+  res.json({data: {...doc.data(), sessionId: doc.id, id: doc.id, exercises}});
 });
 
 // PATCH /creator/library/sessions/:sessionId
@@ -4118,8 +4165,8 @@ router.patch("/creator/library/sessions/:sessionId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {updated: true}});
 });
 
 // POST /creator/library/sessions/:sessionId/image/upload-url
@@ -4131,7 +4178,7 @@ router.post("/creator/library/sessions/:sessionId/image/upload-url", async (req,
   const doc = await sessionRef.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
 
-  const { contentType } = validateBody<{ contentType: string }>({ contentType: "string" }, req.body);
+  const {contentType} = validateBody<{ contentType: string }>({contentType: "string"}, req.body);
 
   const ext = contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1];
   const storagePath = `creator_libraries/${auth.userId}/sessions/${req.params.sessionId}/image.${ext}`;
@@ -4145,7 +4192,7 @@ router.post("/creator/library/sessions/:sessionId/image/upload-url", async (req,
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath } });
+  res.json({data: {uploadUrl: url, storagePath}});
 });
 
 // POST /creator/library/sessions/:sessionId/image/confirm
@@ -4153,7 +4200,7 @@ router.post("/creator/library/sessions/:sessionId/image/confirm", async (req, re
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { storagePath } = validateBody<{ storagePath: string }>({ storagePath: "string" }, req.body);
+  const {storagePath} = validateBody<{ storagePath: string }>({storagePath: "string"}, req.body);
 
   validateStoragePath(storagePath, `creator_libraries/${auth.userId}/sessions/${req.params.sessionId}/`);
 
@@ -4170,7 +4217,7 @@ router.post("/creator/library/sessions/:sessionId/image/confirm", async (req, re
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { image_url: publicUrl, image_path: storagePath } });
+  res.json({data: {image_url: publicUrl, image_path: storagePath}});
 });
 
 // DELETE /creator/library/sessions/:sessionId
@@ -4191,11 +4238,15 @@ router.delete("/creator/library/sessions/:sessionId", async (req, res) => {
     for (const sDoc of setsSnap.docs) {
       batch.delete(sDoc.ref);
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
     batch.delete(eDoc.ref);
     count++;
-    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
   }
   batch.delete(ref);
   await batch.commit();
@@ -4222,7 +4273,7 @@ router.post("/creator/library/sessions/:sessionId/exercises", async (req, res) =
     .collection("exercises")
     .add(exData);
 
-  res.status(201).json({ data: { exerciseId: ref.id, id: ref.id } });
+  res.status(201).json({data: {exerciseId: ref.id, id: ref.id}});
 });
 
 router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
@@ -4245,8 +4296,8 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId", async
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {exerciseId: req.params.exerciseId, updated: true}});
 });
 
 router.delete("/creator/library/sessions/:sessionId/exercises/:exerciseId", async (req, res) => {
@@ -4271,7 +4322,7 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
   requireCreator(auth);
 
   const body = validateBody<{ order: number; title?: string; reps?: string | number; weight?: number; intensity?: string; rir?: number; restSeconds?: number; type?: string }>(
-    { order: "number", title: "optional_string", reps: "optional_string_or_number", weight: "optional_number", intensity: "optional_string", rir: "optional_number", restSeconds: "optional_number", type: "optional_string" },
+    {order: "number", title: "optional_string", reps: "optional_string_or_number", weight: "optional_number", intensity: "optional_string", rir: "optional_number", restSeconds: "optional_number", type: "optional_string"},
     req.body
   );
 
@@ -4280,9 +4331,9 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
     .collection("sessions").doc(req.params.sessionId)
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets")
-    .add({ ...body, created_at: FieldValue.serverTimestamp() });
+    .add({...body, created_at: FieldValue.serverTimestamp()});
 
-  res.status(201).json({ data: { setId: ref.id, id: ref.id } });
+  res.status(201).json({data: {setId: ref.id, id: ref.id}});
 });
 
 router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
@@ -4309,8 +4360,8 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { setId: req.params.setId, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {setId: req.params.setId, updated: true}});
 });
 
 router.delete("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:setId", async (req, res) => {
@@ -4340,21 +4391,21 @@ router.get("/creator/library/modules", async (req, res) => {
     .orderBy("created_at", "desc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), moduleId: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), moduleId: d.id}))});
 });
 
 router.post("/creator/library/modules", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ title: string }>({ title: "string" }, req.body);
+  const body = validateBody<{ title: string }>({title: "string"}, req.body);
   const ref = await db
     .collection("creator_libraries")
     .doc(auth.userId)
     .collection("modules")
-    .add({ title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+    .add({title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
 
-  res.status(201).json({ data: { moduleId: ref.id } });
+  res.status(201).json({data: {moduleId: ref.id}});
 });
 
 router.get("/creator/library/modules/:moduleId", async (req, res) => {
@@ -4364,7 +4415,7 @@ router.get("/creator/library/modules/:moduleId", async (req, res) => {
   const doc = await db.collection("creator_libraries").doc(auth.userId).collection("modules").doc(req.params.moduleId).get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
 
-  res.json({ data: { ...doc.data(), moduleId: doc.id } });
+  res.json({data: {...doc.data(), moduleId: doc.id}});
 });
 
 router.patch("/creator/library/modules/:moduleId", async (req, res) => {
@@ -4382,8 +4433,8 @@ router.patch("/creator/library/modules/:moduleId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {updated: true}});
 });
 
 router.delete("/creator/library/modules/:moduleId", async (req, res) => {
@@ -4431,12 +4482,16 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
         .where("source_library_session_id", "==", sessionId)
         .limit(1)
         .get();
-      if (!newSnap.empty) { planHasRef = true; break; }
+      if (!newSnap.empty) {
+        planHasRef = true; break;
+      }
       const oldSnap = await moduleDoc.ref.collection("sessions")
         .where("librarySessionRef", "==", sessionId)
         .limit(1)
         .get();
-      if (!oldSnap.empty) { planHasRef = true; break; }
+      if (!oldSnap.empty) {
+        planHasRef = true; break;
+      }
     }
     if (planHasRef) {
       programCount++;
@@ -4459,12 +4514,16 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
         .where("source_library_session_id", "==", sessionId)
         .limit(1)
         .get();
-      if (!newSnap.empty) { courseHasRef = true; break; }
+      if (!newSnap.empty) {
+        courseHasRef = true; break;
+      }
       const oldSnap = await moduleDoc.ref.collection("sessions")
         .where("librarySessionRef", "==", sessionId)
         .limit(1)
         .get();
-      if (!oldSnap.empty) { courseHasRef = true; break; }
+      if (!oldSnap.empty) {
+        courseHasRef = true; break;
+      }
     }
     if (courseHasRef) {
       programCount++;
@@ -4563,11 +4622,11 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
     const programs: Array<{ id: string; title: string; type: string }> = [];
     for (const planId of affectedPlanIds) {
       const pDoc = plansSnap.docs.find((d) => d.id === planId);
-      programs.push({ id: planId, title: (pDoc?.data()?.title as string) || planId, type: "plan" });
+      programs.push({id: planId, title: (pDoc?.data()?.title as string) || planId, type: "plan"});
     }
     for (const courseId of affectedCourseIds) {
       const cDoc = coursesSnap.docs.find((d) => d.id === courseId);
-      programs.push({ id: courseId, title: (cDoc?.data()?.title as string) || courseId, type: "course" });
+      programs.push({id: courseId, title: (cDoc?.data()?.title as string) || courseId, type: "course"});
     }
 
     // Fetch user details
@@ -4584,11 +4643,11 @@ router.get("/creator/library/sessions/:sessionId/affected", async (req, res) => 
         }));
     }
 
-    res.json({ data: { users: detailedUsers, programs, programCount } });
+    res.json({data: {users: detailedUsers, programs, programCount}});
     return;
   }
 
-  res.json({ data: { affectedUserIds, programCount } });
+  res.json({data: {affectedUserIds, programCount}});
 });
 
 // POST /creator/library/sessions/:sessionId/propagate
@@ -4614,7 +4673,7 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
 
   // "forward_only" mode: library session is already updated, no copies to change
   if (mode === "forward_only") {
-    res.json({ data: { updatedCount: 0, mode: "forward_only" } });
+    res.json({data: {updatedCount: 0, mode: "forward_only"}});
     return;
   }
 
@@ -4682,21 +4741,21 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     // Queue deletes for all existing sets and exercises
     for (const setSnap of allSetSnaps) {
       for (const setDoc of setSnap.docs) {
-        ops.push({ type: "delete", ref: setDoc.ref });
+        ops.push({type: "delete", ref: setDoc.ref});
       }
     }
     for (const exDoc of existingExSnap.docs) {
-      ops.push({ type: "delete", ref: exDoc.ref });
+      ops.push({type: "delete", ref: exDoc.ref});
     }
 
     // Queue creates for library content
     for (const ex of exercises) {
       const newExRef = sessionRef.collection("exercises").doc();
-      ops.push({ type: "set", ref: newExRef, data: { ...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp() } });
+      ops.push({type: "set", ref: newExRef, data: {...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp()}});
 
       for (const setData of ex.sets) {
         const newSetRef = newExRef.collection("sets").doc();
-        ops.push({ type: "set", ref: newSetRef, data: { ...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp() } });
+        ops.push({type: "set", ref: newSetRef, data: {...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp()}});
       }
     }
 
@@ -4778,7 +4837,7 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     });
   }));
 
-  res.json({ data: { updatedCount, mode: "all" } });
+  res.json({data: {updatedCount, mode: "all"}});
 });
 
 // POST /creator/library/modules/:moduleId/propagate
@@ -4806,10 +4865,10 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
       const exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { data: eDoc.data(), sets: setsSnap.docs.map((s) => s.data()) };
+          return {data: eDoc.data(), sets: setsSnap.docs.map((s) => s.data())};
         })
       );
-      return { data: sDoc.data(), exercises };
+      return {data: sDoc.data(), exercises};
     })
   );
 
@@ -4837,7 +4896,7 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
       .where("libraryModuleRef", "==", req.params.moduleId)
       .get();
     const seenModIds = new Set(modulesSnap1.docs.map((d) => d.id));
-    const modulesSnap = { docs: [...modulesSnap1.docs] };
+    const modulesSnap = {docs: [...modulesSnap1.docs]};
     for (const d of modulesSnap2.docs) {
       if (!seenModIds.has(d.id)) modulesSnap.docs.push(d);
     }
@@ -4848,7 +4907,9 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
         updated_at: FieldValue.serverTimestamp(),
       });
       batchCount++;
-      if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+      if (batchCount >= batchSize) {
+        await batch.commit(); batch = db.batch(); batchCount = 0;
+      }
 
       const existingSessionsSnap = await moduleDoc.ref.collection("sessions").get();
       for (const sDoc of existingSessionsSnap.docs) {
@@ -4858,34 +4919,46 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
           for (const setDoc of setsSnap.docs) {
             batch.delete(setDoc.ref);
             batchCount++;
-            if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+            if (batchCount >= batchSize) {
+              await batch.commit(); batch = db.batch(); batchCount = 0;
+            }
           }
           batch.delete(eDoc.ref);
           batchCount++;
-          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          if (batchCount >= batchSize) {
+            await batch.commit(); batch = db.batch(); batchCount = 0;
+          }
         }
         batch.delete(sDoc.ref);
         batchCount++;
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        if (batchCount >= batchSize) {
+          await batch.commit(); batch = db.batch(); batchCount = 0;
+        }
       }
 
       for (const libSession of libSessions) {
         const newSessionRef = moduleDoc.ref.collection("sessions").doc();
-        batch.set(newSessionRef, { ...libSession.data, created_at: FieldValue.serverTimestamp() });
+        batch.set(newSessionRef, {...libSession.data, created_at: FieldValue.serverTimestamp()});
         batchCount++;
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        if (batchCount >= batchSize) {
+          await batch.commit(); batch = db.batch(); batchCount = 0;
+        }
 
         for (const ex of libSession.exercises) {
           const newExRef = newSessionRef.collection("exercises").doc();
-          batch.set(newExRef, { ...ex.data, created_at: FieldValue.serverTimestamp() });
+          batch.set(newExRef, {...ex.data, created_at: FieldValue.serverTimestamp()});
           batchCount++;
-          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          if (batchCount >= batchSize) {
+            await batch.commit(); batch = db.batch(); batchCount = 0;
+          }
 
           for (const setData of ex.sets) {
             const newSetRef = newExRef.collection("sets").doc();
-            batch.set(newSetRef, { ...setData, created_at: FieldValue.serverTimestamp() });
+            batch.set(newSetRef, {...setData, created_at: FieldValue.serverTimestamp()});
             batchCount++;
-            if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+            if (batchCount >= batchSize) {
+              await batch.commit(); batch = db.batch(); batchCount = 0;
+            }
           }
         }
       }
@@ -4896,7 +4969,7 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
 
   if (batchCount > 0) await batch.commit();
 
-  res.json({ data: { updatedCount } });
+  res.json({data: {updatedCount}});
 });
 
 // ─── Client Programs (One-on-One Scheduling) ──────────────────────────────
@@ -4912,9 +4985,9 @@ router.get("/creator/clients/:clientId/programs", async (req, res) => {
 
   const programs = Object.entries(courses)
     .filter(([, v]) => (v as Record<string, unknown>).deliveryType === "one_on_one")
-    .map(([courseId, v]) => ({ courseId, ...(v as Record<string, unknown>) }));
+    .map(([courseId, v]) => ({courseId, ...(v as Record<string, unknown>)}));
 
-  res.json({ data: programs });
+  res.json({data: programs});
 });
 
 // POST /creator/clients/:clientId/programs/:programId
@@ -4935,7 +5008,7 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
   // Idempotent: if already assigned, return success
   if (courses[req.params.programId]) {
     const existing = courses[req.params.programId];
-    res.status(200).json({ data: { assignedAt: existing.assigned_at ?? existing.purchased_at ?? null } });
+    res.status(200).json({data: {assignedAt: existing.assigned_at ?? existing.purchased_at ?? null}});
     return;
   }
 
@@ -4964,7 +5037,7 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
     },
   });
 
-  res.status(201).json({ data: { assignedAt: now } });
+  res.status(201).json({data: {assignedAt: now}});
 });
 
 // DELETE /creator/clients/:clientId/programs/:programId
@@ -4986,7 +5059,7 @@ router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) 
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { expiresAt } = req.body;
+  const {expiresAt} = req.body;
   const update: Record<string, unknown> = {};
 
   if (expiresAt === null) {
@@ -5000,7 +5073,7 @@ router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) 
   }
 
   await db.collection("users").doc(req.params.clientId).update(update);
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // PUT /creator/clients/:clientId/programs/:programId/schedule/:weekKey
@@ -5010,7 +5083,7 @@ router.put("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", a
   await verifyClientAccess(auth.userId, req.params.clientId);
 
   const body = validateBody<{ planId: string; moduleId: string }>(
-    { planId: "string", moduleId: "string" },
+    {planId: "string", moduleId: "string"},
     req.body
   );
 
@@ -5023,7 +5096,7 @@ router.put("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", a
     },
   });
 
-  res.json({ data: { weekKey: req.params.weekKey, assignedAt: new Date().toISOString() } });
+  res.json({data: {weekKey: req.params.weekKey, assignedAt: new Date().toISOString()}});
 });
 
 // DELETE /creator/clients/:clientId/programs/:programId/schedule/:weekKey
@@ -5051,7 +5124,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "month debe ser YYYY-MM", "month");
   }
 
-  const { clientId, programId } = req.params;
+  const {clientId, programId} = req.params;
   const creatorId = auth.userId;
 
   const [, userDoc] = await Promise.all([
@@ -5065,7 +5138,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
   const planAssignments = (courseEntry.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; assignedAt?: string }>;
 
   // 2. Compute visible week keys for the calendar month
-  const { start: monthStart, end: monthEnd, weekKeys: visibleWeekKeys } = getCalendarMonthRange(month);
+  const {start: monthStart, end: monthEnd, weekKeys: visibleWeekKeys} = getCalendarMonthRange(month);
   const weekKeysWithPlans = visibleWeekKeys.filter((wk) => planAssignments[wk]?.planId);
   const startDateStr = toLocalDateISO(monthStart);
   const endDateStr = toLocalDateISO(monthEnd);
@@ -5077,7 +5150,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
   // Light session read: only session-level docs (no exercises/sets — calendar only needs title/id/dayIndex)
   const readSessionList = async (sessionsCol: FirebaseFirestore.CollectionReference): Promise<Array<Record<string, unknown>>> => {
     const snap = await sessionsCol.orderBy("order", "asc").get();
-    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+    return snap.docs.map((d) => ({...d.data(), id: d.id}));
   };
 
   const [/* weeksDone */, dateSessionsSnap, historySnap] = await Promise.all([
@@ -5118,12 +5191,12 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
             const libRefs: Array<{ session: Record<string, unknown>; libRef: string }> = [];
             for (const session of sessions) {
               const libRef = (session.source_library_session_id ?? session.librarySessionRef) as string | undefined;
-              if (libRef && creatorId) libRefs.push({ session, libRef });
+              if (libRef && creatorId) libRefs.push({session, libRef});
             }
             if (libRefs.length > 0) {
               try {
                 const libDocs = await db.getAll(
-                  ...libRefs.map(({ libRef }) =>
+                  ...libRefs.map(({libRef}) =>
                     db.collection("creator_libraries").doc(creatorId).collection("sessions").doc(libRef))
                 );
                 for (let li = 0; li < libRefs.length; li++) {
@@ -5135,7 +5208,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
                     if (!session.image_url) session.image_url = libData.image_url ?? null;
                   }
                 }
-              } catch { /* best-effort */ }
+              } catch {/* best-effort */}
             }
 
             planModuleCache.set(cacheKey, {
@@ -5143,7 +5216,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
               sessions,
             });
           } catch {
-            planModuleCache.set(cacheKey, { title: weekKey, sessions: [] });
+            planModuleCache.set(cacheKey, {title: weekKey, sessions: []});
           }
         }
 
@@ -5202,7 +5275,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
   ]);
 
 
-  const dateSessions: Array<Record<string, unknown>> = dateSessionsSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  const dateSessions: Array<Record<string, unknown>> = dateSessionsSnap.docs.map((d) => ({...d.data(), id: d.id}));
 
   // Enrich date-assigned sessions with image_url from library sessions
   const libSessionRefs = dateSessions.filter(
@@ -5221,7 +5294,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
           if (!libSessionRefs[i].session_name && libData.title) libSessionRefs[i].session_name = libData.title;
         }
       }
-    } catch { /* best-effort — calendar still works without images */ }
+    } catch {/* best-effort — calendar still works without images */}
   }
 
   const completedByDate: Record<string, unknown[]> = {};
@@ -5231,7 +5304,7 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
     if (!completedAt) continue;
     const dateStr = completedAt.slice(0, 10);
     if (!completedByDate[dateStr]) completedByDate[dateStr] = [];
-    completedByDate[dateStr].push({ id: hDoc.id, ...hData });
+    completedByDate[dateStr].push({id: hDoc.id, ...hData});
   }
 
   res.json({
@@ -5250,8 +5323,8 @@ router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async 
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { clientId, programId } = req.params;
-  const { planId, startWeekKey } = req.body;
+  const {clientId, programId} = req.params;
+  const {planId, startWeekKey} = req.body;
 
   if (!planId || typeof planId !== "string") {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "planId es requerido", "planId");
@@ -5267,7 +5340,7 @@ router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async 
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este plan no tiene semanas");
   }
 
-  const modules = modulesSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  const modules = modulesSnap.docs.map((d) => ({...d.data(), id: d.id}));
   const weekKeys = getConsecutiveWeekKeys(startWeekKey, modules.length);
 
   // 2. Ensure client is enrolled
@@ -5328,7 +5401,7 @@ router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async 
     })
   );
 
-  res.json({ data: { assignedWeekKeys: weekKeys, weeks } });
+  res.json({data: {assignedWeekKeys: weekKeys, weeks}});
 });
 
 // DELETE /creator/clients/:clientId/programs/:programId/remove-plan/:planId
@@ -5337,7 +5410,7 @@ router.delete("/creator/clients/:clientId/programs/:programId/remove-plan/:planI
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { clientId, programId, planId } = req.params;
+  const {clientId, programId, planId} = req.params;
 
   // 1. Read planAssignments
   const userDoc = await db.collection("users").doc(clientId).get();
@@ -5350,7 +5423,7 @@ router.delete("/creator/clients/:clientId/programs/:programId/remove-plan/:planI
   );
 
   if (weekKeysToRemove.length === 0) {
-    res.json({ data: { removedWeekKeys: [] } });
+    res.json({data: {removedWeekKeys: []}});
     return;
   }
 
@@ -5366,7 +5439,7 @@ router.delete("/creator/clients/:clientId/programs/:programId/remove-plan/:planI
     weekKeysToRemove.map((wk) => deleteClientPlanContentDoc(planContentDocId(clientId, programId, wk)))
   );
 
-  res.json({ data: { removedWeekKeys: weekKeysToRemove } });
+  res.json({data: {removedWeekKeys: weekKeysToRemove}});
 });
 
 // DELETE /creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions/:sessionId
@@ -5375,10 +5448,10 @@ router.delete("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/ses
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { clientId, programId, weekKey, sessionId } = req.params;
+  const {clientId, programId, weekKey, sessionId} = req.params;
 
   // Ensure client copy exists (copy-on-write)
-  const { docId } = await ensureClientCopy(clientId, programId, weekKey, auth.userId);
+  const {docId} = await ensureClientCopy(clientId, programId, weekKey, auth.userId);
   const docRef = db.collection("client_plan_content").doc(docId);
   const sessionRef = docRef.collection("sessions").doc(sessionId);
 
@@ -5396,7 +5469,9 @@ router.delete("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/ses
     for (const setDoc of setsSnap.docs) {
       batch.delete(setDoc.ref);
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
     batch.delete(eDoc.ref);
     count++;
@@ -5407,7 +5482,7 @@ router.delete("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/ses
 
   // Return remaining sessions
   const remainingSessions = await readSessionTree(docRef.collection("sessions"));
-  res.json({ data: { weekKey, isPersonalized: true, sessions: remainingSessions } });
+  res.json({data: {weekKey, isPersonalized: true, sessions: remainingSessions}});
 });
 
 // PATCH /creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions/:sessionId
@@ -5416,10 +5491,10 @@ router.patch("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sess
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { clientId, programId, weekKey, sessionId } = req.params;
+  const {clientId, programId, weekKey, sessionId} = req.params;
 
   // Ensure client copy exists (copy-on-write)
-  const { docId } = await ensureClientCopy(clientId, programId, weekKey, auth.userId);
+  const {docId} = await ensureClientCopy(clientId, programId, weekKey, auth.userId);
   const sessionRef = db.collection("client_plan_content").doc(docId).collection("sessions").doc(sessionId);
 
   const sessionDoc = await sessionRef.get();
@@ -5433,8 +5508,8 @@ router.patch("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sess
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await sessionRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { sessionId, weekKey, isPersonalized: true, updated: true } });
+  await sessionRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {sessionId, weekKey, isPersonalized: true, updated: true}});
 });
 
 // POST /creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessions
@@ -5443,15 +5518,15 @@ router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessi
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { clientId, programId, weekKey } = req.params;
-  const { librarySessionId, dayIndex } = req.body;
+  const {clientId, programId, weekKey} = req.params;
+  const {librarySessionId, dayIndex} = req.body;
 
   if (!librarySessionId || typeof librarySessionId !== "string") {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "librarySessionId es requerido", "librarySessionId");
   }
 
   // Ensure client copy exists (copy-on-write)
-  const { docId } = await ensureClientCopy(clientId, programId, weekKey, auth.userId);
+  const {docId} = await ensureClientCopy(clientId, programId, weekKey, auth.userId);
   const docRef = db.collection("client_plan_content").doc(docId);
 
   // Fetch library session with exercises/sets
@@ -5468,7 +5543,7 @@ router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessi
   const exercises = await Promise.all(
     libExSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+      return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
     })
   );
 
@@ -5494,17 +5569,19 @@ router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessi
   for (const ex of exercises) {
     const exId = (ex.id as string) ?? db.collection("_").doc().id;
     const exRef = sessionRef.collection("exercises").doc(exId);
-    const { sets: setsArr, ...exFields } = ex;
-    batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+    const {sets: setsArr, ...exFields} = ex;
+    batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
     batchCount++;
     if (Array.isArray(setsArr)) {
       for (const set of setsArr as Array<Record<string, unknown>>) {
         const setId = (set.id as string) ?? db.collection("_").doc().id;
-        batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+        batch.set(exRef.collection("sets").doc(setId), {...set, id: setId, created_at: FieldValue.serverTimestamp()});
         batchCount++;
       }
     }
-    if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+    if (batchCount >= 450) {
+      await batch.commit(); batch = db.batch(); batchCount = 0;
+    }
   }
   if (batchCount > 0) await batch.commit();
 
@@ -5512,7 +5589,7 @@ router.post("/creator/clients/:clientId/programs/:programId/weeks/:weekKey/sessi
     data: {
       weekKey,
       isPersonalized: true,
-      session: { ...sessionData, exercises },
+      session: {...sessionData, exercises},
     },
   });
 });
@@ -5525,8 +5602,8 @@ router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const { clientId, programId } = req.params;
-  const { sourceWeekKey, sessionId, sourceLibrarySessionId } = req.body;
+  const {clientId, programId} = req.params;
+  const {sourceWeekKey, sessionId, sourceLibrarySessionId} = req.body;
 
   if (!sourceWeekKey || !sessionId || !sourceLibrarySessionId) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "sourceWeekKey, sessionId, y sourceLibrarySessionId son requeridos");
@@ -5544,7 +5621,7 @@ router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async
   const sourceExercises = await Promise.all(
     sourceExSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { data: eDoc.data(), sets: setsSnap.docs.map((s) => s.data()) };
+      return {data: eDoc.data(), sets: setsSnap.docs.map((s) => s.data())};
     })
   );
 
@@ -5596,7 +5673,9 @@ router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async
         for (const setDoc of setsSnap.docs) {
           batch.delete(setDoc.ref);
           batchCount++;
-          if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+          if (batchCount >= batchSize) {
+            await batch.commit(); batch = db.batch(); batchCount = 0;
+          }
         }
         batch.delete(eDoc.ref);
         batchCount++;
@@ -5605,14 +5684,16 @@ router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async
       // Write source exercises + sets
       for (const ex of sourceExercises) {
         const newExRef = targetRef.collection("exercises").doc();
-        batch.set(newExRef, { ...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp() });
+        batch.set(newExRef, {...ex.data, id: newExRef.id, created_at: FieldValue.serverTimestamp()});
         batchCount++;
         for (const setData of ex.sets) {
           const newSetRef = newExRef.collection("sets").doc();
-          batch.set(newSetRef, { ...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp() });
+          batch.set(newSetRef, {...setData, id: newSetRef.id, created_at: FieldValue.serverTimestamp()});
           batchCount++;
         }
-        if (batchCount >= batchSize) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        if (batchCount >= batchSize) {
+          await batch.commit(); batch = db.batch(); batchCount = 0;
+        }
       }
 
       updatedCount++;
@@ -5620,7 +5701,7 @@ router.post("/creator/clients/:clientId/programs/:programId/apply-to-all", async
   }
 
   if (batchCount > 0) await batch.commit();
-  res.json({ data: { updatedCount } });
+  res.json({data: {updatedCount}});
 });
 
 // GET /creator/username-check?username=... — check if username is available
@@ -5641,7 +5722,7 @@ router.get("/creator/username-check", async (req, res) => {
 
   const taken = snapshot.docs.some((doc) => doc.id !== auth.userId);
 
-  res.json({ data: { available: !taken } });
+  res.json({data: {available: !taken}});
 });
 
 // ---------------------------------------------------------------------------
@@ -5678,7 +5759,7 @@ router.get("/creator/media", async (req, res) => {
     };
   });
 
-  res.json({ data });
+  res.json({data});
 });
 
 // POST /creator/media/upload-url — generate upload target for direct Storage upload
@@ -5686,11 +5767,11 @@ router.post("/creator/media/upload-url", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { filename, contentType } = validateBody<{
+  const {filename, contentType} = validateBody<{
     filename: string;
     contentType: string;
   }>(
-    { filename: "string", contentType: "string" },
+    {filename: "string", contentType: "string"},
     req.body
   );
 
@@ -5721,13 +5802,13 @@ router.post("/creator/media/upload-url/confirm", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { storagePath, filename, contentType, downloadToken } = validateBody<{
+  const {storagePath, filename, contentType, downloadToken} = validateBody<{
     storagePath: string;
     filename: string;
     contentType: string;
     downloadToken: string;
   }>(
-    { storagePath: "string", filename: "string", contentType: "string", downloadToken: "string" },
+    {storagePath: "string", filename: "string", contentType: "string", downloadToken: "string"},
     req.body
   );
 
@@ -5744,7 +5825,7 @@ router.post("/creator/media/upload-url/confirm", async (req, res) => {
   }
 
   await file.setMetadata({
-    metadata: { firebaseStorageDownloadTokens: downloadToken },
+    metadata: {firebaseStorageDownloadTokens: downloadToken},
   });
 
   const docRef = await db
@@ -5806,7 +5887,7 @@ router.delete("/creator/media/:fileId", async (req, res) => {
     .doc(req.params.fileId)
     .delete();
 
-  res.json({ data: { deleted: true } });
+  res.json({data: {deleted: true}});
 });
 
 // GET /creator/programs/:programId/demographics
@@ -5814,7 +5895,7 @@ router.get("/creator/programs/:programId/demographics", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { programId } = req.params;
+  const {programId} = req.params;
 
   // Verify creator owns this program
   const programDoc = await db.collection("courses").doc(programId).get();
@@ -5894,7 +5975,7 @@ router.get("/creator/programs/:programId/demographics", async (req, res) => {
   const topCities = Object.entries(cityCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
-    .map(([city, count]) => ({ city, count }));
+    .map(([city, count]) => ({city, count}));
 
   res.json({
     data: {
@@ -5937,7 +6018,7 @@ router.get("/creator/bookings", async (req, res) => {
     };
   });
 
-  res.json({ data: bookings });
+  res.json({data: bookings});
 });
 
 // ─── Creator Availability ────────────────────────────────────────────────
@@ -5949,7 +6030,7 @@ router.get("/creator/availability", async (req, res) => {
 
   const doc = await db.collection("creator_availability").doc(auth.userId).get();
   if (!doc.exists) {
-    res.json({ data: { timezone: null, days: {}, weeklyTemplate: null } });
+    res.json({data: {timezone: null, days: {}, weeklyTemplate: null}});
     return;
   }
 
@@ -5988,15 +6069,15 @@ router.put("/creator/availability/template", async (req, res) => {
   await db.collection("creator_availability").doc(auth.userId).set(
     {
       weeklyTemplate: body.weeklyTemplate,
-      ...(body.disabledDates !== undefined ? { disabledDates: body.disabledDates } : {}),
-      ...(body.defaultSlotDuration !== undefined ? { defaultSlotDuration: body.defaultSlotDuration } : {}),
-      ...(body.timezone ? { timezone: body.timezone } : {}),
+      ...(body.disabledDates !== undefined ? {disabledDates: body.disabledDates} : {}),
+      ...(body.defaultSlotDuration !== undefined ? {defaultSlotDuration: body.defaultSlotDuration} : {}),
+      ...(body.timezone ? {timezone: body.timezone} : {}),
       updated_at: FieldValue.serverTimestamp(),
     },
-    { merge: true }
+    {merge: true}
   );
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // ─── Courses Subcollection CRUD (modules/sessions/exercises/sets) ─────────
@@ -6018,7 +6099,7 @@ router.get("/creator/programs/:programId/modules", async (req, res) => {
     .orderBy("order", "asc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), moduleId: d.id, id: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), moduleId: d.id, id: d.id}))});
 });
 
 // POST /creator/programs/:programId/modules
@@ -6032,7 +6113,7 @@ router.post("/creator/programs/:programId/modules", async (req, res) => {
   }
 
   const body = validateBody<{ title: string; order?: number }>(
-    { title: "string", order: "optional_number" },
+    {title: "string", order: "optional_number"},
     req.body
   );
 
@@ -6046,7 +6127,7 @@ router.post("/creator/programs/:programId/modules", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { moduleId: ref.id, id: ref.id } });
+  res.status(201).json({data: {moduleId: ref.id, id: ref.id}});
 });
 
 // PATCH /creator/programs/:programId/modules/:moduleId
@@ -6075,8 +6156,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) 
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await modRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { moduleId: req.params.moduleId, updated: true } });
+  await modRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {moduleId: req.params.moduleId, updated: true}});
 });
 
 // DELETE /creator/programs/:programId/modules/:moduleId
@@ -6122,7 +6203,7 @@ router.get("/creator/programs/:programId/modules/:moduleId/sessions", async (req
     .orderBy("order", "asc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), sessionId: d.id, id: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), sessionId: d.id, id: d.id}))});
 });
 
 // POST /creator/programs/:programId/modules/:moduleId/sessions
@@ -6136,7 +6217,7 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
   }
 
   const body = validateBody<{ title: string; order?: number; librarySessionRef?: string; dayIndex?: number; image_url?: string }>(
-    { title: "string", order: "optional_number", librarySessionRef: "optional_string", dayIndex: "optional_number", image_url: "optional_string" },
+    {title: "string", order: "optional_number", librarySessionRef: "optional_string", dayIndex: "optional_number", image_url: "optional_string"},
     req.body
   );
 
@@ -6149,9 +6230,9 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
     .add({
       title: body.title,
       order: body.order ?? 0,
-      ...(body.librarySessionRef !== undefined && { librarySessionRef: body.librarySessionRef }),
-      ...(body.dayIndex !== undefined && { dayIndex: body.dayIndex }),
-      ...(body.image_url !== undefined && { image_url: body.image_url }),
+      ...(body.librarySessionRef !== undefined && {librarySessionRef: body.librarySessionRef}),
+      ...(body.dayIndex !== undefined && {dayIndex: body.dayIndex}),
+      ...(body.image_url !== undefined && {image_url: body.image_url}),
       created_at: FieldValue.serverTimestamp(),
     });
 
@@ -6171,22 +6252,24 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
       let batchCount = 0;
       for (const eDoc of libExSnap.docs) {
         const exRef = ref.collection("exercises").doc();
-        const { ...exData } = eDoc.data();
-        batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+        const {...exData} = eDoc.data();
+        batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
         batchCount++;
         const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
         for (const sDoc of setsSnap.docs) {
           const setRef = exRef.collection("sets").doc();
-          batch.set(setRef, { ...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+          batch.set(setRef, {...sDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp()});
           batchCount++;
         }
-        if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+        if (batchCount >= 450) {
+          await batch.commit(); batch = db.batch(); batchCount = 0;
+        }
       }
       if (batchCount > 0) await batch.commit();
     }
   }
 
-  res.status(201).json({ data: { sessionId: ref.id, id: ref.id } });
+  res.status(201).json({data: {sessionId: ref.id, id: ref.id}});
 });
 
 // PATCH /creator/programs/:programId/modules/:moduleId/sessions/:sessionId
@@ -6216,8 +6299,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await sessRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { sessionId: req.params.sessionId, updated: true } });
+  await sessRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {sessionId: req.params.sessionId, updated: true}});
 });
 
 // DELETE /creator/programs/:programId/modules/:moduleId/sessions/:sessionId
@@ -6274,12 +6357,12 @@ router.get("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/e
         exerciseId: d.id,
         id: d.id,
         ...d.data(),
-        sets: setsSnap.docs.map((s) => ({ ...s.data(), setId: s.id, id: s.id })),
+        sets: setsSnap.docs.map((s) => ({...s.data(), setId: s.id, id: s.id})),
       };
     })
   );
 
-  res.json({ data: exercises });
+  res.json({data: exercises});
 });
 
 // POST /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises
@@ -6308,7 +6391,7 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/
     .collection("exercises")
     .add(exData);
 
-  res.status(201).json({ data: { exerciseId: ref.id, id: ref.id } });
+  res.status(201).json({data: {exerciseId: ref.id, id: ref.id}});
 });
 
 // PATCH /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId
@@ -6344,8 +6427,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await exRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { exerciseId: req.params.exerciseId, updated: true } });
+  await exRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {exerciseId: req.params.exerciseId, updated: true}});
 });
 
 // DELETE /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId
@@ -6402,7 +6485,7 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/
     .collection("sets")
     .add(setData);
 
-  res.status(201).json({ data: { setId: ref.id, id: ref.id } });
+  res.status(201).json({data: {setId: ref.id, id: ref.id}});
 });
 
 // PATCH /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId
@@ -6438,8 +6521,8 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await setRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { setId: req.params.setId, updated: true } });
+  await setRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {setId: req.params.setId, updated: true}});
 });
 
 // DELETE /creator/programs/:programId/modules/:moduleId/sessions/:sessionId/exercises/:exerciseId/sets/:setId
@@ -6526,11 +6609,11 @@ router.get("/creator/plans/:planId/affected", async (req, res) => {
         userId: d.id,
         displayName: d.data()?.displayName || d.data()?.email || d.id,
       }));
-    res.json({ data: { users } });
+    res.json({data: {users}});
     return;
   }
 
-  res.json({ data: { affectedUserIds, programCount: affectedProgramIdSet.size, programIds: Array.from(affectedProgramIdSet) } });
+  res.json({data: {affectedUserIds, programCount: affectedProgramIdSet.size, programIds: Array.from(affectedProgramIdSet)}});
 });
 
 // POST /creator/plans/:planId/propagate
@@ -6547,7 +6630,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
   const mode = (req.body?.mode as string) ?? "all";
 
   if (mode === "forward_only") {
-    res.json({ data: { updatedCount: 0, mode: "forward_only" } });
+    res.json({data: {updatedCount: 0, mode: "forward_only"}});
     return;
   }
 
@@ -6558,7 +6641,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
     .get();
 
   if (contentSnap.empty) {
-    res.json({ data: { updatedCount: 0, mode: "all" } });
+    res.json({data: {updatedCount: 0, mode: "all"}});
     return;
   }
 
@@ -6573,7 +6656,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
     for (const sDoc of sessionsSnap.docs) {
       const sData = sDoc.data();
       const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
-      let sessionData: Record<string, unknown> = {
+      const sessionData: Record<string, unknown> = {
         ...sData,
         id: sDoc.id,
         source_plan_session_id: sDoc.id,
@@ -6597,16 +6680,16 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
             exercises = await Promise.all(
               libExSnap.docs.map(async (eDoc) => {
                 const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-                return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+                return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
               })
             );
           }
-        } catch { /* best-effort */ }
+        } catch {/* best-effort */}
       } else {
         exercises = await Promise.all(
           exSnap.docs.map(async (eDoc) => {
             const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-            return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+            return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
           })
         );
         if (sourceLibId) {
@@ -6618,14 +6701,14 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
               sessionData.title = sData.title ?? libData.title ?? null;
               sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
             }
-          } catch { /* best-effort */ }
+          } catch {/* best-effort */}
         }
       }
 
-      sessions.push({ ...sessionData, exercises });
+      sessions.push({...sessionData, exercises});
     }
 
-    moduleContentCache[mDoc.id] = { title: mDoc.data()?.title ?? mDoc.id, sessions };
+    moduleContentCache[mDoc.id] = {title: mDoc.data()?.title ?? mDoc.id, sessions};
   }
 
   // Overwrite each client_plan_content doc (parallel, max 5 concurrent)
@@ -6638,7 +6721,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
   const updateOneDoc = async (contentDoc: FirebaseFirestore.QueryDocumentSnapshot) => {
     const docData = contentDoc.data();
     const sourceModuleId = docData.source_module_id as string;
-    const { title: moduleTitle, sessions } = moduleContentCache[sourceModuleId];
+    const {title: moduleTitle, sessions} = moduleContentCache[sourceModuleId];
     const docRef = contentDoc.ref;
 
     // Collect all refs to delete in parallel
@@ -6660,7 +6743,9 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
     for (const ref of deleteRefs) {
       batch.delete(ref);
       count++;
-      if (count >= batchSize) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= batchSize) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
 
     batch.update(docRef, {
@@ -6674,26 +6759,28 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
     for (const session of sessions) {
       const sessionId = (session.id as string) ?? db.collection("_").doc().id;
       const sessionRef = docRef.collection("sessions").doc(sessionId);
-      const { exercises: exArr, ...sessionFields } = session;
-      batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp() });
+      const {exercises: exArr, ...sessionFields} = session;
+      batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp()});
       count++;
 
       if (Array.isArray(exArr)) {
         for (const exercise of exArr as Array<Record<string, unknown>>) {
           const exId = (exercise.id as string) ?? db.collection("_").doc().id;
           const exRef = sessionRef.collection("exercises").doc(exId);
-          const { sets: setsArr, ...exFields } = exercise;
-          batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+          const {sets: setsArr, ...exFields} = exercise;
+          batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
           count++;
 
           if (Array.isArray(setsArr)) {
             for (const set of setsArr as Array<Record<string, unknown>>) {
               const setId = (set.id as string) ?? db.collection("_").doc().id;
-              batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+              batch.set(exRef.collection("sets").doc(setId), {...set, id: setId, created_at: FieldValue.serverTimestamp()});
               count++;
             }
           }
-          if (count >= batchSize) { await batch.commit(); batch = db.batch(); count = 0; }
+          if (count >= batchSize) {
+            await batch.commit(); batch = db.batch(); count = 0;
+          }
         }
       }
     }
@@ -6707,7 +6794,7 @@ router.post("/creator/plans/:planId/propagate", async (req, res) => {
     await Promise.all(docsToUpdate.slice(i, i + CONCURRENCY).map(updateOneDoc));
   }
 
-  res.json({ data: { updatedCount: docsToUpdate.length, mode: "all" } });
+  res.json({data: {updatedCount: docsToUpdate.length, mode: "all"}});
 });
 
 // GET /creator/nutrition/plans/:planId/affected
@@ -6753,11 +6840,11 @@ router.get("/creator/nutrition/plans/:planId/affected", async (req, res) => {
         userId: d.id,
         displayName: d.data()?.displayName || d.data()?.email || d.id,
       }));
-    res.json({ data: { users } });
+    res.json({data: {users}});
     return;
   }
 
-  res.json({ data: { affectedUserIds, clientCount: affectedUserIds.length } });
+  res.json({data: {affectedUserIds, clientCount: affectedUserIds.length}});
 });
 
 // ─── Exercises Library CRUD ──────────────────────────────────────────────
@@ -6772,7 +6859,7 @@ router.get("/creator/exercises/libraries", async (req, res) => {
     .where("creator_id", "==", auth.userId)
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), id: d.id}))});
 });
 
 // GET /creator/exercises/libraries/:libraryId — single library by ID
@@ -6785,7 +6872,7 @@ router.get("/creator/exercises/libraries/:libraryId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
-  res.json({ data: { ...doc.data(), id: doc.id } });
+  res.json({data: {...doc.data(), id: doc.id}});
 });
 
 // POST /creator/exercises/libraries — create new library
@@ -6793,7 +6880,7 @@ router.post("/creator/exercises/libraries", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ title: string }>({ title: "string" }, req.body);
+  const body = validateBody<{ title: string }>({title: "string"}, req.body);
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const creatorName = userDoc.data()?.displayName || userDoc.data()?.name || "";
@@ -6806,7 +6893,7 @@ router.post("/creator/exercises/libraries", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({ data: { id: ref.id } });
+  res.status(201).json({data: {id: ref.id}});
 });
 
 // DELETE /creator/exercises/libraries/:libraryId — delete a library
@@ -6829,7 +6916,7 @@ router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ name: string }>({ name: "string" }, req.body);
+  const body = validateBody<{ name: string }>({name: "string"}, req.body);
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -6840,12 +6927,12 @@ router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res
   const now = FieldValue.serverTimestamp();
   await ref.update(
     new FieldPath(body.name),
-    { muscle_activation: {}, implements: [], created_at: now, updated_at: now },
+    {muscle_activation: {}, implements: [], created_at: now, updated_at: now},
     "updated_at",
     now
   );
 
-  res.status(201).json({ data: { name: body.name, created: true } });
+  res.status(201).json({data: {name: body.name, created: true}});
 });
 
 // DELETE /creator/exercises/libraries/:libraryId/exercises/:name — remove exercise from library
@@ -6914,7 +7001,7 @@ router.patch("/creator/exercises/libraries/:libraryId/exercises/:name", async (r
   updates["updated_at"] = FieldValue.serverTimestamp();
 
   await ref.update(updates);
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // POST /creator/exercises/libraries/:libraryId/exercises/:name/upload-url
@@ -6922,8 +7009,8 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url"
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { contentType } = validateBody<{ contentType: string }>(
-    { contentType: "string" },
+  const {contentType} = validateBody<{ contentType: string }>(
+    {contentType: "string"},
     req.body
   );
 
@@ -6952,7 +7039,7 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url"
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath, contentType } });
+  res.json({data: {uploadUrl: url, storagePath, contentType}});
 });
 
 // POST /creator/exercises/libraries/:libraryId/exercises/:name/upload-url/confirm
@@ -6960,8 +7047,8 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { storagePath } = validateBody<{ storagePath: string }>(
-    { storagePath: "string" },
+  const {storagePath} = validateBody<{ storagePath: string }>(
+    {storagePath: "string"},
     req.body
   );
 
@@ -6991,7 +7078,7 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { video_url: publicUrl, video_path: storagePath, video_source: "upload" } });
+  res.json({data: {video_url: publicUrl, video_path: storagePath, video_source: "upload"}});
 });
 
 // DELETE /creator/exercises/libraries/:libraryId/exercises/:name/video
@@ -7055,7 +7142,7 @@ router.patch("/creator/exercises/libraries/:libraryId", async (req, res) => {
 
   updates.updated_at = FieldValue.serverTimestamp();
   await ref.update(updates);
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // ─── Objective Presets CRUD ──────────────────────────────────────────────
@@ -7072,7 +7159,7 @@ router.get("/creator/library/objective-presets", async (req, res) => {
     .orderBy("created_at", "desc")
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), id: d.id}))});
 });
 
 // POST /creator/library/objective-presets — create preset
@@ -7108,7 +7195,7 @@ router.post("/creator/library/objective-presets", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: ref.id } });
+  res.status(201).json({data: {id: ref.id}});
 });
 
 // PATCH /creator/library/objective-presets/:presetId — update preset
@@ -7134,8 +7221,8 @@ router.patch("/creator/library/objective-presets/:presetId", async (req, res) =>
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await ref.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { id: req.params.presetId, updated: true } });
+  await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {id: req.params.presetId, updated: true}});
 });
 
 // DELETE /creator/library/objective-presets/:presetId — delete preset
@@ -7184,7 +7271,7 @@ async function ensureProgramCopy(
   const docRef = db.collection("client_plan_content").doc(docId);
   const docSnap = await docRef.get();
   if (docSnap.exists) {
-    return { docId, alreadyExisted: true };
+    return {docId, alreadyExisted: true};
   }
 
   // Read planAssignments from course
@@ -7200,7 +7287,7 @@ async function ensureProgramCopy(
       isPersonalized: true,
       created_at: FieldValue.serverTimestamp(),
     });
-    return { docId, alreadyExisted: false };
+    return {docId, alreadyExisted: false};
   }
 
   // Read plan module sessions with exercises and sets
@@ -7214,7 +7301,7 @@ async function ensureProgramCopy(
   for (const sDoc of planSessionsSnap.docs) {
     const sData = sDoc.data();
     const sourceLibId = sData.source_library_session_id ?? sData.librarySessionRef ?? null;
-    let sessionData: Record<string, unknown> = {
+    const sessionData: Record<string, unknown> = {
       ...sData,
       id: sDoc.id,
       source_plan_session_id: sDoc.id,
@@ -7238,16 +7325,16 @@ async function ensureProgramCopy(
           exercises = await Promise.all(
             libExSnap.docs.map(async (eDoc) => {
               const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-              return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+              return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
             })
           );
         }
-      } catch { /* best-effort library resolution */ }
+      } catch {/* best-effort library resolution */}
     } else {
       exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+          return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
         })
       );
       if (sourceLibId && creatorId) {
@@ -7259,11 +7346,11 @@ async function ensureProgramCopy(
             sessionData.title = sData.title ?? libData.title ?? null;
             sessionData.image_url = sData.image_url ?? libData.image_url ?? null;
           }
-        } catch { /* best-effort */ }
+        } catch {/* best-effort */}
       }
     }
 
-    sessions.push({ ...sessionData, exercises });
+    sessions.push({...sessionData, exercises});
   }
 
   // Write to client_plan_content using batches
@@ -7287,22 +7374,22 @@ async function ensureProgramCopy(
   for (const session of sessions) {
     const sessionId = (session.id as string) ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
-    const { exercises: exArr, ...sessionFields } = session;
-    batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+    const {exercises: exArr, ...sessionFields} = session;
+    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
     batchCount++;
 
     if (Array.isArray(exArr)) {
       for (const exercise of exArr as Array<Record<string, unknown>>) {
         const exId = (exercise.id as string) ?? db.collection("_").doc().id;
         const exRef = sessionRef.collection("exercises").doc(exId);
-        const { sets: setsArr, ...exFields } = exercise;
-        batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+        const {sets: setsArr, ...exFields} = exercise;
+        batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
         batchCount++;
 
         if (Array.isArray(setsArr)) {
           for (const set of setsArr as Array<Record<string, unknown>>) {
             const setId = (set.id as string) ?? db.collection("_").doc().id;
-            batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+            batch.set(exRef.collection("sets").doc(setId), {...set, id: setId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
             batchCount++;
           }
         }
@@ -7317,7 +7404,7 @@ async function ensureProgramCopy(
   }
 
   if (batchCount > 0) await batch.commit();
-  return { docId, alreadyExisted: false };
+  return {docId, alreadyExisted: false};
 }
 
 // GET /creator/programs/:programId/calendar?month=YYYY-MM
@@ -7330,12 +7417,12 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "month debe ser YYYY-MM", "month");
   }
 
-  const { programId } = req.params;
+  const {programId} = req.params;
   const courseDoc = await verifyProgramOwnership(auth.userId, programId);
   const creatorId = auth.userId;
   const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; assignedAt?: string }>;
 
-  const { weekKeys: visibleWeekKeys } = getCalendarMonthRange(month);
+  const {weekKeys: visibleWeekKeys} = getCalendarMonthRange(month);
   const weekKeysWithPlans = visibleWeekKeys.filter((wk) => planAssignments[wk]?.planId);
 
   const planModuleCache = new Map<string, Record<string, unknown>>();
@@ -7343,7 +7430,7 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
 
   const readSessionList = async (sessionsCol: FirebaseFirestore.CollectionReference): Promise<Array<Record<string, unknown>>> => {
     const snap = await sessionsCol.orderBy("order", "asc").get();
-    return snap.docs.map((d) => ({ ...d.data(), id: d.id }));
+    return snap.docs.map((d) => ({...d.data(), id: d.id}));
   };
 
   await Promise.all(
@@ -7386,7 +7473,7 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
                 if (!session.title) session.title = libData.title ?? null;
                 if (!session.image_url) session.image_url = libData.image_url ?? null;
               }
-            } catch { /* best-effort */ }
+            } catch {/* best-effort */}
           });
           await Promise.all(libPromises);
 
@@ -7395,7 +7482,7 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
             sessions,
           });
         } catch {
-          planModuleCache.set(cacheKey, { moduleTitle: weekKey, sessions: [] });
+          planModuleCache.set(cacheKey, {moduleTitle: weekKey, sessions: []});
         }
       }
 
@@ -7444,8 +7531,8 @@ router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
   requireCreator(auth);
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
-  const { programId } = req.params;
-  const { planId, startWeekKey } = req.body;
+  const {programId} = req.params;
+  const {planId, startWeekKey} = req.body;
 
   if (!planId || typeof planId !== "string") {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "planId es requerido", "planId");
@@ -7461,7 +7548,7 @@ router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este plan no tiene semanas");
   }
 
-  const modules = modulesSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+  const modules = modulesSnap.docs.map((d) => ({...d.data(), id: d.id}));
   const weekKeys = getConsecutiveWeekKeys(startWeekKey, modules.length);
 
   // 2. Write planAssignments to the course document
@@ -7494,7 +7581,7 @@ router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
     })
   );
 
-  res.json({ data: { assignedWeekKeys: weekKeys, weeks } });
+  res.json({data: {assignedWeekKeys: weekKeys, weeks}});
 });
 
 // DELETE /creator/programs/:programId/remove-plan/:planId
@@ -7502,7 +7589,7 @@ router.delete("/creator/programs/:programId/remove-plan/:planId", async (req, re
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const { programId, planId } = req.params;
+  const {programId, planId} = req.params;
   const courseDoc = await verifyProgramOwnership(auth.userId, programId);
   const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string }>;
 
@@ -7511,7 +7598,7 @@ router.delete("/creator/programs/:programId/remove-plan/:planId", async (req, re
   );
 
   if (weekKeysToRemove.length === 0) {
-    res.json({ data: { removedWeekKeys: [] } });
+    res.json({data: {removedWeekKeys: []}});
     return;
   }
 
@@ -7526,7 +7613,7 @@ router.delete("/creator/programs/:programId/remove-plan/:planId", async (req, re
     weekKeysToRemove.map((wk) => deleteClientPlanContentDoc(programContentDocId(programId, wk)))
   );
 
-  res.json({ data: { removedWeekKeys: weekKeysToRemove } });
+  res.json({data: {removedWeekKeys: weekKeysToRemove}});
 });
 
 // GET /creator/programs/:programId/plan-content/:weekKey
@@ -7535,7 +7622,7 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   requireCreator(auth);
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
-  const { programId, weekKey } = req.params;
+  const {programId, weekKey} = req.params;
 
   let docId = programContentDocId(programId, weekKey);
   let doc = await db.collection("client_plan_content").doc(docId).get();
@@ -7546,11 +7633,11 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
       docId = result.docId;
       doc = await db.collection("client_plan_content").doc(docId).get();
     } catch {
-      res.json({ data: null });
+      res.json({data: null});
       return;
     }
     if (!doc.exists) {
-      res.json({ data: null });
+      res.json({data: null});
       return;
     }
   }
@@ -7567,7 +7654,7 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
       let exercises = await Promise.all(
         exSnap.docs.map(async (eDoc) => {
           const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-          return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+          return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
         })
       );
 
@@ -7589,25 +7676,27 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
               for (const eDoc of libExSnap.docs) {
                 const exRef = sDoc.ref.collection("exercises").doc();
                 const exData = eDoc.data();
-                batch.set(exRef, { ...exData, id: exRef.id, created_at: FieldValue.serverTimestamp() });
+                batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
                 batchCount++;
 
                 const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
                 const sets: Array<Record<string, unknown>> = [];
                 for (const setDoc of setsSnap.docs) {
                   const setRef = exRef.collection("sets").doc();
-                  batch.set(setRef, { ...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp() });
+                  batch.set(setRef, {...setDoc.data(), id: setRef.id, created_at: FieldValue.serverTimestamp()});
                   batchCount++;
-                  sets.push({ ...setDoc.data(), id: setRef.id });
+                  sets.push({...setDoc.data(), id: setRef.id});
                 }
-                if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+                if (batchCount >= 450) {
+                  await batch.commit(); batch = db.batch(); batchCount = 0;
+                }
 
-                backfilled.push({ id: exRef.id, ...exData, sets });
+                backfilled.push({id: exRef.id, ...exData, sets});
               }
               if (batchCount > 0) await batch.commit();
 
               if (sData.librarySessionRef && !sData.source_library_session_id) {
-                await sDoc.ref.update({ source_library_session_id: sData.librarySessionRef });
+                await sDoc.ref.update({source_library_session_id: sData.librarySessionRef});
               }
 
               exercises = backfilled as typeof exercises;
@@ -7616,12 +7705,12 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
         }
       }
 
-      exercises.forEach(e => normalizeExerciseName(e as Record<string, unknown>));
-      return { id: sDoc.id, ...sData, exercises };
+      exercises.forEach((e) => normalizeExerciseName(e as Record<string, unknown>));
+      return {id: sDoc.id, ...sData, exercises};
     })
   );
 
-  res.json({ data: { ...docData, programId, sessions } });
+  res.json({data: {...docData, programId, sessions}});
 });
 
 // PUT /creator/programs/:programId/plan-content/:weekKey
@@ -7630,7 +7719,7 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   requireCreator(auth);
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
-  const { programId, weekKey } = req.params;
+  const {programId, weekKey} = req.params;
   const body = req.body ?? {};
   const docId = programContentDocId(programId, weekKey);
   const docRef = db.collection("client_plan_content").doc(docId);
@@ -7668,8 +7757,8 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
     if (!session || typeof session !== "object") continue;
     const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
-    const { exercises: exArr, ...sessionFields } = session as Record<string, unknown>;
-    batch.set(sessionRef, { ...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp() });
+    const {exercises: exArr, ...sessionFields} = session as Record<string, unknown>;
+    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
     batchCount++;
 
     if (Array.isArray(exArr)) {
@@ -7677,26 +7766,28 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
         if (!exercise || typeof exercise !== "object") continue;
         const exId = (exercise as Record<string, unknown>).id ?? db.collection("_").doc().id;
         const exRef = sessionRef.collection("exercises").doc(exId as string);
-        const { sets: setsArr, ...exFields } = exercise as Record<string, unknown>;
-        batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+        const {sets: setsArr, ...exFields} = exercise as Record<string, unknown>;
+        batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
         batchCount++;
 
         if (Array.isArray(setsArr)) {
           for (const set of setsArr) {
             if (!set || typeof set !== "object") continue;
             const setId = (set as Record<string, unknown>).id ?? db.collection("_").doc().id;
-            batch.set(exRef.collection("sets").doc(setId as string), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+            batch.set(exRef.collection("sets").doc(setId as string), {...set, id: setId, created_at: FieldValue.serverTimestamp()});
             batchCount++;
           }
         }
 
-        if (batchCount >= 450) { await batch.commit(); batchCount = 0; }
+        if (batchCount >= 450) {
+          await batch.commit(); batchCount = 0;
+        }
       }
     }
   }
 
   if (batchCount > 0) await batch.commit();
-  res.json({ data: { docId, weekKey, sessionsWritten: sessions.length } });
+  res.json({data: {docId, weekKey, sessionsWritten: sessions.length}});
 });
 
 // DELETE /creator/programs/:programId/weeks/:weekKey/sessions/:sessionId
@@ -7705,8 +7796,8 @@ router.delete("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId",
   requireCreator(auth);
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
-  const { programId, weekKey, sessionId } = req.params;
-  const { docId } = await ensureProgramCopy(programId, weekKey, auth.userId);
+  const {programId, weekKey, sessionId} = req.params;
+  const {docId} = await ensureProgramCopy(programId, weekKey, auth.userId);
   const docRef = db.collection("client_plan_content").doc(docId);
   const sessionRef = docRef.collection("sessions").doc(sessionId);
 
@@ -7723,7 +7814,9 @@ router.delete("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId",
     for (const setDoc of setsSnap.docs) {
       batch.delete(setDoc.ref);
       count++;
-      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
     }
     batch.delete(eDoc.ref);
     count++;
@@ -7733,7 +7826,7 @@ router.delete("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId",
   if (count > 0) await batch.commit();
 
   const remainingSessions = await readSessionTree(docRef.collection("sessions"));
-  res.json({ data: { weekKey, isPersonalized: true, sessions: remainingSessions } });
+  res.json({data: {weekKey, isPersonalized: true, sessions: remainingSessions}});
 });
 
 // PATCH /creator/programs/:programId/weeks/:weekKey/sessions/:sessionId
@@ -7742,8 +7835,8 @@ router.patch("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", 
   requireCreator(auth);
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
-  const { programId, weekKey, sessionId } = req.params;
-  const { docId } = await ensureProgramCopy(programId, weekKey, auth.userId);
+  const {programId, weekKey, sessionId} = req.params;
+  const {docId} = await ensureProgramCopy(programId, weekKey, auth.userId);
   const sessionRef = db.collection("client_plan_content").doc(docId).collection("sessions").doc(sessionId);
 
   const sessionDoc = await sessionRef.get();
@@ -7757,8 +7850,8 @@ router.patch("/creator/programs/:programId/weeks/:weekKey/sessions/:sessionId", 
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await sessionRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { sessionId, weekKey, isPersonalized: true, updated: true } });
+  await sessionRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {sessionId, weekKey, isPersonalized: true, updated: true}});
 });
 
 // POST /creator/programs/:programId/weeks/:weekKey/sessions
@@ -7767,14 +7860,14 @@ router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, 
   requireCreator(auth);
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
-  const { programId, weekKey } = req.params;
-  const { librarySessionId, dayIndex } = req.body;
+  const {programId, weekKey} = req.params;
+  const {librarySessionId, dayIndex} = req.body;
 
   if (!librarySessionId || typeof librarySessionId !== "string") {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "librarySessionId es requerido", "librarySessionId");
   }
 
-  const { docId } = await ensureProgramCopy(programId, weekKey, auth.userId);
+  const {docId} = await ensureProgramCopy(programId, weekKey, auth.userId);
   const docRef = db.collection("client_plan_content").doc(docId);
 
   const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
@@ -7789,7 +7882,7 @@ router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, 
   const exercises = await Promise.all(
     libExSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
-      return { ...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })) };
+      return {...eDoc.data(), id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id}))};
     })
   );
 
@@ -7814,22 +7907,24 @@ router.post("/creator/programs/:programId/weeks/:weekKey/sessions", async (req, 
   for (const ex of exercises) {
     const exId = (ex.id as string) ?? db.collection("_").doc().id;
     const exRef = sessionRef.collection("exercises").doc(exId);
-    const { sets: setsArr, ...exFields } = ex;
-    batch.set(exRef, { ...exFields, id: exId, created_at: FieldValue.serverTimestamp() });
+    const {sets: setsArr, ...exFields} = ex;
+    batch.set(exRef, {...exFields, id: exId, created_at: FieldValue.serverTimestamp()});
     batchCount++;
     if (Array.isArray(setsArr)) {
       for (const set of setsArr as Array<Record<string, unknown>>) {
         const setId = (set.id as string) ?? db.collection("_").doc().id;
-        batch.set(exRef.collection("sets").doc(setId), { ...set, id: setId, created_at: FieldValue.serverTimestamp() });
+        batch.set(exRef.collection("sets").doc(setId), {...set, id: setId, created_at: FieldValue.serverTimestamp()});
         batchCount++;
       }
     }
-    if (batchCount >= 450) { await batch.commit(); batch = db.batch(); batchCount = 0; }
+    if (batchCount >= 450) {
+      await batch.commit(); batch = db.batch(); batchCount = 0;
+    }
   }
   if (batchCount > 0) await batch.commit();
 
   res.status(201).json({
-    data: { weekKey, isPersonalized: true, session: { ...sessionData, exercises } },
+    data: {weekKey, isPersonalized: true, session: {...sessionData, exercises}},
   });
 });
 
@@ -7853,7 +7948,7 @@ router.get("/creator/programs/:programId/nutrition/assignments", async (req, res
     updatedAt: d.data().updatedAt?.toDate?.()?.toISOString?.() ?? null,
   }));
 
-  res.json({ data: assignments });
+  res.json({data: assignments});
 });
 
 // POST /creator/programs/:programId/nutrition/assignments
@@ -7863,7 +7958,7 @@ router.post("/creator/programs/:programId/nutrition/assignments", async (req, re
   await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const body = validateBody<{ planId: string }>(
-    { planId: "string" },
+    {planId: "string"},
     req.body
   );
 
@@ -7904,7 +7999,7 @@ router.post("/creator/programs/:programId/nutrition/assignments", async (req, re
   );
 
   await batch.commit();
-  res.status(201).json({ data: { assignmentId: assignmentRef.id } });
+  res.status(201).json({data: {assignmentId: assignmentRef.id}});
 });
 
 // DELETE /creator/programs/:programId/nutrition/assignments/:assignmentId
@@ -7964,14 +8059,14 @@ router.post("/creator/request-api-access", async (req, res) => {
     `,
   });
 
-  res.status(200).json({ data: { sent: true } });
+  res.status(200).json({data: {sent: true}});
 });
 
 // GET /creator/check-username/:username — check username availability
 router.get("/creator/check-username/:username", async (req, res) => {
   const username = req.params.username?.toLowerCase();
   if (!username || !/^[a-z0-9_-]+$/.test(username)) {
-    res.json({ data: { available: false } });
+    res.json({data: {available: false}});
     return;
   }
 
@@ -7980,7 +8075,7 @@ router.get("/creator/check-username/:username", async (req, res) => {
     .limit(1)
     .get();
 
-  res.json({ data: { available: existing.empty } });
+  res.json({data: {available: existing.empty}});
 });
 
 // POST /creator/register — bootstrap a new creator account
@@ -7992,7 +8087,7 @@ router.post("/creator/register", async (req, res) => {
   const currentRole = userDoc.exists ? userDoc.data()?.role : null;
 
   if (currentRole === "creator" || currentRole === "admin") {
-    res.json({ data: { userId: auth.userId, alreadyCreator: true } });
+    res.json({data: {userId: auth.userId, alreadyCreator: true}});
     return;
   }
 
@@ -8054,9 +8149,9 @@ router.post("/creator/register", async (req, res) => {
     webOnboardingCompleted: false,
     profileCompleted: true,
     updated_at: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  }, {merge: true});
 
-  res.status(201).json({ data: { userId: auth.userId, role: "creator" } });
+  res.status(201).json({data: {userId: auth.userId, role: "creator"}});
 });
 
 export default router;

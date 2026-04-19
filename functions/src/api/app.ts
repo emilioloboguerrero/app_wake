@@ -1,10 +1,10 @@
 import express from "express";
-import type { Request, Response, NextFunction } from "express";
+import type {Request, Response, NextFunction} from "express";
 import swaggerUi from "swagger-ui-express";
-import { generateOpenApiSpec } from "../openapi.js";
-import { WakeApiServerError } from "./errors.js";
-import { validateAuth, enforceScope } from "./middleware/auth.js";
-import { checkDailyRateLimit } from "./middleware/rateLimit.js";
+import {generateOpenApiSpec} from "../openapi.js";
+import {WakeApiServerError} from "./errors.js";
+import {validateAuth, enforceScope} from "./middleware/auth.js";
+import {checkDailyRateLimit} from "./middleware/rateLimit.js";
 
 import profileRouter from "./routes/profile.js";
 import nutritionRouter from "./routes/nutrition.js";
@@ -26,7 +26,7 @@ export const app = express();
 // ─── Cold start detection ─────────────────────────────────────────────────
 
 // ─── Body parsing ──────────────────────────────────────────────────────────
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({limit: "1mb"}));
 
 // ─── Security headers ─────────────────────────────────────────────────────
 app.use((_req: Request, res: Response, next: NextFunction) => {
@@ -78,7 +78,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // ─── Health ────────────────────────────────────────────────────────────────
 const healthHandler = (_req: Request, res: Response) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({status: "ok", timestamp: new Date().toISOString()});
 };
 app.get("/v1/health", healthHandler);
 app.get("/api/v1/health", healthHandler);
@@ -144,7 +144,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
 // ─── 404 catch-all ─────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
-    error: { code: "NOT_FOUND", message: "Ruta no encontrada" },
+    error: {code: "NOT_FOUND", message: "Ruta no encontrada"},
   });
 });
 
@@ -162,7 +162,7 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
       error: {
         code: err.code,
         message: err.message,
-        ...(err.field ? { field: err.field } : {}),
+        ...(err.field ? {field: err.field} : {}),
       },
     });
     return;
@@ -173,9 +173,9 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   const userId = req.auth?.userId ?? "anon";
   console.error(
     `[api] ${req.method} ${req.path} — ${message} (user=${userId})`,
-    stack ? { stack } : undefined
+    stack ? {stack} : undefined
   );
   res.status(500).json({
-    error: { code: "INTERNAL_ERROR", message: "Error interno del servidor" },
+    error: {code: "INTERNAL_ERROR", message: "Error interno del servidor"},
   });
 });

@@ -1,7 +1,7 @@
-import type { OpenAPIV3 } from "openapi-types";
+import type {OpenAPIV3} from "openapi-types";
 
-const bearerAuth: OpenAPIV3.SecurityRequirementObject = { BearerAuth: [] };
-const apiKeyAuth: OpenAPIV3.SecurityRequirementObject = { ApiKeyAuth: [] };
+const bearerAuth: OpenAPIV3.SecurityRequirementObject = {BearerAuth: []};
+const apiKeyAuth: OpenAPIV3.SecurityRequirementObject = {ApiKeyAuth: []};
 const anyAuth = [bearerAuth, apiKeyAuth];
 const creatorAuth = [bearerAuth];
 
@@ -18,22 +18,22 @@ function stub(
     security,
     parameters: params,
     responses: {
-      "200": { description: responseDesc },
-      "204": { description: "No content" },
-      "400": { description: "Validation error" },
-      "401": { description: "Unauthenticated" },
-      "403": { description: "Forbidden" },
-      "404": { description: "Not found" },
+      "200": {description: responseDesc},
+      "204": {description: "No content"},
+      "400": {description: "Validation error"},
+      "401": {description: "Unauthenticated"},
+      "403": {description: "Forbidden"},
+      "404": {description: "Not found"},
     },
   };
 }
 
 function pathParam(name: string): OpenAPIV3.ParameterObject {
-  return { name, in: "path", required: true, schema: { type: "string" } };
+  return {name, in: "path", required: true, schema: {type: "string"}};
 }
 
 function queryParam(name: string, required = false): OpenAPIV3.ParameterObject {
-  return { name, in: "query", required, schema: { type: "string" } };
+  return {name, in: "query", required, schema: {type: "string"}};
 }
 
 export function generateOpenApiSpec(): OpenAPIV3.Document {
@@ -44,7 +44,7 @@ export function generateOpenApiSpec(): OpenAPIV3.Document {
       version: "1.0.0",
     },
     servers: [
-      { url: "/api/v1", description: "Production" },
+      {url: "/api/v1", description: "Production"},
       {
         url: "http://localhost:5001/wolf-20b8b/us-central1/api/v1",
         description: "Local emulator",
@@ -517,8 +517,8 @@ export function generateOpenApiSpec(): OpenAPIV3.Document {
           security: [],
           parameters: [pathParam("eventId")],
           responses: {
-            "200": { description: "Public event details" },
-            "404": { description: "Not found (or draft)" },
+            "200": {description: "Public event details"},
+            "404": {description: "Not found (or draft)"},
           },
         },
       },
@@ -529,11 +529,11 @@ export function generateOpenApiSpec(): OpenAPIV3.Document {
           security: [],
           parameters: [pathParam("eventId")],
           responses: {
-            "200": { description: "Registration or waitlist status" },
-            "400": { description: "Validation error" },
-            "403": { description: "Event closed" },
-            "404": { description: "Not found" },
-            "409": { description: "Already registered" },
+            "200": {description: "Registration or waitlist status"},
+            "400": {description: "Validation error"},
+            "403": {description: "Event closed"},
+            "404": {description: "Not found"},
+            "409": {description: "Already registered"},
           },
         },
       },
@@ -569,8 +569,8 @@ export function generateOpenApiSpec(): OpenAPIV3.Document {
           tags: ["auth"],
           security: [],
           responses: {
-            "200": { description: "Processed or non-retryable error" },
-            "500": { description: "Retryable error" },
+            "200": {description: "Processed or non-retryable error"},
+            "500": {description: "Retryable error"},
           },
         },
       },
@@ -605,7 +605,7 @@ export function generateOpenApiSpec(): OpenAPIV3.Document {
           tags: ["auth"],
           security: [],
           responses: {
-            "200": { description: "Hero content and program cards" },
+            "200": {description: "Hero content and program cards"},
           },
         },
       },

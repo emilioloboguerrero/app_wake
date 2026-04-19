@@ -1,4 +1,4 @@
-import { WakeApiServerError } from "../errors.js";
+import {WakeApiServerError} from "../errors.js";
 
 type SchemaType =
   | "string"

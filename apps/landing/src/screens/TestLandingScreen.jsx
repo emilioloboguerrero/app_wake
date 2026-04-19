@@ -640,7 +640,7 @@ function AthletesGallery() {
    NAV
    ═══════════════════════════════════════════ */
 const NAV_LINKS = [
-  { label: 'Creadores', href: '/creators' },
+  { label: 'Creadores', href: '/creadores' },
   { label: 'Devs', href: '/developers' },
 ];
 
@@ -739,7 +739,7 @@ function LandingFooter() {
         </div>
         <div className="tlt-footer-links">
           <a href="/app" className="tlt-footer-link">App</a>
-          <a href="/creators" className="tlt-footer-link">Creadores</a>
+          <a href="/creadores" className="tlt-footer-link">Creadores</a>
           <a href="/support" className="tlt-footer-link">Soporte</a>
           <a href="/legal" className="tlt-footer-link">Legal</a>
         </div>

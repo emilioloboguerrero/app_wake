@@ -3,7 +3,7 @@
  */
 
 import * as crypto from "node:crypto";
-import { db } from "../firestore.js";
+import {db} from "../firestore.js";
 
 export function escapeHtml(str: string): string {
   return str

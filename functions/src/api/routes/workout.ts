@@ -1,12 +1,12 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as functions from "firebase-functions";
-import { db, FieldValue } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody, validateDateFormat } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
-import { updateStreak } from "../streak.js";
+import {db, FieldValue} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody, validateDateFormat} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
+import {updateStreak} from "../streak.js";
 
 const router = Router();
 
@@ -68,7 +68,7 @@ function getWeekDates(weekKey: string): { start: Date; end: Date } {
   weekStart.setDate(firstMonday.getDate() + (week - 1) * 7);
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekStart.getDate() + 6);
-  return { start: weekStart, end: weekEnd };
+  return {start: weekStart, end: weekEnd};
 }
 
 function planContentDocId(clientId: string, programId: string, weekKey: string): string {
@@ -116,7 +116,7 @@ router.get("/workout/daily", async (req, res) => {
   let targetSessionId: string | null = null;
   let completedSessionIds: Set<string> | null = null;
   // For one-on-one, exercises live in plans/ subcollections, not courses/
-  let sessionCollection: string = "courses";
+  let sessionCollection = "courses";
   let sessionCollectionId: string = courseId;
   // Hoisted so we can include it in the response
   let resolvedAllSessions: Array<{ sessionId: string; title: string; moduleId: string; moduleTitle: string; order: number; image_url: string | null; plannedDate?: string | null }> = [];
@@ -162,9 +162,9 @@ router.get("/workout/daily", async (req, res) => {
     const unplannedDocRefs = scanWeekKeys.map((wk) =>
       db.collection("client_plan_content").doc(planContentDocId(auth.userId, courseId, wk))
     );
-    const unplannedDocs = unplannedDocRefs.length > 0
-      ? await db.getAll(...unplannedDocRefs)
-      : [];
+    const unplannedDocs = unplannedDocRefs.length > 0 ?
+      await db.getAll(...unplannedDocRefs) :
+      [];
     const unplannedWeekKeys = scanWeekKeys.filter((_, i) => unplannedDocs[i].exists);
 
     const allWeekKeys = [...planWeekKeys, ...unplannedWeekKeys].sort();
@@ -180,11 +180,11 @@ router.get("/workout/daily", async (req, res) => {
       const docId = planContentDocId(auth.userId, courseId, weekKey);
       const docRef = db.collection("client_plan_content").doc(docId);
       // For unplanned weeks we already fetched the doc; for planned weeks fetch now
-      const docSnap = unplannedWeekKeys.includes(weekKey)
-        ? unplannedDocs[scanWeekKeys.indexOf(weekKey)]
-        : await docRef.get();
+      const docSnap = unplannedWeekKeys.includes(weekKey) ?
+        unplannedDocs[scanWeekKeys.indexOf(weekKey)] :
+        await docRef.get();
 
-      const { start: weekStart } = getWeekDates(weekKey);
+      const {start: weekStart} = getWeekDates(weekKey);
 
       if (docSnap.exists) {
         // Personalized copy or direct content exists
@@ -201,7 +201,7 @@ router.get("/workout/daily", async (req, res) => {
             order: sData.order ?? 0,
             image_url: (sData.image_url as string) ?? null,
             plannedDate: sessionDate,
-            contentPath: { collection: "client_plan_content", docId, moduleId: "__direct__", sessionId: sDoc.id },
+            contentPath: {collection: "client_plan_content", docId, moduleId: "__direct__", sessionId: sDoc.id},
           });
         }
       } else if (assignment) {
@@ -224,7 +224,7 @@ router.get("/workout/daily", async (req, res) => {
             order: sData.order ?? 0,
             image_url: (sData.image_url as string) ?? null,
             plannedDate: sessionDate,
-            contentPath: { collection: "plans", docId: assignment.planId, moduleId: assignment.moduleId, sessionId: sDoc.id },
+            contentPath: {collection: "plans", docId: assignment.planId, moduleId: assignment.moduleId, sessionId: sDoc.id},
           });
         }
       }
@@ -253,7 +253,7 @@ router.get("/workout/daily", async (req, res) => {
       const uniqueRefs = new Map<string, { plan_id: string; module_id: string; session_id: string }>();
       for (const s of sessionsNeedingTitle) {
         const key = `${s.plan_id}|${s.module_id}|${s.session_id}`;
-        if (!uniqueRefs.has(key)) uniqueRefs.set(key, { plan_id: s.plan_id!, module_id: s.module_id!, session_id: s.session_id! });
+        if (!uniqueRefs.has(key)) uniqueRefs.set(key, {plan_id: s.plan_id!, module_id: s.module_id!, session_id: s.session_id!});
       }
       const refEntries = [...uniqueRefs.entries()];
       const titleDocs = await db.getAll(
@@ -294,7 +294,7 @@ router.get("/workout/daily", async (req, res) => {
     };
 
     const merged: MergedSession[] = [
-      ...planSessions.map((s) => ({ ...s, source: "plan" as const })),
+      ...planSessions.map((s) => ({...s, source: "plan" as const})),
       ...dateSessions.map((s) => ({
         sessionId: s.sessionId,
         title: s.title,
@@ -325,7 +325,7 @@ router.get("/workout/daily", async (req, res) => {
       res.json({
         data: {
           hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week",
-          session: null, progress: { completed: 0, total: null }, allSessions: [],
+          session: null, progress: {completed: 0, total: null}, allSessions: [],
         },
       });
       return;
@@ -337,12 +337,12 @@ router.get("/workout/daily", async (req, res) => {
       target = merged.find((s) => s.sessionId === requestedSessionId);
     } else if (requestedDate) {
       // Date-based sessions take priority for exact date match
-      target = merged.find((s) => s.source === "date" && s.plannedDate === requestedDate)
-        ?? merged.find((s) => s.plannedDate === requestedDate);
+      target = merged.find((s) => s.source === "date" && s.plannedDate === requestedDate) ??
+        merged.find((s) => s.plannedDate === requestedDate);
     } else {
       // Default: first incomplete session from today onwards
-      target = merged.find((s) => !completedSessionIds!.has(s.sessionId) && s.plannedDate && s.plannedDate >= targetDate)
-        ?? merged.find((s) => s.plannedDate === targetDate);
+      target = merged.find((s) => !completedSessionIds!.has(s.sessionId) && s.plannedDate && s.plannedDate >= targetDate) ??
+        merged.find((s) => s.plannedDate === targetDate);
     }
 
     if (!target) {
@@ -351,7 +351,7 @@ router.get("/workout/daily", async (req, res) => {
           hasSession: false, isRestDay: false,
           emptyReason: requestedDate ? "no_session_today" : "no_planning_this_week",
           session: null,
-          progress: { completed: completedSessionIds.size, total: merged.length },
+          progress: {completed: completedSessionIds.size, total: merged.length},
           allSessions: resolvedAllSessions,
         },
       });
@@ -392,7 +392,6 @@ router.get("/workout/daily", async (req, res) => {
       } else {
       }
     }
-
   } else {
     // Low-ticket: check for plan-based content first, fall back to legacy course modules
     const planAssignments = (course.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
@@ -445,21 +444,21 @@ router.get("/workout/daily", async (req, res) => {
       completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-      resolvedAllSessions = allSessions.map((s) => ({ sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url }));
+      resolvedAllSessions = allSessions.map((s) => ({sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url}));
 
       if (allSessions.length === 0) {
         res.json({
-          data: { hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: { completed: 0, total: null }, allSessions: [] },
+          data: {hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: {completed: 0, total: null}, allSessions: []},
         });
         return;
       }
 
-      const nextSession = requestedSessionId
-        ? allSessions.find((s) => s.sessionId === requestedSessionId)
-        : allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+      const nextSession = requestedSessionId ?
+        allSessions.find((s) => s.sessionId === requestedSessionId) :
+        allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
       if (!nextSession) {
         res.json({
-          data: { hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: { completed: completedSessionIds.size, total: allSessions.length }, allSessions: resolvedAllSessions },
+          data: {hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: {completed: completedSessionIds.size, total: allSessions.length}, allSessions: resolvedAllSessions},
         });
         return;
       }
@@ -498,7 +497,7 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "no_planning_this_week",
             session: null,
-            progress: { completed: 0, total: null },
+            progress: {completed: 0, total: null},
             allSessions: [],
           },
         });
@@ -534,7 +533,7 @@ router.get("/workout/daily", async (req, res) => {
       completedSessionIds = new Set(legacyCompletedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-      resolvedAllSessions = allSessions.map((s) => ({ sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url }));
+      resolvedAllSessions = allSessions.map((s) => ({sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url}));
 
       if (allSessions.length === 0) {
         res.json({
@@ -543,16 +542,16 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "no_planning_this_week",
             session: null,
-            progress: { completed: 0, total: null },
+            progress: {completed: 0, total: null},
             allSessions: [],
           },
         });
         return;
       }
 
-      const nextSession = requestedSessionId
-        ? allSessions.find((s) => s.sessionId === requestedSessionId)
-        : allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+      const nextSession = requestedSessionId ?
+        allSessions.find((s) => s.sessionId === requestedSessionId) :
+        allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
 
       if (!nextSession) {
         res.json({
@@ -561,7 +560,7 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "all_sessions_completed",
             session: null,
-            progress: { completed: completedSessionIds.size, total: allSessions.length },
+            progress: {completed: completedSessionIds.size, total: allSessions.length},
             allSessions: resolvedAllSessions,
           },
         });
@@ -580,7 +579,7 @@ router.get("/workout/daily", async (req, res) => {
         isRestDay: false,
         emptyReason: "no_planning_this_week",
         session: null,
-        progress: { completed: 0, total: null },
+        progress: {completed: 0, total: null},
         allSessions: resolvedAllSessions,
       },
     });
@@ -620,7 +619,7 @@ router.get("/workout/daily", async (req, res) => {
         isRestDay: false,
         emptyReason: "no_planning_this_week",
         session: null,
-        progress: { completed: 0, total: null },
+        progress: {completed: 0, total: null},
         allSessions: resolvedAllSessions,
       },
     });
@@ -696,9 +695,9 @@ router.get("/workout/daily", async (req, res) => {
             order: setData.order ?? 0,
           };
         }),
-        exerciseKey: resolvedLibraryId && resolvedName
-          ? `${resolvedLibraryId}_${resolvedName}`
-          : exDoc.id,
+        exerciseKey: resolvedLibraryId && resolvedName ?
+          `${resolvedLibraryId}_${resolvedName}` :
+          exDoc.id,
       };
     })
   );
@@ -715,22 +714,22 @@ router.get("/workout/daily", async (req, res) => {
 
   const [lastPerfDocs, libraryDocs] = await Promise.all([
     // Fetch lastPerformance docs
-    exerciseKeys.length > 0
-      ? Promise.all(
-          exerciseKeys.map((key) =>
-            db.collection("users").doc(auth.userId)
-              .collection("exerciseLastPerformance").doc(key).get()
-          )
+    exerciseKeys.length > 0 ?
+      Promise.all(
+        exerciseKeys.map((key) =>
+          db.collection("users").doc(auth.userId)
+            .collection("exerciseLastPerformance").doc(key).get()
         )
-      : Promise.resolve([]),
+      ) :
+      Promise.resolve([]),
     // Fetch exercise library docs (each doc contains all exercises as fields)
-    uniqueLibraryIds.length > 0
-      ? Promise.all(
-          uniqueLibraryIds.map((libId) =>
-            db.collection("exercises_library").doc(libId).get()
-          )
+    uniqueLibraryIds.length > 0 ?
+      Promise.all(
+        uniqueLibraryIds.map((libId) =>
+          db.collection("exercises_library").doc(libId).get()
         )
-      : Promise.resolve([]),
+      ) :
+      Promise.resolve([]),
   ]);
 
   const lastPerfMap: Record<string, Record<string, unknown>> = {};
@@ -760,7 +759,7 @@ router.get("/workout/daily", async (req, res) => {
           const w = s.weight ?? 0;
           const r = s.reps ?? 0;
           if (!best || w > best.weight || (w === best.weight && r > best.reps)) {
-            return { weight: w, reps: r };
+            return {weight: w, reps: r};
           }
           return best;
         },
@@ -801,15 +800,15 @@ router.get("/workout/daily", async (req, res) => {
   });
 
   // Reuse completedSessionIds if already fetched (low_ticket path), otherwise fetch
-  const completedCount = completedSessionIds
-    ? completedSessionIds.size
-    : (await db
-        .collection("users")
-        .doc(auth.userId)
-        .collection("sessionHistory")
-        .where("courseId", "==", courseId)
-        .count()
-        .get()).data().count;
+  const completedCount = completedSessionIds ?
+    completedSessionIds.size :
+    (await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .where("courseId", "==", courseId)
+      .count()
+      .get()).data().count;
 
   // Read module title for context
   let moduleTitle = "";
@@ -999,11 +998,11 @@ router.get("/workout/session-exercises", async (req, res) => {
         primaryMuscles: exData.primaryMuscles ?? [],
         sets: setsSnap.docs.map((setDoc) => {
           const setData = setDoc.data();
-          return { setId: setDoc.id, reps: setData.reps ?? null, weight: setData.weight ?? null, intensity: setData.intensity ?? null, rir: setData.rir ?? null, title: setData.title ?? null, order: setData.order ?? 0 };
+          return {setId: setDoc.id, reps: setData.reps ?? null, weight: setData.weight ?? null, intensity: setData.intensity ?? null, rir: setData.rir ?? null, title: setData.title ?? null, order: setData.order ?? 0};
         }),
-        exerciseKey: resolvedLibraryId && resolvedName
-          ? `${resolvedLibraryId}_${resolvedName}`
-          : exDoc.id,
+        exerciseKey: resolvedLibraryId && resolvedName ?
+          `${resolvedLibraryId}_${resolvedName}` :
+          exDoc.id,
       };
     })
   );
@@ -1013,14 +1012,14 @@ router.get("/workout/session-exercises", async (req, res) => {
   const uniqueLibIds = [...new Set(exercisesWithSets.map((ex) => ex.libraryId).filter(Boolean))] as string[];
 
   const [lastPerfDocs2, libraryDocs2] = await Promise.all([
-    exerciseKeys.length > 0
-      ? Promise.all(exerciseKeys.map((key) =>
-          db.collection("users").doc(auth.userId).collection("exerciseLastPerformance").doc(key).get()))
-      : Promise.resolve([]),
-    uniqueLibIds.length > 0
-      ? Promise.all(uniqueLibIds.map((libId) =>
-          db.collection("exercises_library").doc(libId).get()))
-      : Promise.resolve([]),
+    exerciseKeys.length > 0 ?
+      Promise.all(exerciseKeys.map((key) =>
+        db.collection("users").doc(auth.userId).collection("exerciseLastPerformance").doc(key).get())) :
+      Promise.resolve([]),
+    uniqueLibIds.length > 0 ?
+      Promise.all(uniqueLibIds.map((libId) =>
+        db.collection("exercises_library").doc(libId).get())) :
+      Promise.resolve([]),
   ]);
 
   const lastPerfMap2: Record<string, Record<string, unknown>> = {};
@@ -1040,10 +1039,10 @@ router.get("/workout/session-exercises", async (req, res) => {
       const bestSet = sets.reduce(
         (best: { weight: number; reps: number } | null, s) => {
           const w = s.weight ?? 0; const r = s.reps ?? 0;
-          if (!best || w > best.weight || (w === best.weight && r > best.reps)) return { weight: w, reps: r };
+          if (!best || w > best.weight || (w === best.weight && r > best.reps)) return {weight: w, reps: r};
           return best;
         }, null);
-      lastPerformance = { sessionId: lastPerf.completionId ?? null, date: lastPerf.date ?? null, sets, bestSet };
+      lastPerformance = {sessionId: lastPerf.completionId ?? null, date: lastPerf.date ?? null, sets, bestSet};
     }
 
     // Enrich from exercise library when session doc has no metadata
@@ -1093,7 +1092,7 @@ router.get("/workout/courses", async (req, res) => {
     })
   );
 
-  res.json({ data: coursesList });
+  res.json({data: coursesList});
 });
 
 // GET /workout/courses/:courseId
@@ -1117,7 +1116,7 @@ router.get("/workout/courses/:courseId", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
-  res.json({ data: { ...courseDoc.data(), id: courseDoc.id } });
+  res.json({data: {...courseDoc.data(), id: courseDoc.id}});
 });
 
 // POST /workout/complete — atomic session completion
@@ -1157,7 +1156,7 @@ router.post("/workout/complete", async (req, res) => {
       sessionName: "optional_string",
     },
     raw,
-    { maxArrayLength: 50 }
+    {maxArrayLength: 50}
   );
 
   // Extract date from completedAt
@@ -1210,7 +1209,7 @@ router.post("/workout/complete", async (req, res) => {
     for (const doc of prDocs) {
       if (doc.exists) {
         const data = doc.data()!;
-        existingPrMap[doc.id] = { estimate1RM: data.estimate1RM ?? 0 };
+        existingPrMap[doc.id] = {estimate1RM: data.estimate1RM ?? 0};
       }
     }
   }
@@ -1249,8 +1248,8 @@ router.post("/workout/complete", async (req, res) => {
     completedAt: body.completedAt,
     userNotes: body.userNotes ?? null,
     plannedSnapshot: body.plannedSnapshot ?? null,
-    ...(body.courseName ? { courseName: body.courseName } : {}),
-    ...(body.sessionName ? { sessionName: body.sessionName } : {}),
+    ...(body.courseName ? {courseName: body.courseName} : {}),
+    ...(body.sessionName ? {sessionName: body.sessionName} : {}),
     completed_at: FieldValue.serverTimestamp(),
   });
 
@@ -1276,7 +1275,7 @@ router.post("/workout/complete", async (req, res) => {
 
       if (estimate > bestEstimate1RM) {
         bestEstimate1RM = estimate;
-        bestSet = { weight, reps, intensity: set.intensity ?? null };
+        bestSet = {weight, reps, intensity: set.intensity ?? null};
       }
     }
 
@@ -1309,7 +1308,7 @@ router.post("/workout/complete", async (req, res) => {
         }),
         updated_at: FieldValue.serverTimestamp(),
       },
-      { merge: true }
+      {merge: true}
     );
 
     const lastPerfRef = db
@@ -1320,13 +1319,13 @@ router.post("/workout/complete", async (req, res) => {
 
     // Production format: exerciseId, exerciseName, libraryId, lastSessionId, lastPerformedAt, totalSets, bestSet
     const exerciseSets = exercise.sets ?? [];
-    const prodBestSet = exerciseSets.length > 0
-      ? exerciseSets.reduce((best: Record<string, unknown>, s: Record<string, unknown>) => {
-          const bw = parseFloat(String(best.weight ?? 0));
-          const sw = parseFloat(String(s.weight ?? 0));
-          return sw > bw ? s : best;
-        }, exerciseSets[0])
-      : null;
+    const prodBestSet = exerciseSets.length > 0 ?
+      exerciseSets.reduce((best: Record<string, unknown>, s: Record<string, unknown>) => {
+        const bw = parseFloat(String(best.weight ?? 0));
+        const sw = parseFloat(String(s.weight ?? 0));
+        return sw > bw ? s : best;
+      }, exerciseSets[0]) :
+      null;
 
     batch.set(lastPerfRef, {
       exerciseId: exercise.exerciseId ?? null,
@@ -1445,7 +1444,7 @@ router.get("/workout/sessions", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((d) => ({ ...d.data(), id: d.id })),
+    data: docs.map((d) => ({...d.data(), id: d.id})),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -1467,7 +1466,7 @@ router.get("/workout/sessions/:completionId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  res.json({ data: { ...doc.data(), id: doc.id } });
+  res.json({data: {...doc.data(), id: doc.id}});
 });
 
 // PATCH /workout/sessions/:completionId/notes
@@ -1476,7 +1475,7 @@ router.patch("/workout/sessions/:completionId/notes", async (req, res) => {
   await checkRateLimit(auth.userId, 100, "rate_limit_first_party");
 
   const body = validateBody<{ userNotes: string }>(
-    { userNotes: "string" },
+    {userNotes: "string"},
     req.body
   );
 
@@ -1491,9 +1490,9 @@ router.patch("/workout/sessions/:completionId/notes", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  await docRef.update({ userNotes: body.userNotes });
+  await docRef.update({userNotes: body.userNotes});
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // GET /workout/exercises/:exerciseKey/history
@@ -1509,7 +1508,7 @@ router.get("/workout/exercises/:exerciseKey/history", async (req, res) => {
     .get();
 
   if (!doc.exists) {
-    res.json({ data: { sessions: [] } });
+    res.json({data: {sessions: []}});
     return;
   }
 
@@ -1580,7 +1579,7 @@ router.post("/workout/session/checkpoint", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.json({ data: { saved: true } });
+  res.json({data: {saved: true}});
 });
 
 // GET /workout/session/active
@@ -1596,7 +1595,7 @@ router.get("/workout/session/active", async (req, res) => {
     .get();
 
   if (!doc.exists) {
-    res.json({ data: { checkpoint: null } });
+    res.json({data: {checkpoint: null}});
     return;
   }
 
@@ -1607,11 +1606,11 @@ router.get("/workout/session/active", async (req, res) => {
   if (savedAt) {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
-      const completedSetsCount = checkpoint.completedSets
-        ? Object.values(checkpoint.completedSets as Record<string, Record<string, unknown>>).filter(
-            (s) => s && typeof s === "object" && Object.values(s).some((v) => v !== "" && v !== null && v !== undefined)
-          ).length
-        : 0;
+      const completedSetsCount = checkpoint.completedSets ?
+        Object.values(checkpoint.completedSets as Record<string, Record<string, unknown>>).filter(
+          (s) => s && typeof s === "object" && Object.values(s).some((v) => v !== "" && v !== null && v !== undefined)
+        ).length :
+        0;
       db.collection("users")
         .doc(auth.userId)
         .collection("abandonedSessions")
@@ -1628,15 +1627,15 @@ router.get("/workout/session/active", async (req, res) => {
           abandonedAt: new Date().toISOString(),
           detectedBy: "stale_check",
           created_at: FieldValue.serverTimestamp(),
-        }, { merge: true })
+        }, {merge: true})
         .catch(() => {});
       doc.ref.delete().catch(() => {});
-      res.json({ data: { checkpoint: null } });
+      res.json({data: {checkpoint: null}});
       return;
     }
   }
 
-  res.json({ data: { checkpoint } });
+  res.json({data: {checkpoint}});
 });
 
 // DELETE /workout/session/active
@@ -1653,9 +1652,9 @@ router.delete("/workout/session/active", async (req, res) => {
   const doc = await docRef.get();
   if (doc.exists) {
     await docRef.delete();
-    res.json({ data: { deleted: true } });
+    res.json({data: {deleted: true}});
   } else {
-    res.json({ data: { deleted: false } });
+    res.json({data: {deleted: false}});
   }
 });
 
@@ -1675,7 +1674,7 @@ router.get("/workout/prs", async (req, res) => {
     ...doc.data(),
   }));
 
-  res.json({ data: prs });
+  res.json({data: prs});
 });
 
 // POST /workout/session/abandon — record a user-discarded or stale session
@@ -1707,9 +1706,9 @@ router.post("/workout/session/abandon", async (req, res) => {
   );
 
   const completionPct =
-    body.totalSetsCount && body.totalSetsCount > 0
-      ? Math.round((body.completedSetsCount / body.totalSetsCount) * 100)
-      : null;
+    body.totalSetsCount && body.totalSetsCount > 0 ?
+      Math.round((body.completedSetsCount / body.totalSetsCount) * 100) :
+      null;
 
   const batch = db.batch();
 
@@ -1739,7 +1738,7 @@ router.post("/workout/session/abandon", async (req, res) => {
 
   await batch.commit();
 
-  res.json({ data: { recorded: true } });
+  res.json({data: {recorded: true}});
 });
 
 // Aliases: /workout/checkpoint → /workout/session/checkpoint|active
@@ -1788,7 +1787,7 @@ router.put("/workout/checkpoint", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.json({ data: { saved: true } });
+  res.json({data: {saved: true}});
 });
 
 router.get("/workout/checkpoint", async (req, res) => {
@@ -1804,7 +1803,7 @@ router.get("/workout/checkpoint", async (req, res) => {
     .get();
 
   if (!doc.exists) {
-    res.json({ data: { checkpoint: null } });
+    res.json({data: {checkpoint: null}});
     return;
   }
 
@@ -1815,11 +1814,11 @@ router.get("/workout/checkpoint", async (req, res) => {
   if (savedAt) {
     const ageMs = Date.now() - new Date(savedAt).getTime();
     if (ageMs > 24 * 60 * 60 * 1000) {
-      const completedSetsCount = checkpoint.completedSets
-        ? Object.values(checkpoint.completedSets as Record<string, Record<string, unknown>>).filter(
-            (s) => s && typeof s === "object" && Object.values(s).some((v) => v !== "" && v !== null && v !== undefined)
-          ).length
-        : 0;
+      const completedSetsCount = checkpoint.completedSets ?
+        Object.values(checkpoint.completedSets as Record<string, Record<string, unknown>>).filter(
+          (s) => s && typeof s === "object" && Object.values(s).some((v) => v !== "" && v !== null && v !== undefined)
+        ).length :
+        0;
       db.collection("users")
         .doc(auth.userId)
         .collection("abandonedSessions")
@@ -1836,15 +1835,15 @@ router.get("/workout/checkpoint", async (req, res) => {
           abandonedAt: new Date().toISOString(),
           detectedBy: "stale_check",
           created_at: FieldValue.serverTimestamp(),
-        }, { merge: true })
+        }, {merge: true})
         .catch(() => {});
       doc.ref.delete().catch(() => {});
-      res.json({ data: { checkpoint: null } });
+      res.json({data: {checkpoint: null}});
       return;
     }
   }
 
-  res.json({ data: { checkpoint } });
+  res.json({data: {checkpoint}});
 });
 
 router.delete("/workout/checkpoint", async (req, res) => {
@@ -1861,9 +1860,9 @@ router.delete("/workout/checkpoint", async (req, res) => {
   const doc = await docRef.get();
   if (doc.exists) {
     await docRef.delete();
-    res.json({ data: { deleted: true } });
+    res.json({data: {deleted: true}});
   } else {
-    res.json({ data: { deleted: false } });
+    res.json({data: {deleted: false}});
   }
 });
 
@@ -1872,7 +1871,7 @@ router.post("/workout/prs/batch-history", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { keys } = req.body;
+  const {keys} = req.body;
   if (!Array.isArray(keys) || keys.length === 0 || keys.length > 20) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400,
@@ -1894,10 +1893,10 @@ router.post("/workout/prs/batch-history", async (req, res) => {
   const results: Record<string, unknown> = {};
   for (let i = 0; i < keys.length; i++) {
     const doc = docs[i];
-    results[keys[i]] = doc.exists ? doc.data() : { sessions: [] };
+    results[keys[i]] = doc.exists ? doc.data() : {sessions: []};
   }
 
-  res.json({ data: results });
+  res.json({data: results});
 });
 
 // GET /workout/prs/:exerciseKey/history
@@ -1913,11 +1912,11 @@ router.get("/workout/prs/:exerciseKey/history", async (req, res) => {
     .get();
 
   if (!doc.exists) {
-    res.json({ data: { sessions: [] } });
+    res.json({data: {sessions: []}});
     return;
   }
 
-  res.json({ data: doc.data() });
+  res.json({data: doc.data()});
 });
 
 // ─── Exercise Library ────────────────────────────────────────────────────
@@ -2017,7 +2016,7 @@ router.get("/workout/progress", async (req, res) => {
     };
   }
 
-  res.json({ data: progress });
+  res.json({data: progress});
 });
 
 // GET /workout/courses/:courseId/progress — single course progress
@@ -2088,10 +2087,10 @@ router.patch("/workout/courses/:courseId/progress", async (req, res) => {
     .collection("courseProgress")
     .doc(courseId);
 
-  await docRef.set(updates, { merge: true });
+  await docRef.set(updates, {merge: true});
 
   const updated = await docRef.get();
-  res.json({ data: { courseId, ...updated.data() } });
+  res.json({data: {courseId, ...updated.data()}});
 });
 
 // POST /workout/courses/:courseId/progress/last-session — update last session performed
@@ -2104,7 +2103,7 @@ router.post("/workout/courses/:courseId/progress/last-session", async (req, res)
     sessionId: string;
     sessionData?: Record<string, unknown>;
   }>(
-    { sessionId: "string", sessionData: "optional_object" },
+    {sessionId: "string", sessionData: "optional_object"},
     req.body
   );
 
@@ -2123,11 +2122,11 @@ router.post("/workout/courses/:courseId/progress/last-session", async (req, res)
       },
       updated_at: FieldValue.serverTimestamp(),
     },
-    { merge: true }
+    {merge: true}
   );
 
   const updated = await docRef.get();
-  res.json({ data: { courseId, ...updated.data() } });
+  res.json({data: {courseId, ...updated.data()}});
 });
 
 // Aliases: /workout/programs/:courseId → /workout/courses/:courseId
@@ -2143,7 +2142,7 @@ router.get("/workout/programs/:courseId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  res.json({ data: { ...courseDoc.data(), id: courseDoc.id } });
+  res.json({data: {...courseDoc.data(), id: courseDoc.id}});
 });
 
 // GET /workout/programs/:courseId/modules — list modules for a course
@@ -2194,7 +2193,7 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
           const moduleDoc = await db.collection("plans").doc(assignment.planId)
             .collection("modules").doc(assignment.moduleId).get();
           if (moduleDoc.exists) title = (moduleDoc.data()?.title as string) ?? title;
-        } catch { /* best-effort */ }
+        } catch {/* best-effort */}
       }
 
       const moduleEntry: Record<string, unknown> = {
@@ -2213,14 +2212,14 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
         moduleEntry.sessions = await Promise.all(
           sessionsSnap.docs.map(async (sDoc) => {
             const exercises = await loadExerciseTree(sDoc.ref);
-            return { ...sDoc.data(), id: sDoc.id, exercises };
+            return {...sDoc.data(), id: sDoc.id, exercises};
           })
         );
       }
 
       modules.push(moduleEntry);
     }
-    res.json({ data: modules });
+    res.json({data: modules});
     return;
   }
 
@@ -2234,8 +2233,8 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     .get();
 
   if (!includeSessions) {
-    const modules = modulesSnap.docs.map((doc) => ({ ...doc.data(), id: doc.id }));
-    res.json({ data: modules });
+    const modules = modulesSnap.docs.map((doc) => ({...doc.data(), id: doc.id}));
+    res.json({data: modules});
     return;
   }
 
@@ -2250,13 +2249,13 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
       const sessions = await Promise.all(
         sessionsSnap.docs.map(async (sDoc) => {
           const exercises = await loadExerciseTree(sDoc.ref);
-          return { ...sDoc.data(), id: sDoc.id, exercises };
+          return {...sDoc.data(), id: sDoc.id, exercises};
         })
       );
-      return { ...mDoc.data(), id: mDoc.id, sessions };
+      return {...mDoc.data(), id: mDoc.id, sessions};
     })
   );
-  res.json({ data: modules });
+  res.json({data: modules});
 });
 
 // GET /workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/overrides
@@ -2286,12 +2285,12 @@ router.get(
         .get();
 
       if (overrideDoc.exists) {
-        res.json({ data: { ...overrideDoc.data(), id: overrideDoc.id } });
+        res.json({data: {...overrideDoc.data(), id: overrideDoc.id}});
         return;
       }
     }
 
-    res.json({ data: null });
+    res.json({data: null});
   }
 );
 
@@ -2322,12 +2321,12 @@ router.get(
         .get();
 
       if (overrideDoc.exists) {
-        res.json({ data: { ...overrideDoc.data(), id: overrideDoc.id } });
+        res.json({data: {...overrideDoc.data(), id: overrideDoc.id}});
         return;
       }
     }
 
-    res.json({ data: null });
+    res.json({data: null});
   }
 );
 
@@ -2360,12 +2359,12 @@ router.get(
         .get();
 
       if (overrideDoc.exists) {
-        res.json({ data: { ...overrideDoc.data(), id: overrideDoc.id } });
+        res.json({data: {...overrideDoc.data(), id: overrideDoc.id}});
         return;
       }
     }
 
-    res.json({ data: null });
+    res.json({data: null});
   }
 );
 
@@ -2401,7 +2400,7 @@ router.get("/workout/client-programs", async (req, res) => {
     });
   }
 
-  res.json({ data: results });
+  res.json({data: results});
 });
 
 // GET /workout/client-programs/:programId
@@ -2416,7 +2415,7 @@ router.get("/workout/client-programs/:programId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa de cliente no encontrado");
   }
 
-  res.json({ data: { ...doc.data(), id: doc.id } });
+  res.json({data: {...doc.data(), id: doc.id}});
 });
 
 // POST /workout/client-programs/:programId
@@ -2439,9 +2438,9 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
     writeData.created_at = FieldValue.serverTimestamp();
   }
 
-  await docRef.set(writeData, { merge: true });
+  await docRef.set(writeData, {merge: true});
 
-  res.json({ data: { id: docId } });
+  res.json({data: {id: docId}});
 });
 
 // PATCH /workout/client-programs/:programId/overrides
@@ -2482,7 +2481,7 @@ router.patch("/workout/client-programs/:programId/overrides", async (req, res) =
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // DELETE /workout/client-programs/:programId
@@ -2529,12 +2528,12 @@ router.get("/workout/planned-session", async (req, res) => {
     .get();
 
   if (snap.empty) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
   const doc = snap.docs[0];
-  res.json({ data: { ...doc.data(), id: doc.id } });
+  res.json({data: {...doc.data(), id: doc.id}});
 });
 
 // GET /workout/calendar/planned — planned session dates in range
@@ -2596,7 +2595,7 @@ router.get("/workout/calendar/planned", async (req, res) => {
   const planDates: string[] = [];
   for (const weekKey of allWeekKeys) {
     const assignment = planAssignments[weekKey] ?? null;
-    const { start: weekStart, end: weekEnd } = getWeekDates(weekKey);
+    const {start: weekStart, end: weekEnd} = getWeekDates(weekKey);
     const weekStartStr = toLocalDateISO(weekStart);
     const weekEndStr = toLocalDateISO(weekEnd);
     if (weekEndStr < startDate || weekStartStr > endDate) continue;
@@ -2604,9 +2603,9 @@ router.get("/workout/calendar/planned", async (req, res) => {
     const docId = planContentDocId(auth.userId, courseId, weekKey);
     const docRef = db.collection("client_plan_content").doc(docId);
     // Reuse already-fetched snapshot for unplanned weeks
-    const docSnap = unplannedFound.includes(weekKey)
-      ? unplannedSnapshots[scanWeeks.indexOf(weekKey)]
-      : await docRef.get();
+    const docSnap = unplannedFound.includes(weekKey) ?
+      unplannedSnapshots[scanWeeks.indexOf(weekKey)] :
+      await docRef.get();
 
     let sessions: FirebaseFirestore.QueryDocumentSnapshot[];
     if (docSnap.exists) {
@@ -2633,7 +2632,7 @@ router.get("/workout/calendar/planned", async (req, res) => {
   }
 
   const allDates = [...new Set([...dateDates, ...planDates])].sort();
-  res.json({ data: allDates });
+  res.json({data: allDates});
 });
 
 // GET /workout/calendar/completed — completed session dates in range
@@ -2683,7 +2682,7 @@ router.get("/workout/calendar/completed", async (req, res) => {
     allDates.filter((date): date is string => !!date && date >= startDate && date <= endDate)
   )];
 
-  res.json({ data: dates });
+  res.json({data: dates});
 });
 
 // GET /workout/calendar — low-ticket completed session dates from sessionHistory
@@ -2731,7 +2730,7 @@ router.get("/workout/calendar", async (req, res) => {
   const dates = [...new Set(
     allDates.filter((date): date is string => !!date && date >= startDate && date <= endDate)
   )];
-  res.json({ data: dates });
+  res.json({data: dates});
 });
 
 // ─── Content Tree Reads (PWA-facing) ─────────────────────────────────────
@@ -2745,7 +2744,7 @@ async function loadExerciseTree(parentRef: FirebaseFirestore.DocumentReference) 
       return {
         id: eDoc.id,
         ...eDoc.data(),
-        sets: setsSnap.docs.map((s) => ({ ...s.data(), id: s.id })),
+        sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id})),
       };
     })
   );
@@ -2760,12 +2759,12 @@ router.get("/workout/client-session-content/:clientSessionId", async (req, res) 
   const doc = await docRef.get();
 
   if (!doc.exists) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
   const exercises = await loadExerciseTree(docRef);
-  res.json({ data: { ...doc.data(), id: doc.id, exercises } });
+  res.json({data: {...doc.data(), id: doc.id, exercises}});
 });
 
 // GET /workout/client-plan-content/:userId/:programId/:weekKey
@@ -2779,7 +2778,7 @@ router.get("/workout/client-plan-content/:userId/:programId/:weekKey", async (re
   const doc = await docRef.get();
 
   if (!doc.exists) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
@@ -2790,11 +2789,11 @@ router.get("/workout/client-plan-content/:userId/:programId/:weekKey", async (re
   const sessions = await Promise.all(
     sessionsSnap.docs.map(async (sDoc) => {
       const exercises = await loadExerciseTree(sDoc.ref);
-      return { ...sDoc.data(), id: sDoc.id, exercises };
+      return {...sDoc.data(), id: sDoc.id, exercises};
     })
   );
 
-  res.json({ data: { id: doc.id, ...docData, sessions } });
+  res.json({data: {id: doc.id, ...docData, sessions}});
 });
 
 // GET /workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full
@@ -2816,7 +2815,7 @@ router.get("/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", 
   }
 
   const exercises = await loadExerciseTree(sessionRef);
-  res.json({ data: { ...sessionDoc.data(), id: sessionDoc.id, exercises } });
+  res.json({data: {...sessionDoc.data(), id: sessionDoc.id, exercises}});
 });
 
 // GET /library/sessions/:sessionId — library session with full exercise tree
@@ -2841,7 +2840,7 @@ router.get("/library/sessions/:sessionId", async (req, res) => {
   }
 
   const exercises = await loadExerciseTree(sessionRef);
-  res.json({ data: { ...doc.data(), id: doc.id, exercises } });
+  res.json({data: {...doc.data(), id: doc.id, exercises}});
 });
 
 export default router;

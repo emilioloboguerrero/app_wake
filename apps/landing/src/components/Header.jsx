@@ -9,7 +9,7 @@ const ANIM_DURATION = 300;
 const SCROLL_THRESHOLD = 10;
 
 const navItems = [
-  { to: '/creators', label: 'Creadores' },
+  { to: '/creadores', label: 'Creadores' },
 ];
 
 const Header = () => {

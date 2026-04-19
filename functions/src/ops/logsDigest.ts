@@ -24,6 +24,16 @@ interface StateDoc {
   countsByDay: {[date: string]: number};
 }
 
+type IpClass = "google-crawler" | "other";
+
+type EventCategory =
+  | "bot-probe"
+  | "auth-expiry"
+  | "broken-internal-link"
+  | "server-error"
+  | "client-error"
+  | "other";
+
 interface AggregatedError {
   fingerprint: string;
   functionName: string;
@@ -35,6 +45,15 @@ interface AggregatedError {
   userIds: Set<string>;
   firstMs: number;
   lastMs: number;
+  category: EventCategory;
+  remoteIps: Map<string, number>;
+  ipClasses: Map<IpClass, number>;
+  userAgents: Map<string, number>;
+  referers: Map<string, number>;
+  statuses: Set<number>;
+  paths: Set<string>;
+  sampleTrace: string;
+  sampleInsertId: string;
 }
 
 interface DeployEvent {
@@ -43,8 +62,22 @@ interface DeployEvent {
   resource: string;
 }
 
-const ERROR_TYPE_RE =
-  /\b(Error|TypeError|RangeError|SyntaxError|ReferenceError|ValidationError|FirebaseError|DeadlineExceeded|PermissionDenied|NotFound|Unauthenticated|ResourceExhausted|FailedPrecondition)\b/;
+const ERROR_TYPE_NAMES = [
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "ValidationError",
+  "FirebaseError",
+  "DeadlineExceeded",
+  "PermissionDenied",
+  "NotFound",
+  "Unauthenticated",
+  "ResourceExhausted",
+  "FailedPrecondition",
+];
+const ERROR_TYPE_RE = new RegExp(`\\b(${ERROR_TYPE_NAMES.join("|")})\\b`);
 const USER_TAG_RE = /\(user=([^)]+)\)/;
 const UUID_PATH_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX_PATH_RE = /^[0-9a-f]{20,}$/i;
@@ -202,6 +235,151 @@ function extractRouteFromMessage(message: string): {method: string; route: strin
   if (!m) return null;
   return {method: m[1], route: normalizeRoute(m[2])};
 }
+
+// IP ranges we see often enough that classifying them improves signal/noise.
+// Not exhaustive — extend as new crawler/cloud ranges surface. Match on
+// leading octets; skips the cost of a real CIDR library.
+const GOOGLE_IP_PREFIXES = [
+  "66.249.",
+  "66.102.",
+  "74.125.",
+  "142.250.",
+  "172.217.",
+  "192.178.",
+  "216.58.",
+];
+
+function classifyIp(ip: string | undefined): IpClass {
+  if (!ip) return "other";
+  for (const p of GOOGLE_IP_PREFIXES) {
+    if (ip.startsWith(p)) return "google-crawler";
+  }
+  return "other";
+}
+
+const BOT_PROBE_PATH_PATTERNS = [
+  /\.(env|git|php|aspx?|ini|bak|swp|ds_store)(\b|$|\?)/i,
+  /\/wp-(admin|login|content|includes)/i,
+  /\/\.well-known\//i,
+  /\/phpmyadmin|\/administrator/i,
+  /\/\.aws|\/\.ssh/i,
+];
+
+function isBotProbePath(route: string): boolean {
+  return BOT_PROBE_PATH_PATTERNS.some((re) => re.test(route));
+}
+
+function categorizeEvent(opts: {
+  isErr: boolean;
+  status?: number;
+  route?: string;
+  referer?: string;
+}): EventCategory {
+  const {isErr, status, route = "", referer = ""} = opts;
+  if (status && status >= 500) return "server-error";
+  if (isErr) return "server-error";
+  if (isBotProbePath(route)) return "bot-probe";
+  if (status === 401) return "auth-expiry";
+  if (status === 404 && /wakelab\.co/i.test(referer)) {
+    return "broken-internal-link";
+  }
+  if (status && status >= 400 && status < 500) return "client-error";
+  return "other";
+}
+
+interface RequestMeta {
+  ip?: string;
+  ua?: string;
+  referer?: string;
+  trace?: string;
+  insertId?: string;
+  status?: number;
+  route?: string;
+  method?: string;
+}
+
+function extractRequestMeta(entry: any): RequestMeta {
+  const hr = entry?.httpRequest || {};
+  let route: string | undefined;
+  let method: string | undefined;
+  if (typeof hr.requestUrl === "string") {
+    try {
+      route = normalizeRoute(new URL(hr.requestUrl).pathname);
+    } catch {
+      // requestUrl occasionally isn't a valid absolute URL; drop it
+    }
+  }
+  if (hr.requestMethod) method = String(hr.requestMethod).toUpperCase();
+  const rawTrace = typeof entry?.trace === "string" ? entry.trace : "";
+  const traceId = rawTrace ? rawTrace.split("/").pop() : undefined;
+  return {
+    ip: typeof hr.remoteIp === "string" ? hr.remoteIp : undefined,
+    ua: typeof hr.userAgent === "string" ? hr.userAgent : undefined,
+    referer: typeof hr.referer === "string" ? hr.referer : undefined,
+    trace: traceId,
+    insertId: typeof entry?.insertId === "string" ? entry.insertId : undefined,
+    status: typeof hr.status === "number" ? hr.status : undefined,
+    route,
+    method,
+  };
+}
+
+// Condense a UA string to one recognizable token. Full UAs blow the telegram
+// budget and all we need is the category: "Googlebot" vs "iOS Safari" vs "curl".
+function shortUserAgent(ua: string): string {
+  if (/Googlebot|Google-Site-Verification/i.test(ua)) return "Googlebot";
+  if (/bingbot/i.test(ua)) return "Bingbot";
+  if (/DuckDuckBot/i.test(ua)) return "DuckDuckBot";
+  if (/curl\//i.test(ua)) return "curl";
+  if (/python-requests|python\//i.test(ua)) return "python";
+  if (/Go-http-client/i.test(ua)) return "Go";
+  if (/bot|crawler|spider/i.test(ua)) return "bot/other";
+  if (/iPhone|iPad/.test(ua)) return /Safari/.test(ua) ? "iOS Safari" : "iOS";
+  if (/Android/.test(ua)) return "Android";
+  if (/Edg\//.test(ua)) return "Edge";
+  if (/Chrome/.test(ua)) return "Chrome";
+  if (/Firefox/.test(ua)) return "Firefox";
+  if (/Safari/.test(ua)) return "Safari";
+  return ua.slice(0, 30);
+}
+
+function shortReferer(ref: string): string {
+  try {
+    const u = new URL(ref);
+    const s = u.host + u.pathname;
+    return s.length > 50 ? s.slice(0, 50) + "…" : s;
+  } catch {
+    return ref.length > 50 ? ref.slice(0, 50) + "…" : ref;
+  }
+}
+
+function deepLinkForTrace(projectId: string, trace: string): string {
+  const q = encodeURIComponent(
+    `trace="projects/${projectId}/traces/${trace}"`
+  );
+  return `https://console.cloud.google.com/logs/query?project=${projectId}&q=${q}`;
+}
+
+function deepLinkForInsertId(projectId: string, insertId: string): string {
+  const q = encodeURIComponent(`insertId="${insertId}"`);
+  return `https://console.cloud.google.com/logs/query?project=${projectId}&q=${q}`;
+}
+
+function topN<K>(m: Map<K, number>, n: number): K[] {
+  return [...m.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([k]) => k);
+}
+
+function bumpMap<K>(m: Map<K, number>, key: K | undefined): void {
+  if (key === undefined) return;
+  m.set(key, (m.get(key) ?? 0) + 1);
+}
+
+// Synthetic fingerprint — all bot probes across all paths collapse to this
+// single bucket so .env / .git / wp-admin / etc. don't each occupy a NEW slot.
+const BOT_PROBE_FINGERPRINT = "bot-probes-aggregate";
 
 function deriveFunctionLabel(
   rawFunctionName: string,
@@ -433,11 +611,29 @@ export async function runLogsDigest(opts: {
     const messageRaw = extractMessage(entry);
     if (!messageRaw) continue;
 
-    const functionLabel = deriveFunctionLabel(rawFunctionName, entry, messageRaw);
+    const meta = extractRequestMeta(entry);
+    const ipClass = classifyIp(meta.ip);
+    const category = categorizeEvent({
+      isErr,
+      status: meta.status,
+      route: meta.route,
+      referer: meta.referer,
+    });
+
+    // Collapse all bot-probes into one synthetic fingerprint so a burst of
+    // .env / wp-admin / .git scans doesn't flood NEW.
+    const isBotProbe = category === "bot-probe";
+    const functionLabel = isBotProbe ?
+      "bot-probes" :
+      deriveFunctionLabel(rawFunctionName, entry, messageRaw);
     const errorType = inferErrorType(messageRaw, severity);
-    const fp = fingerprintError(functionLabel, errorType, messageRaw);
+    const fp = isBotProbe ?
+      BOT_PROBE_FINGERPRINT :
+      fingerprintError(functionLabel, errorType, messageRaw);
     const userId = extractUserId(messageRaw, entry);
     const timeMs = entryTimeMs(entry);
+    const uaShort = meta.ua ? shortUserAgent(meta.ua) : undefined;
+    const refShort = meta.referer ? shortReferer(meta.referer) : undefined;
 
     const existing = perFp.get(fp);
     if (existing) {
@@ -447,9 +643,28 @@ export async function runLogsDigest(opts: {
       if (userId) existing.userIds.add(userId);
       if (timeMs < existing.firstMs) existing.firstMs = timeMs;
       if (timeMs > existing.lastMs) existing.lastMs = timeMs;
+      bumpMap(existing.remoteIps, meta.ip);
+      bumpMap(existing.ipClasses, ipClass);
+      bumpMap(existing.userAgents, uaShort);
+      bumpMap(existing.referers, refShort);
+      if (meta.status !== undefined) existing.statuses.add(meta.status);
+      if (meta.route) existing.paths.add(meta.route);
+      // Keep the earliest sample's trace/insertId for the deep-link.
     } else {
       const userIds = new Set<string>();
       if (userId) userIds.add(userId);
+      const remoteIps = new Map<string, number>();
+      bumpMap(remoteIps, meta.ip);
+      const ipClasses = new Map<IpClass, number>();
+      bumpMap(ipClasses, ipClass);
+      const userAgents = new Map<string, number>();
+      bumpMap(userAgents, uaShort);
+      const referers = new Map<string, number>();
+      bumpMap(referers, refShort);
+      const statuses = new Set<number>();
+      if (meta.status !== undefined) statuses.add(meta.status);
+      const paths = new Set<string>();
+      if (meta.route) paths.add(meta.route);
       perFp.set(fp, {
         fingerprint: fp,
         functionName: functionLabel,
@@ -461,6 +676,15 @@ export async function runLogsDigest(opts: {
         userIds,
         firstMs: timeMs,
         lastMs: timeMs,
+        category,
+        remoteIps,
+        ipClasses,
+        userAgents,
+        referers,
+        statuses,
+        paths,
+        sampleTrace: meta.trace ?? "",
+        sampleInsertId: meta.insertId ?? "",
       });
     }
   }
@@ -543,29 +767,85 @@ export async function runLogsDigest(opts: {
   recurring.sort((a, b) => rankByImpact(a.entry, b.entry));
   chronic.sort((a, b) => rankByImpact(a.entry, b.entry));
 
-  const formatEntry = (e: AggregatedError, extra?: string): string => {
+  const categoryTag: Record<EventCategory, string> = {
+    "bot-probe": "[noise]",
+    "auth-expiry": "[auth]",
+    "broken-internal-link": "[actionable]",
+    "server-error": "[server]",
+    "client-error": "",
+    "other": "",
+  };
+
+  const formatEntry = (
+    e: AggregatedError,
+    opts: {extra?: string; rich: boolean}
+  ): string => {
     const severityTag =
       e.errorCount > 0 && e.warnCount > 0 ?
         `${e.errorCount} err, ${e.warnCount} warn` :
         e.errorCount > 0 ?
-        `${e.errorCount} err` :
-        `${e.warnCount} warn`;
+          `${e.errorCount} err` :
+          `${e.warnCount} warn`;
     const users = e.userIds.size > 0 ? `, ${e.userIds.size} user${e.userIds.size === 1 ? "" : "s"}` : "";
     const timeRange =
       e.firstMs && e.lastMs && e.lastMs - e.firstMs < 30 * 60_000 ?
         `, burst ${hhmm(e.firstMs)}` :
         `, ${hhmm(e.firstMs)}–${hhmm(e.lastMs)}`;
-    const suffix = extra ? `, ${extra}` : "";
+    const suffix = opts.extra ? `, ${opts.extra}` : "";
+    const tag = categoryTag[e.category] ? ` ${categoryTag[e.category]}` : "";
+
+    // Bot-probe meta-entry renders as a single compact summary line instead of
+    // the usual "ErrorType: sample" format — paths is what's meaningful.
+    if (e.fingerprint === BOT_PROBE_FINGERPRINT) {
+      const pathSample = [...e.paths].slice(0, 3).join(", ");
+      const pathMore = e.paths.size > 3 ? ` +${e.paths.size - 3} more` : "";
+      const ipClassBreakdown = [...e.ipClasses.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `${v} ${k}`)
+        .join(", ");
+      return (
+        `• bot-probes — ${e.count} hits across ${e.paths.size} ` +
+        `path${e.paths.size === 1 ? "" : "s"} (${pathSample}${pathMore}), ` +
+        `${e.remoteIps.size} IPs [${ipClassBreakdown}] ` +
+        `(${severityTag}${timeRange}${suffix}) [noise]`
+      );
+    }
+
     // Drop the "ErrorType:" prefix when the sample already begins with it.
     const sample = e.sampleMessage;
     const prefix =
       sample.toLowerCase().startsWith(`${e.errorType.toLowerCase()}:`) ?
         "" :
         `${e.errorType}: `;
-    return (
+
+    const base =
       `• ${e.functionName} — ${prefix}${sample} ` +
-      `(${severityTag}${users}${timeRange}${suffix})`
-    );
+      `(${severityTag}${users}${timeRange}${suffix})${tag}`;
+
+    if (!opts.rich) return base;
+
+    // Rich mode: append context line (IP class, UA, referer) and deep-link
+    // only for NEW/SPIKING, where the extra bytes are worth the budget.
+    const contextBits: string[] = [];
+    const topIpClass = topN(e.ipClasses, 1)[0];
+    if (topIpClass && topIpClass !== "other") {
+      contextBits.push(`ip=${topIpClass}`);
+    }
+    const topUa = topN(e.userAgents, 1)[0];
+    if (topUa) contextBits.push(`ua=${topUa}`);
+    const topRef = topN(e.referers, 1)[0];
+    if (topRef) contextBits.push(`ref=${topRef}`);
+
+    const lines = [base];
+    if (contextBits.length > 0) {
+      lines.push(`  ↳ ${contextBits.join(" · ")}`);
+    }
+    if (e.sampleTrace) {
+      lines.push(`  ↳ ${deepLinkForTrace(projectId, e.sampleTrace)}`);
+    } else if (e.sampleInsertId) {
+      lines.push(`  ↳ ${deepLinkForInsertId(projectId, e.sampleInsertId)}`);
+    }
+    return lines.join("\n");
   };
 
   const lines: string[] = [];
@@ -591,7 +871,7 @@ export async function runLogsDigest(opts: {
   if (newOnes.length > 0) {
     lines.push(`NEW (${newOnes.length})`);
     for (const s of newOnes) {
-      lines.push(formatEntry(s.entry));
+      lines.push(formatEntry(s.entry, {rich: true}));
     }
     lines.push("");
   }
@@ -600,7 +880,9 @@ export async function runLogsDigest(opts: {
     lines.push(`SPIKING vs 7d avg (${spiking.length})`);
     for (const s of spiking) {
       const pct = Math.round((s.entry.count / Math.max(s.avg, 1) - 1) * 100);
-      lines.push(formatEntry(s.entry, `avg ${s.avg.toFixed(1)}, +${pct}%`));
+      lines.push(
+        formatEntry(s.entry, {extra: `avg ${s.avg.toFixed(1)}, +${pct}%`, rich: true})
+      );
     }
     lines.push("");
   }
@@ -608,7 +890,7 @@ export async function runLogsDigest(opts: {
   if (recurring.length > 0) {
     lines.push(`RECURRING — first seen in last 24h (${recurring.length})`);
     for (const s of recurring) {
-      lines.push(formatEntry(s.entry));
+      lines.push(formatEntry(s.entry, {rich: false}));
     }
     lines.push("");
   }
@@ -616,7 +898,7 @@ export async function runLogsDigest(opts: {
   if (chronic.length > 0) {
     lines.push(`CHRONIC — first seen earlier (${chronic.length})`);
     for (const s of chronic) {
-      lines.push(formatEntry(s.entry));
+      lines.push(formatEntry(s.entry, {rich: false}));
     }
     lines.push("");
   }

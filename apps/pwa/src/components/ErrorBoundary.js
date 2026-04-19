@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { currentConfig } from '../config/environment';
 import logger from '../utils/logger';
+import { reportError as reportClientError } from '../utils/errorReporter';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -15,15 +16,24 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Log error details
     logger.error('ErrorBoundary caught an error:', error, errorInfo);
-    
+
     this.setState({
       error: error,
       errorInfo: errorInfo
     });
 
-    // Crash reporting placeholder — monitoringService was removed (no-op, used unavailable packages).
+    try {
+      reportClientError({
+        message: error?.message ? String(error.message) : String(error),
+        stack: error?.stack ? String(error.stack) : null,
+        url:
+          (typeof location !== 'undefined' ? location.pathname : '') +
+          (errorInfo?.componentStack ?
+            ` [react:${errorInfo.componentStack.trim().split('\n')[0]?.trim()}]` :
+            ''),
+      });
+    } catch (_) {}
   }
 
   handleRetry = () => {

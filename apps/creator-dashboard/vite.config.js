@@ -28,7 +28,7 @@ export default defineConfig({
   build: {
     outDir: 'build',
     chunkSizeWarningLimit: 5000,
-    sourcemap: false,
+    sourcemap: true,
     minify: 'esbuild',
     target: 'esnext',
     cssCodeSplit: false,

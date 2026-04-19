@@ -13,6 +13,7 @@ export async function handleSignalsWebhook(
     allowedChatId: string;
     webhookSecret: string;
     projectId: string;
+    rawChatId?: string;
   }
 ): Promise<void> {
   const provided = (req.header("x-telegram-bot-api-secret-token") ?? "").trim();
@@ -71,6 +72,7 @@ export async function handleSignalsWebhook(
     await handler.run({
       botToken,
       chatId,
+      rawChatId: opts.rawChatId,
       projectId: opts.projectId,
     });
   } catch (err) {

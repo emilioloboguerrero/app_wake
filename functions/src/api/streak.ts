@@ -1,4 +1,4 @@
-import { db, FieldValue } from "./firestore.js";
+import {db, FieldValue} from "./firestore.js";
 
 const DAYS_WITHOUT_ACTIVITY_TO_DIE = 4;
 
@@ -51,16 +51,16 @@ export async function updateStreak(
 
     if (gap < 0) {
       // Activity date is before last known — no update needed
-      return { updated: false, streakData: { lastActivityDate: lastKnownActivityDate, streakStartDate: null, longestStreak: 0, longestStreakStartDate: null, longestStreakEndDate: null } };
+      return {updated: false, streakData: {lastActivityDate: lastKnownActivityDate, streakStartDate: null, longestStreak: 0, longestStreakStartDate: null, longestStreakEndDate: null}};
     }
 
     if (gap < DAYS_WITHOUT_ACTIVITY_TO_DIE) {
       // Streak is alive, just update lastActivityDate
       await db.collection("users").doc(userId).update({
         "activityStreak.lastActivityDate": activityDate,
-        updated_at: FieldValue.serverTimestamp(),
+        "updated_at": FieldValue.serverTimestamp(),
       });
-      return { updated: true, streakData: { lastActivityDate: activityDate, streakStartDate: null, longestStreak: 0, longestStreakStartDate: null, longestStreakEndDate: null } };
+      return {updated: true, streakData: {lastActivityDate: activityDate, streakStartDate: null, longestStreak: 0, longestStreakStartDate: null, longestStreakEndDate: null}};
     }
 
     // Streak was dead — reset start date, update longest if needed
@@ -123,7 +123,7 @@ export async function updateStreak(
     "activityStreak.lastActivityDate": activityDate,
     "activityStreak.streakStartDate": newStreakStart,
     "activityStreak.longestStreak": newLongest,
-    updated_at: FieldValue.serverTimestamp(),
+    "updated_at": FieldValue.serverTimestamp(),
   };
 
   if (newLongest > previousLongest) {

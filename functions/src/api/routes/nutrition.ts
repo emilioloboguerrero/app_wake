@@ -1,11 +1,11 @@
-import { Router } from "express";
-import { db, FieldValue, Timestamp } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody, pickFields, validateDateFormat } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
-import { updateStreak } from "../streak.js";
+import {Router} from "express";
+import {db, FieldValue, Timestamp} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody, pickFields, validateDateFormat} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
+import {updateStreak} from "../streak.js";
 
 const router = Router();
 
@@ -14,7 +14,7 @@ router.get("/nutrition/diary", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { date, startDate, endDate } = req.query as Record<string, string>;
+  const {date, startDate, endDate} = req.query as Record<string, string>;
 
   // Validate date formats
   if (date) validateDateFormat(date, "date");
@@ -43,7 +43,7 @@ router.get("/nutrition/diary", async (req, res) => {
     ...doc.data(),
   }));
 
-  res.json({ data: entries });
+  res.json({data: entries});
 });
 
 // POST /nutrition/diary — accepts individual diary entry (one food item per call)
@@ -90,13 +90,13 @@ router.post("/nutrition/diary", async (req, res) => {
       lastKnownActivityDate: "optional_string",
     },
     req.body,
-    { maxArrayLength: 100 }
+    {maxArrayLength: 100}
   );
 
   // Validate date format
   validateDateFormat(body.date, "date");
 
-  const { lastKnownActivityDate, ...diaryFields } = body;
+  const {lastKnownActivityDate, ...diaryFields} = body;
 
   const docRef = await db
     .collection("users")
@@ -110,7 +110,7 @@ router.post("/nutrition/diary", async (req, res) => {
 
   const streakResult = await updateStreak(auth.userId, body.date, lastKnownActivityDate);
 
-  res.status(201).json({ data: { id: docRef.id, entryId: docRef.id, streakUpdated: streakResult.updated } });
+  res.status(201).json({data: {id: docRef.id, entryId: docRef.id, streakUpdated: streakResult.updated}});
 });
 
 // POST /nutrition/diary/batch — add multiple diary entries at once
@@ -118,7 +118,7 @@ router.post("/nutrition/diary/batch", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { entries } = req.body;
+  const {entries} = req.body;
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "entries debe ser un array no vacío", "entries");
   }
@@ -146,9 +146,9 @@ router.post("/nutrition/diary/batch", async (req, res) => {
       fat: entry.fat ?? null,
       serving_unit: entry.serving_unit ?? null,
       grams_per_unit: entry.grams_per_unit ?? null,
-      ...(Array.isArray(entry.servings) ? { servings: entry.servings } : {}),
-      ...(entry.recipe_video_url ? { recipe_video_url: entry.recipe_video_url } : {}),
-      ...(entry.recipe_name ? { recipe_name: entry.recipe_name } : {}),
+      ...(Array.isArray(entry.servings) ? {servings: entry.servings} : {}),
+      ...(entry.recipe_video_url ? {recipe_video_url: entry.recipe_video_url} : {}),
+      ...(entry.recipe_name ? {recipe_name: entry.recipe_name} : {}),
       userId: auth.userId,
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -162,7 +162,7 @@ router.post("/nutrition/diary/batch", async (req, res) => {
   const lastKnownActivityDate = req.body.lastKnownActivityDate as string | undefined;
   const streakResult = streakDate ? await updateStreak(auth.userId, streakDate, lastKnownActivityDate) : null;
 
-  res.status(201).json({ data: { entryIds: ids, streakUpdated: streakResult?.updated ?? false } });
+  res.status(201).json({data: {entryIds: ids, streakUpdated: streakResult?.updated ?? false}});
 });
 
 // PATCH /nutrition/diary/:entryId
@@ -201,7 +201,7 @@ router.patch("/nutrition/diary/:entryId", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // DELETE /nutrition/diary/:entryId
@@ -263,14 +263,14 @@ router.get("/nutrition/foods/search", async (req, res) => {
     const cacheData = cached.data()!;
     const expiresAt = cacheData.expires_at?.toDate?.() ?? new Date(0);
     if (expiresAt > new Date()) {
-      res.json({ data: cacheData.results, cached: true });
+      res.json({data: cacheData.results, cached: true});
       return;
     }
   }
 
 
   // Call FatSecret via the existing Gen1 function's token logic
-  const { FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET } = process.env;
+  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
   if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
     throw new WakeApiServerError(
       "SERVICE_UNAVAILABLE", 503,
@@ -293,7 +293,7 @@ router.get("/nutrition/foods/search", async (req, res) => {
 
   const fsRes = await fetch(
     `https://platform.fatsecret.com/rest/foods/search/v4?${params}`,
-    { headers: { Authorization: `Bearer ${fsToken}` } }
+    {headers: {Authorization: `Bearer ${fsToken}`}}
   );
 
   if (!fsRes.ok) {
@@ -322,7 +322,7 @@ router.get("/nutrition/foods/search", async (req, res) => {
     expires_at: Timestamp.fromDate(thirtyDays),
   }).catch(() => {});
 
-  res.json({ data: transformed });
+  res.json({data: transformed});
 });
 
 // GET /nutrition/foods/:foodId
@@ -334,7 +334,7 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
     auth.authType === "apikey" ? "rate_limit_windows" : "rate_limit_first_party"
   );
 
-  const { FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET } = process.env;
+  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
   if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
     throw new WakeApiServerError(
       "SERVICE_UNAVAILABLE", 503, "Servicio de nutrición no configurado"
@@ -354,7 +354,7 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
 
   const fsRes = await fetch(
     `https://platform.fatsecret.com/rest/food/v5?${params}`,
-    { headers: { Authorization: `Bearer ${fsToken}` } }
+    {headers: {Authorization: `Bearer ${fsToken}`}}
   );
 
   if (!fsRes.ok) {
@@ -369,7 +369,7 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
   const rawResult = await fsRes.json();
   // Return the food object directly (unwrap {food: {...}} wrapper)
   const foodData = rawResult?.food ?? rawResult;
-  res.json({ data: foodData });
+  res.json({data: foodData});
 });
 
 // GET /nutrition/foods/barcode/:barcode
@@ -390,7 +390,7 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
     );
   }
 
-  const { FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET } = process.env;
+  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
   if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
     throw new WakeApiServerError(
       "SERVICE_UNAVAILABLE", 503, "Servicio de nutrición no configurado"
@@ -410,7 +410,7 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
 
   const fsRes = await fetch(
     `https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`,
-    { headers: { Authorization: `Bearer ${fsToken}` } }
+    {headers: {Authorization: `Bearer ${fsToken}`}}
   );
 
   if (!fsRes.ok) {
@@ -428,7 +428,7 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
 
   const rawResult = await fsRes.json();
   const foodData = rawResult?.food_id ? rawResult : rawResult?.food ?? rawResult;
-  res.json({ data: foodData });
+  res.json({data: foodData});
 });
 
 // GET /nutrition/saved-foods — paginated with limit
@@ -463,7 +463,7 @@ router.get("/nutrition/saved-foods", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((doc) => ({ id: doc.id, savedFoodId: doc.id, ...doc.data() })),
+    data: docs.map((doc) => ({id: doc.id, savedFoodId: doc.id, ...doc.data()})),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -508,7 +508,7 @@ router.post("/nutrition/saved-foods", async (req, res) => {
       barcode: "optional_string",
     },
     req.body,
-    { maxArrayLength: 100 }
+    {maxArrayLength: 100}
   );
 
   const docRef = await db
@@ -521,7 +521,7 @@ router.post("/nutrition/saved-foods", async (req, res) => {
       savedAt: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id, savedFoodId: docRef.id } });
+  res.status(201).json({data: {id: docRef.id, savedFoodId: docRef.id}});
 });
 
 // PATCH /nutrition/saved-foods/:savedFoodId
@@ -558,7 +558,7 @@ router.patch("/nutrition/saved-foods/:savedFoodId", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { updated: true } });
+  res.json({data: {updated: true}});
 });
 
 // DELETE /nutrition/saved-foods/:savedFoodId
@@ -590,7 +590,7 @@ router.get("/nutrition/assignment", async (req, res) => {
   if (req.query.date) validateDateFormat(date, "date");
 
   // Production assignments may not have a status field — query without status filter
-  let assignmentQuery: Query = db
+  const assignmentQuery: Query = db
     .collection("nutrition_assignments")
     .where("userId", "==", auth.userId);
 
@@ -611,7 +611,7 @@ router.get("/nutrition/assignment", async (req, res) => {
   });
 
   if (matchingDocs.length === 0) {
-    res.json({ data: null });
+    res.json({data: null});
     return;
   }
 
@@ -702,7 +702,7 @@ router.get("/nutrition/user-meals", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ id: d.id, mealId: d.id, ...d.data() })),
+    data: snapshot.docs.map((d) => ({id: d.id, mealId: d.id, ...d.data()})),
   });
 });
 
@@ -712,9 +712,9 @@ router.post("/nutrition/user-meals", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ name: string; items?: unknown[] }>(
-    { name: "string", items: "optional_array" },
+    {name: "string", items: "optional_array"},
     req.body,
-    { maxArrayLength: 50 }
+    {maxArrayLength: 50}
   );
 
   const docRef = await db
@@ -727,7 +727,7 @@ router.post("/nutrition/user-meals", async (req, res) => {
       updated_at: FieldValue.serverTimestamp(),
     });
 
-  res.status(201).json({ data: { id: docRef.id, mealId: docRef.id } });
+  res.status(201).json({data: {id: docRef.id, mealId: docRef.id}});
 });
 
 // PATCH /nutrition/user-meals/:mealId
@@ -752,8 +752,8 @@ router.patch("/nutrition/user-meals/:mealId", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
   }
 
-  await docRef.update({ ...updates, updated_at: FieldValue.serverTimestamp() });
-  res.json({ data: { updated: true } });
+  await docRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
+  res.json({data: {updated: true}});
 });
 
 // DELETE /nutrition/user-meals/:mealId
@@ -791,13 +791,13 @@ async function getFatSecretToken(
   }
 
   const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const body = new URLSearchParams({ grant_type: "client_credentials", scope }).toString();
+  const body = new URLSearchParams({grant_type: "client_credentials", scope}).toString();
 
   const tokenRes = await fetch("https://oauth.fatsecret.com/connect/token", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${auth}`,
+      "Authorization": `Basic ${auth}`,
     },
     body,
   });
@@ -818,7 +818,7 @@ async function getFatSecretToken(
   const expiresAt =
     Date.now() +
     (typeof data.expires_in === "number" ? data.expires_in : 86400) * 1000;
-  fsTokenCache.set(scope, { token: data.access_token, expiresAt });
+  fsTokenCache.set(scope, {token: data.access_token, expiresAt});
   return data.access_token;
 }
 

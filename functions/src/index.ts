@@ -15,6 +15,12 @@ import * as webpush from "web-push";
 import "./init.js";
 import {app} from "./api/app.js";
 import {runLogsDigest} from "./ops/logsDigest.js";
+import {runCronHeartbeat} from "./ops/cronHeartbeat.js";
+import {runPaymentsPulse} from "./ops/paymentsPulse.js";
+import {runQuotaWatch} from "./ops/quotaWatch.js";
+import {runClientErrors} from "./ops/clientErrors.js";
+import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
+import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
 import {
   type ParsedReference,
@@ -755,7 +761,7 @@ export const processPaymentWebhook = functions
         const processedDoc = await processedPaymentsRef.get();
         if (processedDoc.exists) {
           const processedStatus = processedDoc.data()?.status;
-          
+
           // Allow reprocessing if previous status was pending/in_process/processing (for async payments like PSE/Bancolombia)
           // "processing" status means the transaction started but payment wasn't approved yet
           // This handles the case where payment.created had status "pending" and payment.updated has status "approved"
@@ -885,7 +891,7 @@ export const processPaymentWebhook = functions
           "Payment ID:",
           paymentId
         );
-        
+
         // For pending/in_process payments, don't mark as processed
         // This allows the payment.updated webhook to process it when status becomes "approved"
         if (paymentData?.status === "pending" || paymentData?.status === "in_process") {
@@ -893,12 +899,12 @@ export const processPaymentWebhook = functions
             "Payment is pending/in_process, waiting for approval:",
             paymentId
           );
-          
+
           // DON'T mark as processed - allow payment.updated to process when approved
           response.status(200).send("OK");
           return;
         }
-        
+
         // For failed/rejected payments, mark as processed to prevent reprocessing
         await processedPaymentsRef.set({
           processed_at: admin.firestore.FieldValue.serverTimestamp(),
@@ -1393,7 +1399,7 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
     }
 
     const creatorId = context.auth.uid;
-    const { emailOrUsername } = data || {};
+    const {emailOrUsername} = data || {};
 
     if (!emailOrUsername || typeof emailOrUsername !== "string") {
       throw new functions.https.HttpsError(
@@ -1412,9 +1418,9 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
 
     // Check caller is creator or admin
     const creatorDoc = await db.collection("users").doc(creatorId).get();
-    const role = creatorDoc.exists
-      ? (creatorDoc.data()?.role as string | undefined)
-      : undefined;
+    const role = creatorDoc.exists ?
+      (creatorDoc.data()?.role as string | undefined) :
+      undefined;
     if (role !== "creator" && role !== "admin") {
       throw new functions.https.HttpsError(
         "permission-denied",
@@ -1495,9 +1501,9 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       if (age == null && d.birthDate) {
         const raw = d.birthDate as { toDate?: () => Date } | string;
         const birthDate =
-          typeof raw === "object" && raw?.toDate
-            ? raw.toDate()
-            : new Date(raw as string);
+          typeof raw === "object" && raw?.toDate ?
+            raw.toDate() :
+            new Date(raw as string);
         if (!isNaN(birthDate.getTime())) {
           age =
             new Date().getFullYear() -
@@ -1518,14 +1524,14 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       city = String(d.city ?? d.location ?? "");
       const h = d.height;
       height =
-        h != null && (typeof h === "number" || typeof h === "string")
-          ? h
-          : null;
+        h != null && (typeof h === "number" || typeof h === "string") ?
+          h :
+          null;
       const w = d.bodyweight ?? d.weight;
       weight =
-        w != null && (typeof w === "number" || typeof w === "string")
-          ? w
-          : null;
+        w != null && (typeof w === "number" || typeof w === "string") ?
+          w :
+          null;
     }
 
     return {
@@ -1562,7 +1568,7 @@ const fatSecretTokenCache = new Map<
 async function getFatSecretToken(
   clientId: string,
   clientSecret: string,
-  scope: string = "basic"
+  scope = "basic"
 ): Promise<string> {
   const cached = fatSecretTokenCache.get(scope);
   if (
@@ -1608,7 +1614,7 @@ async function getFatSecretToken(
 
   const expiresAt =
     Date.now() + (typeof data.expires_in === "number" ? data.expires_in : 86400) * 1000;
-  fatSecretTokenCache.set(scope, { token: data.access_token, expiresAt });
+  fatSecretTokenCache.set(scope, {token: data.access_token, expiresAt});
   return data.access_token;
 }
 
@@ -1680,7 +1686,7 @@ export const nutritionFoodSearch = functions
       const res = await fetch(url, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
@@ -1756,7 +1762,7 @@ export const nutritionFoodGet = functions
       const res = await fetch(url, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
@@ -1834,7 +1840,7 @@ export const nutritionBarcodeLookup = functions
       const res = await fetch(url, {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
@@ -1950,8 +1956,8 @@ export const sendEventConfirmationEmail = functions
     const eventTitleRaw = (event.title as string) ?? "Evento Wake";
     const eventTitle = escapeHtml(eventTitleRaw);
     const confirmationMsg = escapeHtml(
-      ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined)
-        ?? "¡Tu lugar está confirmado! Nos vemos en el evento."
+      ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined) ??
+        "¡Tu lugar está confirmado! Nos vemos en el evento."
     );
     const checkInToken = reg.check_in_token as string | undefined;
     const eventImageUrl = escapeHtml((event.image_url as string | undefined) ?? "");
@@ -1971,9 +1977,9 @@ export const sendEventConfirmationEmail = functions
     const greeting = firstName ? `¡Hola, ${escapeHtml(firstName)}!` : "¡Hola!";
 
     // QR code image URL (api.qrserver.com, no server-side dependency)
-    const qrData = checkInToken
-      ? encodeURIComponent(JSON.stringify({eventId, token: checkInToken}))
-      : encodeURIComponent(regId);
+    const qrData = checkInToken ?
+      encodeURIComponent(JSON.stringify({eventId, token: checkInToken})) :
+      encodeURIComponent(regId);
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${qrData}&bgcolor=1a1a1a&color=ffffff&qzone=1`;
 
     const html = `
@@ -2104,7 +2110,7 @@ export const processRestTimerNotifications = onSchedule(
           const sub = subDoc.data();
           try {
             await webpush.sendNotification(
-              { endpoint: sub.endpoint, keys: sub.keys },
+              {endpoint: sub.endpoint, keys: sub.keys},
               payload
             );
           } catch (err: unknown) {
@@ -2117,7 +2123,7 @@ export const processRestTimerNotifications = onSchedule(
       );
 
       // Mark timer as sent
-      await timerDoc.ref.update({ status: "sent" });
+      await timerDoc.ref.update({status: "sent"});
 
       // Deactivate expired subscriptions
       if (deactivateIds.length > 0) {
@@ -2126,7 +2132,7 @@ export const processRestTimerNotifications = onSchedule(
           batch.update(
             db.collection("users").doc(userId)
               .collection("web_push_subscriptions").doc(id),
-            { isActive: false }
+            {isActive: false}
           );
         }
         await batch.commit();
@@ -2539,9 +2545,9 @@ export const eventPage = onRequest(
         const data = eventDoc.data()!;
         const title = data.title || "Evento Wake";
         const dateStr = formatEventDate(data.date);
-        const description = dateStr
-          ? `${dateStr}${data.location ? ` — ${data.location}` : ""}`
-          : (data.description?.slice(0, 160) || "Evento en Wake");
+        const description = dateStr ?
+          `${dateStr}${data.location ? ` — ${data.location}` : ""}` :
+          (data.description?.slice(0, 160) || "Evento en Wake");
         const ogImage = data.og_image_url || data.image_url || "/app_icon.png";
 
         // Replace OG meta tags
@@ -2711,12 +2717,12 @@ export const sendCallReminders = onSchedule(
       dateTimeStr: string,
       isCreator: boolean
     ): string {
-      const bodyText = isCreator
-        ? `Tienes una llamada programada con ${otherName}.`
-        : `Tienes una llamada con ${otherName}.`;
-      const greeting = recipientName
-        ? `¡Hola, ${recipientName.split(" ")[0]}!`
-        : "¡Hola!";
+      const bodyText = isCreator ?
+        `Tienes una llamada programada con ${otherName}.` :
+        `Tienes una llamada con ${otherName}.`;
+      const greeting = recipientName ?
+        `¡Hola, ${recipientName.split(" ")[0]}!` :
+        "¡Hola!";
 
       return `<!DOCTYPE html>
 <html lang="es">
@@ -2864,9 +2870,9 @@ export const detectAbandonedSessions = onSchedule(
       const userId = doc.ref.parent.parent?.id;
       if (!userId) continue;
 
-      const completedSetsCount = data.completedSets
-        ? Object.keys(data.completedSets as Record<string, unknown>).length
-        : 0;
+      const completedSetsCount = data.completedSets ?
+        Object.keys(data.completedSets as Record<string, unknown>).length :
+        0;
 
       batch.set(
         db
@@ -2887,7 +2893,7 @@ export const detectAbandonedSessions = onSchedule(
           detectedBy: "scheduled_scan",
           created_at: admin.firestore.FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        {merge: true}
       );
 
       batch.delete(doc.ref);
@@ -2950,10 +2956,14 @@ export const cleanupVideoExchanges = onSchedule(
 
         // Delete storage files
         if (msg.videoPath) {
-          try { await bucket.file(msg.videoPath).delete(); } catch (_e) { /* file may already be gone */ }
+          try {
+            await bucket.file(msg.videoPath).delete();
+          } catch (_e) {/* file may already be gone */}
         }
         if (msg.thumbnailPath) {
-          try { await bucket.file(msg.thumbnailPath).delete(); } catch (_e) { /* file may already be gone */ }
+          try {
+            await bucket.file(msg.thumbnailPath).delete();
+          } catch (_e) {/* file may already be gone */}
         }
 
         await msgDoc.ref.delete();
@@ -2966,7 +2976,7 @@ export const cleanupVideoExchanges = onSchedule(
         exchangesDeleted++;
       } else {
         // Some saved — update exchange
-        const updates: Record<string, unknown> = { status: "closed" };
+        const updates: Record<string, unknown> = {status: "closed"};
         if (latestSavedAt) {
           updates.lastMessageAt = latestSavedAt;
         }
@@ -2987,28 +2997,106 @@ export const cleanupVideoExchanges = onSchedule(
 const telegramSignalsBotToken = defineSecret("TELEGRAM_SIGNALS_BOT_TOKEN");
 const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
+const opsApiKey = defineSecret("OPS_API_KEY");
 
-// ─── Scheduled: wake ops daily log digest ─────────────────────────────────
-export const wakeLogsDigestCron = onSchedule(
+// Optional. Populated only when raw / digest groups are split. When absent,
+// "raw" channel messages fall back to the digest chat id via resolveChatId().
+// To enable: create TELEGRAM_RAW_CHAT_ID in Secret Manager, then add it to
+// each wakeOps Cloud Function's `secrets: [...]` array and redeploy.
+function readOptionalRawChatId(): string | undefined {
+  const v = process.env.TELEGRAM_RAW_CHAT_ID;
+  return v && v.length > 0 ? v : undefined;
+}
+
+// ─── Scheduled: wake ops daily pulse (logs + payments + client errors + quota) ──
+export const wakeDailyPulseCron = onSchedule(
   {
     schedule: "every day 19:00",
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId],
+    memory: "512MiB",
+    timeoutSeconds: 300,
+  },
+  async () => {
+    const ctx = {
+      botToken: telegramSignalsBotToken.value(),
+      chatId: telegramChatId.value(),
+      rawChatId: readOptionalRawChatId(),
+      projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
+    };
+    const steps: Array<[string, () => Promise<void>]> = [
+      ["logs", () => runLogsDigest(ctx)],
+      ["payments", () => runPaymentsPulse(ctx)],
+      ["pwa-errors", () => runClientErrors(ctx, {source: "pwa"})],
+      ["creator-errors", () => runClientErrors(ctx, {source: "creator"})],
+      ["quota", () => runQuotaWatch(ctx)],
+    ];
+    for (const [name, fn] of steps) {
+      try {
+        await fn();
+      } catch (err) {
+        functions.logger.error("wakeDailyPulseCron step failed", {
+          step: name,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+);
+
+// ─── Scheduled: wake ops heartbeat (scheduled-job freshness) ──────────────
+export const wakeHeartbeatCron = onSchedule(
+  {
+    schedule: "every 6 hours",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [telegramSignalsBotToken, telegramChatId],
     memory: "256MiB",
-    timeoutSeconds: 120,
+    timeoutSeconds: 60,
   },
   async () => {
     try {
-      await runLogsDigest({
+      await runCronHeartbeat({
         botToken: telegramSignalsBotToken.value(),
         chatId: telegramChatId.value(),
+        rawChatId: readOptionalRawChatId(),
         projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
       });
     } catch (err) {
-      functions.logger.error("wakeLogsDigestCron failed", err);
+      functions.logger.error("wakeHeartbeatCron failed", err);
       throw err;
     }
+  }
+);
+
+// ─── HTTPS: client-error ingest endpoint (PWA + creator dashboard) ────────
+export const wakeClientErrorsIngest = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 15,
+    cors: false,
+  },
+  async (req, res) => {
+    await handleClientErrorsIngest(req, res);
+  }
+);
+
+// ─── HTTPS: read-only ops API (foundation for a future web dashboard) ─────
+export const wakeOpsApi = onRequest(
+  {
+    region: "us-central1",
+    secrets: [opsApiKey],
+    memory: "256MiB",
+    timeoutSeconds: 30,
+    cors: false,
+  },
+  async (req, res) => {
+    await handleOpsApi(req, res, {
+      apiKey: opsApiKey.value(),
+      projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
+    });
   }
 );
 
@@ -3030,6 +3118,7 @@ export const wakeSignalsWebhook = onRequest(
       botToken: telegramSignalsBotToken.value(),
       allowedChatId: telegramChatId.value(),
       webhookSecret: telegramWebhookSecret.value(),
+      rawChatId: readOptionalRawChatId(),
       projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
     });
   }

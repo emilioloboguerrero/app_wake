@@ -1,10 +1,10 @@
-import { Router } from "express";
-import { db, FieldValue } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuth, type AuthResult } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
+import {Router} from "express";
+import {db, FieldValue} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuth, type AuthResult} from "../middleware/auth.js";
+import {validateBody} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
 import * as functions from "firebase-functions";
 import {
   escapeHtml,
@@ -51,7 +51,7 @@ async function resolveEventRecipients(
     .doc(eventId)
     .collection("registrations");
 
-  let recipients: Recipient[] = [];
+  const recipients: Recipient[] = [];
 
   if (recipientIds && recipientIds.length > 0) {
     // Fetch specific registrations by ID (batch get)
@@ -159,7 +159,7 @@ router.post("/creator/email/send", async (req, res) => {
       recipients: "object",
     },
     req.body,
-    { maxStringLength: 50_000 }
+    {maxStringLength: 50_000}
   );
 
   // Validate recipients object
@@ -181,20 +181,20 @@ router.post("/creator/email/send", async (req, res) => {
   // Resolve recipients based on type
   let resolved: Recipient[];
   switch (recipientsConfig.type) {
-    case "event": {
-      if (!recipientsConfig.eventId || typeof recipientsConfig.eventId !== "string") {
-        throw new WakeApiServerError("VALIDATION_ERROR", 400, "recipients.eventId es requerido para tipo event", "recipients");
-      }
-      resolved = await resolveEventRecipients(
-        recipientsConfig.eventId,
-        auth.userId,
-        recipientsConfig.recipientIds as string[] | undefined
-      );
-      break;
+  case "event": {
+    if (!recipientsConfig.eventId || typeof recipientsConfig.eventId !== "string") {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "recipients.eventId es requerido para tipo event", "recipients");
     }
-    // Future types: "clients", "segment", "program"
-    default:
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, `Tipo de destinatario no soportado: ${recipientsConfig.type}`, "recipients");
+    resolved = await resolveEventRecipients(
+      recipientsConfig.eventId,
+      auth.userId,
+        recipientsConfig.recipientIds as string[] | undefined
+    );
+    break;
+  }
+  // Future types: "clients", "segment", "program"
+  default:
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, `Tipo de destinatario no soportado: ${recipientsConfig.type}`, "recipients");
   }
 
   if (resolved.length === 0) {
@@ -399,7 +399,7 @@ router.get("/creator/email/sends/:sendId", async (req, res) => {
 // link in email footer. Token is SHA-256(email:creatorId).
 
 router.get("/email/unsubscribe", async (req, res) => {
-  const { token, email, creatorId } = req.query as Record<string, string | undefined>;
+  const {token, email, creatorId} = req.query as Record<string, string | undefined>;
 
   if (!token || !email || !creatorId) {
     res.status(400).send(unsubscribePageHtml("Enlace inválido", false));
@@ -422,10 +422,10 @@ router.get("/email/unsubscribe", async (req, res) => {
       unsubscribedAt: FieldValue.serverTimestamp(),
       source: "link",
     },
-    { merge: true }
+    {merge: true}
   );
 
-  functions.logger.info("email.unsubscribe", { email, creatorId });
+  functions.logger.info("email.unsubscribe", {email, creatorId});
 
   res.status(200).send(unsubscribePageHtml("Te has dado de baja correctamente", true));
 });

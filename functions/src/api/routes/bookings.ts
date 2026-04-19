@@ -1,13 +1,13 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as functions from "firebase-functions";
-import { Resend } from "resend";
-import { db, FieldValue } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody, validateDateFormat } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
-import { escapeHtml } from "../services/emailHelpers.js";
+import {Resend} from "resend";
+import {db, FieldValue} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody, validateDateFormat} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
+import {escapeHtml} from "../services/emailHelpers.js";
 
 const router = Router();
 
@@ -43,10 +43,10 @@ function buildCallEmailHtml(params: {
   dateTimeStr: string;
   ctaLabel?: string;
 }): string {
-  const { greeting, bodyText, callLink, dateTimeStr, ctaLabel } = params;
-  const ctaButton = callLink
-    ? `<a href="${escapeHtml(callLink)}" style="display:inline-block;margin-top:20px;padding:14px 32px;background:rgba(255,255,255,0.12);color:#fff;font-size:0.95rem;font-weight:600;text-decoration:none;border-radius:10px;border:1px solid rgba(255,255,255,0.15);">${escapeHtml(ctaLabel || "Unirse a la llamada")}</a>`
-    : "";
+  const {greeting, bodyText, callLink, dateTimeStr, ctaLabel} = params;
+  const ctaButton = callLink ?
+    `<a href="${escapeHtml(callLink)}" style="display:inline-block;margin-top:20px;padding:14px 32px;background:rgba(255,255,255,0.12);color:#fff;font-size:0.95rem;font-weight:600;text-decoration:none;border-radius:10px;border:1px solid rgba(255,255,255,0.15);">${escapeHtml(ctaLabel || "Unirse a la llamada")}</a>` :
+    "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -86,7 +86,7 @@ async function sendCallEmail(to: string, subject: string, html: string): Promise
   }
   try {
     const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
+    const {error} = await resend.emails.send({
       from: "Wake Coaching <coaching@wakelab.co>",
       to,
       subject,
@@ -96,10 +96,10 @@ async function sendCallEmail(to: string, subject: string, html: string): Promise
       },
     });
     if (error) {
-      functions.logger.error("sendCallEmail: resend error", { to, subject, error });
+      functions.logger.error("sendCallEmail: resend error", {to, subject, error});
     }
   } catch (err) {
-    functions.logger.error("sendCallEmail: failed", { to, subject, error: String(err) });
+    functions.logger.error("sendCallEmail: failed", {to, subject, error: String(err)});
   }
 }
 
@@ -153,9 +153,9 @@ async function sendCancellationEmail(
   if (!recipientEmail) return;
 
   const dateTimeStr = formatDateTimeColombia(slotStartUtc);
-  const bodyText = isCancelledByCreator
-    ? `${cancelledByName} canceló la llamada programada.`
-    : `${cancelledByName} canceló su llamada.`;
+  const bodyText = isCancelledByCreator ?
+    `${cancelledByName} canceló la llamada programada.` :
+    `${cancelledByName} canceló su llamada.`;
 
   const html = buildCallEmailHtml({
     greeting: recipientName ? `Hola, ${recipientName.split(" ")[0]}` : "Hola",
@@ -187,9 +187,9 @@ function freeSlotInAvailability(
       availRef.update({
         [`days.${slotDate}`]: dayData,
         updated_at: FieldValue.serverTimestamp(),
-      }).catch((e) => functions.logger.error("freeSlotInAvailability: update failed", { error: String(e) }));
+      }).catch((e) => functions.logger.error("freeSlotInAvailability: update failed", {error: String(e)}));
     }
-  }).catch((e) => functions.logger.error("freeSlotInAvailability: get failed", { error: String(e) }));
+  }).catch((e) => functions.logger.error("freeSlotInAvailability: get failed", {error: String(e)}));
 }
 
 // ─── Creator Availability & Bookings (§7.7) ────────────────────────────────
@@ -264,7 +264,7 @@ router.put("/creator/availability/template", async (req, res) => {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, `Los slots del día ${dayKey} deben ser un array`, "weeklyTemplate");
     }
     if (slots.length > 20) {
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, `Máximo 20 franjas por día`, "weeklyTemplate");
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "Máximo 20 franjas por día", "weeklyTemplate");
     }
 
     const daySlots: Array<{ startTime: string; durationMinutes: number }> = [];
@@ -278,7 +278,7 @@ router.put("/creator/availability/template", async (req, res) => {
       if (!VALID_DURATIONS.has(slot.durationMinutes)) {
         throw new WakeApiServerError("VALIDATION_ERROR", 400, "Duración debe ser 15, 30, 45 o 60", "weeklyTemplate");
       }
-      daySlots.push({ startTime: slot.startTime, durationMinutes: slot.durationMinutes });
+      daySlots.push({startTime: slot.startTime, durationMinutes: slot.durationMinutes});
     }
 
     // Check for overlaps within the same day
@@ -320,10 +320,10 @@ router.put("/creator/availability/template", async (req, res) => {
       timezone: body.timezone,
       updated_at: FieldValue.serverTimestamp(),
     },
-    { merge: true }
+    {merge: true}
   );
 
-  res.json({ data: { saved: true } });
+  res.json({data: {saved: true}});
 });
 
 // POST /creator/availability/slots — add availability slots for a day
@@ -424,7 +424,7 @@ router.post("/creator/availability/slots", async (req, res) => {
 
   if (existing.exists) {
     const existingDays = existing.data()?.days ?? {};
-    const dayData = existingDays[body.date] ?? { slots: [] };
+    const dayData = existingDays[body.date] ?? {slots: []};
     dayData.slots = [...(dayData.slots || []), ...slots];
 
     await docRef.update({
@@ -436,13 +436,13 @@ router.post("/creator/availability/slots", async (req, res) => {
     await docRef.set({
       timezone: body.timezone,
       days: {
-        [body.date]: { slots },
+        [body.date]: {slots},
       },
       updated_at: FieldValue.serverTimestamp(),
     });
   }
 
-  res.json({ data: { date: body.date, slotsCreated: slots.length } });
+  res.json({data: {date: body.date, slotsCreated: slots.length}});
 });
 
 // DELETE /creator/availability/slots — remove slots for a day (or specific slot)
@@ -452,7 +452,7 @@ router.delete("/creator/availability/slots", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ date: string; slotStartUtc: string | null }>(
-    { date: "string", slotStartUtc: "optional_string" },
+    {date: "string", slotStartUtc: "optional_string"},
     req.body
   );
 
@@ -494,7 +494,7 @@ router.get("/creator/bookings", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { date, pageToken } = req.query as Record<string, string | undefined>;
+  const {date, pageToken} = req.query as Record<string, string | undefined>;
   const limit = 20;
 
   let query: Query = db
@@ -555,7 +555,7 @@ router.patch("/creator/bookings/:bookingId", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ callLink: string | null }>(
-    { callLink: "optional_string" },
+    {callLink: "optional_string"},
     req.body
   );
 
@@ -576,7 +576,7 @@ router.patch("/creator/bookings/:bookingId", async (req, res) => {
     updatedAt: now,
   });
 
-  res.json({ data: { bookingId: doc.id, updatedAt: now } });
+  res.json({data: {bookingId: doc.id, updatedAt: now}});
 });
 
 // DELETE /creator/bookings/:bookingId — creator cancels a booking
@@ -623,7 +623,7 @@ router.get("/creator/:creatorId/availability", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { startDate, endDate } = req.query as Record<string, string | undefined>;
+  const {startDate, endDate} = req.query as Record<string, string | undefined>;
   if (!startDate || !endDate) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR",
@@ -773,7 +773,7 @@ router.post("/bookings", async (req, res) => {
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const clientDisplayName = userDoc.data()?.displayName ?? null;
   if (clientDisplayName) {
-    db.collection("call_bookings").doc(bookingId).update({ clientDisplayName }).catch(() => {});
+    db.collection("call_bookings").doc(bookingId).update({clientDisplayName}).catch(() => {});
   }
 
   // Send confirmation emails (non-blocking)
@@ -795,10 +795,10 @@ router.get("/bookings", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { creatorId, courseId, status } = req.query as Record<string, string | undefined>;
+  const {creatorId, courseId, status} = req.query as Record<string, string | undefined>;
 
   // Query bookings where user is client OR creator
-  let query: Query = db
+  const query: Query = db
     .collection("call_bookings")
     .where("clientUserId", "==", auth.userId)
     .orderBy("slotStartUtc", "desc")
@@ -827,7 +827,7 @@ router.get("/bookings", async (req, res) => {
   if (courseId) results = results.filter((b) => b.courseId === courseId);
   if (status) results = results.filter((b) => b.status === status);
 
-  res.json({ data: results });
+  res.json({data: results});
 });
 
 // GET /bookings/:bookingId — get booking details
@@ -887,7 +887,7 @@ router.delete("/bookings/:bookingId", async (req, res) => {
   }
 
   // Mark booking as cancelled
-  await docRef.update({ status: "cancelled" });
+  await docRef.update({status: "cancelled"});
 
   // Free slot (non-blocking)
   freeSlotInAvailability(data.creatorId, data.slotStartUtc, data.slotEndUtc);

@@ -1,13 +1,13 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
 import * as crypto from "node:crypto";
 import * as path from "node:path";
-import { db, FieldValue } from "../firestore.js";
-import type { Query, DocumentSnapshot } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody, pickFields, validateStoragePath } from "../middleware/validate.js";
-import { checkRateLimit, checkIpRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
+import {db, FieldValue} from "../firestore.js";
+import type {Query, DocumentSnapshot} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
+import {checkRateLimit, checkIpRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
 import * as functions from "firebase-functions";
 
 const router = Router();
@@ -36,18 +36,18 @@ async function generateOgImage(eventId: string, storagePath: string): Promise<vo
 
     const isotipoPath = path.resolve(__dirname, "../assets/wake-isotipo.png");
     const isotipoBuffer = await sharp(isotipoPath)
-      .resize(400, 400, { fit: "inside" })
+      .resize(400, 400, {fit: "inside"})
       .ensureAlpha()
       .composite([{
         input: Buffer.from([255, 255, 255, Math.round(255 * 0.4)]),
-        raw: { width: 1, height: 1, channels: 4 },
+        raw: {width: 1, height: 1, channels: 4},
         tile: true,
         blend: "dest-in",
       }])
       .toBuffer();
 
     const ogBuffer = await sharp(coverBuffer)
-      .resize(1200, 630, { fit: "cover", position: "center" })
+      .resize(1200, 630, {fit: "cover", position: "center"})
       .composite([{
         input: isotipoBuffer,
         gravity: "center",
@@ -58,7 +58,7 @@ async function generateOgImage(eventId: string, storagePath: string): Promise<vo
     const ogPath = `events/${eventId}/og-cover.png`;
     const ogFile = bucket.file(ogPath);
     await ogFile.save(ogBuffer, {
-      metadata: { contentType: "image/png", cacheControl: "public, max-age=31536000" },
+      metadata: {contentType: "image/png", cacheControl: "public, max-age=31536000"},
     });
 
     const ogImageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(ogPath)}?alt=media`;
@@ -150,7 +150,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       fieldValues: "optional_object",
     },
     req.body,
-    { maxStringLength: 500 }
+    {maxStringLength: 500}
   );
 
   const eventDoc = await db.collection("events").doc(req.params.eventId).get();
@@ -218,7 +218,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       phoneNumber: body.phoneNumber ?? null,
       responses: body.fieldValues ?? {},
       fieldValues: body.fieldValues ?? {},
-      ...(checkInToken ? { check_in_token: checkInToken } : {}),
+      ...(checkInToken ? {check_in_token: checkInToken} : {}),
       checked_in: false,
       created_at: FieldValue.serverTimestamp(),
     });
@@ -228,7 +228,7 @@ router.post("/events/:eventId/register", async (req, res) => {
       registrationId: regRef.id,
       status: "registered",
       waitlistPosition: null,
-      ...(checkInToken ? { checkInToken } : {}),
+      ...(checkInToken ? {checkInToken} : {}),
     },
   });
 });
@@ -282,7 +282,7 @@ router.get("/creator/events", async (req, res) => {
     })
   );
 
-  res.json({ data: events });
+  res.json({data: events});
 });
 
 // POST /creator/events
@@ -425,13 +425,12 @@ router.patch("/creator/events/:eventId", async (req, res) => {
 
 // PATCH /creator/events/:eventId/status — change event status
 router.patch("/creator/events/:eventId/status", async (req, res) => {
-
   const auth = await validateAuth(req);
   requireCreator(auth);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { status } = validateBody<{ status: string }>(
-    { status: "string" },
+  const {status} = validateBody<{ status: string }>(
+    {status: "string"},
     req.body
   );
 
@@ -452,7 +451,7 @@ router.patch("/creator/events/:eventId/status", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
   });
 
-  res.json({ data: { eventId: req.params.eventId, status } });
+  res.json({data: {eventId: req.params.eventId, status}});
 });
 
 // DELETE /creator/events/:eventId — delete event (only if draft or no registrations)
@@ -493,8 +492,8 @@ router.post("/creator/events/:eventId/image/upload-url", async (req, res) => {
 
   await verifyEventOwnership(req.params.eventId, auth.userId);
 
-  const { contentType } = validateBody<{ contentType: string }>(
-    { contentType: "string" },
+  const {contentType} = validateBody<{ contentType: string }>(
+    {contentType: "string"},
     req.body
   );
 
@@ -519,7 +518,7 @@ router.post("/creator/events/:eventId/image/upload-url", async (req, res) => {
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath } });
+  res.json({data: {uploadUrl: url, storagePath}});
 });
 
 // POST /creator/events/:eventId/image/confirm — confirm event image upload
@@ -535,8 +534,8 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
   }
 
-  const { storagePath } = validateBody<{ storagePath: string }>(
-    { storagePath: "string" },
+  const {storagePath} = validateBody<{ storagePath: string }>(
+    {storagePath: "string"},
     req.body
   );
 
@@ -561,7 +560,7 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
   // Fire-and-forget: generate OG image with watermark
   generateOgImage(req.params.eventId, storagePath).catch(() => {});
 
-  res.json({ data: { imageUrl } });
+  res.json({data: {imageUrl}});
 });
 
 // GET /creator/events/:eventId/registrations — paginated 50/page
@@ -677,8 +676,8 @@ router.post(
 
     await verifyEventOwnership(req.params.eventId, auth.userId);
 
-    const { token } = validateBody<{ token: string }>(
-      { token: "string" },
+    const {token} = validateBody<{ token: string }>(
+      {token: "string"},
       req.body
     );
 
@@ -691,7 +690,7 @@ router.post(
       .get();
 
     if (regsSnap.empty) {
-      res.json({ data: { status: "invalid" } });
+      res.json({data: {status: "invalid"}});
       return;
     }
 
@@ -839,7 +838,7 @@ router.post(
         displayName: waitlistData.displayName ?? null,
         phoneNumber: waitlistData.phoneNumber ?? null,
         fieldValues: waitlistData.fieldValues ?? {},
-        ...(checkInToken ? { check_in_token: checkInToken } : {}),
+        ...(checkInToken ? {check_in_token: checkInToken} : {}),
         checked_in: false,
         admitted_from_waitlist: true,
         created_at: FieldValue.serverTimestamp(),
@@ -848,7 +847,7 @@ router.post(
     await waitlistRef.delete();
 
     res.status(201).json({
-      data: { registrationId: regRef.id },
+      data: {registrationId: regRef.id},
     });
   }
 );

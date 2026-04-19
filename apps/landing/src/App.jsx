@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from '
 import Footer from './components/Footer';
 import SupportScreen from './screens/SupportScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
-import CreatorsPage from './screens/CreatorsPage';
+import CreadoresLandingScreen from './screens/CreadoresLandingScreen';
 import EventSignupScreen from './screens/EventSignupScreen';
 import LandingDesignScreen from './screens/LandingDesignScreen';
 import TestLandingScreen, { Nav } from './screens/TestLandingScreen';
@@ -45,12 +45,19 @@ function AppContent() {
     );
   }
 
+  if (location.pathname === '/creadores') {
+    return (
+      <Routes>
+        <Route path="/creadores" element={<CreadoresLandingScreen />} />
+      </Routes>
+    );
+  }
+
   return (
     <div className="app-layout">
       <Nav />
       <main className="main-content">
         <Routes>
-          <Route path="/creators" element={<CreatorsPage />} />
           <Route path="/support" element={<SupportScreen />} />
           <Route path="/legal" element={<LegalDocumentsScreen />} />
           <Route path="/landing" element={<Navigate to="/" replace />} />

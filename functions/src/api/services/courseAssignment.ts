@@ -1,5 +1,5 @@
-import { db, FieldValue } from "../firestore.js";
-import type { Transaction } from "firebase-admin/firestore";
+import {db, FieldValue} from "../firestore.js";
+import type {Transaction} from "firebase-admin/firestore";
 
 export interface CourseAssignmentOptions {
   isRenewal?: boolean;
@@ -21,7 +21,7 @@ export async function assignCourseToUser(
   expiresAt: string,
   options: CourseAssignmentOptions = {}
 ): Promise<void> {
-  const { isRenewal, existingCourseData, transaction } = options;
+  const {isRenewal, existingCourseData, transaction} = options;
   const userRef = db.collection("users").doc(userId);
 
   const courseEntry = buildCourseEntry(courseData, expiresAt, isRenewal, existingCourseData);
@@ -44,7 +44,7 @@ export async function assignCourseToUser(
 
     courses[courseId] = courseEntry;
 
-    const updatePayload: Record<string, unknown> = { courses };
+    const updatePayload: Record<string, unknown> = {courses};
     if (!isRenewal) {
       updatePayload.purchased_courses = [
         ...new Set([...(freshData.purchased_courses || []), courseId]),

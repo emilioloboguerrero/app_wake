@@ -10,6 +10,7 @@ import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
 import wakeDebug from './utils/wakeDebug';
 import apiClient from './utils/apiClient';
+import { reportError as reportClientError } from './utils/errorReporter';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
@@ -369,6 +370,13 @@ export default function App() {
           colno: event.colno,
           error: event.error
         });
+        reportClientError({
+          message: event.message,
+          stack: event.error && event.error.stack ? event.error.stack : null,
+          url:
+            (typeof location !== 'undefined' ? location.pathname : '') +
+            (event.filename ? ` (${event.filename}:${event.lineno || '?'})` : ''),
+        });
       };
 
       const rejectionHandler = (event) => {
@@ -389,6 +397,18 @@ export default function App() {
         }
 
         safeLog('error', '❌ Unhandled Promise Rejection:', event.reason);
+        const msg =
+          reason && typeof reason === 'object' && reason.message ?
+            String(reason.message) :
+            reasonStr;
+        reportClientError({
+          message: msg,
+          stack:
+            reason && typeof reason === 'object' && reason.stack ?
+              String(reason.stack) :
+              null,
+          url: typeof location !== 'undefined' ? location.pathname : '',
+        });
       };
 
       window.addEventListener('error', errorHandler, true);

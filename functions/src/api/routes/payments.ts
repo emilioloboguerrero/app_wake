@@ -1,13 +1,13 @@
-import { Router } from "express";
-import type { Request } from "express";
+import {Router} from "express";
+import type {Request} from "express";
 import * as crypto from "node:crypto";
 import * as functions from "firebase-functions";
-import { Preference, Payment, PreApproval } from "mercadopago";
-import { db, FieldValue } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
+import {Preference, Payment, PreApproval} from "mercadopago";
+import {db, FieldValue} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
 import {
   type ParsedReference,
   type MercadoPagoPreapproval,
@@ -15,7 +15,7 @@ import {
   buildExternalReference, parseExternalReference,
   calculateExpirationDate, classifyError, getClient,
 } from "../services/paymentHelpers.js";
-import { assignCourseToUser } from "../services/courseAssignment.js";
+import {assignCourseToUser} from "../services/courseAssignment.js";
 
 const router = Router();
 
@@ -41,7 +41,7 @@ router.get("/users/me/subscriptions", async (req, res) => {
     .get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
+    data: snapshot.docs.map((d) => ({...d.data(), id: d.id})),
   });
 });
 
@@ -51,8 +51,8 @@ router.post("/payments/preference", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { courseId } = validateBody<{ courseId: string }>(
-    { courseId: "string" },
+  const {courseId} = validateBody<{ courseId: string }>(
+    {courseId: "string"},
     req.body
   );
 
@@ -89,7 +89,7 @@ router.post("/payments/preference", async (req, res) => {
     },
   });
 
-  res.json({ data: { init_point: result.init_point } });
+  res.json({data: {init_point: result.init_point}});
 });
 
 // ─── POST /payments/subscription ──────────���───────────────────────────────
@@ -99,7 +99,7 @@ router.post("/payments/subscription", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const body = validateBody<{ courseId: string; payer_email: string }>(
-    { courseId: "string", payer_email: "string" },
+    {courseId: "string", payer_email: "string"},
     req.body
   );
 
@@ -158,7 +158,7 @@ router.post("/payments/subscription", async (req, res) => {
 
     if (needsAltEmail) {
       res.status(409).json({
-        error: { code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago" },
+        error: {code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago"},
         requireAlternateEmail: true,
       });
       return;
@@ -176,13 +176,13 @@ router.post("/payments/subscription", async (req, res) => {
   }
   let nextBillingDate: string | null = null;
   try {
-    const details = await preapproval.get({ id: result.id }) as PreapprovalDetails;
+    const details = await preapproval.get({id: result.id}) as PreapprovalDetails;
     nextBillingDate =
       details?.next_payment_date ||
       details?.auto_recurring?.next_payment_date ||
       details?.auto_recurring?.start_date ||
       null;
-  } catch { /* non-critical */ }
+  } catch {/* non-critical */}
 
   if (!nextBillingDate) nextBillingDate = startDate.toISOString();
 
@@ -204,9 +204,9 @@ router.post("/payments/subscription", async (req, res) => {
       next_billing_date: nextBillingDate,
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    }, {merge: true});
 
-  res.json({ data: { init_point: result.init_point, subscription_id: result.id } });
+  res.json({data: {init_point: result.init_point, subscription_id: result.id}});
 });
 
 // ─���─ POST /payments/webhook ──────────────────────────────────────────���────
@@ -241,7 +241,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const tsMs = Number(ts) * 1000;
       if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
         res.status(403).json({
-          error: { code: "FORBIDDEN", message: "Webhook timestamp expirado" },
+          error: {code: "FORBIDDEN", message: "Webhook timestamp expirado"},
         });
         return;
       }
@@ -254,7 +254,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
             Buffer.from(sig, "utf8"),
             Buffer.from(expected, "utf8")
           );
-        } catch { /* length mismatch */ }
+        } catch {/* length mismatch */}
       }
     }
   } else if (signatureHeaderLegacy) {
@@ -275,13 +275,13 @@ router.post("/payments/webhook", async (req: Request, res) => {
           Buffer.from(signatureHeaderLegacy, "utf8"),
           Buffer.from(expected, "utf8")
         );
-      } catch { /* length mismatch */ }
+      } catch {/* length mismatch */}
     }
   }
 
   if (!signatureIsValid) {
     res.status(403).json({
-      error: { code: "FORBIDDEN", message: "Firma de webhook inválida" },
+      error: {code: "FORBIDDEN", message: "Firma de webhook inválida"},
     });
     return;
   }
@@ -299,15 +299,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
     try {
       const client = getMPClient();
       const preapproval = new PreApproval(client);
-      const preapprovalData = await preapproval.get({ id: preapprovalId }) as unknown as MercadoPagoPreapproval;
+      const preapprovalData = await preapproval.get({id: preapprovalId}) as unknown as MercadoPagoPreapproval;
       const externalReference = preapprovalData?.external_reference;
       if (!externalReference) {
         res.status(200).send("OK");
         return;
       }
       let parsed: ParsedReference;
-      try { parsed = parseExternalReference(externalReference); }
-      catch { res.status(200).send("OK"); return; }
+      try {
+        parsed = parseExternalReference(externalReference);
+      } catch {
+        res.status(200).send("OK"); return;
+      }
 
       const autoRecurring = preapprovalData?.auto_recurring;
       const nextPaymentDate =
@@ -338,7 +341,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
         .doc(parsed.userId)
         .collection("subscriptions")
         .doc(preapprovalId)
-        .set(updateData, { merge: true });
+        .set(updateData, {merge: true});
     } catch (err) {
       functions.logger.error("Error processing subscription_preapproval webhook", err);
     }
@@ -369,7 +372,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   if (!paymentId) {
     res.status(400).json({
-      error: { code: "VALIDATION_ERROR", message: "Payment ID requerido" },
+      error: {code: "VALIDATION_ERROR", message: "Payment ID requerido"},
     });
     return;
   }
@@ -413,7 +416,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN!;
       const resp = await fetch(
         `https://api.mercadopago.com/authorized_payments/${paymentId}`,
-        { headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" } }
+        {headers: {"Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json"}}
       );
       if (!resp.ok) throw new Error(`Fetch authorized payment failed: ${resp.status}`);
       const rawData = (await resp.json()) as MercadoPagoPaymentData;
@@ -428,13 +431,13 @@ router.post("/payments/webhook", async (req: Request, res) => {
     } else {
       const client = getMPClient();
       const payment = new Payment(client);
-      paymentData = (await payment.get({ id: paymentId }) as MercadoPagoPaymentData) || {};
+      paymentData = (await payment.get({id: paymentId}) as MercadoPagoPaymentData) || {};
     }
   } catch (apiError: unknown) {
     const errType = classifyError(apiError);
     if (errType === "RETRYABLE") {
       res.status(500).json({
-        error: { code: "INTERNAL_ERROR", message: "Error obteniendo pago" },
+        error: {code: "INTERNAL_ERROR", message: "Error obteniendo pago"},
       });
     } else {
       await processedRef.set({
@@ -469,7 +472,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       processed_at: FieldValue.serverTimestamp(),
       status: "processing",
       payment_id: paymentId,
-    }, { merge: true });
+    }, {merge: true});
     return false;
   });
 
@@ -502,7 +505,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
-  const { userId, courseId, paymentType } = parsed;
+  const {userId, courseId, paymentType} = parsed;
   const isSubscription = paymentType === "sub";
 
   // Validate user and course exist
@@ -555,7 +558,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
         last_payment_id: paymentId,
         last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
         updated_at: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      }, {merge: true});
     }
 
     await processedRef.set({
@@ -607,7 +610,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
           management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
           updated_at: FieldValue.serverTimestamp(),
         },
-        { merge: true }
+        {merge: true}
       );
     }
 
@@ -615,7 +618,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
       processed_at: FieldValue.serverTimestamp(),
       status: "approved", userId, courseId, isSubscription, isRenewal: false,
       payment_type: paymentType, courseTitle, state: "completed",
-    }, { merge: true });
+    }, {merge: true});
   });
 
   res.status(200).send("OK");
@@ -627,7 +630,7 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { subscriptionId } = req.params;
+  const {subscriptionId} = req.params;
   const survey = req.body?.survey as Record<string, unknown> | undefined;
 
   const subscriptionRef = db
@@ -645,14 +648,14 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
 
   const client = getMPClient();
   const preapproval = new PreApproval(client);
-  await preapproval.update({ id: subscriptionId, body: { status: "cancelled" } });
+  await preapproval.update({id: subscriptionId, body: {status: "cancelled"}});
 
   await subscriptionRef.set({
     status: "cancelled",
     last_action: "cancel",
     cancelled_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  }, {merge: true});
 
   if (survey?.answers) {
     try {
@@ -688,10 +691,10 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
       if (payerEmail) surveyRecord.payerEmail = payerEmail;
 
       await db.collection("subscription_cancellation_feedback").add(surveyRecord);
-    } catch { /* non-critical */ }
+    } catch {/* non-critical */}
   }
 
-  res.json({ data: { status: "cancelled" } });
+  res.json({data: {status: "cancelled"}});
 });
 
 export default router;

@@ -25,9 +25,11 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/node_modules/**",
+      "**/*.map"
     ],
     "postdeploy": [
+      "bash scripts/ops/upload-sourcemaps.sh",
       "bash scripts/ops/notify-deploy.sh hosting"
     ],
     "rewrites": [

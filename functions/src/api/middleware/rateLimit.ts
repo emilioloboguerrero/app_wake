@@ -1,6 +1,6 @@
-import type { Request } from "express";
-import { db } from "../firestore.js";
-import { WakeApiServerError } from "../errors.js";
+import type {Request} from "express";
+import {db} from "../firestore.js";
+import {WakeApiServerError} from "../errors.js";
 
 // TODO: Configure Firestore TTL policies on `rate_limit_windows` and
 // `rate_limit_first_party` collections using the `expires_at` field.
@@ -35,7 +35,7 @@ export async function checkRateLimit(
       for (const [k, v] of memoryWindows) {
         if (now > v.expiresAt) memoryWindows.delete(k);
       }
-      memoryWindows.set(key, { count: 1, expiresAt: now + windowMs });
+      memoryWindows.set(key, {count: 1, expiresAt: now + windowMs});
     }
     return;
   }
@@ -58,7 +58,7 @@ export async function checkRateLimit(
 
     const current = (snap.data()?.count as number) || 0;
     const newCount = current + 1;
-    tx.update(docRef, { count: newCount });
+    tx.update(docRef, {count: newCount});
     return newCount;
   });
 
@@ -110,7 +110,7 @@ export async function checkDailyRateLimit(
 
     const current = (snap.data()?.count as number) || 0;
     const newCount = current + 1;
-    tx.update(docRef, { count: newCount });
+    tx.update(docRef, {count: newCount});
     return newCount;
   });
 

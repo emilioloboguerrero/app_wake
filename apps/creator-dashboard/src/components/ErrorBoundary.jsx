@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportError as reportClientError } from '../utils/errorReporter';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,6 +13,17 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error('[ErrorBoundary]', error, info?.componentStack);
+    try {
+      reportClientError({
+        message: error?.message ? String(error.message) : String(error),
+        stack: error?.stack ? String(error.stack) : null,
+        url:
+          (typeof location !== 'undefined' ? location.pathname : '') +
+          (info?.componentStack ?
+            ` [react:${info.componentStack.trim().split('\n')[0]?.trim()}]` :
+            ''),
+      });
+    } catch (_) {}
   }
 
   render() {

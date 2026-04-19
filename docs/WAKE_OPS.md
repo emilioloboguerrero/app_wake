@@ -17,12 +17,18 @@ A distributed observability and ops intelligence system for Wake. Built around a
 ## System diagram
 
 ```
-  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-  │ wake-logs-digest │  │ wake-deploys     │  │  future signals  │
-  │  (cron: daily)   │  │  (deploy hook)   │  │  perf, payments… │
-  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
-           │                     │                     │
-           └──────► [ wake_ops Telegram group ] ◄──────┘
+  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+  │ daily pulse  │ │  heartbeat   │ │   deploys    │ │ client errs  │
+  │  (cron 19h)  │ │  (cron 6h)   │ │ (post-deploy)│ │  (ingest fn) │
+  │              │ │              │ │              │ │              │
+  │ logs +       │ │ scheduled    │ │ per-target   │ │ PWA + creator│
+  │ payments +   │ │ job freshness│ │ git commit + │ │ window errors│
+  │ pwa-errors + │ │              │ │ push + post  │ │ → Firestore  │
+  │ creator-err +│ │              │ │              │ │              │
+  │ quota        │ │              │ │              │ │              │
+  └──────┬───────┘ └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+         │                │                │                │
+         └────────► [ wake_ops Telegram group ] ◄────────────┘
                              │
                              ▼
                   ┌──────────────────────┐
@@ -66,9 +72,104 @@ A private Telegram group with **two bots**, reflecting the architecture:
 
 ### 2. Dumb collectors
 
-Stateless jobs that post raw, structured signals to the bus. No AI, no reasoning. Each is independently deployable and testable.
+Stateless modules that post raw, structured signals to the bus. No AI, no reasoning. Each lives as one file in `functions/src/ops/` with a single exported `run…(ctx)` function. The same function is invoked from a scheduled cron, from a Telegram `/command`, or from `/all` — there is no duplicated logic across entry points. To add a collector: create the module, add one line to `functions/src/ops/commands.ts`, optionally add it to a scheduled function's step list.
 
-#### `wake-logs-digest-cron`
+#### Daily pulse — `wakeDailyPulseCron`
+
+Runs at 19:00 Bogotá and executes these collectors in sequence (each wrapped in try/catch so one failure does not cancel the rest):
+
+| Step | Module | Purpose |
+|---|---|---|
+| logs | `runLogsDigest` | Cloud Logging digest, WARNING+, NEW/SPIKING/RECURRING/CHRONIC |
+| payments | `runPaymentsPulse` | MercadoPago function invocations + subscription / processed-payment changes in 24h |
+| pwa-errors | `runClientErrors({source: "pwa"})` | Top 10 PWA frontend errors from `ops_client_errors` |
+| creator-errors | `runClientErrors({source: "creator"})` | Same for creator dashboard |
+| quota | `runQuotaWatch` | Firestore reads/writes/deletes + Functions execution/error counts vs 7d baseline |
+
+#### Heartbeat — `wakeHeartbeatCron`
+
+Runs every 6 hours. Reads Cloud Logging for each scheduled function in `index.ts`, compares last-activity timestamp to expected cadence, posts `[wake-cron-heartbeat]` message. Staleness threshold = 3× expected interval. Covers: `wakeDailyPulseCron`, `wakeHeartbeatCron` (self-check), `processRestTimerNotifications`, `processEmailQueue`, `sendCallReminders`, `detectAbandonedSessions`, `expandWeeklyAvailability`, `cleanupVideoExchanges`.
+
+#### `wakeClientErrorsIngest` (public HTTPS endpoint)
+
+Receives frontend error reports from the PWA and creator dashboard. Dumb collector — no digest, just ingest.
+
+| | |
+|---|---|
+| Type | Cloud Function Gen2 HTTPS onRequest |
+| Auth | Public (no Firebase ID token required). Origin whitelist enforces production domains only. |
+| Rate limit | In-memory per-IP, 60 reports/minute sliding window (per instance) |
+| Validation | `source ∈ {"pwa", "creator"}`, batch ≤20 errors, stack ≤8KB, message ≤500 chars |
+| PII stripping | Emails → `{email}`, long numeric IDs → `{n}`, token-like strings (≥24 chars, [A-Za-z0-9_-]) → `{token}` |
+| Storage | One doc per error in `ops_client_errors` Firestore collection with fingerprint + TTL `expiresAt` (14 days) |
+| Fingerprint | `fingerprintError(source, errorType, message)` — server-side, overrides any client-provided value |
+
+Client reporters ship errors here as batched JSON arrays:
+- PWA: [apps/pwa/src/utils/errorReporter.js](apps/pwa/src/utils/errorReporter.js) — wired into existing `window.onerror` + `unhandledrejection` handlers in [App.web.js](apps/pwa/src/App.web.js) and `componentDidCatch` in [ErrorBoundary.js](apps/pwa/src/components/ErrorBoundary.js).
+- Creator: [apps/creator-dashboard/src/utils/errorReporter.js](apps/creator-dashboard/src/utils/errorReporter.js) — `installGlobalHooks()` called once at boot in `main.jsx`; ErrorBoundary now wraps `<App>` in `App.jsx`. Vite `sourcemap: true` so stacks are readable.
+
+Both reporters dedupe in-memory by fingerprint, flush every 5s / 10 distinct errors / `visibilitychange`, and are no-ops in dev / preview.
+
+#### State tracking — NEW / SPIKING / RECURRING / CHRONIC
+
+Every collector that fingerprints signals (`logs`, `payments`, `quota`, `pwa-errors`, `creator-errors`) stores a per-fingerprint state doc in its own Firestore collection:
+
+| Collector | State collection |
+|---|---|
+| logs | `ops_logs_state` |
+| payments | `ops_payments_state` |
+| quota | `ops_quota_state` |
+| pwa-errors | `ops_pwa_errors_state` |
+| creator-errors | `ops_creator_errors_state` |
+
+Shape: `{ firstSeen, lastSeen, reportedAt, countsByDay: { "YYYY-MM-DD": n, ... } }`. `countsByDay` retains 14 days; older entries are pruned. On each run a fingerprint is categorised:
+
+- **NEW** — never reported before.
+- **SPIKING** — today's count ≥ max(floor, multiplier × 7-day average). Floor defaults to 5; quotaWatch uses 100 to avoid low-volume noise.
+- **CHRONIC** — first seen more than 24h ago.
+- **RECURRING** — everything else.
+
+Shared implementation: [`functions/src/ops/stateTracker.ts`](functions/src/ops/stateTracker.ts).
+
+#### Sourcemap symbolication (PWA)
+
+Pipeline for resolving minified PWA stacks back to readable source paths:
+
+1. `expo export --platform web --source-maps` (in `apps/pwa/package.json`) emits `.js.map` files into `hosting/app/`.
+2. `firebase.json` hosting `ignore` excludes `**/*.map` from public deploy — maps are **not** served to users.
+3. Hosting `postdeploy` runs `scripts/ops/upload-sourcemaps.sh`, which uploads maps to `gs://wolf-20b8b.appspot.com/ops/sourcemaps/pwa/{timestamp-sha}/`.
+4. At digest time, `clientErrors.ts` calls `tryResolveTopFrame(stack)` from [`functions/src/ops/sourcemaps.ts`](functions/src/ops/sourcemaps.ts) which loads the latest deploy's sourcemap, resolves the top frame, and appends `@ src/file:line` to the digest line.
+
+Fallback is silent — if no maps are uploaded yet or the bundle filename doesn't match, digests just show the minified message.
+
+#### Read-only ops API — `wakeOpsApi`
+
+HTTPS Cloud Function exposing the ops data surface as JSON. Foundation for a future web dashboard; safe to consume from scripts today.
+
+| | |
+|---|---|
+| Type | Cloud Function Gen2 HTTPS onRequest |
+| Auth | Shared key via `x-wake-ops-key` header or `?key=` query. Stored in `OPS_API_KEY` secret. |
+| CORS | Dev (localhost:3000, 5173) + prod domains whitelisted |
+
+Endpoints (all under `/v1/`):
+
+- `GET /v1/health` — auth + Firestore reachability check.
+- `GET /v1/summary` — 24h activity snapshot across all collectors.
+- `GET /v1/state/:collector` — state docs for `logs` / `payments` / `quota` / `pwa_errors` / `creator_errors`. Supports `?limit=`.
+- `GET /v1/client-errors?source=pwa&windowHours=24&limit=50` — raw error events.
+
+#### Raw / digest channel split (foundation only)
+
+`ChannelContext` + `resolveChatId(ctx, "digest" | "raw")` in [`telegram.ts`](functions/src/ops/telegram.ts). Every collector already accepts an optional `rawChatId`. When `TELEGRAM_RAW_CHAT_ID` is absent, raw messages fall back to the digest chat — today's single-group behavior is unchanged.
+
+To fork into two groups later:
+1. Create a new Telegram group; add `@signals_wake` as admin; capture the chat ID.
+2. `gcloud secrets create TELEGRAM_RAW_CHAT_ID --data-file=-` in `wolf-20b8b`.
+3. Add `telegramRawChatId` to the `secrets: [...]` array of the wakeOps Cloud Functions and redeploy.
+4. New raw-firehose collectors call `sendTo(ctx, "raw", text)` instead of `sendTelegram(ctx.botToken, ctx.chatId, text)`.
+
+#### `wake-logs-digest-cron` (legacy — now a step in daily pulse)
 
 | | |
 |---|---|
@@ -151,7 +252,7 @@ Sits alongside the scheduled collectors. Lets you run any collector on demand by
 | Type | Cloud Function Gen2, HTTPS (Telegram webhook target) |
 | Trigger | Telegram POSTs to this URL when someone sends a `/command` to `@signals_wake` |
 | Auth | Verifies `X-Telegram-Bot-Api-Secret-Token` header against `TELEGRAM_WEBHOOK_SECRET`; rejects requests from any chat other than `TELEGRAM_CHAT_ID` |
-| Available commands | `/logs` — run the logs digest immediately · `/all` — run every collector in sequence · `/help` — list commands |
+| Available commands | `/logs`, `/heartbeat`, `/payments`, `/quota`, `/pwa_errors`, `/creator_errors`, `/all`, `/help` |
 | Output | Posts the collector's normal digest output back to the group, prefixed with a `[signals_wake] running /cmd...` ack |
 | Command registry | `functions/src/ops/commands.ts` — adding a new collector = one entry in this registry, and `/all` picks it up automatically |
 
@@ -229,13 +330,15 @@ If a future meta-assistant needs to reason across projects, it reads git log and
 
 Stored in **Firebase Secret Manager** (never `.env`, never committed):
 
-| Secret | Used by | Stored in |
+| Secret | Used by | Required |
 |---|---|---|
-| `TELEGRAM_SIGNALS_BOT_TOKEN` | Collectors (log digest, future Cloud Function signals) + signals webhook | Firebase Secret Manager |
-| `TELEGRAM_AGENT_BOT_TOKEN` | Agent Mode B (@mention Cloud Function) | Firebase Secret Manager |
-| `TELEGRAM_CHAT_ID` | Collectors + agent modes + signals webhook auth check | Firebase Secret Manager |
-| `TELEGRAM_WEBHOOK_SECRET` | Signals webhook (verifies requests come from Telegram, not random internet) | Firebase Secret Manager |
-| `ANTHROPIC_API_KEY` | Agent Mode B only (@mention Cloud Function) | Firebase Secret Manager |
+| `TELEGRAM_SIGNALS_BOT_TOKEN` | Collectors + signals webhook | Yes |
+| `TELEGRAM_AGENT_BOT_TOKEN` | Agent Mode B (@mention Cloud Function) | When Phase 3 ships |
+| `TELEGRAM_CHAT_ID` | Collectors + agent + signals webhook auth | Yes |
+| `TELEGRAM_RAW_CHAT_ID` | Raw / digest channel split. When absent, raw messages route to `TELEGRAM_CHAT_ID` (single-group mode). | Optional |
+| `TELEGRAM_WEBHOOK_SECRET` | Signals webhook — verifies requests come from Telegram | Yes |
+| `OPS_API_KEY` | `wakeOpsApi` read-only endpoint. Any long random string; rotated via Secret Manager. | Yes (for ops API) |
+| `ANTHROPIC_API_KEY` | Agent Mode B only | When Phase 3 ships |
 
 The local `notify-deploy.sh` script (run by the Firebase `postdeploy` hook on your machine) reads `TELEGRAM_SIGNALS_BOT_TOKEN` / `TELEGRAM_CHAT_ID` from a gitignored `.env.ops` in the repo root.
 

@@ -49,6 +49,11 @@ fi
 echo "Registering bot commands with Telegram..."
 COMMANDS_JSON='{"commands":[
   {"command":"logs","description":"Run the logs digest now (last 24h)"},
+  {"command":"heartbeat","description":"Scheduled-job freshness check"},
+  {"command":"payments","description":"MercadoPago + subscriptions pulse (24h)"},
+  {"command":"quota","description":"Firestore + Functions quotas vs 7d baseline"},
+  {"command":"pwa_errors","description":"Frontend errors, PWA (24h)"},
+  {"command":"creator_errors","description":"Frontend errors, creator dashboard (24h)"},
   {"command":"all","description":"Run all collectors in sequence"},
   {"command":"help","description":"List available commands"}
 ]}'

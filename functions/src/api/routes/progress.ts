@@ -1,11 +1,11 @@
-import { Router } from "express";
+import {Router} from "express";
 import * as admin from "firebase-admin";
-import { db, FieldValue } from "../firestore.js";
-import type { Query } from "../firestore.js";
-import { validateAuth } from "../middleware/auth.js";
-import { validateBody, validateDateFormat, validateStoragePath } from "../middleware/validate.js";
-import { checkRateLimit } from "../middleware/rateLimit.js";
-import { WakeApiServerError } from "../errors.js";
+import {db, FieldValue} from "../firestore.js";
+import type {Query} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {validateBody, validateDateFormat, validateStoragePath} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
 
@@ -41,7 +41,7 @@ router.get("/progress/body-log", async (req, res) => {
   const hasMore = snapshot.docs.length > limit;
 
   res.json({
-    data: docs.map((d) => ({ ...d.data(), id: d.id })),
+    data: docs.map((d) => ({...d.data(), id: d.id})),
     nextPageToken: hasMore ? docs[docs.length - 1].id : null,
     hasMore,
   });
@@ -66,7 +66,7 @@ router.get("/progress/body-log/:date", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
   }
 
-  res.json({ data: { ...doc.data(), id: doc.id } });
+  res.json({data: {...doc.data(), id: doc.id}});
 });
 
 // PUT /progress/body-log/:date (idempotent)
@@ -113,10 +113,10 @@ router.put("/progress/body-log/:date", async (req, res) => {
       date,
       updated_at: FieldValue.serverTimestamp(),
     },
-    { merge: true }
+    {merge: true}
   );
 
-  res.json({ data: { date, updated: true } });
+  res.json({data: {date, updated: true}});
 });
 
 // DELETE /progress/body-log/:date
@@ -148,8 +148,8 @@ router.post("/progress/body-log/:date/photos/upload-url", async (req, res) => {
 
   validateDateFormat(req.params.date, "date");
 
-  const { contentType } = validateBody<{ contentType: string }>(
-    { contentType: "string" },
+  const {contentType} = validateBody<{ contentType: string }>(
+    {contentType: "string"},
     req.body
   );
 
@@ -174,7 +174,7 @@ router.post("/progress/body-log/:date/photos/upload-url", async (req, res) => {
     contentType,
   });
 
-  res.json({ data: { uploadUrl: url, storagePath, photoId } });
+  res.json({data: {uploadUrl: url, storagePath, photoId}});
 });
 
 // POST /progress/body-log/:date/photos/confirm
@@ -184,10 +184,10 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
 
   validateDateFormat(req.params.date, "date");
 
-  const { storagePath, photoId } = validateBody<{
+  const {storagePath, photoId} = validateBody<{
     storagePath: string;
     photoId: string;
-  }>({ storagePath: "string", photoId: "string" }, req.body);
+  }>({storagePath: "string", photoId: "string"}, req.body);
 
   // CRITICAL: Validate storage path prefix to prevent path traversal
   validateStoragePath(storagePath, `body_log/${auth.userId}/${req.params.date}/`);
@@ -216,10 +216,10 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
       }),
       updated_at: FieldValue.serverTimestamp(),
     },
-    { merge: true }
+    {merge: true}
   );
 
-  res.json({ data: { photoId, url: publicUrl } });
+  res.json({data: {photoId, url: publicUrl}});
 });
 
 // DELETE /progress/body-log/:date/photos/:photoId
@@ -267,7 +267,7 @@ router.get("/progress/readiness", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const { startDate, endDate } = req.query as Record<string, string>;
+  const {startDate, endDate} = req.query as Record<string, string>;
 
   // Validate date formats
   if (startDate) validateDateFormat(startDate, "startDate");
@@ -287,7 +287,7 @@ router.get("/progress/readiness", async (req, res) => {
   const snapshot = await query.get();
 
   res.json({
-    data: snapshot.docs.map((d) => ({ ...d.data(), id: d.id })),
+    data: snapshot.docs.map((d) => ({...d.data(), id: d.id})),
   });
 });
 
@@ -305,7 +305,7 @@ router.get("/progress/readiness/:date", async (req, res) => {
     .doc(req.params.date)
     .get();
 
-  res.json({ data: doc.exists ? { ...doc.data(), id: doc.id } : null });
+  res.json({data: doc.exists ? {...doc.data(), id: doc.id} : null});
 });
 
 // PUT /progress/readiness/:date (idempotent)
@@ -348,10 +348,10 @@ router.put("/progress/readiness/:date", async (req, res) => {
       date,
       updated_at: FieldValue.serverTimestamp(),
     },
-    { merge: true }
+    {merge: true}
   );
 
-  res.json({ data: { date, updated: true } });
+  res.json({data: {date, updated: true}});
 });
 
 // DELETE /progress/readiness/:date
@@ -398,7 +398,7 @@ router.get("/progress/user-sessions", async (req, res) => {
     .limit(limitParam)
     .get();
 
-  res.json({ data: snap.docs.map((d) => ({ ...d.data(), id: d.id })) });
+  res.json({data: snap.docs.map((d) => ({...d.data(), id: d.id}))});
 });
 
 // GET /progress/session/:sessionId — single session history entry
@@ -417,7 +417,7 @@ router.get("/progress/session/:sessionId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
   }
 
-  res.json({ data: { ...doc.data(), id: doc.id } });
+  res.json({data: {...doc.data(), id: doc.id}});
 });
 
 // GET /progress/prs — alias for GET /workout/prs
@@ -437,7 +437,7 @@ router.get("/progress/prs", async (req, res) => {
     ...doc.data(),
   }));
 
-  res.json({ data: prs });
+  res.json({data: prs});
 });
 
 export default router;
