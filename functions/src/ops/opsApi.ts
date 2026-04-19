@@ -199,7 +199,11 @@ async function handleSummary(_req: Request, res: Response): Promise<void> {
         .count()
         .get();
       return snap.data().count;
-    } catch {
+    } catch (err) {
+      functions.logger.warn("opsApi.summary: countRecent failed", {
+        collection,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return -1;
     }
   }
@@ -212,7 +216,11 @@ async function handleSummary(_req: Request, res: Response): Promise<void> {
         .count()
         .get();
       return snap.data().count;
-    } catch {
+    } catch (err) {
+      functions.logger.warn("opsApi.summary: countClientErrors failed", {
+        source,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return -1;
     }
   }

@@ -23,301 +23,126 @@ const WindowFrame = React.forwardRef(function WindowFrame({ label, children, cla
 });
 
 /* ═══════════════════════════════════════════
-   SHARED SNAPSHOT BLOCKS
+   SECTION 1 — EXERCISE EDITOR
+   Replica: LibraryExercisesScreen
    ═══════════════════════════════════════════ */
-function SearchInput({ placeholder }) {
-  return (
-    <div className="cl-snap-search">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-3.5-3.5" />
-      </svg>
-      <span>{placeholder}</span>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   SECTION 1 — EXERCISE EDITOR (Biblioteca · Ejercicios)
-   ═══════════════════════════════════════════ */
-const EXERCISE_LIST = [
+const EX_LIST = [
   'Press de banca',
-  'Hip thrust con sandbag',
-  'Sentadilla búlgara',
-  'Peso muerto rumano',
-  'Remo con mancuerna',
-  'Dominadas pronas',
-  'Press militar',
+  'Sentadilla trasera',
+  'Peso muerto convencional',
+  'Hip thrust con barra',
+  'Dominadas prona',
+  'Remo con barra',
+  'Press militar de pie',
+  'Zancadas con mancuernas',
   'Curl martillo',
   'Face pulls',
+  'Elevaciones laterales',
 ];
 
-const EXERCISE_MUSCLES = [
-  { name: 'Pectoral mayor', pct: 80 },
-  { name: 'Tríceps', pct: 55 },
-  { name: 'Deltoides anterior', pct: 35 },
+const EX_MUSCLES = [
+  { name: 'Pectoral mayor', val: 85 },
+  { name: 'Deltoides anterior', val: 55 },
+  { name: 'Tríceps braquial', val: 45 },
+  { name: 'Serrato anterior', val: 30 },
+  { name: 'Coracobraquial', val: 15 },
 ];
+
+function MuscleSilhouette() {
+  return (
+    <svg viewBox="0 0 120 220" className="cl-ex-silhouette" aria-hidden="true">
+      <g fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.14)" strokeWidth="0.8">
+        <ellipse cx="60" cy="18" rx="12" ry="14" />
+        <path d="M46 30 L74 30 L78 40 L82 60 Q86 72 84 88 L80 108 L76 130 Q75 152 72 180 L68 208 L64 214 L56 214 L52 208 L48 180 Q45 152 44 130 L40 108 L36 88 Q34 72 38 60 L42 40 Z" />
+        <path d="M36 58 Q24 70 20 88 L18 112 L22 128 L28 136 L32 130 L34 110 L38 90 Z" />
+        <path d="M84 58 Q96 70 100 88 L102 112 L98 128 L92 136 L88 130 L86 110 L82 90 Z" />
+      </g>
+      <g fill="rgba(255,255,255,0.55)" opacity="0.9">
+        <path d="M44 48 Q60 42 76 48 L80 70 Q60 76 40 70 Z" />
+      </g>
+      <g fill="rgba(255,255,255,0.28)">
+        <path d="M40 72 L44 92 L48 86 L46 74 Z" />
+        <path d="M80 72 L76 92 L72 86 L74 74 Z" />
+      </g>
+    </svg>
+  );
+}
 
 function ExerciseEditorWindow() {
   return (
-    <WindowFrame label="Biblioteca · Ejercicios">
-      <div className="cl-snap">
-        <aside className="cl-snap-side">
-          <SearchInput placeholder="Buscar ejercicio" />
-          <button type="button" className="cl-snap-add">+ Nuevo ejercicio</button>
-          <div className="cl-snap-list">
-            {EXERCISE_LIST.map((name, i) => (
-              <div key={name} className={`cl-snap-item ${i === 0 ? 'cl-snap-item-active' : ''}`}>
-                <span className="cl-snap-item-dot" />
-                <span className="cl-snap-item-label">{name}</span>
+    <WindowFrame label="Biblioteca · Fuerza">
+      <div className="cl-lex">
+        {/* Sidebar */}
+        <aside className="cl-lex-sidebar">
+          <div className="cl-lex-sidebar-head">
+            <span className="cl-lex-sidebar-title">Ejercicios</span>
+            <span className="cl-lex-sidebar-add">+</span>
+          </div>
+          <div className="cl-lex-sidebar-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+            </svg>
+            <span>Buscar</span>
+          </div>
+          <div className="cl-lex-sidebar-list">
+            {EX_LIST.map((name, i) => (
+              <div key={name} className={`cl-lex-sidebar-item ${i === 0 ? 'cl-lex-sidebar-item-active' : ''}`}>
+                <span className="cl-lex-sidebar-item-name">{name}</span>
               </div>
             ))}
           </div>
         </aside>
-        <div className="cl-snap-main">
-          <div className="cl-ex-title-row">
-            <h3 className="cl-ex-title">Press de banca</h3>
-            <span className="cl-ex-status">Guardado</span>
-          </div>
 
-          <div className="cl-ex-grid">
-            <div className="cl-ex-video">
-              <div className="cl-ex-video-thumb">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        {/* Workspace */}
+        <div className="cl-lex-workspace">
+          <div className="cl-lex-workspace-head">
+            <h3 className="cl-lex-workspace-title">Press de banca</h3>
+          </div>
+          <div className="cl-lex-workspace-columns">
+            {/* Video panel */}
+            <div className="cl-lex-video">
+              <div className="cl-lex-video-thumb">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M8 5v14l11-7L8 5z" />
                 </svg>
               </div>
-              <div className="cl-ex-video-meta">
-                <span className="cl-ex-video-name">press-banca-demo.mp4</span>
-                <span className="cl-ex-video-size">00:38 · 9.2 MB</span>
+              <span className="cl-lex-video-source">YOUTUBE</span>
+              <div className="cl-lex-video-actions">
+                <span className="cl-lex-video-action">Cambiar</span>
+                <span className="cl-lex-video-action">Eliminar</span>
               </div>
             </div>
 
-            <div className="cl-ex-card">
-              <div className="cl-ex-card-title">Activación muscular</div>
-              <div className="cl-ex-muscles">
-                {EXERCISE_MUSCLES.map((m) => (
-                  <div key={m.name} className="cl-ex-muscle">
-                    <span className="cl-ex-muscle-name">{m.name}</span>
-                    <div className="cl-ex-muscle-track">
-                      <div className="cl-ex-muscle-fill" style={{ width: `${m.pct}%` }} />
-                    </div>
-                    <span className="cl-ex-muscle-pct">{m.pct}%</span>
-                  </div>
-                ))}
+            {/* Muscle panel */}
+            <div className="cl-lex-muscle-card">
+              <div className="cl-lex-muscle-left">
+                <MuscleSilhouette />
               </div>
-            </div>
-          </div>
-
-          <div className="cl-ex-card">
-            <div className="cl-ex-card-title">Implementos</div>
-            <div className="cl-ex-chips">
-              <span className="cl-ex-chip">Barra olímpica</span>
-              <span className="cl-ex-chip">Banco plano</span>
-              <span className="cl-ex-chip">Discos 20kg</span>
-              <span className="cl-ex-chip cl-ex-chip-add">+ Agregar</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </WindowFrame>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   SECTION 2 — PROGRAM BUILDER (Plan · Semanas)
-   ═══════════════════════════════════════════ */
-const PB_WEEKS = [
-  { label: 'Semana 1', sub: 'Adaptación' },
-  { label: 'Semana 2', sub: 'Volumen base' },
-  { label: 'Semana 3', sub: 'Volumen base' },
-  { label: 'Semana 4', sub: 'Intensidad' },
-  { label: 'Semana 5', sub: 'Intensidad' },
-  { label: 'Semana 6', sub: 'Descarga' },
-];
-
-const PB_DAYS = [
-  { day: 'Lun', name: 'Empuje', muscle: 'Pecho · Tríceps' },
-  { day: 'Mar', name: 'Pierna', muscle: 'Cuádriceps · Glúteo' },
-  { day: 'Mié', rest: true },
-  { day: 'Jue', name: 'Jalón', muscle: 'Espalda · Bíceps' },
-  { day: 'Vie', name: 'Pierna', muscle: 'Femoral · Glúteo' },
-  { day: 'Sáb', name: 'Full body', muscle: 'Accesorios' },
-  { day: 'Dom', rest: true },
-];
-
-function ProgramBuilderWindow() {
-  return (
-    <WindowFrame label="Programas · Fuerza total · 6 semanas">
-      <div className="cl-snap">
-        <aside className="cl-snap-side">
-          <div className="cl-snap-side-title">Semanas</div>
-          <div className="cl-snap-list">
-            {PB_WEEKS.map((w, i) => (
-              <div key={w.label} className={`cl-snap-item cl-pb-week ${i === 0 ? 'cl-snap-item-active' : ''}`}>
-                <span className="cl-snap-item-num">{String(i + 1).padStart(2, '0')}</span>
-                <span className="cl-snap-item-meta">
-                  <span className="cl-snap-item-label">{w.label}</span>
-                  <span className="cl-snap-item-sub">{w.sub}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-          <button type="button" className="cl-snap-add">+ Añadir semana</button>
-        </aside>
-        <div className="cl-snap-main">
-          <div className="cl-pb-head">
-            <h3 className="cl-pb-title">Semana 1 · Adaptación</h3>
-            <span className="cl-pb-tag">5 sesiones · 4h 20min</span>
-          </div>
-
-          <div className="cl-pb-week-grid">
-            {PB_DAYS.map((d) => (
-              <div key={d.day} className={`cl-pb-day ${d.rest ? 'cl-pb-day-rest' : ''}`}>
-                <span className="cl-pb-day-label">{d.day}</span>
-                {d.rest ? (
-                  <span className="cl-pb-day-rest-label">Descanso</span>
-                ) : (
-                  <>
-                    <span className="cl-pb-day-name">{d.name}</span>
-                    <span className="cl-pb-day-muscle">{d.muscle}</span>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="cl-pb-section-title">Lunes · Empuje</div>
-          <div className="cl-pb-exercises">
-            {[
-              { name: 'Press de banca', scheme: '4 × 8 @ 80%' },
-              { name: 'Press inclinado mancuernas', scheme: '3 × 10 @ 70%' },
-              { name: 'Fondos en paralelas', scheme: '3 × AMRAP' },
-              { name: 'Face pulls', scheme: '3 × 15' },
-            ].map((ex) => (
-              <div key={ex.name} className="cl-pb-ex">
-                <span className="cl-pb-ex-handle" aria-hidden="true">≡</span>
-                <span className="cl-pb-ex-name">{ex.name}</span>
-                <span className="cl-pb-ex-scheme">{ex.scheme}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </WindowFrame>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   SECTION 3 — NUTRITION PLAN (Nutrición · Planes)
-   ═══════════════════════════════════════════ */
-const NP_PLANS = [
-  { name: 'Definición', kcal: 2000 },
-  { name: 'Volumen limpio', kcal: 3200 },
-  { name: 'Mantenimiento', kcal: 2500 },
-  { name: 'Recomposición', kcal: 2200 },
-  { name: 'Cutting agresivo', kcal: 1700 },
-];
-
-const NP_MEALS = [
-  {
-    name: 'Desayuno',
-    kcal: 480,
-    foods: [
-      { food: 'Huevos enteros', qty: '3 unid · 210 kcal' },
-      { food: 'Avena en hojuelas', qty: '60g · 220 kcal' },
-      { food: 'Frutos rojos', qty: '80g · 50 kcal' },
-    ],
-  },
-  {
-    name: 'Almuerzo',
-    kcal: 720,
-    foods: [
-      { food: 'Pechuga de pollo', qty: '180g · 280 kcal' },
-      { food: 'Arroz integral', qty: '120g · 140 kcal' },
-      { food: 'Aguacate', qty: '½ · 160 kcal' },
-      { food: 'Vegetales mixtos', qty: '200g · 80 kcal' },
-    ],
-  },
-  {
-    name: 'Cena',
-    kcal: 560,
-    foods: [
-      { food: 'Salmón al horno', qty: '160g · 320 kcal' },
-      { food: 'Quinoa cocida', qty: '90g · 110 kcal' },
-      { food: 'Espinaca salteada', qty: '150g · 70 kcal' },
-    ],
-  },
-];
-
-function NutritionPlanWindow() {
-  return (
-    <WindowFrame label="Nutrición · Planes">
-      <div className="cl-snap">
-        <aside className="cl-snap-side">
-          <div className="cl-snap-tabs">
-            <span className="cl-snap-tab cl-snap-tab-active">Planes</span>
-            <span className="cl-snap-tab">Recetas</span>
-          </div>
-          <SearchInput placeholder="Buscar plan" />
-          <div className="cl-snap-list">
-            {NP_PLANS.map((p, i) => (
-              <div key={p.name} className={`cl-snap-item cl-np-plan ${i === 0 ? 'cl-snap-item-active' : ''}`}>
-                <span className="cl-snap-item-meta">
-                  <span className="cl-snap-item-label">{p.name}</span>
-                  <span className="cl-snap-item-sub">{p.kcal.toLocaleString()} kcal · día</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </aside>
-        <div className="cl-snap-main">
-          <div className="cl-np-head">
-            <div>
-              <h3 className="cl-np-title">Plan Definición</h3>
-              <p className="cl-np-sub">Déficit moderado · 5 comidas · 7 días</p>
-            </div>
-            <div className="cl-np-kcal">
-              <span className="cl-np-kcal-num">2.000</span>
-              <span className="cl-np-kcal-label">kcal / día</span>
-            </div>
-          </div>
-
-          <div className="cl-np-macros">
-            <div className="cl-np-macro">
-              <span className="cl-np-macro-dot" style={{ background: 'rgba(135, 230, 175, 0.85)' }} />
-              <span className="cl-np-macro-label">Proteína</span>
-              <span className="cl-np-macro-value">160g</span>
-            </div>
-            <div className="cl-np-macro">
-              <span className="cl-np-macro-dot" style={{ background: 'rgba(135, 180, 255, 0.85)' }} />
-              <span className="cl-np-macro-label">Carbohidratos</span>
-              <span className="cl-np-macro-value">200g</span>
-            </div>
-            <div className="cl-np-macro">
-              <span className="cl-np-macro-dot" style={{ background: 'rgba(255, 190, 130, 0.85)' }} />
-              <span className="cl-np-macro-label">Grasa</span>
-              <span className="cl-np-macro-value">67g</span>
-            </div>
-          </div>
-
-          <div className="cl-np-meals">
-            {NP_MEALS.map((meal) => (
-              <div key={meal.name} className="cl-np-meal">
-                <div className="cl-np-meal-head">
-                  <span className="cl-np-meal-name">{meal.name}</span>
-                  <span className="cl-np-meal-kcal">{meal.kcal} kcal</span>
+              <div className="cl-lex-muscle-right">
+                <div className="cl-lex-muscle-right-head">
+                  <span className="cl-lex-preset">Preset</span>
                 </div>
-                <div className="cl-np-meal-foods">
-                  {meal.foods.map((f) => (
-                    <div key={f.food} className="cl-np-food">
-                      <span className="cl-np-food-name">{f.food}</span>
-                      <span className="cl-np-food-qty">{f.qty}</span>
+                <div className="cl-lex-muscle-list">
+                  {EX_MUSCLES.map((m) => (
+                    <div key={m.name} className="cl-lex-muscle-row">
+                      <span className="cl-lex-muscle-name">{m.name}</span>
+                      <span className="cl-lex-muscle-input">{m.val}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            ))}
+            </div>
+          </div>
+
+          <div className="cl-lex-implements">
+            <span className="cl-lex-implements-title">Implementos</span>
+            <div className="cl-lex-implements-pills">
+              <span className="cl-lex-pill">Barra olímpica</span>
+              <span className="cl-lex-pill">Banco plano</span>
+              <span className="cl-lex-pill">Discos 20kg</span>
+              <span className="cl-lex-pill">Soporte de seguridad</span>
+              <span className="cl-lex-pill-add">+</span>
+            </div>
           </div>
         </div>
       </div>
@@ -326,53 +151,383 @@ function NutritionPlanWindow() {
 }
 
 /* ═══════════════════════════════════════════
-   SECTION 4 — DUAL MODE (Programas y clientes)
+   SECTION 2 — PROGRAM BUILDER
+   Replica: PlanWeeksGrid
+   ═══════════════════════════════════════════ */
+const PB_WEEK_1 = [
+  { title: 'Empuje A', linked: true },
+  { title: 'Pierna fuerza', linked: true },
+  null,
+  { title: 'Jalón A', linked: true },
+  { title: 'Pierna hipertrofia', linked: false },
+  { title: 'Full body', linked: true },
+  null,
+];
+const PB_WEEK_2 = [
+  { title: 'Empuje B', linked: true },
+  { title: 'Pierna potencia', linked: true },
+  { title: 'Accesorios', linked: false },
+  { title: 'Jalón B', linked: true },
+  null,
+  { title: 'Full body', linked: true },
+  null,
+];
+
+function ProgramBuilderWindow() {
+  const renderSessionCard = (s, key) => {
+    if (!s) {
+      return (
+        <div key={key} className="cl-pb-cell cl-pb-cell-empty">
+          <span>Arrastra o crea</span>
+        </div>
+      );
+    }
+    return (
+      <div key={key} className={`cl-pb-cell cl-pb-cell-session ${s.linked ? 'cl-pb-cell-linked' : 'cl-pb-cell-local'}`}>
+        <span className="cl-pb-session-icon" aria-hidden="true">
+          {s.linked ? (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          )}
+        </span>
+        <span className="cl-pb-session-title">{s.title}</span>
+        <span className="cl-pb-session-dots" aria-hidden="true">⋮</span>
+      </div>
+    );
+  };
+
+  return (
+    <WindowFrame label="Plan · Hipertrofia 8 semanas">
+      <div className="cl-pb">
+        <div className="cl-pb-head">
+          <span className="cl-pb-volume">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" /><path d="M12 3v9h9" /><path d="M18 18.5L12 12" />
+            </svg>
+            Volumen
+          </span>
+          <span className="cl-pb-add">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Añadir semana
+          </span>
+        </div>
+
+        <div className="cl-pb-days-header">
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+            <div key={d} className="cl-pb-days-cell">Día {d}</div>
+          ))}
+        </div>
+
+        {[{ title: 'Semana 1', week: PB_WEEK_1 }, { title: 'Semana 2', week: PB_WEEK_2 }].map((block) => (
+          <div key={block.title} className="cl-pb-week">
+            <div className="cl-pb-week-head">
+              <span className="cl-pb-week-title">{block.title}</span>
+              <span className="cl-pb-week-dots" aria-hidden="true">⋮</span>
+            </div>
+            <div className="cl-pb-week-days">
+              {block.week.map((s, i) => renderSessionCard(s, i))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </WindowFrame>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   SECTION 3 — NUTRITION PLAN
+   Replica: NutritionScreen
+   ═══════════════════════════════════════════ */
+const NP_LIST = [
+  { name: 'Plan definición', kcal: 2000, meta: 'Déficit moderado' },
+  { name: 'Volumen limpio', kcal: 3200, meta: 'Superávit controlado' },
+  { name: 'Recomposición', kcal: 2400, meta: 'Isocalórico' },
+  { name: 'Cutting agresivo', kcal: 1700, meta: 'Déficit profundo' },
+  { name: 'Mantenimiento', kcal: 2500, meta: 'Estable' },
+];
+
+const NP_CATEGORIES = [
+  { label: 'Desayuno', count: 3 },
+  { label: 'Media mañana', count: 2 },
+  { label: 'Almuerzo', count: 4 },
+  { label: 'Merienda', count: 2 },
+  { label: 'Cena', count: 3 },
+];
+
+function MacroRing({ percent, color, size = 56 }) {
+  const r = (size - 6) / 2;
+  const c = 2 * Math.PI * r;
+  const dash = c * (percent / 100);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="cl-np-ring-svg" aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${c}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+    </svg>
+  );
+}
+
+function NutritionPlanWindow() {
+  return (
+    <WindowFrame label="Nutrición">
+      <div className="cl-np">
+        {/* Top bar */}
+        <div className="cl-np-topbar">
+          <div className="cl-np-tabs">
+            <span className="cl-np-tab">Recetas</span>
+            <span className="cl-np-tab cl-np-tab-active">Planes</span>
+          </div>
+          <span className="cl-np-create">
+            <span className="cl-np-create-plus">+</span>
+            Crear plan
+          </span>
+        </div>
+
+        {/* 3-panel layout */}
+        <div className="cl-np-panels">
+          {/* Left */}
+          <aside className="cl-np-left">
+            <div className="cl-np-search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+              </svg>
+              <span>Buscar planes…</span>
+            </div>
+            <div className="cl-np-list">
+              {NP_LIST.map((p, i) => (
+                <div key={p.name} className={`cl-np-list-card ${i === 0 ? 'cl-np-list-card-active' : ''}`}>
+                  <span className="cl-np-list-name">{p.name}</span>
+                  <span className="cl-np-list-kcal">{p.kcal.toLocaleString()} kcal</span>
+                  <span className="cl-np-list-meta">{p.meta}</span>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          {/* Center */}
+          <section className="cl-np-center">
+            <div className="cl-np-detail-header">
+              <h3 className="cl-np-detail-title">Plan definición</h3>
+              <p className="cl-np-detail-desc">Déficit moderado · 5 comidas al día · distribución flexible</p>
+              <span className="cl-np-edit">Editar</span>
+            </div>
+
+            <div className="cl-np-categories">
+              {NP_CATEGORIES.map((c) => (
+                <div key={c.label} className="cl-np-category">
+                  <span className="cl-np-category-label">{c.label}</span>
+                  <span className="cl-np-category-count">{c.count} opciones</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Right */}
+          <aside className="cl-np-right">
+            <div className="cl-np-macros-panel">
+              <div className="cl-np-calories">
+                <span className="cl-np-calories-val">2.000</span>
+                <span className="cl-np-calories-unit">kcal</span>
+              </div>
+              <div className="cl-np-rings">
+                <div className="cl-np-ring-row">
+                  <MacroRing percent={72} color="rgba(100,200,150,0.85)" />
+                  <div className="cl-np-ring-info">
+                    <span className="cl-np-ring-label">Prot</span>
+                    <span className="cl-np-ring-val">160 g</span>
+                  </div>
+                </div>
+                <div className="cl-np-ring-row">
+                  <MacroRing percent={55} color="rgba(100,160,240,0.85)" />
+                  <div className="cl-np-ring-info">
+                    <span className="cl-np-ring-label">Carbs</span>
+                    <span className="cl-np-ring-val">200 g</span>
+                  </div>
+                </div>
+                <div className="cl-np-ring-row">
+                  <MacroRing percent={40} color="rgba(240,160,80,0.85)" />
+                  <div className="cl-np-ring-info">
+                    <span className="cl-np-ring-label">Grasa</span>
+                    <span className="cl-np-ring-val">67 g</span>
+                  </div>
+                </div>
+              </div>
+              <div className="cl-np-totals">
+                <div className="cl-np-total-row">
+                  <span className="cl-np-total-dot" style={{ background: 'rgba(100,200,150,0.85)' }} />
+                  <span className="cl-np-total-name">Proteína</span>
+                  <span className="cl-np-total-val">160 g</span>
+                </div>
+                <div className="cl-np-total-row">
+                  <span className="cl-np-total-dot" style={{ background: 'rgba(100,160,240,0.85)' }} />
+                  <span className="cl-np-total-name">Carbohidratos</span>
+                  <span className="cl-np-total-val">200 g</span>
+                </div>
+                <div className="cl-np-total-row">
+                  <span className="cl-np-total-dot" style={{ background: 'rgba(240,160,80,0.85)' }} />
+                  <span className="cl-np-total-name">Grasa</span>
+                  <span className="cl-np-total-val">67 g</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </WindowFrame>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   SECTION 4 — PROGRAMS & CLIENTS
+   Replica: ProgramsAndClientsScreen
    ═══════════════════════════════════════════ */
 const DM_CLIENTS = [
-  { name: 'Juan Pérez', plan: 'Hipertrofia', status: 'active' },
-  { name: 'María Restrepo', plan: 'Pérdida de grasa', status: 'active' },
-  { name: 'Carlos Vélez', plan: 'Powerlifting', status: 'active' },
-  { name: 'Ana Lozano', plan: 'Recomposición', status: 'idle' },
-  { name: 'Luis Marín', plan: 'Acondicionamiento', status: 'idle' },
-  { name: 'Diana Cárdenas', plan: 'Hipertrofia', status: 'active' },
+  { name: 'Juan Pérez', active: true },
+  { name: 'María Restrepo', active: true },
+  { name: 'Carlos Vélez', active: true },
+  { name: 'Ana Lozano', active: true },
+  { name: 'Diana Cárdenas', active: true },
+  { name: 'Luis Marín', active: false },
+  { name: 'Pablo Henao', active: true },
+  { name: 'Sofía Arango', active: false },
 ];
+
+const DM_WEEK = [
+  { day: 'Lun', session: 'Empuje A' },
+  { day: 'Mar', session: 'Pierna fuerza' },
+  { day: 'Mié', session: null },
+  { day: 'Jue', session: 'Jalón A' },
+  { day: 'Vie', session: 'Pierna hipertrofia' },
+  { day: 'Sáb', session: 'Full body' },
+  { day: 'Dom', session: null },
+];
+
+function ConsistencyRing({ percent }) {
+  const size = 44;
+  const r = 18;
+  const c = 2 * Math.PI * r;
+  const dash = c * (percent / 100);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.75)"
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${c}`}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize="9" fontWeight="700">
+        {percent}%
+      </text>
+    </svg>
+  );
+}
 
 function DualModeWindow() {
   return (
-    <WindowFrame label="Programas · Clientes">
-      <div className="cl-snap">
-        <aside className="cl-snap-side">
-          <div className="cl-snap-side-title">Clientes <span className="cl-snap-side-count">{DM_CLIENTS.length}</span></div>
-          <SearchInput placeholder="Buscar cliente" />
-          <div className="cl-snap-list">
+    <WindowFrame label="Clientes">
+      <div className="cl-dm">
+        {/* Roster */}
+        <aside className="cl-dm-roster">
+          <div className="cl-dm-roster-head">
+            <div className="cl-dm-roster-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+              </svg>
+              <span>Buscar cliente…</span>
+            </div>
+            <div className="cl-dm-roster-meta">
+              <span className="cl-dm-roster-count">8 clientes</span>
+              <span className="cl-dm-roster-add">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Agregar
+              </span>
+            </div>
+          </div>
+          <div className="cl-dm-roster-list">
             {DM_CLIENTS.map((c, i) => (
-              <div key={c.name} className={`cl-snap-item cl-dm-client ${i === 0 ? 'cl-snap-item-active' : ''}`}>
+              <div key={c.name} className={`cl-dm-roster-row ${i === 0 ? 'cl-dm-roster-row-active' : ''}`}>
+                {i === 0 && <span className="cl-dm-roster-accent" />}
                 <span className="cl-dm-avatar">{c.name.charAt(0)}</span>
-                <span className="cl-snap-item-meta">
-                  <span className="cl-snap-item-label">{c.name}</span>
-                  <span className="cl-snap-item-sub">{c.plan}</span>
-                </span>
-                <span className={`cl-dm-dot ${c.status === 'active' ? 'cl-dm-dot-active' : ''}`} />
+                <span className="cl-dm-roster-name">{c.name}</span>
+                <span className={`cl-dm-status-dot ${c.active ? 'cl-dm-status-dot-on' : ''}`} />
               </div>
             ))}
           </div>
         </aside>
-        <div className="cl-snap-main">
-          <div className="cl-dm-client-head">
-            <div className="cl-dm-client-id">
+
+        {/* Profile */}
+        <main className="cl-dm-profile">
+          <div className="cl-dm-profile-top">
+            <div className="cl-dm-identity">
               <span className="cl-dm-avatar cl-dm-avatar-lg">J</span>
-              <div>
-                <h3 className="cl-dm-client-name">Juan Pérez</h3>
-                <span className="cl-dm-client-meta">Hipertrofia · Semana 4 de 8</span>
+              <div className="cl-dm-identity-info">
+                <h3 className="cl-dm-identity-name">Juan Pérez</h3>
+                <div className="cl-dm-identity-meta">
+                  <span className="cl-dm-program-badge">Hipertrofia 8 semanas</span>
+                  <span className="cl-dm-status-dot cl-dm-status-dot-on" />
+                  <span className="cl-dm-status-label">Activo</span>
+                </div>
               </div>
             </div>
-            <span className="cl-dm-status">Activo</span>
-          </div>
 
-          <div className="cl-dm-actions">
-            <span className="cl-dm-action">Asignar sesión</span>
-            <span className="cl-dm-action">Agendar llamada</span>
-            <span className="cl-dm-action">Ver programa</span>
+            <div className="cl-dm-highlight">
+              <div className="cl-dm-highlight-item">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="cl-dm-highlight-label">Último PR</span>
+                <span className="cl-dm-highlight-value">Press 92.5 kg</span>
+                <span className="cl-dm-highlight-sub">Hace 3 días</span>
+              </div>
+              <div className="cl-dm-highlight-item">
+                <ConsistencyRing percent={86} />
+                <span className="cl-dm-highlight-label">Consistencia</span>
+                <span className="cl-dm-highlight-value">86%</span>
+                <span className="cl-dm-highlight-sub">Esta semana</span>
+              </div>
+              <div className="cl-dm-highlight-item">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M18 8H19C20.06 8 21.08 8.42 21.83 9.17C22.58 9.92 23 10.94 23 12C23 13.06 22.58 14.08 21.83 14.83C21.08 15.58 20.06 16 19 16H18M18 8H2V17H18V8Z" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="cl-dm-highlight-label">Nutrición</span>
+                <span className="cl-dm-highlight-value">92%</span>
+                <span className="cl-dm-highlight-sub">Adherencia</span>
+              </div>
+            </div>
+
+            <div className="cl-dm-actions">
+              <span className="cl-dm-action">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+                Asignar sesión
+              </span>
+              <span className="cl-dm-action">Agendar llamada</span>
+              <span className="cl-dm-action">Ver programa</span>
+            </div>
           </div>
 
           <div className="cl-dm-tabs">
@@ -383,79 +538,44 @@ function DualModeWindow() {
           </div>
 
           <div className="cl-dm-week">
-            {[
-              { d: 'L', name: 'Empuje', tone: 'on' },
-              { d: 'M', name: 'Pierna', tone: 'on' },
-              { d: 'M', name: '—', tone: 'off' },
-              { d: 'J', name: 'Jalón', tone: 'on' },
-              { d: 'V', name: 'Pierna', tone: 'on' },
-              { d: 'S', name: 'Full', tone: 'on' },
-              { d: 'D', name: '—', tone: 'off' },
-            ].map((d, i) => (
-              <div key={i} className={`cl-dm-day cl-dm-day-${d.tone}`}>
-                <span className="cl-dm-day-letter">{d.d}</span>
-                <span className="cl-dm-day-session">{d.name}</span>
+            {DM_WEEK.map((d) => (
+              <div key={d.day} className="cl-dm-week-col">
+                <span className="cl-dm-week-day">{d.day}</span>
+                <div className="cl-dm-week-sessions">
+                  {d.session ? (
+                    <span className="cl-dm-week-chip">{d.session}</span>
+                  ) : (
+                    <span className="cl-dm-week-rest">Descanso</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
-
-          <div className="cl-dm-stats">
-            <div className="cl-dm-stat">
-              <span className="cl-dm-stat-num">86%</span>
-              <span className="cl-dm-stat-label">Adherencia 30d</span>
-            </div>
-            <div className="cl-dm-stat">
-              <span className="cl-dm-stat-num">+4.2 kg</span>
-              <span className="cl-dm-stat-label">Press de banca</span>
-            </div>
-            <div className="cl-dm-stat">
-              <span className="cl-dm-stat-num">3</span>
-              <span className="cl-dm-stat-label">Llamadas próximas</span>
-            </div>
-          </div>
-        </div>
+        </main>
       </div>
     </WindowFrame>
   );
 }
 
 /* ═══════════════════════════════════════════
-   SECTION ROW — heading + body + window
+   SECTION ROW — two-panel card
    ═══════════════════════════════════════════ */
 function SectionRow({ heading, body, children, reverse = false }) {
   return (
-    <section className={`cl-section ${reverse ? 'cl-section-reverse' : ''}`}>
-      <div className="cl-section-inner">
+    <section className="cl-section">
+      <motion.div
+        className={`cl-section-card ${reverse ? 'cl-section-card-reverse' : ''}`}
+        initial={{ opacity: 0, y: 32 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-10%' }}
+        transition={{ duration: 0.7, ease: SPRING }}
+      >
         <div className="cl-section-copy">
-          <motion.h2
-            className="cl-section-heading"
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-10%' }}
-            transition={{ duration: 0.6, ease: SPRING }}
-          >
-            {heading}
-          </motion.h2>
-          <motion.p
-            className="cl-section-body"
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-10%' }}
-            transition={{ duration: 0.6, delay: 0.1, ease: SPRING }}
-          >
-            {body}
-          </motion.p>
+          <h2 className="cl-section-heading">{heading}</h2>
+          <p className="cl-section-body">{body}</p>
         </div>
-        <motion.div
-          className="cl-section-window"
-          initial={{ opacity: 0, y: 32 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-10%' }}
-          transition={{ duration: 0.7, ease: SPRING }}
-        >
-          {children}
-        </motion.div>
-      </div>
+        <div className="cl-section-window">{children}</div>
+      </motion.div>
     </section>
   );
 }
@@ -535,20 +655,20 @@ export default function CreadoresLandingScreen() {
       </SectionRow>
       <SectionRow
         heading="Construye el programa, semana por semana."
-        body="Arma las sesiones, los ejercicios y las series de cada semana."
+        body="Arma las sesiones y los días de cada semana, arrastra desde tu biblioteca."
         reverse
       >
         <ProgramBuilderWindow />
       </SectionRow>
       <SectionRow
         heading="Diseña cómo comen tus clientes."
-        body="Ajusta los macros, los alimentos y las porciones de cada comida."
+        body="Ajusta los macros, las recetas y las categorías de cada plan de nutrición."
       >
         <NutritionPlanWindow />
       </SectionRow>
       <SectionRow
         heading="Vende a muchos o entrena uno-a-uno."
-        body="Programa general para tu audiencia, o uno-a-uno con cada cliente."
+        body="Programa general para tu audiencia, o acompaña a cada cliente desde su perfil."
         reverse
       >
         <DualModeWindow />
