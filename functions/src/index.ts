@@ -22,6 +22,7 @@ import {runClientErrors} from "./ops/clientErrors.js";
 import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
+import {parseTopicMap} from "./ops/telegram.js";
 import {
   type ParsedReference,
   type MercadoPagoPreapproval,
@@ -2999,13 +3000,15 @@ const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
 const opsApiKey = defineSecret("OPS_API_KEY");
 
-// Optional. Populated only when raw / digest groups are split. When absent,
-// "raw" channel messages fall back to the digest chat id via resolveChatId().
-// To enable: create TELEGRAM_RAW_CHAT_ID in Secret Manager, then add it to
-// each wakeOps Cloud Function's `secrets: [...]` array and redeploy.
-function readOptionalRawChatId(): string | undefined {
-  const v = process.env.TELEGRAM_RAW_CHAT_ID;
-  return v && v.length > 0 ? v : undefined;
+// Topic routing for the wake_ops supergroup. JSON map from topic name →
+// message_thread_id, e.g. {"agent":92,"signals":93,"deploys":94}.
+// If the secret is absent or a key is missing, posts fall back to the
+// group root (pre-forum behavior).
+const telegramTopics = defineSecret("TELEGRAM_TOPICS");
+
+function readTopics(): import("./ops/telegram.js").TopicMap {
+  // Lazy import to keep this file cheap; parseTopicMap is pure.
+  return parseTopicMap(telegramTopics.value());
 }
 
 // ─── Scheduled: wake ops daily pulse (logs + payments + client errors + quota) ──
@@ -3014,7 +3017,7 @@ export const wakeDailyPulseCron = onSchedule(
     schedule: "every day 19:00",
     timeZone: "America/Bogota",
     region: "us-central1",
-    secrets: [telegramSignalsBotToken, telegramChatId],
+    secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
     memory: "512MiB",
     timeoutSeconds: 300,
   },
@@ -3022,7 +3025,7 @@ export const wakeDailyPulseCron = onSchedule(
     const ctx = {
       botToken: telegramSignalsBotToken.value(),
       chatId: telegramChatId.value(),
-      rawChatId: readOptionalRawChatId(),
+      topics: readTopics(),
       projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
     };
     const steps: Array<[string, () => Promise<void>]> = [
@@ -3051,7 +3054,7 @@ export const wakeHeartbeatCron = onSchedule(
     schedule: "every 6 hours",
     timeZone: "America/Bogota",
     region: "us-central1",
-    secrets: [telegramSignalsBotToken, telegramChatId],
+    secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
     memory: "256MiB",
     timeoutSeconds: 60,
   },
@@ -3060,7 +3063,7 @@ export const wakeHeartbeatCron = onSchedule(
       await runCronHeartbeat({
         botToken: telegramSignalsBotToken.value(),
         chatId: telegramChatId.value(),
-        rawChatId: readOptionalRawChatId(),
+        topics: readTopics(),
         projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
       });
     } catch (err) {
@@ -3108,6 +3111,7 @@ export const wakeSignalsWebhook = onRequest(
       telegramSignalsBotToken,
       telegramChatId,
       telegramWebhookSecret,
+      telegramTopics,
     ],
     memory: "256MiB",
     timeoutSeconds: 120,
@@ -3118,7 +3122,7 @@ export const wakeSignalsWebhook = onRequest(
       botToken: telegramSignalsBotToken.value(),
       allowedChatId: telegramChatId.value(),
       webhookSecret: telegramWebhookSecret.value(),
-      rawChatId: readOptionalRawChatId(),
+      topics: readTopics(),
       projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
     });
   }

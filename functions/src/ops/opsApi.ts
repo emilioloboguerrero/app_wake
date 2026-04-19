@@ -296,7 +296,7 @@ export async function handleOpsApi(
   if (path === "/summary") return handleSummary(req, res);
   if (path === "/client-errors") return handleClientErrors(req, res);
 
-  const m = /^\/state\/([a-z_]+)$/.exec(path);
+  const m = /^\/state\/([^/]+)$/.exec(path);
   if (m) {
     (req as unknown as {params: {collector: string}}).params = {
       collector: m[1],

@@ -159,15 +159,27 @@ Endpoints (all under `/v1/`):
 - `GET /v1/state/:collector` — state docs for `logs` / `payments` / `quota` / `pwa_errors` / `creator_errors`. Supports `?limit=`.
 - `GET /v1/client-errors?source=pwa&windowHours=24&limit=50` — raw error events.
 
-#### Raw / digest channel split (foundation only)
+#### Topic routing (Telegram supergroup Forum Mode)
 
-`ChannelContext` + `resolveChatId(ctx, "digest" | "raw")` in [`telegram.ts`](functions/src/ops/telegram.ts). Every collector already accepts an optional `rawChatId`. When `TELEGRAM_RAW_CHAT_ID` is absent, raw messages fall back to the digest chat — today's single-group behavior is unchanged.
+The `wake_ops` supergroup runs in **Forum Mode** with three topics — separate lanes inside the single group, each with its own scrollback and independent mute/notification settings.
 
-To fork into two groups later:
-1. Create a new Telegram group; add `@signals_wake` as admin; capture the chat ID.
-2. `gcloud secrets create TELEGRAM_RAW_CHAT_ID --data-file=-` in `wolf-20b8b`.
-3. Add `telegramRawChatId` to the `secrets: [...]` array of the wakeOps Cloud Functions and redeploy.
-4. New raw-firehose collectors call `sendTo(ctx, "raw", text)` instead of `sendTelegram(ctx.botToken, ctx.chatId, text)`.
+| Topic | Posts here | Bot |
+|---|---|---|
+| `#signals` | All dumb collector output (logs, heartbeat, payments, quota, pwa/creator errors) + signals-webhook acks | `@signals_wake` |
+| `#deploys` | `postdeploy` notifications from `scripts/ops/notify-deploy.sh` | `@signals_wake` |
+| `#agent` | Smart agent synthesis + @mention Q&A | `@agent_wake` (Phase 3) |
+
+Thread IDs live in Secret Manager as `TELEGRAM_TOPICS` — a JSON map, e.g. `{"agent":92,"signals":93,"deploys":94}`. The secret is bound to `wakeDailyPulseCron`, `wakeHeartbeatCron`, and `wakeSignalsWebhook`. `sendTo(ctx, topic, text)` in [`telegram.ts`](functions/src/ops/telegram.ts) resolves the topic name to a `message_thread_id` at send time.
+
+`scripts/ops/notify-deploy.sh` reads `TELEGRAM_DEPLOYS_TOPIC_ID` from `.env.ops` and includes it in the `sendMessage` POST so deploy notifications land in `#deploys`.
+
+**Fallback:** if `TELEGRAM_TOPICS` is absent or a topic key is missing, posts land at the group root — matches pre-forum behavior. Safe default.
+
+**Adding a new topic:**
+1. Create it in Telegram; copy the message link from any message inside it; middle number = thread id.
+2. `gcloud secrets versions add TELEGRAM_TOPICS --data-file=-` with the updated JSON.
+3. Extend the `Topic` union type in `telegram.ts` and add the new key to `TopicMap`.
+4. Redeploy the affected functions (no code change to callers that don't use the new topic).
 
 #### `wake-logs-digest-cron` (legacy — now a step in daily pulse)
 
@@ -335,7 +347,7 @@ Stored in **Firebase Secret Manager** (never `.env`, never committed):
 | `TELEGRAM_SIGNALS_BOT_TOKEN` | Collectors + signals webhook | Yes |
 | `TELEGRAM_AGENT_BOT_TOKEN` | Agent Mode B (@mention Cloud Function) | When Phase 3 ships |
 | `TELEGRAM_CHAT_ID` | Collectors + agent + signals webhook auth | Yes |
-| `TELEGRAM_RAW_CHAT_ID` | Raw / digest channel split. When absent, raw messages route to `TELEGRAM_CHAT_ID` (single-group mode). | Optional |
+| `TELEGRAM_TOPICS` | JSON map of topic name → `message_thread_id` for the `wake_ops` supergroup. When absent, posts land at group root. | Yes (when Forum Mode is on) |
 | `TELEGRAM_WEBHOOK_SECRET` | Signals webhook — verifies requests come from Telegram | Yes |
 | `OPS_API_KEY` | `wakeOpsApi` read-only endpoint. Any long random string; rotated via Secret Manager. | Yes (for ops API) |
 | `ANTHROPIC_API_KEY` | Agent Mode B only | When Phase 3 ships |

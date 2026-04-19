@@ -1,6 +1,6 @@
 import {GoogleAuth} from "google-auth-library";
 import * as functions from "firebase-functions";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 
 const LOGGING_SCOPE = "https://www.googleapis.com/auth/logging.read";
 const QUERY_TIMEOUT_MS = 10_000;
@@ -102,10 +102,11 @@ function formatAge(ms: number): string {
 export async function runCronHeartbeat(opts: {
   botToken: string;
   chatId: string;
-  rawChatId?: string;
+  topics?: TopicMap;
   projectId: string;
 }): Promise<void> {
-  const {botToken, chatId, projectId} = opts;
+  const {botToken, chatId, topics, projectId} = opts;
+  const ctx = {botToken, chatId, topics};
   const now = Date.now();
   const since = new Date(now - LOOKBACK_MS).toISOString();
   const today = new Date(now).toISOString().slice(0, 10);
@@ -128,9 +129,9 @@ export async function runCronHeartbeat(opts: {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     functions.logger.error("wake-cron-heartbeat: query failed", {error: msg});
-    await sendTelegram(
-      botToken,
-      chatId,
+    await sendTo(
+      ctx,
+      "signals",
       `[wake-cron-heartbeat] ${today}\n\nLogging API error: ${msg.slice(0, 200)}`
     );
     return;
@@ -184,5 +185,5 @@ export async function runCronHeartbeat(opts: {
   if (body.length > TELEGRAM_MAX) {
     body = body.slice(0, TELEGRAM_MAX - 20) + "\n…[truncated]";
   }
-  await sendTelegram(botToken, chatId, body);
+  await sendTo(ctx, "signals", body);
 }

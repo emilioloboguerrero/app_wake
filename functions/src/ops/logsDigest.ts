@@ -2,7 +2,7 @@ import * as admin from "firebase-admin";
 import {GoogleAuth} from "google-auth-library";
 import * as functions from "firebase-functions";
 import {fingerprintError, normalizeForDisplay} from "./fingerprint.js";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 
 const STATE_COLLECTION = "ops_logs_state";
 const DAYS_TO_KEEP = 14;
@@ -530,9 +530,11 @@ function summarizeDeploys(deploys: DeployEvent[]): string[] {
 export async function runLogsDigest(opts: {
   botToken: string;
   chatId: string;
+  topics?: TopicMap;
   projectId: string;
 }): Promise<void> {
-  const {botToken, chatId, projectId} = opts;
+  const {botToken, chatId, topics, projectId} = opts;
+  const ctx = {botToken, chatId, topics};
   const db = admin.firestore();
 
   const now = Date.now();
@@ -572,7 +574,7 @@ export async function runLogsDigest(opts: {
         `Logging API did not respond within ${QUERY_TIMEOUT_MS / 1000}s.` :
         `Logging API error: ${msg.slice(0, 200)}`,
     ].join("\n");
-    await sendTelegram(botToken, chatId, fallback);
+    await sendTo(ctx, "signals", fallback);
     return;
   }
   functions.logger.info("wake-logs-digest: fetched main", {
@@ -593,7 +595,7 @@ export async function runLogsDigest(opts: {
     if (deployLines.length > 0) {
       body.push("", "Deploys in window:", ...deployLines);
     }
-    await sendTelegram(botToken, chatId, body.join("\n"));
+    await sendTo(ctx, "signals", body.join("\n"));
     return;
   }
 
@@ -909,5 +911,5 @@ export async function runLogsDigest(opts: {
     body = body.slice(0, TELEGRAM_MAX - marker.length) + marker;
   }
 
-  await Promise.all([batch.commit(), sendTelegram(botToken, chatId, body)]);
+  await Promise.all([batch.commit(), sendTo(ctx, "signals", body)]);
 }

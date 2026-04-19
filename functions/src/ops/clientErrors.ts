@@ -1,6 +1,6 @@
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 import {
   categoriseFingerprints,
   cutoffKey,
@@ -42,12 +42,13 @@ export async function runClientErrors(
   opts: {
     botToken: string;
     chatId: string;
-    rawChatId?: string;
+    topics?: TopicMap;
     projectId: string;
   },
   params: {source: "pwa" | "creator"}
 ): Promise<void> {
-  const {botToken, chatId} = opts;
+  const {botToken, chatId, topics} = opts;
+  const ctx = {botToken, chatId, topics};
   const {source} = params;
   const now = Date.now();
   const nowDate = new Date(now);
@@ -125,9 +126,9 @@ export async function runClientErrors(
   }
 
   if (snap.empty) {
-    await sendTelegram(
-      botToken,
-      chatId,
+    await sendTo(
+      ctx,
+      "signals",
       `[${tag}] ${todayKey} · 24h\n\nNo errors reported. All quiet.`
     );
     return;
@@ -211,5 +212,5 @@ export async function runClientErrors(
   if (body.length > TELEGRAM_MAX) {
     body = body.slice(0, TELEGRAM_MAX - 20) + "\n…[truncated]";
   }
-  await sendTelegram(botToken, chatId, body);
+  await sendTo(ctx, "signals", body);
 }

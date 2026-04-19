@@ -60,11 +60,15 @@ TG_LOG="$(mktemp -t notify-deploy-tg.XXXXXX)"
 PUSH_LOG="$(mktemp -t notify-deploy-push.XXXXXX)"
 trap 'rm -f "$TG_LOG" "$PUSH_LOG"' EXIT
 
+TG_ARGS=(--data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" --data-urlencode "text=${MSG}")
+if [ -n "${TELEGRAM_DEPLOYS_TOPIC_ID:-}" ]; then
+  TG_ARGS+=(--data-urlencode "message_thread_id=${TELEGRAM_DEPLOYS_TOPIC_ID}")
+fi
+
 {
   TG_RESPONSE="$(curl -s --max-time 10 -X POST \
     "https://api.telegram.org/bot${TELEGRAM_SIGNALS_BOT_TOKEN}/sendMessage" \
-    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-    --data-urlencode "text=${MSG}" 2>&1)"
+    "${TG_ARGS[@]}" 2>&1)"
   if echo "$TG_RESPONSE" | grep -q '"ok":true'; then
     echo "[notify-deploy] ${TARGET} (${COMMIT_HASH}) posted to wake_ops"
   else

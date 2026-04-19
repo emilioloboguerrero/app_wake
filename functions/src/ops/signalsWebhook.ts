@@ -1,7 +1,7 @@
 import type {Request, Response} from "express";
 import * as functions from "firebase-functions";
 import {commands} from "./commands.js";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 
 const COMMAND_RE = /^\/(\w+)(?:@\w+)?(?:\s+.*)?$/;
 
@@ -13,7 +13,7 @@ export async function handleSignalsWebhook(
     allowedChatId: string;
     webhookSecret: string;
     projectId: string;
-    rawChatId?: string;
+    topics?: TopicMap;
   }
 ): Promise<void> {
   const provided = (req.header("x-telegram-bot-api-secret-token") ?? "").trim();
@@ -46,17 +46,21 @@ export async function handleSignalsWebhook(
 
   const commandName = match[1];
   const handler = commands[commandName];
-  const botToken = opts.botToken;
-  const chatId = opts.allowedChatId;
+  const ctx = {
+    botToken: opts.botToken,
+    chatId: opts.allowedChatId,
+    topics: opts.topics,
+    projectId: opts.projectId,
+  };
 
   // Cloud Run Gen2 throttles CPU after the response is sent, so we run the
   // command to completion *before* replying to Telegram's webhook. The
   // webhook waits ~75s before retrying, which is well above our 10s/query
   // budgets.
   if (!handler) {
-    await sendTelegram(
-      botToken,
-      chatId,
+    await sendTo(
+      ctx,
+      "signals",
       `[signals_wake] unknown command: /${commandName}. Try /help.`
     ).catch(() => undefined);
     res.status(200).send("ok");
@@ -64,26 +68,21 @@ export async function handleSignalsWebhook(
   }
 
   try {
-    await sendTelegram(
-      botToken,
-      chatId,
+    await sendTo(
+      ctx,
+      "signals",
       `[signals_wake] running /${commandName}...`
     );
-    await handler.run({
-      botToken,
-      chatId,
-      rawChatId: opts.rawChatId,
-      projectId: opts.projectId,
-    });
+    await handler.run(ctx);
   } catch (err) {
     functions.logger.error("signalsWebhook command failed", {
       commandName,
       err,
     });
     const errMsg = err instanceof Error ? err.message : String(err);
-    await sendTelegram(
-      botToken,
-      chatId,
+    await sendTo(
+      ctx,
+      "signals",
       `[signals_wake] /${commandName} failed: ${errMsg.slice(0, 500)}`
     ).catch(() => undefined);
   }

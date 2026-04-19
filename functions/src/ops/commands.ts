@@ -3,12 +3,12 @@ import {runCronHeartbeat} from "./cronHeartbeat.js";
 import {runPaymentsPulse} from "./paymentsPulse.js";
 import {runQuotaWatch} from "./quotaWatch.js";
 import {runClientErrors} from "./clientErrors.js";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 
 export interface CommandContext {
   botToken: string;
-  chatId: string; // digest chat (default)
-  rawChatId?: string; // optional — raw-firehose channel, falls back to chatId
+  chatId: string;
+  topics?: TopicMap;
   projectId: string;
 }
 
@@ -49,7 +49,7 @@ const registry: Record<string, CommandHandler> = {
       for (const [name, handler] of Object.entries(registry)) {
         lines.push(`/${name} — ${handler.description}`);
       }
-      await sendTelegram(ctx.botToken, ctx.chatId, lines.join("\n"));
+      await sendTo(ctx, "signals", lines.join("\n"));
     },
   },
 };
@@ -68,9 +68,9 @@ registry.all = {
       }
     }
     if (errors.length > 0) {
-      await sendTelegram(
-        ctx.botToken,
-        ctx.chatId,
+      await sendTo(
+        ctx,
+        "signals",
         `[signals_wake] /all completed with errors:\n${errors.join("\n")}`
       );
     }

@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import {GoogleAuth} from "google-auth-library";
 import * as functions from "firebase-functions";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 import {
   categoriseFingerprints,
   cutoffKey,
@@ -279,10 +279,11 @@ function formatBuckets(buckets: CategoryBuckets<PaymentSignalExtras>): string[] 
 export async function runPaymentsPulse(opts: {
   botToken: string;
   chatId: string;
-  rawChatId?: string;
+  topics?: TopicMap;
   projectId: string;
 }): Promise<void> {
-  const {botToken, chatId, projectId} = opts;
+  const {botToken, chatId, topics, projectId} = opts;
+  const ctx = {botToken, chatId, topics};
   const now = Date.now();
   const nowDate = new Date(now);
   const sinceMs = now - 24 * 60 * 60 * 1000;
@@ -423,5 +424,5 @@ export async function runPaymentsPulse(opts: {
   if (body.length > TELEGRAM_MAX) {
     body = body.slice(0, TELEGRAM_MAX - 20) + "\n…[truncated]";
   }
-  await sendTelegram(botToken, chatId, body);
+  await sendTo(ctx, "signals", body);
 }

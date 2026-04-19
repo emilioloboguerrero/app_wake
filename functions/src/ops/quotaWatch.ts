@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin";
 import {MetricServiceClient} from "@google-cloud/monitoring";
 import * as functions from "firebase-functions";
-import {sendTelegram} from "./telegram.js";
+import {sendTo, type TopicMap} from "./telegram.js";
 import {
   categoriseFingerprints,
   cutoffKey,
@@ -188,10 +188,11 @@ interface QuotaSignalExtras {
 export async function runQuotaWatch(opts: {
   botToken: string;
   chatId: string;
-  rawChatId?: string;
+  topics?: TopicMap;
   projectId: string;
 }): Promise<void> {
-  const {botToken, chatId, projectId} = opts;
+  const {botToken, chatId, topics, projectId} = opts;
+  const ctx = {botToken, chatId, topics};
   const now = Date.now();
   const nowDate = new Date(now);
   const todayKey = nowDate.toISOString().slice(0, 10);
@@ -309,5 +310,5 @@ export async function runQuotaWatch(opts: {
   if (body.length > TELEGRAM_MAX) {
     body = body.slice(0, TELEGRAM_MAX - 20) + "\n…[truncated]";
   }
-  await sendTelegram(botToken, chatId, body);
+  await sendTo(ctx, "signals", body);
 }

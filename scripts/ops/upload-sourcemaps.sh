@@ -13,7 +13,7 @@
 set -e
 
 PROJECT="${1:-wolf-20b8b}"
-BUCKET="${PROJECT}.appspot.com"
+BUCKET="${PROJECT}.firebasestorage.app"
 SOURCE_DIR="${SOURCE_DIR:-hosting/app}"
 
 if [ ! -d "$SOURCE_DIR" ]; then

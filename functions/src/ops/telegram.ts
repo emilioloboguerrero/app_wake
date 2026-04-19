@@ -1,55 +1,70 @@
-// Thin Telegram client + channel routing.
+// Thin Telegram client + topic routing.
 //
-// Channels:
-//   - "digest" (default): synthesized summaries — the current wake_ops group.
-//   - "raw": firehose / per-event posts — a separate group when
-//     TELEGRAM_RAW_CHAT_ID is configured, otherwise falls back to "digest".
+// The wake_ops supergroup has Forum Mode enabled with three topics:
+//   - "agent"   — smart synthesis + @mention Q&A (Phase 3)
+//   - "signals" — all dumb collector output
+//   - "deploys" — postdeploy notifications
 //
-// All collectors post to "digest" today. The split exists so a future
-// raw-firehose collector can be added without re-plumbing every caller.
+// Thread IDs are carried in the ChannelContext.topics map, sourced from
+// the TELEGRAM_TOPICS secret (JSON). If the map is missing or a topic
+// key is absent, posts fall back to the group root — safe default that
+// matches the pre-forum behavior.
 
-export type Channel = "digest" | "raw";
+export type Topic = "agent" | "signals" | "deploys";
+
+export interface TopicMap {
+  agent?: number;
+  signals?: number;
+  deploys?: number;
+}
 
 export interface ChannelContext {
   botToken: string;
-  chatId: string; // digest chat id (default)
-  rawChatId?: string; // optional — if unset, raw messages route to chatId
+  chatId: string;
+  topics?: TopicMap;
 }
 
-export function resolveChatId(
-  ctx: {chatId: string; rawChatId?: string},
-  channel: Channel = "digest"
-): string {
-  if (channel === "raw" && ctx.rawChatId) return ctx.rawChatId;
-  return ctx.chatId;
+export function parseTopicMap(raw: string | undefined): TopicMap {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: TopicMap = {};
+    for (const key of ["agent", "signals", "deploys"] as const) {
+      const v = parsed[key];
+      if (typeof v === "number" && Number.isFinite(v)) out[key] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 export async function sendTelegram(
   botToken: string,
   chatId: string,
-  text: string
+  text: string,
+  messageThreadId?: number
 ): Promise<void> {
+  const body: Record<string, unknown> = {chat_id: chatId, text};
+  if (messageThreadId) body.message_thread_id = messageThreadId;
   const res = await fetch(
     `https://api.telegram.org/bot${botToken}/sendMessage`,
     {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({chat_id: chatId, text}),
+      body: JSON.stringify(body),
     }
   );
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Telegram API ${res.status}: ${body}`);
+    const errBody = await res.text();
+    throw new Error(`Telegram API ${res.status}: ${errBody}`);
   }
 }
 
-// Convenience helper: send to a named channel, falling back to digest
-// when the raw channel isn't configured.
 export async function sendTo(
   ctx: ChannelContext,
-  channel: Channel,
+  topic: Topic,
   text: string
 ): Promise<void> {
-  const chat = resolveChatId(ctx, channel);
-  await sendTelegram(ctx.botToken, chat, text);
+  await sendTelegram(ctx.botToken, ctx.chatId, text, ctx.topics?.[topic]);
 }
