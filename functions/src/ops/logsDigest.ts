@@ -6,8 +6,14 @@ import {sendTo, type TopicMap} from "./telegram.js";
 
 const STATE_COLLECTION = "ops_logs_state";
 const DAYS_TO_KEEP = 14;
-const SAMPLE_LEN = 220;
+// Enough room to include a full Firestore index-creation URL inline when
+// it's short; URLs that straddle this boundary are surfaced on their own
+// `↳` line by extractAndPromoteUrls so they're never cut mid-query-string.
+const SAMPLE_LEN = 400;
+const MAX_URLS_PER_ENTRY = 2;
 const TELEGRAM_MAX = 4000;
+
+const URL_RE = /https?:\/\/\S+/g;
 const QUERY_TIMEOUT_MS = 10_000;
 const LOGGING_PAGE_SIZE = 1000;
 const LOGGING_SCOPE = "https://www.googleapis.com/auth/logging.read";
@@ -39,6 +45,7 @@ interface AggregatedError {
   functionName: string;
   errorType: string;
   sampleMessage: string;
+  sampleUrls: string[];
   count: number;
   errorCount: number;
   warnCount: number;
@@ -160,6 +167,26 @@ function extractMessage(entry: any): string {
   }
 
   return "";
+}
+
+// Pull URLs out of the sample so (a) they don't get chopped mid-query-string
+// by truncation and (b) they render on their own `↳` line as click targets.
+// The returned cleaned string has each URL replaced with `<url>` so the
+// sample reads naturally.
+function extractAndPromoteUrls(sample: string): {
+  cleaned: string;
+  urls: string[];
+} {
+  const urls: string[] = [];
+  const cleaned = sample.replace(URL_RE, (u) => {
+    // Drop trailing punctuation that's almost never part of the URL.
+    const trimmed = u.replace(/[),.;!?]+$/, "");
+    if (urls.length < MAX_URLS_PER_ENTRY && !urls.includes(trimmed)) {
+      urls.push(trimmed);
+    }
+    return "<url>";
+  });
+  return {cleaned, urls};
 }
 
 // Reduce a raw error+stack to one line: "<header> @ <app-frame>".
@@ -667,11 +694,14 @@ export async function runLogsDigest(opts: {
       if (meta.status !== undefined) statuses.add(meta.status);
       const paths = new Set<string>();
       if (meta.route) paths.add(meta.route);
+      const condensed = normalizeForDisplay(condenseStack(messageRaw));
+      const {cleaned, urls} = extractAndPromoteUrls(condensed);
       perFp.set(fp, {
         fingerprint: fp,
         functionName: functionLabel,
         errorType,
-        sampleMessage: normalizeForDisplay(condenseStack(messageRaw)).slice(0, SAMPLE_LEN),
+        sampleMessage: cleaned.slice(0, SAMPLE_LEN),
+        sampleUrls: urls,
         count: 1,
         errorCount: isErr ? 1 : 0,
         warnCount: isErr ? 0 : 1,
@@ -824,7 +854,13 @@ export async function runLogsDigest(opts: {
       `• ${e.functionName} — ${prefix}${sample} ` +
       `(${severityTag}${users}${timeRange}${suffix})${tag}`;
 
-    if (!opts.rich) return base;
+    if (!opts.rich) {
+      // Even in compact mode, surface URLs — the sample renders them as
+      // `<url>` and the actual URL is often the actionable bit (e.g.
+      // Firestore composite-index creation).
+      if (e.sampleUrls.length === 0) return base;
+      return [base, ...e.sampleUrls.map((u) => `  ↳ ${u}`)].join("\n");
+    }
 
     // Rich mode: append context line (IP class, UA, referer) and deep-link
     // only for NEW/SPIKING, where the extra bytes are worth the budget.
@@ -841,6 +877,12 @@ export async function runLogsDigest(opts: {
     const lines = [base];
     if (contextBits.length > 0) {
       lines.push(`  ↳ ${contextBits.join(" · ")}`);
+    }
+    // Surface URLs from the original message (e.g. Firestore "create this
+    // index at <url>") so the operator has a click target instead of a
+    // mid-query-string truncation.
+    for (const url of e.sampleUrls) {
+      lines.push(`  ↳ ${url}`);
     }
     if (e.sampleTrace) {
       lines.push(`  ↳ ${deepLinkForTrace(projectId, e.sampleTrace)}`);

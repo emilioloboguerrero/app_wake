@@ -29,7 +29,12 @@ const JOBS: JobSpec[] = [
   {name: "wakeDailyPulseCron", intervalMin: 1440, label: "daily 19:00"},
 ];
 
-const LOOKBACK_MS = 48 * 60 * 60 * 1000;
+// Lookback of 14 days so we can report *when* a daily job last ran rather
+// than just "no logs in lookback". Any job that hasn't run in 14 days is
+// either disabled or the region/name has drifted — the message makes the
+// difference explicit.
+const LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000;
+const LOOKBACK_HOURS = Math.round(LOOKBACK_MS / 3_600_000);
 
 interface LogEntry {
   timestamp?: string;
@@ -102,6 +107,26 @@ function formatAge(ms: number): string {
   return `${days}d ago`;
 }
 
+function formatIsoMinutes(ms: number): string {
+  // 2026-04-18T19:00Z — minute precision is enough for cadence reasoning.
+  return new Date(ms).toISOString().slice(0, 16) + "Z";
+}
+
+function formatCadence(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  const hr = minutes / 60;
+  if (hr < 24) return `${hr}h`;
+  const days = hr / 24;
+  return `${days}d`;
+}
+
+function logsLinkForService(projectId: string, serviceName: string): string {
+  const q = encodeURIComponent(
+    `resource.type="cloud_run_revision" resource.labels.service_name="${serviceName.toLowerCase()}"`
+  );
+  return `https://console.cloud.google.com/logs/query?project=${projectId}&q=${q}`;
+}
+
 export async function runCronHeartbeat(opts: {
   botToken: string;
   chatId: string;
@@ -140,48 +165,72 @@ export async function runCronHeartbeat(opts: {
     return;
   }
 
-  const stale: Array<{job: JobSpec; age: string; reason: string}> = [];
-  const healthy: Array<{job: JobSpec; age: string}> = [];
+  interface StaleRow {
+    job: JobSpec;
+    lastMs: number | null;
+    ageMs: number | null;
+    thresholdMs: number;
+    overBy: number | null; // ratio of age to threshold (>1 = stale)
+  }
+  const stale: StaleRow[] = [];
+  const healthy: Array<{job: JobSpec; ageMs: number; lastMs: number}> = [];
 
   for (const job of JOBS) {
     const last = lastRun.get(job.name.toLowerCase());
     const thresholdMs = job.intervalMin * 60_000 * 3;
     if (!last) {
-      stale.push({
-        job,
-        age: `>${Math.round(LOOKBACK_MS / 3_600_000)}h`,
-        reason: "no logs in lookback",
-      });
+      stale.push({job, lastMs: null, ageMs: null, thresholdMs, overBy: null});
       continue;
     }
     const age = now - last;
     if (age > thresholdMs) {
-      stale.push({job, age: formatAge(age), reason: "exceeds 3× cadence"});
+      stale.push({
+        job,
+        lastMs: last,
+        ageMs: age,
+        thresholdMs,
+        overBy: age / thresholdMs,
+      });
     } else {
-      healthy.push({job, age: formatAge(age)});
+      healthy.push({job, ageMs: age, lastMs: last});
     }
   }
 
   const lines: string[] = [];
   const staleMark = stale.length > 0 ? `${stale.length} STALE` : "all healthy";
   lines.push(
-    `[wake-cron-heartbeat] ${today} · ${JOBS.length} jobs · ${staleMark}`
+    `[wake-cron-heartbeat] ${today} · ${JOBS.length} jobs · ${staleMark} · lookback ${LOOKBACK_HOURS}h`
   );
   lines.push("");
 
   if (stale.length > 0) {
     lines.push("STALE");
     for (const s of stale) {
-      lines.push(
-        `• ${s.job.name} (${s.job.label}) — last ${s.age} (${s.reason})`
-      );
+      const threshold = formatCadence(s.thresholdMs / 60_000);
+      if (s.lastMs === null || s.ageMs === null) {
+        // Truly never seen in 14 days — distinct from "ran N days ago but
+        // still stale", because it suggests the job is disabled / renamed.
+        lines.push(
+          `• ${s.job.name} (${s.job.label}) — never seen in last ${LOOKBACK_HOURS}h ` +
+            `(threshold ${threshold}) [missing]`
+        );
+      } else {
+        const over = s.overBy ? `${s.overBy.toFixed(1)}× cadence` : "stale";
+        lines.push(
+          `• ${s.job.name} (${s.job.label}) — last ${formatIsoMinutes(s.lastMs)} ` +
+            `(${formatAge(s.ageMs)}, ${over}, threshold ${threshold})`
+        );
+      }
+      lines.push(`  ↳ ${logsLinkForService(projectId, s.job.name)}`);
     }
     lines.push("");
   }
 
   lines.push("HEALTHY");
   for (const h of healthy) {
-    lines.push(`• ${h.job.name} (${h.job.label}) — ${h.age}`);
+    lines.push(
+      `• ${h.job.name} (${h.job.label}) — last ${formatIsoMinutes(h.lastMs)} (${formatAge(h.ageMs)})`
+    );
   }
 
   let body = lines.join("\n").trim();

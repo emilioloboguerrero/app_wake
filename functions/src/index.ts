@@ -3039,10 +3039,21 @@ export const wakeDailyPulseCron = onSchedule(
       try {
         await fn();
       } catch (err) {
-        functions.logger.error("wakeDailyPulseCron step failed", {
-          step: name,
-          error: err instanceof Error ? err.message : String(err),
-        });
+        // Put the step name in the log message itself so each failing step
+        // gets its own fingerprint in the logs digest (instead of all steps
+        // collapsing into one generic "step failed" entry). Pass the error
+        // object so its stack survives and condenseStack can point at the
+        // app frame that threw.
+        const errMsg = err instanceof Error ? err.message : String(err);
+        functions.logger.error(
+          `wakeDailyPulseCron[${name}] step failed: ${errMsg}`,
+          {
+            step: name,
+            err,
+            error: errMsg,
+            stack: err instanceof Error ? err.stack : undefined,
+          }
+        );
       }
     }
   }

@@ -28,13 +28,14 @@ export function normalizeForFingerprint(message: string): string {
 }
 
 // Normalize for display: keep more context (UUIDs/hashes kept since the
-// human reader often wants them to identify the specific request).
+// human reader often wants them to identify the specific request). Room
+// for a Firestore index-creation URL plus a short error preamble.
 export function normalizeForDisplay(message: string): string {
   return message
     .replace(TIMESTAMP_RE, "{ts}")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 300);
+    .slice(0, 600);
 }
 
 export function fingerprintError(

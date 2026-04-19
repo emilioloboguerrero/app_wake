@@ -29,6 +29,68 @@ interface Bucket {
   sampleStack: string | null;
   count: number;
   users: Set<string>;
+  firstMs: number;
+  lastMs: number;
+  userAgents: Map<string, number>;
+}
+
+// Short UA buckets so a full Chrome UA string doesn't eat the Telegram
+// budget. Just enough to tell iOS Safari from Android Chrome from a bot.
+function shortUa(ua: string): string {
+  if (!ua) return "";
+  if (/iPhone|iPad/.test(ua)) return /Safari/.test(ua) ? "iOS Safari" : "iOS";
+  if (/Android/.test(ua)) return /Chrome/.test(ua) ? "Android Chrome" : "Android";
+  if (/Edg\//.test(ua)) return "Edge";
+  if (/Chrome/.test(ua)) return "Chrome";
+  if (/Firefox/.test(ua)) return "Firefox";
+  if (/Safari/.test(ua)) return "Safari";
+  if (/curl|bot|crawler|spider|python-requests/i.test(ua)) return "bot/other";
+  return ua.slice(0, 24);
+}
+
+// Fallback when a sourcemap isn't available (creator dashboard, or PWA
+// before maps upload): pull the first readable frame out of the raw stack
+// so the digest still points somewhere useful.
+function rawTopFrame(stack: string | null): string | null {
+  if (!stack) return null;
+  for (const line of stack.split("\n").map((l) => l.trim())) {
+    if (!line.startsWith("at ") && !/^https?:\/\//.test(line)) continue;
+    // Collapse absolute URLs to pathname+line:col so the frame fits.
+    const urlMatch = /(https?:\/\/[^\s)]+)/.exec(line);
+    if (urlMatch) {
+      try {
+        const u = new URL(urlMatch[1]);
+        return u.pathname.replace(/^\/+/, "") +
+          line.slice(line.indexOf(urlMatch[1]) + urlMatch[1].length);
+      } catch {
+        // fall through
+      }
+    }
+    return line.replace(/^at\s+/, "").slice(0, 100);
+  }
+  return null;
+}
+
+function formatHhmm(ms: number): string {
+  const d = new Date(ms);
+  return (
+    String(d.getUTCHours()).padStart(2, "0") +
+    ":" +
+    String(d.getUTCMinutes()).padStart(2, "0") +
+    "Z"
+  );
+}
+
+function topKey<K>(m: Map<K, number>): K | undefined {
+  let best: K | undefined;
+  let bestN = -1;
+  for (const [k, v] of m) {
+    if (v > bestN) {
+      best = k;
+      bestN = v;
+    }
+  }
+  return best;
 }
 
 interface ClientErrorExtras {
@@ -75,12 +137,28 @@ export async function runClientErrors(
     totalCount += count;
     const userId = typeof d.userId === "string" ? d.userId : "";
     if (userId) allUsers.add(userId);
+    const createdMs =
+      d.createdAt && typeof d.createdAt.toMillis === "function" ?
+        d.createdAt.toMillis() :
+        Date.now();
+    const uaBucket = shortUa(typeof d.userAgent === "string" ? d.userAgent : "");
 
     const existing = byFp.get(fp);
     if (existing) {
       existing.count += count;
       if (userId) existing.users.add(userId);
+      if (createdMs < existing.firstMs) existing.firstMs = createdMs;
+      if (createdMs > existing.lastMs) existing.lastMs = createdMs;
+      if (uaBucket) {
+        existing.userAgents.set(uaBucket, (existing.userAgents.get(uaBucket) ?? 0) + 1);
+      }
+      // Prefer a sample with a stack if we don't have one yet.
+      if (!existing.sampleStack && typeof d.stack === "string") {
+        existing.sampleStack = d.stack;
+      }
     } else {
+      const userAgents = new Map<string, number>();
+      if (uaBucket) userAgents.set(uaBucket, 1);
       byFp.set(fp, {
         fingerprint: fp,
         errorType: String(d.errorType || "Error"),
@@ -89,6 +167,9 @@ export async function runClientErrors(
         sampleStack: typeof d.stack === "string" ? d.stack : null,
         count,
         users: userId ? new Set([userId]) : new Set(),
+        firstMs: createdMs,
+        lastMs: createdMs,
+        userAgents,
       });
     }
   }
@@ -163,9 +244,31 @@ export async function runClientErrors(
         symbolicated = null;
       }
     }
+    // Fall back to the raw top frame so we always point somewhere, even
+    // when sourcemaps aren't uploaded yet (fresh deploy) or we're looking
+    // at creator dashboard errors (no sourcemap pipeline there).
+    const frame = symbolicated ?? rawTopFrame(b.sampleStack);
     const stateTag = state ? ` [${state}]` : "";
-    const at = symbolicated ? ` @ ${symbolicated}` : "";
-    return `• ${prefix}${b.sampleMessage}${at}${location} (${b.count}${users})${stateTag}`;
+    const at = frame ? ` @ ${frame}` : "";
+    const base =
+      `• ${prefix}${b.sampleMessage}${at}${location} (${b.count}${users})${stateTag}`;
+
+    // Timing line: "burst HH:MMZ" for tight clusters, range otherwise. Plus
+    // top user-agent and the fingerprint hash so an operator can query
+    // `ops_client_errors where fingerprint == X` to pull raw events.
+    const detailBits: string[] = [];
+    if (b.firstMs && b.lastMs) {
+      detailBits.push(
+        b.lastMs - b.firstMs < 30 * 60_000 ?
+          `burst ${formatHhmm(b.firstMs)}` :
+          `${formatHhmm(b.firstMs)}–${formatHhmm(b.lastMs)}`
+      );
+    }
+    const ua = topKey(b.userAgents);
+    if (ua) detailBits.push(`ua=${ua}`);
+    detailBits.push(`fp=${b.fingerprint.slice(0, 10)}`);
+
+    return `${base}\n  ↳ ${detailBits.join(" · ")}`;
   };
 
   // Grouped output — NEW first, then SPIKING, then top-by-count
@@ -207,6 +310,14 @@ export async function runClientErrors(
     lines.push("");
     lines.push(`… and ${bucketsList.length - TOP_N} more fingerprints`);
   }
+
+  // Refetch pointer: lets the reader pull raw events (full stack, full URL,
+  // full UA, full userId) without having to know the Firestore schema.
+  lines.push("");
+  lines.push(
+    `Refetch: opsApi /v1/client-errors?source=${source}&windowHours=24` +
+      " · Firestore: ops_client_errors where source==" + source
+  );
 
   let body = lines.join("\n").trim();
   if (body.length > TELEGRAM_MAX) {
