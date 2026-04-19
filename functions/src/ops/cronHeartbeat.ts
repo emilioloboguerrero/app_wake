@@ -42,8 +42,11 @@ async function listLastRunPerService(
   serviceNames: string[],
   sinceIso: string
 ): Promise<Map<string, number>> {
+  // Gen2 onSchedule deploys as a Cloud Run service whose name is the
+  // lowercased export name. Match on lowercase and bucket by lowercase so
+  // callers can look up with either casing.
   const servicesClause = serviceNames
-    .map((n) => `"${n}"`)
+    .map((n) => `"${n.toLowerCase()}"`)
     .join(" OR ");
   const filter = [
     `timestamp >= "${sinceIso}"`,
@@ -141,7 +144,7 @@ export async function runCronHeartbeat(opts: {
   const healthy: Array<{job: JobSpec; age: string}> = [];
 
   for (const job of JOBS) {
-    const last = lastRun.get(job.name);
+    const last = lastRun.get(job.name.toLowerCase());
     const thresholdMs = job.intervalMin * 60_000 * 3;
     if (!last) {
       stale.push({
