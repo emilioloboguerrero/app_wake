@@ -22,7 +22,7 @@ export function Title({ children }) {
       color: 'rgba(255,255,255,0.9)',
       fontSize: 'clamp(20px, 5.5vw, 28px)',
       fontWeight: 300,
-      fontFamily: "'Montserrat', sans-serif",
+      fontFamily: "'Inter', sans-serif",
       textAlign: 'center',
       letterSpacing: '-0.01em',
       margin: 0,

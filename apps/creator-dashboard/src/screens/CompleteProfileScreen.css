@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 /* ─── Root ───────────────────────────────────────────────── */
 .cp-root {
@@ -8,7 +8,7 @@
   overflow: hidden;
   display: flex;
   position: relative;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 .cp-grid {
@@ -208,7 +208,7 @@
   width: 100%;
   background: transparent;
   border: none;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   font-weight: 400;
   color: rgba(255,255,255,0.9);
@@ -255,7 +255,7 @@
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.4);
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -308,7 +308,7 @@
   background: rgba(255,255,255,0.92);
   color: #1a1a1a;
   border: none;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -355,7 +355,7 @@
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 12px;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
   font-weight: 400;
   color: rgba(255,255,255,0.9);
@@ -400,7 +400,7 @@
 }
 
 .cp-field .date-picker-month-year-select {
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 .cp-field .date-picker-error-text {

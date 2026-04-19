@@ -3,7 +3,7 @@ import { motion, useScroll, useTransform, useMotionValueEvent } from 'motion/rea
 import { getMainHeroLandingImages } from '../services/heroImagesService';
 import wakeIcon from '../assets/hero-logo.svg';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
-import wakeLogotype from '../assets/wake-logotype.svg';
+import CascadeText from '../components/CascadeText';
 import './TestLandingScreen.css';
 
 const SLIDE_INTERVAL = 4000;
@@ -637,86 +637,6 @@ function AthletesGallery() {
 }
 
 /* ═══════════════════════════════════════════
-   NAV
-   ═══════════════════════════════════════════ */
-const NAV_LINKS = [
-  { label: 'Creadores', href: '/creadores' },
-  { label: 'Devs', href: '/developers' },
-];
-
-export function Nav() {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
-
-  return (
-    <nav className="tlt-nav">
-      <a href="/" className="tlt-nav-logo">
-        <img src={wakeLogotype} alt="Wake" />
-      </a>
-
-      {/* Desktop links */}
-      <div className="tlt-nav-links">
-        {NAV_LINKS.map((link) => (
-          <a key={link.href} href={link.href} className="tlt-nav-link">{link.label}</a>
-        ))}
-        <a href="/app" className="tlt-nav-cta">Ir a la app</a>
-      </div>
-
-      {/* Mobile: CTA + hamburger */}
-      <div className="tlt-nav-mobile-right">
-        <a href="/app" className="tlt-nav-mobile-cta">Ir a la app</a>
-        <button
-          type="button"
-          className="tlt-nav-burger"
-          onClick={() => setOpen(true)}
-          aria-label="Menu"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Mobile drawer */}
-      {open && (
-        <>
-          <div className="tlt-nav-overlay" onClick={() => setOpen(false)} />
-          <div className="tlt-nav-drawer">
-            <button
-              type="button"
-              className="tlt-nav-close"
-              onClick={() => setOpen(false)}
-              aria-label="Cerrar"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-            <div className="tlt-nav-drawer-links">
-              {NAV_LINKS.map((link) => (
-                <a key={link.href} href={link.href} className="tlt-nav-drawer-link">{link.label}</a>
-              ))}
-              <a href="/app" className="tlt-nav-drawer-cta">Ir a la app</a>
-            </div>
-          </div>
-        </>
-      )}
-    </nav>
-  );
-}
-
-/* ═══════════════════════════════════════════
    CTA SECTION
    ═══════════════════════════════════════════ */
 function CtaSection() {
@@ -797,7 +717,6 @@ export default function TestLandingScreen() {
 
   return (
     <div className="test-landing-frozen">
-      <Nav />
       <section className="tlt-hero">
         <div
           className="tlt-slideshow"
@@ -826,12 +745,13 @@ export default function TestLandingScreen() {
           aria-hidden="true"
           style={{ opacity: 0.22 * heroOpacity }}
         />
-        <h1
+        <CascadeText
+          as="h1"
           className="tlt-hero-statement"
           style={{ opacity: heroOpacity }}
         >
           Sé lo que admiras.
-        </h1>
+        </CascadeText>
       </section>
 
       <div className="tlt-transition" />

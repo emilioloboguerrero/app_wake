@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import CascadeText from '../components/CascadeText';
 import './NotFoundScreen.css';
 
 const LINKS = [
@@ -106,7 +107,7 @@ export default function NotFoundScreen() {
 
       <div className="nf-inner">
         <p className="nf-eyebrow">404</p>
-        <h1 className="nf-title">por aquí no fue</h1>
+        <CascadeText as="h1" className="nf-title">por aquí no fue</CascadeText>
       </div>
 
       <nav className="nf-pills" aria-label="Ir a">

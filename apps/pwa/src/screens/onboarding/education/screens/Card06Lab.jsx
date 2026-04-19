@@ -40,7 +40,7 @@ function LabVisual() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease, delay: 0.5 }}
       >
-        <text x="35" y="35" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="500">FUERZA</text>
+        <text x="35" y="35" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="500">FUERZA</text>
         <motion.polyline
           points="35,70 55,65 75,60 95,55 115,48 130,42"
           stroke="rgba(255,87,168,0.4)"
@@ -67,7 +67,7 @@ function LabVisual() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease, delay: 0.7 }}
       >
-        <text x="155" y="35" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="500">VOLUMEN</text>
+        <text x="155" y="35" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="500">VOLUMEN</text>
         {[
           { x: 160, h: 20 },
           { x: 175, h: 28 },
@@ -94,7 +94,7 @@ function LabVisual() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8, ease, delay: 1 }}
       >
-        <text x="35" y="95" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="500">MÚSCULOS</text>
+        <text x="35" y="95" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="500">MÚSCULOS</text>
         {/* Real front-view body outline from MuscleSilhouetteSVG, scaled to fit */}
         <g transform="translate(28, 95) scale(0.0085)">
           <motion.path
@@ -177,7 +177,7 @@ function LabVisual() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease, delay: 1.2 }}
       >
-        <text x="135" y="95" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="500">CONSISTENCIA</text>
+        <text x="135" y="95" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="500">CONSISTENCIA</text>
         {Array.from({ length: 7 }).map((_, row) =>
           Array.from({ length: 7 }).map((_, col) => {
             const idx = row * 7 + col;
@@ -204,7 +204,7 @@ function LabVisual() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease, delay: 1.5 }}
       >
-        <text x="35" y="210" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="500">NUTRICIÓN</text>
+        <text x="35" y="210" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="500">NUTRICIÓN</text>
         <rect x="35" y="217" width="80" height="5" rx="2.5" fill="rgba(255,255,255,0.04)" />
         <motion.rect
           x="35" y="217" width="62" height="5" rx="2.5"
@@ -237,7 +237,7 @@ function LabVisual() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease, delay: 1.7 }}
       >
-        <text x="135" y="210" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="500">PESO</text>
+        <text x="135" y="210" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="500">PESO</text>
         <motion.polyline
           points="135,240 150,238 165,235 180,233 195,230 210,227 225,224 240,220"
           stroke="rgba(255,255,255,0.2)"

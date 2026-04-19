@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 .ob-root {
   width: 100vw;
@@ -10,7 +10,7 @@
   align-items: center;
   justify-content: center;
   position: relative;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   perspective: 1200px;
 }
 
@@ -56,7 +56,7 @@
   color: rgba(255,255,255,0.9);
   font-size: clamp(36px, 4vw, 56px);
   font-weight: 300;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   text-align: center;
   letter-spacing: -0.02em;
   margin: 24px 0 0 0;
@@ -72,7 +72,7 @@
   color: rgba(255,255,255,0.45);
   font-size: clamp(20px, 2.2vw, 28px);
   font-weight: 400;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   text-align: center;
   letter-spacing: 0.02em;
   margin: 0 0 12px 0;
@@ -92,7 +92,7 @@
   color: rgba(255,255,255,0.85);
   font-size: 15px;
   font-weight: 500;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   letter-spacing: 0.04em;
   cursor: pointer;
   backdrop-filter: blur(8px);
@@ -146,7 +146,7 @@
 .ob-hint-text {
   color: rgba(255,255,255,0.25);
   font-size: 13px;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   font-weight: 400;
   letter-spacing: 0.03em;
 }

@@ -5,7 +5,7 @@
   background: #1a1a1a;
   overflow: hidden;
   position: relative;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   display: flex;
   flex-direction: column;
   border-radius: 12px;
@@ -68,7 +68,7 @@
   color: rgba(255,255,255,0.85);
   font-size: 15px;
   font-weight: 500;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   letter-spacing: 0.04em;
   cursor: pointer;
   backdrop-filter: blur(8px);
@@ -115,7 +115,7 @@
   color: rgba(255,255,255,0.85);
   font-size: clamp(22px, 2.6vw, 36px);
   font-weight: 300;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   letter-spacing: -0.02em;
   line-height: 1.4;
   margin: 0;
@@ -173,7 +173,7 @@
   justify-content: center;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
 }
 
 .bg-nav-btn:hover:not(:disabled) {
@@ -300,7 +300,7 @@
   color: rgba(255,255,255,0.85);
   font-size: 15px;
   font-weight: 500;
-  font-family: 'Montserrat', sans-serif;
+  font-family: 'Inter', sans-serif;
   letter-spacing: 0.04em;
   cursor: pointer;
   backdrop-filter: blur(8px);

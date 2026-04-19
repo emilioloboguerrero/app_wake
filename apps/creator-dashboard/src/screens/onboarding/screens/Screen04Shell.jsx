@@ -43,7 +43,7 @@ export default function Screen04Shell() {
             >
               <span style={{
                 color: 'rgba(255,255,255,0.25)', fontSize: 10,
-                fontFamily: "'Montserrat'", fontWeight: 600,
+                fontFamily: "'Inter'", fontWeight: 600,
                 letterSpacing: '0.12em', textTransform: 'uppercase',
               }}>Programa</span>
             </motion.div>
@@ -60,7 +60,7 @@ export default function Screen04Shell() {
                   border: '1px solid rgba(255,255,255,0.1)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 600 }}>JC</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 600 }}>JC</span>
                 </div>
                 <motion.div
                   initial={{ opacity: 0, x: -40, rotate: -5 }}
@@ -71,11 +71,11 @@ export default function Screen04Shell() {
                     border: '1px solid rgba(255,255,255,0.07)', padding: 10,
                   }}
                 >
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entreno</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Inter'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entreno</span>
                   <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {['Full Body A', 'Upper B'].map((s, i) => (
                       <div key={i} style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: "'Montserrat'" }}>{s}</span>
+                        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: "'Inter'" }}>{s}</span>
                       </div>
                     ))}
                   </div>
@@ -89,9 +89,9 @@ export default function Screen04Shell() {
                     border: '1px solid rgba(255,255,255,0.07)', padding: 10,
                   }}
                 >
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nutricion</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Inter'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nutricion</span>
                   <div style={{ marginTop: 4 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, fontFamily: "'Montserrat'" }}>2,200 kcal</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, fontFamily: "'Inter'" }}>2,200 kcal</span>
                   </div>
                 </motion.div>
               </motion.div>
@@ -109,7 +109,7 @@ export default function Screen04Shell() {
                   border: '1px solid rgba(255,255,255,0.1)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 600 }}>ML</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 600 }}>ML</span>
                 </div>
                 <motion.div
                   initial={{ opacity: 0, x: 40, rotate: 5 }}
@@ -120,11 +120,11 @@ export default function Screen04Shell() {
                     border: '1px solid rgba(255,255,255,0.07)', padding: 10,
                   }}
                 >
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entreno</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Inter'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entreno</span>
                   <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {['Push Pull', 'Lower C'].map((s, i) => (
                       <div key={i} style={{ padding: '4px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: "'Montserrat'" }}>{s}</span>
+                        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 9, fontFamily: "'Inter'" }}>{s}</span>
                       </div>
                     ))}
                   </div>
@@ -138,9 +138,9 @@ export default function Screen04Shell() {
                     border: '1px solid rgba(255,255,255,0.07)', padding: 10,
                   }}
                 >
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nutricion</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 9, fontFamily: "'Inter'", fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nutricion</span>
                   <div style={{ marginTop: 4 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, fontFamily: "'Montserrat'" }}>1,800 kcal</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 9, fontFamily: "'Inter'" }}>1,800 kcal</span>
                   </div>
                 </motion.div>
               </motion.div>

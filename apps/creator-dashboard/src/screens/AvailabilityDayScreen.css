@@ -38,7 +38,7 @@
 }
 
 .avday-title {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-primary, #fff);
@@ -47,7 +47,7 @@
 }
 
 .avday-slot-count {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.8125rem;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
 }
@@ -61,7 +61,7 @@
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
   border-radius: 10px;
   color: var(--text-secondary, rgba(255,255,255,0.5));
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
@@ -85,14 +85,14 @@
   border: 1px solid rgba(224,84,84,0.18);
   border-radius: 10px;
   color: rgba(224,84,84,0.9);
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.8125rem;
   line-height: 1.45;
 }
 
 /* Invalid date */
 .avday-invalid {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.875rem;
   color: var(--text-secondary, rgba(255,255,255,0.5));
   margin: 0 0 16px;
@@ -124,7 +124,7 @@
 }
 
 .avday-card-label {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.6875rem;
   font-weight: 700;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
@@ -134,7 +134,7 @@
 }
 
 .avday-card-desc {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.8125rem;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
   margin: 0;
@@ -150,7 +150,7 @@
 
 /* Empty state */
 .avday-empty {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.875rem;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
   margin: 0;
@@ -198,7 +198,7 @@
 
 .avday-slot-start,
 .avday-slot-end {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary, #fff);
@@ -207,7 +207,7 @@
 }
 
 .avday-slot-sep {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.875rem;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
 }
@@ -219,7 +219,7 @@
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 8px;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
@@ -257,7 +257,7 @@
 }
 
 .avday-field-label {
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.6875rem;
   font-weight: 500;
   color: var(--text-tertiary, rgba(255,255,255,0.25));
@@ -272,7 +272,7 @@
   border: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
   border-radius: 10px;
   color: var(--text-primary, #fff);
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.875rem;
   min-width: 110px;
   transition: border-color 0.15s;
@@ -289,7 +289,7 @@
   align-self: flex-start;
   padding: 11px 24px;
   border-radius: var(--radius-pill, 999px);
-  font-family: var(--font-sans, 'Montserrat', system-ui, sans-serif);
+  font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   font-size: 0.875rem;
   font-weight: 700;
   letter-spacing: 0.02em;

@@ -6,7 +6,7 @@
 .cl {
   background: #1a1a1a;
   color: #fff;
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   overflow-x: hidden;
@@ -261,11 +261,28 @@
 }
 
 .cl-lex-sidebar-item {
-  padding: 9px 12px;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
   border-radius: 9px;
+  font: inherit;
   font-size: 0.82rem;
   color: rgba(255, 255, 255, 0.65);
+  background: transparent;
   border: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.cl-lex-sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cl-lex-sidebar-item-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -300,9 +317,9 @@
 
 .cl-lex-workspace-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr);
   gap: 14px;
-  min-height: 320px;
+  min-height: 420px;
 }
 
 /* Video panel */
@@ -314,7 +331,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 320px;
+  min-height: 420px;
   overflow: hidden;
 }
 
@@ -367,27 +384,29 @@
 
 /* Muscle card */
 .cl-lex-muscle-card {
-  display: grid;
-  grid-template-columns: 1fr 150px;
+  display: flex;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   overflow: hidden;
-  min-height: 320px;
+  min-height: 420px;
 }
 
 .cl-lex-muscle-left {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+  padding: 18px;
   min-width: 0;
+  min-height: 0;
 }
 
-.cl-ex-silhouette {
-  width: auto;
-  max-height: 280px;
-  max-width: 100%;
+.cl-lex-muscle-left > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 380px;
 }
 
 .cl-lex-muscle-right {
@@ -441,7 +460,7 @@
 }
 
 .cl-lex-muscle-input {
-  width: 42px;
+  width: 48px;
   padding: 3px 0;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);

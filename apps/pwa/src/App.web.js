@@ -1,7 +1,7 @@
 // Web-specific App entry point
 import React from 'react';
 import { View, Text } from 'react-native';
-import './styles/global.css'; // Load Montserrat + global styles for all screens (including InstallScreen when !isPWA)
+import './styles/global.css'; // Load Inter + global styles for all screens (including InstallScreen when !isPWA)
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './config/queryClient';
@@ -48,15 +48,15 @@ if (wakeDebug.IS_ENABLED) {
   } catch { /* firestore not available */ }
 }
 
-// CRITICAL: DO NOT import useMontserratFonts from './config/fonts'
+// CRITICAL: DO NOT import useInterFonts from './config/fonts'
 // That file conditionally calls useFonts from expo-google-fonts, which violates Rules of Hooks
 // Instead, define it inline here to ensure consistent hook order on web
 
-// Always import useMontserratFonts to maintain hook order
+// Always import useInterFonts to maintain hook order
 // FORCE web version to avoid expo-font hooks on web
 // Inline web version directly to avoid Metro resolution issues
 // This MUST be defined here, NOT imported from fonts.js, to avoid hook order violations
-const useMontserratFontsWeb = () => {
+const useInterFontsWeb = () => {
   // WEB-SPECIFIC INLINED VERSION - DO NOT USE fonts.js
   // This ensures consistent hook order (only useState, no conditional useFonts)
   // On web, fonts are loaded via CSS (Google Fonts in global.css)
@@ -73,16 +73,16 @@ const useMontserratFontsWeb = () => {
 
 // Verify this is the web version (safety check)
 
-// Inject Montserrat font link at runtime – ensures font loads in dev (Expo dev server
+// Inject Inter font link at runtime – ensures font loads in dev (Expo dev server
 // doesn't use web/index.html) and production (backup if index.html link is missing)
-const MONSERRAT_URL =
-  'https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap';
-const FONT_LINK_ID = 'wake-montserrat-font';
+const INTER_URL =
+  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap';
+const FONT_LINK_ID = 'wake-inter-font';
 
-function ensureMontserratLoaded() {
+function ensureInterLoaded() {
   if (typeof document === 'undefined' || !document.head) return;
   if (document.getElementById(FONT_LINK_ID)) return;
-  const existing = document.querySelector(`link[href*="Montserrat"]`);
+  const existing = document.querySelector(`link[href*="Inter"]`);
   if (existing) return;
   const preconnect1 = document.createElement('link');
   preconnect1.rel = 'preconnect';
@@ -96,10 +96,10 @@ function ensureMontserratLoaded() {
   const link = document.createElement('link');
   link.id = FONT_LINK_ID;
   link.rel = 'stylesheet';
-  link.href = MONSERRAT_URL;
+  link.href = INTER_URL;
   document.head.appendChild(link);
 }
-ensureMontserratLoaded();
+ensureInterLoaded();
 
 // Apply viewport height once as soon as the bundle loads (dev server doesn't use web/index.html).
 // This ensures the fix runs in Expo dev and in production before React mounts.
@@ -217,7 +217,7 @@ export default function App() {
       : ((typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_BASE_PATH) || '');
   // Font loading - MUST be called unconditionally before any conditional logic
   // CRITICAL: This hook MUST be called unconditionally, before any conditional returns
-  const fontsLoadedFromHook = useMontserratFontsWeb();
+  const fontsLoadedFromHook = useInterFontsWeb();
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
 

@@ -1740,13 +1740,13 @@ useEffect(() => {
               <polyline points="30,42 39,52 56,32" stroke="rgba(255,255,255,0.95)" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" className="completion-check-tick" />
             </svg>
           </div>
-          <p className="purchase-success-title" style={{ color: '#fff', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, fontSize: 24, letterSpacing: 2, textAlign: 'center', margin: '16px 0 4px' }}>¡ACCESO ACTIVADO!</p>
-          <p className="purchase-success-program" style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: 'Montserrat, sans-serif', textAlign: 'center', margin: '0 0 8px', padding: '0 32px' }}>{course?.title}</p>
-          <p className="purchase-success-hint" style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, fontFamily: 'Montserrat, sans-serif', textAlign: 'center', margin: '0 0 28px' }}>Ya puedes empezar tu programa</p>
+          <p className="purchase-success-title" style={{ color: '#fff', fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 24, letterSpacing: 2, textAlign: 'center', margin: '16px 0 4px' }}>¡ACCESO ACTIVADO!</p>
+          <p className="purchase-success-program" style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: 'Inter, sans-serif', textAlign: 'center', margin: '0 0 8px', padding: '0 32px' }}>{course?.title}</p>
+          <p className="purchase-success-hint" style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12, fontFamily: 'Inter, sans-serif', textAlign: 'center', margin: '0 0 28px' }}>Ya puedes empezar tu programa</p>
           <button
             className="purchase-success-cta"
             onClick={() => { setShowPurchaseSuccess(false); navigation.navigate('MainScreen'); }}
-            style={{ background: 'var(--accent,rgba(255,255,255,0.92))', color: 'var(--accent-text,#111)', border: 'none', borderRadius: 100, padding: '14px 36px', fontFamily: 'Montserrat, sans-serif', fontWeight: 700, fontSize: 15, letterSpacing: 1, cursor: 'pointer' }}
+            style={{ background: 'var(--accent,rgba(255,255,255,0.92))', color: 'var(--accent-text,#111)', border: 'none', borderRadius: 100, padding: '14px 36px', fontFamily: 'Inter, sans-serif', fontWeight: 700, fontSize: 15, letterSpacing: 1, cursor: 'pointer' }}
           >
             Ir al programa
           </button>
@@ -1767,7 +1767,7 @@ useEffect(() => {
             padding: '8px 14px',
             cursor: 'pointer',
             backdropFilter: 'blur(12px)',
-            fontFamily: 'Montserrat, sans-serif',
+            fontFamily: 'Inter, sans-serif',
             fontSize: 11,
             fontWeight: 600,
             color: '#fff',

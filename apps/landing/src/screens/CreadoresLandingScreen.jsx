@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Nav, LandingFooter } from './ShowcaseLandingScreen';
+import { LandingFooter } from './ShowcaseLandingScreen';
+import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
+import CascadeText from '../components/CascadeText';
 import './CreadoresLandingScreen.css';
 
 const SPRING = [0.22, 1, 0.36, 1];
@@ -26,49 +28,38 @@ const WindowFrame = React.forwardRef(function WindowFrame({ label, children, cla
    SECTION 1 — EXERCISE EDITOR
    Replica: LibraryExercisesScreen
    ═══════════════════════════════════════════ */
-const EX_LIST = [
-  'Press de banca',
-  'Sentadilla trasera',
-  'Peso muerto convencional',
-  'Hip thrust con barra',
-  'Dominadas prona',
-  'Remo con barra',
-  'Press militar de pie',
-  'Zancadas con mancuernas',
-  'Curl martillo',
-  'Face pulls',
-  'Elevaciones laterales',
+const EXERCISES = [
+  {
+    name: 'Press de banca',
+    implements: ['Barra olímpica', 'Banco plano', 'Discos 20kg'],
+    muscles: { pecs: 0.95, front_delts: 0.65, triceps: 0.6, side_delts: 0.2, abs: 0.15 },
+  },
+  {
+    name: 'Sentadilla trasera',
+    implements: ['Barra olímpica', 'Rack de sentadilla', 'Discos 25kg'],
+    muscles: { quads: 0.95, glutes: 0.75, hamstrings: 0.4, abs: 0.3, lower_back: 0.35, calves: 0.25 },
+  },
+  {
+    name: 'Peso muerto convencional',
+    implements: ['Barra olímpica', 'Discos 25kg', 'Straps'],
+    muscles: { hamstrings: 0.9, glutes: 0.85, lower_back: 0.8, traps: 0.5, lats: 0.4, forearms: 0.55, quads: 0.3 },
+  },
+  {
+    name: 'Dominadas prona',
+    implements: ['Barra de dominadas'],
+    muscles: { lats: 0.95, biceps: 0.7, rear_delts: 0.45, rhomboids: 0.55, forearms: 0.5, traps: 0.35 },
+  },
+  {
+    name: 'Press militar de pie',
+    implements: ['Barra olímpica', 'Discos 10kg', 'Cinturón'],
+    muscles: { front_delts: 0.9, side_delts: 0.6, triceps: 0.55, traps: 0.45, abs: 0.35 },
+  },
 ];
-
-const EX_MUSCLES = [
-  { name: 'Pectoral mayor', val: 85 },
-  { name: 'Deltoides anterior', val: 55 },
-  { name: 'Tríceps braquial', val: 45 },
-  { name: 'Serrato anterior', val: 30 },
-  { name: 'Coracobraquial', val: 15 },
-];
-
-function MuscleSilhouette() {
-  return (
-    <svg viewBox="0 0 120 220" className="cl-ex-silhouette" aria-hidden="true">
-      <g fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.14)" strokeWidth="0.8">
-        <ellipse cx="60" cy="18" rx="12" ry="14" />
-        <path d="M46 30 L74 30 L78 40 L82 60 Q86 72 84 88 L80 108 L76 130 Q75 152 72 180 L68 208 L64 214 L56 214 L52 208 L48 180 Q45 152 44 130 L40 108 L36 88 Q34 72 38 60 L42 40 Z" />
-        <path d="M36 58 Q24 70 20 88 L18 112 L22 128 L28 136 L32 130 L34 110 L38 90 Z" />
-        <path d="M84 58 Q96 70 100 88 L102 112 L98 128 L92 136 L88 130 L86 110 L82 90 Z" />
-      </g>
-      <g fill="rgba(255,255,255,0.55)" opacity="0.9">
-        <path d="M44 48 Q60 42 76 48 L80 70 Q60 76 40 70 Z" />
-      </g>
-      <g fill="rgba(255,255,255,0.28)">
-        <path d="M40 72 L44 92 L48 86 L46 74 Z" />
-        <path d="M80 72 L76 92 L72 86 L74 74 Z" />
-      </g>
-    </svg>
-  );
-}
 
 function ExerciseEditorWindow() {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const exercise = EXERCISES[selectedIndex];
+
   return (
     <WindowFrame label="Biblioteca · Fuerza">
       <div className="cl-lex">
@@ -85,10 +76,15 @@ function ExerciseEditorWindow() {
             <span>Buscar</span>
           </div>
           <div className="cl-lex-sidebar-list">
-            {EX_LIST.map((name, i) => (
-              <div key={name} className={`cl-lex-sidebar-item ${i === 0 ? 'cl-lex-sidebar-item-active' : ''}`}>
-                <span className="cl-lex-sidebar-item-name">{name}</span>
-              </div>
+            {EXERCISES.map((ex, i) => (
+              <button
+                type="button"
+                key={ex.name}
+                className={`cl-lex-sidebar-item ${i === selectedIndex ? 'cl-lex-sidebar-item-active' : ''}`}
+                onClick={() => setSelectedIndex(i)}
+              >
+                <span className="cl-lex-sidebar-item-name">{ex.name}</span>
+              </button>
             ))}
           </div>
         </aside>
@@ -96,7 +92,7 @@ function ExerciseEditorWindow() {
         {/* Workspace */}
         <div className="cl-lex-workspace">
           <div className="cl-lex-workspace-head">
-            <h3 className="cl-lex-workspace-title">Press de banca</h3>
+            <h3 className="cl-lex-workspace-title">{exercise.name}</h3>
           </div>
           <div className="cl-lex-workspace-columns">
             {/* Video panel */}
@@ -116,20 +112,7 @@ function ExerciseEditorWindow() {
             {/* Muscle panel */}
             <div className="cl-lex-muscle-card">
               <div className="cl-lex-muscle-left">
-                <MuscleSilhouette />
-              </div>
-              <div className="cl-lex-muscle-right">
-                <div className="cl-lex-muscle-right-head">
-                  <span className="cl-lex-preset">Preset</span>
-                </div>
-                <div className="cl-lex-muscle-list">
-                  {EX_MUSCLES.map((m) => (
-                    <div key={m.name} className="cl-lex-muscle-row">
-                      <span className="cl-lex-muscle-name">{m.name}</span>
-                      <span className="cl-lex-muscle-input">{m.val}</span>
-                    </div>
-                  ))}
-                </div>
+                <MuscleSilhouetteSVG muscleVolumes={exercise.muscles} />
               </div>
             </div>
           </div>
@@ -137,10 +120,9 @@ function ExerciseEditorWindow() {
           <div className="cl-lex-implements">
             <span className="cl-lex-implements-title">Implementos</span>
             <div className="cl-lex-implements-pills">
-              <span className="cl-lex-pill">Barra olímpica</span>
-              <span className="cl-lex-pill">Banco plano</span>
-              <span className="cl-lex-pill">Discos 20kg</span>
-              <span className="cl-lex-pill">Soporte de seguridad</span>
+              {exercise.implements.map((imp) => (
+                <span key={imp} className="cl-lex-pill">{imp}</span>
+              ))}
               <span className="cl-lex-pill-add">+</span>
             </div>
           </div>
@@ -572,7 +554,7 @@ function SectionRow({ heading, body, children, reverse = false }) {
       >
         <div className="cl-section-copy">
           <h2 className="cl-section-heading">{heading}</h2>
-          <p className="cl-section-body">{body}</p>
+          <CascadeText as="p" className="cl-section-body">{body}</CascadeText>
         </div>
         <div className="cl-section-window">{children}</div>
       </motion.div>
@@ -588,14 +570,9 @@ function Hero() {
     <section className="cl-hero">
       <div className="cl-hero-aurora" aria-hidden="true" />
       <div className="cl-hero-inner">
-        <motion.h1
-          className="cl-hero-title"
-          initial={{ opacity: 0, y: 32 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: SPRING }}
-        >
+        <CascadeText as="h1" className="cl-hero-title">
           La plataforma del rendimiento.
-        </motion.h1>
+        </CascadeText>
         <motion.p
           className="cl-hero-sub"
           initial={{ opacity: 0, y: 24 }}
@@ -645,7 +622,6 @@ function Close() {
 export default function CreadoresLandingScreen() {
   return (
     <div className="cl">
-      <Nav />
       <Hero />
       <SectionRow
         heading="Diseña cada ejercicio a tu manera."

@@ -38,7 +38,7 @@ function Doodle1() {
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.6 }} />
       <motion.line x1="70" y1="130" x2="95" y2="178" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round"
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.6 }} />
-      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Montserrat" fontWeight="400">1 — Logo head, stick body</text>
+      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Inter" fontWeight="400">1 — Logo head, stick body</text>
     </svg>
   );
 }
@@ -71,7 +71,7 @@ function Doodle2() {
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, delay: 0.5 }} />
       <motion.path d="M85 148 L92 190 Q93 194 88 194" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round"
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, delay: 0.5 }} />
-      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Montserrat" fontWeight="400">2 — Logo on chest</text>
+      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Inter" fontWeight="400">2 — Logo on chest</text>
     </svg>
   );
 }
@@ -94,7 +94,7 @@ function Doodle3() {
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }} />
       <motion.path d="M102 90 L128 112" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2.5" strokeLinecap="round"
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, ease, delay: 0.5 }} />
-      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Montserrat" fontWeight="400">3 — Logo IS the body</text>
+      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Inter" fontWeight="400">3 — Logo IS the body</text>
     </svg>
   );
 }
@@ -122,7 +122,7 @@ function Doodle4() {
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }} />
       <motion.ellipse cx="108" cy="186" rx="10" ry="5" fill="rgba(255,255,255,0.3)"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.7 }} />
-      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Montserrat" fontWeight="400">4 — Character with face</text>
+      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Inter" fontWeight="400">4 — Character with face</text>
     </svg>
   );
 }
@@ -157,7 +157,7 @@ function Doodle5() {
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.3, delay: 0.5 }} />
       <motion.line x1="98" y1="95" x2="118" y2="115" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" strokeLinecap="round"
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.3, delay: 0.5 }} />
-      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Montserrat" fontWeight="400">5 — Floating logo head</text>
+      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Inter" fontWeight="400">5 — Floating logo head</text>
     </svg>
   );
 }
@@ -193,7 +193,7 @@ function Doodle6() {
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.2, delay: 0.85 }} />
       <motion.line x1="110" y1="180" x2="102" y2="180" stroke="rgba(255,255,255,0.3)" strokeWidth="2.5" strokeLinecap="round"
         initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.2, delay: 0.85 }} />
-      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Montserrat" fontWeight="400">6 — Logo as torso</text>
+      <text x="70" y="208" textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="10" fontFamily="Inter" fontWeight="400">6 — Logo as torso</text>
     </svg>
   );
 }

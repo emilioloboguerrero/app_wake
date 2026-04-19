@@ -5,12 +5,12 @@ import { useState } from 'react';
 
 // On web, fonts are loaded via CSS (Google Fonts in global.css)
 // So we just return true immediately
-export const useMontserratFonts = () => {
+export const useInterFonts = () => {
   // Always call useState to maintain hook order
   const [fontsLoaded] = useState(true);
   return fontsLoaded;
 };
 
 // Default font configuration for the app - cross-platform compatible
-export const DEFAULT_FONT = 'Montserrat-SemiBold';
+export const DEFAULT_FONT = 'Inter-SemiBold';
 export const DEFAULT_FONT_WEIGHT = '600';

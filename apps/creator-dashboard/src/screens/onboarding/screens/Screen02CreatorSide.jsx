@@ -41,8 +41,8 @@ export default function Screen02CreatorSide() {
                     minWidth: 180,
                   }}>
                     <div>
-                      <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, fontFamily: "'Montserrat'", fontWeight: 600, margin: 0 }}>{b.label}</p>
-                      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 500, margin: '2px 0 0 0' }}>{b.count}</p>
+                      <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, fontFamily: "'Inter'", fontWeight: 600, margin: 0 }}>{b.label}</p>
+                      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 500, margin: '2px 0 0 0' }}>{b.count}</p>
                     </div>
                   </div>
                 </GlowCard>

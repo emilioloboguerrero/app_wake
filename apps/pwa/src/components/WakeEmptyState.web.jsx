@@ -29,7 +29,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
           color: '#ffffff',
           fontSize: 15,
           fontWeight: 700,
-          fontFamily: 'Montserrat, sans-serif',
+          fontFamily: 'Inter, sans-serif',
         }}
       >
         {title}
@@ -42,7 +42,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
           margin: 0,
           color: 'rgba(255,255,255,0.5)',
           fontSize: 13,
-          fontFamily: 'Montserrat, sans-serif',
+          fontFamily: 'Inter, sans-serif',
           lineHeight: 1.5,
           maxWidth: 260,
         }}
@@ -63,7 +63,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
           color: '#1a1a1a',
           fontSize: 13,
           fontWeight: 700,
-          fontFamily: 'Montserrat, sans-serif',
+          fontFamily: 'Inter, sans-serif',
           cursor: 'pointer',
           letterSpacing: '0.5px',
         }}

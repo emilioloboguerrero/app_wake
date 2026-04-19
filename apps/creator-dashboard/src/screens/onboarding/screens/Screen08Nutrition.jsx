@@ -39,10 +39,10 @@ export default function Screen08Nutrition() {
             {macros.map((m, i) => (
               <motion.div key={m.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease, delay: 0.4 + i * 0.07 }}
                 style={{ flex: 1, padding: '12px 6px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center' }}>
-                <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 17, fontFamily: "'Montserrat'", fontWeight: 700, margin: 0 }}>
+                <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 17, fontFamily: "'Inter'", fontWeight: 700, margin: 0 }}>
                   {m.value}<span style={{ fontSize: 9, fontWeight: 400, color: 'rgba(255,255,255,0.3)' }}> {m.unit}</span>
                 </p>
-                <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 500, margin: '3px 0 0 0' }}>{m.label}</p>
+                <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 9, fontFamily: "'Inter'", fontWeight: 500, margin: '3px 0 0 0' }}>{m.label}</p>
               </motion.div>
             ))}
           </div>
@@ -50,11 +50,11 @@ export default function Screen08Nutrition() {
           {meals.map((meal, i) => (
             <motion.div key={meal.name} initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.45, ease, delay: 0.65 + i * 0.08 }}
               style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.02)' }}>
-              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 600, width: 70, flexShrink: 0 }}>{meal.name}</span>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 600, width: 70, flexShrink: 0 }}>{meal.name}</span>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {meal.opts.map((opt, j) => (
                   <span key={j} style={{
-                    color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 500,
+                    color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 500,
                     padding: '4px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.06)',
                   }}>{opt}</span>
                 ))}

@@ -59,10 +59,10 @@ function NutritionVisual() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, ease, delay: 1.4 }}
       >
-        <text x={cx} y={cy - 4} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="16" fontFamily="Montserrat" fontWeight="600">
+        <text x={cx} y={cy - 4} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="16" fontFamily="Inter" fontWeight="600">
           2,150
         </text>
-        <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(255,255,255,0.25)" fontSize="8" fontFamily="Montserrat" fontWeight="400">
+        <text x={cx} y={cy + 10} textAnchor="middle" fill="rgba(255,255,255,0.25)" fontSize="8" fontFamily="Inter" fontWeight="400">
           kcal
         </text>
       </motion.g>
@@ -96,13 +96,13 @@ function NutritionVisual() {
         transition={{ duration: 0.6, ease, delay: 1.8 }}
       >
         <rect x="195" y="175" width="70" height="45" rx="8" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
-        <text x="205" y="191" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="Montserrat" fontWeight="500">
+        <text x="205" y="191" fill="rgba(255,255,255,0.5)" fontSize="8" fontFamily="Inter" fontWeight="500">
           Avena
         </text>
-        <text x="205" y="203" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Montserrat" fontWeight="400">
+        <text x="205" y="203" fill="rgba(255,255,255,0.25)" fontSize="7" fontFamily="Inter" fontWeight="400">
           150 kcal
         </text>
-        <text x="205" y="213" fill="rgba(255,255,255,0.15)" fontSize="6" fontFamily="Montserrat" fontWeight="400">
+        <text x="205" y="213" fill="rgba(255,255,255,0.15)" fontSize="6" fontFamily="Inter" fontWeight="400">
           P 5g · C 27g · F 3g
         </text>
       </motion.g>

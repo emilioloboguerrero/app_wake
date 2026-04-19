@@ -45,7 +45,7 @@ function ProgramCard({ imageGrad, avatarCount, isPersonalized }) {
               border: '1.5px solid #1a1a1a',
               marginLeft: -5,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 5, color: 'rgba(255,255,255,0.3)', fontFamily: "'Montserrat'",
+              fontSize: 5, color: 'rgba(255,255,255,0.3)', fontFamily: "'Inter'",
             }}>
               +
             </div>
@@ -145,7 +145,7 @@ export default function Card02Program() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease, delay: 0.8 }}
-              style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 500, margin: 0 }}
+              style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 500, margin: 0 }}
             >
               General
             </motion.p>
@@ -159,7 +159,7 @@ export default function Card02Program() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease, delay: 1 }}
-              style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 500, margin: 0 }}
+              style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 500, margin: 0 }}
             >
               Personalizado
             </motion.p>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import CascadeText from '../components/CascadeText';
 import './LegalDocumentsScreen.css';
 
 // Public Firebase Storage URL builder — no token needed, storage rules allow public read on /legal-documents/*
@@ -49,7 +50,7 @@ const LegalDocumentsScreen = () => {
     <div className="legal-documents-screen">
       <div className="legal-documents-container">
         <div className="legal-documents-header">
-          <h1 className="legal-documents-title">Documentos Legales</h1>
+          <CascadeText as="h1" className="legal-documents-title">Documentos Legales</CascadeText>
           <p className="legal-documents-subtitle">
             Bienvenido al centro de documentación legal de Wake. Aquí puedes encontrar todas nuestras políticas importantes y términos de uso.
           </p>
@@ -60,7 +61,7 @@ const LegalDocumentsScreen = () => {
             <div key={key} className="legal-document-card">
               <div className="legal-document-icon">{document.icon}</div>
               <h2 className="legal-document-title">{document.title}</h2>
-              <p className="legal-document-description">{document.description}</p>
+              <CascadeText as="p" className="legal-document-description">{document.description}</CascadeText>
               <div className="legal-document-date">
                 <span className="legal-document-date-label">Última actualización:</span>
                 <span className="legal-document-date-value">{document.lastUpdated}</span>

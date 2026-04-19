@@ -25,7 +25,7 @@ export function Title({ children }) {
       color: 'rgba(255,255,255,0.9)',
       fontSize: 'clamp(32px, 3.5vw, 52px)',
       fontWeight: 300,
-      fontFamily: "'Montserrat', sans-serif",
+      fontFamily: "'Inter', sans-serif",
       textAlign: 'center',
       letterSpacing: '-0.02em',
       margin: 0,
@@ -42,7 +42,7 @@ export function Subtitle({ children }) {
     <p style={{
       color: 'rgba(255,255,255,0.3)',
       fontSize: 15,
-      fontFamily: "'Montserrat', sans-serif",
+      fontFamily: "'Inter', sans-serif",
       fontWeight: 400,
       margin: '-32px 0 0 0',
       textAlign: 'center',

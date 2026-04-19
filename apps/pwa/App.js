@@ -9,7 +9,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import workoutProgressService from './src/data-management/workoutProgressService';
 import appSessionManager from './src/data-management/appSessionManager';
 import assetBundleService from './src/services/assetBundleService';
-import { useMontserratFonts } from './src/config/fonts';
+import { useInterFonts } from './src/config/fonts';
 import { initializeMonitoring } from './src/services/monitoringService';
 import { auth } from './src/config/firebase';
 import logger from './src/utils/logger';
@@ -18,7 +18,7 @@ import logger from './src/utils/logger';
 // We'll use a custom Text component instead of overriding defaultProps
 
 export default function App() {
-  const fontsLoaded = useMontserratFonts();
+  const fontsLoaded = useInterFonts();
 
   useEffect(() => {
     // Initialize workout progress system on app startup

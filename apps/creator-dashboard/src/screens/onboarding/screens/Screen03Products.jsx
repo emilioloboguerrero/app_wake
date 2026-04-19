@@ -30,11 +30,11 @@ function ProductCard({ title, subtitle, delay, children }) {
       <div style={{ padding: 16 }}>
         <p style={{
           color: 'rgba(255,255,255,0.95)', fontSize: 15,
-          fontFamily: "'Montserrat'", fontWeight: 600, margin: 0,
+          fontFamily: "'Inter'", fontWeight: 600, margin: 0,
         }}>{title}</p>
         <p style={{
           color: 'rgba(255,255,255,0.35)', fontSize: 12,
-          fontFamily: "'Montserrat'", fontWeight: 500, margin: '6px 0 0 0',
+          fontFamily: "'Inter'", fontWeight: 500, margin: '6px 0 0 0',
         }}>{subtitle}</p>
       </div>
     </div>
@@ -54,7 +54,7 @@ function ClientChip({ count, delay }) {
         background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)',
       }}
     >
-      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 600, textTransform: 'uppercase' }}>
+      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 600, textTransform: 'uppercase' }}>
         {count}
       </span>
     </motion.div>
@@ -73,7 +73,7 @@ function AvatarDot({ size = 28, delay, initials }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
     >
-      {initials && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: size * 0.35, fontFamily: "'Montserrat'", fontWeight: 600 }}>{initials}</span>}
+      {initials && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: size * 0.35, fontFamily: "'Inter'", fontWeight: 600 }}>{initials}</span>}
     </motion.div>
   );
 }
@@ -108,7 +108,7 @@ export default function Screen03Products() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.95 }}
-                style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 500 }}
+                style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 500 }}
               >
                 contenido unico
               </motion.span>

@@ -86,7 +86,7 @@ function LibItem({ icon, label, delay }) {
       {icon}
       <span style={{
         color: 'rgba(255,255,255,0.55)', fontSize: 13,
-        fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+        fontFamily: "'Inter', sans-serif", fontWeight: 500,
       }}>
         {label}
       </span>
@@ -121,7 +121,7 @@ function Step1Diagram() {
         }}>
           <span style={{
             color: 'rgba(255,255,255,0.7)', fontSize: 15,
-            fontFamily: "'Montserrat', sans-serif", fontWeight: 600,
+            fontFamily: "'Inter', sans-serif", fontWeight: 600,
             letterSpacing: '0.02em',
           }}>
             Tu Biblioteca
@@ -132,7 +132,7 @@ function Step1Diagram() {
             transition={{ duration: 0.4, delay: 0.4, ease }}
             style={{
               color: 'rgba(255,255,255,0.3)', fontSize: 10,
-              fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+              fontFamily: "'Inter', sans-serif", fontWeight: 500,
             }}
           >
             versión original
@@ -144,7 +144,7 @@ function Step1Diagram() {
           animate={{ opacity: 0.45 }}
           transition={{ duration: 0.3, delay: 0.08, ease }}
           style={{
-            fontSize: 9, fontFamily: "'Montserrat', sans-serif",
+            fontSize: 9, fontFamily: "'Inter', sans-serif",
             fontWeight: 600, color: 'rgba(255,255,255,0.3)',
             letterSpacing: '0.1em', textTransform: 'uppercase',
             paddingLeft: 2, marginTop: 4,
@@ -168,7 +168,7 @@ function Step1Diagram() {
           animate={{ opacity: 0.45 }}
           transition={{ duration: 0.3, delay: 0.32, ease }}
           style={{
-            fontSize: 9, fontFamily: "'Montserrat', sans-serif",
+            fontSize: 9, fontFamily: "'Inter', sans-serif",
             fontWeight: 600, color: 'rgba(255,255,255,0.3)',
             letterSpacing: '0.1em', textTransform: 'uppercase',
             paddingLeft: 2,
@@ -201,7 +201,7 @@ function SmallPill({ icon, label, visible = true, delay = 0 }) {
       {icon}
       <span style={{
         fontSize: 11, color: 'rgba(255,255,255,0.5)',
-        fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+        fontFamily: "'Inter', sans-serif", fontWeight: 500,
       }}>
         {label}
       </span>
@@ -225,7 +225,7 @@ function MedCard({ icon, label, visible = true, delay = 0 }) {
       {icon}
       <span style={{
         fontSize: 12, color: 'rgba(255,255,255,0.55)',
-        fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+        fontFamily: "'Inter', sans-serif", fontWeight: 500,
       }}>
         {label}
       </span>
@@ -249,7 +249,7 @@ function LgCard({ icon, label, visible = true, delay = 0 }) {
       {icon}
       <span style={{
         fontSize: 13, color: 'rgba(255,255,255,0.6)',
-        fontFamily: "'Montserrat', sans-serif", fontWeight: 600,
+        fontFamily: "'Inter', sans-serif", fontWeight: 600,
       }}>
         {label}
       </span>
@@ -273,7 +273,7 @@ function DestCard({ icon, label, visible = true, delay = 0 }) {
       {icon}
       <span style={{
         fontSize: 12, color: 'rgba(255,255,255,0.6)',
-        fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+        fontFamily: "'Inter', sans-serif", fontWeight: 500,
       }}>
         {label}
       </span>
@@ -322,7 +322,7 @@ function ColLabel({ text, delay = 0 }) {
       animate={{ opacity: 0.4 }}
       transition={{ duration: 0.3, delay, ease }}
       style={{
-        fontSize: 9, fontFamily: "'Montserrat', sans-serif",
+        fontSize: 9, fontFamily: "'Inter', sans-serif",
         fontWeight: 600, color: 'rgba(255,255,255,0.3)',
         letterSpacing: '0.1em', textTransform: 'uppercase',
         marginBottom: 8,
@@ -464,7 +464,7 @@ function MiniNode({ icon, label, state = 'default' }) {
         animate={{ color: s.text }}
         transition={{ duration: 0.4, ease }}
         style={{
-          fontSize: 12, fontFamily: "'Montserrat', sans-serif",
+          fontSize: 12, fontFamily: "'Inter', sans-serif",
           fontWeight: 500, position: 'relative', zIndex: 1,
           whiteSpace: 'nowrap',
         }}
@@ -516,7 +516,7 @@ function PanelBadge({ text, color, visible }) {
         >
           <span style={{
             fontSize: 11, color: c.text,
-            fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+            fontFamily: "'Inter', sans-serif", fontWeight: 500,
           }}>
             {text}
           </span>
@@ -539,7 +539,7 @@ function ScenarioPanel({ title, libState, progState, cliState, arrowHighlight, b
     >
       <span style={{
         fontSize: 11, color: 'rgba(255,255,255,0.3)',
-        fontFamily: "'Montserrat', sans-serif", fontWeight: 500,
+        fontFamily: "'Inter', sans-serif", fontWeight: 500,
         letterSpacing: '0.05em', textTransform: 'uppercase',
       }}>
         {title}

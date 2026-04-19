@@ -49,17 +49,17 @@ export default function Screen09Events() {
                 >
                   <span style={{
                     color: ev.status === 'Activo' ? 'rgba(255,87,168,0.85)' : 'rgba(255,87,168,0.7)',
-                    fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 700,
+                    fontSize: 9, fontFamily: "'Inter'", fontWeight: 700,
                     textTransform: 'uppercase', letterSpacing: '0.07em',
                   }}>{ev.status}</span>
                 </motion.div>
               </div>
               <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <p style={{ color: 'rgba(255,255,255,0.95)', fontSize: 13, fontFamily: "'Montserrat'", fontWeight: 700, margin: 0, lineHeight: 1.3 }}>{ev.name}</p>
+                <p style={{ color: 'rgba(255,255,255,0.95)', fontSize: 13, fontFamily: "'Inter'", fontWeight: 700, margin: 0, lineHeight: 1.3 }}>{ev.name}</p>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: "'Montserrat'" }}>{ev.date}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: "'Inter'" }}>{ev.date}</span>
                   <span style={{ color: 'rgba(255,255,255,0.2)' }}>-</span>
-                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: "'Montserrat'" }}>{ev.spots} cupos</span>
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: "'Inter'" }}>{ev.spots} cupos</span>
                 </div>
               </div>
               </div>

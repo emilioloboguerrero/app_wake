@@ -33,7 +33,7 @@ export default function Screen06Sessions() {
                   background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
                 }}
               >
-                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 500 }}>{ex.name}</span>
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 500 }}>{ex.name}</span>
               </motion.div>
             ))}
           </div>
@@ -51,9 +51,9 @@ export default function Screen06Sessions() {
               padding: 18, display: 'flex', flexDirection: 'column', gap: 6,
             }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15, fontFamily: "'Montserrat'", fontWeight: 600 }}>Full Body A</span>
+              <span style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15, fontFamily: "'Inter'", fontWeight: 600 }}>Full Body A</span>
               <span style={{
-                color: 'rgba(255,255,255,0.45)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 600,
+                color: 'rgba(255,255,255,0.45)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 600,
                 padding: '3px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', textTransform: 'uppercase',
               }}>4 ejercicios</span>
             </div>
@@ -69,11 +69,11 @@ export default function Screen06Sessions() {
                   background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
                 }}
               >
-                <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, fontFamily: "'Montserrat'", fontWeight: 500 }}>{ex.name}</span>
+                <span style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12, fontFamily: "'Inter'", fontWeight: 500 }}>{ex.name}</span>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: "'Montserrat'" }}>{ex.sets}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: "'Inter'" }}>{ex.sets}</span>
                   <span style={{
-                    color: 'rgba(255,255,255,0.25)', fontSize: 9, fontFamily: "'Montserrat'", fontWeight: 500,
+                    color: 'rgba(255,255,255,0.25)', fontSize: 9, fontFamily: "'Inter'", fontWeight: 500,
                     padding: '2px 6px', borderRadius: 6, background: 'rgba(255,255,255,0.03)',
                   }}>{ex.rpe}</span>
                 </div>

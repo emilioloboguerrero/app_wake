@@ -1,54 +1,33 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
+import wakeLogotype from '../assets/wake-logotype.svg';
 import './Header.css';
 
-const ANIM_DURATION = 300;
-
-const SCROLL_THRESHOLD = 10;
-
-const navItems = [
+const NAV_LINKS = [
   { to: '/creadores', label: 'Creadores' },
+  { to: '/developers', label: 'Devs' },
 ];
 
-const Header = () => {
+const ANIM_MS = 280;
+
+export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnimating, setMenuAnimating] = useState(false);
-  const [headerVisible, setHeaderVisible] = useState(true);
-  const lastScrollY = useRef(0);
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768) setMenuOpen(false);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   useEffect(() => {
-    let ticking = false;
-    const handleScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          const y = window.scrollY || window.pageYOffset;
-          const prev = lastScrollY.current;
-          if (y < SCROLL_THRESHOLD) {
-            setHeaderVisible(true);
-          } else if (y > prev + SCROLL_THRESHOLD) {
-            setHeaderVisible(false);
-          } else if (y < prev - SCROLL_THRESHOLD) {
-            setHeaderVisible(true);
-          }
-          lastScrollY.current = y;
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    if (!menuOpen) return;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (menuOpen) {
@@ -60,73 +39,69 @@ const Header = () => {
 
   const closeMenu = () => {
     setMenuAnimating(false);
-    setTimeout(() => setMenuOpen(false), ANIM_DURATION);
+    setTimeout(() => setMenuOpen(false), ANIM_MS);
   };
 
   return (
-    <header className={`header ${!headerVisible ? 'header-hidden' : ''}`}>
-      <div className="header-container">
-        <Link to="/" className="header-logo">
-          <img src={wakeLogo} alt="Wake" className="header-logo-img" />
+    <header className="wk-header">
+      <nav className={`wk-pill ${scrolled ? 'is-scrolled' : ''}`}>
+        <Link to="/" className="wk-pill-logo" aria-label="Wake">
+          <img src={wakeLogotype} alt="Wake" />
         </Link>
 
-        <nav className="header-nav header-nav-desktop">
-          {navItems.map(({ to, label }) => (
-            <Link key={to} to={to} className="header-nav-link">
-              {label}
-            </Link>
+        <div className="wk-pill-links">
+          {NAV_LINKS.map(({ to, label }) => (
+            <Link key={to} to={to} className="wk-pill-link">{label}</Link>
           ))}
-        </nav>
+          <Link to="/app" className="wk-pill-cta">Ir a la app</Link>
+        </div>
+
+        <Link to="/app" className="wk-pill-cta-mobile" aria-label="Ir a la app">
+          App
+        </Link>
 
         <button
-          className="header-menu-btn"
+          type="button"
+          className="wk-pill-burger"
           onClick={() => setMenuOpen(true)}
           aria-label="Abrir menú"
         >
-          <svg
-            className="header-menu-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <line x1="2" y1="6" x2="22" y2="6" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-            <line x1="2" y1="18" x2="22" y2="18" />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+            <line x1="4" y1="7" x2="20" y2="7" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="17" x2="20" y2="17" />
           </svg>
         </button>
-      </div>
+      </nav>
 
-      {menuOpen &&
-        createPortal(
-          <>
-            <div
-              className={`header-menu-overlay ${menuAnimating ? 'header-menu-overlay-open' : ''}`}
+      {menuOpen && createPortal(
+        <>
+          <div
+            className={`wk-drawer-overlay ${menuAnimating ? 'is-open' : ''}`}
+            onClick={closeMenu}
+            aria-hidden="true"
+          />
+          <div className={`wk-drawer ${menuAnimating ? 'is-open' : ''}`}>
+            <button
+              type="button"
+              className="wk-drawer-close"
               onClick={closeMenu}
-              aria-hidden="true"
-            />
-            <div className={`header-menu-popup ${menuAnimating ? 'header-menu-popup-open' : ''}`}>
-              <button
-                className="header-menu-close"
-                onClick={closeMenu}
-                aria-label="Cerrar menú"
-              >
-                ✕
-              </button>
-              <nav className="header-nav header-nav-mobile">
-                {navItems.map(({ to, label }) => (
-                  <Link key={to} to={to} className="header-nav-link" onClick={closeMenu}>
-                    {label}
-                  </Link>
-                ))}
-              </nav>
+              aria-label="Cerrar"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" />
+              </svg>
+            </button>
+            <div className="wk-drawer-links">
+              {NAV_LINKS.map(({ to, label }) => (
+                <Link key={to} to={to} className="wk-drawer-link" onClick={closeMenu}>{label}</Link>
+              ))}
             </div>
-          </>,
-          document.body
-        )}
+          </div>
+        </>,
+        document.body
+      )}
     </header>
   );
-};
-
-export default Header;
+}

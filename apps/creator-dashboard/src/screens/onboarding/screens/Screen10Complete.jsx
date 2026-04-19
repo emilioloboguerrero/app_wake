@@ -15,7 +15,7 @@ export default function Screen10Complete({ onFinish }) {
         transition={{ duration: 0.7, ease, delay: 0.15 }}
         style={{
           color: 'rgba(255,255,255,0.9)', fontSize: 'clamp(40px, 5.5vw, 72px)',
-          fontWeight: 300, fontFamily: "'Montserrat', sans-serif",
+          fontWeight: 300, fontFamily: "'Inter', sans-serif",
           textAlign: 'center', letterSpacing: '-0.03em', margin: 0, lineHeight: 1.3,
           position: 'absolute', top: '8vh',
         }}
@@ -36,7 +36,7 @@ export default function Screen10Complete({ onFinish }) {
           background: 'rgba(255,255,255,0.95)',
           border: 'none',
           color: '#1a1a1a', fontSize: 15,
-          fontFamily: "'Montserrat', sans-serif", fontWeight: 600,
+          fontFamily: "'Inter', sans-serif", fontWeight: 600,
           cursor: 'pointer', letterSpacing: '0.01em',
         }}
       >

@@ -457,7 +457,7 @@ transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
 
 ## 9. Typography
 
-Font family: `'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif`
+Font family: `'Inter', sans-serif`
 Apply globally: `-webkit-font-smoothing: antialiased`
 
 | Element | Size | Weight | Notes |

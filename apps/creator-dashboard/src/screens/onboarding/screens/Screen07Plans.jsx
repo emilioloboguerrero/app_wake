@@ -31,9 +31,9 @@ export default function Screen07Plans() {
             padding: 20, display: 'flex', flexDirection: 'column', gap: 10,
           }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-            <span style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15, fontFamily: "'Montserrat'", fontWeight: 600 }}>Plan de Fuerza</span>
+            <span style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15, fontFamily: "'Inter'", fontWeight: 600 }}>Plan de Fuerza</span>
             <span style={{
-              color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 600,
+              color: 'rgba(255,255,255,0.4)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 600,
               padding: '3px 9px', borderRadius: 999, background: 'rgba(255,255,255,0.06)', textTransform: 'uppercase',
             }}>3 semanas</span>
           </div>
@@ -41,13 +41,13 @@ export default function Screen07Plans() {
             <div />
             {days.map((d, i) => (
               <motion.span key={d} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 + i * 0.03 }}
-                style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 500, textAlign: 'center' }}>{d}</motion.span>
+                style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 500, textAlign: 'center' }}>{d}</motion.span>
             ))}
           </div>
           {weeks.map((week, wIdx) => (
             <div key={wIdx} style={{ display: 'grid', gridTemplateColumns: '44px repeat(7, 72px)', gap: 5, alignItems: 'center' }}>
               <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 + wIdx * 0.08 }}
-                style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, fontFamily: "'Montserrat'", fontWeight: 500 }}>S{wIdx + 1}</motion.span>
+                style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, fontFamily: "'Inter'", fontWeight: 500 }}>S{wIdx + 1}</motion.span>
               {week.map((session, dIdx) => (
                 <motion.div
                   key={dIdx}
@@ -61,7 +61,7 @@ export default function Screen07Plans() {
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  {session && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 8.5, fontFamily: "'Montserrat'", fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>{session.name}</span>}
+                  {session && <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 8.5, fontFamily: "'Inter'", fontWeight: 500, textAlign: 'center', lineHeight: 1.2 }}>{session.name}</span>}
                 </motion.div>
               ))}
             </div>

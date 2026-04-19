@@ -27,7 +27,7 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@expo-google-fonts/montserrat": "^0.4.2",
+    "@expo-google-fonts/inter": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",

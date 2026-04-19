@@ -3,7 +3,7 @@ import { motion, useScroll, useTransform, useMotionValueEvent } from 'motion/rea
 import { getMainHeroLandingImages } from '../services/heroImagesService';
 import wakeIcon from '../assets/hero-logo.svg';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
-import wakeLogotype from '../assets/wake-logotype.svg';
+import CascadeText, { SEI_EASE } from '../components/CascadeText';
 import './ShowcaseLandingScreen.css';
 
 const SLIDE_INTERVAL = 4000;
@@ -35,9 +35,14 @@ const PHONE_SCREENS = [
   '/fallback/flow/events.webp',
 ];
 
-const OPENER = (
-  <>Somos la <strong>plataforma</strong> detrás del <strong>rendimiento</strong> para los <strong>mejores atletas</strong></>
-);
+const OPENER_CHUNKS = [
+  { text: 'Somos la ', bold: false },
+  { text: 'plataforma', bold: true },
+  { text: ' detrás del ', bold: false },
+  { text: 'rendimiento', bold: true },
+  { text: ' para los ', bold: false },
+  { text: 'mejores atletas', bold: true },
+];
 
 // Each phrase is an array of { text, bold } chunks so we can split letters for
 // the per-letter fade-in stagger while preserving bold emphasis runs.
@@ -59,46 +64,61 @@ const PHRASES = [
 ];
 
 function AnimatedPhrase({ chunks, visible }) {
-  const tokens = [];
+  const charTokens = [];
   chunks.forEach((chunk) => {
-    const parts = chunk.text.split(/(\s+)/);
-    parts.forEach((part) => {
-      if (part.length === 0) return;
-      if (/^\s+$/.test(part)) tokens.push({ type: 'space', text: part });
-      else tokens.push({ type: 'word', text: part, bold: chunk.bold });
-    });
+    Array.from(chunk.text).forEach((char) => charTokens.push({ char, bold: chunk.bold }));
   });
 
-  let charIdx = 0;
+  const segments = [];
+  let current = null;
+  charTokens.forEach((tok) => {
+    if (tok.char === ' ' || tok.char === '\n') {
+      if (current) { segments.push(current); current = null; }
+      segments.push({ type: 'space', char: tok.char });
+    } else {
+      if (!current) current = { type: 'word', chars: [] };
+      current.chars.push(tok);
+    }
+  });
+  if (current) segments.push(current);
+
+  const stagger = 0.012;
+  let letterIdx = 0;
+
   return (
-    <>
-      {tokens.map((token, ti) => {
-        if (token.type === 'space') return <span key={`s-${ti}`}>{token.text}</span>;
-        const Tag = token.bold ? 'strong' : 'span';
+    <motion.span
+      style={{ display: 'inline-block' }}
+      initial={{ y: 12 }}
+      animate={visible ? { y: 0 } : { y: 12 }}
+      transition={{ duration: visible ? 1 : 0.3, ease: SEI_EASE }}
+    >
+      {segments.map((seg, si) => {
+        if (seg.type === 'space') return <React.Fragment key={si}> </React.Fragment>;
         return (
-          <Tag key={`w-${ti}`} className="ps-phrase-word">
-            {token.text.split('').map((char, li) => {
-              const myIdx = charIdx++;
+          <span key={si} className="ps-phrase-word">
+            {seg.chars.map((tok, ci) => {
+              const idx = letterIdx++;
+              const El = tok.bold ? motion.strong : motion.span;
               return (
-                <motion.span
-                  key={li}
+                <El
+                  key={ci}
                   className="ps-phrase-letter"
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={visible ? { opacity: 1, y: 0 } : { opacity: 0, y: -8 }}
+                  initial={{ opacity: 0.001 }}
+                  animate={visible ? { opacity: 1 } : { opacity: 0.001 }}
                   transition={{
-                    duration: visible ? 0.45 : 0.2,
-                    delay: visible ? myIdx * 0.022 : 0,
-                    ease: [0.22, 1, 0.36, 1],
+                    duration: visible ? 0.2 : 0.12,
+                    delay: visible ? idx * stagger : 0,
+                    ease: SEI_EASE,
                   }}
                 >
-                  {char}
-                </motion.span>
+                  {tok.char}
+                </El>
               );
             })}
-          </Tag>
+          </span>
         );
       })}
-    </>
+    </motion.span>
   );
 }
 
@@ -258,7 +278,7 @@ function PhoneShowcaseSection() {
               className="ps-opener"
               style={isMobile ? { opacity: openerOpacity, visibility: mobileOpenerVisibility } : { opacity: openerOpacity, y: openerY }}
             >
-              {OPENER}
+              <CascadeText chunks={OPENER_CHUNKS} />
             </motion.h2>
           </div>
         </div>
@@ -495,94 +515,17 @@ function AthletesGallery() {
         </div>
         <div className="tl-ag-overlay" />
         <p className="tl-ag-quote">
-          En busca de la grandeza<br />
-          que admiro en otros.
+          <span>
+            <CascadeText>En busca de la grandeza</CascadeText>
+            <br />
+            <CascadeText delay={0.3}>que admiro en otros.</CascadeText>
+          </span>
         </p>
         <div className="tl-ag-scroll-hint" ref={hintRef}>
           <div className="tl-ag-scroll-line" />
         </div>
       </div>
     </section>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   NAV
-   ═══════════════════════════════════════════ */
-const NAV_LINKS = [
-  { label: 'Creadores', href: '/creadores' },
-  { label: 'Devs', href: '/developers' },
-];
-
-export function Nav() {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
-
-  return (
-    <nav className="tl-nav">
-      <a href="/" className="tl-nav-logo">
-        <img src={wakeLogotype} alt="Wake" />
-      </a>
-
-      {/* Desktop links */}
-      <div className="tl-nav-links">
-        {NAV_LINKS.map((link) => (
-          <a key={link.href} href={link.href} className="tl-nav-link">{link.label}</a>
-        ))}
-        <a href="/app" className="tl-nav-cta">Ir a la app</a>
-      </div>
-
-      {/* Mobile: CTA + hamburger */}
-      <div className="tl-nav-mobile-right">
-        <a href="/app" className="tl-nav-mobile-cta">Ir a la app</a>
-        <button
-          type="button"
-          className="tl-nav-burger"
-          onClick={() => setOpen(true)}
-          aria-label="Menu"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="3" y1="6" x2="21" y2="6" />
-            <line x1="3" y1="12" x2="21" y2="12" />
-            <line x1="3" y1="18" x2="21" y2="18" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Mobile drawer */}
-      {open && (
-        <>
-          <div className="tl-nav-overlay" onClick={() => setOpen(false)} />
-          <div className="tl-nav-drawer">
-            <button
-              type="button"
-              className="tl-nav-close"
-              onClick={() => setOpen(false)}
-              aria-label="Cerrar"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-            <div className="tl-nav-drawer-links">
-              {NAV_LINKS.map((link) => (
-                <a key={link.href} href={link.href} className="tl-nav-drawer-link">{link.label}</a>
-              ))}
-              <a href="/app" className="tl-nav-drawer-cta">Ir a la app</a>
-            </div>
-          </div>
-        </>
-      )}
-    </nav>
   );
 }
 
@@ -678,7 +621,6 @@ export default function ShowcaseLandingScreen() {
 
   return (
     <div className="test-landing">
-      <Nav />
       <section className="tl-hero">
         <div className="tl-slideshow">
           <div key={images[current]} className="tl-slide tl-slide-active">
@@ -698,7 +640,9 @@ export default function ShowcaseLandingScreen() {
           className="tl-hero-icon"
           aria-hidden="true"
         />
-        <h1 className="tl-hero-statement">Sé lo que admiras.</h1>
+        <CascadeText as="h1" className="tl-hero-statement" delay={0.15}>
+          Sé lo que admiras.
+        </CascadeText>
       </section>
 
       <div className="tl-transition" />

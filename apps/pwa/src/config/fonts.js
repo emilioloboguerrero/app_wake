@@ -4,9 +4,9 @@ import { useState } from 'react';
 // Check if we're on web - do this at module level so it's constant
 const isWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
 
-// Load Montserrat fonts - Only loading used weights to reduce app size
+// Load Inter fonts - Only loading used weights to reduce app size
 // Removed: 100Thin, 200ExtraLight, 300Light, 800ExtraBold, 900Black (not used in app)
-export const useMontserratFonts = () => {
+export const useInterFonts = () => {
   // CRITICAL: Always call useState first to maintain hook order
   // This ensures consistent hook order regardless of platform
   const [webFontsState] = useState(null);
@@ -14,7 +14,7 @@ export const useMontserratFonts = () => {
   // CRITICAL: On web, this should NEVER execute
   // If it does, Metro resolution failed and fonts.web.js should be used instead
   if (isWeb) {
-    logger.error('[FONTS] ❌ CRITICAL ERROR: fonts.js useMontserratFonts called on web!');
+    logger.error('[FONTS] ❌ CRITICAL ERROR: fonts.js useInterFonts called on web!');
     logger.error('[FONTS] Metro should have resolved to fonts.web.js instead.');
     logger.error('[FONTS] This indicates a Metro configuration issue.');
     // Return early to avoid calling useFonts
@@ -28,28 +28,28 @@ export const useMontserratFonts = () => {
   // The solution is to ensure fonts.js is NEVER imported on web (Metro should use fonts.web.js)
   const { 
     useFonts, 
-    Montserrat_400Regular, 
-    Montserrat_500Medium,
-    Montserrat_600SemiBold, 
-    Montserrat_700Bold
-  } = require('@expo-google-fonts/montserrat');
+    Inter_400Regular, 
+    Inter_500Medium,
+    Inter_600SemiBold, 
+    Inter_700Bold
+  } = require('@expo-google-fonts/inter');
   
   // CRITICAL: useFonts MUST be called unconditionally
   // Since we're on native (isWeb is false), this will always execute
   const [fontsLoaded] = useFonts({
-    Montserrat_400Regular,
-    Montserrat_500Medium,
-    Montserrat_600SemiBold,
-    Montserrat_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
   return fontsLoaded;
 };
 
 // Default font configuration for the app - cross-platform compatible
 export const DEFAULT_FONT = Platform.select({
-  ios: 'Montserrat-SemiBold',
-  android: 'Montserrat-SemiBold',
-  web: 'Montserrat-SemiBold', // Add web fallback
-  default: 'Montserrat-SemiBold', // Default fallback
+  ios: 'Inter-SemiBold',
+  android: 'Inter-SemiBold',
+  web: 'Inter-SemiBold', // Add web fallback
+  default: 'Inter-SemiBold', // Default fallback
 });
 export const DEFAULT_FONT_WEIGHT = '600';

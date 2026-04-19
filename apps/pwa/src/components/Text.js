@@ -11,40 +11,40 @@ const Text = ({ style, children, ...props }) => {
       case '300':
         // Fallback to Regular (400) for thin/light weights
         return Platform.select({
-          ios: 'Montserrat-Regular',
-          android: 'Montserrat-Regular',
+          ios: 'Inter-Regular',
+          android: 'Inter-Regular',
         });
       case '400':
         return Platform.select({
-          ios: 'Montserrat-Regular',
-          android: 'Montserrat-Regular',
+          ios: 'Inter-Regular',
+          android: 'Inter-Regular',
         });
       case '500':
         return Platform.select({
-          ios: 'Montserrat-Medium',
-          android: 'Montserrat-Medium',
+          ios: 'Inter-Medium',
+          android: 'Inter-Medium',
         });
       case '600':
         return Platform.select({
-          ios: 'Montserrat-SemiBold',
-          android: 'Montserrat-SemiBold',
+          ios: 'Inter-SemiBold',
+          android: 'Inter-SemiBold',
         });
       case '700':
         return Platform.select({
-          ios: 'Montserrat-Bold',
-          android: 'Montserrat-Bold',
+          ios: 'Inter-Bold',
+          android: 'Inter-Bold',
         });
       case '800':
       case '900':
         // Fallback to Bold (700) for extra bold/black weights
         return Platform.select({
-          ios: 'Montserrat-Bold',
-          android: 'Montserrat-Bold',
+          ios: 'Inter-Bold',
+          android: 'Inter-Bold',
         });
       default:
         return Platform.select({
-          ios: 'Montserrat-SemiBold',
-          android: 'Montserrat-SemiBold',
+          ios: 'Inter-SemiBold',
+          android: 'Inter-SemiBold',
         });
     }
   };

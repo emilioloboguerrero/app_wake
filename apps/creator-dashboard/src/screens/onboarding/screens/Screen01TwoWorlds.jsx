@@ -122,7 +122,7 @@ export function DashboardScreenContent() {
               }}>
                 <div style={{ width: prog.titleW, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 7, fontFamily: "'Montserrat'", fontWeight: 700 }}>{prog.count}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 7, fontFamily: "'Inter'", fontWeight: 700 }}>{prog.count}</span>
                   <div style={{ width: 22, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.06)' }} />
                 </div>
               </div>
@@ -150,7 +150,7 @@ export default function Screen01TwoWorlds() {
               <IPhoneFrame delay={0.3} width={150}><PhoneScreenContent /></IPhoneFrame>
             </div>
             <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 0.8 }}
-              style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, fontFamily: "'Montserrat'", fontWeight: 500, margin: 0 }}>
+              style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, fontFamily: "'Inter'", fontWeight: 500, margin: 0 }}>
               Ellos
             </motion.p>
           </div>
@@ -162,7 +162,7 @@ export default function Screen01TwoWorlds() {
               <MacBookFrame delay={0.5} width={420} layoutId="onboarding-macbook"><DashboardScreenContent /></MacBookFrame>
             </div>
             <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease, delay: 1 }}
-              style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, fontFamily: "'Montserrat'", fontWeight: 500, margin: 0 }}>
+              style={{ color: 'rgba(255,255,255,0.5)', fontSize: 18, fontFamily: "'Inter'", fontWeight: 500, margin: 0 }}>
               Tu
             </motion.p>
           </div>

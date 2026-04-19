@@ -54,7 +54,7 @@ function FlowDiagram() {
         <circle cx="58" cy="110" r="3" fill="rgba(255,255,255,0.15)" />
         <rect x="61" y="108" width="14" height="4" rx="2" fill="rgba(255,255,255,0.1)" />
         <circle cx="78" cy="110" r="3" fill="rgba(255,255,255,0.15)" />
-        <text x="80" y="130" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="9" fontFamily="Montserrat" fontWeight="500">
+        <text x="80" y="130" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="9" fontFamily="Inter" fontWeight="500">
           Entrenamiento
         </text>
       </motion.g>
@@ -70,7 +70,7 @@ function FlowDiagram() {
         <line x1="192" y1="102" x2="192" y2="120" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" />
         <line x1="200" y1="102" x2="200" y2="120" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" strokeLinecap="round" />
         <path d="M196 102 Q196 98 192 98" stroke="rgba(255,255,255,0.12)" strokeWidth="1" fill="none" />
-        <text x="200" y="130" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="9" fontFamily="Montserrat" fontWeight="500">
+        <text x="200" y="130" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="9" fontFamily="Inter" fontWeight="500">
           Nutrición
         </text>
       </motion.g>
@@ -102,7 +102,7 @@ function FlowDiagram() {
         transition={{ duration: 0.8, ease, delay: 1.4 }}
       >
         <rect x="75" y="165" width="130" height="55" rx="12" fill="rgba(255,87,168,0.06)" stroke="rgba(255,87,168,0.18)" strokeWidth="1" />
-        <text x="140" y="182" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="10" fontFamily="Montserrat" fontWeight="600">
+        <text x="140" y="182" textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="10" fontFamily="Inter" fontWeight="600">
           Lab
         </text>
         {/* Mini chart below Lab text */}

@@ -202,7 +202,7 @@ export default function Card07Closing({ onFinish }) {
           color: 'rgba(255,255,255,0.85)',
           fontSize: 15,
           fontWeight: 500,
-          fontFamily: "'Montserrat', sans-serif",
+          fontFamily: "'Inter', sans-serif",
           letterSpacing: '0.04em',
           cursor: 'pointer',
           backdropFilter: 'blur(8px)',

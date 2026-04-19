@@ -34,9 +34,9 @@ export default function Screen05Exercises() {
                   padding: 16, display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, fontFamily: "'Montserrat'", fontWeight: 600 }}>{cat.name}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, fontFamily: "'Inter'", fontWeight: 600 }}>{cat.name}</span>
                     <span style={{
-                      color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Montserrat'", fontWeight: 500,
+                      color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: "'Inter'", fontWeight: 500,
                       padding: '2px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.06)',
                     }}>{cat.exercises.length}</span>
                   </div>
@@ -51,7 +51,7 @@ export default function Screen05Exercises() {
                         background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
                       }}
                     >
-                      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: "'Montserrat'", fontWeight: 500 }}>{name}</span>
+                      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: "'Inter'", fontWeight: 500 }}>{name}</span>
                     </motion.div>
                   ))}
                 </div>

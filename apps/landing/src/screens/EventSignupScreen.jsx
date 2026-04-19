@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import apiClient from '../utils/apiClient';
 import heroLogoSrc from '../assets/hero-logo.svg';
 import wakeLogotypeSrc from '../assets/Logotipo-WAKE-positivo.svg';
+import CascadeText from '../components/CascadeText';
 import './EventSignupScreen.css';
 
 // ─── Wake Loader ──────────────────────────────────────────────────
@@ -609,7 +610,7 @@ export default function EventSignupScreen() {
         </a>
         <div className="es-gate es-fade-in">
           {hasImage && <img src={event.imageUrl} alt={event.title} className="es-gate-poster" />}
-          <h2 className="es-gate-title">{event?.title}</h2>
+          <CascadeText as="h2" className="es-gate-title">{event?.title || ''}</CascadeText>
           <p className="es-gate-sub">Este evento es exclusivo para usuarios de Wake.</p>
           <a href="/app" className="es-cta">Abrir la app Wake</a>
         </div>
@@ -755,7 +756,7 @@ export default function EventSignupScreen() {
                 <polyline className="es-check-tick" points="14,26 22,34 38,18" />
               </svg>
             </div>
-            <h1 className="es-success-title">¡En la lista!</h1>
+            <CascadeText as="h1" className="es-success-title">¡En la lista!</CascadeText>
             <p className="es-success-sub">
               Te avisamos en <strong style={{ color: '#fff' }}>{waitlistContact}</strong> si se libera un cupo.
             </p>
@@ -773,7 +774,7 @@ export default function EventSignupScreen() {
         {hasImage && <div className="es-bg es-bg--blurred" style={{ backgroundImage: `url(${event.imageUrl})` }} />}
         <div className="es-overlay es-overlay--dark" />
         <div className="es-closed es-fade-in">
-          <h2 className="es-closed-title">{event.title}</h2>
+          <CascadeText as="h2" className="es-closed-title">{event.title}</CascadeText>
           <p className="es-msg">Registros cerrados.</p>
         </div>
       </div>
@@ -977,9 +978,9 @@ export default function EventSignupScreen() {
                 <polyline className="es-check-tick" points="14,26 22,34 38,18" />
               </svg>
             </div>
-            <h1 className="es-success-title">
+            <CascadeText as="h1" className="es-success-title">
               {firstName ? `¡${firstName}, estás dentro!` : '¡Estás dentro!'}
-            </h1>
+            </CascadeText>
             <p className="es-success-sub">{confirmMsg || 'Nos vemos en el evento.'}</p>
 
             {(event?.date || event?.location) && (

@@ -30,10 +30,10 @@ function WorkoutCard() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5, ease, delay: 0.4 }}
       >
-        <text x="36" y="37" fill="rgba(255,255,255,0.6)" fontSize="11" fontFamily="Montserrat" fontWeight="600">
+        <text x="36" y="37" fill="rgba(255,255,255,0.6)" fontSize="11" fontFamily="Inter" fontWeight="600">
           Press de hombros
         </text>
-        <text x="36" y="50" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Montserrat" fontWeight="400">
+        <text x="36" y="50" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Inter" fontWeight="400">
           4 series
         </text>
       </motion.g>
@@ -44,9 +44,9 @@ function WorkoutCard() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, ease, delay: 0.6 }}
       >
-        <text x="50" y="70" textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Montserrat" fontWeight="500">SET</text>
-        <text x="120" y="70" textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Montserrat" fontWeight="500">PESO</text>
-        <text x="190" y="70" textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Montserrat" fontWeight="500">REPS</text>
+        <text x="50" y="70" textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Inter" fontWeight="500">SET</text>
+        <text x="120" y="70" textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Inter" fontWeight="500">PESO</text>
+        <text x="190" y="70" textAnchor="middle" fill="rgba(255,255,255,0.2)" fontSize="8" fontFamily="Inter" fontWeight="500">REPS</text>
       </motion.g>
 
       {/* Set rows animating in */}
@@ -61,17 +61,17 @@ function WorkoutCard() {
           <rect x="32" y={80 + i * 38} width="196" height="30" rx="6" fill="rgba(255,255,255,0.02)" />
 
           {/* Set number */}
-          <text x="50" y={99 + i * 38} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="11" fontFamily="Montserrat" fontWeight="600">
+          <text x="50" y={99 + i * 38} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="11" fontFamily="Inter" fontWeight="600">
             {i + 1}
           </text>
 
           {/* Weight */}
-          <text x="120" y={99 + i * 38} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="11" fontFamily="Montserrat" fontWeight="500">
+          <text x="120" y={99 + i * 38} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="11" fontFamily="Inter" fontWeight="500">
             {set.weight}
           </text>
 
           {/* Reps */}
-          <text x="190" y={99 + i * 38} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="11" fontFamily="Montserrat" fontWeight="500">
+          <text x="190" y={99 + i * 38} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize="11" fontFamily="Inter" fontWeight="500">
             {set.reps}
           </text>
 

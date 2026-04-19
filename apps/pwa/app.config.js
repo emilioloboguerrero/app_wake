@@ -62,7 +62,7 @@ export default {
       "@react-native-google-signin/google-signin"
     ],
     font: {
-      family: "Montserrat-SemiBold"
+      family: "Inter-SemiBold"
     },
     extra: {
       eas: {

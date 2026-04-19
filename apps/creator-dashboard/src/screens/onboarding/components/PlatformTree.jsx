@@ -201,7 +201,7 @@ function Pill({ id, active, isNew }) {
         textAnchor="middle"
         fontSize={fontSize}
         fill={c.text}
-        fontFamily="'Montserrat', system-ui, sans-serif"
+        fontFamily="'Inter', system-ui, sans-serif"
         fontWeight={active ? 600 : 400}
       >
         {n.label}

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import CascadeText from '../components/CascadeText';
 import './SupportScreen.css';
 
 const SupportScreen = () => {
@@ -50,7 +51,7 @@ const SupportScreen = () => {
       <div className="support-container">
         {/* Hero Section */}
         <div className="support-hero">
-          <h1 className="support-hero-title">Centro de Soporte Wake</h1>
+          <CascadeText as="h1" className="support-hero-title">Centro de Soporte Wake</CascadeText>
           <p className="support-hero-subtitle">
             Estamos aquí para ayudarte. Encuentra respuestas a tus preguntas o contacta directamente
             con nuestro equipo de soporte.
@@ -62,10 +63,9 @@ const SupportScreen = () => {
           <div className="support-main-card">
             <div className="support-main-header">
               <h2 className="support-main-title">Contacto Directo</h2>
-              <p className="support-main-description">
-                Para consultas, asistencia técnica, preguntas sobre suscripciones, reembolsos,
-                problemas con la cuenta o cualquier otra solicitud, puedes contactarnos directamente.
-              </p>
+              <CascadeText as="p" className="support-main-description">
+                Para consultas, asistencia técnica, preguntas sobre suscripciones, reembolsos, problemas con la cuenta o cualquier otra solicitud, puedes contactarnos directamente.
+              </CascadeText>
             </div>
 
             <div className="support-contact-box">
@@ -103,14 +103,14 @@ const SupportScreen = () => {
 
         {/* Support Topics Section */}
         <div className="support-topics-section">
-          <h2 className="support-section-title">¿En qué podemos ayudarte?</h2>
+          <CascadeText as="h2" className="support-section-title">¿En qué podemos ayudarte?</CascadeText>
           <div className="support-topics-grid">
             <div className="support-topic-card">
               <h3 className="support-topic-title">Asistencia Técnica</h3>
-              <p className="support-topic-description">
+              <CascadeText as="p" className="support-topic-description">
                 Problemas con la aplicación, errores, fallos, dificultades técnicas,
                 problemas de sincronización o rendimiento.
-              </p>
+              </CascadeText>
               <div className="support-topic-examples">
                 <span className="support-topic-tag">Errores de la app</span>
                 <span className="support-topic-tag">Problemas de inicio de sesión</span>
@@ -119,10 +119,10 @@ const SupportScreen = () => {
             </div>
             <div className="support-topic-card">
               <h3 className="support-topic-title">Suscripciones y Pagos</h3>
-              <p className="support-topic-description">
+              <CascadeText as="p" className="support-topic-description">
                 Consultas sobre planes, facturación, métodos de pago, actualización
                 de información de pago, reembolsos y cancelaciones.
-              </p>
+              </CascadeText>
               <div className="support-topic-examples">
                 <span className="support-topic-tag">Gestión de suscripción</span>
                 <span className="support-topic-tag">Problemas de pago</span>
@@ -131,10 +131,10 @@ const SupportScreen = () => {
             </div>
             <div className="support-topic-card">
               <h3 className="support-topic-title">Cuenta y Perfil</h3>
-              <p className="support-topic-description">
+              <CascadeText as="p" className="support-topic-description">
                 Ayuda con la gestión de tu cuenta, recuperación de contraseña,
                 actualización de perfil, configuración de privacidad y seguridad.
-              </p>
+              </CascadeText>
               <div className="support-topic-examples">
                 <span className="support-topic-tag">Recuperar cuenta</span>
                 <span className="support-topic-tag">Actualizar perfil</span>
@@ -143,10 +143,10 @@ const SupportScreen = () => {
             </div>
             <div className="support-topic-card">
               <h3 className="support-topic-title">Uso de la Aplicación</h3>
-              <p className="support-topic-description">
+              <CascadeText as="p" className="support-topic-description">
                 Guía sobre funcionalidades, características, cómo usar las herramientas,
                 programas de entrenamiento y seguimiento de progreso.
-              </p>
+              </CascadeText>
               <div className="support-topic-examples">
                 <span className="support-topic-tag">Tutoriales</span>
                 <span className="support-topic-tag">Funcionalidades</span>
@@ -155,10 +155,10 @@ const SupportScreen = () => {
             </div>
             <div className="support-topic-card">
               <h3 className="support-topic-title">Privacidad y Datos</h3>
-              <p className="support-topic-description">
+              <CascadeText as="p" className="support-topic-description">
                 Consultas sobre privacidad, tratamiento de datos personales,
                 solicitudes de eliminación de datos y políticas de privacidad.
-              </p>
+              </CascadeText>
               <div className="support-topic-examples">
                 <span className="support-topic-tag">Privacidad</span>
                 <span className="support-topic-tag">Datos personales</span>
@@ -167,10 +167,10 @@ const SupportScreen = () => {
             </div>
             <div className="support-topic-card">
               <h3 className="support-topic-title">Sugerencias y Feedback</h3>
-              <p className="support-topic-description">
+              <CascadeText as="p" className="support-topic-description">
                 Comparte tus ideas, comentarios, sugerencias para mejorar Wake,
                 reportar bugs o solicitar nuevas funcionalidades.
-              </p>
+              </CascadeText>
               <div className="support-topic-examples">
                 <span className="support-topic-tag">Nuevas funciones</span>
                 <span className="support-topic-tag">Mejoras</span>
@@ -182,7 +182,7 @@ const SupportScreen = () => {
 
         {/* FAQ Section */}
         <div className="support-faq-section">
-          <h2 className="support-section-title">Preguntas Frecuentes</h2>
+          <CascadeText as="h2" className="support-section-title">Preguntas Frecuentes</CascadeText>
           <p className="support-faq-intro">
             Encuentra respuestas rápidas a las preguntas más comunes sobre Wake.
           </p>
@@ -211,7 +211,7 @@ const SupportScreen = () => {
 
         {/* Help Section */}
         <div className="support-help-section">
-          <h2 className="support-section-title">Cómo Agilizar tu Solicitud de Soporte</h2>
+          <CascadeText as="h2" className="support-section-title">Cómo Agilizar tu Solicitud de Soporte</CascadeText>
           <div className="support-help-content">
             <p className="support-help-text">
               Para brindarte una respuesta más rápida y precisa, por favor incluye la siguiente información en tu mensaje:
@@ -258,27 +258,27 @@ const SupportScreen = () => {
 
         {/* Additional Resources */}
         <div className="support-resources-section">
-          <h2 className="support-section-title">Recursos Adicionales</h2>
+          <CascadeText as="h2" className="support-section-title">Recursos Adicionales</CascadeText>
           <div className="support-resources-grid">
             <Link to="/legal" className="support-resource-card">
               <h3 className="support-resource-title">Documentos Legales</h3>
-              <p className="support-resource-description">
+              <CascadeText as="p" className="support-resource-description">
                 Términos y condiciones, política de privacidad, política de reembolsos y otros documentos legales importantes.
-              </p>
+              </CascadeText>
               <span className="support-resource-link">Ver documentos →</span>
             </Link>
             <a href="/creators/login" className="support-resource-card">
               <h3 className="support-resource-title">Panel de Creadores</h3>
-              <p className="support-resource-description">
+              <CascadeText as="p" className="support-resource-description">
                 Si eres creador de contenido, inicia sesión para acceder al panel de Wake Creadores.
-              </p>
+              </CascadeText>
               <span className="support-resource-link">Iniciar sesión →</span>
             </a>
             <a href="/app" className="support-resource-card">
               <h3 className="support-resource-title">Abrir App (PWA)</h3>
-              <p className="support-resource-description">
+              <CascadeText as="p" className="support-resource-description">
                 Si ya eres usuario de Wake, accede a la aplicación para entrenar y seguir tu progreso.
-              </p>
+              </CascadeText>
               <span className="support-resource-link">Abrir app →</span>
             </a>
           </div>

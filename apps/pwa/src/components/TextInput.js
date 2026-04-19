@@ -7,8 +7,8 @@ const TextInput = ({ style, ...props }) => {
       style={[
         {
           fontFamily: Platform.select({
-            ios: 'Montserrat-SemiBold',
-            android: 'Montserrat-SemiBold',
+            ios: 'Inter-SemiBold',
+            android: 'Inter-SemiBold',
           }),
           fontWeight: '500',
         },
