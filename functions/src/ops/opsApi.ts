@@ -10,6 +10,7 @@
 
 import type {Request, Response} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 
 const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
@@ -44,20 +45,28 @@ function setCors(req: Request, res: Response): boolean {
 }
 
 function checkAuth(req: Request, expected: string): boolean {
-  if (!expected) return false;
+  const expectedTrim = (expected || "").trim();
+  if (!expectedTrim) {
+    functions.logger.warn("opsApi: expected key empty — secret not bound?");
+    return false;
+  }
   const header = (req.header("x-wake-ops-key") || "").trim();
   const query = (
-    (req.query.key as string | undefined) || ""
+    (req.query?.key as string | undefined) || ""
   ).toString().trim();
   const provided = header || query;
-  // Constant-time comparison isn't strictly necessary for an internal
-  // key, but it's cheap insurance against timing probing.
-  if (provided.length !== expected.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < provided.length; i++) {
-    mismatch |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  const ok =
+    provided.length === expectedTrim.length &&
+    provided === expectedTrim;
+  if (!ok) {
+    functions.logger.info("opsApi: auth mismatch", {
+      expectedLen: expectedTrim.length,
+      providedLen: provided.length,
+      hasHeader: header.length > 0,
+      hasQuery: query.length > 0,
+    });
   }
-  return mismatch === 0;
+  return ok;
 }
 
 function parseLimit(req: Request): number {
