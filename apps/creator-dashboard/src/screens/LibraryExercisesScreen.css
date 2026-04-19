@@ -127,13 +127,18 @@
 .lex-sidebar-list {
   flex: 1;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
 .lex-sidebar-list::-webkit-scrollbar { width: 3px; }
 .lex-sidebar-list::-webkit-scrollbar-track { background: transparent; }
 .lex-sidebar-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+
+@supports (scrollbar-width: thin) {
+  .lex-sidebar-list {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+  }
+}
 
 .lex-sidebar-list-inner {
   display: flex;
@@ -350,6 +355,7 @@
   padding: 6px 14px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.7);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.9);
@@ -409,6 +415,7 @@
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   border-radius: 12px;
   justify-content: center;
@@ -449,6 +456,7 @@
   padding: 3px 8px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.65);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.8);
@@ -642,6 +650,7 @@
   max-height: 320px;
   border-radius: 12px;
   background: rgba(28, 28, 28, 0.97);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -832,6 +841,7 @@
   text-align: center;
   outline: none;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .lex-muscle-list-input::-webkit-inner-spin-button,

@@ -13,8 +13,8 @@
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.25);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -96,8 +96,8 @@
   height: 40px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: rgba(255, 255, 255, 0.9);
   font-size: clamp(13px, 3vw, 14px);
@@ -345,7 +345,6 @@
   border-radius: 8px;
   overflow: hidden;
   transition: background 0.2s ease, border-color 0.2s ease;
-  -webkit-user-drag: element;
 }
 
 .plan-weeks-session-card:hover {
@@ -355,6 +354,7 @@
 
 .plan-weeks-session-card[draggable] {
   cursor: grab;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -912,10 +912,6 @@
     grid-template-columns: repeat(7, minmax(90px, 1fr));
     min-width: 670px;
     padding: 0 10px 6px;
-  }
-
-  .plan-weeks-week-block {
-    -webkit-overflow-scrolling: touch;
   }
 
   .plan-weeks-week-days {

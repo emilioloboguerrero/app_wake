@@ -215,6 +215,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: inherit;
   overflow: hidden;
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
@@ -258,7 +259,10 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+@supports (scrollbar-color: auto) {
+  .pe-center-body { scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
 }
 
 .pe-center-body::-webkit-scrollbar { width: 6px; }
@@ -458,8 +462,13 @@
   flex-direction: column;
   max-height: 280px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+@supports (scrollbar-width: thin) {
+  .pe-category-items {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
 }
 
 .pe-category-items::-webkit-scrollbar { width: 5px; }
