@@ -615,10 +615,14 @@ function ProgramBuilderWindow() {
                   const key = `${weekIdx}:${dayIdx}`;
                   const isDragOver = dragOverKey === key;
                   const isPulsing = dropPulseKey === key;
+                  const assignRef = (el) => {
+                    if (el) cellRefs.current[key] = el; else delete cellRefs.current[key];
+                  };
                   if (!cell) {
                     return (
                       <div
                         key={dayIdx}
+                        ref={assignRef}
                         className={`cl-pb-cell cl-pb-cell-empty ${isDragOver ? 'cl-pb-cell-drag-over' : ''}`}
                         onDragOver={(e) => handleCellDragOver(e, key)}
                         onDragLeave={handleCellDragLeave}
@@ -631,6 +635,7 @@ function ProgramBuilderWindow() {
                   return (
                     <div
                       key={dayIdx}
+                      ref={assignRef}
                       className={`cl-pb-cell-wrap ${isPulsing ? 'cl-pb-cell-wrap-pulse' : ''}`}
                       onDragOver={(e) => handleCellDragOver(e, key)}
                       onDragLeave={handleCellDragLeave}
