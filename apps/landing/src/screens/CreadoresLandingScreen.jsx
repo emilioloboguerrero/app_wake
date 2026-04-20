@@ -1261,22 +1261,6 @@ function DualModeWindow() {
                 transition={{ duration: 0.5, delay: 0.2, ease: SPRING }}
               />
 
-              {inView && (
-                <motion.circle
-                  r="4"
-                  fill="rgba(255,255,255,0.9)"
-                  initial={{ cx: 162, cy: 150, opacity: 0 }}
-                  animate={{ cx: [162, 238, 162], opacity: [0, 1, 0] }}
-                  transition={{
-                    duration: 2.2,
-                    delay: 1,
-                    repeat: Infinity,
-                    repeatDelay: 1.4,
-                    ease: 'easeInOut',
-                    times: [0, 0.5, 1],
-                  }}
-                />
-              )}
             </svg>
           </div>
           <div className="cl-dm-caption">
