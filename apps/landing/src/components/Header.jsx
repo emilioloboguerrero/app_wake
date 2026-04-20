@@ -6,7 +6,7 @@ import './Header.css';
 
 const NAV_LINKS = [
   { to: '/creadores', label: 'Creadores' },
-  { to: '/developers', label: 'Devs' },
+  { to: '/developers', label: 'Devs', reloadDocument: true },
 ];
 
 const ANIM_MS = 280;
@@ -55,13 +55,13 @@ export default function Header() {
         </Link>
 
         <div className="wk-pill-links">
-          {NAV_LINKS.map(({ to, label }) => (
-            <Link key={to} to={to} className="wk-pill-link">{label}</Link>
+          {NAV_LINKS.map(({ to, label, reloadDocument }) => (
+            <Link key={to} to={to} reloadDocument={reloadDocument} className="wk-pill-link">{label}</Link>
           ))}
-          <Link to={ctaHref} className="wk-pill-cta">{ctaLabel}</Link>
+          <Link to={ctaHref} reloadDocument className="wk-pill-cta">{ctaLabel}</Link>
         </div>
 
-        <Link to={ctaHref} className="wk-pill-cta-mobile" aria-label={ctaLabel}>
+        <Link to={ctaHref} reloadDocument className="wk-pill-cta-mobile" aria-label={ctaLabel}>
           {ctaMobileLabel}
         </Link>
 
@@ -99,8 +99,8 @@ export default function Header() {
               </svg>
             </button>
             <div className="wk-drawer-links">
-              {NAV_LINKS.map(({ to, label }) => (
-                <Link key={to} to={to} className="wk-drawer-link" onClick={closeMenu}>{label}</Link>
+              {NAV_LINKS.map(({ to, label, reloadDocument }) => (
+                <Link key={to} to={to} reloadDocument={reloadDocument} className="wk-drawer-link" onClick={closeMenu}>{label}</Link>
               ))}
             </div>
           </div>
