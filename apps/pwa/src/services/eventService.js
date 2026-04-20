@@ -7,14 +7,24 @@ class EventService {
     return { id: d.eventId, ...d };
   }
 
+  async #fetchAllPages(basePath) {
+    const all = [];
+    let pageToken = null;
+    do {
+      const qs = pageToken ? `?pageToken=${encodeURIComponent(pageToken)}` : '';
+      const res = await apiClient.get(`${basePath}${qs}`);
+      all.push(...res.data.map(r => ({ id: r.registrationId, ...r })));
+      pageToken = res.nextPageToken || null;
+    } while (pageToken);
+    return all;
+  }
+
   async getRegistrations(eventId) {
-    const res = await apiClient.get(`/creator/events/${eventId}/registrations`);
-    return res.data.map(r => ({ id: r.registrationId, ...r }));
+    return this.#fetchAllPages(`/creator/events/${eventId}/registrations`);
   }
 
   async getWaitlist(eventId) {
-    const res = await apiClient.get(`/creator/events/${eventId}/waitlist`);
-    return res.data.map(r => ({ id: r.registrationId, ...r }));
+    return this.#fetchAllPages(`/creator/events/${eventId}/waitlist`);
   }
 
   async checkInByToken(eventId, token) {
