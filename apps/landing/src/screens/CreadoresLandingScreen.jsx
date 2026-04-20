@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { LandingFooter } from './ShowcaseLandingScreen';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
@@ -9,11 +9,45 @@ import './CreadoresLandingScreen.css';
 const SPRING = [0.22, 1, 0.36, 1];
 
 /* ═══════════════════════════════════════════
+   useAutoDemo — ticks a counter at a steady
+   interval only while the target ref is in
+   view and the user hasn't interacted yet.
+   ═══════════════════════════════════════════ */
+function useAutoDemo(ref, { interval = 2800, threshold = 0.35 } = {}) {
+  const [tick, setTick] = useState(0);
+  const [paused, setPausedState] = useState(false);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return undefined;
+    const el = ref.current;
+    const obs = new IntersectionObserver(
+      ([entry]) => setInView(entry.isIntersecting),
+      { threshold },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, threshold]);
+
+  useEffect(() => {
+    if (!inView || paused) return undefined;
+    const id = setInterval(() => setTick((t) => t + 1), interval);
+    return () => clearInterval(id);
+  }, [inView, paused, interval]);
+
+  const pause = useCallback(() => setPausedState(true), []);
+  return { tick, pause };
+}
+
+/* ═══════════════════════════════════════════
    WINDOW FRAME — shared chrome
    ═══════════════════════════════════════════ */
-const WindowFrame = React.forwardRef(function WindowFrame({ label, children, className = '' }, ref) {
+const WindowFrame = React.forwardRef(function WindowFrame(
+  { label, children, className = '', ...rest },
+  ref,
+) {
   return (
-    <div ref={ref} className={`cl-window ${className}`}>
+    <div ref={ref} className={`cl-window ${className}`} {...rest}>
       <div className="cl-window-chrome">
         <div className="cl-window-dots" aria-hidden="true">
           <span /><span /><span />
@@ -60,9 +94,25 @@ const EXERCISES = [
 function ExerciseEditorWindow() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const exercise = EXERCISES[selectedIndex];
+  const windowRef = useRef(null);
+  const { tick, pause } = useAutoDemo(windowRef, { interval: 2600 });
+
+  useEffect(() => {
+    if (tick === 0) return;
+    setSelectedIndex((prev) => (prev + 1) % EXERCISES.length);
+  }, [tick]);
+
+  const handleSelect = (i) => {
+    pause();
+    setSelectedIndex(i);
+  };
 
   return (
-    <WindowFrame label="Biblioteca · Fuerza">
+    <WindowFrame
+      ref={windowRef}
+      label="Biblioteca · Fuerza"
+      onPointerEnter={pause}
+    >
       <div className="cl-lex">
         {/* Sidebar */}
         <aside className="cl-lex-sidebar">
@@ -82,7 +132,7 @@ function ExerciseEditorWindow() {
                 type="button"
                 key={ex.name}
                 className={`cl-lex-sidebar-item ${i === selectedIndex ? 'cl-lex-sidebar-item-active' : ''}`}
-                onClick={() => setSelectedIndex(i)}
+                onClick={() => handleSelect(i)}
               >
                 <span className="cl-lex-sidebar-item-name">{ex.name}</span>
               </button>
@@ -93,7 +143,15 @@ function ExerciseEditorWindow() {
         {/* Workspace */}
         <div className="cl-lex-workspace">
           <div className="cl-lex-workspace-head">
-            <h3 className="cl-lex-workspace-title">{exercise.name}</h3>
+            <motion.h3
+              key={`title-${selectedIndex}`}
+              className="cl-lex-workspace-title"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: SPRING }}
+            >
+              {exercise.name}
+            </motion.h3>
           </div>
           <div className="cl-lex-workspace-columns">
             {/* Video panel */}
@@ -112,17 +170,31 @@ function ExerciseEditorWindow() {
 
             {/* Muscle panel */}
             <div className="cl-lex-muscle-card">
-              <div className="cl-lex-muscle-left">
+              <motion.div
+                key={`muscle-${selectedIndex}`}
+                className="cl-lex-muscle-left"
+                initial={{ opacity: 0.35 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.55, ease: SPRING }}
+              >
                 <MuscleSilhouetteSVG muscleVolumes={exercise.muscles} />
-              </div>
+              </motion.div>
             </div>
           </div>
 
           <div className="cl-lex-implements">
             <span className="cl-lex-implements-title">Implementos</span>
             <div className="cl-lex-implements-pills">
-              {exercise.implements.map((imp) => (
-                <span key={imp} className="cl-lex-pill">{imp}</span>
+              {exercise.implements.map((imp, i) => (
+                <motion.span
+                  key={`${selectedIndex}-${imp}`}
+                  className="cl-lex-pill"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.05 + i * 0.05, ease: SPRING }}
+                >
+                  {imp}
+                </motion.span>
               ))}
               <span className="cl-lex-pill-add">+</span>
             </div>
@@ -221,13 +293,63 @@ function SessionCard({ session }) {
   );
 }
 
+const PB_DEMO_SCRIPT = [
+  { sourceId: 'lib-9', weekIdx: 0, dayIdx: 2 },
+  { sourceId: 'lib-10', weekIdx: 0, dayIdx: 6 },
+  { sourceId: 'lib-5', weekIdx: 1, dayIdx: 4 },
+  { sourceId: 'lib-7', weekIdx: 1, dayIdx: 6 },
+];
+
+const cloneWeeks = (weeks) => weeks.map((w) => ({ ...w, cells: w.cells.map((c) => (c ? { ...c } : null)) }));
+
 function ProgramBuilderWindow() {
   const [activeTab, setActiveTab] = useState('sessions');
-  const [weeks, setWeeks] = useState(PB_INITIAL_WEEKS);
+  const [weeks, setWeeks] = useState(() => cloneWeeks(PB_INITIAL_WEEKS));
   const [dragOverKey, setDragOverKey] = useState(null);
   const [dropPulseKey, setDropPulseKey] = useState(null);
+  const [pickingUpId, setPickingUpId] = useState(null);
+
+  const windowRef = useRef(null);
+  const { tick, pause } = useAutoDemo(windowRef, { interval: 1400 });
+
+  useEffect(() => {
+    if (tick === 0) return;
+    const cycleLen = PB_DEMO_SCRIPT.length * 2 + 2;
+    const step = (tick - 1) % cycleLen;
+
+    if (step === cycleLen - 1) {
+      setWeeks(cloneWeeks(PB_INITIAL_WEEKS));
+      setPickingUpId(null);
+      setDropPulseKey(null);
+      return;
+    }
+
+    const scriptIdx = Math.floor(step / 2);
+    const isPickup = step % 2 === 0;
+    const move = PB_DEMO_SCRIPT[scriptIdx];
+    if (!move) return;
+
+    if (isPickup) {
+      setPickingUpId(move.sourceId);
+      return;
+    }
+
+    const source = PB_LIBRARY_SESSIONS.find((s) => s.id === move.sourceId);
+    if (!source) return;
+    const key = `${move.weekIdx}:${move.dayIdx}`;
+    setWeeks((prev) => prev.map((w, i) => {
+      if (i !== move.weekIdx) return w;
+      const cells = [...w.cells];
+      cells[move.dayIdx] = { title: source.title, linked: true, image: source.image };
+      return { ...w, cells };
+    }));
+    setPickingUpId(null);
+    setDropPulseKey(key);
+    setTimeout(() => setDropPulseKey((k) => (k === key ? null : k)), 600);
+  }, [tick]);
 
   const handleLibraryDragStart = (e, item, kind) => {
+    pause();
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/json', JSON.stringify({ kind, ...item }));
     e.currentTarget.classList.add('cl-pb-lib-item-dragging');
@@ -265,7 +387,11 @@ function ProgramBuilderWindow() {
   const dragHint = activeTab === 'sessions' ? 'Arrastra a un día' : 'Arrastra a una semana';
 
   return (
-    <WindowFrame label="Plan · Hipertrofia 8 semanas">
+    <WindowFrame
+      ref={windowRef}
+      label="Plan · Hipertrofia 8 semanas"
+      onPointerEnter={pause}
+    >
       <div className="cl-pb-layout">
         {/* ── LEFT: LIBRARY SIDEBAR ─────────────────────────── */}
         <aside className="cl-pb-lib">
@@ -273,14 +399,14 @@ function ProgramBuilderWindow() {
             <button
               type="button"
               className={`cl-pb-lib-tab ${activeTab === 'sessions' ? 'cl-pb-lib-tab-active' : ''}`}
-              onClick={() => setActiveTab('sessions')}
+              onClick={() => { pause(); setActiveTab('sessions'); }}
             >
               Sesiones
             </button>
             <button
               type="button"
               className={`cl-pb-lib-tab ${activeTab === 'plans' ? 'cl-pb-lib-tab-active' : ''}`}
-              onClick={() => setActiveTab('plans')}
+              onClick={() => { pause(); setActiveTab('plans'); }}
             >
               Planes
             </button>
@@ -299,7 +425,7 @@ function ProgramBuilderWindow() {
             {activeList.map((item) => (
               <div
                 key={item.id}
-                className="cl-pb-lib-item"
+                className={`cl-pb-lib-item ${pickingUpId === item.id ? 'cl-pb-lib-item-picking' : ''}`}
                 draggable
                 onDragStart={(e) => handleLibraryDragStart(e, item, activeTab === 'sessions' ? 'session' : 'plan')}
                 onDragEnd={handleLibraryDragEnd}
@@ -375,7 +501,15 @@ function ProgramBuilderWindow() {
                       onDragLeave={handleCellDragLeave}
                       onDrop={(e) => handleDropOnCell(e, weekIdx, dayIdx)}
                     >
-                      <SessionCard session={cell} />
+                      <motion.div
+                        key={cell.title}
+                        initial={{ opacity: 0, scale: 0.92, y: 4 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        transition={{ duration: 0.35, ease: SPRING }}
+                        style={{ height: '100%' }}
+                      >
+                        <SessionCard session={cell} />
+                      </motion.div>
                     </div>
                   );
                 })}
@@ -448,13 +582,94 @@ const NP_INITIAL = [
 
 const NP_GAUGE_ARC = 263.9;
 
+const NP_DEMO_SCRIPT = [
+  { type: 'pickup', sourceTab: 'alimentos', sourceId: 'a9', catId: 'c2' },
+  { type: 'drop' },
+  { type: 'switchTab', tab: 'recetas' },
+  { type: 'pickup', sourceTab: 'recetas', sourceId: 'r3', catId: 'c3' },
+  { type: 'drop' },
+  { type: 'switchOpt', catId: 'c1', optIdx: 1 },
+  { type: 'switchTab', tab: 'alimentos' },
+  { type: 'pickup', sourceTab: 'alimentos', sourceId: 'a4', catId: 'c1' },
+  { type: 'drop' },
+  { type: 'switchOpt', catId: 'c1', optIdx: 0 },
+  { type: 'reset' },
+];
+
+const cloneNpInitial = () => NP_INITIAL.map((c) => ({
+  ...c,
+  options: c.options.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i })) })),
+}));
+
 function NutritionPlanWindow() {
   const [leftTab, setLeftTab] = useState('alimentos');
-  const [categories, setCategories] = useState(NP_INITIAL);
+  const [categories, setCategories] = useState(cloneNpInitial);
   const [dragOverId, setDragOverId] = useState(null);
   const [pulseId, setPulseId] = useState(null);
+  const [pickingUpId, setPickingUpId] = useState(null);
+
+  const windowRef = useRef(null);
+  const { tick, pause } = useAutoDemo(windowRef, { interval: 1500 });
 
   const target = { kcal: 2000, p: 160, c: 200, f: 67 };
+
+  const addItemToCategory = useCallback((sourceType, sourceId, catId) => {
+    const source = sourceType === 'recetas'
+      ? NP_RECETAS.find((r) => r.id === sourceId)
+      : NP_ALIMENTOS.find((a) => a.id === sourceId);
+    if (!source) return;
+
+    setCategories((prev) => prev.map((cat) => {
+      if (cat.id !== catId) return cat;
+      const opts = [...cat.options];
+      const sel = cat.selected;
+      const newItem = sourceType === 'recetas'
+        ? { name: source.name, portion: `${source.count} alim.`, kcal: source.kcal, p: source.p, c: source.c, f: source.f, recipe: true }
+        : { name: source.name, portion: source.portion, kcal: source.kcal, p: source.p, c: source.c, f: source.f };
+      opts[sel] = { ...opts[sel], items: [...(opts[sel].items || []), newItem] };
+      return { ...cat, options: opts };
+    }));
+    setPulseId(catId);
+    setTimeout(() => setPulseId((p) => (p === catId ? null : p)), 600);
+  }, []);
+
+  useEffect(() => {
+    if (tick === 0) return;
+    const step = (tick - 1) % NP_DEMO_SCRIPT.length;
+    const action = NP_DEMO_SCRIPT[step];
+    if (!action) return;
+
+    switch (action.type) {
+      case 'pickup':
+        setLeftTab(action.sourceTab);
+        setPickingUpId(action.sourceId);
+        break;
+      case 'drop': {
+        const prev = NP_DEMO_SCRIPT[step - 1];
+        if (prev?.type === 'pickup') {
+          addItemToCategory(prev.sourceTab, prev.sourceId, prev.catId);
+        }
+        setPickingUpId(null);
+        break;
+      }
+      case 'switchTab':
+        setLeftTab(action.tab);
+        setPickingUpId(null);
+        break;
+      case 'switchOpt':
+        setCategories((prev) => prev.map((c) => (c.id === action.catId ? { ...c, selected: action.optIdx } : c)));
+        setPickingUpId(null);
+        break;
+      case 'reset':
+        setCategories(cloneNpInitial());
+        setLeftTab('alimentos');
+        setPickingUpId(null);
+        setPulseId(null);
+        break;
+      default:
+        break;
+    }
+  }, [tick, addItemToCategory]);
 
   const totals = categories.reduce((acc, cat) => {
     const items = cat.options[cat.selected]?.items || [];
@@ -470,6 +685,7 @@ function NutritionPlanWindow() {
   const gaugeOffset = NP_GAUGE_ARC - NP_GAUGE_ARC * Math.min(1, totals.kcal / target.kcal);
 
   const handleDragStart = (e, item, type) => {
+    pause();
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/json', JSON.stringify({ type, ...item }));
     e.currentTarget.classList.add('cl-np-item-dragging');

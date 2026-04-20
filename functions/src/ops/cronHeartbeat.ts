@@ -41,22 +41,18 @@ interface LogEntry {
   resource?: {labels?: {service_name?: string}};
 }
 
-async function listLastRunPerService(
+async function fetchLastRunForService(
   accessToken: string,
   projectId: string,
-  serviceNames: string[],
+  serviceName: string,
   sinceIso: string
-): Promise<Map<string, number>> {
+): Promise<number | null> {
   // Gen2 onSchedule deploys as a Cloud Run service whose name is the
-  // lowercased export name. Match on lowercase and bucket by lowercase so
-  // callers can look up with either casing.
-  const servicesClause = serviceNames
-    .map((n) => `"${n.toLowerCase()}"`)
-    .join(" OR ");
+  // lowercased export name.
   const filter = [
     `timestamp >= "${sinceIso}"`,
     "resource.type=\"cloud_run_revision\"",
-    `resource.labels.service_name=(${servicesClause})`,
+    `resource.labels.service_name="${serviceName.toLowerCase()}"`,
   ].join(" AND ");
 
   const controller = new AbortController();
@@ -72,7 +68,7 @@ async function listLastRunPerService(
         resourceNames: [`projects/${projectId}`],
         filter,
         orderBy: "timestamp desc",
-        pageSize: 1000,
+        pageSize: 1,
       }),
       signal: controller.signal,
     });
@@ -81,21 +77,39 @@ async function listLastRunPerService(
       throw new Error(`Logging API ${res.status}: ${body.slice(0, 200)}`);
     }
     const json: {entries?: LogEntry[]} = await res.json();
-    const entries = json.entries ?? [];
-    // Bucket max timestamp per service.
-    const lastRun = new Map<string, number>();
-    for (const e of entries) {
-      const svc = e.resource?.labels?.service_name;
-      const ts = e.timestamp;
-      if (!svc || !ts) continue;
-      const ms = new Date(ts).getTime();
-      const prev = lastRun.get(svc) ?? 0;
-      if (ms > prev) lastRun.set(svc, ms);
-    }
-    return lastRun;
+    const ts = json.entries?.[0]?.timestamp;
+    return ts ? new Date(ts).getTime() : null;
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function listLastRunPerService(
+  accessToken: string,
+  projectId: string,
+  serviceNames: string[],
+  sinceIso: string
+): Promise<Map<string, number>> {
+  // Query per-service in parallel. A single batched query sorted by timestamp
+  // desc gets saturated by high-frequency jobs (every-1m services emit tens
+  // of thousands of entries over the lookback), pushing daily cron logs out
+  // of the result set and producing false "missing" alarms.
+  const results = await Promise.all(
+    serviceNames.map(async (name) => {
+      const last = await fetchLastRunForService(
+        accessToken,
+        projectId,
+        name,
+        sinceIso
+      );
+      return [name.toLowerCase(), last] as const;
+    })
+  );
+  const lastRun = new Map<string, number>();
+  for (const [name, ms] of results) {
+    if (ms !== null) lastRun.set(name, ms);
+  }
+  return lastRun;
 }
 
 function formatAge(ms: number): string {
