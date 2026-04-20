@@ -143,6 +143,13 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Public landing assets (hero clips, marketing media) — readable by anyone.
+    // Upload via Admin SDK or Firebase Console only; Admin SDK bypasses rules.
+    match /app_resources/{allPaths=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Deny all other access by default
     match /{allPaths=**} {
       allow read, write: if false;

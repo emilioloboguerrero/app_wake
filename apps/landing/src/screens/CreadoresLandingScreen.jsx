@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { LandingFooter } from './ShowcaseLandingScreen';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import CascadeText from '../components/CascadeText';
+import { getCreatorHeroClips } from '../services/creatorHeroClipsService';
 import './CreadoresLandingScreen.css';
 
 const SPRING = [0.22, 1, 0.36, 1];
@@ -664,13 +665,6 @@ function NutritionPlanWindow() {
               <span className="cl-np-ctrl-val">{target.kcal.toLocaleString()}</span>
               <span className="cl-np-ctrl-unit">kcal</span>
             </div>
-            <div className="cl-np-ctrl">
-              <span className="cl-np-ctrl-lbl">Dist.</span>
-              <span className="cl-np-ctrl-val">30/40/30</span>
-              <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <path d="M3 4.5l3 3 3-3" />
-              </svg>
-            </div>
           </div>
 
           <div className="cl-np-macros">
@@ -711,160 +705,87 @@ function NutritionPlanWindow() {
    SECTION 4 — PROGRAMS & CLIENTS
    Replica: ProgramsAndClientsScreen
    ═══════════════════════════════════════════ */
-const DM_CLIENTS = [
-  { name: 'Juan Pérez', active: true },
-  { name: 'María Restrepo', active: true },
-  { name: 'Carlos Vélez', active: true },
-  { name: 'Ana Lozano', active: true },
-  { name: 'Diana Cárdenas', active: true },
-  { name: 'Luis Marín', active: false },
-  { name: 'Pablo Henao', active: true },
-  { name: 'Sofía Arango', active: false },
-];
+const FANOUT_TARGETS = [140, 200, 260].flatMap((y) =>
+  [50, 100, 150, 200, 250, 300, 350].map((x) => ({ x, y }))
+);
 
-const DM_WEEK = [
-  { day: 'Lun', session: 'Empuje A' },
-  { day: 'Mar', session: 'Pierna fuerza' },
-  { day: 'Mié', session: null },
-  { day: 'Jue', session: 'Jalón A' },
-  { day: 'Vie', session: 'Pierna hipertrofia' },
-  { day: 'Sáb', session: 'Full body' },
-  { day: 'Dom', session: null },
-];
+const CREATOR_HUB_IMG = '/fallback/hero/IMG_9387.webp';
+const CREATOR_PAIR_IMG = '/fallback/hero/IMG_3247.webp';
 
-function ConsistencyRing({ percent }) {
-  const size = 44;
-  const r = 18;
-  const c = 2 * Math.PI * r;
-  const dash = c * (percent / 100);
+function AvatarPattern({ id, href }) {
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3.5" />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="rgba(255,255,255,0.75)"
-        strokeWidth="3.5"
-        strokeLinecap="round"
-        strokeDasharray={`${dash} ${c}`}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-      <text x="50%" y="52%" textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize="9" fontWeight="700">
-        {percent}%
-      </text>
-    </svg>
+    <pattern id={id} patternContentUnits="objectBoundingBox" width="1" height="1">
+      <image href={href} width="1" height="1" preserveAspectRatio="xMidYMid slice" />
+    </pattern>
   );
 }
 
 function DualModeWindow() {
   return (
-    <WindowFrame label="Clientes">
+    <WindowFrame label="Dos caminos">
       <div className="cl-dm">
-        {/* Roster */}
-        <aside className="cl-dm-roster">
-          <div className="cl-dm-roster-head">
-            <div className="cl-dm-roster-search">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
-              </svg>
-              <span>Buscar cliente…</span>
-            </div>
-            <div className="cl-dm-roster-meta">
-              <span className="cl-dm-roster-count">8 clientes</span>
-              <span className="cl-dm-roster-add">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Agregar
-              </span>
-            </div>
-          </div>
-          <div className="cl-dm-roster-list">
-            {DM_CLIENTS.map((c, i) => (
-              <div key={c.name} className={`cl-dm-roster-row ${i === 0 ? 'cl-dm-roster-row-active' : ''}`}>
-                {i === 0 && <span className="cl-dm-roster-accent" />}
-                <span className="cl-dm-avatar">{c.name.charAt(0)}</span>
-                <span className="cl-dm-roster-name">{c.name}</span>
-                <span className={`cl-dm-status-dot ${c.active ? 'cl-dm-status-dot-on' : ''}`} />
-              </div>
-            ))}
-          </div>
-        </aside>
+        {/* LEFT — one to many */}
+        <section className="cl-dm-half">
+          <div className="cl-dm-diagram" aria-hidden="true">
+            <svg viewBox="0 0 400 300" className="cl-dm-svg" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <AvatarPattern id="p-hub" href={CREATOR_HUB_IMG} />
+              </defs>
 
-        {/* Profile */}
-        <main className="cl-dm-profile">
-          <div className="cl-dm-profile-top">
-            <div className="cl-dm-identity">
-              <span className="cl-dm-avatar cl-dm-avatar-lg">J</span>
-              <div className="cl-dm-identity-info">
-                <h3 className="cl-dm-identity-name">Juan Pérez</h3>
-                <div className="cl-dm-identity-meta">
-                  <span className="cl-dm-program-badge">Hipertrofia 8 semanas</span>
-                  <span className="cl-dm-status-dot cl-dm-status-dot-on" />
-                  <span className="cl-dm-status-label">Activo</span>
-                </div>
-              </div>
-            </div>
+              {FANOUT_TARGETS.map((t, i) => (
+                <line
+                  key={`l-${i}`}
+                  x1="200"
+                  y1="54"
+                  x2={t.x}
+                  y2={t.y}
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth="1"
+                />
+              ))}
 
-            <div className="cl-dm-highlight">
-              <div className="cl-dm-highlight-item">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span className="cl-dm-highlight-label">Último PR</span>
-                <span className="cl-dm-highlight-value">Press 92.5 kg</span>
-                <span className="cl-dm-highlight-sub">Hace 3 días</span>
-              </div>
-              <div className="cl-dm-highlight-item">
-                <ConsistencyRing percent={86} />
-                <span className="cl-dm-highlight-label">Consistencia</span>
-                <span className="cl-dm-highlight-value">86%</span>
-                <span className="cl-dm-highlight-sub">Esta semana</span>
-              </div>
-              <div className="cl-dm-highlight-item">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M18 8H19C20.06 8 21.08 8.42 21.83 9.17C22.58 9.92 23 10.94 23 12C23 13.06 22.58 14.08 21.83 14.83C21.08 15.58 20.06 16 19 16H18M18 8H2V17H18V8Z" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span className="cl-dm-highlight-label">Nutrición</span>
-                <span className="cl-dm-highlight-value">92%</span>
-                <span className="cl-dm-highlight-sub">Adherencia</span>
-              </div>
-            </div>
+              <circle cx="200" cy="54" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+              <circle cx="200" cy="54" r="24" fill="url(#p-hub)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
 
-            <div className="cl-dm-actions">
-              <span className="cl-dm-action">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-                Asignar sesión
-              </span>
-              <span className="cl-dm-action">Agendar llamada</span>
-              <span className="cl-dm-action">Ver programa</span>
-            </div>
+              {FANOUT_TARGETS.map((t, i) => (
+                <circle
+                  key={`t-${i}`}
+                  cx={t.x}
+                  cy={t.y}
+                  r="7"
+                  fill="rgba(255,255,255,0.28)"
+                  stroke="rgba(255,255,255,0.18)"
+                  strokeWidth="1"
+                />
+              ))}
+            </svg>
           </div>
-
-          <div className="cl-dm-tabs">
-            <span className="cl-dm-tab cl-dm-tab-active">Planificación</span>
-            <span className="cl-dm-tab">Nutrición</span>
-            <span className="cl-dm-tab">Lab</span>
-            <span className="cl-dm-tab">Llamadas</span>
+          <div className="cl-dm-caption">
+            <p className="cl-dm-caption-title">Un programa, miles de alumnos.</p>
           </div>
+        </section>
 
-          <div className="cl-dm-week">
-            {DM_WEEK.map((d) => (
-              <div key={d.day} className="cl-dm-week-col">
-                <span className="cl-dm-week-day">{d.day}</span>
-                <div className="cl-dm-week-sessions">
-                  {d.session ? (
-                    <span className="cl-dm-week-chip">{d.session}</span>
-                  ) : (
-                    <span className="cl-dm-week-rest">Descanso</span>
-                  )}
-                </div>
-              </div>
-            ))}
+        {/* RIGHT — one to one */}
+        <section className="cl-dm-half">
+          <div className="cl-dm-diagram" aria-hidden="true">
+            <svg viewBox="0 0 400 300" className="cl-dm-svg" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <AvatarPattern id="p-creator" href={CREATOR_PAIR_IMG} />
+              </defs>
+
+              <line x1="162" y1="150" x2="238" y2="150" stroke="rgba(255,255,255,0.35)" strokeWidth="1.4" />
+
+              <circle cx="140" cy="150" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+              <circle cx="140" cy="150" r="24" fill="url(#p-creator)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
+
+              <circle cx="260" cy="150" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+              <circle cx="260" cy="150" r="24" fill="rgba(255,255,255,0.28)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
+            </svg>
           </div>
-        </main>
+          <div className="cl-dm-caption">
+            <p className="cl-dm-caption-title">Un cliente, un plan.</p>
+          </div>
+        </section>
       </div>
     </WindowFrame>
   );
@@ -895,32 +816,89 @@ function SectionRow({ heading, body, children, reverse = false }) {
 
 /* ═══════════════════════════════════════════
    HERO
+   Split left/right. Copy left, rotating athlete
+   spotlight right. 9:16 portrait frame, one clip
+   at a time, 8s per clip, 1.2s cinematic dissolve.
    ═══════════════════════════════════════════ */
+
 function Hero() {
+  const [clips, setClips] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const videoRefs = useRef([]);
+  const clipCount = clips.length;
+
+  useEffect(() => {
+    let cancelled = false;
+    getCreatorHeroClips().then((urls) => {
+      if (!cancelled) setClips(urls);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (clipCount < 2) return undefined;
+    const id = setInterval(() => {
+      setActiveIndex((i) => (i + 1) % clipCount);
+    }, 8000);
+    return () => clearInterval(id);
+  }, [clipCount]);
+
+  useEffect(() => {
+    if (clipCount === 0) return;
+    videoRefs.current.forEach((v, i) => {
+      if (!v) return;
+      if (i === activeIndex) {
+        v.play().catch(() => {});
+      } else {
+        v.pause();
+      }
+    });
+  }, [activeIndex, clipCount]);
+
   return (
     <section className="cl-hero">
-      <div className="cl-hero-aurora" aria-hidden="true" />
+      <div className="cl-hero-grid" aria-hidden="true" />
       <div className="cl-hero-inner">
-        <CascadeText as="h1" className="cl-hero-title">
-          La plataforma del rendimiento.
-        </CascadeText>
-        <motion.p
-          className="cl-hero-sub"
+        <div className="cl-hero-copy">
+          <CascadeText
+            as="h1"
+            className="cl-hero-title"
+            chunks={[
+              { text: 'Tu forma de entrenar ', bold: true },
+              { text: 'merece una plataforma.', bold: false },
+            ]}
+          />
+        </div>
+        <motion.div
+          className="cl-hero-reel"
           initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.15, ease: SPRING }}
+          transition={{ duration: 0.9, delay: 0.2, ease: SPRING }}
         >
-          Construye y vende tus programas de entrenamiento.
-        </motion.p>
-        <motion.a
-          href="/creators"
-          className="cl-hero-cta"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3, ease: SPRING }}
-        >
-          Empieza a construir
-        </motion.a>
+          <div className="cl-hero-frame">
+            {clipCount === 0 ? (
+              <div className="cl-hero-frame-empty" aria-hidden="true" />
+            ) : (
+              clips.map((src, i) => {
+                const isActive = i === activeIndex;
+                const isNext = i === (activeIndex + 1) % clipCount;
+                return (
+                  <video
+                    key={src}
+                    ref={(el) => { videoRefs.current[i] = el; }}
+                    className={`cl-hero-video ${isActive ? 'is-active' : ''}`}
+                    src={src}
+                    autoPlay={isActive}
+                    muted
+                    loop
+                    playsInline
+                    preload={isActive || isNext ? 'auto' : 'metadata'}
+                  />
+                );
+              })
+            )}
+          </div>
+        </motion.div>
       </div>
     </section>
   );
@@ -941,7 +919,7 @@ function Close() {
         viewport={{ once: true, margin: '-20%' }}
         transition={{ duration: 0.7, ease: SPRING }}
       >
-        Bienvenido al parche
+        Publica tu método
       </motion.a>
     </section>
   );

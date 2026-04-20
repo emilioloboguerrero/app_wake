@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import wakeLogotype from '../assets/wake-logotype.svg';
 import './Header.css';
 
@@ -15,6 +15,11 @@ export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnimating, setMenuAnimating] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { pathname } = useLocation();
+  const isCreadores = pathname === '/creadores';
+  const ctaHref = isCreadores ? '/creators' : '/app';
+  const ctaLabel = isCreadores ? 'Publica tu método' : 'Ir a la app';
+  const ctaMobileLabel = isCreadores ? 'Publicar' : 'App';
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -53,11 +58,11 @@ export default function Header() {
           {NAV_LINKS.map(({ to, label }) => (
             <Link key={to} to={to} className="wk-pill-link">{label}</Link>
           ))}
-          <Link to="/app" className="wk-pill-cta">Ir a la app</Link>
+          <Link to={ctaHref} className="wk-pill-cta">{ctaLabel}</Link>
         </div>
 
-        <Link to="/app" className="wk-pill-cta-mobile" aria-label="Ir a la app">
-          App
+        <Link to={ctaHref} className="wk-pill-cta-mobile" aria-label={ctaLabel}>
+          {ctaMobileLabel}
         </Link>
 
         <button
