@@ -1541,3 +1541,68 @@
   .cl-dm-tabs,
   .cl-dm-week { padding-left: 14px; padding-right: 14px; }
 }
+
+/* ═══════════════════════════════════════════
+   DEMO — flying ghost + typing caret + pulses
+   ═══════════════════════════════════════════ */
+
+.cl-pb-layout,
+.cl-np { position: relative; }
+
+.cl-pb-ghost,
+.cl-np-ghost { will-change: transform; }
+
+.cl-pb-ghost-card,
+.cl-np-ghost-card {
+  background: rgba(26, 26, 26, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55),
+              0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  transform: rotate(-1.2deg);
+}
+
+@keyframes cl-demo-caret-blink {
+  0%, 55% { opacity: 1; }
+  56%, 100% { opacity: 0; }
+}
+
+.cl-lex-caret {
+  display: inline-block;
+  width: 1px;
+  height: 0.95em;
+  margin-left: 2px;
+  vertical-align: -0.12em;
+  background: rgba(255, 255, 255, 0.85);
+  animation: cl-demo-caret-blink 1s steps(1, end) infinite;
+}
+
+.cl-lex-caret-lg {
+  width: 1.5px;
+  height: 0.85em;
+  margin-left: 3px;
+}
+
+.cl-lex-placeholder {
+  color: rgba(255, 255, 255, 0.32);
+  font-weight: 500;
+}
+
+@keyframes cl-demo-plus-pulse {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.35); }
+  50%  { transform: scale(1.08); box-shadow: 0 0 0 4px rgba(255, 255, 255, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+}
+
+.cl-lex-sidebar-add-pulse,
+.cl-lex-pill-add-pulse {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #fff !important;
+  animation: cl-demo-plus-pulse 260ms ease-out;
+}
+
+.cl-lex-pill-typing {
+  color: rgba(255, 255, 255, 0.85);
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.04);
+}

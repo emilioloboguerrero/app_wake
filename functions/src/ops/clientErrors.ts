@@ -14,6 +14,14 @@ const TELEGRAM_MAX = 4000;
 const TOP_N = 10;
 const DAYS_TO_KEEP = 14;
 
+// Fingerprints suppressed from the digest. iOS Safari's Firebase Auth IDB
+// persistence fires "The object can not be cloned" from inside the SDK for
+// users in Private Browsing / restricted-storage modes — not actionable on
+// our side and crowds out real signal.
+const SUPPRESSED_FINGERPRINTS = new Set<string>([
+  "84d389a2a307", // iOS Safari IDB put() — private-mode storage
+]);
+
 // One state collection per source keeps fingerprints cleanly separated
 // between apps. Namespace in the collection name avoids any risk of
 // fingerprint collision between PWA and creator.
@@ -133,6 +141,7 @@ export async function runClientErrors(
   for (const doc of snap.docs) {
     const d = doc.data();
     const fp = String(d.fingerprint || doc.id);
+    if (SUPPRESSED_FINGERPRINTS.has(fp)) continue;
     const count = Number(d.count) || 1;
     totalCount += count;
     const userId = typeof d.userId === "string" ? d.userId : "";

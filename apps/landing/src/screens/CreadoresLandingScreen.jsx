@@ -9,37 +9,34 @@ import './CreadoresLandingScreen.css';
 const SPRING = [0.22, 1, 0.36, 1];
 
 /* ═══════════════════════════════════════════
-   useDemoScript — runs an async generator of
-   steps while a ref is in view and the user
-   hasn't interacted. Returns `pause`.
+   useDemoScript — runs an async runner exactly
+   once when the ref enters the viewport. Does
+   not pause on user interaction; the script
+   and the user both drive the same state.
    ═══════════════════════════════════════════ */
 function useDemoScript(ref, runner) {
-  const [paused, setPausedState] = useState(false);
-  const inView = useInView(ref, { margin: '-15%', amount: 0.35 });
+  const inView = useInView(ref, { once: true, amount: 0.25 });
   const runnerRef = useRef(runner);
   runnerRef.current = runner;
 
   useEffect(() => {
-    if (!inView || paused) return undefined;
+    if (!inView) return undefined;
+    const timeouts = new Set();
     let cancelled = false;
-    const sleep = (ms) =>
-      new Promise((resolve) => {
-        const id = setTimeout(resolve, ms);
-        return id;
-      });
-    const run = async () => {
-      try {
-        await runnerRef.current({ sleep, isCancelled: () => cancelled });
-      } catch (err) {
-        // Swallow AbortError-style exits
-        if (err?.name !== 'AbortError') throw err;
-      }
+    const sleep = (ms) => new Promise((resolve) => {
+      const id = setTimeout(() => {
+        timeouts.delete(id);
+        resolve();
+      }, ms);
+      timeouts.add(id);
+    });
+    runnerRef.current({ sleep, isCancelled: () => cancelled }).catch(() => {});
+    return () => {
+      cancelled = true;
+      timeouts.forEach((id) => clearTimeout(id));
+      timeouts.clear();
     };
-    run();
-    return () => { cancelled = true; };
-  }, [inView, paused]);
-
-  return useCallback(() => setPausedState(true), []);
+  }, [inView]);
 }
 
 /* ═══════════════════════════════════════════
@@ -96,93 +93,95 @@ const EXERCISES = [
 
 const EX_BASE_EXERCISES = EXERCISES.slice(0, 3);
 const EX_NEW_NAME = 'Curl martillo';
-const EX_NEW_MUSCLES = { biceps: 0.92, forearms: 0.68, brachialis: 0.75, front_delts: 0.18 };
+const EX_NEW_MUSCLE_SEQUENCE = [
+  ['biceps', 0.92],
+  ['brachialis', 0.78],
+  ['forearms', 0.68],
+  ['front_delts', 0.22],
+];
 const EX_NEW_IMPLEMENT = 'Mancuernas 15kg';
 
 function ExerciseEditorWindow() {
   const windowRef = useRef(null);
-  const [sidebar, setSidebar] = useState(EX_BASE_EXERCISES);
-  const [title, setTitle] = useState(EX_NEW_NAME);
-  const [muscles, setMuscles] = useState(EX_NEW_MUSCLES);
-  const [pills, setPills] = useState([EX_NEW_IMPLEMENT]);
-  const [impInput, setImpInput] = useState('');
+  const [exercises, setExercises] = useState(EX_BASE_EXERCISES);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [typingTitle, setTypingTitle] = useState(false);
   const [typingImp, setTypingImp] = useState(false);
+  const [impInput, setImpInput] = useState('');
   const [plusPulse, setPlusPulse] = useState(false);
   const [implPlusPulse, setImplPlusPulse] = useState(false);
 
-  const pause = useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
-    while (!isCancelled()) {
-      // ── Reset to blank editor ──
-      setSidebar(EX_BASE_EXERCISES);
-      setTitle('');
-      setMuscles({});
-      setPills([]);
-      setImpInput('');
-      setTypingTitle(false);
-      setTypingImp(false);
-      await sleep(700);
-      if (isCancelled()) return;
+  const selected = exercises[selectedIndex] || exercises[0];
 
-      // ── Click "+" to create ──
-      setPlusPulse(true);
-      await sleep(260);
-      setPlusPulse(false);
-      setSidebar((prev) => [...prev, { name: '', implements: [], muscles: {}, pending: true }]);
-      setTypingTitle(true);
-      await sleep(400);
-      if (isCancelled()) return;
+  useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
+    await sleep(450);
+    if (isCancelled()) return;
 
-      // ── Type title char-by-char ──
-      for (let i = 1; i <= EX_NEW_NAME.length; i += 1) {
-        if (isCancelled()) return;
-        const next = EX_NEW_NAME.slice(0, i);
-        setTitle(next);
-        setSidebar((prev) => prev.map((ex, idx) => (idx === prev.length - 1 ? { ...ex, name: next } : ex)));
-        await sleep(55);
-      }
-      setTypingTitle(false);
-      await sleep(450);
-      if (isCancelled()) return;
+    // 1. Pulse the "+" button
+    setPlusPulse(true);
+    await sleep(280);
+    setPlusPulse(false);
+    if (isCancelled()) return;
 
-      // ── Paint muscle activation ──
-      const steps = 28;
+    // 2. Append a new empty exercise and select it
+    const newIdx = EX_BASE_EXERCISES.length;
+    setExercises((prev) => [...prev, { name: '', muscles: {}, implements: [] }]);
+    setSelectedIndex(newIdx);
+    setTypingTitle(true);
+    await sleep(380);
+    if (isCancelled()) return;
+
+    // 3. Type the title char-by-char
+    for (let i = 1; i <= EX_NEW_NAME.length; i += 1) {
+      if (isCancelled()) return;
+      const next = EX_NEW_NAME.slice(0, i);
+      setExercises((prev) => prev.map((ex, idx) => (idx === newIdx ? { ...ex, name: next } : ex)));
+      await sleep(58);
+    }
+    setTypingTitle(false);
+    await sleep(420);
+    if (isCancelled()) return;
+
+    // 4. Paint muscles one-by-one
+    for (const [muscle, target] of EX_NEW_MUSCLE_SEQUENCE) {
+      if (isCancelled()) return;
+      const steps = 14;
       for (let s = 1; s <= steps; s += 1) {
         if (isCancelled()) return;
-        const r = s / steps;
-        setMuscles(Object.fromEntries(Object.entries(EX_NEW_MUSCLES).map(([k, v]) => [k, v * r])));
+        const ratio = s / steps;
+        setExercises((prev) => prev.map((ex, idx) => (
+          idx === newIdx
+            ? { ...ex, muscles: { ...ex.muscles, [muscle]: target * ratio } }
+            : ex
+        )));
         await sleep(22);
       }
-      await sleep(450);
-      if (isCancelled()) return;
-
-      // ── Type implement, press +, pill appears ──
-      setTypingImp(true);
-      for (let i = 1; i <= EX_NEW_IMPLEMENT.length; i += 1) {
-        if (isCancelled()) return;
-        setImpInput(EX_NEW_IMPLEMENT.slice(0, i));
-        await sleep(48);
-      }
-      await sleep(280);
-      if (isCancelled()) return;
-      setImplPlusPulse(true);
-      await sleep(200);
-      setImplPlusPulse(false);
-      setPills([EX_NEW_IMPLEMENT]);
-      setImpInput('');
-      setTypingImp(false);
-
-      // ── Hold the finished state ──
-      await sleep(2800);
+      await sleep(110);
     }
+    await sleep(380);
+    if (isCancelled()) return;
+
+    // 5. Type implement, pulse +, pill locks in
+    setTypingImp(true);
+    for (let i = 1; i <= EX_NEW_IMPLEMENT.length; i += 1) {
+      if (isCancelled()) return;
+      setImpInput(EX_NEW_IMPLEMENT.slice(0, i));
+      await sleep(48);
+    }
+    await sleep(280);
+    if (isCancelled()) return;
+    setImplPlusPulse(true);
+    await sleep(220);
+    setImplPlusPulse(false);
+    setExercises((prev) => prev.map((ex, idx) => (
+      idx === newIdx ? { ...ex, implements: [EX_NEW_IMPLEMENT] } : ex
+    )));
+    setImpInput('');
+    setTypingImp(false);
   });
 
   return (
-    <WindowFrame
-      ref={windowRef}
-      label="Biblioteca · Fuerza"
-      onPointerEnter={pause}
-    >
+    <WindowFrame ref={windowRef} label="Biblioteca · Fuerza">
       <div className="cl-lex">
         {/* Sidebar */}
         <aside className="cl-lex-sidebar">
@@ -197,24 +196,22 @@ function ExerciseEditorWindow() {
             <span>Buscar</span>
           </div>
           <div className="cl-lex-sidebar-list">
-            {sidebar.map((ex, i) => {
-              const isPending = !!ex.pending;
-              return (
-                <motion.button
-                  type="button"
-                  key={`${i}-${ex.name || 'pending'}`}
-                  className={`cl-lex-sidebar-item ${isPending ? 'cl-lex-sidebar-item-active' : ''}`}
-                  initial={isPending ? { opacity: 0, x: -6 } : false}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.32, ease: SPRING }}
-                >
-                  <span className="cl-lex-sidebar-item-name">
-                    {ex.name || <span className="cl-lex-placeholder">Nuevo ejercicio</span>}
-                    {isPending && typingTitle && <span className="cl-lex-caret" aria-hidden="true" />}
-                  </span>
-                </motion.button>
-              );
-            })}
+            {exercises.map((ex, i) => (
+              <motion.button
+                type="button"
+                key={i}
+                className={`cl-lex-sidebar-item ${i === selectedIndex ? 'cl-lex-sidebar-item-active' : ''}`}
+                onClick={() => setSelectedIndex(i)}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, ease: SPRING }}
+              >
+                <span className="cl-lex-sidebar-item-name">
+                  {ex.name || <span className="cl-lex-placeholder">Nuevo ejercicio</span>}
+                  {i === selectedIndex && typingTitle && <span className="cl-lex-caret" aria-hidden="true" />}
+                </span>
+              </motion.button>
+            ))}
           </div>
         </aside>
 
@@ -222,7 +219,7 @@ function ExerciseEditorWindow() {
         <div className="cl-lex-workspace">
           <div className="cl-lex-workspace-head">
             <h3 className="cl-lex-workspace-title">
-              {title || <span className="cl-lex-placeholder">Nombre del ejercicio</span>}
+              {selected.name || <span className="cl-lex-placeholder">Nombre del ejercicio</span>}
               {typingTitle && <span className="cl-lex-caret cl-lex-caret-lg" aria-hidden="true" />}
             </h3>
           </div>
@@ -244,7 +241,7 @@ function ExerciseEditorWindow() {
             {/* Muscle panel */}
             <div className="cl-lex-muscle-card">
               <div className="cl-lex-muscle-left">
-                <MuscleSilhouetteSVG muscleVolumes={muscles} />
+                <MuscleSilhouetteSVG muscleVolumes={selected.muscles || {}} />
               </div>
             </div>
           </div>
@@ -252,7 +249,7 @@ function ExerciseEditorWindow() {
           <div className="cl-lex-implements">
             <span className="cl-lex-implements-title">Implementos</span>
             <div className="cl-lex-implements-pills">
-              {pills.map((imp) => (
+              {(selected.implements || []).map((imp) => (
                 <motion.span
                   key={imp}
                   className="cl-lex-pill"
@@ -312,20 +309,20 @@ const PB_INITIAL_WEEKS = [
     id: 'w1',
     cells: [
       { title: 'Empuje A', linked: true },
-      { title: 'Pierna fuerza', linked: true },
+      null,
       null,
       { title: 'Jalón A', linked: true },
-      { title: 'Pierna hipertrofia', linked: false },
-      { title: 'Full body', linked: true },
+      null,
+      null,
       null,
     ],
   },
   {
     id: 'w2',
     cells: [
-      { title: 'Empuje B', linked: true },
-      { title: 'Pierna potencia', linked: true },
-      { title: 'Accesorios', linked: false },
+      null,
+      null,
+      null,
       { title: 'Jalón B', linked: true },
       null,
       { title: 'Full body', linked: true },
@@ -367,17 +364,15 @@ function SessionCard({ session }) {
 }
 
 const PB_DEMO_SCRIPT = [
-  { sourceId: 'lib-9', weekIdx: 0, dayIdx: 2 },
-  { sourceId: 'lib-10', weekIdx: 0, dayIdx: 6 },
-  { sourceId: 'lib-5', weekIdx: 1, dayIdx: 4 },
-  { sourceId: 'lib-7', weekIdx: 1, dayIdx: 6 },
+  { sourceId: 'lib-3', weekIdx: 0, dayIdx: 1 },
+  { sourceId: 'lib-4', weekIdx: 0, dayIdx: 4 },
+  { sourceId: 'lib-2', weekIdx: 1, dayIdx: 0 },
+  { sourceId: 'lib-9', weekIdx: 1, dayIdx: 2 },
 ];
-
-const cloneWeeks = (weeks) => weeks.map((w) => ({ ...w, cells: w.cells.map((c) => (c ? { ...c } : null)) }));
 
 function ProgramBuilderWindow() {
   const [activeTab, setActiveTab] = useState('sessions');
-  const [weeks, setWeeks] = useState(() => cloneWeeks(PB_INITIAL_WEEKS));
+  const [weeks, setWeeks] = useState(PB_INITIAL_WEEKS);
   const [dragOverKey, setDragOverKey] = useState(null);
   const [dropPulseKey, setDropPulseKey] = useState(null);
   const [pickingUpId, setPickingUpId] = useState(null);
@@ -388,66 +383,57 @@ function ProgramBuilderWindow() {
   const libRefs = useRef({});
   const cellRefs = useRef({});
 
-  const pause = useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
-    while (!isCancelled()) {
-      setWeeks(cloneWeeks(PB_INITIAL_WEEKS));
+  useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
+    await sleep(600);
+    if (isCancelled()) return;
+
+    for (const move of PB_DEMO_SCRIPT) {
+      if (isCancelled()) return;
+      const source = PB_LIBRARY_SESSIONS.find((s) => s.id === move.sourceId);
+      const sourceEl = libRefs.current[move.sourceId];
+      const cellKey = `${move.weekIdx}:${move.dayIdx}`;
+      const targetEl = cellRefs.current[cellKey];
+      const bodyEl = bodyRef.current;
+      if (!source || !sourceEl || !targetEl || !bodyEl) continue;
+
+      const bodyRect = bodyEl.getBoundingClientRect();
+      const fromRect = sourceEl.getBoundingClientRect();
+      const toRect = targetEl.getBoundingClientRect();
+
+      setPickingUpId(move.sourceId);
+      await sleep(220);
+      if (isCancelled()) return;
+
+      setGhost({
+        source,
+        fromX: fromRect.left - bodyRect.left,
+        fromY: fromRect.top - bodyRect.top,
+        width: fromRect.width,
+        height: fromRect.height,
+        toX: toRect.left - bodyRect.left + toRect.width / 2 - fromRect.width / 2,
+        toY: toRect.top - bodyRect.top + toRect.height / 2 - fromRect.height / 2,
+      });
+      setDragOverKey(cellKey);
+      await sleep(720);
+      if (isCancelled()) return;
+
+      setWeeks((prev) => prev.map((w, i) => {
+        if (i !== move.weekIdx) return w;
+        const cells = [...w.cells];
+        cells[move.dayIdx] = { title: source.title, linked: true, image: source.image };
+        return { ...w, cells };
+      }));
       setGhost(null);
       setPickingUpId(null);
       setDragOverKey(null);
-      await sleep(700);
-      if (isCancelled()) return;
-
-      for (const move of PB_DEMO_SCRIPT) {
-        if (isCancelled()) return;
-        const source = PB_LIBRARY_SESSIONS.find((s) => s.id === move.sourceId);
-        const sourceEl = libRefs.current[move.sourceId];
-        const cellKey = `${move.weekIdx}:${move.dayIdx}`;
-        const targetEl = cellRefs.current[cellKey];
-        const bodyEl = bodyRef.current;
-        if (!source || !sourceEl || !targetEl || !bodyEl) continue;
-
-        const bodyRect = bodyEl.getBoundingClientRect();
-        const fromRect = sourceEl.getBoundingClientRect();
-        const toRect = targetEl.getBoundingClientRect();
-
-        setPickingUpId(move.sourceId);
-        await sleep(220);
-        if (isCancelled()) return;
-
-        setGhost({
-          source,
-          fromX: fromRect.left - bodyRect.left,
-          fromY: fromRect.top - bodyRect.top,
-          width: fromRect.width,
-          height: fromRect.height,
-          toX: toRect.left - bodyRect.left + toRect.width / 2 - fromRect.width / 2,
-          toY: toRect.top - bodyRect.top + toRect.height / 2 - fromRect.height / 2,
-        });
-        setDragOverKey(cellKey);
-        await sleep(720);
-        if (isCancelled()) return;
-
-        setWeeks((prev) => prev.map((w, i) => {
-          if (i !== move.weekIdx) return w;
-          const cells = [...w.cells];
-          cells[move.dayIdx] = { title: source.title, linked: true, image: source.image };
-          return { ...w, cells };
-        }));
-        setGhost(null);
-        setPickingUpId(null);
-        setDragOverKey(null);
-        setDropPulseKey(cellKey);
-        await sleep(600);
-        setDropPulseKey((k) => (k === cellKey ? null : k));
-        await sleep(260);
-      }
-
-      await sleep(2600);
+      setDropPulseKey(cellKey);
+      await sleep(600);
+      setDropPulseKey((k) => (k === cellKey ? null : k));
+      await sleep(260);
     }
   });
 
   const handleLibraryDragStart = (e, item, kind) => {
-    pause();
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/json', JSON.stringify({ kind, ...item }));
     e.currentTarget.classList.add('cl-pb-lib-item-dragging');
@@ -488,7 +474,6 @@ function ProgramBuilderWindow() {
     <WindowFrame
       ref={windowRef}
       label="Plan · Hipertrofia 8 semanas"
-      onPointerEnter={pause}
     >
       <div className="cl-pb-layout" ref={bodyRef}>
         {ghost && (
@@ -533,14 +518,14 @@ function ProgramBuilderWindow() {
             <button
               type="button"
               className={`cl-pb-lib-tab ${activeTab === 'sessions' ? 'cl-pb-lib-tab-active' : ''}`}
-              onClick={() => { pause(); setActiveTab('sessions'); }}
+              onClick={() => setActiveTab('sessions')}
             >
               Sesiones
             </button>
             <button
               type="button"
               className={`cl-pb-lib-tab ${activeTab === 'plans' ? 'cl-pb-lib-tab-active' : ''}`}
-              onClick={() => { pause(); setActiveTab('plans'); }}
+              onClick={() => setActiveTab('plans')}
             >
               Planes
             </button>
@@ -693,50 +678,34 @@ const NP_INITIAL = [
     { id: 'o1', label: 'Opc 1', items: [
       { name: 'Huevos', portion: '3 u', kcal: 216, p: 18.9, c: 1.2, f: 14.4 },
       { name: 'Avena', portion: '60 g', kcal: 225, p: 7.5, c: 40, f: 4.5 },
-      { name: 'Plátano', portion: '1 u', kcal: 105, p: 1.3, c: 27, f: 0.3 },
     ] },
     { id: 'o2', label: 'Opc 2', items: [] },
   ] },
   { id: 'c2', label: 'Almuerzo', selected: 0, options: [
     { id: 'o1', label: 'Opc 1', items: [
-      { name: 'Pechuga de pollo', portion: '200 g', kcal: 330, p: 62, c: 0, f: 7.2 },
       { name: 'Arroz blanco', portion: '150 g', kcal: 195, p: 4, c: 42, f: 0.5 },
-      { name: 'Brócoli', portion: '100 g', kcal: 35, p: 2.8, c: 7, f: 0.4 },
     ] },
     { id: 'o2', label: 'Opc 2', items: [] },
   ] },
   { id: 'c3', label: 'Merienda', selected: 0, options: [
-    { id: 'o1', label: 'Opc 1', items: [
-      { name: 'Yogur griego', portion: '200 g', kcal: 130, p: 20, c: 8, f: 2 },
-      { name: 'Almendras', portion: '30 g', kcal: 170, p: 6, c: 6, f: 15 },
-    ] },
+    { id: 'o1', label: 'Opc 1', items: [] },
   ] },
   { id: 'c4', label: 'Cena', selected: 0, options: [
-    { id: 'o1', label: 'Opc 1', items: [
-      { name: 'Salmón', portion: '180 g', kcal: 378, p: 36, c: 0, f: 24 },
-      { name: 'Batata', portion: '150 g', kcal: 130, p: 2.3, c: 30, f: 0.2 },
-      { name: 'Espinaca', portion: '80 g', kcal: 18, p: 2, c: 3, f: 0.3 },
-    ] },
+    { id: 'o1', label: 'Opc 1', items: [] },
   ] },
 ];
 
 const NP_GAUGE_ARC = 263.9;
 
 const NP_DEMO_SCRIPT = [
-  { tab: 'alimentos', sourceId: 'a9', catId: 'c2' },
-  { tab: 'alimentos', sourceId: 'a10', catId: 'c4' },
-  { tab: 'recetas', sourceId: 'r3', catId: 'c3' },
-  { tab: 'alimentos', sourceId: 'a4', catId: 'c1' },
+  { sourceId: 'a1', catId: 'c2' }, // Pechuga de pollo → Almuerzo
+  { sourceId: 'a8', catId: 'c3' }, // Yogur griego → Merienda
+  { sourceId: 'a9', catId: 'c4' }, // Atún → Cena
 ];
-
-const cloneNpInitial = () => NP_INITIAL.map((c) => ({
-  ...c,
-  options: c.options.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i })) })),
-}));
 
 function NutritionPlanWindow() {
   const [leftTab, setLeftTab] = useState('alimentos');
-  const [categories, setCategories] = useState(cloneNpInitial);
+  const [categories, setCategories] = useState(NP_INITIAL);
   const [dragOverId, setDragOverId] = useState(null);
   const [pulseId, setPulseId] = useState(null);
   const [pickingUpId, setPickingUpId] = useState(null);
@@ -749,73 +718,55 @@ function NutritionPlanWindow() {
 
   const target = { kcal: 2000, p: 160, c: 200, f: 67 };
 
-  const pause = useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
-    while (!isCancelled()) {
-      setCategories(cloneNpInitial());
-      setLeftTab('alimentos');
+  useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
+    await sleep(600);
+    if (isCancelled()) return;
+
+    for (const move of NP_DEMO_SCRIPT) {
+      if (isCancelled()) return;
+      const source = NP_ALIMENTOS.find((a) => a.id === move.sourceId);
+      const sourceEl = itemRefs.current[move.sourceId];
+      const targetEl = catRefs.current[move.catId];
+      const bodyEl = bodyRef.current;
+      if (!source || !sourceEl || !targetEl || !bodyEl) continue;
+
+      const bodyRect = bodyEl.getBoundingClientRect();
+      const fromRect = sourceEl.getBoundingClientRect();
+      const toRect = targetEl.getBoundingClientRect();
+
+      setPickingUpId(move.sourceId);
+      await sleep(220);
+      if (isCancelled()) return;
+
+      setGhost({
+        source,
+        isRecipe: false,
+        fromX: fromRect.left - bodyRect.left,
+        fromY: fromRect.top - bodyRect.top,
+        width: fromRect.width,
+        height: fromRect.height,
+        toX: toRect.left - bodyRect.left + 24,
+        toY: toRect.top - bodyRect.top + 36,
+      });
+      setDragOverId(move.catId);
+      await sleep(720);
+      if (isCancelled()) return;
+
+      setCategories((prev) => prev.map((cat) => {
+        if (cat.id !== move.catId) return cat;
+        const opts = [...cat.options];
+        const sel = cat.selected;
+        const newItem = { name: source.name, portion: source.portion, kcal: source.kcal, p: source.p, c: source.c, f: source.f };
+        opts[sel] = { ...opts[sel], items: [...(opts[sel].items || []), newItem] };
+        return { ...cat, options: opts };
+      }));
       setGhost(null);
       setPickingUpId(null);
       setDragOverId(null);
-      await sleep(800);
-      if (isCancelled()) return;
-
-      for (const move of NP_DEMO_SCRIPT) {
-        if (isCancelled()) return;
-        if (leftTab !== move.tab) setLeftTab(move.tab);
-        setLeftTab(move.tab);
-        await sleep(380);
-        if (isCancelled()) return;
-
-        const source = move.tab === 'recetas'
-          ? NP_RECETAS.find((r) => r.id === move.sourceId)
-          : NP_ALIMENTOS.find((a) => a.id === move.sourceId);
-        const sourceEl = itemRefs.current[move.sourceId];
-        const targetEl = catRefs.current[move.catId];
-        const bodyEl = bodyRef.current;
-        if (!source || !sourceEl || !targetEl || !bodyEl) continue;
-
-        const bodyRect = bodyEl.getBoundingClientRect();
-        const fromRect = sourceEl.getBoundingClientRect();
-        const toRect = targetEl.getBoundingClientRect();
-
-        setPickingUpId(move.sourceId);
-        await sleep(220);
-        if (isCancelled()) return;
-
-        setGhost({
-          source,
-          isRecipe: move.tab === 'recetas',
-          fromX: fromRect.left - bodyRect.left,
-          fromY: fromRect.top - bodyRect.top,
-          width: fromRect.width,
-          height: fromRect.height,
-          toX: toRect.left - bodyRect.left + 24,
-          toY: toRect.top - bodyRect.top + 36,
-        });
-        setDragOverId(move.catId);
-        await sleep(720);
-        if (isCancelled()) return;
-
-        setCategories((prev) => prev.map((cat) => {
-          if (cat.id !== move.catId) return cat;
-          const opts = [...cat.options];
-          const sel = cat.selected;
-          const newItem = move.tab === 'recetas'
-            ? { name: source.name, portion: `${source.count} alim.`, kcal: source.kcal, p: source.p, c: source.c, f: source.f, recipe: true }
-            : { name: source.name, portion: source.portion, kcal: source.kcal, p: source.p, c: source.c, f: source.f };
-          opts[sel] = { ...opts[sel], items: [...(opts[sel].items || []), newItem] };
-          return { ...cat, options: opts };
-        }));
-        setGhost(null);
-        setPickingUpId(null);
-        setDragOverId(null);
-        setPulseId(move.catId);
-        await sleep(600);
-        setPulseId((p) => (p === move.catId ? null : p));
-        await sleep(220);
-      }
-
-      await sleep(2800);
+      setPulseId(move.catId);
+      await sleep(600);
+      setPulseId((p) => (p === move.catId ? null : p));
+      await sleep(240);
     }
   });
 
@@ -833,7 +784,6 @@ function NutritionPlanWindow() {
   const gaugeOffset = NP_GAUGE_ARC - NP_GAUGE_ARC * Math.min(1, totals.kcal / target.kcal);
 
   const handleDragStart = (e, item, type) => {
-    pause();
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/json', JSON.stringify({ type, ...item }));
     e.currentTarget.classList.add('cl-np-item-dragging');
@@ -862,7 +812,6 @@ function NutritionPlanWindow() {
   };
 
   const selectOption = (catId, optIdx) => {
-    pause();
     setCategories((prev) => prev.map((c) => (c.id === catId ? { ...c, selected: optIdx } : c)));
   };
 
@@ -881,7 +830,6 @@ function NutritionPlanWindow() {
     <WindowFrame
       ref={windowRef}
       label="Plan · Definición"
-      onPointerEnter={pause}
     >
       <div className="cl-np" ref={bodyRef}>
         {ghost && (
@@ -935,14 +883,14 @@ function NutritionPlanWindow() {
             <button
               type="button"
               className={`cl-np-tab ${leftTab === 'alimentos' ? 'cl-np-tab-active' : ''}`}
-              onClick={() => { pause(); setLeftTab('alimentos'); }}
+              onClick={() => setLeftTab('alimentos')}
             >
               Alimentos
             </button>
             <button
               type="button"
               className={`cl-np-tab ${leftTab === 'recetas' ? 'cl-np-tab-active' : ''}`}
-              onClick={() => { pause(); setLeftTab('recetas'); }}
+              onClick={() => setLeftTab('recetas')}
             >
               Recetas
             </button>
