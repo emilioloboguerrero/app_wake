@@ -77,6 +77,13 @@ class EventService {
     return result?.data;
   }
 
+  async removeCheckIn(eventId, regId) {
+    const result = await apiClient.delete(
+      `/creator/events/${eventId}/registrations/${regId}/check-in`
+    );
+    return result?.data;
+  }
+
   async deleteRegistration(eventId, regId) {
     await apiClient.delete(`/creator/events/${eventId}/registrations/${regId}`);
   }

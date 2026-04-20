@@ -666,6 +666,51 @@ router.post(
   }
 );
 
+// DELETE /creator/events/:eventId/registrations/:regId/check-in — undo check-in
+router.delete(
+  "/creator/events/:eventId/registrations/:regId/check-in",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    requireCreator(auth);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    await verifyEventOwnership(req.params.eventId, auth.userId);
+
+    const regRef = db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .doc(req.params.regId);
+
+    const regDoc = await regRef.get();
+    if (!regDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+    }
+
+    if (!regDoc.data()?.checked_in) {
+      throw new WakeApiServerError("CONFLICT", 409, "Este asistente no tiene check-in");
+    }
+
+    await regRef.update({
+      checked_in: false,
+      checked_in_at: null,
+    });
+
+    functions.logger.info("event_checkin_removed", {
+      eventId: req.params.eventId,
+      registrationId: req.params.regId,
+      creatorId: auth.userId,
+    });
+
+    res.json({
+      data: {
+        registrationId: req.params.regId,
+        checked_in: false,
+      },
+    });
+  }
+);
+
 // POST /creator/events/:eventId/checkin-by-token — check in by QR token
 router.post(
   "/creator/events/:eventId/checkin-by-token",

@@ -425,6 +425,9 @@ class SessionService {
       // Submit session — server handles course progress, 1RM, streak atomically
       const serverResult = await this.addSessionData(userId, actualSessionData, plannedSnapshot);
       const personalRecords = serverResult?.personalRecords ?? [];
+      if (serverResult?.completionId) {
+        actualSessionData.completionDocId = serverResult.completionId;
+      }
 
       // Calculate stats
       const stats = this.calculateStats(actualSessionData);

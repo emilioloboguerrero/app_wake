@@ -1,5 +1,6 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth, validateAuthAndRateLimit} from "../middleware/auth.js";
@@ -304,6 +305,10 @@ router.get("/users/:userId/public-profile", async (req, res) => {
 
   const userDoc = await db.collection("users").doc(req.params.userId).get();
   if (!userDoc.exists) {
+    functions.logger.warn("public-profile miss", {
+      userId: req.params.userId,
+      referer: req.header("referer") ?? null,
+    });
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 

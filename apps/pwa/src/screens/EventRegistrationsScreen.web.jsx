@@ -79,15 +79,23 @@ function matchesSearch(reg, q) {
 
 // ── Row detail modal ─────────────────────────────────────────────────
 
-function RowModal({ reg, columns, onClose, onCheckIn, onDelete }) {
+function RowModal({ reg, columns, onClose, onCheckIn, onRemoveCheckIn, onDelete }) {
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRemoveCheckIn, setConfirmRemoveCheckIn] = useState(false);
   const name = getDisplayName(reg, columns);
 
   async function handleCheckIn() {
     setActionLoading('checkin');
     await onCheckIn();
     setActionLoading(null);
+  }
+
+  async function handleRemoveCheckIn() {
+    setActionLoading('uncheckin');
+    await onRemoveCheckIn();
+    setActionLoading(null);
+    setConfirmRemoveCheckIn(false);
   }
 
   async function handleDelete() {
@@ -146,6 +154,32 @@ function RowModal({ reg, columns, onClose, onCheckIn, onDelete }) {
           >
             {actionLoading === 'checkin' ? 'Registrando…' : 'Marcar check-in manual'}
           </button>
+        )}
+
+        {reg.checked_in && (
+          confirmRemoveCheckIn ? (
+            <div style={m.confirmRow}>
+              <span style={m.confirmText}>¿Deshacer el check-in? La inscripción se mantiene.</span>
+              <button
+                style={m.confirmYes}
+                onClick={handleRemoveCheckIn}
+                disabled={actionLoading !== null}
+              >
+                {actionLoading === 'uncheckin' ? 'Deshaciendo…' : 'Deshacer'}
+              </button>
+              <button style={m.confirmNo} onClick={() => setConfirmRemoveCheckIn(false)}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              style={m.checkinBtn}
+              onClick={() => setConfirmRemoveCheckIn(true)}
+              disabled={actionLoading !== null}
+            >
+              Deshacer check-in
+            </button>
+          )
         )}
 
         {confirmDelete ? (
@@ -333,6 +367,22 @@ export default function EventRegistrationsScreen() {
     },
   });
 
+  const removeCheckInMutation = useMutation({
+    mutationFn: (regId) => eventService.removeCheckIn(eventId, regId),
+    onSuccess: (_, regId) => {
+      queryClient.setQueryData(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          registrations: old.registrations.map(r =>
+            r.id === regId ? { ...r, checked_in: false, checked_in_at: null } : r
+          ),
+        };
+      });
+      setSelectedReg(prev => prev?.id === regId ? { ...prev, checked_in: false, checked_in_at: null } : prev);
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (regId) => eventService.deleteRegistration(eventId, regId),
     onSuccess: (_, regId) => {
@@ -346,6 +396,10 @@ export default function EventRegistrationsScreen() {
 
   async function handleManualCheckIn(regId) {
     await checkInMutation.mutateAsync(regId);
+  }
+
+  async function handleRemoveCheckIn(regId) {
+    await removeCheckInMutation.mutateAsync(regId);
   }
 
   async function handleDeleteRegistration(regId) {
@@ -523,6 +577,7 @@ export default function EventRegistrationsScreen() {
           columns={columns}
           onClose={() => setSelectedReg(null)}
           onCheckIn={() => handleManualCheckIn(selectedReg.id)}
+          onRemoveCheckIn={() => handleRemoveCheckIn(selectedReg.id)}
           onDelete={() => handleDeleteRegistration(selectedReg.id)}
         />
       )}

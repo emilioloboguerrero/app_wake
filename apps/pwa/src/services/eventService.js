@@ -36,6 +36,10 @@ class EventService {
     await apiClient.post(`/creator/events/${eventId}/registrations/${regId}/check-in`);
   }
 
+  async removeCheckIn(eventId, regId) {
+    await apiClient.delete(`/creator/events/${eventId}/registrations/${regId}/check-in`);
+  }
+
   async deleteRegistration(eventId, regId) {
     await apiClient.delete(`/creator/events/${eventId}/registrations/${regId}`);
   }

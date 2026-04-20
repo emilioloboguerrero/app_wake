@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { motion, useInView } from 'motion/react';
 import { LandingFooter } from './ShowcaseLandingScreen';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import CascadeText from '../components/CascadeText';
@@ -9,34 +9,37 @@ import './CreadoresLandingScreen.css';
 const SPRING = [0.22, 1, 0.36, 1];
 
 /* ═══════════════════════════════════════════
-   useAutoDemo — ticks a counter at a steady
-   interval only while the target ref is in
-   view and the user hasn't interacted yet.
+   useDemoScript — runs an async generator of
+   steps while a ref is in view and the user
+   hasn't interacted. Returns `pause`.
    ═══════════════════════════════════════════ */
-function useAutoDemo(ref, { interval = 2800, threshold = 0.35 } = {}) {
-  const [tick, setTick] = useState(0);
+function useDemoScript(ref, runner) {
   const [paused, setPausedState] = useState(false);
-  const [inView, setInView] = useState(false);
-
-  useEffect(() => {
-    if (!ref.current) return undefined;
-    const el = ref.current;
-    const obs = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { threshold },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [ref, threshold]);
+  const inView = useInView(ref, { margin: '-15%', amount: 0.35 });
+  const runnerRef = useRef(runner);
+  runnerRef.current = runner;
 
   useEffect(() => {
     if (!inView || paused) return undefined;
-    const id = setInterval(() => setTick((t) => t + 1), interval);
-    return () => clearInterval(id);
-  }, [inView, paused, interval]);
+    let cancelled = false;
+    const sleep = (ms) =>
+      new Promise((resolve) => {
+        const id = setTimeout(resolve, ms);
+        return id;
+      });
+    const run = async () => {
+      try {
+        await runnerRef.current({ sleep, isCancelled: () => cancelled });
+      } catch (err) {
+        // Swallow AbortError-style exits
+        if (err?.name !== 'AbortError') throw err;
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [inView, paused]);
 
-  const pause = useCallback(() => setPausedState(true), []);
-  return { tick, pause };
+  return useCallback(() => setPausedState(true), []);
 }
 
 /* ═══════════════════════════════════════════
@@ -91,21 +94,88 @@ const EXERCISES = [
   },
 ];
 
+const EX_BASE_EXERCISES = EXERCISES.slice(0, 3);
+const EX_NEW_NAME = 'Curl martillo';
+const EX_NEW_MUSCLES = { biceps: 0.92, forearms: 0.68, brachialis: 0.75, front_delts: 0.18 };
+const EX_NEW_IMPLEMENT = 'Mancuernas 15kg';
+
 function ExerciseEditorWindow() {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const exercise = EXERCISES[selectedIndex];
   const windowRef = useRef(null);
-  const { tick, pause } = useAutoDemo(windowRef, { interval: 2600 });
+  const [sidebar, setSidebar] = useState(EX_BASE_EXERCISES);
+  const [title, setTitle] = useState(EX_NEW_NAME);
+  const [muscles, setMuscles] = useState(EX_NEW_MUSCLES);
+  const [pills, setPills] = useState([EX_NEW_IMPLEMENT]);
+  const [impInput, setImpInput] = useState('');
+  const [typingTitle, setTypingTitle] = useState(false);
+  const [typingImp, setTypingImp] = useState(false);
+  const [plusPulse, setPlusPulse] = useState(false);
+  const [implPlusPulse, setImplPlusPulse] = useState(false);
 
-  useEffect(() => {
-    if (tick === 0) return;
-    setSelectedIndex((prev) => (prev + 1) % EXERCISES.length);
-  }, [tick]);
+  const pause = useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
+    while (!isCancelled()) {
+      // ── Reset to blank editor ──
+      setSidebar(EX_BASE_EXERCISES);
+      setTitle('');
+      setMuscles({});
+      setPills([]);
+      setImpInput('');
+      setTypingTitle(false);
+      setTypingImp(false);
+      await sleep(700);
+      if (isCancelled()) return;
 
-  const handleSelect = (i) => {
-    pause();
-    setSelectedIndex(i);
-  };
+      // ── Click "+" to create ──
+      setPlusPulse(true);
+      await sleep(260);
+      setPlusPulse(false);
+      setSidebar((prev) => [...prev, { name: '', implements: [], muscles: {}, pending: true }]);
+      setTypingTitle(true);
+      await sleep(400);
+      if (isCancelled()) return;
+
+      // ── Type title char-by-char ──
+      for (let i = 1; i <= EX_NEW_NAME.length; i += 1) {
+        if (isCancelled()) return;
+        const next = EX_NEW_NAME.slice(0, i);
+        setTitle(next);
+        setSidebar((prev) => prev.map((ex, idx) => (idx === prev.length - 1 ? { ...ex, name: next } : ex)));
+        await sleep(55);
+      }
+      setTypingTitle(false);
+      await sleep(450);
+      if (isCancelled()) return;
+
+      // ── Paint muscle activation ──
+      const steps = 28;
+      for (let s = 1; s <= steps; s += 1) {
+        if (isCancelled()) return;
+        const r = s / steps;
+        setMuscles(Object.fromEntries(Object.entries(EX_NEW_MUSCLES).map(([k, v]) => [k, v * r])));
+        await sleep(22);
+      }
+      await sleep(450);
+      if (isCancelled()) return;
+
+      // ── Type implement, press +, pill appears ──
+      setTypingImp(true);
+      for (let i = 1; i <= EX_NEW_IMPLEMENT.length; i += 1) {
+        if (isCancelled()) return;
+        setImpInput(EX_NEW_IMPLEMENT.slice(0, i));
+        await sleep(48);
+      }
+      await sleep(280);
+      if (isCancelled()) return;
+      setImplPlusPulse(true);
+      await sleep(200);
+      setImplPlusPulse(false);
+      setPills([EX_NEW_IMPLEMENT]);
+      setImpInput('');
+      setTypingImp(false);
+
+      // ── Hold the finished state ──
+      await sleep(2800);
+    }
+  });
 
   return (
     <WindowFrame
@@ -118,7 +188,7 @@ function ExerciseEditorWindow() {
         <aside className="cl-lex-sidebar">
           <div className="cl-lex-sidebar-head">
             <span className="cl-lex-sidebar-title">Ejercicios</span>
-            <span className="cl-lex-sidebar-add">+</span>
+            <span className={`cl-lex-sidebar-add ${plusPulse ? 'cl-lex-sidebar-add-pulse' : ''}`}>+</span>
           </div>
           <div className="cl-lex-sidebar-search">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -127,31 +197,34 @@ function ExerciseEditorWindow() {
             <span>Buscar</span>
           </div>
           <div className="cl-lex-sidebar-list">
-            {EXERCISES.map((ex, i) => (
-              <button
-                type="button"
-                key={ex.name}
-                className={`cl-lex-sidebar-item ${i === selectedIndex ? 'cl-lex-sidebar-item-active' : ''}`}
-                onClick={() => handleSelect(i)}
-              >
-                <span className="cl-lex-sidebar-item-name">{ex.name}</span>
-              </button>
-            ))}
+            {sidebar.map((ex, i) => {
+              const isPending = !!ex.pending;
+              return (
+                <motion.button
+                  type="button"
+                  key={`${i}-${ex.name || 'pending'}`}
+                  className={`cl-lex-sidebar-item ${isPending ? 'cl-lex-sidebar-item-active' : ''}`}
+                  initial={isPending ? { opacity: 0, x: -6 } : false}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.32, ease: SPRING }}
+                >
+                  <span className="cl-lex-sidebar-item-name">
+                    {ex.name || <span className="cl-lex-placeholder">Nuevo ejercicio</span>}
+                    {isPending && typingTitle && <span className="cl-lex-caret" aria-hidden="true" />}
+                  </span>
+                </motion.button>
+              );
+            })}
           </div>
         </aside>
 
         {/* Workspace */}
         <div className="cl-lex-workspace">
           <div className="cl-lex-workspace-head">
-            <motion.h3
-              key={`title-${selectedIndex}`}
-              className="cl-lex-workspace-title"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: SPRING }}
-            >
-              {exercise.name}
-            </motion.h3>
+            <h3 className="cl-lex-workspace-title">
+              {title || <span className="cl-lex-placeholder">Nombre del ejercicio</span>}
+              {typingTitle && <span className="cl-lex-caret cl-lex-caret-lg" aria-hidden="true" />}
+            </h3>
           </div>
           <div className="cl-lex-workspace-columns">
             {/* Video panel */}
@@ -170,33 +243,33 @@ function ExerciseEditorWindow() {
 
             {/* Muscle panel */}
             <div className="cl-lex-muscle-card">
-              <motion.div
-                key={`muscle-${selectedIndex}`}
-                className="cl-lex-muscle-left"
-                initial={{ opacity: 0.35 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.55, ease: SPRING }}
-              >
-                <MuscleSilhouetteSVG muscleVolumes={exercise.muscles} />
-              </motion.div>
+              <div className="cl-lex-muscle-left">
+                <MuscleSilhouetteSVG muscleVolumes={muscles} />
+              </div>
             </div>
           </div>
 
           <div className="cl-lex-implements">
             <span className="cl-lex-implements-title">Implementos</span>
             <div className="cl-lex-implements-pills">
-              {exercise.implements.map((imp, i) => (
+              {pills.map((imp) => (
                 <motion.span
-                  key={`${selectedIndex}-${imp}`}
+                  key={imp}
                   className="cl-lex-pill"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: 0.05 + i * 0.05, ease: SPRING }}
+                  initial={{ opacity: 0, scale: 0.88, y: 4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.32, ease: SPRING }}
                 >
                   {imp}
                 </motion.span>
               ))}
-              <span className="cl-lex-pill-add">+</span>
+              {(typingImp || impInput) && (
+                <span className="cl-lex-pill cl-lex-pill-typing">
+                  {impInput}
+                  {typingImp && <span className="cl-lex-caret" aria-hidden="true" />}
+                </span>
+              )}
+              <span className={`cl-lex-pill-add ${implPlusPulse ? 'cl-lex-pill-add-pulse' : ''}`}>+</span>
             </div>
           </div>
         </div>
@@ -308,45 +381,70 @@ function ProgramBuilderWindow() {
   const [dragOverKey, setDragOverKey] = useState(null);
   const [dropPulseKey, setDropPulseKey] = useState(null);
   const [pickingUpId, setPickingUpId] = useState(null);
+  const [ghost, setGhost] = useState(null);
 
   const windowRef = useRef(null);
-  const { tick, pause } = useAutoDemo(windowRef, { interval: 1400 });
+  const bodyRef = useRef(null);
+  const libRefs = useRef({});
+  const cellRefs = useRef({});
 
-  useEffect(() => {
-    if (tick === 0) return;
-    const cycleLen = PB_DEMO_SCRIPT.length * 2 + 2;
-    const step = (tick - 1) % cycleLen;
-
-    if (step === cycleLen - 1) {
+  const pause = useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
+    while (!isCancelled()) {
       setWeeks(cloneWeeks(PB_INITIAL_WEEKS));
+      setGhost(null);
       setPickingUpId(null);
-      setDropPulseKey(null);
-      return;
+      setDragOverKey(null);
+      await sleep(700);
+      if (isCancelled()) return;
+
+      for (const move of PB_DEMO_SCRIPT) {
+        if (isCancelled()) return;
+        const source = PB_LIBRARY_SESSIONS.find((s) => s.id === move.sourceId);
+        const sourceEl = libRefs.current[move.sourceId];
+        const cellKey = `${move.weekIdx}:${move.dayIdx}`;
+        const targetEl = cellRefs.current[cellKey];
+        const bodyEl = bodyRef.current;
+        if (!source || !sourceEl || !targetEl || !bodyEl) continue;
+
+        const bodyRect = bodyEl.getBoundingClientRect();
+        const fromRect = sourceEl.getBoundingClientRect();
+        const toRect = targetEl.getBoundingClientRect();
+
+        setPickingUpId(move.sourceId);
+        await sleep(220);
+        if (isCancelled()) return;
+
+        setGhost({
+          source,
+          fromX: fromRect.left - bodyRect.left,
+          fromY: fromRect.top - bodyRect.top,
+          width: fromRect.width,
+          height: fromRect.height,
+          toX: toRect.left - bodyRect.left + toRect.width / 2 - fromRect.width / 2,
+          toY: toRect.top - bodyRect.top + toRect.height / 2 - fromRect.height / 2,
+        });
+        setDragOverKey(cellKey);
+        await sleep(720);
+        if (isCancelled()) return;
+
+        setWeeks((prev) => prev.map((w, i) => {
+          if (i !== move.weekIdx) return w;
+          const cells = [...w.cells];
+          cells[move.dayIdx] = { title: source.title, linked: true, image: source.image };
+          return { ...w, cells };
+        }));
+        setGhost(null);
+        setPickingUpId(null);
+        setDragOverKey(null);
+        setDropPulseKey(cellKey);
+        await sleep(600);
+        setDropPulseKey((k) => (k === cellKey ? null : k));
+        await sleep(260);
+      }
+
+      await sleep(2600);
     }
-
-    const scriptIdx = Math.floor(step / 2);
-    const isPickup = step % 2 === 0;
-    const move = PB_DEMO_SCRIPT[scriptIdx];
-    if (!move) return;
-
-    if (isPickup) {
-      setPickingUpId(move.sourceId);
-      return;
-    }
-
-    const source = PB_LIBRARY_SESSIONS.find((s) => s.id === move.sourceId);
-    if (!source) return;
-    const key = `${move.weekIdx}:${move.dayIdx}`;
-    setWeeks((prev) => prev.map((w, i) => {
-      if (i !== move.weekIdx) return w;
-      const cells = [...w.cells];
-      cells[move.dayIdx] = { title: source.title, linked: true, image: source.image };
-      return { ...w, cells };
-    }));
-    setPickingUpId(null);
-    setDropPulseKey(key);
-    setTimeout(() => setDropPulseKey((k) => (k === key ? null : k)), 600);
-  }, [tick]);
+  });
 
   const handleLibraryDragStart = (e, item, kind) => {
     pause();
@@ -392,7 +490,43 @@ function ProgramBuilderWindow() {
       label="Plan · Hipertrofia 8 semanas"
       onPointerEnter={pause}
     >
-      <div className="cl-pb-layout">
+      <div className="cl-pb-layout" ref={bodyRef}>
+        {ghost && (
+          <motion.div
+            className="cl-pb-ghost"
+            style={{
+              position: 'absolute',
+              top: ghost.fromY,
+              left: ghost.fromX,
+              width: ghost.width,
+              height: ghost.height,
+              pointerEvents: 'none',
+              zIndex: 40,
+            }}
+            initial={{ x: 0, y: 0, scale: 1, opacity: 0.95 }}
+            animate={{
+              x: ghost.toX - ghost.fromX,
+              y: ghost.toY - ghost.fromY,
+              scale: [1, 1.04, 1],
+              opacity: [0.95, 1, 0.9],
+            }}
+            transition={{ duration: 0.72, ease: SPRING, times: [0, 0.55, 1] }}
+          >
+            <div className="cl-pb-lib-item cl-pb-ghost-card">
+              {ghost.source.image ? (
+                <img src={ghost.source.image} alt="" className="cl-pb-lib-item-thumb" />
+              ) : (
+                <div className="cl-pb-lib-item-avatar">{ghost.source.title.charAt(0)}</div>
+              )}
+              <span className="cl-pb-lib-item-name">{ghost.source.title}</span>
+              <span className="cl-pb-lib-item-grip" aria-hidden="true">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <path d="M9 5h6M9 12h6M9 19h6" />
+                </svg>
+              </span>
+            </div>
+          </motion.div>
+        )}
         {/* ── LEFT: LIBRARY SIDEBAR ─────────────────────────── */}
         <aside className="cl-pb-lib">
           <div className="cl-pb-lib-tabs">
@@ -425,6 +559,7 @@ function ProgramBuilderWindow() {
             {activeList.map((item) => (
               <div
                 key={item.id}
+                ref={(el) => { if (el) libRefs.current[item.id] = el; else delete libRefs.current[item.id]; }}
                 className={`cl-pb-lib-item ${pickingUpId === item.id ? 'cl-pb-lib-item-picking' : ''}`}
                 draggable
                 onDragStart={(e) => handleLibraryDragStart(e, item, activeTab === 'sessions' ? 'session' : 'plan')}
@@ -714,6 +849,7 @@ function NutritionPlanWindow() {
   };
 
   const selectOption = (catId, optIdx) => {
+    pause();
     setCategories((prev) => prev.map((c) => (c.id === catId ? { ...c, selected: optIdx } : c)));
   };
 
@@ -729,7 +865,11 @@ function NutritionPlanWindow() {
   const list = leftTab === 'alimentos' ? NP_ALIMENTOS : NP_RECETAS;
 
   return (
-    <WindowFrame label="Plan · Definición">
+    <WindowFrame
+      ref={windowRef}
+      label="Plan · Definición"
+      onPointerEnter={pause}
+    >
       <div className="cl-np">
         {/* ── LEFT: Food / Recipe library ───────────── */}
         <aside className="cl-np-left">
@@ -744,14 +884,14 @@ function NutritionPlanWindow() {
             <button
               type="button"
               className={`cl-np-tab ${leftTab === 'alimentos' ? 'cl-np-tab-active' : ''}`}
-              onClick={() => setLeftTab('alimentos')}
+              onClick={() => { pause(); setLeftTab('alimentos'); }}
             >
               Alimentos
             </button>
             <button
               type="button"
               className={`cl-np-tab ${leftTab === 'recetas' ? 'cl-np-tab-active' : ''}`}
-              onClick={() => setLeftTab('recetas')}
+              onClick={() => { pause(); setLeftTab('recetas'); }}
             >
               Recetas
             </button>
@@ -760,7 +900,7 @@ function NutritionPlanWindow() {
             {list.map((item) => (
               <div
                 key={item.id}
-                className="cl-np-item"
+                className={`cl-np-item ${pickingUpId === item.id ? 'cl-np-item-picking' : ''}`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, item, leftTab === 'alimentos' ? 'food' : 'recipe')}
                 onDragEnd={handleDragEnd}
@@ -870,7 +1010,15 @@ function NutritionPlanWindow() {
               />
             </svg>
             <div className="cl-np-gauge-label">
-              <span className="cl-np-gauge-val">{Math.round(totals.kcal).toLocaleString()}</span>
+              <motion.span
+                key={Math.round(totals.kcal)}
+                className="cl-np-gauge-val"
+                initial={{ opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25, ease: SPRING }}
+              >
+                {Math.round(totals.kcal).toLocaleString()}
+              </motion.span>
               <span className="cl-np-gauge-unit">kcal</span>
             </div>
           </div>
@@ -937,8 +1085,21 @@ function AvatarPattern({ id, href }) {
 }
 
 function DualModeWindow() {
+  const windowRef = useRef(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    if (!windowRef.current) return undefined;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setInView(true); },
+      { threshold: 0.35 },
+    );
+    obs.observe(windowRef.current);
+    return () => obs.disconnect();
+  }, []);
+
   return (
-    <WindowFrame label="Dos caminos">
+    <WindowFrame ref={windowRef} label="Dos caminos">
       <div className="cl-dm">
         {/* LEFT — one to many */}
         <section className="cl-dm-half">
@@ -949,7 +1110,7 @@ function DualModeWindow() {
               </defs>
 
               {FANOUT_TARGETS.map((t, i) => (
-                <line
+                <motion.line
                   key={`l-${i}`}
                   x1="200"
                   y1="54"
@@ -957,14 +1118,28 @@ function DualModeWindow() {
                   y2={t.y}
                   stroke="rgba(255,255,255,0.08)"
                   strokeWidth="1"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={inView ? { pathLength: 1, opacity: 1 } : {}}
+                  transition={{ duration: 0.55, delay: 0.15 + i * 0.025, ease: SPRING }}
                 />
               ))}
 
               <circle cx="200" cy="54" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-              <circle cx="200" cy="54" r="24" fill="url(#p-hub)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
+              <motion.circle
+                cx="200"
+                cy="54"
+                r="24"
+                fill="url(#p-hub)"
+                stroke="rgba(255,255,255,0.25)"
+                strokeWidth="1.2"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={inView ? { scale: 1, opacity: 1 } : {}}
+                style={{ transformOrigin: '200px 54px' }}
+                transition={{ duration: 0.5, ease: SPRING }}
+              />
 
               {FANOUT_TARGETS.map((t, i) => (
-                <circle
+                <motion.circle
                   key={`t-${i}`}
                   cx={t.x}
                   cy={t.y}
@@ -972,6 +1147,10 @@ function DualModeWindow() {
                   fill="rgba(255,255,255,0.28)"
                   stroke="rgba(255,255,255,0.18)"
                   strokeWidth="1"
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={inView ? { scale: 1, opacity: 1 } : {}}
+                  style={{ transformOrigin: `${t.x}px ${t.y}px` }}
+                  transition={{ duration: 0.4, delay: 0.35 + i * 0.025, ease: SPRING }}
                 />
               ))}
             </svg>
@@ -989,13 +1168,62 @@ function DualModeWindow() {
                 <AvatarPattern id="p-creator" href={CREATOR_PAIR_IMG} />
               </defs>
 
-              <line x1="162" y1="150" x2="238" y2="150" stroke="rgba(255,255,255,0.35)" strokeWidth="1.4" />
+              <motion.line
+                x1="162"
+                y1="150"
+                x2="238"
+                y2="150"
+                stroke="rgba(255,255,255,0.35)"
+                strokeWidth="1.4"
+                initial={{ pathLength: 0 }}
+                animate={inView ? { pathLength: 1 } : {}}
+                transition={{ duration: 0.6, delay: 0.3, ease: SPRING }}
+              />
 
               <circle cx="140" cy="150" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-              <circle cx="140" cy="150" r="24" fill="url(#p-creator)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
+              <motion.circle
+                cx="140"
+                cy="150"
+                r="24"
+                fill="url(#p-creator)"
+                stroke="rgba(255,255,255,0.25)"
+                strokeWidth="1.2"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={inView ? { scale: 1, opacity: 1 } : {}}
+                style={{ transformOrigin: '140px 150px' }}
+                transition={{ duration: 0.5, ease: SPRING }}
+              />
 
               <circle cx="260" cy="150" r="30" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-              <circle cx="260" cy="150" r="24" fill="rgba(255,255,255,0.28)" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
+              <motion.circle
+                cx="260"
+                cy="150"
+                r="24"
+                fill="rgba(255,255,255,0.28)"
+                stroke="rgba(255,255,255,0.25)"
+                strokeWidth="1.2"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={inView ? { scale: 1, opacity: 1 } : {}}
+                style={{ transformOrigin: '260px 150px' }}
+                transition={{ duration: 0.5, delay: 0.2, ease: SPRING }}
+              />
+
+              {inView && (
+                <motion.circle
+                  r="4"
+                  fill="rgba(255,255,255,0.9)"
+                  initial={{ cx: 162, cy: 150, opacity: 0 }}
+                  animate={{ cx: [162, 238, 162], opacity: [0, 1, 0] }}
+                  transition={{
+                    duration: 2.2,
+                    delay: 1,
+                    repeat: Infinity,
+                    repeatDelay: 1.4,
+                    ease: 'easeInOut',
+                    times: [0, 0.5, 1],
+                  }}
+                />
+              )}
             </svg>
           </div>
           <div className="cl-dm-caption">

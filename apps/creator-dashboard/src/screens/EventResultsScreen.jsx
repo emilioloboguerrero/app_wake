@@ -551,15 +551,23 @@ function AnalyticsCard({ title, insight, children, className }) {
   );
 }
 
-function RowModal({ reg, columns, onClose, onCheckIn, onDelete }) {
+function RowModal({ reg, columns, onClose, onCheckIn, onRemoveCheckIn, onDelete }) {
   const isCheckedIn = reg.checked_in;
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmRemoveCheckIn, setConfirmRemoveCheckIn] = useState(false);
 
   async function handleCheckIn() {
     setActionLoading('checkin');
     await onCheckIn();
     setActionLoading(null);
+  }
+
+  async function handleRemoveCheckIn() {
+    setActionLoading('uncheckin');
+    await onRemoveCheckIn();
+    setActionLoading(null);
+    setConfirmRemoveCheckIn(false);
   }
 
   async function handleDelete() {
@@ -611,6 +619,32 @@ function RowModal({ reg, columns, onClose, onCheckIn, onDelete }) {
           >
             {actionLoading === 'checkin' ? 'Registrando…' : 'Marcar check-in manual'}
           </button>
+        )}
+
+        {isCheckedIn && (
+          confirmRemoveCheckIn ? (
+            <div className="er-modal-confirm-row">
+              <span className="er-modal-confirm-text">¿Deshacer el check-in? La inscripción se mantiene.</span>
+              <button
+                className="er-modal-confirm-yes"
+                onClick={handleRemoveCheckIn}
+                disabled={actionLoading !== null}
+              >
+                {actionLoading === 'uncheckin' ? 'Deshaciendo…' : 'Deshacer'}
+              </button>
+              <button className="er-modal-confirm-no" onClick={() => setConfirmRemoveCheckIn(false)}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              className="er-modal-checkin-btn"
+              onClick={() => setConfirmRemoveCheckIn(true)}
+              disabled={actionLoading !== null}
+            >
+              Deshacer check-in
+            </button>
+          )
         )}
 
         {confirmDelete ? (
@@ -960,6 +994,18 @@ export default function EventResultsScreen() {
     } catch (err) {
       logger.error('[EventResults] check-in failed', err);
       showToast('No pudimos hacer el check-in. Intenta de nuevo.', 'error');
+    }
+  }
+
+  async function handleRemoveCheckIn(regId) {
+    try {
+      await eventService.removeCheckIn(eventId, regId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
+      setSelectedReg(prev => prev?.id === regId ? { ...prev, checked_in: false, checked_in_at: null } : prev);
+      showToast('Check-in removido');
+    } catch (err) {
+      logger.error('[EventResults] remove check-in failed', err);
+      showToast('No pudimos deshacer el check-in. Intenta de nuevo.', 'error');
     }
   }
 
@@ -2588,6 +2634,7 @@ export default function EventResultsScreen() {
           columns={columns}
           onClose={() => setSelectedReg(null)}
           onCheckIn={() => handleManualCheckIn(selectedReg.id)}
+          onRemoveCheckIn={() => handleRemoveCheckIn(selectedReg.id)}
           onDelete={() => handleDeleteRegistration(selectedReg.id)}
         />
       )}
