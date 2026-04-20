@@ -723,17 +723,10 @@ const NP_INITIAL = [
 const NP_GAUGE_ARC = 263.9;
 
 const NP_DEMO_SCRIPT = [
-  { type: 'pickup', sourceTab: 'alimentos', sourceId: 'a9', catId: 'c2' },
-  { type: 'drop' },
-  { type: 'switchTab', tab: 'recetas' },
-  { type: 'pickup', sourceTab: 'recetas', sourceId: 'r3', catId: 'c3' },
-  { type: 'drop' },
-  { type: 'switchOpt', catId: 'c1', optIdx: 1 },
-  { type: 'switchTab', tab: 'alimentos' },
-  { type: 'pickup', sourceTab: 'alimentos', sourceId: 'a4', catId: 'c1' },
-  { type: 'drop' },
-  { type: 'switchOpt', catId: 'c1', optIdx: 0 },
-  { type: 'reset' },
+  { tab: 'alimentos', sourceId: 'a9', catId: 'c2' },
+  { tab: 'alimentos', sourceId: 'a10', catId: 'c4' },
+  { tab: 'recetas', sourceId: 'r3', catId: 'c3' },
+  { tab: 'alimentos', sourceId: 'a4', catId: 'c1' },
 ];
 
 const cloneNpInitial = () => NP_INITIAL.map((c) => ({
@@ -747,69 +740,84 @@ function NutritionPlanWindow() {
   const [dragOverId, setDragOverId] = useState(null);
   const [pulseId, setPulseId] = useState(null);
   const [pickingUpId, setPickingUpId] = useState(null);
+  const [ghost, setGhost] = useState(null);
 
   const windowRef = useRef(null);
-  const { tick, pause } = useAutoDemo(windowRef, { interval: 1500 });
+  const bodyRef = useRef(null);
+  const itemRefs = useRef({});
+  const catRefs = useRef({});
 
   const target = { kcal: 2000, p: 160, c: 200, f: 67 };
 
-  const addItemToCategory = useCallback((sourceType, sourceId, catId) => {
-    const source = sourceType === 'recetas'
-      ? NP_RECETAS.find((r) => r.id === sourceId)
-      : NP_ALIMENTOS.find((a) => a.id === sourceId);
-    if (!source) return;
+  const pause = useDemoScript(windowRef, async ({ sleep, isCancelled }) => {
+    while (!isCancelled()) {
+      setCategories(cloneNpInitial());
+      setLeftTab('alimentos');
+      setGhost(null);
+      setPickingUpId(null);
+      setDragOverId(null);
+      await sleep(800);
+      if (isCancelled()) return;
 
-    setCategories((prev) => prev.map((cat) => {
-      if (cat.id !== catId) return cat;
-      const opts = [...cat.options];
-      const sel = cat.selected;
-      const newItem = sourceType === 'recetas'
-        ? { name: source.name, portion: `${source.count} alim.`, kcal: source.kcal, p: source.p, c: source.c, f: source.f, recipe: true }
-        : { name: source.name, portion: source.portion, kcal: source.kcal, p: source.p, c: source.c, f: source.f };
-      opts[sel] = { ...opts[sel], items: [...(opts[sel].items || []), newItem] };
-      return { ...cat, options: opts };
-    }));
-    setPulseId(catId);
-    setTimeout(() => setPulseId((p) => (p === catId ? null : p)), 600);
-  }, []);
+      for (const move of NP_DEMO_SCRIPT) {
+        if (isCancelled()) return;
+        if (leftTab !== move.tab) setLeftTab(move.tab);
+        setLeftTab(move.tab);
+        await sleep(380);
+        if (isCancelled()) return;
 
-  useEffect(() => {
-    if (tick === 0) return;
-    const step = (tick - 1) % NP_DEMO_SCRIPT.length;
-    const action = NP_DEMO_SCRIPT[step];
-    if (!action) return;
+        const source = move.tab === 'recetas'
+          ? NP_RECETAS.find((r) => r.id === move.sourceId)
+          : NP_ALIMENTOS.find((a) => a.id === move.sourceId);
+        const sourceEl = itemRefs.current[move.sourceId];
+        const targetEl = catRefs.current[move.catId];
+        const bodyEl = bodyRef.current;
+        if (!source || !sourceEl || !targetEl || !bodyEl) continue;
 
-    switch (action.type) {
-      case 'pickup':
-        setLeftTab(action.sourceTab);
-        setPickingUpId(action.sourceId);
-        break;
-      case 'drop': {
-        const prev = NP_DEMO_SCRIPT[step - 1];
-        if (prev?.type === 'pickup') {
-          addItemToCategory(prev.sourceTab, prev.sourceId, prev.catId);
-        }
+        const bodyRect = bodyEl.getBoundingClientRect();
+        const fromRect = sourceEl.getBoundingClientRect();
+        const toRect = targetEl.getBoundingClientRect();
+
+        setPickingUpId(move.sourceId);
+        await sleep(220);
+        if (isCancelled()) return;
+
+        setGhost({
+          source,
+          isRecipe: move.tab === 'recetas',
+          fromX: fromRect.left - bodyRect.left,
+          fromY: fromRect.top - bodyRect.top,
+          width: fromRect.width,
+          height: fromRect.height,
+          toX: toRect.left - bodyRect.left + 24,
+          toY: toRect.top - bodyRect.top + 36,
+        });
+        setDragOverId(move.catId);
+        await sleep(720);
+        if (isCancelled()) return;
+
+        setCategories((prev) => prev.map((cat) => {
+          if (cat.id !== move.catId) return cat;
+          const opts = [...cat.options];
+          const sel = cat.selected;
+          const newItem = move.tab === 'recetas'
+            ? { name: source.name, portion: `${source.count} alim.`, kcal: source.kcal, p: source.p, c: source.c, f: source.f, recipe: true }
+            : { name: source.name, portion: source.portion, kcal: source.kcal, p: source.p, c: source.c, f: source.f };
+          opts[sel] = { ...opts[sel], items: [...(opts[sel].items || []), newItem] };
+          return { ...cat, options: opts };
+        }));
+        setGhost(null);
         setPickingUpId(null);
-        break;
+        setDragOverId(null);
+        setPulseId(move.catId);
+        await sleep(600);
+        setPulseId((p) => (p === move.catId ? null : p));
+        await sleep(220);
       }
-      case 'switchTab':
-        setLeftTab(action.tab);
-        setPickingUpId(null);
-        break;
-      case 'switchOpt':
-        setCategories((prev) => prev.map((c) => (c.id === action.catId ? { ...c, selected: action.optIdx } : c)));
-        setPickingUpId(null);
-        break;
-      case 'reset':
-        setCategories(cloneNpInitial());
-        setLeftTab('alimentos');
-        setPickingUpId(null);
-        setPulseId(null);
-        break;
-      default:
-        break;
+
+      await sleep(2800);
     }
-  }, [tick, addItemToCategory]);
+  });
 
   const totals = categories.reduce((acc, cat) => {
     const items = cat.options[cat.selected]?.items || [];
@@ -875,7 +883,45 @@ function NutritionPlanWindow() {
       label="Plan · Definición"
       onPointerEnter={pause}
     >
-      <div className="cl-np">
+      <div className="cl-np" ref={bodyRef}>
+        {ghost && (
+          <motion.div
+            className="cl-np-ghost"
+            style={{
+              position: 'absolute',
+              top: ghost.fromY,
+              left: ghost.fromX,
+              width: ghost.width,
+              height: ghost.height,
+              pointerEvents: 'none',
+              zIndex: 40,
+            }}
+            initial={{ x: 0, y: 0, scale: 1, opacity: 0.95 }}
+            animate={{
+              x: ghost.toX - ghost.fromX,
+              y: ghost.toY - ghost.fromY,
+              scale: [1, 1.04, 1],
+              opacity: [0.95, 1, 0.9],
+            }}
+            transition={{ duration: 0.72, ease: SPRING, times: [0, 0.55, 1] }}
+          >
+            <div className="cl-np-item cl-np-ghost-card">
+              <span className="cl-np-item-name">{ghost.source.name}</span>
+              <div className="cl-np-item-meta">
+                <span>{ghost.source.kcal} kcal</span>
+                {ghost.isRecipe ? (
+                  <span>{ghost.source.count} alim.</span>
+                ) : (
+                  <>
+                    <span>P {ghost.source.p}g</span>
+                    <span>C {ghost.source.c}g</span>
+                    <span>G {ghost.source.f}g</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
         {/* ── LEFT: Food / Recipe library ───────────── */}
         <aside className="cl-np-left">
           <div className="cl-np-search">
@@ -905,6 +951,7 @@ function NutritionPlanWindow() {
             {list.map((item) => (
               <div
                 key={item.id}
+                ref={(el) => { if (el) itemRefs.current[item.id] = el; else delete itemRefs.current[item.id]; }}
                 className={`cl-np-item ${pickingUpId === item.id ? 'cl-np-item-picking' : ''}`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, item, leftTab === 'alimentos' ? 'food' : 'recipe')}
@@ -943,6 +990,7 @@ function NutritionPlanWindow() {
               return (
                 <div
                   key={cat.id}
+                  ref={(el) => { if (el) catRefs.current[cat.id] = el; else delete catRefs.current[cat.id]; }}
                   className={`cl-np-cat ${isDragOver ? 'cl-np-cat-over' : ''} ${isPulse ? 'cl-np-cat-pulse' : ''}`}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOverId(cat.id); }}
                   onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); }}
