@@ -296,9 +296,8 @@ export default function EventRegistrationsScreen() {
   const { data, isLoading, isError } = useQuery({
     queryKey,
     queryFn: async () => {
-      const ev = await eventService.getEvent(eventId);
-      if (!ev || ev.creator_id !== user.uid) throw new Error('access_denied');
-      const [regs, wl] = await Promise.all([
+      const [ev, regs, wl] = await Promise.all([
+        eventService.getEvent(eventId),
         eventService.getRegistrations(eventId),
         eventService.getWaitlist(eventId),
       ]);
