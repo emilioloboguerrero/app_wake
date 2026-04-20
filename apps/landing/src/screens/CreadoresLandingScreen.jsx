@@ -134,243 +134,574 @@ function ExerciseEditorWindow() {
 
 /* ═══════════════════════════════════════════
    SECTION 2 — PROGRAM BUILDER
-   Replica: PlanWeeksGrid
+   Replica: PlanningLibrarySidebar + PlanWeeksGrid
    ═══════════════════════════════════════════ */
-const PB_WEEK_1 = [
-  { title: 'Empuje A', linked: true },
-  { title: 'Pierna fuerza', linked: true },
-  null,
-  { title: 'Jalón A', linked: true },
-  { title: 'Pierna hipertrofia', linked: false },
-  { title: 'Full body', linked: true },
-  null,
-];
-const PB_WEEK_2 = [
-  { title: 'Empuje B', linked: true },
-  { title: 'Pierna potencia', linked: true },
-  { title: 'Accesorios', linked: false },
-  { title: 'Jalón B', linked: true },
-  null,
-  { title: 'Full body', linked: true },
-  null,
+const PB_LIBRARY_SESSIONS = [
+  { id: 'lib-1', title: 'Empuje A', image: '/fallback/hero/IMG_3247.webp' },
+  { id: 'lib-2', title: 'Empuje B', image: '/fallback/hero/IMG_3250.webp' },
+  { id: 'lib-3', title: 'Pierna fuerza', image: '/fallback/hero/IMG_3257.webp' },
+  { id: 'lib-4', title: 'Pierna hipertrofia', image: '/fallback/hero/IMG_9394.webp' },
+  { id: 'lib-5', title: 'Pierna potencia', image: '/fallback/hero/IMG_9401.webp' },
+  { id: 'lib-6', title: 'Jalón A', image: '/fallback/hero/IMG_9402.webp' },
+  { id: 'lib-7', title: 'Jalón B', image: '/fallback/hero/IMG_3248.webp' },
+  { id: 'lib-8', title: 'Full body', image: '/fallback/hero/IMG_3251.webp' },
+  { id: 'lib-9', title: 'Accesorios', image: '/fallback/hero/IMG_3255.webp' },
+  { id: 'lib-10', title: 'Core intensivo', image: '/fallback/hero/IMG_9391.webp' },
 ];
 
+const PB_SESSION_IMAGE_BY_TITLE = PB_LIBRARY_SESSIONS.reduce((acc, s) => {
+  acc[s.title] = s.image;
+  return acc;
+}, {});
+
+const PB_LIBRARY_PLANS = [
+  { id: 'plan-1', title: 'Hipertrofia 8 semanas' },
+  { id: 'plan-2', title: 'Fuerza base 6 semanas' },
+  { id: 'plan-3', title: 'Recomposición 12 semanas' },
+  { id: 'plan-4', title: 'Potencia avanzada' },
+];
+
+const PB_INITIAL_WEEKS = [
+  {
+    id: 'w1',
+    cells: [
+      { title: 'Empuje A', linked: true },
+      { title: 'Pierna fuerza', linked: true },
+      null,
+      { title: 'Jalón A', linked: true },
+      { title: 'Pierna hipertrofia', linked: false },
+      { title: 'Full body', linked: true },
+      null,
+    ],
+  },
+  {
+    id: 'w2',
+    cells: [
+      { title: 'Empuje B', linked: true },
+      { title: 'Pierna potencia', linked: true },
+      { title: 'Accesorios', linked: false },
+      { title: 'Jalón B', linked: true },
+      null,
+      { title: 'Full body', linked: true },
+      null,
+    ],
+  },
+];
+
+function SessionCard({ session }) {
+  const linked = !!session.linked;
+  const image = session.image || PB_SESSION_IMAGE_BY_TITLE[session.title];
+  const style = image
+    ? {
+        backgroundImage: `linear-gradient(to bottom, rgba(21,21,21,0.35) 0%, rgba(21,21,21,0.85) 100%), url(${image})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+      }
+    : undefined;
+  return (
+    <div
+      className={`cl-pb-cell cl-pb-cell-session ${linked ? 'cl-pb-cell-linked' : 'cl-pb-cell-local'} ${image ? 'cl-pb-cell-session-image' : ''}`}
+      style={style}
+    >
+      <span className="cl-pb-session-icon" aria-hidden="true">
+        {linked ? (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+          </svg>
+        ) : (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        )}
+      </span>
+      <span className="cl-pb-session-title">{session.title}</span>
+    </div>
+  );
+}
+
 function ProgramBuilderWindow() {
-  const renderSessionCard = (s, key) => {
-    if (!s) {
-      return (
-        <div key={key} className="cl-pb-cell cl-pb-cell-empty">
-          <span>Arrastra o crea</span>
-        </div>
-      );
-    }
-    return (
-      <div key={key} className={`cl-pb-cell cl-pb-cell-session ${s.linked ? 'cl-pb-cell-linked' : 'cl-pb-cell-local'}`}>
-        <span className="cl-pb-session-icon" aria-hidden="true">
-          {s.linked ? (
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-            </svg>
-          ) : (
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          )}
-        </span>
-        <span className="cl-pb-session-title">{s.title}</span>
-        <span className="cl-pb-session-dots" aria-hidden="true">⋮</span>
-      </div>
-    );
+  const [activeTab, setActiveTab] = useState('sessions');
+  const [weeks, setWeeks] = useState(PB_INITIAL_WEEKS);
+  const [dragOverKey, setDragOverKey] = useState(null);
+  const [dropPulseKey, setDropPulseKey] = useState(null);
+
+  const handleLibraryDragStart = (e, item, kind) => {
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('application/json', JSON.stringify({ kind, ...item }));
+    e.currentTarget.classList.add('cl-pb-lib-item-dragging');
   };
+  const handleLibraryDragEnd = (e) => {
+    e.currentTarget.classList.remove('cl-pb-lib-item-dragging');
+  };
+
+  const handleCellDragOver = (e, key) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragOverKey(key);
+  };
+  const handleCellDragLeave = () => setDragOverKey(null);
+
+  const handleDropOnCell = (e, weekIdx, dayIdx) => {
+    e.preventDefault();
+    setDragOverKey(null);
+    let payload;
+    try { payload = JSON.parse(e.dataTransfer.getData('application/json')); } catch { return; }
+    if (!payload || payload.kind !== 'session') return;
+
+    const key = `${weekIdx}:${dayIdx}`;
+    setWeeks((prev) => prev.map((w, i) => {
+      if (i !== weekIdx) return w;
+      const cells = [...w.cells];
+      cells[dayIdx] = { title: payload.title, linked: true, image: payload.image };
+      return { ...w, cells };
+    }));
+    setDropPulseKey(key);
+    setTimeout(() => setDropPulseKey((k) => (k === key ? null : k)), 600);
+  };
+
+  const activeList = activeTab === 'sessions' ? PB_LIBRARY_SESSIONS : PB_LIBRARY_PLANS;
+  const dragHint = activeTab === 'sessions' ? 'Arrastra a un día' : 'Arrastra a una semana';
 
   return (
     <WindowFrame label="Plan · Hipertrofia 8 semanas">
-      <div className="cl-pb">
-        <div className="cl-pb-head">
-          <span className="cl-pb-volume">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" /><path d="M12 3v9h9" /><path d="M18 18.5L12 12" />
-            </svg>
-            Volumen
-          </span>
-          <span className="cl-pb-add">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-            Añadir semana
-          </span>
-        </div>
+      <div className="cl-pb-layout">
+        {/* ── LEFT: LIBRARY SIDEBAR ─────────────────────────── */}
+        <aside className="cl-pb-lib">
+          <div className="cl-pb-lib-tabs">
+            <button
+              type="button"
+              className={`cl-pb-lib-tab ${activeTab === 'sessions' ? 'cl-pb-lib-tab-active' : ''}`}
+              onClick={() => setActiveTab('sessions')}
+            >
+              Sesiones
+            </button>
+            <button
+              type="button"
+              className={`cl-pb-lib-tab ${activeTab === 'plans' ? 'cl-pb-lib-tab-active' : ''}`}
+              onClick={() => setActiveTab('plans')}
+            >
+              Planes
+            </button>
+          </div>
 
-        <div className="cl-pb-days-header">
-          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-            <div key={d} className="cl-pb-days-cell">Día {d}</div>
+          <div className="cl-pb-lib-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+            </svg>
+            <span>{activeTab === 'sessions' ? 'Buscar sesiones…' : 'Buscar planes…'}</span>
+          </div>
+
+          <div className="cl-pb-lib-hint">{dragHint}</div>
+
+          <div className="cl-pb-lib-list">
+            {activeList.map((item) => (
+              <div
+                key={item.id}
+                className="cl-pb-lib-item"
+                draggable
+                onDragStart={(e) => handleLibraryDragStart(e, item, activeTab === 'sessions' ? 'session' : 'plan')}
+                onDragEnd={handleLibraryDragEnd}
+              >
+                {item.image ? (
+                  <img src={item.image} alt="" className="cl-pb-lib-item-thumb" />
+                ) : (
+                  <div className="cl-pb-lib-item-avatar">{item.title.charAt(0)}</div>
+                )}
+                <span className="cl-pb-lib-item-name">{item.title}</span>
+                <span className="cl-pb-lib-item-grip" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M9 5h6M9 12h6M9 19h6" />
+                  </svg>
+                </span>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        {/* ── RIGHT: WEEK GRID ──────────────────────────────── */}
+        <div className="cl-pb">
+          <div className="cl-pb-head">
+            <span className="cl-pb-volume">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" /><path d="M12 3v9h9" /><path d="M18 18.5L12 12" />
+              </svg>
+              Volumen
+            </span>
+            <span className="cl-pb-add">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Añadir semana
+            </span>
+          </div>
+
+          <div className="cl-pb-days-header">
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+              <div key={d} className="cl-pb-days-cell">Día {d}</div>
+            ))}
+          </div>
+
+          {weeks.map((week, weekIdx) => (
+            <div key={week.id} className="cl-pb-week">
+              <div className="cl-pb-week-head">
+                <span className="cl-pb-week-title">Semana {weekIdx + 1}</span>
+                <span className="cl-pb-week-dots" aria-hidden="true">⋮</span>
+              </div>
+              <div className="cl-pb-week-days">
+                {week.cells.map((cell, dayIdx) => {
+                  const key = `${weekIdx}:${dayIdx}`;
+                  const isDragOver = dragOverKey === key;
+                  const isPulsing = dropPulseKey === key;
+                  if (!cell) {
+                    return (
+                      <div
+                        key={dayIdx}
+                        className={`cl-pb-cell cl-pb-cell-empty ${isDragOver ? 'cl-pb-cell-drag-over' : ''}`}
+                        onDragOver={(e) => handleCellDragOver(e, key)}
+                        onDragLeave={handleCellDragLeave}
+                        onDrop={(e) => handleDropOnCell(e, weekIdx, dayIdx)}
+                      >
+                        <span>Arrastra o crea</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={dayIdx}
+                      className={`cl-pb-cell-wrap ${isPulsing ? 'cl-pb-cell-wrap-pulse' : ''}`}
+                      onDragOver={(e) => handleCellDragOver(e, key)}
+                      onDragLeave={handleCellDragLeave}
+                      onDrop={(e) => handleDropOnCell(e, weekIdx, dayIdx)}
+                    >
+                      <SessionCard session={cell} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
-
-        {[{ title: 'Semana 1', week: PB_WEEK_1 }, { title: 'Semana 2', week: PB_WEEK_2 }].map((block) => (
-          <div key={block.title} className="cl-pb-week">
-            <div className="cl-pb-week-head">
-              <span className="cl-pb-week-title">{block.title}</span>
-              <span className="cl-pb-week-dots" aria-hidden="true">⋮</span>
-            </div>
-            <div className="cl-pb-week-days">
-              {block.week.map((s, i) => renderSessionCard(s, i))}
-            </div>
-          </div>
-        ))}
       </div>
     </WindowFrame>
   );
 }
 
 /* ═══════════════════════════════════════════
-   SECTION 3 — NUTRITION PLAN
-   Replica: NutritionScreen
+   SECTION 3 — NUTRITION PLAN EDITOR
+   Replica: PlanEditorScreen
    ═══════════════════════════════════════════ */
-const NP_LIST = [
-  { name: 'Plan definición', kcal: 2000, meta: 'Déficit moderado' },
-  { name: 'Volumen limpio', kcal: 3200, meta: 'Superávit controlado' },
-  { name: 'Recomposición', kcal: 2400, meta: 'Isocalórico' },
-  { name: 'Cutting agresivo', kcal: 1700, meta: 'Déficit profundo' },
-  { name: 'Mantenimiento', kcal: 2500, meta: 'Estable' },
+const NP_ALIMENTOS = [
+  { id: 'a1', name: 'Pechuga de pollo', portion: '100 g', kcal: 165, p: 31, c: 0, f: 3.6 },
+  { id: 'a2', name: 'Arroz blanco', portion: '100 g', kcal: 130, p: 2.7, c: 28, f: 0.3 },
+  { id: 'a3', name: 'Huevo entero', portion: '1 u', kcal: 72, p: 6.3, c: 0.4, f: 4.8 },
+  { id: 'a4', name: 'Avena', portion: '40 g', kcal: 150, p: 5, c: 27, f: 3 },
+  { id: 'a5', name: 'Plátano', portion: '1 u', kcal: 105, p: 1.3, c: 27, f: 0.3 },
+  { id: 'a6', name: 'Aguacate', portion: '½ u', kcal: 160, p: 2, c: 8, f: 15 },
+  { id: 'a7', name: 'Almendras', portion: '30 g', kcal: 170, p: 6, c: 6, f: 15 },
+  { id: 'a8', name: 'Yogur griego', portion: '200 g', kcal: 130, p: 20, c: 8, f: 2 },
+  { id: 'a9', name: 'Atún en agua', portion: '100 g', kcal: 116, p: 26, c: 0, f: 1 },
+  { id: 'a10', name: 'Brócoli', portion: '100 g', kcal: 35, p: 2.8, c: 7, f: 0.4 },
 ];
 
-const NP_CATEGORIES = [
-  { label: 'Desayuno', count: 3 },
-  { label: 'Media mañana', count: 2 },
-  { label: 'Almuerzo', count: 4 },
-  { label: 'Merienda', count: 2 },
-  { label: 'Cena', count: 3 },
+const NP_RECETAS = [
+  { id: 'r1', name: 'Bowl de quinoa', count: 6, kcal: 520, p: 28, c: 72, f: 14 },
+  { id: 'r2', name: 'Pollo con arroz', count: 4, kcal: 610, p: 55, c: 68, f: 10 },
+  { id: 'r3', name: 'Smoothie verde', count: 5, kcal: 280, p: 22, c: 38, f: 5 },
+  { id: 'r4', name: 'Ensalada ligera', count: 7, kcal: 340, p: 18, c: 22, f: 20 },
+  { id: 'r5', name: 'Overnight oats', count: 5, kcal: 430, p: 24, c: 58, f: 12 },
+  { id: 'r6', name: 'Wrap de atún', count: 6, kcal: 490, p: 32, c: 45, f: 18 },
 ];
 
-function MacroRing({ percent, color, size = 56 }) {
-  const r = (size - 6) / 2;
-  const c = 2 * Math.PI * r;
-  const dash = c * (percent / 100);
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="cl-np-ring-svg" aria-hidden="true">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth="4"
-        strokeLinecap="round"
-        strokeDasharray={`${dash} ${c}`}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-    </svg>
-  );
-}
+const NP_INITIAL = [
+  { id: 'c1', label: 'Desayuno', selected: 0, options: [
+    { id: 'o1', label: 'Opc 1', items: [
+      { name: 'Huevos', portion: '3 u', kcal: 216, p: 18.9, c: 1.2, f: 14.4 },
+      { name: 'Avena', portion: '60 g', kcal: 225, p: 7.5, c: 40, f: 4.5 },
+      { name: 'Plátano', portion: '1 u', kcal: 105, p: 1.3, c: 27, f: 0.3 },
+    ] },
+    { id: 'o2', label: 'Opc 2', items: [] },
+  ] },
+  { id: 'c2', label: 'Almuerzo', selected: 0, options: [
+    { id: 'o1', label: 'Opc 1', items: [
+      { name: 'Pechuga de pollo', portion: '200 g', kcal: 330, p: 62, c: 0, f: 7.2 },
+      { name: 'Arroz blanco', portion: '150 g', kcal: 195, p: 4, c: 42, f: 0.5 },
+      { name: 'Brócoli', portion: '100 g', kcal: 35, p: 2.8, c: 7, f: 0.4 },
+    ] },
+    { id: 'o2', label: 'Opc 2', items: [] },
+  ] },
+  { id: 'c3', label: 'Merienda', selected: 0, options: [
+    { id: 'o1', label: 'Opc 1', items: [
+      { name: 'Yogur griego', portion: '200 g', kcal: 130, p: 20, c: 8, f: 2 },
+      { name: 'Almendras', portion: '30 g', kcal: 170, p: 6, c: 6, f: 15 },
+    ] },
+  ] },
+  { id: 'c4', label: 'Cena', selected: 0, options: [
+    { id: 'o1', label: 'Opc 1', items: [
+      { name: 'Salmón', portion: '180 g', kcal: 378, p: 36, c: 0, f: 24 },
+      { name: 'Batata', portion: '150 g', kcal: 130, p: 2.3, c: 30, f: 0.2 },
+      { name: 'Espinaca', portion: '80 g', kcal: 18, p: 2, c: 3, f: 0.3 },
+    ] },
+  ] },
+];
+
+const NP_GAUGE_ARC = 263.9;
 
 function NutritionPlanWindow() {
+  const [leftTab, setLeftTab] = useState('alimentos');
+  const [categories, setCategories] = useState(NP_INITIAL);
+  const [dragOverId, setDragOverId] = useState(null);
+  const [pulseId, setPulseId] = useState(null);
+
+  const target = { kcal: 2000, p: 160, c: 200, f: 67 };
+
+  const totals = categories.reduce((acc, cat) => {
+    const items = cat.options[cat.selected]?.items || [];
+    items.forEach((i) => {
+      acc.kcal += i.kcal || 0;
+      acc.p += i.p || 0;
+      acc.c += i.c || 0;
+      acc.f += i.f || 0;
+    });
+    return acc;
+  }, { kcal: 0, p: 0, c: 0, f: 0 });
+
+  const gaugeOffset = NP_GAUGE_ARC - NP_GAUGE_ARC * Math.min(1, totals.kcal / target.kcal);
+
+  const handleDragStart = (e, item, type) => {
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('application/json', JSON.stringify({ type, ...item }));
+    e.currentTarget.classList.add('cl-np-item-dragging');
+  };
+  const handleDragEnd = (e) => e.currentTarget.classList.remove('cl-np-item-dragging');
+
+  const handleDrop = (e, categoryId) => {
+    e.preventDefault();
+    setDragOverId(null);
+    let payload;
+    try { payload = JSON.parse(e.dataTransfer.getData('application/json')); } catch { return; }
+    if (!payload) return;
+
+    setCategories((prev) => prev.map((cat) => {
+      if (cat.id !== categoryId) return cat;
+      const opts = [...cat.options];
+      const sel = cat.selected;
+      const newItem = payload.type === 'recipe'
+        ? { name: payload.name, portion: `${payload.count} alim.`, kcal: payload.kcal, p: payload.p, c: payload.c, f: payload.f, recipe: true }
+        : { name: payload.name, portion: payload.portion, kcal: payload.kcal, p: payload.p, c: payload.c, f: payload.f };
+      opts[sel] = { ...opts[sel], items: [...(opts[sel].items || []), newItem] };
+      return { ...cat, options: opts };
+    }));
+    setPulseId(categoryId);
+    setTimeout(() => setPulseId((p) => (p === categoryId ? null : p)), 600);
+  };
+
+  const selectOption = (catId, optIdx) => {
+    setCategories((prev) => prev.map((c) => (c.id === catId ? { ...c, selected: optIdx } : c)));
+  };
+
+  const removeItem = (catId, optIdx, itemIdx) => {
+    setCategories((prev) => prev.map((c) => {
+      if (c.id !== catId) return c;
+      const opts = [...c.options];
+      opts[optIdx] = { ...opts[optIdx], items: opts[optIdx].items.filter((_, i) => i !== itemIdx) };
+      return { ...c, options: opts };
+    }));
+  };
+
+  const list = leftTab === 'alimentos' ? NP_ALIMENTOS : NP_RECETAS;
+
   return (
-    <WindowFrame label="Nutrición">
+    <WindowFrame label="Plan · Definición">
       <div className="cl-np">
-        {/* Top bar */}
-        <div className="cl-np-topbar">
-          <div className="cl-np-tabs">
-            <span className="cl-np-tab">Recetas</span>
-            <span className="cl-np-tab cl-np-tab-active">Planes</span>
+        {/* ── LEFT: Food / Recipe library ───────────── */}
+        <aside className="cl-np-left">
+          <div className="cl-np-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+            </svg>
+            <span>{leftTab === 'alimentos' ? 'Buscar alimento…' : 'Buscar receta…'}</span>
+            {leftTab === 'alimentos' && <span className="cl-np-search-plus">+</span>}
           </div>
-          <span className="cl-np-create">
-            <span className="cl-np-create-plus">+</span>
-            Crear plan
-          </span>
-        </div>
+          <div className="cl-np-tabs">
+            <button
+              type="button"
+              className={`cl-np-tab ${leftTab === 'alimentos' ? 'cl-np-tab-active' : ''}`}
+              onClick={() => setLeftTab('alimentos')}
+            >
+              Alimentos
+            </button>
+            <button
+              type="button"
+              className={`cl-np-tab ${leftTab === 'recetas' ? 'cl-np-tab-active' : ''}`}
+              onClick={() => setLeftTab('recetas')}
+            >
+              Recetas
+            </button>
+          </div>
+          <div className="cl-np-list">
+            {list.map((item) => (
+              <div
+                key={item.id}
+                className="cl-np-item"
+                draggable
+                onDragStart={(e) => handleDragStart(e, item, leftTab === 'alimentos' ? 'food' : 'recipe')}
+                onDragEnd={handleDragEnd}
+              >
+                <span className="cl-np-item-name">{item.name}</span>
+                <div className="cl-np-item-meta">
+                  <span>{item.kcal} kcal</span>
+                  {leftTab === 'alimentos' ? (
+                    <>
+                      <span>P {item.p}g</span>
+                      <span>C {item.c}g</span>
+                      <span>G {item.f}g</span>
+                    </>
+                  ) : (
+                    <span>{item.count} alim.</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            <p className="cl-np-drag-hint">Arrastra al centro para agregar</p>
+          </div>
+        </aside>
 
-        {/* 3-panel layout */}
-        <div className="cl-np-panels">
-          {/* Left */}
-          <aside className="cl-np-left">
-            <div className="cl-np-search">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+        {/* ── CENTER: Meals (categories + options) ───── */}
+        <section className="cl-np-center">
+          <div className="cl-np-center-head">
+            <h3 className="cl-np-center-title">Comidas</h3>
+            <span className="cl-np-add-comida">+ Comida</span>
+          </div>
+          <div className="cl-np-categories">
+            {categories.map((cat) => {
+              const opt = cat.options[cat.selected];
+              const isDragOver = dragOverId === cat.id;
+              const isPulse = pulseId === cat.id;
+              return (
+                <div
+                  key={cat.id}
+                  className={`cl-np-cat ${isDragOver ? 'cl-np-cat-over' : ''} ${isPulse ? 'cl-np-cat-pulse' : ''}`}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDragOverId(cat.id); }}
+                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); }}
+                  onDrop={(e) => handleDrop(e, cat.id)}
+                >
+                  <div className="cl-np-cat-head">
+                    <span className="cl-np-cat-name">{cat.label}</span>
+                    <div className="cl-np-opt-tabs">
+                      {cat.options.map((o, oi) => (
+                        <button
+                          type="button"
+                          key={o.id}
+                          className={`cl-np-opt-tab ${cat.selected === oi ? 'cl-np-opt-tab-active' : ''}`}
+                          onClick={() => selectOption(cat.id, oi)}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                      <button type="button" className="cl-np-opt-tab-add" aria-label="Añadir opción">+</button>
+                    </div>
+                  </div>
+                  {opt?.items?.length ? (
+                    <div className="cl-np-cat-items">
+                      {opt.items.map((it, ii) => (
+                        <div key={ii} className="cl-np-cat-item">
+                          <span className="cl-np-cat-item-name">{it.name}</span>
+                          {it.recipe && <span className="cl-np-cat-item-tag">receta</span>}
+                          <span className="cl-np-cat-item-portion">{it.portion}</span>
+                          <span className="cl-np-cat-item-kcal">{it.kcal} kcal</span>
+                          <button
+                            type="button"
+                            className="cl-np-cat-item-x"
+                            onClick={() => removeItem(cat.id, cat.selected, ii)}
+                            aria-label="Quitar"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="cl-np-cat-empty">Arrastra alimentos o recetas aquí</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ── RIGHT: Gauge + targets + macro bars ────── */}
+        <aside className="cl-np-right">
+          <div className="cl-np-gauge-wrap">
+            <svg viewBox="0 0 200 108" className="cl-np-gauge" aria-hidden="true">
+              <path
+                d="M 16 100 A 84 84 0 0 1 184 100"
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <path
+                d="M 16 100 A 84 84 0 0 1 184 100"
+                stroke="rgba(255,255,255,0.4)"
+                strokeWidth="10"
+                strokeLinecap="round"
+                fill="none"
+                strokeDasharray={NP_GAUGE_ARC}
+                strokeDashoffset={gaugeOffset}
+                style={{ transition: 'stroke-dashoffset 450ms cubic-bezier(0.22,1,0.36,1)' }}
+              />
+            </svg>
+            <div className="cl-np-gauge-label">
+              <span className="cl-np-gauge-val">{Math.round(totals.kcal).toLocaleString()}</span>
+              <span className="cl-np-gauge-unit">kcal</span>
+            </div>
+          </div>
+
+          <div className="cl-np-controls">
+            <div className="cl-np-ctrl">
+              <span className="cl-np-ctrl-lbl">Objetivo</span>
+              <span className="cl-np-ctrl-val">{target.kcal.toLocaleString()}</span>
+              <span className="cl-np-ctrl-unit">kcal</span>
+            </div>
+            <div className="cl-np-ctrl">
+              <span className="cl-np-ctrl-lbl">Dist.</span>
+              <span className="cl-np-ctrl-val">30/40/30</span>
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M3 4.5l3 3 3-3" />
               </svg>
-              <span>Buscar planes…</span>
             </div>
-            <div className="cl-np-list">
-              {NP_LIST.map((p, i) => (
-                <div key={p.name} className={`cl-np-list-card ${i === 0 ? 'cl-np-list-card-active' : ''}`}>
-                  <span className="cl-np-list-name">{p.name}</span>
-                  <span className="cl-np-list-kcal">{p.kcal.toLocaleString()} kcal</span>
-                  <span className="cl-np-list-meta">{p.meta}</span>
-                </div>
-              ))}
-            </div>
-          </aside>
+          </div>
 
-          {/* Center */}
-          <section className="cl-np-center">
-            <div className="cl-np-detail-header">
-              <h3 className="cl-np-detail-title">Plan definición</h3>
-              <p className="cl-np-detail-desc">Déficit moderado · 5 comidas al día · distribución flexible</p>
-              <span className="cl-np-edit">Editar</span>
-            </div>
-
-            <div className="cl-np-categories">
-              {NP_CATEGORIES.map((c) => (
-                <div key={c.label} className="cl-np-category">
-                  <span className="cl-np-category-label">{c.label}</span>
-                  <span className="cl-np-category-count">{c.count} opciones</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Right */}
-          <aside className="cl-np-right">
-            <div className="cl-np-macros-panel">
-              <div className="cl-np-calories">
-                <span className="cl-np-calories-val">2.000</span>
-                <span className="cl-np-calories-unit">kcal</span>
-              </div>
-              <div className="cl-np-rings">
-                <div className="cl-np-ring-row">
-                  <MacroRing percent={72} color="rgba(100,200,150,0.85)" />
-                  <div className="cl-np-ring-info">
-                    <span className="cl-np-ring-label">Prot</span>
-                    <span className="cl-np-ring-val">160 g</span>
+          <div className="cl-np-macros">
+            {[
+              { key: 'p', name: 'Proteína', cur: totals.p, tgt: target.p, color: 'rgba(100,200,150,0.85)' },
+              { key: 'c', name: 'Carbohidratos', cur: totals.c, tgt: target.c, color: 'rgba(100,160,240,0.85)' },
+              { key: 'f', name: 'Grasa', cur: totals.f, tgt: target.f, color: 'rgba(240,160,80,0.85)' },
+            ].map((m) => (
+              <div key={m.key} className="cl-np-macro">
+                <div className="cl-np-macro-head">
+                  <span className="cl-np-macro-name">{m.name}</span>
+                  <div className="cl-np-macro-nums">
+                    <span className="cl-np-macro-cur">{m.cur.toFixed(0)}</span>
+                    <span className="cl-np-macro-slash">/</span>
+                    <span className="cl-np-macro-tgt">{m.tgt}</span>
+                    <span className="cl-np-macro-unit">g</span>
                   </div>
                 </div>
-                <div className="cl-np-ring-row">
-                  <MacroRing percent={55} color="rgba(100,160,240,0.85)" />
-                  <div className="cl-np-ring-info">
-                    <span className="cl-np-ring-label">Carbs</span>
-                    <span className="cl-np-ring-val">200 g</span>
-                  </div>
-                </div>
-                <div className="cl-np-ring-row">
-                  <MacroRing percent={40} color="rgba(240,160,80,0.85)" />
-                  <div className="cl-np-ring-info">
-                    <span className="cl-np-ring-label">Grasa</span>
-                    <span className="cl-np-ring-val">67 g</span>
-                  </div>
+                <div className="cl-np-macro-bar">
+                  <div
+                    className="cl-np-macro-bar-fill"
+                    style={{
+                      width: `${Math.min(100, (m.cur / m.tgt) * 100)}%`,
+                      background: m.color,
+                    }}
+                  />
                 </div>
               </div>
-              <div className="cl-np-totals">
-                <div className="cl-np-total-row">
-                  <span className="cl-np-total-dot" style={{ background: 'rgba(100,200,150,0.85)' }} />
-                  <span className="cl-np-total-name">Proteína</span>
-                  <span className="cl-np-total-val">160 g</span>
-                </div>
-                <div className="cl-np-total-row">
-                  <span className="cl-np-total-dot" style={{ background: 'rgba(100,160,240,0.85)' }} />
-                  <span className="cl-np-total-name">Carbohidratos</span>
-                  <span className="cl-np-total-val">200 g</span>
-                </div>
-                <div className="cl-np-total-row">
-                  <span className="cl-np-total-dot" style={{ background: 'rgba(240,160,80,0.85)' }} />
-                  <span className="cl-np-total-name">Grasa</span>
-                  <span className="cl-np-total-val">67 g</span>
-                </div>
-              </div>
-            </div>
-          </aside>
-        </div>
+            ))}
+          </div>
+        </aside>
       </div>
     </WindowFrame>
   );
