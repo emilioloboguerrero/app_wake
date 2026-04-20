@@ -17,7 +17,7 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const { pathname } = useLocation();
   const isCreadores = pathname === '/creadores';
-  const ctaHref = isCreadores ? '/creators' : '/app';
+  const ctaHref = isCreadores ? '/creators/' : '/app';
   const ctaLabel = isCreadores ? 'Publica tu método' : 'Ir a la app';
   const ctaMobileLabel = isCreadores ? 'Publicar' : 'App';
 

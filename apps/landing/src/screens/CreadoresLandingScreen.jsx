@@ -912,7 +912,7 @@ function Close() {
     <section className="cl-close">
       <div className="cl-close-aurora" aria-hidden="true" />
       <motion.a
-        href="/creators"
+        href="/creators/"
         className="cl-close-cta"
         initial={{ opacity: 0, y: 20, scale: 0.96 }}
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
