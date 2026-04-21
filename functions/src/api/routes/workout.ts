@@ -387,9 +387,7 @@ router.get("/workout/daily", async (req, res) => {
           sessionCollectionId = courseCreator as string;
           targetModuleId = "__library__";
           targetSessionId = target.session_id;
-        } else {
         }
-      } else {
       }
     }
   } else {
