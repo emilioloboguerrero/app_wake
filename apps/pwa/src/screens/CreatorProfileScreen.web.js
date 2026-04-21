@@ -55,6 +55,12 @@ const CreatorProfileScreen = () => {
             navigate(`/course/${courseId}`, { state: params });
           }
         },
+        'BundleDetail': () => {
+          const bundleId = params?.bundle?.id || params?.bundleId;
+          if (bundleId) {
+            navigate(`/bundle/${bundleId}`, { state: params });
+          }
+        },
         'DailyWorkout': () => {
           const courseId = params?.course?.courseId || params?.course?.id;
           if (courseId) {

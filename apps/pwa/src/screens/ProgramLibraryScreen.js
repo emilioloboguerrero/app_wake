@@ -248,13 +248,18 @@ const ProgramLibraryScreen = ({ navigation }) => {
     queryFn: async () => {
       // TODO: no endpoint for getCourses — no REST endpoint; courses are in the users/me courses map
       const allCourses = await apiService.getCourses(userId);
+      const isBundleOnly = (c) => (c.visibility ?? 'both') === 'bundle-only';
       let filtered;
       if (isAdmin(userRole)) {
         filtered = allCourses;
       } else if (isCreator(userRole)) {
-        filtered = allCourses.filter(c => c.status === 'published' || (c.status !== 'published' && c.creator_id === userId));
+        filtered = allCourses.filter((c) => {
+          const own = c.creator_id === userId;
+          if (isBundleOnly(c) && !own) return false;
+          return c.status === 'published' || (c.status !== 'published' && own);
+        });
       } else {
-        filtered = allCourses.filter(c => c.status === 'published');
+        filtered = allCourses.filter((c) => c.status === 'published' && !isBundleOnly(c));
       }
       return filtered.map(course => ({
         id: course.id,

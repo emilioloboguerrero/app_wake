@@ -611,6 +611,18 @@ class FirestoreService {
     return result?.data ?? [];
   }
 
+  // ============ BUNDLES ============
+
+  async getBundlesByCreatorId(creatorId) {
+    try {
+      const result = await apiClient.get(`/bundles?creatorId=${encodeURIComponent(creatorId)}`);
+      return result?.data ?? [];
+    } catch (error) {
+      logger.error('[getBundlesByCreatorId] error:', error);
+      return [];
+    }
+  }
+
   // ============ EXERCISE LIBRARY ============
 
   async getExerciseLibraryItem(exerciseId) {

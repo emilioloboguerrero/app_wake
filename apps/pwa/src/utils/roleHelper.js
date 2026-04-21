@@ -14,19 +14,24 @@ export const USER_ROLES = {
  * @returns {boolean} True if user can view the course
  */
 export function canViewCourse(userRole, userId, course) {
+  const visibility = course.visibility ?? 'both';
+  const isBundleOnly = visibility === 'bundle-only';
+
   // Admins see everything
   if (userRole === USER_ROLES.ADMIN) {
     return true;
   }
-  
-  // Creators see published + their own courses
+
+  // Creators see published + their own courses (bundle-only blocked for others' courses)
   if (userRole === USER_ROLES.CREATOR) {
     const isPublished = course.status === 'published';
     const isOwnCourse = course.creator_id === userId;
+    if (isBundleOnly && !isOwnCourse) return false;
     return isPublished || isOwnCourse;
   }
-  
-  // Regular users see only published
+
+  // Regular users: published + not bundle-only
+  if (isBundleOnly) return false;
   return course.status === 'published';
 }
 

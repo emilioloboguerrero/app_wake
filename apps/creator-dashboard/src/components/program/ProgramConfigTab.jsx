@@ -19,6 +19,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
   const [programNameValue, setProgramNameValue] = useState('');
   const [priceValue, setPriceValue] = useState('');
   const [compareAtPriceValue, setCompareAtPriceValue] = useState('');
+  const [subscriptionPriceValue, setSubscriptionPriceValue] = useState('');
   const [durationValue, setDurationValue] = useState(1);
   const [descriptionValue, setDescriptionValue] = useState('');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -44,6 +45,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
   const [isUpdatingCompareAtPrice, setIsUpdatingCompareAtPrice] = useState(false);
+  const [isUpdatingSubscriptionPrice, setIsUpdatingSubscriptionPrice] = useState(false);
   const [isUpdatingDuration, setIsUpdatingDuration] = useState(false);
   const [isUpdatingProgram, setIsUpdatingProgram] = useState(false);
   const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
@@ -54,7 +56,16 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
   useEffect(() => {
     if (!program) return;
     setProgramNameValue(program.title || '');
-    setPriceValue(program.price != null ? String(program.price) : '');
+    // Simplified model: price = OTP (1-year) amount, subscription_price = monthly.
+    // Legacy read: if a program was historically set up as monthly-subscription
+    // (access_duration === 'monthly') its `price` is really the monthly amount, so
+    // surface it in the subscription slot and leave the OTP slot empty.
+    const legacyMonthlyAmount = program.access_duration === 'monthly' && program.price != null;
+    setPriceValue(!legacyMonthlyAmount && program.price != null ? String(program.price) : '');
+    setSubscriptionPriceValue(
+      program.subscription_price != null ? String(program.subscription_price) :
+        (legacyMonthlyAmount ? String(program.price) : '')
+    );
     setCompareAtPriceValue(program.compare_at_price != null ? String(program.compare_at_price) : '');
     let dur = 1;
     if (program.duration) {
@@ -66,7 +77,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
     setFreeTrialDurationDays(String(program.free_trial?.duration_days ?? 0));
     setWeightSuggestionsEnabled(!!program.weight_suggestions);
     setSelectedLibraryIds(new Set(program.availableLibraries || []));
-  }, [program?.id, program?.title, program?.price, program?.compare_at_price, program?.duration, program?.free_trial, program?.weight_suggestions, program?.availableLibraries]);
+  }, [program?.id, program?.title, program?.price, program?.subscription_price, program?.access_duration, program?.compare_at_price, program?.duration, program?.free_trial, program?.weight_suggestions, program?.availableLibraries]);
 
   useEffect(() => {
     if (!program || !user) return;
@@ -122,6 +133,23 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
     } finally {
       setIsUpdatingPrice(false);
+    }
+  };
+
+  const saveSubscriptionPrice = async (value) => {
+    if (!program) return;
+    const numeric = value === '' ? null : parseInt(String(value).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 2000) return;
+    if (numeric === program.subscription_price) return;
+    try {
+      setIsUpdatingSubscriptionPrice(true);
+      await programService.updateProgram(program.id, { subscription_price: numeric });
+      queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, subscription_price: numeric }));
+    } catch (err) {
+      logger.error(err);
+      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+    } finally {
+      setIsUpdatingSubscriptionPrice(false);
     }
   };
 
@@ -513,11 +541,19 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
         </div>
         <div className="program-section__content program-config-inline">
           <div className="program-config-inline-row">
-            <span className="program-config-item-label">Precio</span>
+            <span className="program-config-item-label">Pago único (1 año)</span>
             <div className="program-config-inline-field">
-              <input type="text" className="program-config-inline-input pd-inline-input-max140" value={priceValue} onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Gratis o monto" />
+              <input type="text" className="program-config-inline-input pd-inline-input-max140" value={priceValue} onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Sin oferta" />
               <span className="program-config-inline-hint">$ (min. 2000)</span>
               <button type="button" className="program-config-inline-btn" onClick={() => savePrice(priceValue)} disabled={isUpdatingPrice || (priceValue !== '' && parseInt(priceValue, 10) < 2000)}>{isUpdatingPrice ? 'Guardando...' : 'Guardar'}</button>
+            </div>
+          </div>
+          <div className="program-config-inline-row">
+            <span className="program-config-item-label">Suscripción mensual</span>
+            <div className="program-config-inline-field">
+              <input type="text" className="program-config-inline-input pd-inline-input-max140" value={subscriptionPriceValue} onChange={(e) => setSubscriptionPriceValue(e.target.value.replace(/\D/g, ''))} placeholder="Sin oferta" />
+              <span className="program-config-inline-hint">$ / mes (min. 2000)</span>
+              <button type="button" className="program-config-inline-btn" onClick={() => saveSubscriptionPrice(subscriptionPriceValue)} disabled={isUpdatingSubscriptionPrice || (subscriptionPriceValue !== '' && parseInt(subscriptionPriceValue, 10) < 2000)}>{isUpdatingSubscriptionPrice ? 'Guardando...' : 'Guardar'}</button>
             </div>
           </div>
           <div className="program-config-inline-row">

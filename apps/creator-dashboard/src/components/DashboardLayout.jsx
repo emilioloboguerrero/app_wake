@@ -55,6 +55,7 @@ const NAV_ITEMS = [
     path: '/programas',
     match: (p, state) =>
       p === '/programas' ||
+      p === '/bundles' ||
       p.startsWith('/programs/') ||
       (p.startsWith('/content/') && state?.editScope === 'program_plan') ||
       (p.startsWith('/nutrition/') && state?.editScope === 'assignment' && !!state?.programId),

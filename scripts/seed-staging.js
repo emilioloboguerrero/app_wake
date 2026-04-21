@@ -114,6 +114,7 @@ async function seed() {
     deliveryType: 'low_ticket',
     weekly: true,
     status: 'publicado',
+    visibility: 'both',
     created_at: now,
     updated_at: now,
   });
@@ -128,6 +129,7 @@ async function seed() {
     deliveryType: 'one_on_one',
     weekly: false,
     status: 'publicado',
+    visibility: 'both',
     content_plan_id: 'seed-plan-001',
     created_at: now,
     updated_at: now,

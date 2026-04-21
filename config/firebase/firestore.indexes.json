@@ -278,6 +278,23 @@
         {"fieldPath": "creatorId", "order": "ASCENDING"},
         {"fieldPath": "leftAt", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "bundles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "bundles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": [

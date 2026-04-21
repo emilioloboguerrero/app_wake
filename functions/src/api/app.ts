@@ -21,6 +21,7 @@ import notificationsRouter from "./routes/notifications.js";
 import videoExchangesRouter from "./routes/videoExchanges.js";
 import emailRouter from "./routes/email.js";
 import enrollmentsRouter from "./routes/enrollments.js";
+import bundlesRouter from "./routes/bundles.js";
 
 export const app = express();
 
@@ -97,6 +98,8 @@ const PUBLIC_PATHS = [
   /^\/events\/[^/]+\/waitlist$/, // POST /events/:eventId/waitlist
   /^\/app-resources$/, // GET /app-resources (exact match only)
   /^\/email\/unsubscribe$/, // GET /email/unsubscribe (public one-click unsub)
+  /^\/bundles$/, // GET /bundles?creatorId=X (published only)
+  /^\/bundles\/[^/]+$/, // GET /bundles/:bundleId (published only)
 ];
 
 const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
@@ -141,6 +144,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, videoExchangesRouter);
   app.use(prefix, emailRouter);
   app.use(prefix, enrollmentsRouter);
+  app.use(prefix, bundlesRouter);
 }
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────

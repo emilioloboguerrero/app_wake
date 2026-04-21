@@ -16,6 +16,7 @@ import {
   calculateExpirationDate, classifyError, getClient,
 } from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
+import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 
 const router = Router();
@@ -26,6 +27,40 @@ function getMPClient() {
     throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Servicio de pagos no configurado");
   }
   return getClient(token);
+}
+
+// Pick the OTP price from a bundle's pricing object. Tolerates both the
+// simplified scalar form ({otp: number}) and the legacy duration-map form
+// ({otp: {yearly: N, ...}}), preferring the yearly bucket when present.
+function resolveBundleOtpPrice(pricing: unknown): number | null {
+  const p = (pricing ?? {}) as Record<string, unknown>;
+  const raw = p.otp;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const map = raw as Record<string, unknown>;
+    const preferred = map.yearly;
+    if (typeof preferred === "number" && Number.isFinite(preferred) && preferred > 0) return preferred;
+    for (const v of Object.values(map)) {
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+    }
+  }
+  return null;
+}
+
+// Same tolerance for subscription price; prefers monthly bucket.
+function resolveBundleSubscriptionPrice(pricing: unknown): number | null {
+  const p = (pricing ?? {}) as Record<string, unknown>;
+  const raw = p.subscription;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) return raw;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const map = raw as Record<string, unknown>;
+    const preferred = map.monthly;
+    if (typeof preferred === "number" && Number.isFinite(preferred) && preferred > 0) return preferred;
+    for (const v of Object.values(map)) {
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+    }
+  }
+  return null;
 }
 
 // ─── GET /users/me/subscriptions ──────────────────────────────────────────
@@ -129,8 +164,14 @@ router.post("/payments/subscription", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
-  if (!course.price) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Precio del curso no encontrado");
+
+  // Subscription uses the dedicated monthly price; falls back to course.price
+  // for 1:1 programs (which are subscription-only by design) and legacy docs.
+  const monthlyPrice = typeof course.subscription_price === "number" && course.subscription_price > 0 ?
+    course.subscription_price :
+    (course.deliveryType === "one_on_one" && typeof course.price === "number" ? course.price : null);
+  if (monthlyPrice === null || monthlyPrice <= 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este programa no ofrece suscripción");
   }
 
   // Block buying a rival creator's one-on-one program while locked in
@@ -164,7 +205,7 @@ router.post("/payments/subscription", async (req, res) => {
         auto_recurring: {
           frequency: 1,
           frequency_type: "months",
-          transaction_amount: course.price,
+          transaction_amount: monthlyPrice,
           currency_id: "COP",
           start_date: startDate.toISOString(),
         },
@@ -222,7 +263,8 @@ router.post("/payments/subscription", async (req, res) => {
       course_title: course.title || "Subscription",
       status: "pending",
       payer_email: body.payer_email,
-      transaction_amount: course.price,
+      transaction_amount: monthlyPrice,
+      access_duration: "monthly",
       currency_id: "COP",
       management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${result.id}`,
       next_billing_date: nextBillingDate,
@@ -233,7 +275,200 @@ router.post("/payments/subscription", async (req, res) => {
   res.json({data: {init_point: result.init_point, subscription_id: result.id}});
 });
 
-// ─���─ POST /payments/webhook ──────────────────────────────────────────���────
+// ─── POST /payments/bundle-preference ─────────────────────────────────────
+
+router.post("/payments/bundle-preference", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{ bundleId: string }>(
+    {bundleId: "string"},
+    req.body,
+  );
+
+  if (!COURSE_ID_RE.test(body.bundleId)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "bundleId inválido", "bundleId");
+  }
+
+  const bundleDoc = await db.collection("bundles").doc(body.bundleId).get();
+  if (!bundleDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Bundle no encontrado");
+  }
+  const bundle = bundleDoc.data()!;
+  if (bundle.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Bundle no disponible");
+  }
+
+  const price = resolveBundleOtpPrice(bundle.pricing);
+  if (price === null) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Este bundle no ofrece pago único",
+      "bundleId",
+    );
+  }
+
+  const externalReference = buildExternalReference(auth.userId, body.bundleId, "bundle-otp");
+
+  const client = getMPClient();
+  const preference = new Preference(client);
+  const result = await preference.create({
+    body: {
+      binary_mode: true,
+      items: [{
+        id: body.bundleId,
+        title: bundle.title,
+        quantity: 1,
+        unit_price: price,
+      }],
+      external_reference: externalReference,
+      metadata: {access_duration: "yearly"},
+      back_urls: {
+        success: `https://wolf-20b8b.web.app/app/payment/success?bundleId=${body.bundleId}`,
+        failure: `https://wolf-20b8b.web.app/app/payment/cancelled?bundleId=${body.bundleId}`,
+        pending: `https://wolf-20b8b.web.app/app/payment/cancelled?bundleId=${body.bundleId}`,
+      },
+      auto_return: "approved",
+    },
+  });
+
+  res.json({data: {init_point: result.init_point}});
+});
+
+// ─── POST /payments/bundle-subscription ───────────────────────────────────
+
+router.post("/payments/bundle-subscription", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const body = validateBody<{
+    bundleId: string;
+    payer_email: string;
+  }>({
+    bundleId: "string",
+    payer_email: "string",
+  }, req.body);
+
+  if (!COURSE_ID_RE.test(body.bundleId)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "bundleId inválido", "bundleId");
+  }
+  if (!EMAIL_RE.test(body.payer_email)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email de pago inválido", "payer_email");
+  }
+
+  const bundleDoc = await db.collection("bundles").doc(body.bundleId).get();
+  if (!bundleDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Bundle no encontrado");
+  }
+  const bundle = bundleDoc.data()!;
+  if (bundle.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Bundle no disponible");
+  }
+
+  const price = resolveBundleSubscriptionPrice(bundle.pricing);
+  if (price === null) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Este bundle no ofrece suscripción",
+      "bundleId",
+    );
+  }
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  if (!userDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
+  }
+
+  const client = getMPClient();
+  const preapproval = new PreApproval(client);
+  const startDate = new Date(Date.now() + 5 * 60 * 1000);
+  const externalRef = buildExternalReference(auth.userId, body.bundleId, "bundle-sub");
+
+  const frequencyType = "months";
+  const frequency = 1;
+
+  let result;
+  try {
+    result = await preapproval.create({
+      body: {
+        payer_email: body.payer_email,
+        reason: bundle.title || "Bundle subscription",
+        external_reference: externalRef,
+        auto_recurring: {
+          frequency,
+          frequency_type: frequencyType,
+          transaction_amount: price,
+          currency_id: "COP",
+          start_date: startDate.toISOString(),
+        },
+        status: "pending",
+        back_url: "https://www.mercadopago.com.co/subscriptions",
+      },
+    });
+  } catch (error: unknown) {
+    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    const needsAltEmail =
+      msg.includes("cannot operate between different") ||
+      msg.includes("payer_email") ||
+      msg.includes("belongs to another user") ||
+      msg.includes("must belong to this site");
+
+    if (needsAltEmail) {
+      res.status(409).json({
+        error: {code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago"},
+        requireAlternateEmail: true,
+      });
+      return;
+    }
+    throw error;
+  }
+
+  if (!result.init_point || !result.id) {
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
+  }
+
+  interface PreapprovalDetails {
+    next_payment_date?: string | null;
+    auto_recurring?: { next_payment_date?: string | null; start_date?: string | null };
+  }
+  let nextBillingDate: string | null = null;
+  try {
+    const details = await preapproval.get({id: result.id}) as PreapprovalDetails;
+    nextBillingDate =
+      details?.next_payment_date ||
+      details?.auto_recurring?.next_payment_date ||
+      details?.auto_recurring?.start_date ||
+      null;
+  } catch {/* non-critical */}
+
+  if (!nextBillingDate) nextBillingDate = startDate.toISOString();
+
+  await db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("subscriptions")
+    .doc(result.id)
+    .set({
+      subscription_id: result.id,
+      user_id: auth.userId,
+      bundle_id: body.bundleId,
+      bundle_title: bundle.title || "Bundle",
+      course_id: null,
+      access_duration: "monthly",
+      status: "pending",
+      payer_email: body.payer_email,
+      transaction_amount: price,
+      currency_id: "COP",
+      management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${result.id}`,
+      next_billing_date: nextBillingDate,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+  res.json({data: {init_point: result.init_point, subscription_id: result.id}});
+});
+
+// ─── POST /payments/webhook ────────────────────────────────────────────────
 
 router.post("/payments/webhook", async (req: Request, res) => {
   const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
@@ -474,6 +709,35 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
+  // Refund or chargeback — revoke access
+  if (paymentData && (paymentData.status === "refunded" || paymentData.status === "charged_back")) {
+    try {
+      const prev = await processedRef.get();
+      const prevData = prev.exists ? prev.data()! : null;
+      if (prevData?.bundleId && prevData?.userId) {
+        const revoked = await revokeBundleAccess(prevData.userId as string, prevData.bundleId as string);
+        functions.logger.info("Bundle access revoked via refund", {
+          paymentId, bundleId: prevData.bundleId, revoked,
+        });
+      } else if (prevData?.courseId && prevData?.userId) {
+        await db.collection("users").doc(prevData.userId as string).update({
+          [`courses.${prevData.courseId}.status`]: "cancelled",
+          [`courses.${prevData.courseId}.cancelled_at`]: new Date().toISOString(),
+          updated_at: FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (refundErr) {
+      functions.logger.error("Refund revocation failed", refundErr);
+    }
+    await processedRef.set({
+      processed_at: FieldValue.serverTimestamp(),
+      status: paymentData.status,
+      refunded_at: new Date().toISOString(),
+    }, {merge: true});
+    res.status(200).send("OK");
+    return;
+  }
+
   // Not approved?
   if (!paymentData || paymentData.status !== "approved") {
     if (paymentData?.status === "pending" || paymentData?.status === "in_process") {
@@ -529,10 +793,11 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
-  const {userId, courseId, paymentType} = parsed;
-  const isSubscription = paymentType === "sub";
+  const {userId, paymentType} = parsed;
+  const isSubscription = paymentType === "sub" || paymentType === "bundle-sub";
+  const isBundle = paymentType === "bundle-otp" || paymentType === "bundle-sub";
 
-  // Validate user and course exist
+  // Validate user exists
   const userDoc = await db.collection("users").doc(userId).get();
   if (!userDoc.exists) {
     await processedRef.set({
@@ -543,6 +808,90 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
+  const subscriptionId = paymentData.subscription_id || paymentData.preapproval_id || null;
+
+  // ── Bundle branch ──
+  if (isBundle) {
+    const bundleId = parsed.bundleId!;
+    const bundleDoc = await db.collection("bundles").doc(bundleId).get();
+    if (!bundleDoc.exists) {
+      await processedRef.set({
+        processed_at: FieldValue.serverTimestamp(),
+        status: "error", error_type: "bundle_not_found",
+      });
+      res.status(200).send("OK");
+      return;
+    }
+
+    const userDataForBundle = userDoc.data()!;
+    const existingCoursesForBundle =
+      (userDataForBundle.courses ?? {}) as Record<string, Record<string, unknown>>;
+    const hasPriorBundleGrant = Object.values(existingCoursesForBundle).some(
+      (entry) => entry.bundleId === bundleId && entry.status === "active"
+    );
+    const isBundleRenewal = hasPriorBundleGrant && isSubscription;
+
+    // Simplified model: subscriptions renew monthly, OTP grants 1 year.
+    const accessDuration: string = isSubscription ? "monthly" : "yearly";
+
+    try {
+      const result = await assignBundleToUser({
+        userId,
+        bundleId,
+        accessDuration,
+        paymentId: paymentId!,
+        subscriptionId,
+        isRenewal: isBundleRenewal,
+      });
+
+      if (isSubscription && subscriptionId) {
+        await db.collection("users").doc(userId)
+          .collection("subscriptions").doc(subscriptionId).set({
+            status: "authorized",
+            last_payment_id: paymentId,
+            last_payment_date:
+              paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+            transaction_amount: paymentData.transaction_amount || null,
+            currency_id: paymentData.currency_id || null,
+            management_url:
+              `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
+            updated_at: FieldValue.serverTimestamp(),
+          }, {merge: true});
+      }
+
+      await processedRef.set({
+        processed_at: FieldValue.serverTimestamp(),
+        status: "approved",
+        userId,
+        bundleId,
+        courseIds: result.courseIdsGranted,
+        isSubscription,
+        isRenewal: isBundleRenewal,
+        payment_type: paymentType,
+        bundleTitle: result.bundleTitle,
+        state: "completed",
+        amount: paymentData.transaction_amount ?? null,
+        currency_id: paymentData.currency_id ?? null,
+      });
+    } catch (bundleErr) {
+      functions.logger.error("Bundle assignment failed", bundleErr);
+      const errType = classifyError(bundleErr);
+      if (errType === "RETRYABLE") {
+        res.status(500).json({error: {code: "INTERNAL_ERROR", message: "Error asignando bundle"}});
+        return;
+      }
+      await processedRef.set({
+        processed_at: FieldValue.serverTimestamp(),
+        status: "error", error_type: "bundle_assignment_failed",
+      });
+    }
+
+    res.status(200).send("OK");
+    return;
+  }
+
+  // ── Single-course branch ──
+  const courseId = parsed.courseId!;
   const courseDoc = await db.collection("courses").doc(courseId).get();
   if (!courseDoc.exists) {
     await processedRef.set({
@@ -556,15 +905,16 @@ router.post("/payments/webhook", async (req: Request, res) => {
   const userData = userDoc.data()!;
   const courseDetails = courseDoc.data()!;
   const courseTitle = courseDetails.title || "Untitled Course";
-  const courseAccessDuration = courseDetails.access_duration;
+  // Simplified model: every subscription is monthly, every OTP is 1 year.
+  // 1:1 programs are subscription-only so they land on monthly too.
+  const courseAccessDuration = isSubscription ? "monthly" : "yearly";
+  courseDetails.access_duration = courseAccessDuration;
   const userCourses = userData.courses ?? {};
   const existingCourseData = userCourses[courseId];
   const existingPurchase =
     existingCourseData?.status === "active" &&
     new Date(existingCourseData.expires_at) > new Date();
   const isRenewal = existingPurchase && isSubscription;
-
-  const subscriptionId = paymentData.subscription_id || paymentData.preapproval_id || null;
 
   // ── Renewal ─��
   if (isRenewal) {
@@ -605,16 +955,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
-  // ─��� New purchase ──
-  if (!courseAccessDuration) {
-    await processedRef.set({
-      processed_at: FieldValue.serverTimestamp(),
-      status: "error", error_type: "missing_access_duration",
-    });
-    res.status(200).send("OK");
-    return;
-  }
-
+  // ── New purchase ──
   const expirationDate = calculateExpirationDate(courseAccessDuration);
 
   await db.runTransaction(async (tx) => {

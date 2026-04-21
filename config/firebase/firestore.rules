@@ -598,6 +598,21 @@ service cloud.firestore {
     }
 
     // ============================================
+    // BUNDLES (multi-program SKUs)
+    // ============================================
+    match /bundles/{bundleId} {
+      allow read: if resource.data.status == 'published'
+                  || (isSignedIn() && request.auth.uid == resource.data.creatorId)
+                  || isAdmin();
+      allow create: if isSignedIn()
+                    && isCreator()
+                    && request.auth.uid == request.resource.data.creatorId
+                    && request.resource.data.status == 'draft';
+      allow update: if isSignedIn() && request.auth.uid == resource.data.creatorId;
+      allow delete: if false;
+    }
+
+    // ============================================
     // ORPHANED LEGACY COLLECTIONS (zero code references, safe to delete from console)
     // - checkout_intents (4 docs)
     // - creator_client_access (7 docs) — replaced by one_on_one_clients

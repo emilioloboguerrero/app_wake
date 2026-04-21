@@ -38,6 +38,7 @@ import {
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
+import {assignBundleToUser} from "./api/services/bundleAssignment.js";
 import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
 
 const db = admin.firestore();
@@ -1001,8 +1002,9 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      const {userId, courseId, paymentType} = parsedReference;
-      const isSubscription = paymentType === "sub";
+      const {userId, paymentType} = parsedReference;
+      const isSubscription = paymentType === "sub" || paymentType === "bundle-sub";
+      const isBundle = paymentType === "bundle-otp" || paymentType === "bundle-sub";
 
       if (isSubscription && webhookType !== "subscription_authorized_payment" && webhookType !== "payment") {
         functions.logger.warn("Subscription reference received on unexpected webhook type", {
@@ -1015,7 +1017,8 @@ export const processPaymentWebhook = functions
       functions.logger.info("Processing approved payment", {
         paymentId,
         userId,
-        courseId,
+        courseId: parsedReference.courseId ?? null,
+        bundleId: parsedReference.bundleId ?? null,
         isSubscription,
         paymentType,
       });
@@ -1041,6 +1044,112 @@ export const processPaymentWebhook = functions
       const userEmail = userData?.email ?? null;
       const userName =
         userData?.display_name ?? userData?.name ?? userData?.fullName ?? null;
+
+      const subscriptionIdForBundle =
+        paymentData?.subscription_id || paymentData?.preapproval_id || null;
+
+      // ── Bundle branch ──
+      if (isBundle) {
+        const bundleId = parsedReference.bundleId!;
+        const bundleDoc = await db.collection("bundles").doc(bundleId).get();
+        if (!bundleDoc.exists) {
+          functions.logger.error("Bundle not found:", bundleId);
+          await processedPaymentsRef.set({
+            processed_at: admin.firestore.FieldValue.serverTimestamp(),
+            status: "error",
+            error_type: "bundle_not_found",
+            error_message: "Bundle not found",
+            userId,
+            payment_type: paymentType,
+          });
+          response.status(200).send("OK");
+          return;
+        }
+
+        const existingCourses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
+        const hasPriorBundleGrant = Object.values(existingCourses).some(
+          (entry) => entry.bundleId === bundleId && entry.status === "active"
+        );
+        const isBundleRenewal = hasPriorBundleGrant && isSubscription;
+
+        let accessDuration: string | undefined;
+        if (isSubscription && subscriptionIdForBundle) {
+          const subDoc = await db.collection("users").doc(userId)
+            .collection("subscriptions").doc(subscriptionIdForBundle).get();
+          accessDuration = subDoc.exists ?
+            (subDoc.data()!.access_duration as string | undefined) :
+            undefined;
+        }
+        if (!accessDuration) {
+          const metadata = (paymentData?.metadata && typeof paymentData.metadata === "object") ?
+            paymentData.metadata as Record<string, unknown> :
+            {};
+          accessDuration = (metadata.access_duration as string | undefined) ?? "monthly";
+        }
+
+        try {
+          const result = await assignBundleToUser({
+            userId,
+            bundleId,
+            accessDuration,
+            paymentId,
+            subscriptionId: subscriptionIdForBundle,
+            isRenewal: isBundleRenewal,
+          });
+
+          if (isSubscription && subscriptionIdForBundle) {
+            await db.collection("users").doc(userId)
+              .collection("subscriptions").doc(subscriptionIdForBundle).set({
+                status: "authorized",
+                last_payment_id: paymentId,
+                last_payment_date:
+                  paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+                transaction_amount: paymentData.transaction_amount || null,
+                currency_id: paymentData.currency_id || null,
+                management_url:
+                  `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionIdForBundle}`,
+                updated_at: admin.firestore.FieldValue.serverTimestamp(),
+              }, {merge: true});
+          }
+
+          await processedPaymentsRef.set({
+            processed_at: admin.firestore.FieldValue.serverTimestamp(),
+            status: "approved",
+            userId,
+            bundleId,
+            courseIds: result.courseIdsGranted,
+            isSubscription,
+            isRenewal: isBundleRenewal,
+            payment_type: paymentType,
+            userEmail,
+            userName,
+            bundleTitle: result.bundleTitle,
+            state: "completed",
+            amount: paymentData.transaction_amount ??
+              paymentData.transaction_details?.total_paid_amount ?? null,
+            currency_id: paymentData.currency_id ?? null,
+          });
+        } catch (bundleError) {
+          functions.logger.error("Bundle assignment failed", bundleError);
+          const errType = classifyError(bundleError);
+          if (errType === "RETRYABLE") {
+            response.status(500).send("Error");
+            return;
+          }
+          await processedPaymentsRef.set({
+            processed_at: admin.firestore.FieldValue.serverTimestamp(),
+            status: "error",
+            error_type: "bundle_assignment_failed",
+            error_message: toErrorMessage(bundleError),
+            userId, bundleId, payment_type: paymentType,
+          });
+        }
+
+        response.status(200).send("OK");
+        return;
+      }
+
+      const courseId = parsedReference.courseId!;
 
       // Validate course exists - Fix #5: Return 200 to prevent retries
       const courseDoc = await db.collection("courses").doc(courseId).get();

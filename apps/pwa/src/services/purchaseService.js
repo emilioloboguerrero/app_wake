@@ -240,6 +240,56 @@ class PurchaseService {
   }
 
   /**
+   * Prepare a bundle one-time-payment preference. OTP always grants 1 year.
+   */
+  async prepareBundlePurchase(bundleId) {
+    try {
+      const result = await apiClient.post('/payments/bundle-preference', { bundleId });
+      const initPoint = result?.data?.init_point;
+      if (!initPoint) throw new Error('Error creating bundle payment');
+      return { success: true, checkoutURL: initPoint };
+    } catch (error) {
+      return { success: false, error: error.message || 'Error preparing bundle payment' };
+    }
+  }
+
+  /**
+   * Prepare a bundle subscription checkout. Always monthly recurring.
+   */
+  async prepareBundleSubscription(bundleId, payerEmail) {
+    try {
+      if (!payerEmail) {
+        return {
+          success: false,
+          requiresAlternateEmail: true,
+          error: 'Necesitamos el correo de tu cuenta de Mercado Pago',
+        };
+      }
+      let result;
+      try {
+        result = await apiClient.post('/payments/bundle-subscription', {
+          bundleId,
+          payer_email: payerEmail,
+        });
+      } catch (error) {
+        if (error.code === 'CONFLICT') {
+          return {
+            success: false,
+            requiresAlternateEmail: true,
+            error: error.message || 'Por favor ingresa tu correo de Mercado Pago',
+          };
+        }
+        throw error;
+      }
+      const initPoint = result?.data?.init_point;
+      if (!initPoint) throw new Error('Error creating bundle subscription checkout');
+      return { success: true, checkoutURL: initPoint };
+    } catch (error) {
+      return { success: false, error: error.message || 'Error preparing bundle subscription' };
+    }
+  }
+
+  /**
    * Get all courses (active, cancelled, expired) for AllPurchasedCoursesScreen
    * @param {string} userId - User ID
    * @param {boolean} includeInactive - Whether to include inactive courses

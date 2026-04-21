@@ -30,6 +30,7 @@ import WarmupScreen from '../screens/WarmupScreen.web';
 import CourseStructureScreen from '../screens/CourseStructureScreen.web';
 // Import CourseDetailScreen directly using web wrapper for React Router navigation
 import CourseDetailScreen from '../screens/CourseDetailScreen.web';
+import BundleDetailScreen from '../screens/BundleDetailScreen.web';
 // Import CreatorProfileScreen directly using web wrapper for React Router navigation
 import CreatorProfileScreen from '../screens/CreatorProfileScreen.web';
 import UpcomingCallDetailScreen from '../screens/UpcomingCallDetailScreen.web';
@@ -434,6 +435,15 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             {React.createElement(withErrorBoundary(CourseDetailScreen, 'CourseDetail'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/bundle/:bundleId"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(BundleDetailScreen, 'BundleDetail'))}
           </AuthenticatedLayout>
         }
       />

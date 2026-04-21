@@ -997,6 +997,7 @@ router.get("/creator/programs", async (req, res) => {
         id: d.id,
         ...data,
         imageUrl: data.image_url ?? null,
+        bundleOnly: data.visibility === "bundle-only",
         enrollmentCount: enrollmentCounts[d.id] ?? 0,
       };
     });
@@ -1020,6 +1021,7 @@ router.get("/creator/programs", async (req, res) => {
       id: d.id,
       ...data,
       imageUrl: data.image_url ?? null,
+      bundleOnly: data.visibility === "bundle-only",
       enrollmentCount: 0,
     };
   });
@@ -1043,7 +1045,12 @@ router.get("/creator/programs/:programId", async (req, res) => {
   }
 
   const programData = doc.data()!;
-  res.json({data: {id: doc.id, ...programData, imageUrl: programData.image_url ?? null}});
+  res.json({data: {
+    id: doc.id,
+    ...programData,
+    imageUrl: programData.image_url ?? null,
+    bundleOnly: programData.visibility === "bundle-only",
+  }});
 });
 
 // POST /creator/programs
@@ -1062,6 +1069,7 @@ router.post("/creator/programs", async (req, res) => {
     discipline?: string;
     weight_suggestions?: boolean;
     duration?: string;
+    visibility?: string;
   }>(
     {
       title: "string",
@@ -1073,9 +1081,18 @@ router.post("/creator/programs", async (req, res) => {
       discipline: "optional_string",
       weight_suggestions: "optional_boolean",
       duration: "optional_string",
+      visibility: "optional_string",
     },
     req.body
   );
+
+  if (body.visibility !== undefined && !["standalone", "bundle-only", "both"].includes(body.visibility)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "visibility debe ser standalone, bundle-only o both",
+      "visibility"
+    );
+  }
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const creatorName = userDoc.data()?.displayName || userDoc.data()?.name || "";
@@ -1084,6 +1101,7 @@ router.post("/creator/programs", async (req, res) => {
   const docRef = await db.collection("courses").add({
     title: body.title,
     deliveryType: body.deliveryType,
+    visibility: body.visibility ?? "both",
     ...(body.description !== undefined && {description: body.description}),
     ...(body.weekly !== undefined && {weekly: body.weekly}),
     ...(body.price !== undefined && {price: body.price}),
@@ -1133,16 +1151,36 @@ router.patch("/creator/programs/:programId", async (req, res) => {
 
   // Allowlist fields — never allow creator_id, status overwrite
   const allowedFields = [
-    "title", "description", "deliveryType", "weekly", "price",
+    "title", "description", "deliveryType", "weekly", "price", "subscription_price",
     "access_duration", "discipline", "image_url", "image_path",
     "creatorName", "weight_suggestions", "free_trial", "duration",
     "video_intro_url", "tutorials", "availableLibraries", "content_plan_id",
-    "compare_at_price",
+    "compare_at_price", "visibility", "bundleOnly",
   ];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  // Normalize bundleOnly → visibility for storage.
+  if (updates.bundleOnly !== undefined) {
+    if (typeof updates.bundleOnly !== "boolean") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "bundleOnly debe ser boolean", "bundleOnly",
+      );
+    }
+    updates.visibility = updates.bundleOnly ? "bundle-only" : "both";
+    delete updates.bundleOnly;
+  }
+
+  if (updates.visibility !== undefined &&
+      !["standalone", "bundle-only", "both"].includes(updates.visibility as string)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "visibility debe ser standalone, bundle-only o both",
+      "visibility"
+    );
   }
 
   await docRef.update({

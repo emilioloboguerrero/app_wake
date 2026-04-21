@@ -270,16 +270,22 @@ function detectCardType(rawValue) {
 }
 
 // Filter programs by viewer role (same logic as ProgramLibraryScreen)
+// Also hides bundle-only courses from the public page — they're only reachable
+// via bundle ownership.
 function filterProgramsByViewer(programs, viewerUid, viewerRole) {
   if (!programs || programs.length === 0) return programs;
   return programs.filter((course) => {
     const courseStatus = course.status || course.estado;
     const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
+    const visibility = course.visibility ?? 'both';
+    const isBundleOnly = visibility === 'bundle-only';
     if (isAdmin(viewerRole)) return true;
     if (isCreator(viewerRole)) {
       const isOwnDraft = !isPublished && course.creator_id === viewerUid;
+      if (isBundleOnly && course.creator_id !== viewerUid) return false;
       return isPublished || isOwnDraft;
     }
+    if (isBundleOnly) return false;
     return isPublished;
   });
 }
@@ -351,9 +357,10 @@ const CreatorProfileScreen = ({ navigation, route }) => {
       const cachedUser = viewerUid ? queryClient.getQueryData(queryKeys.user.detail(viewerUid)) : null;
       const viewerRole = cachedUser?.role || 'user';
 
-      const [creatorDocResult, programsResult] = await Promise.all([
+      const [creatorDocResult, programsResult, bundlesResult] = await Promise.all([
         apiService.getPublicProfile(creatorId),
         apiService.getCoursesByCreatorId(creatorId),
+        apiService.getBundlesByCreatorId(creatorId),
       ]);
 
       const filteredPrograms = filterProgramsByViewer(programsResult, viewerUid, viewerRole);
@@ -408,6 +415,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
         cards: parsedCards,
         creatorDoc: creatorDocResult,
         programs: filteredPrograms,
+        bundles: bundlesResult,
       };
     },
     enabled: !!creatorId,
@@ -422,6 +430,7 @@ const CreatorProfileScreen = ({ navigation, route }) => {
   const creatorCards = creatorData?.cards ?? [];
   const creatorDoc = creatorData?.creatorDoc ?? null;
   const creatorPrograms = creatorData?.programs ?? [];
+  const creatorBundles = creatorData?.bundles ?? [];
   const programsLoading = creatorLoading;
   const programsError = creatorFetchError ? 'No se pudieron cargar los programas.' : null;
   const muscleScrollX = useRef(new Animated.Value(0)).current;
@@ -1633,12 +1642,94 @@ const CreatorProfileScreen = ({ navigation, route }) => {
                 </View>
               ) : programsError ? (
                 <Text style={styles.programsErrorText}>{programsError}</Text>
-              ) : creatorPrograms.length === 0 ? (
+              ) : creatorPrograms.length === 0 && creatorBundles.length === 0 ? (
                 <Text style={styles.programsEmptyText}>
                   Este creador no tiene programas disponibles actualmente.
                 </Text>
               ) : (
                 <>
+                  {creatorBundles.length > 0 && (
+                    <View style={[styles.generalCarouselSection, styles.programSectionFirst]}>
+                      <View style={styles.programSectionTitleWrapper}>
+                        <Text style={styles.programSectionTitleText}>Bundles</Text>
+                      </View>
+                      <View style={{ paddingHorizontal: 20, gap: 10 }}>
+                        {creatorBundles.map((bundle) => {
+                          const hasOtp = typeof bundle.pricing?.otp === 'number' && bundle.pricing.otp > 0;
+                          const hasSub = typeof bundle.pricing?.subscription === 'number' && bundle.pricing.subscription > 0;
+                          const priceCount = (hasOtp ? 1 : 0) + (hasSub ? 1 : 0);
+                          const courseCount = bundle.courseIds?.length ?? 0;
+                          return (
+                            <TouchableOpacity
+                              key={bundle.id}
+                              onPress={() => navigation.navigate('BundleDetail', { bundle })}
+                              activeOpacity={0.8}
+                              style={{
+                                flexDirection: 'row',
+                                gap: 12,
+                                padding: 12,
+                                backgroundColor: 'rgba(255,255,255,0.04)',
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderColor: 'rgba(255,255,255,0.08)',
+                              }}
+                            >
+                              {(() => {
+                                const tiles = (bundle.coverImages || []).slice(0, 3);
+                                if (tiles.length === 0) {
+                                  return <View style={{ width: 86, height: 72, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.06)' }} />;
+                                }
+                                return (
+                                  <View style={{ width: 86, height: 72, position: 'relative' }}>
+                                    {tiles.map((uri, i) => {
+                                      const depth = tiles.length - 1 - i;
+                                      const translateX = depth * 10;
+                                      const rotate = `${(i - (tiles.length - 1) / 2) * 6}deg`;
+                                      return (
+                                        <View
+                                          key={`${uri}-${i}`}
+                                          style={{
+                                            position: 'absolute',
+                                            top: 6,
+                                            left: 6,
+                                            width: 60,
+                                            height: 60,
+                                            borderRadius: 10,
+                                            overflow: 'hidden',
+                                            backgroundColor: '#1a1a1a',
+                                            transform: [{ translateX }, { rotate }],
+                                            zIndex: 10 + i,
+                                            opacity: 1 - depth * 0.12,
+                                            shadowColor: '#000',
+                                            shadowOpacity: 0.5,
+                                            shadowRadius: 6,
+                                            shadowOffset: { width: 0, height: 4 },
+                                          }}
+                                        >
+                                          <ExpoImage
+                                            source={{ uri }}
+                                            style={{ width: '100%', height: '100%' }}
+                                            contentFit="cover"
+                                          />
+                                        </View>
+                                      );
+                                    })}
+                                  </View>
+                                );
+                              })()}
+                              <View style={{ flex: 1, justifyContent: 'center' }}>
+                                <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{bundle.title || 'Bundle'}</Text>
+                                <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 4 }}>
+                                  {courseCount} {courseCount === 1 ? 'programa' : 'programas'}
+                                  {priceCount > 0 ? ` · ${priceCount} ${priceCount === 1 ? 'precio' : 'precios'}` : ''}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
                   {hasGeneralPrograms && (
                     <View
                       style={[styles.generalCarouselSection, styles.programSectionFirst]}

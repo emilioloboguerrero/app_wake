@@ -8,6 +8,7 @@ import LoginScreen from './screens/LoginScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
 import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
 import ProgramDetailScreen from './screens/ProgramDetailScreen';
+import BundleDetailScreen from './screens/BundleDetailScreen';
 import LibraryContentScreen from './screens/LibraryContentScreen';
 import OnboardingEducation from './screens/onboarding/OnboardingEducation';
 import CompleteProfileScreen from './screens/CompleteProfileScreen';
@@ -145,6 +146,15 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <DebugScreenTracker name="ProgramasScreen"><ProgramasScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/bundles" element={<Navigate to="/programas?tab=bundles" replace />} />
+            <Route
+              path="/bundles/:bundleId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="BundleDetailScreen"><BundleDetailScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />

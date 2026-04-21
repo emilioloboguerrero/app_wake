@@ -8,6 +8,7 @@
   inset: 0;
   z-index: 1100;
   background: rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(24px);
   backdrop-filter: blur(24px);
   display: flex;
   align-items: center;
@@ -540,6 +541,7 @@
   font-family: var(--font-sans, 'Inter', system-ui, sans-serif);
   text-align: center;
   -moz-appearance: textfield;
+  appearance: textfield;
   transition: border-color 200ms ease;
 }
 

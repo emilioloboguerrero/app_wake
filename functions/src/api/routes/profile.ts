@@ -693,7 +693,14 @@ router.get("/courses", async (req, res) => {
       : getActiveOneOnOneLock(auth.userId),
   ]);
 
-  let docs = snapshot.docs.map((doc) => ({...doc.data(), id: doc.id} as Record<string, unknown>));
+  let docs = snapshot.docs.map((doc) => {
+    const data = doc.data();
+    return {
+      ...data,
+      id: doc.id,
+      bundleOnly: data.visibility === "bundle-only",
+    } as Record<string, unknown>;
+  });
 
   // Global library only: hide rival creators' one-on-one programs while locked
   if (lock) {

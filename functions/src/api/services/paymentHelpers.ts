@@ -2,12 +2,17 @@ import {MercadoPagoConfig} from "mercadopago";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type PaymentKind = "otp" | "sub";
+export type PaymentKind = "otp" | "sub" | "bundle-otp" | "bundle-sub";
 
 export interface ParsedReference {
   userId: string;
-  courseId: string;
+  courseId?: string;
+  bundleId?: string;
   paymentType: PaymentKind;
+}
+
+export function isBundleReference(ref: ParsedReference): boolean {
+  return ref.paymentType === "bundle-otp" || ref.paymentType === "bundle-sub";
 }
 
 export interface MercadoPagoPreapproval {
@@ -47,16 +52,16 @@ const DURATION_DAYS: Record<string, number> = {
 
 export function buildExternalReference(
   userId: string,
-  courseId: string,
+  resourceId: string,
   paymentType: PaymentKind
 ): string {
-  if (!userId || !courseId) {
-    throw new Error("Missing userId or courseId for external reference");
+  if (!userId || !resourceId) {
+    throw new Error("Missing userId or resourceId for external reference");
   }
-  if (userId.includes(REFERENCE_DELIMITER) || courseId.includes(REFERENCE_DELIMITER)) {
+  if (userId.includes(REFERENCE_DELIMITER) || resourceId.includes(REFERENCE_DELIMITER)) {
     throw new Error("Identifiers cannot contain the reference delimiter '|'");
   }
-  const reference = [REFERENCE_VERSION, userId, courseId, paymentType].join(REFERENCE_DELIMITER);
+  const reference = [REFERENCE_VERSION, userId, resourceId, paymentType].join(REFERENCE_DELIMITER);
   if (reference.length > REFERENCE_MAX_LENGTH) {
     throw new Error("external_reference exceeds Mercado Pago length limit");
   }
@@ -71,17 +76,26 @@ export function parseExternalReference(reference: string): ParsedReference {
   if (parts.length !== 4) {
     throw new Error(`Unexpected external_reference format: ${reference}`);
   }
-  const [version, userId, courseId, paymentTypeRaw] = parts;
+  const [version, userId, resourceId, paymentTypeRaw] = parts;
   if (version !== REFERENCE_VERSION) {
     throw new Error(`Unsupported external_reference version: ${version}`);
   }
-  if (!userId || !courseId) {
-    throw new Error("external_reference missing userId or courseId");
+  if (!userId || !resourceId) {
+    throw new Error("external_reference missing userId or resourceId");
   }
-  if (paymentTypeRaw !== "otp" && paymentTypeRaw !== "sub") {
+  if (
+    paymentTypeRaw !== "otp" &&
+    paymentTypeRaw !== "sub" &&
+    paymentTypeRaw !== "bundle-otp" &&
+    paymentTypeRaw !== "bundle-sub"
+  ) {
     throw new Error(`Unsupported payment type: ${paymentTypeRaw}`);
   }
-  return {userId, courseId, paymentType: paymentTypeRaw};
+  const paymentType = paymentTypeRaw as PaymentKind;
+  const isBundle = paymentType === "bundle-otp" || paymentType === "bundle-sub";
+  return isBundle ?
+    {userId, bundleId: resourceId, paymentType} :
+    {userId, courseId: resourceId, paymentType};
 }
 
 // ─── Expiration ──────────────────────────────────────────────────────────────

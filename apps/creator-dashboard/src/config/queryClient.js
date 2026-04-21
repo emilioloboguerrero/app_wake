@@ -215,4 +215,8 @@ export const queryKeys = {
     detail: (exchangeId) => ['videoExchanges', exchangeId],
     unreadCount: (userId) => ['videoExchanges', 'unreadCount', userId],
   },
+  bundles: {
+    byCreator: (creatorId) => ['bundles', 'creator', creatorId],
+    detail: (bundleId) => ['bundles', bundleId],
+  },
 };
