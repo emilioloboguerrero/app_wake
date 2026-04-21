@@ -673,7 +673,13 @@ router.get("/creator/:creatorId/availability", async (req, res) => {
 
   for (const [dateKey, dayData] of Object.entries(allDays)) {
     if (dateKey >= startDate && dateKey <= endDate) {
-      const day = dayData as { slots?: Array<{ startUtc?: string; startLocal?: string; endUtc?: string; endLocal?: string; durationMinutes: number; booked: boolean }> };
+      const day = dayData as {
+        slots?: Array<{
+          startUtc?: string; startLocal?: string;
+          endUtc?: string; endLocal?: string;
+          durationMinutes: number; booked: boolean;
+        }>;
+      };
       const available = (day.slots ?? []).filter((s) => !s.booked);
       if (available.length > 0) {
         filteredDays[dateKey] = {

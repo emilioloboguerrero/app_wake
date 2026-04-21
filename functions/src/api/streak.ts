@@ -51,7 +51,16 @@ export async function updateStreak(
 
     if (gap < 0) {
       // Activity date is before last known — no update needed
-      return {updated: false, streakData: {lastActivityDate: lastKnownActivityDate, streakStartDate: null, longestStreak: 0, longestStreakStartDate: null, longestStreakEndDate: null}};
+      return {
+        updated: false,
+        streakData: {
+          lastActivityDate: lastKnownActivityDate,
+          streakStartDate: null,
+          longestStreak: 0,
+          longestStreakStartDate: null,
+          longestStreakEndDate: null,
+        },
+      };
     }
 
     if (gap < DAYS_WITHOUT_ACTIVITY_TO_DIE) {
@@ -60,7 +69,16 @@ export async function updateStreak(
         "activityStreak.lastActivityDate": activityDate,
         "updated_at": FieldValue.serverTimestamp(),
       });
-      return {updated: true, streakData: {lastActivityDate: activityDate, streakStartDate: null, longestStreak: 0, longestStreakStartDate: null, longestStreakEndDate: null}};
+      return {
+        updated: true,
+        streakData: {
+          lastActivityDate: activityDate,
+          streakStartDate: null,
+          longestStreak: 0,
+          longestStreakStartDate: null,
+          longestStreakEndDate: null,
+        },
+      };
     }
 
     // Streak was dead — reset start date, update longest if needed

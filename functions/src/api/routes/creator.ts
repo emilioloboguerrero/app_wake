@@ -442,7 +442,10 @@ router.get("/creator/clients-overview", async (req, res) => {
     const byProgram: ProgramAdherence[] = [];
 
     // Fetch nutrition data for all clients (once, shared across programs)
-    const clientNutritionData: Record<string, { target: { calories: number; protein: number }; dailyTotals: Record<string, { calories: number; protein: number }> }> = {};
+    const clientNutritionData: Record<string, {
+      target: { calories: number; protein: number };
+      dailyTotals: Record<string, { calories: number; protein: number }>;
+    }> = {};
     await Promise.all(clientUserIds.map(async (uid) => {
       const assignSnap = await db.collection("nutrition_assignments")
         .where("userId", "==", uid)
@@ -3544,8 +3547,18 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  const body = validateBody<{ title: string; order: number; isRestDay?: boolean; source_library_session_id?: string; dayIndex?: number; image_url?: string }>(
-    {title: "string", order: "number", isRestDay: "optional_boolean", source_library_session_id: "optional_string", dayIndex: "optional_number", image_url: "optional_string"},
+  const body = validateBody<{
+    title: string; order: number; isRestDay?: boolean;
+    source_library_session_id?: string; dayIndex?: number; image_url?: string;
+  }>(
+    {
+      title: "string",
+      order: "number",
+      isRestDay: "optional_boolean",
+      source_library_session_id: "optional_string",
+      dayIndex: "optional_number",
+      image_url: "optional_string",
+    },
     req.body
   );
 
@@ -4174,8 +4187,15 @@ router.post("/creator/library/sessions", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ title: string; image_url?: string }>({title: "string", image_url: "optional_string"}, req.body);
-  const sessionData: Record<string, unknown> = {title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()};
+  const body = validateBody<{ title: string; image_url?: string }>(
+    {title: "string", image_url: "optional_string"},
+    req.body
+  );
+  const sessionData: Record<string, unknown> = {
+    title: body.title,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  };
   if (body.image_url) sessionData.image_url = body.image_url;
 
   // Auto-seed defaultDataTemplate from creator's first objective preset (or sensible default)
@@ -4433,8 +4453,21 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ order: number; title?: string; reps?: string | number; weight?: number; intensity?: string; rir?: number; restSeconds?: number; type?: string }>(
-    {order: "number", title: "optional_string", reps: "optional_string_or_number", weight: "optional_number", intensity: "optional_string", rir: "optional_number", restSeconds: "optional_number", type: "optional_string"},
+  const body = validateBody<{
+    order: number; title?: string; reps?: string | number;
+    weight?: number; intensity?: string; rir?: number;
+    restSeconds?: number; type?: string;
+  }>(
+    {
+      order: "number",
+      title: "optional_string",
+      reps: "optional_string_or_number",
+      weight: "optional_number",
+      intensity: "optional_string",
+      rir: "optional_number",
+      restSeconds: "optional_number",
+      type: "optional_string",
+    },
     req.body
   );
 
@@ -7506,7 +7539,12 @@ async function ensureProgramCopy(
     const sessionId = (session.id as string) ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
     const {exercises: exArr, ...sessionFields} = session;
-    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
+    batch.set(sessionRef, {
+      ...sessionFields,
+      id: sessionId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
     batchCount++;
 
     if (Array.isArray(exArr)) {
@@ -7551,7 +7589,10 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
   const {programId} = req.params;
   const courseDoc = await verifyProgramOwnership(auth.userId, programId);
   const creatorId = auth.userId;
-  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; assignedAt?: string }>;
+  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<
+    string,
+    { planId: string; moduleId: string; assignedAt?: string }
+  >;
 
   const {weekKeys: visibleWeekKeys} = getCalendarMonthRange(month);
   const weekKeysWithPlans = visibleWeekKeys.filter((wk) => planAssignments[wk]?.planId);
@@ -7889,7 +7930,12 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
     const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
     const {exercises: exArr, ...sessionFields} = session as Record<string, unknown>;
-    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
+    batch.set(sessionRef, {
+      ...sessionFields,
+      id: sessionId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
     batchCount++;
 
     if (Array.isArray(exArr)) {
