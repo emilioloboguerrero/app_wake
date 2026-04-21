@@ -47,5 +47,7 @@ jobs:
           additional_permissions: |
             actions: read
 
-          claude_args: '--allowed-tools "Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(git:*),Bash(gh:*),Read,Edit,Write,Grep,Glob,Task"'
+          claude_args: >-
+            --allowed-tools "Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(git:*),Bash(gh:*),Read,Edit,Write,Grep,Glob,Task"
+            --append-system-prompt "When making any code change that touches functions/ or app source, you MUST spawn the qa-fast subagent via the Task tool before opening or updating a PR. If qa-fast reports PASS, proceed. If qa-fast reports FAIL, either fix the issues and re-run qa-fast, or (if the task is ambiguous) stop and comment on the issue with what failed — do not open a broken PR. For questions or non-code tasks (docs-only edits that can't affect lint/build), skip qa-fast."
 
