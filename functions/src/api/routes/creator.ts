@@ -4801,13 +4801,23 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     })
   );
 
-  const plansSnap = await db
-    .collection("plans")
-    .where("creator_id", "==", auth.userId)
-    .limit(100)
-    .get();
-
-  if (plansSnap.size >= 100) {
+  // Fetch all plans for this creator via cursor pagination (no silent truncation)
+  const planDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  {
+    const PAGE_SIZE = 100;
+    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    for (;;) {
+      let q = db.collection("plans")
+        .where("creator_id", "==", auth.userId)
+        .orderBy("__name__")
+        .limit(PAGE_SIZE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      const page = await q.get();
+      if (page.empty) break;
+      planDocs.push(...page.docs);
+      if (page.size < PAGE_SIZE) break;
+      lastDoc = page.docs[page.docs.length - 1];
+    }
   }
 
   let updatedCount = 0;
@@ -4891,7 +4901,7 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
   };
 
   // Phase 1: Update plan template sessions (parallelized per plan)
-  await Promise.all(plansSnap.docs.map(async (planDoc) => {
+  await Promise.all(planDocs.map(async (planDoc) => {
     const modulesSnap = await planDoc.ref.collection("modules").get();
     await Promise.all(modulesSnap.docs.map(async (moduleDoc) => {
       const matchingSessions = await findReferencingSessions(moduleDoc.ref.collection("sessions"));
@@ -4982,14 +4992,23 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
     })
   );
 
-  // Guard at 100 plans max
-  const plansSnap = await db
-    .collection("plans")
-    .where("creator_id", "==", auth.userId)
-    .limit(100)
-    .get();
-
-  if (plansSnap.size >= 100) {
+  // Fetch all plans for this creator via cursor pagination (no silent truncation)
+  const planDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  {
+    const PAGE_SIZE = 100;
+    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    for (;;) {
+      let q = db.collection("plans")
+        .where("creator_id", "==", auth.userId)
+        .orderBy("__name__")
+        .limit(PAGE_SIZE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      const page = await q.get();
+      if (page.empty) break;
+      planDocs.push(...page.docs);
+      if (page.size < PAGE_SIZE) break;
+      lastDoc = page.docs[page.docs.length - 1];
+    }
   }
 
   let updatedCount = 0;
@@ -4997,7 +5016,7 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
   let batch = db.batch();
   let batchCount = 0;
 
-  for (const planDoc of plansSnap.docs) {
+  for (const planDoc of planDocs) {
     // Check both field names for module references
     const modulesSnap1 = await planDoc.ref.collection("modules")
       .where("libraryRef", "==", req.params.moduleId)
