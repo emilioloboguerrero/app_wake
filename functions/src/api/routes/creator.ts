@@ -708,9 +708,9 @@ router.post("/creator/clients", async (req, res) => {
     const s = (d.data() as Record<string, unknown>).status as string | undefined;
     return s === "inactive";
   });
-  const previousEnrollmentEndedAt = mostRecentInactive
-    ? ((mostRecentInactive.data() as Record<string, unknown>).endedAt ?? null)
-    : null;
+  const previousEnrollmentEndedAt = mostRecentInactive ?
+    ((mostRecentInactive.data() as Record<string, unknown>).endedAt ?? null) :
+    null;
 
   const targetUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({

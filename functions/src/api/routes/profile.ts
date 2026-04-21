@@ -688,9 +688,9 @@ router.get("/courses", async (req, res) => {
 
   const [snapshot, lock] = await Promise.all([
     query.get(),
-    isCreatorProfileRequest
-      ? Promise.resolve(null)
-      : getActiveOneOnOneLock(auth.userId),
+    isCreatorProfileRequest ?
+      Promise.resolve(null) :
+      getActiveOneOnOneLock(auth.userId),
   ]);
 
   let docs = snapshot.docs.map((doc) => {
