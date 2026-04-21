@@ -25,6 +25,7 @@ import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
 import {handleAgentWebhook} from "./ops/agentWebhook.js";
 import {dispatchMention} from "./ops/agentDispatch.js";
 import {runSynthesis} from "./ops/agentSynthesis.js";
+import {handleGithubWebhook} from "./ops/githubWebhook.js";
 import {parseTopicMap} from "./ops/telegram.js";
 import {
   type ParsedReference,
@@ -3005,6 +3006,7 @@ const telegramAgentBotToken = defineSecret("TELEGRAM_AGENT_BOT_TOKEN");
 const telegramAgentWebhookSecret = defineSecret("TELEGRAM_AGENT_WEBHOOK_SECRET");
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 const githubOpsToken = defineSecret("GITHUB_OPS_TOKEN");
+const githubWebhookSecret = defineSecret("GITHUB_WEBHOOK_SECRET");
 const opsApiKey = defineSecret("OPS_API_KEY");
 
 const AGENT_BOT_USERNAME = "agent_wake_bot";
@@ -3146,6 +3148,35 @@ export const wakeSignalsWebhook = onRequest(
       webhookSecret: telegramWebhookSecret.value(),
       topics: readTopics(),
       projectId: process.env.GCLOUD_PROJECT || "wolf-20b8b",
+    });
+  }
+);
+
+// ─── Webhook: GitHub activity mirror ──────────────────────────────────────
+export const wakeGithubWebhook = onRequest(
+  {
+    region: "us-central1",
+    secrets: [
+      telegramSignalsBotToken,
+      telegramChatId,
+      telegramTopics,
+      githubWebhookSecret,
+    ],
+    memory: "256MiB",
+    timeoutSeconds: 30,
+    cors: false,
+  },
+  async (req, res) => {
+    await handleGithubWebhook(req, res, {
+      webhookSecret: githubWebhookSecret.value(),
+      allowedRepo: `${GITHUB_OPS_OWNER}/${GITHUB_OPS_REPO}`,
+      telegram: {
+        botToken: telegramSignalsBotToken.value(),
+        chatId: telegramChatId.value(),
+        topics: readTopics(),
+        botUsername: "signals_wake_bot",
+        botRole: "signals",
+      },
     });
   }
 );

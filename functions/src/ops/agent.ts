@@ -18,7 +18,11 @@ import {
 } from "./agentTools.js";
 import {buildSystemPrompt, type AgentMode} from "./agentPrompt.js";
 
-const MODEL = "claude-opus-4-7";
+const MODEL_BY_MODE: Record<AgentMode, string> = {
+  synthesis: "claude-opus-4-7",
+  mention: "claude-sonnet-4-6",
+  test: "claude-haiku-4-5-20251001",
+};
 const MAX_STEPS = 12;
 const MAX_OUTPUT_TOKENS = 2048;
 
@@ -67,7 +71,7 @@ export async function runAgent(
 
   for (let step = 0; step < MAX_STEPS; step++) {
     const response = await client.messages.create({
-      model: MODEL,
+      model: MODEL_BY_MODE[opts.mode],
       max_tokens: MAX_OUTPUT_TOKENS,
       system,
       tools: tools.map((t) => ({
