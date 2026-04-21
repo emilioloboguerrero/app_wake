@@ -108,6 +108,11 @@ export async function dispatchMention(
       )
       .trim();
 
+    // Ack so the operator sees activity while the agent is reasoning.
+    await sendTo(telegram, "agent", "[wake-ops-agent] thinking...").catch(
+      () => undefined
+    );
+
     const result = await runAgent({
       mode: "mention",
       input: stripped || text,
