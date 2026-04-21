@@ -1626,8 +1626,9 @@ router.get("/workout/session/active", async (req, res) => {
           detectedBy: "stale_check",
           created_at: FieldValue.serverTimestamp(),
         }, {merge: true})
-        .catch(() => {});
-      doc.ref.delete().catch(() => {});
+        .catch((err) => functions.logger.warn("workout:stale-abandoned-record-failed", err));
+      doc.ref.delete()
+        .catch((err) => functions.logger.warn("workout:stale-session-cleanup-failed", err));
       res.json({data: {checkpoint: null}});
       return;
     }
@@ -1834,8 +1835,9 @@ router.get("/workout/checkpoint", async (req, res) => {
           detectedBy: "stale_check",
           created_at: FieldValue.serverTimestamp(),
         }, {merge: true})
-        .catch(() => {});
-      doc.ref.delete().catch(() => {});
+        .catch((err) => functions.logger.warn("workout:stale-abandoned-record-failed", err));
+      doc.ref.delete()
+        .catch((err) => functions.logger.warn("workout:stale-session-cleanup-failed", err));
       res.json({data: {checkpoint: null}});
       return;
     }

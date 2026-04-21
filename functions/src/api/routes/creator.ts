@@ -1,5 +1,6 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import * as crypto from "node:crypto";
 import {Resend} from "resend";
 import {db, FieldValue, FieldPath} from "../firestore.js";
@@ -2615,7 +2616,8 @@ async function deleteClientPlanContentDoc(docId: string): Promise<void> {
   const docRef = db.collection("client_plan_content").doc(docId);
   const sessionsSnap = await docRef.collection("sessions").get();
   if (sessionsSnap.empty) {
-    await docRef.delete().catch(() => {});
+    await docRef.delete()
+      .catch((err) => functions.logger.warn("creator:plan-content-delete-failed", err));
     return;
   }
   let batch = db.batch();

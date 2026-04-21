@@ -47,7 +47,8 @@ router.get("/users/me", async (req, res) => {
     if (activeDoc) {
       pinnedNutritionAssignmentId = activeDoc.id;
       // Persist so future calls skip the extra query
-      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true}).catch(() => {});
+      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true})
+        .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
     }
   }
 

@@ -1,5 +1,6 @@
 import type {Request} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import * as crypto from "node:crypto";
 import {db} from "../firestore.js";
 import {WakeApiServerError} from "../errors.js";
@@ -217,7 +218,8 @@ async function validateApiKey(key: string): Promise<AuthResult> {
   }
 
   // Update last_used_at (fire-and-forget)
-  doc.ref.update({last_used_at: new Date().toISOString()}).catch(() => {});
+  doc.ref.update({last_used_at: new Date().toISOString()})
+    .catch((err) => functions.logger.warn("apikey:last-used-update-failed", err));
 
   return {
     userId: data.owner_id,

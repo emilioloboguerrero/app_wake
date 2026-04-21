@@ -1,5 +1,6 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
@@ -250,7 +251,8 @@ router.delete("/progress/body-log/:date/photos/:photoId", async (req, res) => {
   // Delete from Storage
   if (photo.storagePath) {
     const bucket = admin.storage().bucket();
-    await bucket.file(photo.storagePath).delete().catch(() => {});
+    await bucket.file(photo.storagePath).delete()
+      .catch((err) => functions.logger.warn("progress:photo-delete-failed", err));
   }
 
   // Remove from array
