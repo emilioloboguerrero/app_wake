@@ -88,6 +88,7 @@ export async function checkIpRateLimit(
   await checkRateLimit(`ip_${safeIp}`, limitRpm, "rate_limit_windows");
 }
 
+/** Enforces a per-key daily request quota using Firestore; throws RATE_LIMITED when the daily limit is exceeded. */
 export async function checkDailyRateLimit(
   keyId: string,
   limitPerDay: number
