@@ -55,6 +55,8 @@ COMMANDS_JSON='{"commands":[
   {"command":"pwa_errors","description":"Frontend errors, PWA (24h)"},
   {"command":"creator_errors","description":"Frontend errors, creator dashboard (24h)"},
   {"command":"all","description":"Run all collectors in sequence"},
+  {"command":"agent_pause","description":"Pause the smart agent"},
+  {"command":"agent_resume","description":"Resume the smart agent"},
   {"command":"help","description":"List available commands"}
 ]}'
 

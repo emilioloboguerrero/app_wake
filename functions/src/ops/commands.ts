@@ -4,6 +4,7 @@ import {runPaymentsPulse} from "./paymentsPulse.js";
 import {runQuotaWatch} from "./quotaWatch.js";
 import {runClientErrors} from "./clientErrors.js";
 import {sendTo, type TopicMap} from "./telegram.js";
+import {setAgentPaused} from "./agentState.js";
 
 export interface CommandContext {
   botToken: string;
@@ -42,6 +43,24 @@ const registry: Record<string, CommandHandler> = {
     description: "Frontend errors, creator dashboard (24h)",
     run: (ctx) => runClientErrors(ctx, {source: "creator"}),
   },
+  agent_pause: {
+    description: "Pause the smart agent (skips synthesis + @mentions)",
+    run: async (ctx) => {
+      await setAgentPaused(true);
+      await sendTo(
+        ctx,
+        "signals",
+        "[signals_wake] agent paused. /agent_resume to resume."
+      );
+    },
+  },
+  agent_resume: {
+    description: "Resume the smart agent",
+    run: async (ctx) => {
+      await setAgentPaused(false);
+      await sendTo(ctx, "signals", "[signals_wake] agent resumed.");
+    },
+  },
   help: {
     description: "List available commands",
     run: async (ctx) => {
@@ -59,7 +78,14 @@ registry.all = {
   run: async (ctx) => {
     const errors: string[] = [];
     for (const [name, handler] of Object.entries(registry)) {
-      if (name === "all" || name === "help") continue;
+      if (
+        name === "all" ||
+        name === "help" ||
+        name === "agent_pause" ||
+        name === "agent_resume"
+      ) {
+        continue;
+      }
       try {
         await handler.run(ctx);
       } catch (err) {
