@@ -146,8 +146,7 @@ export async function validateAuthAndRateLimit(
   // Firebase path — parallelize user doc read + rate limit after token verify
   const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
   let decoded = getCachedToken(token);
-  if (decoded) {
-  } else {
+  if (!decoded) {
     try {
       decoded = await admin.auth().verifyIdToken(token, !isEmulator);
     } catch {
