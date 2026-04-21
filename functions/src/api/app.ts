@@ -20,6 +20,7 @@ import bookingsRouter from "./routes/bookings.js";
 import notificationsRouter from "./routes/notifications.js";
 import videoExchangesRouter from "./routes/videoExchanges.js";
 import emailRouter from "./routes/email.js";
+import enrollmentsRouter from "./routes/enrollments.js";
 
 export const app = express();
 
@@ -139,6 +140,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, notificationsRouter);
   app.use(prefix, videoExchangesRouter);
   app.use(prefix, emailRouter);
+  app.use(prefix, enrollmentsRouter);
 }
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────

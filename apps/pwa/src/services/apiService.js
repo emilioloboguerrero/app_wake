@@ -510,6 +510,16 @@ class FirestoreService {
     return apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
   }
 
+  /**
+   * Leave a one-on-one program. Cascades: ends access, cancels future bookings,
+   * unassigns nutrition, cancels MP subscription if active.
+   * Body: { reason, satisfaction?, freeText? }
+   */
+  async leaveEnrollment(courseId, body) {
+    const result = await apiClient.post(`/enrollments/${courseId}/leave`, body);
+    return result?.data ?? null;
+  }
+
   async createPurchaseLog(purchaseData) {
     try {
       const result = await apiClient.post('/purchases', purchaseData);

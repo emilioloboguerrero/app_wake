@@ -33,12 +33,44 @@ import './ClientesScreen.css';
 const TABS = [
   { id: 'clientes', label: 'Clientes' },
   { id: 'asesorias', label: 'Programas 1:1' },
+  { id: 'anteriores', label: 'Anteriores' },
   { id: 'llamadas', label: 'Llamadas' },
 ];
+
+const REASON_LABELS = {
+  no_time: 'Sin tiempo',
+  too_expensive: 'Costo',
+  not_working: 'Sin resultados',
+  creator_mismatch: 'No conectó',
+  goals_changed: 'Cambió de meta',
+  other: 'Otra',
+};
 
 
 function getInitial(name) {
   return (name || '?').charAt(0).toUpperCase();
+}
+
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value?.toDate === 'function') return value.toDate();
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function getRejoinDays(client) {
+  const ended = toDate(client.previousEnrollmentEndedAt);
+  const created = toDate(client.createdAt);
+  if (!ended || !created) return null;
+  const days = Math.round((created - ended) / (1000 * 60 * 60 * 24));
+  if (days < 0 || days > 3650) return null;
+  return days;
+}
+
+function formatEndedAt(value) {
+  const d = toDate(value);
+  if (!d) return null;
+  return d.toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 // ─── Client card ─────────────────────────────────────────────────────────────
@@ -46,6 +78,9 @@ function getInitial(name) {
 function ClientCard({ client, onClick, unreadVideos = 0 }) {
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || client.userId || '').slice(0, 8)}`;
   const isActive = client.status !== 'inactive';
+  const rejoinDays = isActive ? getRejoinDays(client) : null;
+  const endedAtLabel = !isActive ? formatEndedAt(client.endedAt) : null;
+  const endedReasonLabel = !isActive && client.endedReason ? REASON_LABELS[client.endedReason] : null;
 
   return (
     <button type="button" className="cl-card" onClick={onClick}>
@@ -63,6 +98,18 @@ function ClientCard({ client, onClick, unreadVideos = 0 }) {
         {client.clientEmail && client.clientName && (
           <span className="cl-card__email">{client.clientEmail}</span>
         )}
+        {rejoinDays != null && (
+          <span className="cl-card__rejoin-pill">
+            Regresó después de {rejoinDays} {rejoinDays === 1 ? 'día' : 'días'}
+          </span>
+        )}
+        {!isActive && (endedAtLabel || endedReasonLabel) && (
+          <span className="cl-card__ended-meta">
+            {endedAtLabel && <span>Terminó el {endedAtLabel}</span>}
+            {endedAtLabel && endedReasonLabel && <span> · </span>}
+            {endedReasonLabel && <span>{endedReasonLabel}</span>}
+          </span>
+        )}
       </div>
       <span
         className="cl-card__status"
@@ -73,6 +120,39 @@ function ClientCard({ client, onClick, unreadVideos = 0 }) {
         <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </button>
+  );
+}
+
+function LeavesSummaryBlock({ creatorId }) {
+  const { data } = useQuery({
+    queryKey: ['creator', 'leaves', 'summary', creatorId, 'current'],
+    queryFn: () => apiClient.get('/creator/leaves/summary').then((r) => r.data),
+    enabled: !!creatorId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (!data || data.total < 2) return null;
+
+  const entries = Object.entries(data.byReason || {})
+    .sort((a, b) => b[1] - a[1]);
+
+  return (
+    <div className="cl-leaves-summary">
+      <div className="cl-leaves-summary__header">
+        <span className="cl-leaves-summary__count">
+          Este mes: <strong>{data.total}</strong> {data.total === 1 ? 'cliente terminó' : 'clientes terminaron'}
+        </span>
+      </div>
+      {entries.length > 0 && (
+        <div className="cl-leaves-summary__chips">
+          {entries.map(([reason, count]) => (
+            <span key={reason} className="cl-leaves-summary__chip">
+              {REASON_LABELS[reason] || reason}: <strong>{count}</strong>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -671,12 +751,28 @@ const ClientesScreen = () => {
     return map;
   }, [programsData]);
 
-  // Group clients by asesoría program
+  // Active clients only — inactive ones live in the "Anteriores" tab
+  const activeClients = useMemo(
+    () => clients.filter((c) => c.status !== 'inactive'),
+    [clients]
+  );
+  const inactiveClients = useMemo(
+    () => clients
+      .filter((c) => c.status === 'inactive')
+      .sort((a, b) => {
+        const da = toDate(a.endedAt)?.getTime() ?? 0;
+        const db = toDate(b.endedAt)?.getTime() ?? 0;
+        return db - da;
+      }),
+    [clients]
+  );
+
+  // Group active clients by asesoría program
   const grouped = useMemo(() => {
     const groups = {};
     const ungrouped = [];
 
-    for (const client of clients) {
+    for (const client of activeClients) {
       const programs = client.enrolledPrograms;
       if (!programs?.length) {
         ungrouped.push(client);
@@ -695,7 +791,7 @@ const ClientesScreen = () => {
     }
 
     return { groups: Object.values(groups), ungrouped };
-  }, [clients]);
+  }, [activeClients]);
 
   // Filter + sort
   const filterAndSortClients = useCallback((clientList) => {
@@ -856,6 +952,9 @@ const ClientesScreen = () => {
         <div className="cl-body">
           <KeepAlivePane active={activeTab === 'clientes'}>
           {visitedTabs.has('clientes') && (
+            <LeavesSummaryBlock creatorId={user?.uid} />
+          )}
+          {visitedTabs.has('clientes') && (
             <div className="cl-search-row">
               <div className="cl-search cl-search--full">
                 <svg className="cl-search__icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -934,6 +1033,39 @@ const ClientesScreen = () => {
                     />
                   );
                 })()}
+              </div>
+            )
+          )}
+          </KeepAlivePane>
+
+          {/* ── Anteriores tab (clients who left) ────────────── */}
+          <KeepAlivePane active={activeTab === 'anteriores'}>
+          {visitedTabs.has('anteriores') && (
+            isLoadingClients ? (
+              <ListSkeleton />
+            ) : inactiveClients.length === 0 ? (
+              <div className="cl-empty">
+                <p className="cl-empty__title">Sin clientes anteriores</p>
+                <p className="cl-empty__sub">Aquí aparecerán los clientes que terminen su programa contigo.</p>
+              </div>
+            ) : (
+              <div className="cl-groups">
+                <div className="cl-group">
+                  <div className="cl-group__header" style={{ cursor: 'default' }}>
+                    <span className="cl-group__title">Clientes anteriores</span>
+                    <span className="cl-group__count">{inactiveClients.length}</span>
+                  </div>
+                  <div className="cl-group__grid">
+                    {inactiveClients.map((client) => (
+                      <ClientCard
+                        key={client.id || client.clientUserId}
+                        client={client}
+                        onClick={() => handleSelectClient(client)}
+                        unreadVideos={0}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             )
           )}

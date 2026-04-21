@@ -36,13 +36,22 @@ function normalizeExerciseName(exercise: Record<string, unknown>): Record<string
   return exercise;
 }
 
-// GET /creator/clients — paginated 50/page, optional ?programId=X filter
+// GET /creator/clients — paginated 50/page, optional ?programId=X filter, ?status=active|inactive|all
 router.get("/creator/clients", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
   const programId = req.query.programId as string | undefined;
   const pageToken = req.query.pageToken as string | undefined;
+  const statusFilter = (req.query.status as string | undefined) ?? "active";
+
+  // status filter helper (active is default; inactive docs get filtered unless asked)
+  const matchesStatus = (data: Record<string, unknown>): boolean => {
+    if (statusFilter === "all") return true;
+    const s = (data.status as string | undefined) ?? "active";
+    if (statusFilter === "inactive") return s === "inactive";
+    return s !== "inactive";
+  };
 
   if (programId) {
     // Server-side filtering: fetch all clients, batch-lookup users, filter by enrollment.
@@ -52,7 +61,9 @@ router.get("/creator/clients", async (req, res) => {
       .orderBy("createdAt", "desc")
       .get();
 
-    const clientDocs = snapshot.docs.map((d) => ({...d.data(), id: d.id}));
+    const clientDocs = snapshot.docs
+      .map((d) => ({...d.data(), id: d.id}))
+      .filter((c) => matchesStatus(c as Record<string, unknown>));
     const userIds = [...new Set(
       clientDocs.map((c) => (c as Record<string, unknown>).clientUserId as string).filter(Boolean)
     )];
@@ -107,8 +118,9 @@ router.get("/creator/clients", async (req, res) => {
   }
 
   const snapshot = await query.get();
-  const docs = snapshot.docs.slice(0, limit);
-  const hasMore = snapshot.docs.length > limit;
+  const filteredDocs = snapshot.docs.filter((d) => matchesStatus(d.data() as Record<string, unknown>));
+  const docs = filteredDocs.slice(0, limit);
+  const hasMore = filteredDocs.length > limit;
 
   // Enrich each client with their one_on_one enrolled programs
   const clientDocs = docs.map((d) => ({...d.data(), id: d.id}));
@@ -672,19 +684,33 @@ router.post("/creator/clients", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  // Idempotent: return existing if client already linked to this creator
+  // Idempotent: return existing active record if client already linked to this creator.
+  // If only an inactive (prior-leave) record exists, create a new active record and
+  // surface previousEnrollmentEndedAt so the dashboard can show the "regresó" pill.
   const existing = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .where("clientUserId", "==", body.userId)
-    .limit(1)
+    .orderBy("createdAt", "desc")
     .get();
 
-  if (!existing.empty) {
-    const doc = existing.docs[0];
-    res.status(200).json({data: {id: doc.id, clientId: doc.id}});
+  const activeExisting = existing.docs.find((d) => {
+    const s = (d.data() as Record<string, unknown>).status as string | undefined;
+    return !s || s === "active";
+  });
+
+  if (activeExisting) {
+    res.status(200).json({data: {id: activeExisting.id, clientId: activeExisting.id}});
     return;
   }
+
+  const mostRecentInactive = existing.docs.find((d) => {
+    const s = (d.data() as Record<string, unknown>).status as string | undefined;
+    return s === "inactive";
+  });
+  const previousEnrollmentEndedAt = mostRecentInactive
+    ? ((mostRecentInactive.data() as Record<string, unknown>).endedAt ?? null)
+    : null;
 
   const targetUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({
@@ -693,11 +719,57 @@ router.post("/creator/clients", async (req, res) => {
     clientName: targetUserData?.displayName ?? targetUserData?.name ?? null,
     clientEmail: targetUserData?.email ?? null,
     courseId: [],
+    status: "active",
+    previousEnrollmentEndedAt,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
   res.status(201).json({data: {id: docRef.id, clientId: docRef.id}});
+});
+
+// GET /creator/leaves/summary — aggregated counts of clients who left this creator's programs.
+// Returns counts by reason category; never returns free text or per-user satisfaction.
+router.get("/creator/leaves/summary", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const monthParam = req.query.month as string | undefined;
+  const now = new Date();
+  let startIso: string;
+  let endIso: string;
+
+  if (monthParam && /^\d{4}-\d{2}$/.test(monthParam)) {
+    const [yearStr, monthStr] = monthParam.split("-");
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    startIso = new Date(Date.UTC(year, month - 1, 1)).toISOString();
+    endIso = new Date(Date.UTC(year, month, 1)).toISOString();
+  } else {
+    startIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+    endIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+  }
+
+  const snap = await db.collection("program_leave_feedback")
+    .where("creatorId", "==", auth.userId)
+    .where("leftAt", ">=", new Date(startIso))
+    .where("leftAt", "<", new Date(endIso))
+    .get();
+
+  const byReason: Record<string, number> = {};
+  for (const d of snap.docs) {
+    const reason = (d.data().reason as string | undefined) ?? "other";
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
+
+  res.json({
+    data: {
+      total: snap.size,
+      byReason,
+      periodStart: startIso,
+      periodEnd: endIso,
+    },
+  });
 });
 
 // GET /creator/clients/:clientId — single client detail

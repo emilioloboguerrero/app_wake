@@ -84,6 +84,207 @@ Potential future replacement of MercadoPago with Stripe for better subscription 
 
 ---
 
+### 3d. One-on-One Lock-in + Leave Flow `NOT STARTED`
+
+Retention primitive for one-on-one programs. Two linked behaviors: (a) while a user has an active one-on-one enrollment, the program library hides *other creators'* one-on-one programs — only that creator's one-on-ones plus all low-ticket programs are visible; (b) users can self-initiate "Terminar programa" to leave — ending access immediately, unassigning nutrition, cancelling bookings, and cancelling the subscription in one cascade.
+
+**Locked decisions (discussion 2026-04-20):**
+- Library lock-in is **hidden**, not "visible-but-locked". Server-side filter, not client-side.
+- User can leave on their own — no creator approval.
+- **No grace window.** On leave, access is revoked immediately. `users.courses[courseId].status → 'expired'`, `expires_at → now`.
+- Library lock lifts immediately on leave.
+- Nutrition assignments for that creator flip to `inactive`. Historical diary entries remain.
+- Active MP subscription is cancelled as part of the cascade (best-effort, logged).
+- Future `call_bookings` are cancelled; slots returned to `creator_availability`.
+- Feedback: new `program_leave_feedback` collection. Creator sees **aggregated only** — counts by reason category, no free text, no satisfaction scores.
+- No cooldown to re-enroll. Creator sees "Regresó después de N días" pill on rejoin.
+- Two-step destructive confirmation UI. No one-tap leaving.
+
+**Research notes:**
+- Library fetching goes through `apiService.getCourses(userId)`; filtering is currently client-side in [ProgramLibraryScreen.js:246](apps/pwa/src/screens/ProgramLibraryScreen.js#L246). The server-side filter is cleaner and tamper-proof.
+- `one_on_one_clients` doc shape today: `{creatorId, clientUserId, clientName, clientEmail, courseId: [], createdAt, updatedAt}` — no status field ([creator.ts:690](functions/src/api/routes/creator.ts#L690)).
+- Subscription cancellation survey modal and UX already exists in [SubscriptionsScreen.js:54-328](apps/pwa/src/screens/SubscriptionsScreen.js#L54-L328). Pattern reusable for leave survey.
+- `POST /payments/subscriptions/:subscriptionId/cancel` exists ([payments.ts:629](functions/src/api/routes/payments.ts#L629)) — extract its core into a reusable internal helper so the leave cascade can call it.
+- `users.courses[courseId].status` supports `cancelled` already; `expired` already means no access. No schema change needed to the status enum.
+- `POST /creator/clients` creates the relationship doc and is called from the creator's "enroll client" flow. Needs minor change to detect prior inactive record for the same pair and set `previousEnrollmentEndedAt`.
+
+**Data model:**
+
+`one_on_one_clients/{id}` — add fields:
+- `status: 'active' | 'inactive'` (default `'active'` on create)
+- `endedAt: Timestamp | null`
+- `endedReason: string | null` — category key from enum below
+- `previousEnrollmentEndedAt: Timestamp | null` — set when creating a new record for a pair that had a prior inactive one
+
+`program_leave_feedback/{id}` — new collection:
+```
+userId: string
+creatorId: string
+courseId: string
+leftAt: Timestamp
+reason: 'no_time' | 'too_expensive' | 'not_working' | 'creator_mismatch' | 'goals_changed' | 'other'
+satisfaction: number (1-5) | null
+freeText: string | null
+subscriptionWasActive: boolean
+remainingDays: number | null
+```
+
+`users.courses[courseId]` on leave — no schema change; values used:
+- `status: 'expired'`
+- `expires_at: <now ISO>`
+- `endedByUser: true`
+- `endedAt: <now ISO>` (distinct from natural expiry)
+
+**API endpoints:**
+
+New:
+- `POST /api/v1/enrollments/:courseId/leave` (user-auth)
+  - Body: `{ reason, satisfaction?, freeText? }`
+  - Response: `{ data: { courseId, endedAt, cascade: { subscription, nutritionAssignments, bookingsCancelled } } }`
+  - Cascade order:
+    1. Validate enrollment exists in `users.courses[courseId]` with `deliveryType: 'one_on_one'` and `status: 'active'`
+    2. Write `program_leave_feedback` doc first (cheap, desired even on partial failure)
+    3. Batched write: `users.courses[courseId]` update + `one_on_one_clients` status flip + `nutrition_assignments` flip + `call_bookings` cancellation (query futures, batch update)
+    4. Call internal `cancelMpSubscription(userId, courseId)` helper — best-effort, log failures, do not roll back prior steps
+    5. Return success with cascade summary
+  - Idempotency: if `users.courses[courseId].status === 'expired' && endedByUser === true`, return success without re-cascading
+  - Errors: `NOT_FOUND` (not enrolled), `VALIDATION_ERROR` (bad reason), `CONFLICT` (program is low-ticket — wrong endpoint)
+
+Modified:
+- **Library-fetch endpoint** — wherever courses are returned to PWA users today. Before returning, read requester's `users.courses` for any `{deliveryType: 'one_on_one', status: 'active'}` entry. If found, capture the `creator_id` from the course doc (or store it in the courses map to skip the extra read) and filter results to drop `deliveryType: 'one_on_one'` programs where `creator_id !== lockedCreatorId`. Low-ticket always pass. (If `getCourses` is currently a legacy non-REST path, this is a good moment to introduce `GET /library/programs`.)
+- `POST /creator/clients` — if a prior inactive record exists for `(creatorId, clientUserId)`, set `previousEnrollmentEndedAt` on the new record to the prior `endedAt`. Old record retained (history).
+- `GET /creator/clients` — accept `?status=active|inactive|all` query param. Default `active` for backward compat.
+- `POST /payments/preference` — if requester has an active one-on-one enrollment with a different creator, reject with `CONFLICT` (defensive: library filter already hides it, but direct-URL purchase is possible).
+
+**PWA changes:**
+
+[AllPurchasedCoursesScreen.js](apps/pwa/src/screens/AllPurchasedCoursesScreen.js) — one-on-one program tap opens detail sheet with a "Terminar programa" action at the bottom (destructive tint, not primary). Low-ticket programs do not get this action (their lifecycle is subscription or natural expiry).
+
+Leave flow (two-step modal, reuses the pattern from `SubscriptionsScreen`):
+1. **Warning sheet** — title: "¿Terminar tu programa con {creator}?". Body: "Perderás acceso al programa, a tu plan nutricional y a tus llamadas futuras. Esta acción no se puede deshacer." If active subscription: append "Tu suscripción se cancelará automáticamente." Buttons: "Cancelar" / "Continuar".
+2. **Survey sheet** — reason radio (6 options from enum above, Spanish labels), optional satisfaction 1–5, optional free text. Submit button: "Terminar programa".
+3. On success: optimistic cache update, route back to purchased-courses list, show small toast "Programa terminado". Expired badge visible on the row.
+
+Query invalidations on success:
+- `['programs', 'library', userId, userRole]` — new programs now visible
+- `['courses', 'purchased', userId]` — expired status reflected
+- `['user', userId]` — courses map changed
+- `['workout', 'daily', userId]` / `['nutrition', 'diary', ...]` — any queries tied to this course
+
+[SubscriptionsScreen.js](apps/pwa/src/screens/SubscriptionsScreen.js) — when the subscription is tied to a one-on-one program, hide the standalone "Cancelar suscripción" button and show instead "Para terminar este programa, ve a Mis Programas". One mental model: for one-on-one, leaving is the primary action; subscription cancel is a side-effect.
+
+No offline leave. Show a "Conéctate a internet para terminar el programa" message if offline.
+
+**Creator dashboard changes:**
+
+[ClientesScreen.jsx](apps/creator-dashboard/src/screens/ClientesScreen.jsx):
+- Default view: `?status=active` (current behavior, formalized via param)
+- New toggle/tab "Anteriores" → `?status=inactive`. Shows `endedAt`, reason category, program title. No free-text reasons.
+- Active client rows with `previousEnrollmentEndedAt` show a subtle pill: "Regresó después de {N} días" where N = days between prior `endedAt` and `createdAt` of the new record.
+
+Aggregated feedback block (new, small — on `ClientesScreen` header or creator home):
+- "Este mes: {N} clientes terminaron" + breakdown by reason category (`no_time: 2, goals_changed: 1, ...`)
+- Server aggregates — `GET /creator/analytics/leaves?month=YYYY-MM` returns counts only
+- Renders nothing if N < 2 (low-signal noise)
+
+No email or push to the creator. Roster update is enough.
+
+**Firestore rules:**
+
+`program_leave_feedback`:
+- Create: `request.auth.uid == request.resource.data.userId`
+- Read: deny (server-only; creator reads aggregated via endpoint)
+- Update/delete: deny
+
+`one_on_one_clients`, `nutrition_assignments`, `call_bookings`, `users/.../courses`:
+- No rule changes — user leave action writes via Cloud Function with admin SDK, client never writes these directly.
+
+**Edge cases:**
+1. User in two one-on-one programs with the same creator — leaving one ends only that `courseId`. Library filter remains active while any one-on-one with that creator is active.
+2. Direct-URL purchase of a rival one-on-one while enrolled — blocked at `POST /payments/preference` (see modified endpoint above).
+3. Creator deleted or unpublished the program while user was enrolled — leave endpoint must not require the `courses/{courseId}` doc, only `users.courses[courseId]`.
+4. Free / admin-assigned program with no subscription — MP cancel step no-ops.
+5. Re-enrollment while still within old expired access window — allowed; `previousEnrollmentEndedAt` set.
+6. Low-ticket program from the same creator — unaffected, always accessible.
+7. Double-tap leave — second call returns success (idempotent).
+8. MP cancel fails mid-cascade — other steps persisted; response includes `cascade.subscription: 'failed'`; user sees "Programa terminado pero la suscripción no pudo cancelarse. Inténtalo desde Suscripciones." Server logs + reconciliation hook.
+
+**Testing plan:**
+
+Integration (Firebase emulator, `functions`):
+- Leave happy path — cascade effects verified (all 5)
+- Leave without subscription — MP step skipped cleanly
+- Leave without future bookings or nutrition assignment — cascade succeeds
+- Leave twice → second call idempotent, no double-feedback
+- Leave while not enrolled → 404
+- Leave a low-ticket program → 409 CONFLICT
+- MP cancel step simulated failure → other steps persisted, response reflects partial
+- Library filter — active one-on-one user: creator B's one-on-one hidden, creator B's low-ticket visible
+- Library filter — no active one-on-one: all programs
+- Library filter — expired/cancelled one-on-one: all programs (lift confirmed)
+- `POST /creator/clients` rejoin → `previousEnrollmentEndedAt` set correctly
+- `GET /creator/clients?status=inactive` scoped to `auth.userId`
+- Purchase block — `POST /payments/preference` for rival creator's one-on-one → 409
+
+Rules tests:
+- Non-owner cannot write `program_leave_feedback` for another userId
+- Client-side read on `program_leave_feedback` denied
+
+Manual PWA QA (staging):
+- Home reflects "no active program" immediately after leave
+- Library expands visibly after leave (previously hidden programs appear)
+- AllPurchasedCoursesScreen: expired badge on the left program, copy correct
+- Survey flow: all reasons selectable, satisfaction/free-text optional, submit works
+- Subscription screen: cancelled subscription visible; one-on-one subscription screen shows "go to Mis Programas" messaging
+- Offline attempt: graceful error, no state change
+
+Manual creator dashboard QA (staging):
+- ClientesScreen active list drops the user immediately post-leave
+- "Anteriores" tab shows the user with `endedAt` + reason category
+- Rejoin (re-enroll via `POST /creator/clients`) surfaces "Regresó después de N días" pill on active list
+- Aggregated feedback block renders correctly at low and higher N
+- Verify creator cannot see free-text or satisfaction scores anywhere
+
+**Rollout order:**
+1. Deploy functions — endpoints + rules + internal MP cancel helper
+2. Deploy creator dashboard — inactive tab + aggregated view
+3. Deploy PWA — leave flow + library filter client-side cleanup
+4. Validate on wake-staging with seeded one-on-one enrollment before main deploy
+
+**Analytics (tie to #6 when PostHog lands):**
+- `program.left { course_id, creator_id, reason, had_active_subscription, remaining_days_lost }`
+- `program.rejoined_same_creator { course_id, creator_id, days_gap }`
+
+**Open questions (not blocking V1):**
+- Creator-initiated end (client non-responsive)? Defer. If needed: `POST /creator/clients/:clientId/end` — same cascade, creator actor.
+- "Pause" distinct from "leave"? Defer until signal.
+
+**Checklist:**
+- [ ] Data model: `one_on_one_clients` new fields
+- [ ] Data model: `program_leave_feedback` collection + rules
+- [ ] Internal helper: `cancelMpSubscription(userId, courseId)` extracted from existing endpoint
+- [ ] Endpoint: `POST /enrollments/:courseId/leave` with full cascade
+- [ ] Endpoint: library-fetch server-side filter
+- [ ] Endpoint: `GET /creator/clients` status param
+- [ ] Endpoint: `POST /creator/clients` sets `previousEnrollmentEndedAt`
+- [ ] Endpoint: `POST /payments/preference` rejects rival one-on-one
+- [ ] Endpoint: `GET /creator/analytics/leaves?month=` aggregated counts
+- [ ] PWA: AllPurchasedCoursesScreen detail sheet + "Terminar programa"
+- [ ] PWA: two-step leave modal (warning + survey)
+- [ ] PWA: query invalidations on leave
+- [ ] PWA: SubscriptionsScreen one-on-one messaging
+- [ ] PWA: offline guard on leave action
+- [ ] Creator dashboard: ClientesScreen "Anteriores" tab
+- [ ] Creator dashboard: "Regresó" pill
+- [ ] Creator dashboard: aggregated feedback block
+- [ ] Firestore rules: `program_leave_feedback`
+- [ ] Integration tests (emulator)
+- [ ] Rules tests
+- [ ] Manual QA on wake-staging
+- [ ] Deploy order: functions → creator → PWA
+
+---
+
 ## Product Quality
 
 ### 5. PWA UI Redesign `NOT STARTED`

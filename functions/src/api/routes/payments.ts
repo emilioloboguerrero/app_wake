@@ -16,6 +16,7 @@ import {
   calculateExpirationDate, classifyError, getClient,
 } from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
+import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 
 const router = Router();
 
@@ -66,6 +67,18 @@ router.post("/payments/preference", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
+
+  // Block buying a rival creator's one-on-one program while locked in
+  if (course.deliveryType === "one_on_one") {
+    const lock = await getActiveOneOnOneLock(auth.userId);
+    if (lock && lock.creatorId !== course.creator_id) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409,
+        "Ya estás en un programa uno-a-uno. Termínalo antes de comenzar otro."
+      );
+    }
+  }
+
   const externalReference = buildExternalReference(auth.userId, courseId, "otp");
 
   const client = getMPClient();
@@ -118,6 +131,17 @@ router.post("/payments/subscription", async (req, res) => {
   const course = courseDoc.data()!;
   if (!course.price) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Precio del curso no encontrado");
+  }
+
+  // Block buying a rival creator's one-on-one program while locked in
+  if (course.deliveryType === "one_on_one") {
+    const lock = await getActiveOneOnOneLock(auth.userId);
+    if (lock && lock.creatorId !== course.creator_id) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409,
+        "Ya estás en un programa uno-a-uno. Termínalo antes de comenzar otro."
+      );
+    }
   }
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
@@ -646,16 +670,13 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
 
   const subscriptionData = subscriptionDoc.data() ?? {};
 
-  const client = getMPClient();
-  const preapproval = new PreApproval(client);
-  await preapproval.update({id: subscriptionId, body: {status: "cancelled"}});
-
-  await subscriptionRef.set({
-    status: "cancelled",
-    last_action: "cancel",
-    cancelled_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  }, {merge: true});
+  const cancelResult = await cancelMpSubscription(auth.userId, subscriptionId);
+  if (cancelResult === "failed") {
+    throw new WakeApiServerError(
+      "SERVICE_UNAVAILABLE", 503,
+      "No pudimos cancelar la suscripción en este momento. Inténtalo de nuevo."
+    );
+  }
 
   if (survey?.answers) {
     try {

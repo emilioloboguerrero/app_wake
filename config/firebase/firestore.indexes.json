@@ -270,6 +270,14 @@
         {"fieldPath": "source", "order": "ASCENDING"},
         {"fieldPath": "createdAt", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "program_leave_feedback",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "leftAt", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": [

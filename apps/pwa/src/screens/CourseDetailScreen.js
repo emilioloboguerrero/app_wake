@@ -46,6 +46,8 @@ import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import VideoExchangeTab from '../components/videoExchange/VideoExchangeTab.web';
+import LeaveProgramModal from '../components/program/LeaveProgramModal';
+import { queryKeys } from '../config/queryClient';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -66,6 +68,8 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [userOwnsCourse, setUserOwnsCourse] = useState(false);
   const [checkingOwnership, setCheckingOwnership] = useState(true); // Start as true, will be cleared when user loads or timeout
   const [userRole, setUserRole] = useState('user');
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   // Track failed image loads to show fallbacks
   const [failedImages, setFailedImages] = useState(new Set());
@@ -1042,6 +1046,46 @@ useEffect(() => {
     Alert.alert('Pago cancelado', 'El pago fue cancelado. Puedes intentar de nuevo cuando quieras.');
   };
 
+  // Detect active subscription for this course (used by leave-program copy)
+  const { data: courseSubscriptions = [] } = useQuery({
+    queryKey: queryKeys.user.subscriptions(user?.uid),
+    queryFn: () => firestoreService.getUserSubscriptions(user.uid),
+    enabled: !!user?.uid && isOneOnOne && userOwnsCourse,
+    staleTime: STALE_TIMES.clientList,
+  });
+
+  const hasActiveSubscriptionForCourse = useMemo(() => {
+    if (!Array.isArray(courseSubscriptions)) return false;
+    return courseSubscriptions.some((sub) => {
+      const subCourseId = sub.course_id || sub.courseId;
+      const status = (sub.status || '').toLowerCase();
+      return subCourseId === course?.id && (status === 'authorized' || status === 'pending' || status === 'active');
+    });
+  }, [courseSubscriptions, course?.id]);
+
+  const handleConfirmLeave = async (payload) => {
+    if (!course?.id) return;
+    setLeaveSubmitting(true);
+    try {
+      await firestoreService.leaveEnrollment(course.id, payload);
+      setShowLeaveModal(false);
+      // Invalidate everything that reflects enrollment state
+      queryClient.invalidateQueries({ queryKey: ['user', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ['programs'] });
+      queryClient.invalidateQueries({ queryKey: ['creator'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.subscriptions(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.courses(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.assignment(user?.uid) });
+      Alert.alert('Programa terminado', 'Has terminado tu programa con éxito.');
+      navigation.goBack();
+    } catch (err) {
+      logger.error('Leave enrollment failed', err);
+      throw err;
+    } finally {
+      setLeaveSubmitting(false);
+    }
+  };
+
   const renderPurchaseButton = () => {
     if (checkingOwnership) {
       return (
@@ -1601,6 +1645,15 @@ useEffect(() => {
           {/* Action Buttons */}
           <View style={styles.actionsSection}>
             {renderPurchaseButton()}
+            {isOneOnOne && userOwnsCourse && ownershipReady && !simulateUserRole && (
+              <TouchableOpacity
+                style={styles.leaveProgramButton}
+                onPress={() => setShowLeaveModal(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.leaveProgramButtonText}>Terminar programa</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Refresh ownership button */}
@@ -1696,6 +1749,16 @@ useEffect(() => {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Leave program modal (one-on-one) */}
+      <LeaveProgramModal
+        visible={showLeaveModal}
+        onClose={() => setShowLeaveModal(false)}
+        onConfirm={handleConfirmLeave}
+        creatorName={creatorDisplayName || undefined}
+        hasActiveSubscription={hasActiveSubscriptionForCourse}
+        isSubmitting={leaveSubmitting}
+      />
 
       {/* Book call slot modal (one-on-one) */}
       <BookCallSlotModal
@@ -2393,6 +2456,20 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 13,
     fontWeight: '500',
+  },
+  leaveProgramButton: {
+    marginTop: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(224, 84, 84, 0.4)',
+  },
+  leaveProgramButtonText: {
+    color: 'rgba(224, 84, 84, 0.95)',
+    fontSize: 14,
+    fontWeight: '600',
   },
   secondaryButton: {
     backgroundColor: 'transparent',

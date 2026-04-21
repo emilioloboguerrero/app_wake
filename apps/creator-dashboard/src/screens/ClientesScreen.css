@@ -871,3 +871,77 @@
     padding: 0 16px;
   }
 }
+
+/* ─── Rejoin pill on active client cards ─────────────────── */
+.cl-card__rejoin-pill {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  align-self: flex-start;
+  width: fit-content;
+}
+
+/* ─── Ended-meta on inactive client cards ────────────────── */
+.cl-card__ended-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ─── Leaves summary block ──────────────────────────────── */
+.cl-leaves-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.cl-leaves-summary__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cl-leaves-summary__count {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cl-leaves-summary__count strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.cl-leaves-summary__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cl-leaves-summary__chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.cl-leaves-summary__chip strong {
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+  margin-left: 2px;
+}

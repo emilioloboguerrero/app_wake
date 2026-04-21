@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { auth } from '../config/firebase';
 import firestoreService from '../services/apiService';
+import purchaseService from '../services/purchaseService';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
@@ -79,6 +80,26 @@ const SubscriptionsScreen = ({ navigation }) => {
     enabled: !!user?.uid,
     staleTime: STALE_TIMES.clientList,
   });
+
+  // Used to mark which subscriptions belong to one-on-one programs
+  // (the leave-program flow handles those instead of the standalone cancel survey)
+  const { data: purchasedCourses = [] } = useQuery({
+    queryKey: queryKeys.user.courses(user?.uid),
+    queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
+    enabled: !!user?.uid,
+    staleTime: STALE_TIMES.programStructure,
+  });
+
+  const oneOnOneCourseIds = useMemo(() => {
+    const set = new Set();
+    for (const c of purchasedCourses) {
+      if (c.deliveryType === 'one_on_one' || c.delivery_type === 'one_on_one') {
+        if (c.id) set.add(c.id);
+        if (c.courseId) set.add(c.courseId);
+      }
+    }
+    return set;
+  }, [purchasedCourses]);
 
   const subscriptions = rawSubscriptions
     .filter((sub) => !sub.type || sub.type === 'mercadopago')
@@ -153,6 +174,20 @@ const SubscriptionsScreen = ({ navigation }) => {
 
     if (currentStatus === 'cancelled' || currentStatus === 'expired') {
       return null;
+    }
+
+    const subCourseId = subscription.course_id || subscription.courseId;
+    const isOneOnOne = subCourseId && oneOnOneCourseIds.has(subCourseId);
+
+    // For one-on-one programs, the cancel survey is replaced by the leave-program flow
+    if (isOneOnOne) {
+      return (
+        <View style={styles.actionsRow}>
+          <Text style={styles.oneOnOneRedirect}>
+            Para terminar este programa, ve a <Text style={styles.oneOnOneRedirectLink}>Mis Programas</Text>.
+          </Text>
+        </View>
+      );
     }
 
     // MercadoPago subscriptions - show manage button
@@ -878,6 +913,17 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
     fontSize: 14,
+  },
+  oneOnOneRedirect: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
+    lineHeight: 18,
+    paddingVertical: 4,
+  },
+  oneOnOneRedirectLink: {
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '600',
   },
   actionButtonTextSecondary: {
     color: '#ffffff',

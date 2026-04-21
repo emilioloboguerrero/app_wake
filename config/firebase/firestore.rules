@@ -581,6 +581,15 @@ service cloud.firestore {
     }
 
     // ============================================
+    // PROGRAM LEAVE FEEDBACK
+    // ============================================
+    // Server-only reads. Creator sees aggregated counts via API only — never raw rows.
+    match /program_leave_feedback/{feedbackId} {
+      allow create: if false; // All writes via Cloud Function (Admin SDK bypasses)
+      allow read, update, delete: if isAdmin();
+    }
+
+    // ============================================
     // WRITE ACCESS REQUESTS (developer portal)
     // ============================================
     match /write_access_requests/{requestId} {

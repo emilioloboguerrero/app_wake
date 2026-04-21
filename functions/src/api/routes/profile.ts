@@ -8,6 +8,7 @@ import {validateBody, validateStoragePath} from "../middleware/validate.js";
 import {WakeApiServerError} from "../errors.js";
 import {calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
+import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 
 const router = Router();
 
@@ -665,7 +666,7 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
 
 // GET /courses — course listing, optional ?creatorId=X filter
 router.get("/courses", async (req, res) => {
-  await validateAuthAndRateLimit(req);
+  const auth = await validateAuthAndRateLimit(req);
 
   const creatorId = req.query.creatorId as string | undefined;
 
@@ -678,11 +679,31 @@ router.get("/courses", async (req, res) => {
     query = query.where("creator_id", "==", creatorId);
   }
 
-  const snapshot = await query.get();
+  // Lock-in filter applies only to global discovery (library).
+  // On creator profile pages (?creatorId=X) we intentionally show everything —
+  // general programs are always unblocked, and one-on-ones remain visible for
+  // browsing. The purchase-block at POST /payments/preference still prevents
+  // actually enrolling in a rival one-on-one while locked.
+  const isCreatorProfileRequest = !!creatorId;
 
-  res.json({
-    data: snapshot.docs.map((doc) => ({...doc.data(), id: doc.id})),
-  });
+  const [snapshot, lock] = await Promise.all([
+    query.get(),
+    isCreatorProfileRequest
+      ? Promise.resolve(null)
+      : getActiveOneOnOneLock(auth.userId),
+  ]);
+
+  let docs = snapshot.docs.map((doc) => ({...doc.data(), id: doc.id} as Record<string, unknown>));
+
+  // Global library only: hide rival creators' one-on-one programs while locked
+  if (lock) {
+    docs = docs.filter((d) => {
+      if (d.deliveryType !== "one_on_one") return true;
+      return d.creator_id === lock.creatorId;
+    });
+  }
+
+  res.json({data: docs});
 });
 
 // GET /storage/download-url — return signed download URL for a storage path
