@@ -4009,6 +4009,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      if (result) {
                        // Clear checkpoint on successful completion
                        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+                       sessionManager.cancelPendingCheckpoint();
                        import('../utils/apiClient.js').then(mod => {
                          const client = mod.default || mod.apiClient;
                          client.delete('/workout/session/active');

@@ -20,6 +20,21 @@ function getQueuePriority(path) {
   return null;
 }
 
+function parseJwtExpMs(token) {
+  try {
+    const payload = token.split('.')[1];
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const json = typeof atob === 'function'
+      ? atob(padded)
+      : Buffer.from(padded, 'base64').toString('binary');
+    const { exp } = JSON.parse(json);
+    return typeof exp === 'number' ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export class WakeApiError extends Error {
   constructor(code, message, status, field = null, retryAfter = null) {
     super(message);
@@ -60,7 +75,8 @@ class ApiClient {
       return this.#tokenCache.value;
     }
     const token = await user.getIdToken(false);
-    this.#tokenCache = { value: token, expiresAt: now + 3600 * 1000 };
+    const expiresAt = parseJwtExpMs(token) ?? (now + 3600 * 1000);
+    this.#tokenCache = { value: token, expiresAt };
     return token;
   }
 
@@ -72,7 +88,8 @@ class ApiClient {
         const user = auth.currentUser;
         if (!user) throw new WakeApiError('UNAUTHENTICATED', 'Session expired', 401);
         const fresh = await user.getIdToken(true);
-        this.#tokenCache = { value: fresh, expiresAt: Date.now() + 3600 * 1000 };
+        const expiresAt = parseJwtExpMs(fresh) ?? (Date.now() + 3600 * 1000);
+        this.#tokenCache = { value: fresh, expiresAt };
         return fresh;
       } finally {
         this.#refreshPromise = null;

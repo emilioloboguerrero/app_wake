@@ -3,8 +3,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 
+const CHECKPOINT_DEBOUNCE_MS = 1500;
+const CHECKPOINT_MAX_WAIT_MS = 5000;
+
 class SessionManager {
-  
+  #pendingCheckpoint = null;
+  #checkpointTimer = null;
+  #checkpointMaxWaitTimer = null;
+
+  #scheduleCheckpoint(sessionData) {
+    this.#pendingCheckpoint = sessionData;
+    if (this.#checkpointTimer) clearTimeout(this.#checkpointTimer);
+    this.#checkpointTimer = setTimeout(() => this.#flushCheckpoint(), CHECKPOINT_DEBOUNCE_MS);
+    if (!this.#checkpointMaxWaitTimer) {
+      this.#checkpointMaxWaitTimer = setTimeout(() => this.#flushCheckpoint(), CHECKPOINT_MAX_WAIT_MS);
+    }
+  }
+
+  #flushCheckpoint() {
+    if (this.#checkpointTimer) { clearTimeout(this.#checkpointTimer); this.#checkpointTimer = null; }
+    if (this.#checkpointMaxWaitTimer) { clearTimeout(this.#checkpointMaxWaitTimer); this.#checkpointMaxWaitTimer = null; }
+    const payload = this.#pendingCheckpoint;
+    if (!payload) return;
+    this.#pendingCheckpoint = null;
+    apiClient.put('/workout/checkpoint', payload).catch(e => logger.error('Checkpoint save failed:', e));
+  }
+
+  #cancelPendingCheckpoint() {
+    if (this.#checkpointTimer) { clearTimeout(this.#checkpointTimer); this.#checkpointTimer = null; }
+    if (this.#checkpointMaxWaitTimer) { clearTimeout(this.#checkpointMaxWaitTimer); this.#checkpointMaxWaitTimer = null; }
+    this.#pendingCheckpoint = null;
+  }
+
   /**
    * Clear all cached progress for a specific user (for sign out)
    */
@@ -45,7 +75,7 @@ class SessionManager {
       };
 
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
-      apiClient.put('/workout/checkpoint', sessionData).catch(e => logger.error('Checkpoint save failed (start):', e));
+      this.#scheduleCheckpoint(sessionData);
       return sessionData;
     } catch (error) {
       logger.error('❌ Error starting session:', error);
@@ -79,7 +109,7 @@ class SessionManager {
       
       // Save locally and sync to cloud checkpoint
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
-      apiClient.put('/workout/checkpoint', sessionData).catch(e => logger.error('⚠️ Checkpoint save failed (exercise):', e));
+      this.#scheduleCheckpoint(sessionData);
 
     } catch (error) {
       logger.error('❌ Error adding exercise data:', error);
@@ -119,12 +149,21 @@ class SessionManager {
     try {
       await AsyncStorage.removeItem('current_session');
       try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+      this.#cancelPendingCheckpoint();
       apiClient.delete('/workout/checkpoint').catch(e => logger.error('Checkpoint delete failed (cancel):', e));
     } catch (error) {
       logger.error('Error cancelling session:', error);
     }
   }
   
+  /**
+   * Drop any queued checkpoint write (call before/after /workout/complete
+   * so a pending debounced PUT cannot revive a just-deleted checkpoint doc).
+   */
+  cancelPendingCheckpoint() {
+    this.#cancelPendingCheckpoint();
+  }
+
   /**
    * Clear all progress for a course (for testing/reset)
    */
