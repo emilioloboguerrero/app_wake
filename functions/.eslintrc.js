@@ -20,6 +20,7 @@ module.exports = {
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.
     "/generated/**/*", // Ignore generated files.
+    "list-collections.js", // One-off admin script, not in tsconfig.
   ],
   plugins: [
     "@typescript-eslint",
@@ -29,8 +30,19 @@ module.exports = {
     "quotes": ["error", "double"],
     "import/no-unresolved": 0,
     "indent": ["error", 2],
-    "max-len": ["error", {"code": 120, "ignoreUrls": true}],
+    "max-len": ["error", {
+      "code": 140,
+      "ignoreUrls": true,
+      "ignoreStrings": true,
+      "ignoreTemplateLiterals": true,
+    }],
     "require-jsdoc": "off",
+    "valid-jsdoc": "off",
+    "new-cap": ["error", {"capIsNewExceptions": ["Router"]}],
     "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": ["warn", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_",
+    }],
   },
 };
