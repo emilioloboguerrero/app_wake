@@ -2,6 +2,7 @@ User-agent: *
 Disallow: /app/
 Disallow: /creators/
 Disallow: /developers/
+Disallow: /api/
 Disallow: /e/
 Allow: /
 
