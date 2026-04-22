@@ -29,9 +29,18 @@ export interface OpsIssue {
   resolutionCommitSha?: string;
 }
 
+function assertFingerprint(fingerprint: unknown): asserts fingerprint is string {
+  if (typeof fingerprint !== "string" || fingerprint.length === 0) {
+    throw new Error(
+      "fingerprint is required and must be a non-empty string"
+    );
+  }
+}
+
 export async function getOpsIssue(
   fingerprint: string
 ): Promise<OpsIssue | null> {
+  assertFingerprint(fingerprint);
   const db = admin.firestore();
   const snap = await db.collection(COLLECTION).doc(fingerprint).get();
   return snap.exists ? (snap.data() as OpsIssue) : null;
@@ -44,6 +53,7 @@ export async function createOpsIssue(input: {
   source: OpsIssueSource;
   occurrenceCount: number;
 }): Promise<OpsIssue> {
+  assertFingerprint(input.fingerprint);
   const db = admin.firestore();
   const now = admin.firestore.Timestamp.now();
   const doc: OpsIssue = {
@@ -64,6 +74,7 @@ export async function updateOpsIssue(
   fingerprint: string,
   patch: Partial<OpsIssue>
 ): Promise<void> {
+  assertFingerprint(fingerprint);
   const db = admin.firestore();
   await db.collection(COLLECTION).doc(fingerprint).set(patch, {merge: true});
 }
