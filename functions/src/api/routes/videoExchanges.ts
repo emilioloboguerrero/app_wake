@@ -62,23 +62,19 @@ router.post("/video-exchanges", async (req, res) => {
   }
   const oo = ooDoc.data()!;
 
-  const callerRole: "creator" | "client" =
-    (auth.role === "creator" || auth.role === "admin") ? "creator" : "client";
-
-  if (callerRole === "creator") {
-    if (oo.creatorId !== auth.userId) {
-      throw new WakeApiServerError("FORBIDDEN", 403, "No eres el creador de esta asesoria");
-    }
+  let callerRole: "creator" | "client";
+  if (oo.creatorId === auth.userId) {
+    callerRole = "creator";
     if (oo.clientUserId !== body.clientId) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "clientId no coincide con la asesoria", "clientId");
     }
-  } else {
-    if (oo.clientUserId !== auth.userId) {
-      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta asesoria");
-    }
+  } else if (oo.clientUserId === auth.userId) {
+    callerRole = "client";
     if (auth.userId !== body.clientId) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "clientId debe ser tu propio userId", "clientId");
     }
+  } else {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta asesoria");
   }
 
   // Validate initialMessage shape if present
@@ -174,27 +170,36 @@ router.get("/video-exchanges", async (req, res) => {
 
   const {oneOnOneClientId, status} = req.query as Record<string, string | undefined>;
 
-  let query: FirebaseFirestore.Query = db.collection("video_exchanges");
+  // Query both sides — a user can participate as creator in some threads and
+  // as client in others (e.g. a coach who is also a client of another coach).
+  const base = db.collection("video_exchanges");
+  const build = (field: "creatorId" | "clientId") => {
+    let q: FirebaseFirestore.Query = base.where(field, "==", auth.userId);
+    if (status) q = q.where("status", "==", status);
+    return q.orderBy("lastMessageAt", "desc").limit(100);
+  };
 
-  if (auth.role === "creator" || auth.role === "admin") {
-    query = query.where("creatorId", "==", auth.userId);
-  } else {
-    query = query.where("clientId", "==", auth.userId);
+  const [asCreatorSnap, asClientSnap] = await Promise.all([
+    build("creatorId").get(),
+    build("clientId").get(),
+  ]);
+
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const d of [...asCreatorSnap.docs, ...asClientSnap.docs]) {
+    byId.set(d.id, {...d.data(), id: d.id});
   }
+  let exchanges = Array.from(byId.values());
 
-  if (status) {
-    query = query.where("status", "==", status);
-  }
-
-  query = query.orderBy("lastMessageAt", "desc").limit(100);
-
-  const snap = await query.get();
-  let exchanges = snap.docs.map((d) => ({...d.data(), id: d.id}));
-
-  // Filter oneOnOneClientId client-side to avoid extra composite index
   if (oneOnOneClientId) {
-    exchanges = exchanges.filter((e: Record<string, unknown>) => e.oneOnOneClientId === oneOnOneClientId);
+    exchanges = exchanges.filter((e) => e.oneOnOneClientId === oneOnOneClientId);
   }
+
+  exchanges.sort((a, b) => {
+    const am = (a.lastMessageAt as FirebaseFirestore.Timestamp | undefined)?.toMillis?.() ?? 0;
+    const bm = (b.lastMessageAt as FirebaseFirestore.Timestamp | undefined)?.toMillis?.() ?? 0;
+    return bm - am;
+  });
+  exchanges = exchanges.slice(0, 100);
 
   res.json({data: exchanges});
 });
