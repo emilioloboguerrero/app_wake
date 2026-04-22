@@ -25,7 +25,11 @@ const WarmupScreen = () => {
         'WorkoutExecution': () => {
           const courseId = params?.course?.courseId || params?.course?.id;
           if (courseId) {
-            navigate(`/course/${courseId}/workout/execution`, { state: params });
+            // replace:true so /warmup isn't in the back stack. If iOS edge-swipe
+            // defeats the sentinel in WorkoutExecutionScreen.web.jsx, back-nav
+            // lands on /course/:id/workout (DailyWorkoutScreen), which has the
+            // recovery prompt that reads localStorage.wake_session_checkpoint.
+            navigate(`/course/${courseId}/workout/execution`, { state: params, replace: true });
           }
         },
         'DailyWorkout': () => {
