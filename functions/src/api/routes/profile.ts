@@ -47,7 +47,8 @@ router.get("/users/me", async (req, res) => {
     if (activeDoc) {
       pinnedNutritionAssignmentId = activeDoc.id;
       // Persist so future calls skip the extra query
-      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true}).catch(() => {});
+      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true})
+        .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
     }
   }
 
@@ -688,9 +689,9 @@ router.get("/courses", async (req, res) => {
 
   const [snapshot, lock] = await Promise.all([
     query.get(),
-    isCreatorProfileRequest
-      ? Promise.resolve(null)
-      : getActiveOneOnOneLock(auth.userId),
+    isCreatorProfileRequest ?
+      Promise.resolve(null) :
+      getActiveOneOnOneLock(auth.userId),
   ]);
 
   let docs = snapshot.docs.map((doc) => {

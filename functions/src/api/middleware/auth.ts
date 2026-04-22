@@ -1,5 +1,6 @@
 import type {Request} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import * as crypto from "node:crypto";
 import {db} from "../firestore.js";
 import {WakeApiServerError} from "../errors.js";
@@ -146,8 +147,7 @@ export async function validateAuthAndRateLimit(
   // Firebase path — parallelize user doc read + rate limit after token verify
   const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
   let decoded = getCachedToken(token);
-  if (decoded) {
-  } else {
+  if (!decoded) {
     try {
       decoded = await admin.auth().verifyIdToken(token, !isEmulator);
     } catch {
@@ -218,7 +218,8 @@ async function validateApiKey(key: string): Promise<AuthResult> {
   }
 
   // Update last_used_at (fire-and-forget)
-  doc.ref.update({last_used_at: new Date().toISOString()}).catch(() => {});
+  doc.ref.update({last_used_at: new Date().toISOString()})
+    .catch((err) => functions.logger.warn("apikey:last-used-update-failed", err));
 
   return {
     userId: data.owner_id,

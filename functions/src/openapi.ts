@@ -1,3 +1,4 @@
+/* eslint-disable max-len -- OpenAPI stub() registry: calls are inherently wide with inline descriptions and params */
 import type {OpenAPIV3} from "openapi-types";
 
 const bearerAuth: OpenAPIV3.SecurityRequirementObject = {BearerAuth: []};

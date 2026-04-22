@@ -77,6 +77,7 @@ async function resolveEventRecipients(
     let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
     let pagesFetched = 0;
 
+    // eslint-disable-next-line no-constant-condition -- cursor paginator: break on empty page
     while (true) {
       let query: Query = regsRef.orderBy("__name__").limit(PAGE_SIZE);
       if (lastDoc) query = query.startAfter(lastDoc);

@@ -772,7 +772,9 @@ router.get("/analytics/adherence", async (req, res) => {
   const [coursesSnap, clientsSnap] = await Promise.all([
     programIdFilter ?
       db.collection("courses").doc(programIdFilter).get().then((doc) => {
-        if (!doc.exists || doc.data()?.creator_id !== auth.userId) return {docs: [] as FirebaseFirestore.QueryDocumentSnapshot[]} as unknown as FirebaseFirestore.QuerySnapshot;
+        if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
+          return {docs: [] as FirebaseFirestore.QueryDocumentSnapshot[]} as unknown as FirebaseFirestore.QuerySnapshot;
+        }
         return {docs: [doc]} as unknown as FirebaseFirestore.QuerySnapshot;
       }) :
       getCreatorCourses(auth.userId),

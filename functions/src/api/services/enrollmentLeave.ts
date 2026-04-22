@@ -210,45 +210,45 @@ export async function leaveOneOnOneEnrollment(params: {
 
   // Resolve creatorId from the course doc (source of truth)
   const courseDoc = await db.collection("courses").doc(courseId).get();
-  const creatorId = courseDoc.exists
-    ? (courseDoc.data()?.creator_id as string | undefined)
-    : (enrollment.creator_id as string | undefined);
+  const creatorId = courseDoc.exists ?
+    (courseDoc.data()?.creator_id as string | undefined) :
+    (enrollment.creator_id as string | undefined);
 
   // creatorId may be undefined if the course was deleted — we still allow leaving
   const nowIso = new Date().toISOString();
 
   const expiresAt = enrollment.expires_at as string | undefined;
-  const remainingDays = expiresAt
-    ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
-    : null;
+  const remainingDays = expiresAt ?
+    Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) :
+    null;
 
   // 2. Pre-find an active subscription before opening the batch
   const subscriptionId = await findActiveSubscription(userId, courseId);
 
   // 3. Pre-query everything that needs to be touched in the batch
   const [oneOnOneClientSnap, nutritionSnap, bookingsSnap] = await Promise.all([
-    creatorId
-      ? db.collection("one_on_one_clients")
+    creatorId ?
+      db.collection("one_on_one_clients")
         .where("creatorId", "==", creatorId)
         .where("clientUserId", "==", userId)
         .limit(1)
-        .get()
-      : Promise.resolve(null),
+        .get() :
+      Promise.resolve(null),
     // Uses existing (userId, assignedBy, createdAt DESC) index; status filtered in memory.
-    creatorId
-      ? db.collection("nutrition_assignments")
+    creatorId ?
+      db.collection("nutrition_assignments")
         .where("userId", "==", userId)
         .where("assignedBy", "==", creatorId)
-        .get()
-      : Promise.resolve(null),
+        .get() :
+      Promise.resolve(null),
     // Uses the existing (creatorId, slotStartUtc) index; we filter by
     // clientUserId + future in memory to avoid requiring a 3-field composite.
-    creatorId
-      ? db.collection("call_bookings")
+    creatorId ?
+      db.collection("call_bookings")
         .where("creatorId", "==", creatorId)
         .where("slotStartUtc", ">", nowIso)
-        .get()
-      : Promise.resolve(null),
+        .get() :
+      Promise.resolve(null),
   ]);
 
   // 4. Write feedback first (kept even if rest of cascade fails)

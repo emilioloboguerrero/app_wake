@@ -1742,6 +1742,7 @@ const nutritionRunOptions: functions.RuntimeOptions = {
   secrets: [fatSecretClientId, fatSecretClientSecret],
 };
 
+/* eslint-disable camelcase -- FatSecret API wire format requires snake_case keys */
 export const nutritionFoodSearch = functions
   .runWith(nutritionRunOptions)
   .https.onRequest(async (request, response) => {
@@ -1902,6 +1903,7 @@ export const nutritionFoodGet = functions
       response.status(503).json({error: {code: "SERVICE_UNAVAILABLE", message: "Detalle de alimento falló"}});
     }
   });
+/* eslint-enable camelcase */
 
 export const nutritionBarcodeLookup = functions
   .runWith(nutritionRunOptions)

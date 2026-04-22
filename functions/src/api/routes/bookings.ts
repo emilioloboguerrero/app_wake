@@ -127,7 +127,8 @@ async function sendBookingConfirmationEmails(
       callLink,
       dateTimeStr,
     });
-    sendCallEmail(clientEmail, "Tu llamada está confirmada", html).catch(() => {});
+    sendCallEmail(clientEmail, "Tu llamada está confirmada", html)
+      .catch((err) => functions.logger.warn("bookings:confirm-email-client-failed", err));
   }
 
   if (creatorEmail) {
@@ -137,7 +138,8 @@ async function sendBookingConfirmationEmails(
       callLink,
       dateTimeStr,
     });
-    sendCallEmail(creatorEmail, "Nueva llamada agendada", html).catch(() => {});
+    sendCallEmail(creatorEmail, "Nueva llamada agendada", html)
+      .catch((err) => functions.logger.warn("bookings:confirm-email-creator-failed", err));
   }
 }
 
@@ -162,7 +164,8 @@ async function sendCancellationEmail(
     bodyText,
     dateTimeStr,
   });
-  sendCallEmail(recipientEmail, "Llamada cancelada", html).catch(() => {});
+  sendCallEmail(recipientEmail, "Llamada cancelada", html)
+    .catch((err) => functions.logger.warn("bookings:cancel-email-failed", err));
 }
 
 function freeSlotInAvailability(
@@ -611,7 +614,8 @@ router.delete("/creator/bookings/:bookingId", async (req, res) => {
 
   const creatorDoc = await db.collection("users").doc(auth.userId).get();
   const creatorName = creatorDoc.data()?.displayName || "Tu coach";
-  sendCancellationEmail(data.clientUserId, creatorName, data.slotStartUtc, true).catch(() => {});
+  sendCancellationEmail(data.clientUserId, creatorName, data.slotStartUtc, true)
+    .catch((err) => functions.logger.warn("bookings:cancel-email-by-creator-failed", err));
 
   res.status(204).send();
 });
@@ -669,7 +673,13 @@ router.get("/creator/:creatorId/availability", async (req, res) => {
 
   for (const [dateKey, dayData] of Object.entries(allDays)) {
     if (dateKey >= startDate && dateKey <= endDate) {
-      const day = dayData as { slots?: Array<{ startUtc?: string; startLocal?: string; endUtc?: string; endLocal?: string; durationMinutes: number; booked: boolean }> };
+      const day = dayData as {
+        slots?: Array<{
+          startUtc?: string; startLocal?: string;
+          endUtc?: string; endLocal?: string;
+          durationMinutes: number; booked: boolean;
+        }>;
+      };
       const available = (day.slots ?? []).filter((s) => !s.booked);
       if (available.length > 0) {
         filteredDays[dateKey] = {
@@ -773,12 +783,14 @@ router.post("/bookings", async (req, res) => {
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const clientDisplayName = userDoc.data()?.displayName ?? null;
   if (clientDisplayName) {
-    db.collection("call_bookings").doc(bookingId).update({clientDisplayName}).catch(() => {});
+    db.collection("call_bookings").doc(bookingId).update({clientDisplayName})
+      .catch((err) => functions.logger.warn("bookings:client-name-update-failed", err));
   }
 
   // Send confirmation emails (non-blocking)
   const callLink = `https://meet.jit.si/wake-${bookingId}`;
-  sendBookingConfirmationEmails(bookingId, auth.userId, body.creatorId, body.slotStartUtc, callLink).catch(() => {});
+  sendBookingConfirmationEmails(bookingId, auth.userId, body.creatorId, body.slotStartUtc, callLink)
+    .catch((err) => functions.logger.warn("bookings:booking-confirmation-emails-failed", err));
 
   res.status(201).json({
     data: {
@@ -895,7 +907,8 @@ router.delete("/bookings/:bookingId", async (req, res) => {
   // Send cancellation email to creator (non-blocking)
   const clientDoc = await db.collection("users").doc(auth.userId).get();
   const clientName = clientDoc.data()?.displayName || "Un cliente";
-  sendCancellationEmail(data.creatorId, clientName, data.slotStartUtc, false).catch(() => {});
+  sendCancellationEmail(data.creatorId, clientName, data.slotStartUtc, false)
+    .catch((err) => functions.logger.warn("bookings:cancel-email-by-client-failed", err));
 
   res.status(204).send();
 });

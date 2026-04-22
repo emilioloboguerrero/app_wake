@@ -558,7 +558,8 @@ router.post("/creator/events/:eventId/image/confirm", async (req, res) => {
   });
 
   // Fire-and-forget: generate OG image with watermark
-  generateOgImage(req.params.eventId, storagePath).catch(() => {});
+  generateOgImage(req.params.eventId, storagePath)
+    .catch((err) => functions.logger.warn("events:og-image-generate-failed", err));
 
   res.json({data: {imageUrl}});
 });

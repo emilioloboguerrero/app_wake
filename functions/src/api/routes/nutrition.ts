@@ -1,4 +1,5 @@
 import {Router} from "express";
+import * as functions from "firebase-functions";
 import {db, FieldValue, Timestamp} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
@@ -320,7 +321,7 @@ router.get("/nutrition/foods/search", async (req, res) => {
     query: q.trim().toLowerCase(),
     cached_at: FieldValue.serverTimestamp(),
     expires_at: Timestamp.fromDate(thirtyDays),
-  }).catch(() => {});
+  }).catch((err) => functions.logger.warn("nutrition:search-cache-write-failed", err));
 
   res.json({data: transformed});
 });

@@ -119,7 +119,12 @@ router.get("/workout/daily", async (req, res) => {
   let sessionCollection = "courses";
   let sessionCollectionId: string = courseId;
   // Hoisted so we can include it in the response
-  let resolvedAllSessions: Array<{ sessionId: string; title: string; moduleId: string; moduleTitle: string; order: number; image_url: string | null; plannedDate?: string | null }> = [];
+  let resolvedAllSessions: Array<{
+    sessionId: string; title: string;
+    moduleId: string; moduleTitle: string;
+    order: number; image_url: string | null;
+    plannedDate?: string | null;
+  }> = [];
 
   if (deliveryType === "one_on_one") {
     // One-on-one: two parallel content systems
@@ -387,9 +392,7 @@ router.get("/workout/daily", async (req, res) => {
           sessionCollectionId = courseCreator as string;
           targetModuleId = "__library__";
           targetSessionId = target.session_id;
-        } else {
         }
-      } else {
       }
     }
   } else {
@@ -444,7 +447,14 @@ router.get("/workout/daily", async (req, res) => {
       completedSessionIds = new Set(completedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-      resolvedAllSessions = allSessions.map((s) => ({sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url}));
+      resolvedAllSessions = allSessions.map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title,
+        moduleId: s.moduleId,
+        moduleTitle: s.moduleTitle,
+        order: s.order,
+        image_url: s.image_url,
+      }));
 
       if (allSessions.length === 0) {
         res.json({
@@ -533,7 +543,14 @@ router.get("/workout/daily", async (req, res) => {
       completedSessionIds = new Set(legacyCompletedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-      resolvedAllSessions = allSessions.map((s) => ({sessionId: s.sessionId, title: s.title, moduleId: s.moduleId, moduleTitle: s.moduleTitle, order: s.order, image_url: s.image_url}));
+      resolvedAllSessions = allSessions.map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title,
+        moduleId: s.moduleId,
+        moduleTitle: s.moduleTitle,
+        order: s.order,
+        image_url: s.image_url,
+      }));
 
       if (allSessions.length === 0) {
         res.json({
@@ -998,7 +1015,15 @@ router.get("/workout/session-exercises", async (req, res) => {
         primaryMuscles: exData.primaryMuscles ?? [],
         sets: setsSnap.docs.map((setDoc) => {
           const setData = setDoc.data();
-          return {setId: setDoc.id, reps: setData.reps ?? null, weight: setData.weight ?? null, intensity: setData.intensity ?? null, rir: setData.rir ?? null, title: setData.title ?? null, order: setData.order ?? 0};
+          return {
+            setId: setDoc.id,
+            reps: setData.reps ?? null,
+            weight: setData.weight ?? null,
+            intensity: setData.intensity ?? null,
+            rir: setData.rir ?? null,
+            title: setData.title ?? null,
+            order: setData.order ?? 0,
+          };
         }),
         exerciseKey: resolvedLibraryId && resolvedName ?
           `${resolvedLibraryId}_${resolvedName}` :
@@ -1628,8 +1653,9 @@ router.get("/workout/session/active", async (req, res) => {
           detectedBy: "stale_check",
           created_at: FieldValue.serverTimestamp(),
         }, {merge: true})
-        .catch(() => {});
-      doc.ref.delete().catch(() => {});
+        .catch((err) => functions.logger.warn("workout:stale-abandoned-record-failed", err));
+      doc.ref.delete()
+        .catch((err) => functions.logger.warn("workout:stale-session-cleanup-failed", err));
       res.json({data: {checkpoint: null}});
       return;
     }
@@ -1836,8 +1862,9 @@ router.get("/workout/checkpoint", async (req, res) => {
           detectedBy: "stale_check",
           created_at: FieldValue.serverTimestamp(),
         }, {merge: true})
-        .catch(() => {});
-      doc.ref.delete().catch(() => {});
+        .catch((err) => functions.logger.warn("workout:stale-abandoned-record-failed", err));
+      doc.ref.delete()
+        .catch((err) => functions.logger.warn("workout:stale-session-cleanup-failed", err));
       res.json({data: {checkpoint: null}});
       return;
     }

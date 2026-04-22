@@ -1,5 +1,6 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
+import * as functions from "firebase-functions";
 import * as crypto from "node:crypto";
 import {Resend} from "resend";
 import {db, FieldValue, FieldPath} from "../firestore.js";
@@ -441,7 +442,10 @@ router.get("/creator/clients-overview", async (req, res) => {
     const byProgram: ProgramAdherence[] = [];
 
     // Fetch nutrition data for all clients (once, shared across programs)
-    const clientNutritionData: Record<string, { target: { calories: number; protein: number }; dailyTotals: Record<string, { calories: number; protein: number }> }> = {};
+    const clientNutritionData: Record<string, {
+      target: { calories: number; protein: number };
+      dailyTotals: Record<string, { calories: number; protein: number }>;
+    }> = {};
     await Promise.all(clientUserIds.map(async (uid) => {
       const assignSnap = await db.collection("nutrition_assignments")
         .where("userId", "==", uid)
@@ -708,9 +712,9 @@ router.post("/creator/clients", async (req, res) => {
     const s = (d.data() as Record<string, unknown>).status as string | undefined;
     return s === "inactive";
   });
-  const previousEnrollmentEndedAt = mostRecentInactive
-    ? ((mostRecentInactive.data() as Record<string, unknown>).endedAt ?? null)
-    : null;
+  const previousEnrollmentEndedAt = mostRecentInactive ?
+    ((mostRecentInactive.data() as Record<string, unknown>).endedAt ?? null) :
+    null;
 
   const targetUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({
@@ -2615,7 +2619,8 @@ async function deleteClientPlanContentDoc(docId: string): Promise<void> {
   const docRef = db.collection("client_plan_content").doc(docId);
   const sessionsSnap = await docRef.collection("sessions").get();
   if (sessionsSnap.empty) {
-    await docRef.delete().catch(() => {});
+    await docRef.delete()
+      .catch((err) => functions.logger.warn("creator:plan-content-delete-failed", err));
     return;
   }
   let batch = db.batch();
@@ -3542,8 +3547,18 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
     throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
-  const body = validateBody<{ title: string; order: number; isRestDay?: boolean; source_library_session_id?: string; dayIndex?: number; image_url?: string }>(
-    {title: "string", order: "number", isRestDay: "optional_boolean", source_library_session_id: "optional_string", dayIndex: "optional_number", image_url: "optional_string"},
+  const body = validateBody<{
+    title: string; order: number; isRestDay?: boolean;
+    source_library_session_id?: string; dayIndex?: number; image_url?: string;
+  }>(
+    {
+      title: "string",
+      order: "number",
+      isRestDay: "optional_boolean",
+      source_library_session_id: "optional_string",
+      dayIndex: "optional_number",
+      image_url: "optional_string",
+    },
     req.body
   );
 
@@ -4172,8 +4187,15 @@ router.post("/creator/library/sessions", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ title: string; image_url?: string }>({title: "string", image_url: "optional_string"}, req.body);
-  const sessionData: Record<string, unknown> = {title: body.title, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()};
+  const body = validateBody<{ title: string; image_url?: string }>(
+    {title: "string", image_url: "optional_string"},
+    req.body
+  );
+  const sessionData: Record<string, unknown> = {
+    title: body.title,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  };
   if (body.image_url) sessionData.image_url = body.image_url;
 
   // Auto-seed defaultDataTemplate from creator's first objective preset (or sensible default)
@@ -4431,8 +4453,21 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const body = validateBody<{ order: number; title?: string; reps?: string | number; weight?: number; intensity?: string; rir?: number; restSeconds?: number; type?: string }>(
-    {order: "number", title: "optional_string", reps: "optional_string_or_number", weight: "optional_number", intensity: "optional_string", rir: "optional_number", restSeconds: "optional_number", type: "optional_string"},
+  const body = validateBody<{
+    order: number; title?: string; reps?: string | number;
+    weight?: number; intensity?: string; rir?: number;
+    restSeconds?: number; type?: string;
+  }>(
+    {
+      order: "number",
+      title: "optional_string",
+      reps: "optional_string_or_number",
+      weight: "optional_number",
+      intensity: "optional_string",
+      rir: "optional_number",
+      restSeconds: "optional_number",
+      type: "optional_string",
+    },
     req.body
   );
 
@@ -4801,13 +4836,23 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
     })
   );
 
-  const plansSnap = await db
-    .collection("plans")
-    .where("creator_id", "==", auth.userId)
-    .limit(100)
-    .get();
-
-  if (plansSnap.size >= 100) {
+  // Fetch all plans for this creator via cursor pagination (no silent truncation)
+  const planDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  {
+    const PAGE_SIZE = 100;
+    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    for (;;) {
+      let q = db.collection("plans")
+        .where("creator_id", "==", auth.userId)
+        .orderBy("__name__")
+        .limit(PAGE_SIZE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      const page = await q.get();
+      if (page.empty) break;
+      planDocs.push(...page.docs);
+      if (page.size < PAGE_SIZE) break;
+      lastDoc = page.docs[page.docs.length - 1];
+    }
   }
 
   let updatedCount = 0;
@@ -4891,7 +4936,7 @@ router.post("/creator/library/sessions/:sessionId/propagate", async (req, res) =
   };
 
   // Phase 1: Update plan template sessions (parallelized per plan)
-  await Promise.all(plansSnap.docs.map(async (planDoc) => {
+  await Promise.all(planDocs.map(async (planDoc) => {
     const modulesSnap = await planDoc.ref.collection("modules").get();
     await Promise.all(modulesSnap.docs.map(async (moduleDoc) => {
       const matchingSessions = await findReferencingSessions(moduleDoc.ref.collection("sessions"));
@@ -4982,14 +5027,23 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
     })
   );
 
-  // Guard at 100 plans max
-  const plansSnap = await db
-    .collection("plans")
-    .where("creator_id", "==", auth.userId)
-    .limit(100)
-    .get();
-
-  if (plansSnap.size >= 100) {
+  // Fetch all plans for this creator via cursor pagination (no silent truncation)
+  const planDocs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  {
+    const PAGE_SIZE = 100;
+    let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    for (;;) {
+      let q = db.collection("plans")
+        .where("creator_id", "==", auth.userId)
+        .orderBy("__name__")
+        .limit(PAGE_SIZE);
+      if (lastDoc) q = q.startAfter(lastDoc);
+      const page = await q.get();
+      if (page.empty) break;
+      planDocs.push(...page.docs);
+      if (page.size < PAGE_SIZE) break;
+      lastDoc = page.docs[page.docs.length - 1];
+    }
   }
 
   let updatedCount = 0;
@@ -4997,7 +5051,7 @@ router.post("/creator/library/modules/:moduleId/propagate", async (req, res) => 
   let batch = db.batch();
   let batchCount = 0;
 
-  for (const planDoc of plansSnap.docs) {
+  for (const planDoc of planDocs) {
     // Check both field names for module references
     const modulesSnap1 = await planDoc.ref.collection("modules")
       .where("libraryRef", "==", req.params.moduleId)
@@ -7485,7 +7539,12 @@ async function ensureProgramCopy(
     const sessionId = (session.id as string) ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
     const {exercises: exArr, ...sessionFields} = session;
-    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
+    batch.set(sessionRef, {
+      ...sessionFields,
+      id: sessionId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
     batchCount++;
 
     if (Array.isArray(exArr)) {
@@ -7530,7 +7589,10 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
   const {programId} = req.params;
   const courseDoc = await verifyProgramOwnership(auth.userId, programId);
   const creatorId = auth.userId;
-  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; assignedAt?: string }>;
+  const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<
+    string,
+    { planId: string; moduleId: string; assignedAt?: string }
+  >;
 
   const {weekKeys: visibleWeekKeys} = getCalendarMonthRange(month);
   const weekKeysWithPlans = visibleWeekKeys.filter((wk) => planAssignments[wk]?.planId);
@@ -7868,7 +7930,12 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
     const sessionId = session.id ?? session.sessionId ?? db.collection("_").doc().id;
     const sessionRef = docRef.collection("sessions").doc(sessionId);
     const {exercises: exArr, ...sessionFields} = session as Record<string, unknown>;
-    batch.set(sessionRef, {...sessionFields, id: sessionId, created_at: FieldValue.serverTimestamp(), updated_at: FieldValue.serverTimestamp()});
+    batch.set(sessionRef, {
+      ...sessionFields,
+      id: sessionId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
     batchCount++;
 
     if (Array.isArray(exArr)) {

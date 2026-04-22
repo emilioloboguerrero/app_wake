@@ -9,7 +9,7 @@ const QUEUEABLE_PATTERNS = [
   { pattern: /^\/nutrition\/diary/, priority: 'normal' },
   { pattern: /^\/progress\/readiness/, priority: 'normal' },
   { pattern: /^\/progress\/body-log/, priority: 'normal' },
-  { pattern: /^\/workout\/session\/checkpoint/, priority: 'low' },
+  { pattern: /^\/workout\/(session\/)?checkpoint/, priority: 'low' },
   { pattern: /^\/workout\/complete$/, priority: 'high' },
 ];
 
