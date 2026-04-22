@@ -2261,6 +2261,180 @@ export const processRestTimerNotifications = onSchedule(
   }
 );
 
+// ─── sendVideoExchangeNotification ────────────────────────────────────────
+// Fires on every new message in video_exchanges/*/messages/*.
+// Notifies the OTHER party (coach on client submission, client on coach
+// response) via web-push and email. Reads recipient from the parent
+// video_exchange doc; stays silent on missing email / no push subs.
+export const sendVideoExchangeNotification = functions
+  .runWith({secrets: ["RESEND_API_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"]})
+  .firestore.document("video_exchanges/{exchangeId}/messages/{messageId}")
+  .onCreate(async (snap: functions.firestore.QueryDocumentSnapshot, context: functions.EventContext) => {
+    const {exchangeId, messageId} = context.params;
+    const msg = snap.data() as Record<string, unknown>;
+    const senderRole = msg.senderRole as string;
+    if (senderRole !== "client" && senderRole !== "creator") {
+      functions.logger.warn("sendVideoExchangeNotification: unknown senderRole, skipping", {exchangeId, messageId});
+      return null;
+    }
+
+    const exchangeSnap = await db.doc(`video_exchanges/${exchangeId}`).get();
+    if (!exchangeSnap.exists) {
+      functions.logger.warn("sendVideoExchangeNotification: exchange not found", {exchangeId});
+      return null;
+    }
+    const exchange = exchangeSnap.data() as Record<string, unknown>;
+
+    const recipientUserId = senderRole === "client" ?
+      (exchange.creatorId as string) :
+      (exchange.clientId as string);
+    const senderUserId = senderRole === "client" ?
+      (exchange.clientId as string) :
+      (exchange.creatorId as string);
+
+    if (!recipientUserId) {
+      functions.logger.warn("sendVideoExchangeNotification: no recipient", {exchangeId});
+      return null;
+    }
+
+    const exerciseName = (exchange.exerciseName as string) || "tu entrenamiento";
+    const isToCoach = senderRole === "client";
+
+    let senderName = isToCoach ? "tu cliente" : "tu coach";
+    try {
+      const senderUser = await db.doc(`users/${senderUserId}`).get();
+      if (senderUser.exists) {
+        const d = senderUser.data() as Record<string, unknown>;
+        const dn = (d.displayName as string) || "";
+        if (dn.trim()) senderName = dn.trim();
+      }
+    } catch (err: unknown) {
+      functions.logger.warn("sendVideoExchangeNotification: failed to load sender", {err: toErrorMessage(err)});
+    }
+
+    // ─── Web push ───────────────────────────────────────────────────────
+    try {
+      const pub = vapidPublicKey.value().trim().replace(/=+$/, "");
+      const priv = vapidPrivateKey.value().trim().replace(/=+$/, "");
+      if (pub && priv) {
+        webpush.setVapidDetails("mailto:soporte@wakelab.co", pub, priv);
+
+        const subsSnap = await db
+          .collection("users")
+          .doc(recipientUserId)
+          .collection("web_push_subscriptions")
+          .where("isActive", "==", true)
+          .get();
+
+        if (!subsSnap.empty) {
+          const title = isToCoach ?
+            `Nuevo video de ${senderName}` :
+            "Tu coach respondió tu video";
+          const body = isToCoach ?
+            `${exerciseName} — toca para revisar` :
+            `${exerciseName} — toca para ver la respuesta`;
+          const payload = JSON.stringify({
+            title,
+            body,
+            url: isToCoach ? "/creators/inbox" : "/app",
+          });
+
+          const deactivateIds: string[] = [];
+          await Promise.all(
+            subsSnap.docs.map(async (subDoc) => {
+              const sub = subDoc.data();
+              try {
+                await webpush.sendNotification(
+                  {endpoint: sub.endpoint as string, keys: sub.keys as {p256dh: string; auth: string}},
+                  payload
+                );
+              } catch (err: unknown) {
+                const status = (err as { statusCode?: number }).statusCode;
+                if (status === 410 || status === 404) deactivateIds.push(subDoc.id);
+              }
+            })
+          );
+          if (deactivateIds.length > 0) {
+            const batch = db.batch();
+            for (const id of deactivateIds) {
+              batch.update(
+                db.collection("users").doc(recipientUserId)
+                  .collection("web_push_subscriptions").doc(id),
+                {isActive: false}
+              );
+            }
+            await batch.commit();
+          }
+        }
+      }
+    } catch (err: unknown) {
+      functions.logger.error("sendVideoExchangeNotification: push failed", {exchangeId, messageId, error: toErrorMessage(err)});
+    }
+
+    // ─── Email ──────────────────────────────────────────────────────────
+    try {
+      const recipientUser = await db.doc(`users/${recipientUserId}`).get();
+      if (!recipientUser.exists) return null;
+      const toEmail = (recipientUser.data()?.email as string) || null;
+      if (!toEmail) {
+        functions.logger.info("sendVideoExchangeNotification: recipient has no email, skipping email", {recipientUserId});
+        return null;
+      }
+
+      const fromAddress = "Wake <no-reply@wakelab.co>";
+      const ctaUrl = isToCoach ? "https://wakelab.co/creators/inbox" : "https://wakelab.co/app";
+      const subject = isToCoach ?
+        `Nuevo video de ${senderName}` :
+        `${senderName} respondió tu video`;
+      const greeting = isToCoach ? "¡Nuevo video por revisar!" : "¡Tu coach respondió!";
+      const intro = isToCoach ?
+        `${escapeHtml(senderName)} te envió un video de <strong>${escapeHtml(exerciseName)}</strong>.` :
+        `${escapeHtml(senderName)} respondió tu video de <strong>${escapeHtml(exerciseName)}</strong>.`;
+      const ctaLabel = isToCoach ? "Ver bandeja de videos" : "Ver respuesta";
+
+      const html = `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1a1a1a;padding:40px 0;">
+    <tr><td align="center">
+      <table width="480" cellpadding="0" cellspacing="0" style="max-width:480px;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,0.08);background:#1e1e1e;">
+        <tr><td style="padding:48px 36px 28px;text-align:center;">
+          <p style="margin:0 0 16px;font-size:0.7rem;letter-spacing:0.14em;text-transform:uppercase;color:rgba(255,255,255,0.5);">Wake</p>
+          <h1 style="margin:0 0 14px;font-size:1.6rem;font-weight:800;color:#fff;line-height:1.25;">${greeting}</h1>
+          <p style="margin:0 0 28px;font-size:0.98rem;color:rgba(255,255,255,0.78);line-height:1.55;">${intro}</p>
+          <a href="${ctaUrl}" style="display:inline-block;background:#fff;color:#1a1a1a;padding:12px 28px;border-radius:999px;font-weight:700;text-decoration:none;font-size:0.95rem;">${ctaLabel}</a>
+        </td></tr>
+        <tr><td style="padding:8px 36px 28px;text-align:center;border-top:1px solid rgba(255,255,255,0.06);">
+          <p style="margin:0;font-size:0.75rem;color:rgba(255,255,255,0.22);">Enviado automáticamente por Wake · <a href="https://wakelab.co" style="color:rgba(255,255,255,0.22);text-decoration:none;">wakelab.co</a></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+      const resend = new Resend(resendApiKey.value());
+      const {error: resendError} = await resend.emails.send({
+        from: fromAddress,
+        to: toEmail,
+        subject,
+        html,
+        headers: {"X-Entity-Ref-ID": `${exchangeId}-${messageId}`},
+      });
+      if (resendError) {
+        functions.logger.error("sendVideoExchangeNotification: resend error", {exchangeId, messageId, error: resendError});
+      } else {
+        functions.logger.info("sendVideoExchangeNotification: email sent", {exchangeId, messageId, toEmail});
+      }
+    } catch (err: unknown) {
+      functions.logger.error("sendVideoExchangeNotification: email failed", {exchangeId, messageId, error: toErrorMessage(err)});
+    }
+
+    return null;
+  });
+
 // ─── Scheduled: process email send queue every 1 minute ─────────────────
 //
 // Uses the Resend batch API (up to 100 emails per API call) so we stay under

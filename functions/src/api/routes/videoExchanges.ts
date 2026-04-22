@@ -43,12 +43,14 @@ router.post("/video-exchanges", async (req, res) => {
     oneOnOneClientId: string;
     exerciseKey?: string;
     exerciseName?: string;
+    initialMessage?: Record<string, unknown>;
   }>(
     {
       clientId: "string",
       oneOnOneClientId: "string",
       exerciseKey: "optional_string",
       exerciseName: "optional_string",
+      initialMessage: "optional_object",
     },
     req.body
   );
@@ -60,7 +62,10 @@ router.post("/video-exchanges", async (req, res) => {
   }
   const oo = ooDoc.data()!;
 
-  if (auth.role === "creator" || auth.role === "admin") {
+  const callerRole: "creator" | "client" =
+    (auth.role === "creator" || auth.role === "admin") ? "creator" : "client";
+
+  if (callerRole === "creator") {
     if (oo.creatorId !== auth.userId) {
       throw new WakeApiServerError("FORBIDDEN", 403, "No eres el creador de esta asesoria");
     }
@@ -68,31 +73,58 @@ router.post("/video-exchanges", async (req, res) => {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "clientId no coincide con la asesoria", "clientId");
     }
   } else {
-    // Client creating a thread
     if (oo.clientUserId !== auth.userId) {
       throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta asesoria");
     }
     if (auth.userId !== body.clientId) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "clientId debe ser tu propio userId", "clientId");
     }
+  }
 
-    // Enforce 3 active thread limit for clients
-    const openThreads = await db
-      .collection("video_exchanges")
-      .where("clientId", "==", auth.userId)
-      .where("status", "==", "open")
-      .get();
+  // Validate initialMessage shape if present
+  let msgData: Record<string, unknown> | null = null;
+  if (body.initialMessage) {
+    const im = body.initialMessage;
+    const note = typeof im.note === "string" ? im.note : "";
+    const videoPath = typeof im.videoPath === "string" ? im.videoPath : null;
+    const thumbnailPath = typeof im.thumbnailPath === "string" ? im.thumbnailPath : null;
+    const videoDurationSec = typeof im.videoDurationSec === "number" && Number.isFinite(im.videoDurationSec) ?
+      im.videoDurationSec :
+      null;
 
-    if (openThreads.size >= 3) {
+    if (!note && !videoPath) {
       throw new WakeApiServerError(
         "VALIDATION_ERROR", 400,
-        "Puedes tener maximo 3 conversaciones activas"
+        "initialMessage debe incluir un texto o un video",
+        "initialMessage"
       );
     }
+
+    if (videoDurationSec !== null) {
+      const maxDuration = callerRole === "client" ? 120 : 300;
+      if (videoDurationSec > maxDuration) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400,
+          `La duracion maxima del video es ${maxDuration} segundos`,
+          "initialMessage.videoDurationSec"
+        );
+      }
+    }
+
+    msgData = {
+      senderId: auth.userId,
+      senderRole: callerRole,
+      note,
+      videoPath,
+      videoDurationSec,
+      thumbnailPath,
+      savedByCreator: false,
+      createdAt: FieldValue.serverTimestamp(),
+    };
   }
 
   const now = FieldValue.serverTimestamp();
-  const exchangeData = {
+  const exchangeData: Record<string, unknown> = {
     creatorId: oo.creatorId,
     clientId: body.clientId,
     oneOnOneClientId: body.oneOnOneClientId,
@@ -101,14 +133,38 @@ router.post("/video-exchanges", async (req, res) => {
     status: "open",
     createdAt: now,
     lastMessageAt: now,
-    lastMessageBy: null,
-    unreadByCreator: 0,
-    unreadByClient: 0,
+    lastMessageBy: msgData ? callerRole : null,
+    unreadByCreator: msgData && callerRole === "client" ? 1 : 0,
+    unreadByClient: msgData && callerRole === "creator" ? 1 : 0,
   };
 
-  const ref = await db.collection("video_exchanges").add(exchangeData);
+  const exchangeRef = db.collection("video_exchanges").doc();
 
-  res.status(201).json({data: {exchangeId: ref.id, ...exchangeData}});
+  if (msgData) {
+    // Validate storage paths against the now-known exchange id
+    if (msgData.videoPath) {
+      validateStoragePath(msgData.videoPath as string, `video_exchanges/${exchangeRef.id}/`);
+    }
+    if (msgData.thumbnailPath) {
+      validateStoragePath(msgData.thumbnailPath as string, `video_exchanges/${exchangeRef.id}/`);
+    }
+    const msgRef = exchangeRef.collection("messages").doc();
+    const batch = db.batch();
+    batch.set(exchangeRef, exchangeData);
+    batch.set(msgRef, msgData);
+    await batch.commit();
+    res.status(201).json({
+      data: {
+        exchangeId: exchangeRef.id,
+        ...exchangeData,
+        firstMessage: {messageId: msgRef.id, ...msgData},
+      },
+    });
+    return;
+  }
+
+  await exchangeRef.set(exchangeData);
+  res.status(201).json({data: {exchangeId: exchangeRef.id, ...exchangeData}});
 });
 
 // ─── GET /video-exchanges — List threads ──────────────────────────────────
@@ -141,6 +197,53 @@ router.get("/video-exchanges", async (req, res) => {
   }
 
   res.json({data: exchanges});
+});
+
+// ─── GET /video-exchanges/inbox — Creator review queue ───────────────────
+// Must be declared BEFORE /:id so it doesn't match as an exchange id.
+
+router.get("/video-exchanges/inbox", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+
+  if (auth.role !== "creator" && auth.role !== "admin") {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Solo los creadores tienen bandeja de entrada");
+  }
+
+  const snap = await db
+    .collection("video_exchanges")
+    .where("creatorId", "==", auth.userId)
+    .where("status", "==", "open")
+    .where("lastMessageBy", "==", "client")
+    .orderBy("lastMessageAt", "desc")
+    .limit(100)
+    .get();
+
+  // Denormalise the latest client message and client display name onto each
+  // exchange for the UI. Bounded at 100 parallel reads.
+  const items = await Promise.all(
+    snap.docs.map(async (d) => {
+      const exchange = {id: d.id, ...d.data()} as Record<string, unknown>;
+      const clientId = exchange.clientId as string | undefined;
+
+      const [msgSnap, clientUserSnap] = await Promise.all([
+        d.ref
+          .collection("messages")
+          .where("senderRole", "==", "client")
+          .orderBy("createdAt", "desc")
+          .limit(1)
+          .get(),
+        clientId ? db.collection("users").doc(clientId).get() : Promise.resolve(null),
+      ]);
+
+      const latestClientMessage = msgSnap.empty ? null : {id: msgSnap.docs[0].id, ...msgSnap.docs[0].data()};
+      const clientUser = clientUserSnap && clientUserSnap.exists ? clientUserSnap.data() : null;
+      const clientName = (clientUser?.displayName as string) || (clientUser?.email as string) || null;
+
+      return {...exchange, latestClientMessage, clientName};
+    })
+  );
+
+  res.json({data: items});
 });
 
 // ─── GET /video-exchanges/:id — Thread + messages ─────────────────────────
@@ -286,19 +389,24 @@ router.post("/video-exchanges/:id/messages", async (req, res) => {
     createdAt: now,
   };
 
-  const msgRef = await db
-    .collection("video_exchanges")
-    .doc(req.params.id)
-    .collection("messages")
-    .add(messageData);
+  const exchangeRef = db.collection("video_exchanges").doc(req.params.id);
+  const msgRef = exchangeRef.collection("messages").doc();
 
-  // Update parent exchange
   const unreadField = role === "creator" ? "unreadByClient" : "unreadByCreator";
-  await db.collection("video_exchanges").doc(req.params.id).update({
+  const exchangeUpdate: Record<string, unknown> = {
     lastMessageAt: now,
     lastMessageBy: role,
     [unreadField]: FieldValue.increment(1),
-  });
+  };
+  // Auto-close when the coach responds — submission is resolved.
+  if (role === "creator") {
+    exchangeUpdate.status = "closed";
+  }
+
+  const batch = db.batch();
+  batch.set(msgRef, messageData);
+  batch.update(exchangeRef, exchangeUpdate);
+  await batch.commit();
 
   res.status(201).json({data: {messageId: msgRef.id, ...messageData}});
 });

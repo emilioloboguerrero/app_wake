@@ -4,7 +4,12 @@ import videoExchangeService from '../services/videoExchangeService';
 import { compressVideo, generateThumbnail } from '../utils/videoExchangeCompressor';
 import { queryKeys } from '../config/queryClient';
 
-export default function useVideoExchangeUpload(exchangeId) {
+/**
+ * One-shot video submission flow.
+ * Creates a thread, uploads the video + thumbnail, and posts the first message
+ * in a single user action. Surfaces compression/upload progress for UI.
+ */
+export default function useSubmitVideo({ userId, oneOnOneClientId }) {
   const queryClient = useQueryClient();
   const [isCompressing, setIsCompressing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -18,38 +23,25 @@ export default function useVideoExchangeUpload(exchangeId) {
     setError(null);
   }, []);
 
-  const uploadFileWithProgress = useCallback(async (url, file, contentType) => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('PUT', url);
-      xhr.setRequestHeader('Content-Type', contentType);
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          setProgress(e.loaded / e.total);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) resolve();
-        else reject(new Error(`Upload failed: ${xhr.status}`));
-      };
-      xhr.onerror = () => reject(new Error('Upload network error'));
-      xhr.send(file);
-    });
-  }, []);
-
-  const upload = useCallback(async (videoBlob, note = '') => {
+  const submit = useCallback(async ({ videoBlob, exerciseName, note }) => {
+    setError(null);
     try {
-      setError(null);
+      // 1. Create empty thread (signed URLs are scoped to exchangeId)
+      const thread = await videoExchangeService.createThread({
+        clientId: userId,
+        oneOnOneClientId,
+        exerciseName: exerciseName?.trim() || undefined,
+      });
+      const exchangeId = thread.exchangeId || thread.id;
+      if (!exchangeId) throw new Error('No se pudo crear la conversacion');
 
-      // Step 1: Compress
+      // 2. Compress + thumbnail
       setIsCompressing(true);
       const compressedFile = await compressVideo(videoBlob, setProgress);
       const thumbnail = await generateThumbnail(compressedFile);
       setIsCompressing(false);
 
-      // Step 2: Get signed URLs
+      // 3. Upload video + thumbnail
       setIsUploading(true);
       setProgress(0);
 
@@ -57,26 +49,15 @@ export default function useVideoExchangeUpload(exchangeId) {
         contentType: 'video/mp4',
         fileType: 'video',
       });
-
       const thumbData = await videoExchangeService.getUploadUrl(exchangeId, {
         contentType: 'image/jpeg',
         fileType: 'thumbnail',
       });
 
-      // Step 3: Upload files
-      await uploadFileWithProgress(videoData.uploadUrl, compressedFile, 'video/mp4');
+      await uploadWithProgress(videoData.uploadUrl, compressedFile, 'video/mp4', setProgress);
       setProgress(0.9);
+      await uploadSimple(thumbData.uploadUrl, thumbnail, 'image/jpeg');
 
-      const thumbXhr = new XMLHttpRequest();
-      thumbXhr.open('PUT', thumbData.uploadUrl);
-      thumbXhr.setRequestHeader('Content-Type', 'image/jpeg');
-      await new Promise((resolve, reject) => {
-        thumbXhr.onload = () => thumbXhr.status < 300 ? resolve() : reject(new Error('Thumbnail upload failed'));
-        thumbXhr.onerror = () => reject(new Error('Thumbnail upload error'));
-        thumbXhr.send(thumbnail);
-      });
-
-      // Step 4: Confirm uploads
       await videoExchangeService.confirmUpload(exchangeId, {
         storagePath: videoData.storagePath,
         messageId: videoData.messageId,
@@ -86,31 +67,59 @@ export default function useVideoExchangeUpload(exchangeId) {
         messageId: thumbData.messageId,
       });
 
-      // Step 5: Create message
+      // 4. Create the first message
       const videoDurationSec = await getVideoDuration(compressedFile);
       await videoExchangeService.sendMessage(exchangeId, {
-        note: note || undefined,
+        note: note?.trim() || undefined,
         videoPath: videoData.storagePath,
         videoDurationSec,
         thumbnailPath: thumbData.storagePath,
       });
 
       setProgress(1);
+      setIsUploading(false);
 
-      // Invalidate queries
+      queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.byClient(userId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.detail(exchangeId) });
 
-      setIsUploading(false);
-      return true;
+      return { exchangeId };
     } catch (err) {
-      setError(err.message || 'Error al subir el video');
       setIsCompressing(false);
       setIsUploading(false);
-      return false;
+      setError(err?.message || 'No se pudo enviar el video');
+      return null;
     }
-  }, [exchangeId, queryClient, uploadFileWithProgress]);
+  }, [userId, oneOnOneClientId, queryClient]);
 
-  return { upload, isCompressing, isUploading, progress, error, reset };
+  return { submit, isCompressing, isUploading, progress, error, reset };
+}
+
+function uploadWithProgress(url, file, contentType, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`Upload failed: ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('Upload network error'));
+    xhr.send(file);
+  });
+}
+
+function uploadSimple(url, file, contentType) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error('Upload failed')));
+    xhr.onerror = () => reject(new Error('Upload error'));
+    xhr.send(file);
+  });
 }
 
 function getVideoDuration(file) {

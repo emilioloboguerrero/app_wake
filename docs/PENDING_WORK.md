@@ -410,23 +410,46 @@ API endpoints:
 
 ---
 
-### 9. Video Exchange System `IMPLEMENTED — NOT TESTED`
+### 9. Video Exchange System `SIMPLIFIED — AWAITING STAGING VALIDATION`
 
-One-on-one only. Client uploads form-check videos; creator responds with feedback videos.
+One-on-one only. Client submits a form-check video from the PWA; coach reviews from the dashboard inbox and responds with a reaction recording (webcam + annotations composited over the client's clip). Coach↔client *requesting* happens on WhatsApp, not inside the app — the app is the video pipeline.
 
-**Data model:**
-- Storage: `users/{userId}/session_videos/{sessionId}/{videoId}.mp4`
-- Firestore: `users/{userId}/sessionHistory/{sessionId}/sessionVideos/{videoId}`
-  - Required: `storagePath`, `url`, `createdAt`, `uploadedBy`
-  - Optional: `exerciseKey`, `setIndex`, `exerciseId`, `responseToVideoId`
-- Client-side compression to 720p before upload
-- Firebase Storage resumable uploads (`uploadBytesResumable`)
+**Data model (Firestore):**
+- `video_exchanges/{exchangeId}` — one per submission
+  - `creatorId`, `clientId`, `oneOnOneClientId`, `exerciseName` (free-text)
+  - `status: 'open' | 'closed'` — auto-closed when coach responds
+  - `lastMessageAt`, `lastMessageBy` (`'client' | 'creator'`)
+  - `unreadByCreator`, `unreadByClient`
+  - `exerciseKey` — reserved, currently dormant
+- `video_exchanges/{exchangeId}/messages/{messageId}` — typically 2 docs: client video + coach response
+  - `senderRole`, `note`, `videoPath`, `videoDurationSec`, `thumbnailPath`, `savedByCreator`, `createdAt`
+
+**Storage:** `video_exchanges/{exchangeId}/{messageId}/video.mp4` + `thumbnail.jpg`. Uploaded via 15-min v4 signed URLs. Read restricted to participants via `config/firebase/storage.rules`.
+
+**API (`functions/src/api/routes/videoExchanges.ts`):**
+- `POST /video-exchanges` — accepts optional `initialMessage` for atomic thread+message creation
+- `GET /video-exchanges/inbox` — creator review queue (open threads where `lastMessageBy === 'client'`)
+- `POST /video-exchanges/:id/messages` — auto-closes parent thread when `senderRole === 'creator'`
+- Other standard CRUD endpoints retained for future coach-initiated path
+
+**UI surfaces:**
+- PWA (`apps/pwa/src/components/videoExchange/`): `SubmitVideoScreen` (one-shot submission), `VideoExchangeTab` (list of past submissions with status chips), `VideoExchangeThreadView` (read-only detail with both videos). Client limit removed — submit as many as you want.
+- Creator dashboard: `ReviewInboxScreen` at `/creators/inbox` (global queue), sidebar badge with pending count. Per-client history remains in Lab tab's `VideoExchangeSection` (read-only; "Nueva conversación" removed).
+
+**Notifications:** Firestore `onCreate` trigger `sendVideoExchangeNotification` in `functions/src/index.ts` sends web-push (via existing VAPID infra) + Resend email to the OTHER party on each new message.
+
+**Deferred (architecture preserved — no rebuild required):**
+- Coach-initiated threads (backend supports; UI hidden)
+- Back-and-forth within a submission (schema supports N messages; flip auto-close flag)
+- Program-exercise linking (populate the dormant `exerciseKey` field)
+- Deep-link from workout screen to submit
+- Native mobile (swap `.web.jsx` recorders; upload flow identical)
 
 **Checklist:**
-- [ ] Upload flow (PWA) — end-to-end test
-- [ ] Video display in session history (PWA)
-- [ ] Creator response video upload (creator dashboard)
-- [ ] Creator notification when client uploads video
+- [ ] Deploy backend + index + storage rules to `wake-staging`
+- [ ] End-to-end validation on staging (PWA submit → notification → dashboard inbox → reaction response → client sees response)
+- [ ] Verify participant-only Storage rule (non-participant cannot read another exchange's media)
+- [ ] Promote to production
 
 ---
 

@@ -1,0 +1,196 @@
+.ris-container {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.ris-detail {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.ris-header {
+  margin-bottom: 24px;
+}
+
+.ris-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ris-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.ris-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ris-subtitle {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  max-width: 560px;
+}
+
+.ris-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ris-skeleton {
+  height: 76px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+  background-size: 200% 100%;
+  animation: ris-shimmer 1.6s linear infinite;
+}
+
+@keyframes ris-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.ris-error {
+  padding: 20px;
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  border-radius: 12px;
+  color: rgba(255, 120, 120, 0.9);
+  background: rgba(255, 80, 80, 0.05);
+}
+
+.ris-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 64px 16px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+}
+
+.ris-empty__title {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ris-empty__desc {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.ris-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ris-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.ris-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.ris-row__thumb {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.ris-row__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ris-row__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ris-row__client {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ris-row__exercise {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.ris-row__note {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ris-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.ris-row__time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}

@@ -214,6 +214,7 @@ export const queryKeys = {
     byClient: (clientId) => ['videoExchanges', 'client', clientId],
     detail: (exchangeId) => ['videoExchanges', exchangeId],
     unreadCount: (userId) => ['videoExchanges', 'unreadCount', userId],
+    inbox: (creatorId) => ['videoExchanges', 'inbox', creatorId],
   },
   bundles: {
     byCreator: (creatorId) => ['bundles', 'creator', creatorId],

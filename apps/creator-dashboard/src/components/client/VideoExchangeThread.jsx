@@ -37,6 +37,7 @@ export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
       apiClient.patch(`/video-exchanges/${exchangeId}`, { markRead: true }).then(() => {
         queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.unreadCount(creatorId) });
         queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.byCreator(creatorId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.inbox(creatorId) });
       });
     }
   }, [exchange, exchangeId, creatorId, queryClient]);
@@ -64,6 +65,8 @@ export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
     onSuccess: () => {
       setNote('');
       queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.detail(exchangeId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.inbox(creatorId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.byCreator(creatorId) });
     },
   });
 

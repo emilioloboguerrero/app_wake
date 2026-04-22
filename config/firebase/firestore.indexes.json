@@ -235,6 +235,16 @@
       "queryScope": "COLLECTION",
       "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageBy", "order": "ASCENDING"},
+        {"fieldPath": "lastMessageAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "video_exchanges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creatorId", "order": "ASCENDING"},
         {"fieldPath": "lastMessageAt", "order": "DESCENDING"}
       ]
     },

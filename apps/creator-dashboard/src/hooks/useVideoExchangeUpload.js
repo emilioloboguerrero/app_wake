@@ -106,6 +106,8 @@ export default function useVideoExchangeUpload(exchangeId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.detail(exchangeId) });
       if (userId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.unreadCount(userId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.inbox(userId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.videoExchanges.byCreator(userId) });
       }
 
       setIsUploading(false);

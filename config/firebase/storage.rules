@@ -150,6 +150,19 @@ service firebase.storage {
       allow write: if false;
     }
 
+    // Video exchange submissions (client ↔ creator videos + thumbnails).
+    // Read: only the two participants of the exchange (creator or client).
+    // Write: blocked — all writes go through signed URLs issued by the API.
+    match /video_exchanges/{exchangeId}/{messageId}/{fileName} {
+      allow read: if request.auth != null
+        && (
+          firestore.get(/databases/(default)/documents/video_exchanges/$(exchangeId)).data.creatorId == request.auth.uid
+          ||
+          firestore.get(/databases/(default)/documents/video_exchanges/$(exchangeId)).data.clientId == request.auth.uid
+        );
+      allow write: if false;
+    }
+
     // Deny all other access by default
     match /{allPaths=**} {
       allow read, write: if false;

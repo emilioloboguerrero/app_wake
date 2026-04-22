@@ -20,6 +20,7 @@ import {
   CalendarCheck,
   KeyRound,
   Shield,
+  Inbox,
 } from 'lucide-react';
 
 const TYPE_BUG = 'bug';
@@ -48,6 +49,13 @@ const NAV_ITEMS = [
       (p.startsWith('/content/') && (state?.editScope === 'client' || state?.editScope === 'client_plan')) ||
       (p.startsWith('/nutrition/') && state?.editScope === 'assignment' && !state?.programId),
     icon: <Users size={ICON_SIZE} />,
+  },
+  {
+    key: 'inbox',
+    label: 'Revisar',
+    path: '/inbox',
+    match: (p) => p === '/inbox' || p.startsWith('/inbox/'),
+    icon: <Inbox size={ICON_SIZE} />,
   },
   {
     key: 'programas',
@@ -146,14 +154,13 @@ const DashboardLayout = ({
     () => !sessionStorage.getItem('wake_sidebar_entered')
   );
 
-  // ── Video exchange unread badge ───────────────────────────────
+  // ── Review inbox badge — count of client submissions awaiting response ─
   const { data: videoExchangeUnread = 0 } = useQuery({
-    queryKey: queryKeys.videoExchanges.unreadCount(user?.uid),
+    queryKey: queryKeys.videoExchanges.inbox(user?.uid),
     queryFn: async () => {
-      const res = await apiClient.get('/video-exchanges', { params: { status: 'open' } });
-      const exchanges = res.data || res;
-      if (!Array.isArray(exchanges)) return 0;
-      return exchanges.reduce((sum, ex) => sum + (ex.unreadByCreator || 0), 0);
+      const res = await apiClient.get('/video-exchanges/inbox');
+      const items = res.data || res;
+      return Array.isArray(items) ? items.length : 0;
     },
     enabled: !!user?.uid,
     staleTime: 30_000,
@@ -366,7 +373,7 @@ const DashboardLayout = ({
             >
               <span className="dl-nav-item__icon">{item.icon}</span>
               <span className="dl-nav-item__label">{item.label}</span>
-              {item.key === 'clientes' && videoExchangeUnread > 0 && (
+              {item.key === 'inbox' && videoExchangeUnread > 0 && (
                 <span className="dl-nav-item__badge">{videoExchangeUnread}</span>
               )}
             </button>
