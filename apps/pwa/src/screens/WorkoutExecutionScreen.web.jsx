@@ -64,6 +64,23 @@ const WorkoutExecutionScreen = () => {
     };
   }, []);
 
+  // Block iOS Safari's left-edge back-swipe only on this screen. The horizontal
+  // ScrollView between the video view and the exercise list starts near the
+  // edge, so the native gesture often fires accidentally and unmounts the
+  // session mid-workout.
+  useEffect(() => {
+    const EDGE_PX = 20;
+    const blockEdgeTouch = (e) => {
+      const t = e.touches && e.touches[0];
+      if (!t) return;
+      if (t.clientX <= EDGE_PX || t.clientX >= window.innerWidth - EDGE_PX) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchstart', blockEdgeTouch, { passive: false });
+    return () => document.removeEventListener('touchstart', blockEdgeTouch);
+  }, []);
+
   return (
     <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {isOffline && (

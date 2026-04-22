@@ -28,6 +28,8 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import WakeLoader from '../components/WakeLoader';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
+import SvgListChecklist from '../components/icons/SvgListChecklist';
+import VideoExchangeOverlay from '../components/videoExchange/VideoExchangeOverlay.web';
 import logger from '../utils/logger.js';
 import { isWeb } from '../utils/platform';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -79,6 +81,9 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
   const [failedImages, setFailedImages] = React.useState(new Set());
 
   const isOneOnOne = course?.deliveryType === 'one_on_one';
+  const courseCreatorId = course?.creator_id || course?.creatorId || course?.creator?.id || null;
+  const canAccessVideoHistory = !!(isWeb && isOneOnOne && courseCreatorId && user?.uid);
+  const [showVideoHistory, setShowVideoHistory] = useState(false);
   const queryClientHook = useQueryClient();
   const { streakNumber, flameLevel, isLoading: streakLoading } = useActivityStreakContext();
 
@@ -778,6 +783,18 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
             <WakeHeaderSpacer />
             {renderBeforeContent}
 
+            {canAccessVideoHistory && (
+              <View style={styles.videoHistoryRow}>
+                <TouchableOpacity
+                  style={styles.videoHistoryBtn}
+                  onPress={() => setShowVideoHistory(true)}
+                  accessibilityLabel="Historial de videos"
+                >
+                  <SvgListChecklist width={18} height={18} color="rgba(255,255,255,0.75)" />
+                </TouchableOpacity>
+              </View>
+            )}
+
           {/* Main Swipeable Container */}
           <View style={styles.workoutSection}>
             <ScrollView
@@ -1130,6 +1147,15 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         onClose={() => setTutorialVisible(false)}
         onComplete={handleTutorialComplete}
       />
+      {canAccessVideoHistory && VideoExchangeOverlay && (
+        <VideoExchangeOverlay
+          open={showVideoHistory}
+          mode="history"
+          userId={user?.uid}
+          creatorId={courseCreatorId}
+          onClose={() => setShowVideoHistory(false)}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -1149,6 +1175,22 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   content: {
     paddingBottom: 20,
     overflow: 'visible',
+  },
+  videoHistoryRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: Math.max(24, screenWidth * 0.06),
+    marginBottom: 8,
+  },
+  videoHistoryBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   // Main swipeable container styles
   mainSwipeContainer: {

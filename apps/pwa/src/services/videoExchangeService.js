@@ -15,12 +15,13 @@ class VideoExchangeService {
     return res.data || res;
   }
 
-  async createThread({ clientId, oneOnOneClientId, exerciseKey, exerciseName }) {
+  async createThread({ clientId, oneOnOneClientId, exerciseKey, exerciseName, initialMessage }) {
     const res = await apiClient.post('/video-exchanges', {
       clientId,
       oneOnOneClientId,
       ...(exerciseKey && { exerciseKey }),
       ...(exerciseName && { exerciseName }),
+      ...(initialMessage && { initialMessage }),
     });
     return res.data || res;
   }

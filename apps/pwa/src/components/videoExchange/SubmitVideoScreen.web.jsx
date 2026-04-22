@@ -3,11 +3,18 @@ import VideoRecorderPWA from './VideoRecorderPWA.web';
 import useSubmitVideo from '../../hooks/useSubmitVideo';
 
 /**
- * Client-initiated video submission. Single-screen flow:
- * exercise name → record → optional note → submit.
+ * Client-initiated video submission, anchored to a specific exercise.
+ * Required props: `exerciseKey`, `exerciseName`. This screen only opens
+ * from inside the workout flow — there is no way to submit without context.
  */
-export default function SubmitVideoScreen({ userId, oneOnOneClientId, onCancel, onSubmitted }) {
-  const [exerciseName, setExerciseName] = useState('');
+export default function SubmitVideoScreen({
+  userId,
+  oneOnOneClientId,
+  exerciseKey,
+  exerciseName,
+  onCancel,
+  onSubmitted,
+}) {
   const [note, setNote] = useState('');
   const [showRecorder, setShowRecorder] = useState(false);
   const [videoBlob, setVideoBlob] = useState(null);
@@ -35,14 +42,14 @@ export default function SubmitVideoScreen({ userId, oneOnOneClientId, onCancel, 
 
   const handleSubmit = useCallback(async () => {
     if (!videoBlob || isBusy) return;
-    const result = await submit({ videoBlob, exerciseName, note });
+    const result = await submit({ videoBlob, exerciseKey, exerciseName, note });
     if (result) {
       if (videoUrl) URL.revokeObjectURL(videoUrl);
       setVideoBlob(null);
       setVideoUrl(null);
       onSubmitted?.(result.exchangeId);
     }
-  }, [videoBlob, isBusy, submit, exerciseName, note, videoUrl, onSubmitted]);
+  }, [videoBlob, isBusy, submit, exerciseKey, exerciseName, note, videoUrl, onSubmitted]);
 
   if (showRecorder) {
     return (
@@ -67,16 +74,10 @@ export default function SubmitVideoScreen({ userId, oneOnOneClientId, onCancel, 
       </div>
 
       <div style={styles.body}>
-        <label style={styles.label}>Ejercicio</label>
-        <input
-          style={styles.input}
-          placeholder="Ej. Sentadillas, Press de banca"
-          value={exerciseName}
-          onChange={(e) => setExerciseName(e.target.value)}
-          disabled={isBusy}
-          maxLength={80}
-        />
-        <p style={styles.hint}>Opcional. Ayuda a tu coach a saber qué está revisando.</p>
+        <div style={styles.exerciseTag}>
+          <span style={styles.exerciseTagLabel}>Ejercicio</span>
+          <span style={styles.exerciseTagName}>{exerciseName}</span>
+        </div>
 
         <label style={styles.label}>Nota para el coach</label>
         <textarea
@@ -128,16 +129,23 @@ const styles = {
     cursor: 'pointer', fontSize: 14,
   },
   headerTitle: { fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' },
-  body: { display: 'flex', flexDirection: 'column', padding: 16, gap: 8 },
+  body: { display: 'flex', flexDirection: 'column', padding: 16, gap: 10 },
+  exerciseTag: {
+    display: 'flex', flexDirection: 'column', gap: 4,
+    padding: '12px 14px', borderRadius: 10,
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.08)',
+  },
+  exerciseTagLabel: {
+    fontSize: 10, fontWeight: 700, letterSpacing: '0.1em',
+    textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)',
+  },
+  exerciseTagName: {
+    fontSize: 15, fontWeight: 700, color: 'rgba(255,255,255,0.95)',
+  },
   label: {
     fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)',
     textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 8,
-  },
-  input: {
-    width: '100%', padding: '10px 12px', borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.12)',
-    background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.9)',
-    fontSize: 14, outline: 'none', boxSizing: 'border-box',
   },
   textarea: {
     width: '100%', padding: '10px 12px', borderRadius: 8,
@@ -146,7 +154,6 @@ const styles = {
     fontSize: 14, outline: 'none', boxSizing: 'border-box', resize: 'vertical',
     fontFamily: 'inherit',
   },
-  hint: { fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '-4px 0 0' },
   primaryBtn: {
     marginTop: 12, padding: '12px 20px', borderRadius: 8, border: 'none',
     background: 'rgba(255,255,255,0.95)', color: '#1a1a1a',

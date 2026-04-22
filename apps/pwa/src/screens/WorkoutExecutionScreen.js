@@ -248,6 +248,9 @@ import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgFileRemove from '../components/icons/vectors_fig/File/FileRemove';
 import SvgFileUpload from '../components/icons/vectors_fig/File/FileUpload';
+import SvgCamera from '../components/icons/vectors_fig/System/Camera';
+import VideoExchangeOverlay from '../components/videoExchange/VideoExchangeOverlay.web';
+// SvgCamera used inside the Notas y videos modal and the register modal.
 import Svg, { Defs, G, Text as SvgText, Filter, FeGaussianBlur } from 'react-native-svg';
 
 // ============================================================================
@@ -740,7 +743,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // ─── Checkpoint refs (session interruption recovery) ───────────────────────
   const checkpointApiTimerRef = useRef(null);
   const checkpointNotesTimerRef = useRef(null);
-  const lastCheckpointTimeRef = useRef(0);
+  const saveCheckpointRef = useRef(null);
 
   // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
   const focusTimeoutIdsRef = useRef([]);
@@ -864,6 +867,20 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [oneRepMaxEstimates, setOneRepMaxEstimates] = useState({}); // 1RM estimates for weight suggestions
   const [sessionNotes, setSessionNotes] = useState('');
   const [isNotesModalVisible, setIsNotesModalVisible] = useState(false);
+
+  // Video-exchange submission + history overlay (one-on-one only, web only)
+  const [videoSubmitTarget, setVideoSubmitTarget] = useState(null); // { exerciseKey, exerciseName } | null
+  const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
+  const isOneOnOneCourse = course?.deliveryType === 'one_on_one';
+  const courseCreatorId = course?.creator_id || course?.creatorId || course?.creator?.id || null;
+  const canSendVideoToCoach = !!(isWeb && isOneOnOneCourse && courseCreatorId && user?.uid);
+  const handleRequestSendVideo = useCallback((exercise) => {
+    if (!canSendVideoToCoach) return;
+    setVideoSubmitTarget({
+      exerciseKey: exercise?.id || exercise?.exerciseId || exercise?.name || '',
+      exerciseName: exercise?.name || exercise?.exerciseName || 'Ejercicio',
+    });
+  }, [canSendVideoToCoach]);
   
   const useStateBatchDuration = performance.now() - useStateBatchStartTime;
   if (useStateBatchDuration > 50) {
@@ -1205,13 +1222,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     try {
       const cp = buildCheckpoint();
       if (cp) localStorage.setItem('wake_session_checkpoint', JSON.stringify(cp));
-      lastCheckpointTimeRef.current = Date.now();
     } catch { /* fire-and-forget */ }
   }, [buildCheckpoint]);
 
-  const debouncedCheckpointToLocalStorage = useCallback(() => {
-    if (Date.now() - lastCheckpointTimeRef.current < 10_000) return;
-    saveCheckpointToLocalStorage();
+  // Keep a ref to the latest save function so unmount/pagehide handlers always
+  // flush with fresh state (closures captured by event listeners would otherwise
+  // use stale setData).
+  useEffect(() => {
+    saveCheckpointRef.current = saveCheckpointToLocalStorage;
   }, [saveCheckpointToLocalStorage]);
 
   const debouncedApiCheckpoint = useCallback(() => {
@@ -1271,9 +1289,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (!sessionNotes) return;
     if (checkpointNotesTimerRef.current) clearTimeout(checkpointNotesTimerRef.current);
     checkpointNotesTimerRef.current = setTimeout(() => {
-      debouncedCheckpointToLocalStorage();
+      saveCheckpointToLocalStorage();
     }, 2000);
   }, [sessionNotes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush checkpoint on unmount. SPA back-nav (including iOS edge-swipe) unmounts
+  // the component without firing pagehide/visibilitychange, so the other handlers
+  // alone aren't enough.
+  useEffect(() => {
+    return () => {
+      if (saveCheckpointRef.current) saveCheckpointRef.current();
+    };
+  }, []);
 
   // Restore non-setData state from checkpoint (notes, timer, position).
   // setData restoration is handled in the initialization effect above to avoid
@@ -2396,8 +2423,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           postSaveTimerRef.current = setTimeout(() => setShowPostSave(false), 1600);
         }
 
-        // Checkpoint after set saved (debounced to at most once per 10s)
-        debouncedCheckpointToLocalStorage();
+        // Checkpoint after every set save so rapid back-to-back saves all persist.
+        saveCheckpointToLocalStorage();
         debouncedApiCheckpoint();
 
         // Automatically move to next set using ref
@@ -2417,7 +2444,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setCurrentSetInputData({});
       Alert.alert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
     }
-  }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData, debouncedCheckpointToLocalStorage, debouncedApiCheckpoint]);
+  }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData, saveCheckpointToLocalStorage, debouncedApiCheckpoint]);
 
   const handleCancelSetInput = useCallback(() => {
     // Animate modal out
@@ -4752,7 +4779,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (currentExerciseIndex < workout.exercises.length - 1) {
         setCurrentExerciseIndex(currentExerciseIndex + 1);
         setCurrentSetIndex(0);
-        debouncedCheckpointToLocalStorage();
+        saveCheckpointToLocalStorage();
       } else {
         // Workout completed - use ref to avoid temporal dead zone
         if (handleCompleteWorkoutRef.current) {
@@ -4760,7 +4787,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         }
       }
     }
-  }, [workout, currentExerciseIndex, currentSetIndex]);
+  }, [workout, currentExerciseIndex, currentSetIndex, saveCheckpointToLocalStorage]);
 
   // Store handleNextSet in ref so it can be called before it's defined
   useEffect(() => {
@@ -5162,6 +5189,29 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     numberOfLines={3}
                   />
                 </View>
+                {canSendVideoToCoach && (
+                  <TouchableOpacity
+                    style={styles.setInputVideoButton}
+                    onPress={() => {
+                      const ex = workout?.exercises?.[currentExerciseIndex];
+                      if (!ex) return;
+                      handleCancelSetInput();
+                      handleRequestSendVideo(ex);
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.setInputVideoIconWrap}>
+                      <SvgCamera width={16} height={16} stroke="rgba(255,255,255,0.9)" strokeWidth={1.8} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.setInputVideoTitle}>Enviar video al coach</Text>
+                      <Text style={styles.setInputVideoSubtitle}>
+                        {workout?.exercises?.[currentExerciseIndex]?.name || 'Ejercicio'}
+                      </Text>
+                    </View>
+                    <Text style={styles.setInputVideoChevron}>›</Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
               
               <View style={styles.setInputModalFooter}>
@@ -6338,7 +6388,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </Modal>
       )}
 
-      {/* Session notes bottom sheet modal */}
+      {/* Notas y videos — unified session sheet */}
       <Modal
         visible={isNotesModalVisible}
         transparent={true}
@@ -6350,20 +6400,80 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()} accessible={false}>
               <Animated.View style={[styles.notesBottomSheet, { transform: [{ translateY: notesModalTranslateY }] }]}>
                 <View style={styles.notesBottomSheetHeader}>
-                  <Text style={styles.notesBottomSheetTitle}>Notas de la sesión</Text>
+                  <Text style={styles.notesBottomSheetTitle}>
+                    {canSendVideoToCoach ? 'Notas y videos' : 'Notas de la sesión'}
+                  </Text>
                   <TouchableOpacity style={styles.notesBottomSheetClose} onPress={handleCloseNotesModal}>
                     <Text style={styles.notesBottomSheetCloseText}>✕</Text>
                   </TouchableOpacity>
                 </View>
-                <TextInput
-                  style={styles.notesBottomSheetInput}
-                  value={sessionNotes}
-                  onChangeText={setSessionNotes}
-                  placeholder="Ej: Buen ritmo, último set pesado..."
-                  placeholderTextColor="rgba(255, 255, 255, 0.4)"
-                  multiline
-                  numberOfLines={6}
-                />
+
+                <ScrollView
+                  style={styles.nvSheetScroll}
+                  contentContainerStyle={styles.nvSheetScrollContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {/* Notes section */}
+                  <Text style={styles.nvSectionLabel}>Notas de la sesión</Text>
+                  <TextInput
+                    style={styles.nvNotesInput}
+                    value={sessionNotes}
+                    onChangeText={setSessionNotes}
+                    placeholder="Ej: Buen ritmo, último set pesado…"
+                    placeholderTextColor="rgba(255, 255, 255, 0.35)"
+                    multiline
+                    numberOfLines={4}
+                  />
+
+                  {/* Video section — one-on-one + web only */}
+                  {canSendVideoToCoach && (
+                    <>
+                      <View style={styles.nvSectionDivider} />
+
+                      <View style={styles.nvSectionHeaderRow}>
+                        <Text style={styles.nvSectionLabel}>Videos al coach</Text>
+                        <TouchableOpacity
+                          style={styles.nvHistoryLink}
+                          onPress={() => {
+                            handleCloseNotesModal();
+                            setVideoHistoryOpen(true);
+                          }}
+                          accessibilityLabel="Historial de videos"
+                        >
+                          <Text style={styles.nvHistoryLinkText}>Historial</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text style={styles.nvHint}>
+                        Elige un ejercicio de la sesión para grabar un video.
+                      </Text>
+
+                      {(workout?.exercises || []).map((ex, idx) => (
+                        <TouchableOpacity
+                          key={`nv-ex-${idx}-${ex.id || ex.exerciseId || idx}`}
+                          style={styles.nvExerciseRow}
+                          onPress={() => {
+                            handleCloseNotesModal();
+                            handleRequestSendVideo(ex);
+                          }}
+                          activeOpacity={0.85}
+                        >
+                          <View style={styles.nvExerciseIcon}>
+                            <SvgCamera width={16} height={16} stroke="rgba(255,255,255,0.85)" strokeWidth={1.8} />
+                          </View>
+                          <Text style={styles.nvExerciseName}>{ex.name || 'Ejercicio'}</Text>
+                          <Text style={styles.nvExerciseCta}>Grabar</Text>
+                        </TouchableOpacity>
+                      ))}
+
+                      {(!workout?.exercises || workout.exercises.length === 0) && (
+                        <Text style={styles.nvEmptyHint}>No hay ejercicios en esta sesión.</Text>
+                      )}
+                    </>
+                  )}
+                </ScrollView>
+
                 <TouchableOpacity
                   style={styles.notesBottomSheetButton}
                   onPress={handleCloseNotesModal}
@@ -6676,6 +6786,26 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </View>
         </View>
       </Modal>
+      {isWeb && VideoExchangeOverlay && canSendVideoToCoach && (
+        <>
+          <VideoExchangeOverlay
+            open={!!videoSubmitTarget}
+            mode="submit"
+            userId={user?.uid}
+            creatorId={courseCreatorId}
+            exerciseKey={videoSubmitTarget?.exerciseKey}
+            exerciseName={videoSubmitTarget?.exerciseName}
+            onClose={() => setVideoSubmitTarget(null)}
+          />
+          <VideoExchangeOverlay
+            open={videoHistoryOpen}
+            mode="history"
+            userId={user?.uid}
+            creatorId={courseCreatorId}
+            onClose={() => setVideoHistoryOpen(false)}
+          />
+        </>
+      )}
       {/* TEST VERSION 1: End of original return statement - All code above is disabled when TEST_MODE_ENABLED is true */}
     </SafeAreaView>
   );

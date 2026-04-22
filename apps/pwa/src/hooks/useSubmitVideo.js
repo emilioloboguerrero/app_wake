@@ -23,13 +23,14 @@ export default function useSubmitVideo({ userId, oneOnOneClientId }) {
     setError(null);
   }, []);
 
-  const submit = useCallback(async ({ videoBlob, exerciseName, note }) => {
+  const submit = useCallback(async ({ videoBlob, exerciseKey, exerciseName, note }) => {
     setError(null);
     try {
       // 1. Create empty thread (signed URLs are scoped to exchangeId)
       const thread = await videoExchangeService.createThread({
         clientId: userId,
         oneOnOneClientId,
+        exerciseKey: exerciseKey || undefined,
         exerciseName: exerciseName?.trim() || undefined,
       });
       const exchangeId = thread.exchangeId || thread.id;

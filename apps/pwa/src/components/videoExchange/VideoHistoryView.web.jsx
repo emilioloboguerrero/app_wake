@@ -1,32 +1,16 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { collection, query, where, getDocs, getFirestore } from 'firebase/firestore';
 import videoExchangeService from '../../services/videoExchangeService';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
-import SubmitVideoScreen from './SubmitVideoScreen.web';
 import VideoExchangeThreadView from './VideoExchangeThreadView.web';
 
-const db = getFirestore();
-
-export default function VideoExchangeTab({ userId, creatorId }) {
-  const [mode, setMode] = useState('list'); // list | submit | detail
+/**
+ * Read-only history of a client's video submissions and the coach's responses.
+ * No submission CTA — submitting happens from the workout execution screen,
+ * always anchored to a specific exercise.
+ */
+export default function VideoHistoryView({ userId, onClose }) {
   const [selectedId, setSelectedId] = useState(null);
-
-  const { data: oneOnOneClientId } = useQuery({
-    queryKey: ['oneOnOneClient', userId, creatorId],
-    queryFn: async () => {
-      const q = query(
-        collection(db, 'one_on_one_clients'),
-        where('clientUserId', '==', userId),
-        where('creatorId', '==', creatorId)
-      );
-      const snap = await getDocs(q);
-      if (snap.empty) return null;
-      return snap.docs[0].id;
-    },
-    enabled: !!userId && !!creatorId,
-    staleTime: 30 * 60 * 1000,
-  });
 
   const { data: submissions = [], isLoading } = useQuery({
     queryKey: queryKeys.videoExchanges.byClient(userId),
@@ -35,33 +19,12 @@ export default function VideoExchangeTab({ userId, creatorId }) {
     ...cacheConfig.videoExchanges,
   });
 
-  if (!oneOnOneClientId) {
-    return <div style={styles.placeholder}>Cargando…</div>;
-  }
-
-  if (mode === 'submit') {
-    return (
-      <SubmitVideoScreen
-        userId={userId}
-        oneOnOneClientId={oneOnOneClientId}
-        onCancel={() => setMode('list')}
-        onSubmitted={(exchangeId) => {
-          setSelectedId(exchangeId);
-          setMode('detail');
-        }}
-      />
-    );
-  }
-
-  if (mode === 'detail' && selectedId) {
+  if (selectedId) {
     return (
       <VideoExchangeThreadView
         exchangeId={selectedId}
         userId={userId}
-        onBack={() => {
-          setSelectedId(null);
-          setMode('list');
-        }}
+        onBack={() => setSelectedId(null)}
       />
     );
   }
@@ -74,12 +37,9 @@ export default function VideoExchangeTab({ userId, creatorId }) {
 
   return (
     <div style={styles.container}>
-      <button style={styles.primaryCta} onClick={() => setMode('submit')}>
-        Enviar video al coach
-      </button>
-
-      <div style={styles.listHeader}>
-        <span style={styles.listTitle}>Tus videos</span>
+      <div style={styles.header}>
+        <button style={styles.backBtn} onClick={onClose}>←</button>
+        <span style={styles.headerTitle}>Historial de videos</span>
       </div>
 
       {isLoading ? (
@@ -87,7 +47,7 @@ export default function VideoExchangeTab({ userId, creatorId }) {
       ) : sorted.length === 0 ? (
         <div style={styles.empty}>
           <p style={styles.emptyTitle}>Aún no has enviado videos</p>
-          <p style={styles.emptyDesc}>Graba un clip de cualquier ejercicio y tu coach lo revisará.</p>
+          <p style={styles.emptyDesc}>Graba un clip desde cualquier ejercicio y aparecerá acá.</p>
         </div>
       ) : (
         <div style={styles.list}>
@@ -97,7 +57,7 @@ export default function VideoExchangeTab({ userId, creatorId }) {
               <button
                 key={submission.id}
                 style={styles.card}
-                onClick={() => { setSelectedId(submission.id); setMode('detail'); }}
+                onClick={() => setSelectedId(submission.id)}
               >
                 <div style={styles.cardInfo}>
                   <span style={styles.cardTitle}>{submission.exerciseName || 'Video'}</span>
@@ -144,19 +104,19 @@ function formatTimeAgo(timestamp) {
 }
 
 const styles = {
-  container: { padding: '16px 0', display: 'flex', flexDirection: 'column', gap: 16 },
-  primaryCta: {
-    margin: '0 16px', padding: '14px 20px', borderRadius: 10, border: 'none',
-    background: 'rgba(255,255,255,0.95)', color: '#1a1a1a',
-    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+  container: { display: 'flex', flexDirection: 'column', minHeight: 400 },
+  header: {
+    display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
   },
-  listHeader: { padding: '0 16px' },
-  listTitle: {
-    fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.35)',
+  backBtn: {
+    padding: '4px 8px', borderRadius: 6, border: 'none',
+    background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)',
+    cursor: 'pointer', fontSize: 14,
   },
+  headerTitle: { fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.9)' },
   placeholder: { padding: '40px 16px', textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 13 },
-  empty: { padding: '20px 16px', textAlign: 'center' },
+  empty: { padding: '40px 16px', textAlign: 'center' },
   emptyTitle: { fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.5)', margin: '0 0 4px' },
   emptyDesc: { fontSize: 12, color: 'rgba(255,255,255,0.3)', margin: 0 },
   list: { display: 'flex', flexDirection: 'column' },

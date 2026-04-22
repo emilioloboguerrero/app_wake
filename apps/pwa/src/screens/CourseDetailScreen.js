@@ -45,7 +45,6 @@ import { isWeb } from '../utils/platform';
 import VideoCardWebWrapper from '../components/VideoCardWebWrapper';
 import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
-import VideoExchangeTab from '../components/videoExchange/VideoExchangeTab.web';
 import LeaveProgramModal from '../components/program/LeaveProgramModal';
 import { queryKeys } from '../config/queryClient';
 
@@ -95,7 +94,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [userCourseEntry, setUserCourseEntry] = useState(null);
   const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
-  const [courseDetailTab, setCourseDetailTab] = useState('programa'); // 'programa' | 'videos'
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [checkoutURL, setCheckoutURL] = useState(null);
   const [showPurchaseSuccess, setShowPurchaseSuccess] = useState(false);
@@ -1366,33 +1364,6 @@ useEffect(() => {
                 </Text>
           </View>
 
-          {/* One-on-one tab bar */}
-          {isOneOnOne && userOwnsCourse && isWeb && (
-            <View style={styles.videoTabBar}>
-              <TouchableOpacity
-                style={[styles.videoTab, courseDetailTab === 'programa' && styles.videoTabActive]}
-                onPress={() => setCourseDetailTab('programa')}
-              >
-                <Text style={[styles.videoTabText, courseDetailTab === 'programa' && styles.videoTabTextActive]}>Programa</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.videoTab, courseDetailTab === 'videos' && styles.videoTabActive]}
-                onPress={() => setCourseDetailTab('videos')}
-              >
-                <Text style={[styles.videoTabText, courseDetailTab === 'videos' && styles.videoTabTextActive]}>Videos</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* Video Exchange Tab (one-on-one only) */}
-          {isOneOnOne && userOwnsCourse && isWeb && courseDetailTab === 'videos' ? (
-            <VideoExchangeTab
-              userId={clientUserId}
-              courseId={course?.id}
-              creatorId={creatorId}
-            />
-          ) : (
-          <>
           {/* Swipeable Cards Container */}
           <View style={styles.swipeableCardsContainer}>
             <ScrollView
@@ -1673,8 +1644,6 @@ useEffect(() => {
           </TouchableOpacity>
 
           <BottomSpacer />
-          </>
-          )}
         </WakeHeaderContent>
       </ScrollView>
 
