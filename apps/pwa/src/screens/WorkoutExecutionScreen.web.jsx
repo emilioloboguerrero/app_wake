@@ -64,21 +64,21 @@ const WorkoutExecutionScreen = () => {
     };
   }, []);
 
-  // Block iOS Safari's left-edge back-swipe only on this screen. The horizontal
-  // ScrollView between the video view and the exercise list starts near the
-  // edge, so the native gesture often fires accidentally and unmounts the
-  // session mid-workout.
+  // Block iOS Safari's left-edge back-swipe. touchstart.preventDefault cannot
+  // stop the system gesture on iOS, so instead we seat a history sentinel: a
+  // duplicate history entry at the current URL. When the user swipes back the
+  // browser pops the sentinel (popstate fires) but the URL is unchanged, so
+  // React Router does not re-render. We immediately re-push the sentinel to
+  // arm the next swipe. The in-screen discard button remains the only
+  // intentional way to leave the session.
   useEffect(() => {
-    const EDGE_PX = 20;
-    const blockEdgeTouch = (e) => {
-      const t = e.touches && e.touches[0];
-      if (!t) return;
-      if (t.clientX <= EDGE_PX || t.clientX >= window.innerWidth - EDGE_PX) {
-        e.preventDefault();
-      }
+    const sentinelUrl = window.location.href;
+    window.history.pushState({ wakeExecSentinel: true }, '', sentinelUrl);
+    const onPop = () => {
+      window.history.pushState({ wakeExecSentinel: true }, '', sentinelUrl);
     };
-    document.addEventListener('touchstart', blockEdgeTouch, { passive: false });
-    return () => document.removeEventListener('touchstart', blockEdgeTouch);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
   }, []);
 
   return (
