@@ -266,10 +266,12 @@ const DailyWorkoutScreen = () => {
   }, [user, courseId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [recoveryResuming, setRecoveryResuming] = useState(false);
+  const [resumeError, setResumeError] = useState(null);
 
   const handleRecoveryResume = useCallback(async () => {
     if (!recoveryCheckpoint || !course || recoveryResuming) return;
     setRecoveryResuming(true);
+    setResumeError(null);
     const cId = course.courseId || course.id || courseId;
     let fullWorkout = null;
     try {
@@ -282,25 +284,12 @@ const DailyWorkoutScreen = () => {
       logger.error('[DailyWorkout.web] resume: failed to fetch full session', e);
     }
 
-    const fallbackExercises = (recoveryCheckpoint.exercises || [])
-      .filter(ex => ex?.exerciseId)
-      .map(ex => ({
-        id: ex.exerciseId,
-        exerciseId: ex.exerciseId,
-        name: ex.exerciseName,
-        sets: ex.sets || [],
-      }));
-
-    const workoutForNav = fullWorkout || {
-      id: recoveryCheckpoint.sessionId,
-      name: recoveryCheckpoint.sessionName,
-      exercises: fallbackExercises,
-    };
-
-    if (!workoutForNav.exercises?.length) {
-      logger.error('[DailyWorkout.web] resume: no exercises in checkpoint or server');
-      try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
-      setRecoveryCheckpoint(null);
+    // Never resume with a stub workout — it strips video_url, objectives,
+    // muscle_activation, primary/libraryId, etc., and the execution screen
+    // renders in a broken state (no video, no weight suggestion, no RPE).
+    if (!fullWorkout) {
+      logger.error('[DailyWorkout.web] resume: could not load full workout, aborting');
+      setResumeError('No pudimos cargar la sesión completa. Revisa tu conexión e inténtalo de nuevo.');
       setRecoveryResuming(false);
       return;
     }
@@ -308,12 +297,13 @@ const DailyWorkoutScreen = () => {
     navigate(`/course/${cId}/workout/execution`, {
       state: {
         course,
-        workout: workoutForNav,
+        workout: fullWorkout,
         sessionId: recoveryCheckpoint.sessionId,
         checkpoint: recoveryCheckpoint,
       },
     });
     setRecoveryCheckpoint(null);
+    setResumeError(null);
     setRecoveryResuming(false);
   }, [recoveryCheckpoint, course, courseId, navigate, user, recoveryResuming]);
 
@@ -347,6 +337,7 @@ const DailyWorkoutScreen = () => {
       await AsyncStorage.removeItem('current_session');
     } catch {}
     setRecoveryCheckpoint(null);
+    setResumeError(null);
   }, [recoveryCheckpoint]);
 
   const navigation = {
@@ -446,6 +437,8 @@ const DailyWorkoutScreen = () => {
           checkpoint={recoveryCheckpoint}
           onResume={handleRecoveryResume}
           onDiscard={handleRecoveryDiscard}
+          loading={recoveryResuming}
+          error={resumeError}
         />
       )}
       <DailyWorkoutScreenBase

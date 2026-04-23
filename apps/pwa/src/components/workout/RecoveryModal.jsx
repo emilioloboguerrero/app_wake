@@ -11,7 +11,7 @@ function getTimeAgo(isoString) {
   return `hace ${days} día${days === 1 ? '' : 's'}`;
 }
 
-export default function RecoveryModal({ checkpoint, onResume, onDiscard }) {
+export default function RecoveryModal({ checkpoint, onResume, onDiscard, loading = false, error = null }) {
   const completedCount = useMemo(() => {
     if (!checkpoint?.completedSets) return 0;
     return Object.values(checkpoint.completedSets).filter(setData => {
@@ -37,12 +37,23 @@ export default function RecoveryModal({ checkpoint, onResume, onDiscard }) {
         <p style={styles.progress}>
           {completedCount} serie{completedCount !== 1 ? 's' : ''} completada{completedCount !== 1 ? 's' : ''}
         </p>
+        {error && (
+          <p style={styles.errorText}>{error}</p>
+        )}
         <div style={styles.actions}>
-          <button style={styles.discardBtn} onClick={onDiscard}>
+          <button
+            style={{ ...styles.discardBtn, opacity: loading ? 0.5 : 1, cursor: loading ? 'default' : 'pointer' }}
+            onClick={onDiscard}
+            disabled={loading}
+          >
             Descartar
           </button>
-          <button style={styles.resumeBtn} onClick={onResume}>
-            Continuar sesión
+          <button
+            style={{ ...styles.resumeBtn, opacity: loading ? 0.7 : 1, cursor: loading ? 'default' : 'pointer' }}
+            onClick={onResume}
+            disabled={loading}
+          >
+            {loading ? 'Cargando…' : (error ? 'Reintentar' : 'Continuar sesión')}
           </button>
         </div>
       </div>
@@ -98,6 +109,12 @@ const styles = {
     margin: '0 0 28px',
     fontSize: 14,
     color: 'rgba(255,255,255,0.55)',
+  },
+  errorText: {
+    margin: '-12px 0 20px',
+    fontSize: 13,
+    color: 'rgba(255,120,120,0.9)',
+    lineHeight: 1.4,
   },
   actions: {
     display: 'flex',
