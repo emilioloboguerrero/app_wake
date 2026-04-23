@@ -3360,7 +3360,7 @@ export const wakeDailyPulseCron = onSchedule(
 // ─── Scheduled: wake ops heartbeat (scheduled-job freshness) ──────────────
 export const wakeHeartbeatCron = onSchedule(
   {
-    schedule: "every 6 hours",
+    schedule: "every 12 hours",
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],

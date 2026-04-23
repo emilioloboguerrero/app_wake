@@ -23,7 +23,7 @@ const JOBS: JobSpec[] = [
   {name: "processEmailQueue", intervalMin: 1, label: "every 1m"},
   {name: "sendCallReminders", intervalMin: 15, label: "every 15m"},
   {name: "detectAbandonedSessions", intervalMin: 360, label: "every 6h"},
-  {name: "wakeHeartbeatCron", intervalMin: 360, label: "every 6h"},
+  {name: "wakeHeartbeatCron", intervalMin: 720, label: "every 12h"},
   {name: "expandWeeklyAvailability", intervalMin: 1440, label: "daily 03:00"},
   {name: "cleanupVideoExchanges", intervalMin: 1440, label: "daily 04:00"},
   {name: "wakeDailyPulseCron", intervalMin: 1440, label: "daily 19:00"},
