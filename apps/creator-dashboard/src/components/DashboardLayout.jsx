@@ -155,12 +155,12 @@ const DashboardLayout = ({
   );
 
   // ── Review inbox badge — count of client submissions awaiting response ─
-  const { data: videoExchangeUnread = 0 } = useQuery({
+  const { data: videoExchangeItems } = useQuery({
     queryKey: queryKeys.videoExchanges.inbox(user?.uid),
     queryFn: async () => {
       const res = await apiClient.get('/video-exchanges/inbox');
       const items = res.data || res;
-      return Array.isArray(items) ? items.length : 0;
+      return Array.isArray(items) ? items : [];
     },
     enabled: !!user?.uid,
     staleTime: 30_000,
@@ -168,6 +168,7 @@ const DashboardLayout = ({
     refetchOnWindowFocus: true,
     retry: 1,
   });
+  const videoExchangeUnread = videoExchangeItems?.length ?? 0;
 
   // ── Nav visibility settings ───────────────────────────────────
   const [hiddenNav, setHiddenNavState] = useState(getHiddenNav);

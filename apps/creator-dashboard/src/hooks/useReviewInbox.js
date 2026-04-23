@@ -12,7 +12,8 @@ export default function useReviewInbox(creatorId) {
     queryKey: queryKeys.videoExchanges.inbox(creatorId),
     queryFn: async () => {
       const res = await apiClient.get('/video-exchanges/inbox');
-      return res.data || res;
+      const items = res.data || res;
+      return Array.isArray(items) ? items : [];
     },
     enabled: !!creatorId,
     ...cacheConfig.videoExchanges,
