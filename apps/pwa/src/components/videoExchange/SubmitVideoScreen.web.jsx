@@ -20,10 +20,10 @@ export default function SubmitVideoScreen({
   const [videoBlob, setVideoBlob] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
 
-  const { submit, isCompressing, isUploading, progress, error, reset } =
+  const { submit, isUploading, progress, error, reset } =
     useSubmitVideo({ userId, oneOnOneClientId });
 
-  const isBusy = isCompressing || isUploading;
+  const isBusy = isUploading;
 
   const handleRecordComplete = useCallback((blob) => {
     if (videoUrl) URL.revokeObjectURL(videoUrl);
@@ -100,7 +100,7 @@ export default function SubmitVideoScreen({
             <div style={styles.previewActions}>
               <button style={styles.secondaryBtn} onClick={handleRetake} disabled={isBusy}>Repetir</button>
               <button style={styles.primaryBtn} onClick={handleSubmit} disabled={isBusy}>
-                {isCompressing ? 'Comprimiendo…' : isUploading ? `Subiendo ${Math.round(progress * 100)}%` : 'Enviar'}
+                {isUploading ? `Subiendo ${Math.round(progress * 100)}%` : 'Enviar'}
               </button>
             </div>
             {isBusy && (

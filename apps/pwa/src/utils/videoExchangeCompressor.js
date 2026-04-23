@@ -1,99 +1,53 @@
-let ffmpegInstance = null;
-let loadPromise = null;
-
-async function getFFmpeg() {
-  if (ffmpegInstance && ffmpegInstance.loaded) return ffmpegInstance;
-  if (loadPromise) return loadPromise;
-
-  loadPromise = (async () => {
-    // Load @ffmpeg/ffmpeg and @ffmpeg/util from CDN at runtime to avoid
-    // Metro bundling issues (worker.js contains dynamic import() syntax
-    // that Metro cannot parse).
-    const ffmpegModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm/index.js');
-    const utilModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
-    const { FFmpeg } = ffmpegModule;
-    const { toBlobURL } = utilModule;
-    const ffmpeg = new FFmpeg();
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-    });
-    ffmpegInstance = ffmpeg;
-    return ffmpeg;
-  })();
-
-  return loadPromise;
-}
-
 /**
- * Compress a video blob to 720p H.264 ~1.5Mbps.
- * @param {Blob} blob - Input video blob (webm or mp4)
- * @param {(progress: number) => void} [onProgress] - 0-1 progress callback
- * @returns {Promise<File>} Compressed MP4 file
+ * Extract a thumbnail from a video blob using a <video> element + canvas.
+ * @param {Blob} videoBlob
+ * @returns {Promise<Blob>} JPEG thumbnail (320px wide)
  */
-export async function compressVideo(blob, onProgress) {
-  const ffmpeg = await getFFmpeg();
+export function generateThumbnail(videoBlob) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
 
-  if (onProgress) {
-    ffmpeg.on('progress', ({ progress }) => {
-      onProgress(Math.min(progress, 1));
-    });
-  }
+    const url = URL.createObjectURL(videoBlob);
+    video.src = url;
 
-  const utilModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
-  const { fetchFile } = utilModule;
-  const inputName = 'input' + (blob.type.includes('webm') ? '.webm' : '.mp4');
-  await ffmpeg.writeFile(inputName, await fetchFile(blob));
+    const cleanup = () => URL.revokeObjectURL(url);
 
-  await ffmpeg.exec([
-    '-i', inputName,
-    '-c:v', 'libx264',
-    '-preset', 'fast',
-    '-b:v', '1500k',
-    '-maxrate', '1500k',
-    '-bufsize', '3000k',
-    '-vf', 'scale=-2:720',
-    '-c:a', 'aac',
-    '-b:a', '128k',
-    '-movflags', '+faststart',
-    'output.mp4',
-  ]);
+    video.onloadedmetadata = () => {
+      const target = Math.min(1, Math.max(0, (video.duration || 0) * 0.1));
+      video.currentTime = target;
+    };
 
-  const data = await ffmpeg.readFile('output.mp4');
-  const file = new File([data.buffer], 'video.mp4', { type: 'video/mp4' });
+    video.onseeked = () => {
+      try {
+        const targetWidth = 320;
+        const aspect = video.videoHeight / video.videoWidth || 9 / 16;
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = Math.round(targetWidth * aspect);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => {
+            cleanup();
+            if (blob) resolve(blob);
+            else reject(new Error('No se pudo generar la miniatura'));
+          },
+          'image/jpeg',
+          0.8
+        );
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    };
 
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile('output.mp4');
-
-  return file;
-}
-
-/**
- * Extract a thumbnail from a video blob.
- * @param {Blob} videoBlob - Video blob (mp4)
- * @returns {Promise<Blob>} JPEG thumbnail blob
- */
-export async function generateThumbnail(videoBlob) {
-  const ffmpeg = await getFFmpeg();
-
-  const utilModule = await import(/* webpackIgnore: true */ 'https://unpkg.com/@ffmpeg/util@0.12.2/dist/esm/index.js');
-  const { fetchFile } = utilModule;
-  await ffmpeg.writeFile('thumb_input.mp4', await fetchFile(videoBlob));
-
-  await ffmpeg.exec([
-    '-i', 'thumb_input.mp4',
-    '-ss', '1',
-    '-frames:v', '1',
-    '-vf', 'scale=320:-1',
-    'thumbnail.jpg',
-  ]);
-
-  const data = await ffmpeg.readFile('thumbnail.jpg');
-  const blob = new Blob([data.buffer], { type: 'image/jpeg' });
-
-  await ffmpeg.deleteFile('thumb_input.mp4');
-  await ffmpeg.deleteFile('thumbnail.jpg');
-
-  return blob;
+    video.onerror = () => {
+      cleanup();
+      reject(new Error('No se pudo leer el video para la miniatura'));
+    };
+  });
 }

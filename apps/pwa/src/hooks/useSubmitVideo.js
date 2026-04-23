@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import videoExchangeService from '../services/videoExchangeService';
-import { compressVideo, generateThumbnail } from '../utils/videoExchangeCompressor';
+import { generateThumbnail } from '../utils/videoExchangeCompressor';
 import { queryKeys } from '../config/queryClient';
 
 /**
@@ -11,13 +11,11 @@ import { queryKeys } from '../config/queryClient';
  */
 export default function useSubmitVideo({ userId, oneOnOneClientId }) {
   const queryClient = useQueryClient();
-  const [isCompressing, setIsCompressing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
 
   const reset = useCallback(() => {
-    setIsCompressing(false);
     setIsUploading(false);
     setProgress(0);
     setError(null);
@@ -26,7 +24,8 @@ export default function useSubmitVideo({ userId, oneOnOneClientId }) {
   const submit = useCallback(async ({ videoBlob, exerciseKey, exerciseName, note }) => {
     setError(null);
     try {
-      // 1. Create empty thread (signed URLs are scoped to exchangeId)
+      const videoContentType = videoBlob.type?.startsWith('video/mp4') ? 'video/mp4' : 'video/webm';
+
       const thread = await videoExchangeService.createThread({
         clientId: userId,
         oneOnOneClientId,
@@ -36,18 +35,13 @@ export default function useSubmitVideo({ userId, oneOnOneClientId }) {
       const exchangeId = thread.exchangeId || thread.id;
       if (!exchangeId) throw new Error('No se pudo crear la conversacion');
 
-      // 2. Compress + thumbnail
-      setIsCompressing(true);
-      const compressedFile = await compressVideo(videoBlob, setProgress);
-      const thumbnail = await generateThumbnail(compressedFile);
-      setIsCompressing(false);
-
-      // 3. Upload video + thumbnail
       setIsUploading(true);
       setProgress(0);
 
+      const thumbnail = await generateThumbnail(videoBlob);
+
       const videoData = await videoExchangeService.getUploadUrl(exchangeId, {
-        contentType: 'video/mp4',
+        contentType: videoContentType,
         fileType: 'video',
       });
       const thumbData = await videoExchangeService.getUploadUrl(exchangeId, {
@@ -55,7 +49,7 @@ export default function useSubmitVideo({ userId, oneOnOneClientId }) {
         fileType: 'thumbnail',
       });
 
-      await uploadWithProgress(videoData.uploadUrl, compressedFile, 'video/mp4', setProgress);
+      await uploadWithProgress(videoData.uploadUrl, videoBlob, videoContentType, setProgress);
       setProgress(0.9);
       await uploadSimple(thumbData.uploadUrl, thumbnail, 'image/jpeg');
 
@@ -68,8 +62,7 @@ export default function useSubmitVideo({ userId, oneOnOneClientId }) {
         messageId: thumbData.messageId,
       });
 
-      // 4. Create the first message
-      const videoDurationSec = await getVideoDuration(compressedFile);
+      const videoDurationSec = await getVideoDuration(videoBlob);
       await videoExchangeService.sendMessage(exchangeId, {
         note: note?.trim() || undefined,
         videoPath: videoData.storagePath,
@@ -85,14 +78,13 @@ export default function useSubmitVideo({ userId, oneOnOneClientId }) {
 
       return { exchangeId };
     } catch (err) {
-      setIsCompressing(false);
       setIsUploading(false);
       setError(err?.message || 'No se pudo enviar el video');
       return null;
     }
   }, [userId, oneOnOneClientId, queryClient]);
 
-  return { submit, isCompressing, isUploading, progress, error, reset };
+  return { submit, isUploading, progress, error, reset };
 }
 
 function uploadWithProgress(url, file, contentType, onProgress) {

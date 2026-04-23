@@ -50,16 +50,26 @@ export default function VideoRecorderPWA({ onComplete, onCancel, maxDuration = M
 
   const startRecording = useCallback(() => {
     chunksRef.current = [];
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : 'video/webm';
+    const candidates = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4;codecs=h264,aac',
+      'video/mp4',
+    ];
+    const mimeType = candidates.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+    const outputType = mimeType.startsWith('video/mp4') ? 'video/mp4' : 'video/webm';
 
-    const recorder = new MediaRecorder(streamRef.current, { mimeType });
+    const recorder = new MediaRecorder(streamRef.current, {
+      mimeType: mimeType || undefined,
+      videoBitsPerSecond: 1_500_000,
+      audioBitsPerSecond: 128_000,
+    });
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunksRef.current.push(e.data);
     };
     recorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
+      const blob = new Blob(chunksRef.current, { type: outputType });
       blobRef.current = blob;
       const url = URL.createObjectURL(blob);
       setPreviewUrl(url);
