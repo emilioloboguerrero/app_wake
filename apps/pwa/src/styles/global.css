@@ -431,15 +431,6 @@ body[data-tab-bar-hidden='true'] .wake-tab-bar-root {
   }
 }
 
-/* Dark mode (always dark for this app) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Already dark, no changes needed */
-  }
-}
-
-/* Removed duplicate media query - handled above */
-
 /* Ensure screens fill container properly */
 .web-container > * {
   width: 100%;
