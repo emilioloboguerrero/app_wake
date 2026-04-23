@@ -522,11 +522,21 @@ const LibrarySessionDetailScreen = () => {
     });
   }, []);
 
+  // Invalidates library caches so the BibliotecaScreen card (muscle map,
+  // exercise count) and the next detail visit both refetch fresh data.
+  // Detail key uses prefix match to cover all context-dependent variants.
+  const invalidateLibraryCaches = useCallback(() => {
+    if (!user?.uid || !sessionId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user.uid) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
+    queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
+  }, [user?.uid, sessionId, queryClient]);
+
   // ── Memoized callbacks for ExpandableExerciseCard ──────────────────────────
   const handleExerciseUpdated = useCallback(() => {
     setHasMadeChanges(true);
-    queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
-  }, [sessionId, queryClient]);
+    invalidateLibraryCaches();
+  }, [invalidateLibraryCaches]);
 
   const handleCardEditPrimary = useCallback((ex) => {
     setSelectedExercise(ex);
@@ -1335,6 +1345,7 @@ const LibrarySessionDetailScreen = () => {
             }));
             await contentApi.updateLibrarySessionExerciseOrder(user.uid, sessionId, orders);
             setHasMadeChanges(true);
+            invalidateLibraryCaches();
           } catch (err) {
             logger.error('Error updating exercise order:', err);
             showToast('No pudimos guardar el orden. Intenta de nuevo.', 'error');
@@ -1395,13 +1406,7 @@ const LibrarySessionDetailScreen = () => {
       } else {
         createdExercise = await libraryService.addExerciseToLibrarySession(user.uid, sessionId, newExercisePayload);
         setHasMadeChanges(true);
-        queryClient.setQueryData(queryKeys.library.sessions(user.uid), (old) => {
-          if (!Array.isArray(old)) return old;
-          return old.map(s => s.id === sessionId
-            ? { ...s, exercises: [...(s.exercises || []), { id: createdExercise?.id || createdExercise?.exerciseId, name: newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : '', order: nextOrder }] }
-            : s
-          );
-        });
+        invalidateLibraryCaches();
       }
 
       // Replace placeholder with real ID and transfer expanded state
@@ -1474,14 +1479,7 @@ const LibrarySessionDetailScreen = () => {
       } else {
         await libraryService.deleteLibrarySessionExercise(user.uid, sessionId, deletedId);
         setHasMadeChanges(true);
-        // Optimistically patch the sessions list cache so exercise count is correct on navigate-back
-        queryClient.setQueryData(queryKeys.library.sessions(user.uid), (old) => {
-          if (!Array.isArray(old)) return old;
-          return old.map(s => s.id === sessionId
-            ? { ...s, exercises: (s.exercises || []).filter(e => e.id !== deletedId && e.exerciseId !== deletedId) }
-            : s
-          );
-        });
+        invalidateLibraryCaches();
       }
 
       // Refresh available exercises since we removed one from the session
@@ -2904,7 +2902,7 @@ const LibrarySessionDetailScreen = () => {
           setExercises(prev => prev.map(ex => ex.id === currentExerciseId ? { ...ex, ...updates } : ex));
           if (!isCreatingExercise && currentExerciseId && user && sessionId) {
             contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates)
-              .then(() => setHasMadeChanges(true))
+              .then(() => { setHasMadeChanges(true); invalidateLibraryCaches(); })
               .catch((err) => logger.error('Error updating exercise from preset:', err));
           }
         }
@@ -2921,7 +2919,7 @@ const LibrarySessionDetailScreen = () => {
         setExercises(prev => prev.map(ex => ex.id === currentExerciseId ? { ...ex, ...updates } : ex));
         if (!isCreatingExercise && user && sessionId) {
           contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates)
-            .then(() => setHasMadeChanges(true))
+            .then(() => { setHasMadeChanges(true); invalidateLibraryCaches(); })
             .catch((err) => {
               logger.error('Error updating exercise:', err);
               showToast('No pudimos guardar los cambios. Intenta de nuevo.', 'error');
@@ -2931,7 +2929,7 @@ const LibrarySessionDetailScreen = () => {
         // No exercise open — saving session default template
         setLocalDefaultTemplate(updates);
         contentApi.updateLibrarySession(user.uid, sessionId, { defaultDataTemplate: updates })
-          .then(() => setHasMadeChanges(true))
+          .then(() => { setHasMadeChanges(true); invalidateLibraryCaches(); })
           .catch((err) => {
             logger.error('Error saving session template:', err);
             showToast('No pudimos guardar el formato. Intenta de nuevo.', 'error');
@@ -2963,7 +2961,9 @@ const LibrarySessionDetailScreen = () => {
     if (!isCreatingExercise && currentExerciseId && user && sessionId) {
       if (measuresChangeTimerRef.current) clearTimeout(measuresChangeTimerRef.current);
       measuresChangeTimerRef.current = setTimeout(() => {
-        contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates).catch((err) => logger.error('Error updating exercise:', err));
+        contentApi.updateExerciseInLibrarySession(user.uid, sessionId, currentExerciseId, updates)
+          .then(() => invalidateLibraryCaches())
+          .catch((err) => logger.error('Error updating exercise:', err));
       }, 400);
     }
   };

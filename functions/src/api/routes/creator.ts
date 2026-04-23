@@ -4200,7 +4200,7 @@ router.post("/creator/library/sessions", async (req, res) => {
 
   // Auto-seed defaultDataTemplate from creator's first objective preset (or sensible default)
   const DEFAULT_TEMPLATE = {
-    measures: ["reps", "weight"],
+    measures: ["reps", "weight", "intensity"],
     objectives: ["reps", "intensity", "previous"],
     customMeasureLabels: {},
     customObjectiveLabels: {},
