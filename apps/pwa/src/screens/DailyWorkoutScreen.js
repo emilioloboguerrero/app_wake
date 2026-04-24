@@ -781,19 +781,20 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
           <WakeHeaderContent style={styles.content}>
             {/* Spacer for fixed header */}
             <WakeHeaderSpacer />
-            {renderBeforeContent}
-
-            {canAccessVideoHistory && (
-              <View style={styles.videoHistoryRow}>
-                <TouchableOpacity
-                  style={styles.videoHistoryBtn}
-                  onPress={() => setShowVideoHistory(true)}
-                  accessibilityLabel="Historial de videos"
-                >
-                  <SvgListChecklist width={18} height={18} color="rgba(255,255,255,0.75)" />
-                </TouchableOpacity>
-              </View>
-            )}
+            <View style={styles.dateRowWrap}>
+              {renderBeforeContent}
+              {canAccessVideoHistory && (
+                <View style={styles.videoHistoryOverlay} pointerEvents="box-none">
+                  <TouchableOpacity
+                    style={styles.videoHistoryBtn}
+                    onPress={() => setShowVideoHistory(true)}
+                    accessibilityLabel="Respuestas del coach"
+                  >
+                    <SvgListChecklist width={18} height={18} color="rgba(255,255,255,0.75)" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
 
           {/* Main Swipeable Container */}
           <View style={styles.workoutSection}>
@@ -1176,11 +1177,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     paddingBottom: 20,
     overflow: 'visible',
   },
-  videoHistoryRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    marginBottom: 8,
+  dateRowWrap: {
+    position: 'relative',
+  },
+  videoHistoryOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 32,
+    right: Math.max(16, screenWidth * 0.04),
+    justifyContent: 'center',
   },
   videoHistoryBtn: {
     width: 36,

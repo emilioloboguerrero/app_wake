@@ -870,7 +870,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Video-exchange submission + history overlay (one-on-one only, web only)
   const [videoSubmitTarget, setVideoSubmitTarget] = useState(null); // { exerciseKey, exerciseName } | null
-  const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
   const isOneOnOneCourse = course?.deliveryType === 'one_on_one';
   const courseCreatorId = course?.creator_id || course?.creatorId || course?.creator?.id || null;
   const canSendVideoToCoach = !!(isWeb && isOneOnOneCourse && courseCreatorId && user?.uid);
@@ -6431,45 +6430,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     <>
                       <View style={styles.nvSectionDivider} />
 
-                      <View style={styles.nvSectionHeaderRow}>
-                        <Text style={styles.nvSectionLabel}>Videos al coach</Text>
-                        <TouchableOpacity
-                          style={styles.nvHistoryLink}
-                          onPress={() => {
-                            handleCloseNotesModal();
-                            setVideoHistoryOpen(true);
-                          }}
-                          accessibilityLabel="Historial de videos"
-                        >
-                          <Text style={styles.nvHistoryLinkText}>Historial</Text>
-                        </TouchableOpacity>
-                      </View>
+                      <Text style={styles.nvSectionLabel}>Videos al coach</Text>
 
-                      <Text style={styles.nvHint}>
-                        Elige un ejercicio de la sesión para grabar un video.
-                      </Text>
-
-                      {(workout?.exercises || []).map((ex, idx) => (
-                        <TouchableOpacity
-                          key={`nv-ex-${idx}-${ex.id || ex.exerciseId || idx}`}
-                          style={styles.nvExerciseRow}
-                          onPress={() => {
-                            handleCloseNotesModal();
-                            handleRequestSendVideo(ex);
-                          }}
-                          activeOpacity={0.85}
-                        >
-                          <View style={styles.nvExerciseIcon}>
-                            <SvgCamera width={16} height={16} stroke="rgba(255,255,255,0.85)" strokeWidth={1.8} />
-                          </View>
-                          <Text style={styles.nvExerciseName}>{ex.name || 'Ejercicio'}</Text>
-                          <Text style={styles.nvExerciseCta}>Grabar</Text>
-                        </TouchableOpacity>
-                      ))}
-
-                      {(!workout?.exercises || workout.exercises.length === 0) && (
-                        <Text style={styles.nvEmptyHint}>No hay ejercicios en esta sesión.</Text>
-                      )}
+                      <TouchableOpacity
+                        style={styles.nvSendVideoButton}
+                        onPress={() => {
+                          handleCloseNotesModal();
+                          setVideoSubmitTarget({ exerciseKey: null, exerciseName: null });
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <View style={styles.nvSendVideoIcon}>
+                          <SvgCamera width={16} height={16} stroke="rgba(255,255,255,0.95)" strokeWidth={1.8} />
+                        </View>
+                        <Text style={styles.nvSendVideoLabel}>Enviar video al coach</Text>
+                      </TouchableOpacity>
                     </>
                   )}
                 </ScrollView>
@@ -6787,24 +6762,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         </View>
       </Modal>
       {isWeb && VideoExchangeOverlay && canSendVideoToCoach && (
-        <>
-          <VideoExchangeOverlay
-            open={!!videoSubmitTarget}
-            mode="submit"
-            userId={user?.uid}
-            creatorId={courseCreatorId}
-            exerciseKey={videoSubmitTarget?.exerciseKey}
-            exerciseName={videoSubmitTarget?.exerciseName}
-            onClose={() => setVideoSubmitTarget(null)}
-          />
-          <VideoExchangeOverlay
-            open={videoHistoryOpen}
-            mode="history"
-            userId={user?.uid}
-            creatorId={courseCreatorId}
-            onClose={() => setVideoHistoryOpen(false)}
-          />
-        </>
+        <VideoExchangeOverlay
+          open={!!videoSubmitTarget}
+          mode="submit"
+          userId={user?.uid}
+          creatorId={courseCreatorId}
+          exerciseKey={videoSubmitTarget?.exerciseKey}
+          exerciseName={videoSubmitTarget?.exerciseName}
+          exercises={workout?.exercises || []}
+          onClose={() => setVideoSubmitTarget(null)}
+        />
       )}
       {/* TEST VERSION 1: End of original return statement - All code above is disabled when TEST_MODE_ENABLED is true */}
     </SafeAreaView>

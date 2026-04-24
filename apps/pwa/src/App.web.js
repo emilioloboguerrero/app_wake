@@ -161,7 +161,7 @@ applyViewportHeightOnce();
 
 // Lazy load heavy components - will be loaded when needed
 // This prevents loading them at module load time
-let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary;
+let StatusBar, VideoProvider, WebAppNavigator, ErrorBoundary, VideoUploadProvider, VideoUploadStatusPill;
 let auth;
 
 // Function to load heavy components (called when not on login route)
@@ -174,6 +174,8 @@ const loadHeavyComponents = async () => {
         try {
           StatusBar = require('expo-status-bar').StatusBar;
           VideoProvider = require('./contexts/VideoContext').VideoProvider;
+          VideoUploadProvider = require('./contexts/VideoUploadContext').VideoUploadProvider;
+          VideoUploadStatusPill = require('./components/videoExchange/VideoUploadStatusPill.web').default;
           WebAppNavigator = require('./navigation/WebAppNavigator').default;
           ErrorBoundary = require('./components/ErrorBoundary').default;
           auth = require('./config/firebase').auth;
@@ -627,6 +629,8 @@ export default function App() {
     try {
       if (!ErrorBoundary) ErrorBoundary = require('./components/ErrorBoundary').default;
       if (!VideoProvider) VideoProvider = require('./contexts/VideoContext').VideoProvider;
+      if (!VideoUploadProvider) VideoUploadProvider = require('./contexts/VideoUploadContext').VideoUploadProvider;
+      if (!VideoUploadStatusPill) VideoUploadStatusPill = require('./components/videoExchange/VideoUploadStatusPill.web').default;
       if (!WebAppNavigator) WebAppNavigator = require('./navigation/WebAppNavigator').default;
       if (!StatusBar) StatusBar = require('expo-status-bar').StatusBar;
       if (!auth) auth = require('./config/firebase').auth;
@@ -682,12 +686,16 @@ export default function App() {
       </div>
     );
   } else {
+    const appTree = (
+      <VideoProvider>
+        <WebAppNavigator />
+        {VideoUploadStatusPill && <VideoUploadStatusPill />}
+        {StatusBar && <StatusBar style="light" />}
+      </VideoProvider>
+    );
     content = (
       <ErrorBoundary>
-        <VideoProvider>
-          <WebAppNavigator />
-          {StatusBar && <StatusBar style="light" />}
-        </VideoProvider>
+        {VideoUploadProvider ? <VideoUploadProvider>{appTree}</VideoUploadProvider> : appTree}
       </ErrorBoundary>
     );
   }

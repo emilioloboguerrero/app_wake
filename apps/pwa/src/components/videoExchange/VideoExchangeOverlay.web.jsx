@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { collection, query, where, getDocs, getFirestore } from 'firebase/firestore';
 import SubmitVideoScreen from './SubmitVideoScreen.web';
+import ChooseExerciseScreen from './ChooseExerciseScreen.web';
 import VideoHistoryView from './VideoHistoryView.web';
 
 const db = getFirestore();
@@ -22,8 +23,17 @@ export default function VideoExchangeOverlay({
   creatorId,
   exerciseKey,
   exerciseName,
+  exercises,
   onClose,
 }) {
+  const [picked, setPicked] = useState(null);
+
+  useEffect(() => {
+    if (!open) setPicked(null);
+  }, [open]);
+
+  const effectiveKey = exerciseKey || picked?.exerciseKey || null;
+  const effectiveName = exerciseName || picked?.exerciseName || null;
   const { data: oneOnOneClientId } = useQuery({
     queryKey: ['oneOnOneClient', userId, creatorId],
     queryFn: async () => {
@@ -60,14 +70,22 @@ export default function VideoExchangeOverlay({
     <div style={styles.backdrop} onClick={onClose}>
       <div style={styles.card} onClick={(e) => e.stopPropagation()}>
         {mode === 'submit' && oneOnOneClientId ? (
-          <SubmitVideoScreen
-            userId={userId}
-            oneOnOneClientId={oneOnOneClientId}
-            exerciseKey={exerciseKey}
-            exerciseName={exerciseName}
-            onCancel={onClose}
-            onSubmitted={onClose}
-          />
+          effectiveKey ? (
+            <SubmitVideoScreen
+              userId={userId}
+              oneOnOneClientId={oneOnOneClientId}
+              exerciseKey={effectiveKey}
+              exerciseName={effectiveName}
+              onCancel={onClose}
+              onSubmitted={onClose}
+            />
+          ) : (
+            <ChooseExerciseScreen
+              exercises={exercises}
+              onPick={setPicked}
+              onCancel={onClose}
+            />
+          )
         ) : mode === 'history' ? (
           <VideoHistoryView userId={userId} onClose={onClose} />
         ) : (

@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "https://wakelab.co",
+      "https://www.wakelab.co",
+      "https://wolf-20b8b.web.app",
+      "https://wolf-20b8b.firebaseapp.com",
+      "https://wake-staging.web.app",
+      "https://wake-staging.firebaseapp.com",
+      "http://localhost:5001",
+      "http://localhost:8080",
+      "http://localhost:19006"
+    ],
+    "method": ["GET", "PUT", "HEAD", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Content-Length", "x-goog-resumable"],
+    "maxAgeSeconds": 3600
+  }
+]
