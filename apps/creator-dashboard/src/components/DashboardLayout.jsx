@@ -20,7 +20,6 @@ import {
   CalendarCheck,
   KeyRound,
   Shield,
-  Inbox,
 } from 'lucide-react';
 
 const TYPE_BUG = 'bug';
@@ -49,13 +48,6 @@ const NAV_ITEMS = [
       (p.startsWith('/content/') && (state?.editScope === 'client' || state?.editScope === 'client_plan')) ||
       (p.startsWith('/nutrition/') && state?.editScope === 'assignment' && !state?.programId),
     icon: <Users size={ICON_SIZE} />,
-  },
-  {
-    key: 'inbox',
-    label: 'Revisar',
-    path: '/inbox',
-    match: (p) => p === '/inbox' || p.startsWith('/inbox/'),
-    icon: <Inbox size={ICON_SIZE} />,
   },
   {
     key: 'programas',
@@ -153,22 +145,6 @@ const DashboardLayout = ({
   const [sidebarAnimating] = useState(
     () => !sessionStorage.getItem('wake_sidebar_entered')
   );
-
-  // ── Review inbox badge — count of client submissions awaiting response ─
-  const { data: videoExchangeItems } = useQuery({
-    queryKey: queryKeys.videoExchanges.inbox(user?.uid),
-    queryFn: async () => {
-      const res = await apiClient.get('/video-exchanges/inbox');
-      const items = res.data || res;
-      return Array.isArray(items) ? items : [];
-    },
-    enabled: !!user?.uid,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: true,
-    retry: 1,
-  });
-  const videoExchangeUnread = videoExchangeItems?.length ?? 0;
 
   // ── Nav visibility settings ───────────────────────────────────
   const [hiddenNav, setHiddenNavState] = useState(getHiddenNav);
@@ -374,9 +350,6 @@ const DashboardLayout = ({
             >
               <span className="dl-nav-item__icon">{item.icon}</span>
               <span className="dl-nav-item__label">{item.label}</span>
-              {item.key === 'inbox' && videoExchangeUnread > 0 && (
-                <span className="dl-nav-item__badge">{videoExchangeUnread}</span>
-              )}
             </button>
           ))}
         </nav>

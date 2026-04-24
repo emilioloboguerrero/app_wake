@@ -1,22 +1,140 @@
-.srr-container {
+/* Fullscreen viewport — portaled into body */
+.srr-viewport {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 1000;
+  background: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  animation: srr-fade-in 0.2s ease-out;
 }
 
-.srr-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+.srr-viewport--setup {
+  background: rgba(0, 0, 0, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  align-items: center;
+  justify-content: center;
 }
 
-.srr-fullscreen {
+@keyframes srr-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Header */
+.srr-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.srr-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.srr-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.srr-title {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.9);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.srr-rec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+  animation: srr-rec-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes srr-rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.srr-header-spacer {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+/* Body */
+.srr-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.srr-body--centered {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.srr-body--split {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 0;
+}
+
+@media (max-width: 900px) {
+  .srr-body--split {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+}
+
+/* Stage — the main video/canvas area */
+.srr-stage {
+  position: relative;
+  flex: 1;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Countdown */
+.srr-countdown-stage {
   position: relative;
   width: 100%;
+  max-width: 1100px;
   aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 12px;
+  border-radius: 16px;
   overflow: hidden;
+  background: #000;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
 }
 
 .srr-bg-video {
@@ -24,10 +142,9 @@
   height: 100%;
   object-fit: cover;
   display: block;
-  filter: brightness(0.3);
+  filter: brightness(0.35);
 }
 
-/* Countdown */
 .srr-countdown {
   position: absolute;
   inset: 0;
@@ -38,61 +155,117 @@
 }
 
 .srr-countdown-number {
-  font-size: 96px;
+  font-size: 140px;
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 8px 40px rgba(0, 0, 0, 0.8);
   animation: srr-countdown-pulse 1s ease-in-out infinite;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes srr-countdown-pulse {
-  0% { transform: scale(0.8); opacity: 0.5; }
+  0%, 100% { transform: scale(0.85); opacity: 0.55; }
   50% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(0.8); opacity: 0.5; }
 }
 
 /* Preview */
 .srr-preview-video {
   width: 100%;
   height: 100%;
+  max-height: 100%;
   object-fit: contain;
   display: block;
   background: #000;
 }
 
-.srr-preview-controls {
-  position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+/* Sidebar (preview phase) */
+.srr-sidebar {
+  padding: 20px;
   display: flex;
-  gap: 12px;
-  z-index: 20;
+  flex-direction: column;
+  gap: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0f0f0f;
+  min-width: 0;
+}
+
+.srr-sidebar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.srr-sidebar-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.srr-sidebar-textarea {
+  flex: 1;
+  min-height: 120px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  line-height: 1.5;
+  outline: none;
+  resize: none;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.srr-sidebar-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.srr-sidebar-textarea:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.srr-sidebar-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .srr-btn {
+  flex: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: none;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid transparent;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font: inherit;
 }
 
-.srr-btn:hover {
-  opacity: 0.85;
+.srr-btn--ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.10);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.srr-btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .srr-btn--primary {
-  background: rgba(255, 255, 255, 0.95);
-  color: #1a1a1a;
+  background: rgba(255, 255, 255, 0.94);
+  color: #0a0a0a;
 }
 
-.srr-btn--secondary {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.8);
+.srr-btn--primary:hover {
+  background: #ffffff;
 }

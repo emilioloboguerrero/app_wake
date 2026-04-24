@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import videoExchangeService from '../../services/videoExchangeService';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
+import AuthedVideo from './AuthedVideo.web';
 
 /**
  * Single-thread view. Coach response is the hero; the client's own video
@@ -66,9 +67,9 @@ function CoachReply({ msg }) {
         <span style={styles.sectionTime}>{formatTime(msg.createdAt)}</span>
       </div>
       {msg.videoPath && (
-        <VideoPlayer
+        <AuthedVideo
           path={msg.videoPath}
-          thumbnail={msg.thumbnailPath}
+          thumbnailPath={msg.thumbnailPath}
           style={styles.coachVideo}
         />
       )}
@@ -100,9 +101,9 @@ function ClientReference({ msg }) {
         <span style={styles.sectionTime}>{formatTime(msg.createdAt)}</span>
       </div>
       {msg.videoPath && (
-        <VideoPlayer
+        <AuthedVideo
           path={msg.videoPath}
-          thumbnail={msg.thumbnailPath}
+          thumbnailPath={msg.thumbnailPath}
           style={styles.clientVideo}
           compact
         />
@@ -110,35 +111,6 @@ function ClientReference({ msg }) {
       {msg.note && <p style={styles.clientNote}>{msg.note}</p>}
     </section>
   );
-}
-
-function VideoPlayer({ path, thumbnail, style, compact }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <div style={{ ...styles.unavailable, ...(compact ? styles.unavailableCompact : null) }}>
-        <span style={styles.unavailableText}>Este video ya no está disponible</span>
-      </div>
-    );
-  }
-  return (
-    <video
-      style={style}
-      src={buildVideoUrl(path)}
-      controls
-      playsInline
-      preload="metadata"
-      poster={thumbnail ? buildVideoUrl(thumbnail) : undefined}
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-function buildVideoUrl(path) {
-  if (!path) return null;
-  if (path.startsWith('http')) return path;
-  const bucket = 'wolf-20b8b.firebasestorage.app';
-  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media`;
 }
 
 function formatTime(timestamp) {
@@ -238,19 +210,5 @@ const styles = {
   },
   waitingDesc: {
     fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: 0,
-  },
-  unavailable: {
-    width: '100%', aspectRatio: '16 / 9',
-    borderRadius: 10, background: 'rgba(255,255,255,0.03)',
-    border: '1px dashed rgba(255,255,255,0.10)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    padding: 12,
-  },
-  unavailableCompact: {
-    aspectRatio: '16 / 9', maxHeight: 180,
-  },
-  unavailableText: {
-    fontSize: 12, color: 'rgba(255,255,255,0.45)',
-    textAlign: 'center',
   },
 };

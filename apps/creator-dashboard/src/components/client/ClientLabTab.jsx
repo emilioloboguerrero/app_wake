@@ -5,7 +5,7 @@ import { cacheConfig } from '../../config/queryClient';
 import TimeRangeSelector from '../ui/TimeRangeSelector';
 import ClientLabBentoGrid from './ClientLabBentoGrid';
 import ClientLabDetailSections from './ClientLabDetailSections';
-import VideoExchangeSection from './VideoExchangeSection';
+import ClientVideosTab from './ClientVideosTab';
 import './ClientLabTab.css';
 
 const RANGES = [
@@ -14,7 +14,7 @@ const RANGES = [
   { id: '90d', label: '3 meses' },
 ];
 
-export default function ClientLabTab({ clientId, clientUserId, clientName, creatorId }) {
+export default function ClientLabTab({ clientUserId, clientName, creatorId }) {
   const [range, setRange] = useState('30d');
 
   // Phase 1: Summary (fast, ~60 reads — skips diary + exerciseHistory)
@@ -46,6 +46,12 @@ export default function ClientLabTab({ clientId, clientUserId, clientName, creat
 
   return (
     <div className="clt-container">
+      {/* ── Videos (first — the thing coaches act on) ───────── */}
+      <ClientVideosTab
+        creatorId={creatorId}
+        clientUserId={clientUserId}
+      />
+
       {/* ── Header row with time range selector ──────────────── */}
       <div className="clt-header">
         <h2 className="clt-title">Resumen</h2>
@@ -69,14 +75,6 @@ export default function ClientLabTab({ clientId, clientUserId, clientName, creat
         isLoading={detailLoading}
         clientName={clientName}
         range={range}
-      />
-
-      {/* ── Video Exchanges ────────────────────────────────────── */}
-      <VideoExchangeSection
-        clientId={clientId}
-        clientUserId={clientUserId}
-        creatorId={creatorId}
-        oneOnOneClientId={clientId}
       />
     </div>
   );

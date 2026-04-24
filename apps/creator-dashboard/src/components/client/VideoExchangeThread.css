@@ -1,235 +1,377 @@
-.vet-container {
+.vet-root {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 400px;
-  max-height: 600px;
+  gap: 16px;
 }
 
-/* Header */
 .vet-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 4px 4px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.vet-back {
+.vet-inline-header {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  border: none;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.vet-back:hover {
-  background: rgba(255, 255, 255, 0.1);
+  gap: 12px;
+  padding: 4px 4px 12px;
 }
 
 .vet-header-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .vet-header-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.vet-header-status {
+.vet-header-sub,
+.vet-inline-title {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.35);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
-.vet-recorder-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+.vet-inline-title {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
 }
 
-/* Messages area */
-.vet-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
+.vet-iconbtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.85);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.vet-iconbtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.vet-iconbtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Stream ───────────────────────────────────────────────── */
+.vet-stream {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 20px;
 }
 
 .vet-loading,
-.vet-empty-messages {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 0;
-  color: rgba(255, 255, 255, 0.3);
+.vet-empty {
+  padding: 48px 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
   font-size: 13px;
 }
 
-.vet-empty-messages p {
-  margin: 0;
-}
-
-/* Individual message */
-.vet-message {
+/* ── Message block ────────────────────────────────────────── */
+.vet-msg {
   display: flex;
   flex-direction: column;
-  max-width: 75%;
-}
-
-.vet-message--creator {
-  align-self: flex-end;
-  align-items: flex-end;
-}
-
-.vet-message--client {
-  align-self: flex-start;
-  align-items: flex-start;
-}
-
-.vet-message-bubble {
+  gap: 8px;
+  padding: 14px;
   border-radius: 12px;
-  overflow: hidden;
-  max-width: 100%;
-}
-
-.vet-message--creator .vet-message-bubble {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.vet-message--client .vet-message-bubble {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.vet-message-video {
-  width: 100%;
-  max-width: 400px;
-  display: block;
-  border-radius: 8px;
-  background: #000;
-}
-
-.vet-message-note {
-  padding: 8px 12px;
-  margin: 0;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.85);
-  line-height: 1.4;
-}
-
-.vet-message-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 12px 8px;
-}
-
-.vet-message-time {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.25);
-}
-
-.vet-message-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.vet-react-btn {
-  display: flex;
-  align-items: center;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: none;
+.vet-msg--creator {
   background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.3);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
-.vet-react-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.vet-save-btn {
+.vet-msg-meta {
   display: flex;
   align-items: center;
-  padding: 2px;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.2);
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.vet-save-btn:hover {
+  gap: 6px;
+  font-size: 11px;
   color: rgba(255, 255, 255, 0.5);
 }
 
-.vet-save-btn--active {
-  color: rgba(255, 255, 255, 0.7);
+.vet-msg-author {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
 }
 
-.vet-message-sender {
-  font-size: 10px;
+.vet-msg--creator .vet-msg-author {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.vet-msg-sep {
   color: rgba(255, 255, 255, 0.25);
-  margin-top: 2px;
-  padding: 0 4px;
 }
 
-/* Pending video */
+.vet-msg-saved {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vet-msg-video {
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+
+.vet-msg-video-el {
+  width: 100%;
+  display: block;
+  max-height: 70vh;
+  background: #000;
+  object-fit: contain;
+}
+
+.vet-msg-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.vet-msg-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vet-msg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font: inherit;
+}
+
+.vet-msg-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.vet-msg-btn--primary {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(255, 255, 255, 0.92);
+  color: #1a1a1a;
+}
+
+.vet-msg-btn--primary:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #1a1a1a;
+}
+
+/* ── Input bar ────────────────────────────────────────────── */
+.vet-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  bottom: 12px;
+}
+
+.vet-input-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font: inherit;
+}
+
+.vet-input-record:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.vet-input-text {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  outline: none;
+  font: inherit;
+}
+
+.vet-input-text::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.vet-input-text:focus {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.vet-input-send {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1a1a1a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.vet-input-send:hover:not(:disabled) {
+  background: #ffffff;
+}
+
+.vet-input-send:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Pending video ────────────────────────────────────────── */
 .vet-pending {
-  padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.vet-pending-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vet-pending-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .vet-pending-video {
   width: 100%;
-  max-width: 300px;
-  border-radius: 8px;
+  border-radius: 10px;
   display: block;
-  margin-bottom: 8px;
+  max-height: 360px;
+  background: #000;
+}
+
+.vet-pending-note {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.vet-pending-note::placeholder {
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .vet-progress {
   position: relative;
-  height: 24px;
+  height: 6px;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
   overflow: hidden;
-  margin-bottom: 8px;
 }
 
 .vet-progress-bar {
   height: 100%;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.9);
   transition: width 0.3s ease;
 }
 
 .vet-progress-label {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  top: 10px;
+  left: 0;
+  right: 0;
+  text-align: center;
   font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
 }
 
 .vet-error {
-  font-size: 12px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.28);
   color: #ef4444;
-  margin: 4px 0;
+  font-size: 12px;
 }
 
 .vet-pending-actions {
@@ -238,100 +380,117 @@
   justify-content: flex-end;
 }
 
-.vet-pending-cancel,
-.vet-pending-send {
-  padding: 6px 14px;
-  border-radius: 6px;
-  border: none;
-  font-size: 12px;
-  font-weight: 600;
+.vet-btn {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font: inherit;
 }
 
-.vet-pending-cancel {
+.vet-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.vet-btn--ghost {
   background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
 }
 
-.vet-pending-send {
-  background: rgba(255, 255, 255, 0.9);
+.vet-btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.vet-btn--primary {
+  background: rgba(255, 255, 255, 0.92);
   color: #1a1a1a;
 }
 
-.vet-pending-cancel:disabled,
-.vet-pending-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.vet-btn--primary:hover:not(:disabled) {
+  background: #ffffff;
 }
 
-/* Input area */
-.vet-input-area {
+/* ── Floating upload pill ─────────────────────────────────── */
+.vet-uploadpill {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  margin: 0 auto;
+  max-width: 420px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(20, 20, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 
-.vet-record-btn {
+.vet-uploadpill--error {
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.vet-uploadpill-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: #ef4444;
-  color: #fff;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: opacity 0.15s ease;
+  gap: 10px;
 }
 
-.vet-record-btn:hover {
-  opacity: 0.85;
-}
-
-.vet-text-input {
+.vet-uploadpill-label {
   flex: 1;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
   font-size: 13px;
-  outline: none;
-}
-
-.vet-text-input:focus {
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.vet-text-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
-}
-
-.vet-send-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-}
-
-.vet-send-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
+  font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.vet-send-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
+.vet-uploadpill-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: vet-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes vet-spin {
+  to { transform: rotate(360deg); }
+}
+
+.vet-uploadpill-dismiss {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 6px;
+}
+
+.vet-uploadpill-track {
+  position: relative;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.vet-uploadpill-bar {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.88);
+  transition: width 0.3s ease;
 }

@@ -32,7 +32,6 @@ import ProtectedRoute from './components/ProtectedRoute';
 import BibliotecaScreen from './screens/BibliotecaScreen';
 import ProgramasScreen from './screens/ProgramasScreen';
 import ClientesScreen from './screens/ClientesScreen';
-import ReviewInboxScreen from './screens/ReviewInboxScreen';
 
 import BibliotecaGuideTest from './screens/biblioteca-guide/BibliotecaGuideTest';
 import DebugScreenTracker from './components/DebugScreenTracker';
@@ -164,14 +163,6 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <DebugScreenTracker name="ClientesScreen"><ClientesScreen /></DebugScreenTracker>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/inbox"
-              element={
-                <ProtectedRoute>
-                  <DebugScreenTracker name="ReviewInboxScreen"><ReviewInboxScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />

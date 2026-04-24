@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { RotateCcw, Check } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { RotateCcw, Check, X } from 'lucide-react';
 import ReactionPreRecordModal from './ReactionPreRecordModal';
 import ReactionCanvas from './ReactionCanvas';
 import ReactionToolbar from './ReactionToolbar';
@@ -8,15 +9,24 @@ import './ScreenReactionRecorder.css';
 
 const MAX_DURATION = 300; // 5 minutes
 
+/**
+ * Full-viewport reaction recorder. Portals to document.body so it escapes
+ * any parent layout constraints. Phases: setup → countdown → recording →
+ * preview. Preview phase includes a side panel for the optional note that
+ * will be sent with the reaction video.
+ *
+ * onComplete receives { blob, note } — parent uploads directly from here,
+ * no intermediate "pending" step.
+ */
 export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel }) {
-  const [phase, setPhase] = useState('setup'); // setup | countdown | recording | preview
+  const [phase, setPhase] = useState('setup');
   const [cameraStream, setCameraStream] = useState(null);
   const [countdown, setCountdown] = useState(3);
   const [elapsed, setElapsed] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [note, setNote] = useState('');
 
-  // Drawing state
   const [activeTool, setActiveTool] = useState(null);
   const [strokeColor, setStrokeColor] = useState('#ef4444');
   const [strokeWidth, setStrokeWidth] = useState(4);
@@ -25,11 +35,13 @@ export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel 
   const drawingLayerRef = useRef(null);
   const blobRef = useRef(null);
   const timerRef = useRef(null);
-  const containerRef = useRef(null);
+  const stageRef = useRef(null);
 
-  // Cleanup on unmount
   useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
+      document.body.style.overflow = prevOverflow;
       if (cameraStream) {
         cameraStream.getTracks().forEach((t) => t.stop());
       }
@@ -38,16 +50,13 @@ export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel 
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle setup complete
   const handleSetupStart = useCallback((stream) => {
     setCameraStream(stream);
     setPhase('countdown');
   }, []);
 
-  // Countdown effect
   useEffect(() => {
     if (phase !== 'countdown') return;
-
     setCountdown(3);
     const interval = setInterval(() => {
       setCountdown((prev) => {
@@ -59,29 +68,21 @@ export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel 
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(interval);
   }, [phase]);
 
-  // Recording timer
   useEffect(() => {
     if (phase !== 'recording') return;
-
     setElapsed(0);
     timerRef.current = setInterval(() => {
       setElapsed((prev) => {
-        if (prev + 1 >= MAX_DURATION) {
-          // Auto-stop handled via handleStop
-          return MAX_DURATION;
-        }
+        if (prev + 1 >= MAX_DURATION) return MAX_DURATION;
         return prev + 1;
       });
     }, 1000);
-
     return () => clearInterval(timerRef.current);
   }, [phase]);
 
-  // Auto-stop at max duration
   useEffect(() => {
     if (elapsed >= MAX_DURATION && phase === 'recording') {
       handleStop();
@@ -90,7 +91,7 @@ export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel 
 
   const handleStop = useCallback(() => {
     clearInterval(timerRef.current);
-    setPhase('stopping'); // Transitional state while recorder finalizes
+    setPhase('stopping');
   }, []);
 
   const handleBlobReady = useCallback((blob) => {
@@ -112,9 +113,9 @@ export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel 
 
   const handleConfirm = useCallback(() => {
     if (blobRef.current && onComplete) {
-      onComplete(blobRef.current);
+      onComplete(blobRef.current, note.trim());
     }
-  }, [onComplete]);
+  }, [onComplete, note]);
 
   const handleCancel = useCallback(() => {
     if (cameraStream) {
@@ -123,128 +124,169 @@ export default function ScreenReactionRecorder({ videoSrc, onComplete, onCancel 
     onCancel();
   }, [cameraStream, onCancel]);
 
-  const handleToolChange = useCallback((tool) => {
-    setActiveTool(tool);
-  }, []);
-
   const handleClearAll = useCallback(() => {
     drawingLayerRef.current?.clearAll();
   }, []);
 
-  // Get container dimensions for DrawingLayer
-  const [containerSize, setContainerSize] = useState({ w: 1280, h: 720 });
+  const [stageSize, setStageSize] = useState({ w: 1280, h: 720 });
   useEffect(() => {
-    const el = containerRef.current;
+    const el = stageRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       if (width > 0 && height > 0) {
-        setContainerSize({ w: Math.round(width), h: Math.round(height) });
+        setStageSize({ w: Math.round(width), h: Math.round(height) });
       }
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
 
-  // ── Setup phase ────────────────────────────────────────
-  if (phase === 'setup') {
-    return (
-      <div className="srr-container">
-        <div className="srr-backdrop" onClick={handleCancel} />
-        <ReactionPreRecordModal
-          onStart={handleSetupStart}
-          onCancel={handleCancel}
-        />
-      </div>
-    );
-  }
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && phase === 'setup') handleCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phase, handleCancel]);
 
-  // ── Countdown phase ────────────────────────────────────
-  if (phase === 'countdown') {
-    return (
-      <div className="srr-fullscreen">
-        <div className="srr-countdown">
-          <span className="srr-countdown-number">{countdown}</span>
+  const content = (() => {
+    if (phase === 'setup') {
+      return (
+        <div className="srr-viewport srr-viewport--setup">
+          <ReactionPreRecordModal
+            onStart={handleSetupStart}
+            onCancel={handleCancel}
+          />
         </div>
-        {/* Show video preview behind countdown */}
-        <video
-          src={videoSrc}
-          className="srr-bg-video"
-          muted
-          playsInline
-          preload="auto"
-        />
-      </div>
-    );
-  }
+      );
+    }
 
-  // ── Preview phase ──────────────────────────────────────
-  if (phase === 'preview') {
-    return (
-      <div className="srr-fullscreen">
-        <video
-          className="srr-preview-video"
-          src={previewUrl}
-          controls
-          autoPlay
-          playsInline
-        />
-        <div className="srr-preview-controls">
-          <button className="srr-btn srr-btn--secondary" onClick={handleRetake}>
-            <RotateCcw size={16} />
-            Repetir
-          </button>
-          <button className="srr-btn srr-btn--primary" onClick={handleConfirm}>
-            <Check size={16} />
-            Usar
-          </button>
+    if (phase === 'countdown') {
+      return (
+        <div className="srr-viewport">
+          <Header title="Preparando…" onClose={handleCancel} />
+          <div className="srr-body srr-body--centered">
+            <div className="srr-countdown-stage">
+              <video
+                src={videoSrc}
+                className="srr-bg-video"
+                muted
+                playsInline
+                preload="auto"
+              />
+              <div className="srr-countdown">
+                <span className="srr-countdown-number">{countdown}</span>
+              </div>
+            </div>
+          </div>
         </div>
+      );
+    }
+
+    if (phase === 'preview') {
+      return (
+        <div className="srr-viewport">
+          <Header title="Revisa tu reacción" onClose={handleCancel} />
+          <div className="srr-body srr-body--split">
+            <div className="srr-stage" ref={stageRef}>
+              <video
+                className="srr-preview-video"
+                src={previewUrl}
+                controls
+                autoPlay
+                playsInline
+              />
+            </div>
+            <aside className="srr-sidebar">
+              <div className="srr-sidebar-field">
+                <label className="srr-sidebar-label">Nota para tu cliente</label>
+                <textarea
+                  className="srr-sidebar-textarea"
+                  placeholder="Opcional — qué debería practicar, qué corregir…"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={5}
+                  maxLength={500}
+                />
+              </div>
+              <div className="srr-sidebar-actions">
+                <button className="srr-btn srr-btn--ghost" onClick={handleRetake}>
+                  <RotateCcw size={15} />
+                  Repetir
+                </button>
+                <button className="srr-btn srr-btn--primary" onClick={handleConfirm}>
+                  <Check size={15} />
+                  Enviar reacción
+                </button>
+              </div>
+            </aside>
+          </div>
+        </div>
+      );
+    }
+
+    // recording / stopping
+    const isActiveRecording = phase === 'recording';
+    return (
+      <div className="srr-viewport">
+        <Header title="Grabando reacción" onClose={handleCancel} recording />
+        <div className="srr-body">
+          <div className="srr-stage" ref={stageRef}>
+            <ReactionCanvas
+              videoSrc={videoSrc}
+              cameraStream={cameraStream}
+              drawingLayerRef={drawingLayerRef}
+              isRecording={isActiveRecording}
+              isPaused={isPaused}
+              onBlobReady={handleBlobReady}
+            />
+            <DrawingLayer
+              ref={drawingLayerRef}
+              width={stageSize.w}
+              height={stageSize.h}
+              activeTool={activeTool}
+              strokeColor={strokeColor}
+              strokeWidth={strokeWidth}
+              drawingMode={drawingMode}
+            />
+          </div>
+        </div>
+        <ReactionToolbar
+          elapsed={elapsed}
+          maxDuration={MAX_DURATION}
+          isPaused={isPaused}
+          activeTool={activeTool}
+          strokeColor={strokeColor}
+          strokeWidth={strokeWidth}
+          drawingMode={drawingMode}
+          onStop={handleStop}
+          onTogglePause={() => setIsPaused((p) => !p)}
+          onToolChange={setActiveTool}
+          onColorChange={setStrokeColor}
+          onWidthChange={setStrokeWidth}
+          onModeChange={setDrawingMode}
+          onClearAll={handleClearAll}
+        />
       </div>
     );
-  }
+  })();
 
-  // ── Recording phase (and stopping) ─────────────────────
-  const isActiveRecording = phase === 'recording';
+  if (typeof document === 'undefined') return null;
+  return createPortal(content, document.body);
+}
 
+function Header({ title, onClose, recording }) {
   return (
-    <div className="srr-fullscreen" ref={containerRef}>
-      <ReactionCanvas
-        videoSrc={videoSrc}
-        cameraStream={cameraStream}
-        drawingLayerRef={drawingLayerRef}
-        isRecording={isActiveRecording}
-        isPaused={isPaused}
-        onBlobReady={handleBlobReady}
-      />
-
-      {/* Drawing layer overlaid on top */}
-      <DrawingLayer
-        ref={drawingLayerRef}
-        width={containerSize.w}
-        height={containerSize.h}
-        activeTool={activeTool}
-        strokeColor={strokeColor}
-        strokeWidth={strokeWidth}
-        drawingMode={drawingMode}
-      />
-
-      {/* Toolbar */}
-      <ReactionToolbar
-        elapsed={elapsed}
-        maxDuration={MAX_DURATION}
-        isPaused={isPaused}
-        activeTool={activeTool}
-        strokeColor={strokeColor}
-        strokeWidth={strokeWidth}
-        drawingMode={drawingMode}
-        onStop={handleStop}
-        onTogglePause={() => setIsPaused((p) => !p)}
-        onToolChange={handleToolChange}
-        onColorChange={setStrokeColor}
-        onWidthChange={setStrokeWidth}
-        onModeChange={setDrawingMode}
-        onClearAll={handleClearAll}
-      />
-    </div>
+    <header className="srr-header">
+      <button className="srr-close" onClick={onClose} aria-label="Cerrar">
+        <X size={18} />
+      </button>
+      <span className="srr-title">
+        {recording && <span className="srr-rec-dot" aria-hidden />}
+        {title}
+      </span>
+      <span className="srr-header-spacer" />
+    </header>
   );
 }

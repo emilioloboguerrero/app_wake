@@ -1,0 +1,485 @@
+{
+  "program": "avanzados",
+  "title": "Avanzados — PPL",
+  "sourcePdf": "RUTINA_AVANZADOS_PPL_final_BEJARANOFIT.pdf",
+  "programLengthWeeks": 12,
+  "daysPerWeek": 6,
+  "notes": "PPL split, 2 blocks. Bloque #1 = weeks 1-5 with 3-week micro-cycles (W1=W4, W2=W5, W3 peak). Bloque #2 = weeks 6-11 (different exercises). Week 12 = AMRAP week — all reps become 'AMRAP' on the same Bloque #2 exercise list. Some exercises progress workSets week-to-week (Press militar en barra in Bloque 1 Empuje D2: 3→4→5→3→4). RER = reps in reserve; intensity N/10 where N = 10 - RER. Week 12 AMRAP sets use RER from Week 11.",
+  "blocks": [
+    {
+      "name": "Bloque #1",
+      "weeks": [1, 2, 3, 4, 5],
+      "sessions": [
+        {
+          "day": 1,
+          "kind": "pierna",
+          "libraryTitle": "Pierna — sentadilla y prensa unilateral",
+          "exercises": [
+            { "pdfName": "SENTADILLA", "warmupSets": 3, "rest": "2-3min", "notes": "Baja hacia atrás, rodilla orientada con la punta del pie y 'hacia afuera' cuando subes, empuja desde el talón", "perWeek": {
+              "1": {"workSets": 3, "reps": "6", "rer": 3}, "2": {"workSets": 3, "reps": "7", "rer": 3}, "3": {"workSets": 3, "reps": "7", "rer": 2},
+              "4": {"workSets": 3, "reps": "6", "rer": 3}, "5": {"workSets": 3, "reps": "7", "rer": 3}
+            }},
+            { "pdfName": "PESO MUERTO RUMANO", "warmupSets": 1, "rest": "2-3min", "notes": "Mantén una espalda neutra y sin que se encorve, manda tus caderas hacia atrás", "perWeek": {
+              "1": {"workSets": 3, "reps": "10", "rer": 3}, "2": {"workSets": 3, "reps": "10", "rer": 3}, "3": {"workSets": 3, "reps": "10", "rer": 3},
+              "4": {"workSets": 3, "reps": "10", "rer": 3}, "5": {"workSets": 3, "reps": "10", "rer": 3}
+            }},
+            { "pdfName": "PRENSA A UNA PIERNA", "warmupSets": 3, "rest": "2-3min", "notes": "Baja hacia atrás y adelante, rodilla orientada con la punta del pie, empuja desde el talón", "perWeek": {
+              "1": {"workSets": 3, "reps": "10 c/u", "rer": 2}, "2": {"workSets": 3, "reps": "11 c/u", "rer": 2}, "3": {"workSets": 3, "reps": "12 c/u", "rer": 2},
+              "4": {"workSets": 3, "reps": "10 c/u", "rer": 2}, "5": {"workSets": 3, "reps": "11 c/u", "rer": 2}
+            }},
+            { "pdfName": "EXTENSIÓN DE RODILLA", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y aprieta tus cuádriceps arriba", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 2}, "2": {"workSets": 3, "reps": "12", "rer": 2}, "3": {"workSets": 3, "reps": "12", "rer": 2},
+              "4": {"workSets": 3, "reps": "12", "rer": 2}, "5": {"workSets": 3, "reps": "12", "rer": 2}
+            }},
+            { "pdfName": "CURL DE PIERNA SENTADO", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y los pies en puntas", "perWeek": {
+              "1": {"workSets": 2, "reps": "12", "rer": 3}, "2": {"workSets": 2, "reps": "12", "rer": 3}, "3": {"workSets": 2, "reps": "12", "rer": 3},
+              "4": {"workSets": 2, "reps": "12", "rer": 3}, "5": {"workSets": 2, "reps": "12", "rer": 3}
+            }},
+            { "pdfName": "ELEVACIONES DE TALONES CON RODILLA EXTENDIDA", "warmupSets": 1, "rest": "1-2min", "notes": "Cada repetición empuja hasta lo que mas puedas y vuelve a empezar sin 'rebotar'", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }},
+            { "pdfName": "ABDUCCIÓN DE CADERA", "warmupSets": 1, "rest": "1-2min", "notes": "Aprieta tus glúteos", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }},
+            { "pdfName": "PLANCHA", "warmupSets": 1, "rest": "1-2min", "notes": "realiza una retroversion pelvica posterior para activar el abdomen", "perWeek": {
+              "1": {"workSets": 2, "reps": "40s", "rer": 1}, "2": {"workSets": 2, "reps": "40s", "rer": 1}, "3": {"workSets": 2, "reps": "40s", "rer": 1},
+              "4": {"workSets": 2, "reps": "40s", "rer": 1}, "5": {"workSets": 2, "reps": "40s", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 2,
+          "kind": "empuje",
+          "libraryTitle": "Empuje — banca y fondos",
+          "exercises": [
+            { "pdfName": "PRESS DE BANCA PLANA", "warmupSets": 2, "rest": "2-3min", "notes": "Cierra tus codos a 45°, retrae tus escapulas y mantén el glúteo pegado al banco", "perWeek": {
+              "1": {"workSets": 3, "reps": "4", "rer": 3}, "2": {"workSets": 3, "reps": "5", "rer": 3}, "3": {"workSets": 3, "reps": "6", "rer": 3},
+              "4": {"workSets": 3, "reps": "4", "rer": 3}, "5": {"workSets": 3, "reps": "5", "rer": 3}
+            }},
+            { "pdfName": "PRESS MILITAR EN MAQUINA", "warmupSets": 1, "rest": "1-2min", "notes": "Activa tus glúteos para mantenerte recto y pegado al banco", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 2}, "2": {"workSets": 3, "reps": "12", "rer": 2}, "3": {"workSets": 3, "reps": "12", "rer": 2},
+              "4": {"workSets": 3, "reps": "12", "rer": 2}, "5": {"workSets": 3, "reps": "12", "rer": 2}
+            }},
+            { "pdfName": "FONDOS", "warmupSets": 2, "rest": "2-3min", "notes": "Busca un ángulo de 15° de inclinación y mantén tus codos cerrados", "perWeek": {
+              "1": {"workSets": 3, "reps": "10", "rer": 3}, "2": {"workSets": 3, "reps": "11", "rer": 3}, "3": {"workSets": 3, "reps": "12", "rer": 3},
+              "4": {"workSets": 3, "reps": "10", "rer": 3}, "5": {"workSets": 3, "reps": "11", "rer": 3}
+            }},
+            { "pdfName": "ROMPE CRÁNEOS (O PRESS FRANCES)", "warmupSets": 1, "rest": "1-2min", "notes": "Mientras tus codos cerrados y lleva la barra a tu frete o detrás de tu cabeza según lo que sientas mas cómodo", "perWeek": {
+              "1": {"workSets": 3, "reps": "8", "rer": 2}, "2": {"workSets": 3, "reps": "8", "rer": 2}, "3": {"workSets": 3, "reps": "8", "rer": 2},
+              "4": {"workSets": 3, "reps": "8", "rer": 2}, "5": {"workSets": 3, "reps": "8", "rer": 2}
+            }},
+            { "pdfName": "ELEVACIONES LATERALES DE HOMBRO", "warmupSets": 1, "rest": "1-2min", "notes": "Enfócate en subir tu codo con el brazo en el plano escapular", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 1}, "2": {"workSets": 3, "reps": "12", "rer": 1}, "3": {"workSets": 3, "reps": "12", "rer": 1},
+              "4": {"workSets": 3, "reps": "12", "rer": 1}, "5": {"workSets": 3, "reps": "12", "rer": 1}
+            }},
+            { "pdfName": "PATADA DE TRICEP", "warmupSets": 1, "rest": "1-2min", "notes": "Tiempo constante de subida y bajada", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }}
+          ]
+        },
+        {
+          "day": 3,
+          "kind": "jalon",
+          "libraryTitle": "Jalón — dominada y pullover",
+          "exercises": [
+            { "pdfName": "DOMINADA PRONO", "warmupSets": 1, "rest": "1-2min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1.5x la anchura de tus hombros", "perWeek": {
+              "1": {"workSets": 3, "reps": "6", "rer": 2}, "2": {"workSets": 3, "reps": "6", "rer": 2}, "3": {"workSets": 3, "reps": "6", "rer": 2},
+              "4": {"workSets": 3, "reps": "6", "rer": 2}, "5": {"workSets": 3, "reps": "6", "rer": 2}
+            }},
+            { "pdfName": "REMO EN CABLE", "warmupSets": 2, "rest": "2-3min", "notes": "Mantén tus codos cerrados y llévalos a tu cadera", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 3}, "2": {"workSets": 3, "reps": "12", "rer": 3}, "3": {"workSets": 3, "reps": "12", "rer": 3},
+              "4": {"workSets": 3, "reps": "12", "rer": 3}, "5": {"workSets": 3, "reps": "12", "rer": 3}
+            }},
+            { "pdfName": "PULL OVER", "warmupSets": 1, "rest": "2-3min", "notes": "Rango de movimiento completo sin descansar arriba o abajo", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }},
+            { "pdfName": "CURL MARTILLO", "warmupSets": 1, "rest": "1-2min", "notes": "Utiliza ligeramente momentum en las ultimas repeticiones", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 1}, "2": {"workSets": 3, "reps": "12", "rer": 1}, "3": {"workSets": 3, "reps": "12", "rer": 1},
+              "4": {"workSets": 3, "reps": "12", "rer": 1}, "5": {"workSets": 3, "reps": "12", "rer": 1}
+            }},
+            { "pdfName": "CURL INCLINADO", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y codos fijos", "perWeek": {
+              "1": {"workSets": 3, "reps": "15", "rer": 2}, "2": {"workSets": 3, "reps": "15", "rer": 2}, "3": {"workSets": 3, "reps": "15", "rer": 2},
+              "4": {"workSets": 3, "reps": "15", "rer": 2}, "5": {"workSets": 3, "reps": "15", "rer": 2}
+            }},
+            { "pdfName": "ENCOGIMIENTO DE HOMBROS", "warmupSets": 1, "rest": "1-2min", "notes": "Enfócate en subir tu hombro hasta 'tocar' tus orejas", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 1}, "2": {"workSets": 3, "reps": "20", "rer": 1}, "3": {"workSets": 3, "reps": "20", "rer": 1},
+              "4": {"workSets": 3, "reps": "20", "rer": 1}, "5": {"workSets": 3, "reps": "20", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 4,
+          "kind": "pierna",
+          "libraryTitle": "Pierna — peso muerto y glute ham raise",
+          "exercises": [
+            { "pdfName": "PESO MUERTO", "warmupSets": 3, "rest": "2-3min", "notes": "Activa tu dorsal, saca pecho, mantén la cadera alta y sube empujando el suelo con tus talones", "perWeek": {
+              "1": {"workSets": 3, "reps": "6", "rer": 3}, "2": {"workSets": 3, "reps": "6", "rer": 2}, "3": {"workSets": 3, "reps": "6", "rer": 1},
+              "4": {"workSets": 3, "reps": "6", "rer": 3}, "5": {"workSets": 3, "reps": "6", "rer": 2}
+            }},
+            { "pdfName": "SENTADILLA FRONTAL O CON SAFETY BAR", "warmupSets": 2, "rest": "2-3min", "notes": "Busca un ángulo de 45° de inclinación y mantén tus codos cerrados", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 3}, "2": {"workSets": 3, "reps": "12", "rer": 3}, "3": {"workSets": 3, "reps": "12", "rer": 3},
+              "4": {"workSets": 3, "reps": "12", "rer": 3}, "5": {"workSets": 3, "reps": "12", "rer": 3}
+            }},
+            { "pdfName": "HIP THRUST", "warmupSets": 1, "rest": "2-3min", "notes": "Mantén tu mirada al frente y quijada en tu pecho mientras empujas con tu cadera", "perWeek": {
+              "1": {"workSets": 3, "reps": "10", "rer": 2}, "2": {"workSets": 3, "reps": "10", "rer": 2}, "3": {"workSets": 3, "reps": "10", "rer": 2},
+              "4": {"workSets": 3, "reps": "10", "rer": 2}, "5": {"workSets": 3, "reps": "10", "rer": 2}
+            }},
+            { "pdfName": "GLUTE HAM RAISE", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y aprieta tus cuádriceps arriba", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 2}, "2": {"workSets": 3, "reps": "12", "rer": 2}, "3": {"workSets": 3, "reps": "12", "rer": 2},
+              "4": {"workSets": 3, "reps": "12", "rer": 2}, "5": {"workSets": 3, "reps": "12", "rer": 2}
+            }},
+            { "pdfName": "CURL DE PIERNA ACOSTADO", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y los pies en puntas", "perWeek": {
+              "1": {"workSets": 2, "reps": "15", "rer": 3}, "2": {"workSets": 2, "reps": "15", "rer": 3}, "3": {"workSets": 2, "reps": "15", "rer": 3},
+              "4": {"workSets": 2, "reps": "15", "rer": 3}, "5": {"workSets": 2, "reps": "15", "rer": 3}
+            }},
+            { "pdfName": "ELEVACIONES DE TALONES CON RODILLA FLEXIONADA", "warmupSets": 1, "rest": "1-2min", "notes": "Cada repetición empuja hasta lo que mas puedas y vuelve a empezar sin 'rebotar'", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }},
+            { "pdfName": "ABDUCCIÓN DE CADERA SENTADO", "warmupSets": 1, "rest": "1-2min", "notes": "Aprieta tus glúteos", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }},
+            { "pdfName": "CRUNCH CONVENCIONAL", "warmupSets": 1, "rest": "1-2min", "notes": "Rango de movimiento completo sin descansar", "perWeek": {
+              "1": {"workSets": 2, "reps": "20", "rer": 1}, "2": {"workSets": 2, "reps": "20", "rer": 1}, "3": {"workSets": 2, "reps": "20", "rer": 1},
+              "4": {"workSets": 2, "reps": "20", "rer": 1}, "5": {"workSets": 2, "reps": "20", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 5,
+          "kind": "empuje",
+          "libraryTitle": "Empuje — militar y press cerrado",
+          "exercises": [
+            { "pdfName": "PRESS MILITAR EN BARRA", "warmupSets": 2, "rest": "2-3min", "notes": "Activa tus glúteos para mantenerte recto y empuja hacia arriba y atrás ligeramente", "perWeek": {
+              "1": {"workSets": 3, "reps": "4", "rer": 2}, "2": {"workSets": 4, "reps": "4", "rer": 2}, "3": {"workSets": 5, "reps": "4", "rer": 2},
+              "4": {"workSets": 3, "reps": "4", "rer": 2}, "5": {"workSets": 4, "reps": "4", "rer": 2}
+            }},
+            { "pdfName": "PRESS INCLINADO AGARRE CERRADO", "warmupSets": 2, "rest": "1-2min", "notes": "Busca un ángulo de 45° de inclinación y mantén tus codos cerrados", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 2}, "2": {"workSets": 3, "reps": "12", "rer": 2}, "3": {"workSets": 3, "reps": "12", "rer": 2},
+              "4": {"workSets": 3, "reps": "12", "rer": 2}, "5": {"workSets": 3, "reps": "12", "rer": 2}
+            }},
+            { "pdfName": "VUELOS EN POLEA PARA PECTORAL", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén los codos ligeramente flexionados y piensa en llevar tu bíceps a tocar tu pecho", "perWeek": {
+              "1": {"workSets": 3, "reps": "15", "rer": 1}, "2": {"workSets": 3, "reps": "15", "rer": 1}, "3": {"workSets": 3, "reps": "15", "rer": 1},
+              "4": {"workSets": 3, "reps": "15", "rer": 1}, "5": {"workSets": 3, "reps": "15", "rer": 1}
+            }},
+            { "pdfName": "EXTENSION DE TRICEPS SOBRE CABEZA", "warmupSets": 1, "rest": "1-2min", "notes": "Mientras tus codos cerrados y lleva la barra a tu frete o detrás de tu cabeza según lo que sientas mas cómodo", "perWeek": {
+              "1": {"workSets": 3, "reps": "10", "rer": 2}, "2": {"workSets": 3, "reps": "10", "rer": 2}, "3": {"workSets": 3, "reps": "10", "rer": 2},
+              "4": {"workSets": 3, "reps": "10", "rer": 2}, "5": {"workSets": 3, "reps": "10", "rer": 2}
+            }},
+            { "pdfName": "ELEVACIONES LATERALES DE HOMBRO 21s", "warmupSets": 1, "rest": "1-2min", "notes": "Enfócate en subir tu codo con el brazo en el plano escapular, cada 7 bajar de peso", "perWeek": {
+              "1": {"workSets": 3, "reps": "7/7/7", "rer": 1}, "2": {"workSets": 3, "reps": "7/7/7", "rer": 1}, "3": {"workSets": 3, "reps": "7/7/7", "rer": 1},
+              "4": {"workSets": 3, "reps": "7/7/7", "rer": 1}, "5": {"workSets": 3, "reps": "7/7/7", "rer": 1}
+            }},
+            { "pdfName": "PATADA DE TRICEP", "warmupSets": 1, "rest": "1-2min", "notes": "Tiempo constante de subida y bajada", "perWeek": {
+              "1": {"workSets": 3, "reps": "15", "rer": 2}, "2": {"workSets": 3, "reps": "15", "rer": 2}, "3": {"workSets": 3, "reps": "15", "rer": 2},
+              "4": {"workSets": 3, "reps": "15", "rer": 2}, "5": {"workSets": 3, "reps": "15", "rer": 2}
+            }},
+            { "pdfName": "ELEVACIONES DE PIERNAS", "warmupSets": 1, "rest": "1-2min", "notes": "Lleva tu cadera hacia tus costillas, no solo 'levantes las piernas'", "perWeek": {
+              "1": {"workSets": 2, "reps": "10", "rer": 1}, "2": {"workSets": 2, "reps": "10", "rer": 1}, "3": {"workSets": 2, "reps": "10", "rer": 1},
+              "4": {"workSets": 2, "reps": "10", "rer": 1}, "5": {"workSets": 2, "reps": "10", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 6,
+          "kind": "jalon",
+          "libraryTitle": "Jalón — jalón y seal row",
+          "exercises": [
+            { "pdfName": "JALÓN AL PECHO POLEA ALTA", "warmupSets": 1, "rest": "1-2min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1.5x la anchura de tus hombros", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 2}, "2": {"workSets": 3, "reps": "12", "rer": 1}, "3": {"workSets": 3, "reps": "12", "rer": 1},
+              "4": {"workSets": 3, "reps": "12", "rer": 2}, "5": {"workSets": 3, "reps": "12", "rer": 1}
+            }},
+            { "pdfName": "SEAL ROW", "warmupSets": 2, "rest": "2-3min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1.5x la anchura de tus hombros", "perWeek": {
+              "1": {"workSets": 3, "reps": "10", "rer": 3}, "2": {"workSets": 3, "reps": "10", "rer": 3}, "3": {"workSets": 3, "reps": "10", "rer": 3},
+              "4": {"workSets": 3, "reps": "10", "rer": 3}, "5": {"workSets": 3, "reps": "10", "rer": 3}
+            }},
+            { "pdfName": "FACE PULL", "warmupSets": 1, "rest": "1-2min", "notes": "Lleva los brazos hacia atrás y gíralo como si quisieras hacer una pose de doble bíceps", "perWeek": {
+              "1": {"workSets": 3, "reps": "20", "rer": 2}, "2": {"workSets": 3, "reps": "20", "rer": 2}, "3": {"workSets": 3, "reps": "20", "rer": 2},
+              "4": {"workSets": 3, "reps": "20", "rer": 2}, "5": {"workSets": 3, "reps": "20", "rer": 2}
+            }},
+            { "pdfName": "CURL PRONADO", "warmupSets": 1, "rest": "0min", "superset": "A1", "notes": "Mantén tu cadera pegada al banco y los pies en puntas, sin descanso arriba o abajo", "perWeek": {
+              "1": {"workSets": 3, "reps": "15", "rer": 1}, "2": {"workSets": 3, "reps": "15", "rer": 1}, "3": {"workSets": 3, "reps": "15", "rer": 1},
+              "4": {"workSets": 3, "reps": "15", "rer": 1}, "5": {"workSets": 3, "reps": "15", "rer": 1}
+            }},
+            { "pdfName": "CURL SUPINO", "warmupSets": 1, "rest": "1-2min", "superset": "A2", "notes": "Mantén tu cadera pegada al banco y aprieta tus cuádriceps arriba", "perWeek": {
+              "1": {"workSets": 3, "reps": "12", "rer": 2}, "2": {"workSets": 3, "reps": "12", "rer": 2}, "3": {"workSets": 3, "reps": "12", "rer": 2},
+              "4": {"workSets": 3, "reps": "12", "rer": 2}, "5": {"workSets": 3, "reps": "12", "rer": 2}
+            }},
+            { "pdfName": "VUELOS INVERTIDOS", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu pecho conta el banco y agarre prono", "perWeek": {
+              "1": {"workSets": 2, "reps": "20", "rer": 1}, "2": {"workSets": 2, "reps": "20", "rer": 1}, "3": {"workSets": 2, "reps": "20", "rer": 1},
+              "4": {"workSets": 2, "reps": "20", "rer": 1}, "5": {"workSets": 2, "reps": "20", "rer": 1}
+            }},
+            { "pdfName": "CURL BAYESIAN", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu pecho conta el banco y agarre prono", "perWeek": {
+              "1": {"workSets": 2, "reps": "20", "rer": 1}, "2": {"workSets": 2, "reps": "20", "rer": 1}, "3": {"workSets": 2, "reps": "20", "rer": 1},
+              "4": {"workSets": 2, "reps": "20", "rer": 1}, "5": {"workSets": 2, "reps": "20", "rer": 1}
+            }}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Bloque #2",
+      "weeks": [6, 7, 8, 9, 10, 11, 12],
+      "week12IsAmrap": true,
+      "sessions": [
+        {
+          "day": 1,
+          "kind": "pierna",
+          "libraryTitle": "Pierna — peso muerto y hiperextensión",
+          "exercises": [
+            { "pdfName": "PESO MUERTO", "warmupSets": 3, "rest": "2-3min", "notes": "Activa tu dorsal, saca pecho, mantén la cadera alta y sube empujando el suelo con tus talones", "perWeek": {
+              "6": {"workSets": 3, "reps": "6", "rer": 3}, "7": {"workSets": 3, "reps": "7", "rer": 3}, "8": {"workSets": 3, "reps": "8", "rer": 3},
+              "9": {"workSets": 3, "reps": "6", "rer": 3}, "10": {"workSets": 3, "reps": "7", "rer": 3}, "11": {"workSets": 3, "reps": "8", "rer": 3},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "SENTADILLA BOX", "warmupSets": 1, "rest": "2-3min", "notes": "Baja hacia atrás, rodilla orientada con la punta del pie y 'hacia afuera' cuando subes, empuja desde el talón", "perWeek": {
+              "6": {"workSets": 3, "reps": "10", "rer": 3}, "7": {"workSets": 3, "reps": "10", "rer": 3}, "8": {"workSets": 3, "reps": "10", "rer": 3},
+              "9": {"workSets": 3, "reps": "10", "rer": 3}, "10": {"workSets": 3, "reps": "10", "rer": 3}, "11": {"workSets": 3, "reps": "10", "rer": 3},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "HIPEREXTENSIÓN 45°", "warmupSets": 3, "rest": "2-3min", "notes": "Mantén una espalda neutra y sin que se encorve, manda tus caderas hacia atrás", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 2}, "7": {"workSets": 3, "reps": "15", "rer": 2}, "8": {"workSets": 3, "reps": "15", "rer": 2},
+              "9": {"workSets": 3, "reps": "15", "rer": 2}, "10": {"workSets": 3, "reps": "15", "rer": 2}, "11": {"workSets": 3, "reps": "15", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "SENTADILLA BÚLGARA", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu pie trasero solo de apoyo", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "13", "rer": 2}, "8": {"workSets": 3, "reps": "15", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "13", "rer": 2}, "11": {"workSets": 3, "reps": "15", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "EXTENSIÓN DE RODILLA A UNA PIERNA", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y los pies en puntas", "perWeek": {
+              "6": {"workSets": 2, "reps": "15", "rer": 3}, "7": {"workSets": 2, "reps": "15", "rer": 3}, "8": {"workSets": 2, "reps": "15", "rer": 3},
+              "9": {"workSets": 2, "reps": "15", "rer": 3}, "10": {"workSets": 2, "reps": "15", "rer": 3}, "11": {"workSets": 2, "reps": "15", "rer": 3},
+              "12": {"workSets": 2, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "CURL DE PIERNA A UNA PIERNA", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y los pies en puntas", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 2}, "7": {"workSets": 3, "reps": "15", "rer": 2}, "8": {"workSets": 3, "reps": "15", "rer": 2},
+              "9": {"workSets": 3, "reps": "15", "rer": 2}, "10": {"workSets": 3, "reps": "15", "rer": 2}, "11": {"workSets": 3, "reps": "15", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CAMINATA CON BANDA LATERAL", "warmupSets": 1, "rest": "1-2min", "notes": "Aprieta tus glúteos y no levantes mucho tu torso", "perWeek": {
+              "6": {"workSets": 3, "reps": "20", "rer": 2}, "7": {"workSets": 3, "reps": "20", "rer": 2}, "8": {"workSets": 3, "reps": "20", "rer": 2},
+              "9": {"workSets": 3, "reps": "20", "rer": 2}, "10": {"workSets": 3, "reps": "20", "rer": 2}, "11": {"workSets": 3, "reps": "20", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CRUNCH DOBLE", "warmupSets": 1, "rest": "1-2min", "notes": "realiza una retroversión pélvica posterior para activar el abdomen", "perWeek": {
+              "6": {"workSets": 2, "reps": "40s", "rer": 1}, "7": {"workSets": 2, "reps": "40s", "rer": 1}, "8": {"workSets": 2, "reps": "40s", "rer": 1},
+              "9": {"workSets": 2, "reps": "40s", "rer": 1}, "10": {"workSets": 2, "reps": "40s", "rer": 1}, "11": {"workSets": 2, "reps": "40s", "rer": 1},
+              "12": {"workSets": 2, "reps": "AMRAP", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 2,
+          "kind": "empuje",
+          "libraryTitle": "Empuje — banca y multipower",
+          "exercises": [
+            { "pdfName": "PRESS DE BANCA PLANA", "warmupSets": 2, "rest": "2-3min", "notes": "Cierra tus codos a 45°, retrae tus escapulas y mantén el glúteo pegado al banco", "perWeek": {
+              "6": {"workSets": 3, "reps": "4", "rer": 3}, "7": {"workSets": 3, "reps": "5", "rer": 2}, "8": {"workSets": 3, "reps": "6", "rer": 1},
+              "9": {"workSets": 3, "reps": "4", "rer": 3}, "10": {"workSets": 3, "reps": "5", "rer": 2}, "11": {"workSets": 3, "reps": "6", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "PRESS MILITAR CON MANCUERNA SENTADO", "warmupSets": 1, "rest": "1-2min", "notes": "Activa tus glúteos para mantenerte recto y pegado al banco", "perWeek": {
+              "6": {"workSets": 3, "reps": "8", "rer": 2}, "7": {"workSets": 3, "reps": "9", "rer": 2}, "8": {"workSets": 3, "reps": "10", "rer": 1},
+              "9": {"workSets": 3, "reps": "8", "rer": 2}, "10": {"workSets": 3, "reps": "9", "rer": 2}, "11": {"workSets": 3, "reps": "10", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "PRESS DE BANCA CERRADO EN MULTIPOWER", "warmupSets": 2, "rest": "2-3min", "notes": "Mantén tus codos cerrados y sin descanso arriba o abajo", "perWeek": {
+              "6": {"workSets": 3, "reps": "10", "rer": 3}, "7": {"workSets": 3, "reps": "10", "rer": 3}, "8": {"workSets": 3, "reps": "10", "rer": 3},
+              "9": {"workSets": 3, "reps": "10", "rer": 3}, "10": {"workSets": 3, "reps": "10", "rer": 3}, "11": {"workSets": 3, "reps": "10", "rer": 3},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "VUELOS EN POLEA (DE ABAJO A ARRIBA)", "warmupSets": 1, "rest": "1-2min", "notes": "Mientras tus codos semiflexionados y busca llevar tu bíceps a tu pecho", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 2}, "7": {"workSets": 3, "reps": "15", "rer": 2}, "8": {"workSets": 3, "reps": "15", "rer": 2},
+              "9": {"workSets": 3, "reps": "15", "rer": 2}, "10": {"workSets": 3, "reps": "15", "rer": 2}, "11": {"workSets": 3, "reps": "15", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "ROMPE CRÁNEOS", "warmupSets": 1, "rest": "1-2min", "notes": "Mientras tus codos cerrados y lleva la barra a tu frete o detrás de tu cabeza según lo que sientas mas cómodo", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 1}, "7": {"workSets": 3, "reps": "12", "rer": 1}, "8": {"workSets": 3, "reps": "12", "rer": 1},
+              "9": {"workSets": 3, "reps": "12", "rer": 1}, "10": {"workSets": 3, "reps": "12", "rer": 1}, "11": {"workSets": 3, "reps": "12", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "ELEVACIONES LATERALES DE HOMBRO (PREFERENCIA PERSONAL)", "warmupSets": 1, "rest": "1-2min", "notes": "Enfócate en subir tu codo con el brazo en el plano escapular", "perWeek": {
+              "6": {"workSets": 3, "reps": "15-20", "rer": 2}, "7": {"workSets": 3, "reps": "15-20", "rer": 2}, "8": {"workSets": 3, "reps": "15-20", "rer": 2},
+              "9": {"workSets": 3, "reps": "15-20", "rer": 2}, "10": {"workSets": 3, "reps": "15-20", "rer": 2}, "11": {"workSets": 3, "reps": "15-20", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }}
+          ]
+        },
+        {
+          "day": 3,
+          "kind": "jalon",
+          "libraryTitle": "Jalón — dominada neutra y remo",
+          "exercises": [
+            { "pdfName": "DOMINADA NEUTRA", "warmupSets": 1, "rest": "1-2min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1x la anchura de tus hombros", "perWeek": {
+              "6": {"workSets": 3, "reps": "6", "rer": 2}, "7": {"workSets": 3, "reps": "7", "rer": 2}, "8": {"workSets": 3, "reps": "8", "rer": 2},
+              "9": {"workSets": 3, "reps": "6", "rer": 2}, "10": {"workSets": 3, "reps": "7", "rer": 2}, "11": {"workSets": 3, "reps": "8", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "REMO EN BARRA", "warmupSets": 2, "rest": "2-3min", "notes": "Mantén tus codos cerrados y llévalos a tu cadera", "perWeek": {
+              "6": {"workSets": 3, "reps": "10", "rer": 3}, "7": {"workSets": 3, "reps": "10", "rer": 3}, "8": {"workSets": 3, "reps": "10", "rer": 3},
+              "9": {"workSets": 3, "reps": "10", "rer": 3}, "10": {"workSets": 3, "reps": "10", "rer": 3}, "11": {"workSets": 3, "reps": "10", "rer": 3},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "REMO CON APOYO EN PECHO", "warmupSets": 1, "rest": "2-3min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1.5x la anchura de tus hombros", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "VUELOS INVERTIDOS", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu pecho conta el banco y agarre prono", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 1}, "7": {"workSets": 3, "reps": "15", "rer": 1}, "8": {"workSets": 3, "reps": "15", "rer": 1},
+              "9": {"workSets": 3, "reps": "15", "rer": 1}, "10": {"workSets": 3, "reps": "15", "rer": 1}, "11": {"workSets": 3, "reps": "15", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "REMO ERGUIDO", "warmupSets": 1, "rest": "1-2min", "notes": "Mueve los codos sin que superen tus hombros", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CURL SPIDERMAN", "warmupSets": 1, "rest": "1-2min", "notes": "Enfócate en apretar tus bíceps", "perWeek": {
+              "6": {"workSets": 3, "reps": "20", "rer": 1}, "7": {"workSets": 3, "reps": "20", "rer": 1}, "8": {"workSets": 3, "reps": "20", "rer": 1},
+              "9": {"workSets": 3, "reps": "20", "rer": 1}, "10": {"workSets": 3, "reps": "20", "rer": 1}, "11": {"workSets": 3, "reps": "20", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 4,
+          "kind": "pierna",
+          "libraryTitle": "Pierna — sentadilla y hip thrust con pausa",
+          "exercises": [
+            { "pdfName": "SENTADILLA", "warmupSets": 3, "rest": "2-3min", "notes": "Baja hacia atrás, rodilla orientada con la punta del pie y 'hacia afuera' cuando subes, empuja desde el talón", "perWeek": {
+              "6": {"workSets": 3, "reps": "6", "rer": 3}, "7": {"workSets": 3, "reps": "6", "rer": 3}, "8": {"workSets": 3, "reps": "6", "rer": 1},
+              "9": {"workSets": 3, "reps": "6", "rer": 3}, "10": {"workSets": 3, "reps": "6", "rer": 3}, "11": {"workSets": 3, "reps": "6", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "PESO MUERTO RUMANO", "warmupSets": 2, "rest": "2-3min", "notes": "Mantén una espalda neutra y sin que se encorve, manda tus caderas hacia atrás", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 3}, "7": {"workSets": 3, "reps": "12", "rer": 3}, "8": {"workSets": 3, "reps": "12", "rer": 3},
+              "9": {"workSets": 3, "reps": "12", "rer": 3}, "10": {"workSets": 3, "reps": "12", "rer": 3}, "11": {"workSets": 3, "reps": "12", "rer": 3},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "HIP THRUST CON PAUSA", "warmupSets": 1, "rest": "2-3min", "notes": "Mantén tu mirada al frente y quijada en tu pecho mientras empujas con tu cadera", "perWeek": {
+              "6": {"workSets": 3, "reps": "10", "rer": 2}, "7": {"workSets": 3, "reps": "10", "rer": 2}, "8": {"workSets": 3, "reps": "10", "rer": 2},
+              "9": {"workSets": 3, "reps": "10", "rer": 2}, "10": {"workSets": 3, "reps": "10", "rer": 2}, "11": {"workSets": 3, "reps": "10", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "SENTADILLA GOBLET", "warmupSets": 1, "rest": "1-2min", "notes": "Baja hacia atrás, rodilla orientada con la punta del pie y 'hacia afuera' cuando subes, empuja desde el talón", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CURL DE PIERNA ACOSTADO", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu cadera pegada al banco y los pies en puntas", "perWeek": {
+              "6": {"workSets": 2, "reps": "15", "rer": 3}, "7": {"workSets": 2, "reps": "15", "rer": 3}, "8": {"workSets": 2, "reps": "15", "rer": 3},
+              "9": {"workSets": 2, "reps": "15", "rer": 3}, "10": {"workSets": 2, "reps": "15", "rer": 3}, "11": {"workSets": 2, "reps": "15", "rer": 3},
+              "12": {"workSets": 2, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "ELEVACIONES DE TALONES CON RODILLA FLEXIONADA", "warmupSets": 1, "rest": "1-2min", "notes": "Cada repetición empuja hasta lo que mas puedas y vuelve a empezar sin 'rebotar'", "perWeek": {
+              "6": {"workSets": 3, "reps": "20", "rer": 2}, "7": {"workSets": 3, "reps": "20", "rer": 2}, "8": {"workSets": 3, "reps": "20", "rer": 2},
+              "9": {"workSets": 3, "reps": "20", "rer": 2}, "10": {"workSets": 3, "reps": "20", "rer": 2}, "11": {"workSets": 3, "reps": "20", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "PULL THROUGH", "warmupSets": 1, "rest": "1-2min", "notes": "Aprieta tus glúteos", "perWeek": {
+              "6": {"workSets": 3, "reps": "20", "rer": 2}, "7": {"workSets": 3, "reps": "20", "rer": 2}, "8": {"workSets": 3, "reps": "20", "rer": 2},
+              "9": {"workSets": 3, "reps": "20", "rer": 2}, "10": {"workSets": 3, "reps": "20", "rer": 2}, "11": {"workSets": 3, "reps": "20", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CRUNCH CONVENCIONAL", "warmupSets": 1, "rest": "1-2min", "notes": "Rango de movimiento completo sin descansar", "perWeek": {
+              "6": {"workSets": 2, "reps": "20", "rer": 1}, "7": {"workSets": 2, "reps": "20", "rer": 1}, "8": {"workSets": 2, "reps": "20", "rer": 1},
+              "9": {"workSets": 2, "reps": "20", "rer": 1}, "10": {"workSets": 2, "reps": "20", "rer": 1}, "11": {"workSets": 2, "reps": "20", "rer": 1},
+              "12": {"workSets": 2, "reps": "AMRAP", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 5,
+          "kind": "empuje",
+          "libraryTitle": "Empuje — militar e inclinado",
+          "exercises": [
+            { "pdfName": "PRESS MILITAR EN BARRA", "warmupSets": 2, "rest": "2-3min", "notes": "Activa tus glúteos para mantenerte recto y empuja hacia arriba y atrás ligeramente", "perWeek": {
+              "6": {"workSets": 2, "reps": "4", "rer": 2}, "7": {"workSets": 3, "reps": "4", "rer": 2}, "8": {"workSets": 4, "reps": "4", "rer": 2},
+              "9": {"workSets": 2, "reps": "4", "rer": 2}, "10": {"workSets": 3, "reps": "4", "rer": 2}, "11": {"workSets": 4, "reps": "4", "rer": 2},
+              "12": {"workSets": 4, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "PRESS INCLINADO CON MANCUERNAS", "warmupSets": 2, "rest": "1-2min", "notes": "Busca un ángulo de 45° de inclinación y mantén tus codos cerrados", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "VUELOS EN POLEA PARA PECTORAL (ARRIBA ABAJO)", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén los codos ligeramente flexionados y piensa en llevar tu bíceps a tocar tu pecho", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 1}, "7": {"workSets": 3, "reps": "15", "rer": 1}, "8": {"workSets": 3, "reps": "15", "rer": 1},
+              "9": {"workSets": 3, "reps": "15", "rer": 1}, "10": {"workSets": 3, "reps": "15", "rer": 1}, "11": {"workSets": 3, "reps": "15", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "TRÍCEPS PUSH DOWN", "warmupSets": 1, "rest": "1-2min", "notes": "Mientras tus codos cerrados y 'fijos' con tu cuerpo lo mas recto posible cerca a la polea", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "ELEVACIONES LATERALES DE HOMBRO", "warmupSets": 1, "rest": "1-2min", "notes": "Enfócate en subir tu codo con el brazo en el plano escapular", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 1}, "7": {"workSets": 3, "reps": "15", "rer": 1}, "8": {"workSets": 3, "reps": "15", "rer": 1},
+              "9": {"workSets": 3, "reps": "15", "rer": 1}, "10": {"workSets": 3, "reps": "15", "rer": 1}, "11": {"workSets": 3, "reps": "15", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "FONDOS CON EXCÉNTRICA ACENTUADA", "warmupSets": 1, "rest": "1-2min", "notes": "Tiempo de 3segundo cada 'bajada'", "perWeek": {
+              "6": {"workSets": 2, "reps": "10", "rer": 2}, "7": {"workSets": 2, "reps": "10", "rer": 2}, "8": {"workSets": 3, "reps": "10", "rer": 2},
+              "9": {"workSets": 3, "reps": "10", "rer": 2}, "10": {"workSets": 2, "reps": "10", "rer": 2}, "11": {"workSets": 3, "reps": "10", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "ELEVACIONES DE PIERNAS", "warmupSets": 1, "rest": "1-2min", "notes": "Lleva tu cadera hacia tus costillas, no solo 'levantes las piernas'", "perWeek": {
+              "6": {"workSets": 2, "reps": "12", "rer": 1}, "7": {"workSets": 2, "reps": "12", "rer": 1}, "8": {"workSets": 2, "reps": "12", "rer": 1},
+              "9": {"workSets": 2, "reps": "12", "rer": 1}, "10": {"workSets": 2, "reps": "12", "rer": 1}, "11": {"workSets": 2, "reps": "12", "rer": 1},
+              "12": {"workSets": 2, "reps": "AMRAP", "rer": 1}
+            }}
+          ]
+        },
+        {
+          "day": 6,
+          "kind": "jalon",
+          "libraryTitle": "Jalón — supina con drop set",
+          "exercises": [
+            { "pdfName": "JALÓN AL PECHO POLEA ALTA SUPINA", "warmupSets": 1, "rest": "1-2min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1.5x la anchura de tus hombros", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 3, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 3, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "SEAL ROW", "warmupSets": 2, "rest": "2-3min", "notes": "'jala' desde tus codos y llévalos hacia tus caderas, usa un agarre de 1.5x la anchura de tus hombros", "perWeek": {
+              "6": {"workSets": 3, "reps": "10", "rer": 3}, "7": {"workSets": 3, "reps": "10", "rer": 3}, "8": {"workSets": 3, "reps": "10", "rer": 3},
+              "9": {"workSets": 3, "reps": "10", "rer": 3}, "10": {"workSets": 3, "reps": "10", "rer": 3}, "11": {"workSets": 3, "reps": "10", "rer": 3},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 3}
+            }},
+            { "pdfName": "PULL OVER", "warmupSets": 1, "rest": "1-2min", "notes": "Rango de movimiento completo sin descansar arriba o abajo", "perWeek": {
+              "6": {"workSets": 3, "reps": "20", "rer": 2}, "7": {"workSets": 3, "reps": "20", "rer": 2}, "8": {"workSets": 3, "reps": "20", "rer": 2},
+              "9": {"workSets": 3, "reps": "20", "rer": 2}, "10": {"workSets": 3, "reps": "20", "rer": 2}, "11": {"workSets": 3, "reps": "20", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CURL PRONADO", "warmupSets": 1, "rest": "0min", "superset": "A1", "notes": "Drop set mecánico de bíceps, escoge un peso que te permita realizar todo los sets sin descanso", "perWeek": {
+              "6": {"workSets": 3, "reps": "15", "rer": 1}, "7": {"workSets": 2, "reps": "15", "rer": 1}, "8": {"workSets": 3, "reps": "15", "rer": 1},
+              "9": {"workSets": 3, "reps": "15", "rer": 1}, "10": {"workSets": 2, "reps": "15", "rer": 1}, "11": {"workSets": 3, "reps": "15", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "CURL MARTILLO", "warmupSets": 1, "rest": "0min", "superset": "A3", "notes": "Drop set mecánico de bíceps, escoge un peso que te permita realizar todo los sets sin descanso", "perWeek": {
+              "6": {"workSets": 3, "reps": "12", "rer": 2}, "7": {"workSets": 2, "reps": "12", "rer": 2}, "8": {"workSets": 3, "reps": "12", "rer": 2},
+              "9": {"workSets": 3, "reps": "12", "rer": 2}, "10": {"workSets": 2, "reps": "12", "rer": 2}, "11": {"workSets": 3, "reps": "12", "rer": 2},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 2}
+            }},
+            { "pdfName": "CURL SUPINO", "warmupSets": 1, "rest": "1-2min", "superset": "A3", "notes": "Drop set mecánico de bíceps, escoge un peso que te permita realizar todo los sets sin descanso", "perWeek": {
+              "6": {"workSets": 3, "reps": "20", "rer": 1}, "7": {"workSets": 2, "reps": "20", "rer": 1}, "8": {"workSets": 3, "reps": "20", "rer": 1},
+              "9": {"workSets": 2, "reps": "20", "rer": 1}, "10": {"workSets": 2, "reps": "20", "rer": 1}, "11": {"workSets": 3, "reps": "20", "rer": 1},
+              "12": {"workSets": 3, "reps": "AMRAP", "rer": 1}
+            }},
+            { "pdfName": "VUELOS INVERTIDOS", "warmupSets": 1, "rest": "1-2min", "notes": "Mantén tu pecho conta el banco y agarre prono", "perWeek": {
+              "6": {"workSets": 2, "reps": "20", "rer": 1}, "7": {"workSets": 2, "reps": "20", "rer": 1}, "8": {"workSets": 2, "reps": "20", "rer": 1},
+              "9": {"workSets": 2, "reps": "20", "rer": 1}, "10": {"workSets": 2, "reps": "20", "rer": 1}, "11": {"workSets": 2, "reps": "20", "rer": 1},
+              "12": {"workSets": 2, "reps": "AMRAP", "rer": 1}
+            }}
+          ]
+        }
+      ]
+    }
+  ]
+}
