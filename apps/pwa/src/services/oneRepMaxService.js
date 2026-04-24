@@ -5,14 +5,30 @@ import logger from '../utils/logger.js';
 class OneRepMaxService {
   
   /**
-   * Parse reps from string format
-   * @param {string} repsStr - Format: "8-12" or "10" or "8 - 12"
-   * @returns {number} - Average reps, or 10 as fallback for non-numeric values
+   * Parse reps for 1RM / weight-suggestion math.
+   * Accepts either a raw reps string ("8", "8-12") or a full set object
+   * ({ reps, rep_sequence }). When rep_sequence is present, uses its first
+   * segment — drop-sets are programmed so the first mini-set determines the
+   * starting weight (subsequent drops are decided live). AMRAP sets fall back
+   * to 10 reps so suggestions remain meaningful.
+   * @param {string | object} input - reps string OR a set object
+   * @returns {number}
    */
-  parseReps(repsStr) {
-    if (!repsStr || typeof repsStr !== 'string') return 10;
+  parseReps(input) {
+    if (input && typeof input === 'object' && !Array.isArray(input)) {
+      if (Array.isArray(input.rep_sequence) && input.rep_sequence.length > 0) {
+        const first = Number(input.rep_sequence[0]);
+        if (Number.isFinite(first) && first > 0) return first;
+      }
+      return this.parseReps(input.reps);
+    }
 
-    const cleaned = repsStr.trim().replace(/\s+/g, '');
+    if (!input || typeof input !== 'string') return 10;
+
+    const trimmed = input.trim();
+    if (trimmed.toUpperCase() === 'AMRAP') return 10;
+
+    const cleaned = trimmed.replace(/\s+/g, '');
 
     if (cleaned.includes('-')) {
       const parts = cleaned.split('-');

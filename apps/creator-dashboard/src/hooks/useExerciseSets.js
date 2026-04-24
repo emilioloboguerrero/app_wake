@@ -11,6 +11,9 @@ const parseIntensityForDisplay = (value) => {
 };
 
 const formatRepsValue = (value) => {
+  if (typeof value !== 'string') return '';
+  // Preserve AMRAP literal (as-many-reps-as-possible). Case-insensitive.
+  if (value.trim().toUpperCase() === 'AMRAP') return 'AMRAP';
   let cleaned = value.replace(/[^0-9-]/g, '');
   cleaned = cleaned.replace(/-+/g, '-');
   cleaned = cleaned.replace(/^-+/, '');
@@ -22,9 +25,21 @@ const formatRepsValue = (value) => {
   return cleaned;
 };
 
+// Parses "7/7/7" or "7, 7, 7" or "7-7-7" into [7, 7, 7]. Returns [] on no valid segments.
+const parseRepSequence = (value) => {
+  if (Array.isArray(value)) {
+    return value.map((n) => Number(n)).filter((n) => Number.isFinite(n) && n > 0);
+  }
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[\/,\-\s]+/)
+    .map((s) => parseInt(s, 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+};
+
 const processFieldValue = (field, value) => {
   if (field === 'intensity') {
-    const num = value.replace(/[^0-9]/g, '');
+    const num = String(value).replace(/[^0-9]/g, '');
     if (num === '') return '';
     const n = parseInt(num, 10);
     if (n < 1) return '1';
@@ -32,12 +47,24 @@ const processFieldValue = (field, value) => {
     return String(n);
   }
   if (field === 'reps') return formatRepsValue(value);
+  if (field === 'duration') {
+    const num = String(value).replace(/[^0-9]/g, '');
+    if (num === '') return '';
+    const n = parseInt(num, 10);
+    return Number.isFinite(n) && n >= 0 ? String(n) : '';
+  }
+  if (field === 'rep_sequence') {
+    const arr = parseRepSequence(value);
+    return arr.length > 0 ? arr : null;
+  }
   return value;
 };
 
 const toStorageValue = (field, processed) => {
   if (processed === '' || processed === null || processed === undefined) return null;
   if (field === 'intensity') return `${processed}/10`;
+  if (field === 'duration') return Number(processed);
+  if (field === 'rep_sequence') return Array.isArray(processed) ? processed : null;
   return processed;
 };
 
@@ -583,4 +610,4 @@ const useExerciseSets = ({
 };
 
 export default useExerciseSets;
-export { parseIntensityForDisplay, formatRepsValue, getObjectiveFields };
+export { parseIntensityForDisplay, formatRepsValue, getObjectiveFields, parseRepSequence };

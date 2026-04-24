@@ -3904,6 +3904,8 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     rir?: number;
     restSeconds?: number;
     type?: string;
+    duration?: number;
+    rep_sequence?: number[];
   }>(
     {
       order: "number",
@@ -3914,9 +3916,16 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
       rir: "optional_number",
       restSeconds: "optional_number",
       type: "optional_string",
+      duration: "optional_number",
+      rep_sequence: "optional_array",
     },
     req.body
   );
+
+  // rep_sequence: enforce number[] at route level (validateBody only checks top-level array type)
+  if (body.rep_sequence && !body.rep_sequence.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+  }
 
   // Allow custom_* fields from body on creation
   const customFields: Record<string, unknown> = {};
@@ -3954,8 +3963,16 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     .collection("sets").doc(req.params.setId);
 
   // Allowlist set fields
-  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type"];
+  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence"];
   const updates = pickFields(req.body, allowedFields);
+
+  // rep_sequence: enforce number[] if present
+  if (updates.rep_sequence !== undefined) {
+    const seq = updates.rep_sequence;
+    if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+    }
+  }
 
   // Allow custom objective/measure fields (custom_*)
   for (const [key, value] of Object.entries(req.body as Record<string, unknown>)) {
@@ -4457,6 +4474,7 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
     order: number; title?: string; reps?: string | number;
     weight?: number; intensity?: string; rir?: number;
     restSeconds?: number; type?: string;
+    duration?: number; rep_sequence?: number[];
   }>(
     {
       order: "number",
@@ -4467,9 +4485,15 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
       rir: "optional_number",
       restSeconds: "optional_number",
       type: "optional_string",
+      duration: "optional_number",
+      rep_sequence: "optional_array",
     },
     req.body
   );
+
+  if (body.rep_sequence && !body.rep_sequence.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+  }
 
   const ref = await db
     .collection("creator_libraries").doc(auth.userId)
@@ -4491,8 +4515,15 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets").doc(req.params.setId);
 
-  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type"];
+  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence"];
   const updates = pickFields(req.body, allowedFields);
+
+  if (updates.rep_sequence !== undefined) {
+    const seq = updates.rep_sequence;
+    if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+    }
+  }
 
   // Allow custom objective/measure fields (custom_*)
   for (const [key, value] of Object.entries(req.body as Record<string, unknown>)) {
@@ -6633,8 +6664,16 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId/
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const allowedSetFields = ["reps", "weight", "intensity", "rir", "order", "title"];
+  const allowedSetFields = ["reps", "weight", "intensity", "rir", "order", "title", "duration", "rep_sequence"];
   const setData = pickFields(req.body, allowedSetFields);
+
+  if (setData.rep_sequence !== undefined) {
+    const seq = setData.rep_sequence;
+    if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+    }
+  }
+
   setData.created_at = FieldValue.serverTimestamp();
 
   const ref = await db
@@ -6678,8 +6717,15 @@ router.patch("/creator/programs/:programId/modules/:moduleId/sessions/:sessionId
     throw new WakeApiServerError("NOT_FOUND", 404, "Set no encontrado");
   }
 
-  const allowedFields = ["reps", "weight", "intensity", "rir", "order", "title"];
+  const allowedFields = ["reps", "weight", "intensity", "rir", "order", "title", "duration", "rep_sequence"];
   const updates = pickFields(req.body, allowedFields);
+
+  if (updates.rep_sequence !== undefined) {
+    const seq = updates.rep_sequence;
+    if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");

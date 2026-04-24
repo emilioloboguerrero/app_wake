@@ -3958,9 +3958,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                          const setKey = `${exerciseIndex}_${setIndex}`;
                          const currentSetData = setData[setKey] || {};
                          allSets.push(currentSetData);
-                         const hasReps = currentSetData.reps && currentSetData.reps !== '' && !isNaN(parseFloat(currentSetData.reps));
+                         const hasReps = currentSetData.reps && currentSetData.reps !== '' && (!isNaN(parseFloat(currentSetData.reps)) || String(currentSetData.reps).trim().toUpperCase() === 'AMRAP');
                          const hasWeight = currentSetData.weight && currentSetData.weight !== '' && !isNaN(parseFloat(currentSetData.weight));
-                         if (hasReps || hasWeight) hasAnyData = true;
+                         const hasDuration = currentSetData.duration && currentSetData.duration !== '' && !isNaN(parseFloat(currentSetData.duration));
+                         if (hasReps || hasWeight || hasDuration) hasAnyData = true;
                        }
 
                        if (hasAnyData) {
@@ -3998,11 +3999,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       }).filter((exercise) => {
                         // Only include exercises where at least one set has actual data
                         return exercise.sets.some(s => {
-                          const hasReps = s.reps && s.reps !== '' && !isNaN(parseFloat(s.reps));
+                          const hasReps = s.reps && s.reps !== '' && (!isNaN(parseFloat(s.reps)) || String(s.reps).trim().toUpperCase() === 'AMRAP');
                           const hasWeight = s.weight && s.weight !== '' && !isNaN(parseFloat(s.weight));
                           const hasTime = s.time && s.time !== '' && !isNaN(parseFloat(s.time));
                           const hasDistance = s.distance && s.distance !== '' && !isNaN(parseFloat(s.distance));
-                          return hasReps || hasWeight || hasTime || hasDistance;
+                          const hasDuration = s.duration && s.duration !== '' && !isNaN(parseFloat(s.duration));
+                          return hasReps || hasWeight || hasTime || hasDistance || hasDuration;
                         });
                       })
                     };
@@ -4012,7 +4014,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     // This catches index-alignment bugs on the resume path.
                     if (
                       workoutWithSetData.exercises.length === 0 &&
-                      Object.values(setData).some(v => v && (v.reps || v.weight || v.time || v.distance))
+                      Object.values(setData).some(v => v && (v.reps || v.weight || v.time || v.distance || v.duration))
                     ) {
                       logger.error('❌ completeSession aborted: setData present but all exercises filtered out', {
                         setDataKeys: Object.keys(setData).length,
@@ -4738,9 +4740,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (!exercise || !exercise.sets || exercise.sets.length === 0) return null;
     const set = exercise.sets[currentSetIndex];
 
-    if (!set?.reps || !set?.intensity) return null;
+    // Duration-only holds (e.g. plank) have no weight suggestion.
+    if (!set?.intensity) return null;
+    const hasRepsOrSequence = (set.reps && set.reps !== '') || (Array.isArray(set.rep_sequence) && set.rep_sequence.length > 0);
+    if (!hasRepsOrSequence) return null;
 
-    const objectiveReps = oneRepMaxService.parseReps(set.reps);
+    const objectiveReps = oneRepMaxService.parseReps(set);
     const objectiveIntensity = oneRepMaxService.parseIntensity(set.intensity);
     if (!objectiveIntensity) return null;
 
@@ -4904,11 +4909,23 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           Serie {currentSetIndex + 1} de {workout.exercises[currentExerciseIndex].sets.length}
         </Text>
         
-        {/* Reps */}
+        {/* Duration (for holds like plank) */}
+        {set.duration != null && set.duration !== '' && (
+          <View style={styles.setDetailRow}>
+            <Text style={styles.setDetailLabel}>Duración:</Text>
+            <Text style={styles.setDetailValue}>{set.duration}s</Text>
+          </View>
+        )}
+
+        {/* Reps — prefer drop-sequence display when present */}
         {set.reps && (
           <View style={styles.setDetailRow}>
             <Text style={styles.setDetailLabel}>Repeticiones:</Text>
-            <Text style={styles.setDetailValue}>{set.reps}</Text>
+            <Text style={styles.setDetailValue}>
+              {Array.isArray(set.rep_sequence) && set.rep_sequence.length > 0
+                ? `${set.rep_sequence.join(' → ')} (${set.reps})`
+                : set.reps}
+            </Text>
           </View>
         )}
         

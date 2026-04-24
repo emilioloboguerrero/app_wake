@@ -89,13 +89,21 @@ const SessionDetailScreen = ({ navigation, route }) => {
   };
 
   const renderSetInfo = (set, setIndex) => {
-    const reps = set.reps || '-';
+    // Prefer drop-sequence → reps → duration → dash
+    let repsDisplay = '-';
+    if (Array.isArray(set.rep_sequence) && set.rep_sequence.length > 0) {
+      repsDisplay = set.rep_sequence.join(' → ');
+    } else if (set.reps) {
+      repsDisplay = set.reps;
+    } else if (set.duration != null && set.duration !== '') {
+      repsDisplay = `${set.duration}s`;
+    }
     const weight = set.weight || '-';
-    
+
     return (
       <View key={setIndex} style={styles.setRow}>
         <Text style={styles.setNumber}>{setIndex + 1}</Text>
-        <Text style={styles.setData}>{reps}</Text>
+        <Text style={styles.setData}>{repsDisplay}</Text>
         <Text style={styles.setData}>{weight}kg</Text>
       </View>
     );

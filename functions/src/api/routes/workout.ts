@@ -710,6 +710,8 @@ router.get("/workout/daily", async (req, res) => {
             rir: setData.rir ?? null,
             title: setData.title ?? null,
             order: setData.order ?? 0,
+            duration: setData.duration ?? null,
+            rep_sequence: setData.rep_sequence ?? null,
           };
         }),
         exerciseKey: resolvedLibraryId && resolvedName ?
@@ -1023,6 +1025,8 @@ router.get("/workout/session-exercises", async (req, res) => {
             rir: setData.rir ?? null,
             title: setData.title ?? null,
             order: setData.order ?? 0,
+            duration: setData.duration ?? null,
+            rep_sequence: setData.rep_sequence ?? null,
           };
         }),
         exerciseKey: resolvedLibraryId && resolvedName ?
