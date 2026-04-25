@@ -793,14 +793,18 @@ router.get("/workout/daily", async (req, res) => {
       };
     }
 
-    // Enrich from exercise library when session doc has no metadata
+    // Enrich from exercise library when session doc has no metadata.
+    // ex.name may be a display-name (legacy) or an exerciseId (post-migration).
+    // Library doc may have the entry at top-level (legacy) or under exercises.{id} (new).
     const libData = ex.libraryId ? (libraryMap[ex.libraryId] ?? {}) : {};
-    const libExercise = (libData[ex.name] ?? {}) as Record<string, unknown>;
+    const libExercisesMap = (libData.exercises as Record<string, unknown> | undefined) ?? {};
+    const libExercise = ((libData[ex.name] ?? libExercisesMap[ex.name]) ?? {}) as Record<string, unknown>;
+    const displayName = (libExercise.displayName as string | undefined) ?? ex.name;
 
     return {
       exerciseId: ex.exerciseId,
       libraryId: ex.libraryId,
-      name: ex.name,
+      name: displayName,
       description: ex.description || (libExercise.description as string) || null,
       video_url: ex.video_url || (libExercise.video_url as string) || null,
       muscle_activation: ex.muscle_activation || (libExercise.muscle_activation as Record<string, unknown>) || null,
@@ -1074,12 +1078,15 @@ router.get("/workout/session-exercises", async (req, res) => {
       lastPerformance = {sessionId: lastPerf.completionId ?? null, date: lastPerf.date ?? null, sets, bestSet};
     }
 
-    // Enrich from exercise library when session doc has no metadata
+    // Enrich from exercise library when session doc has no metadata.
+    // ex.name may be a display-name (legacy) or an exerciseId (post-migration).
     const libData2 = ex.libraryId ? (libraryMap2[ex.libraryId] ?? {}) : {};
-    const libEx = (libData2[ex.name] ?? {}) as Record<string, unknown>;
+    const libEx2Map = (libData2.exercises as Record<string, unknown> | undefined) ?? {};
+    const libEx = ((libData2[ex.name] ?? libEx2Map[ex.name]) ?? {}) as Record<string, unknown>;
+    const displayName = (libEx.displayName as string | undefined) ?? ex.name;
 
     return {
-      exerciseId: ex.exerciseId, libraryId: ex.libraryId, name: ex.name,
+      exerciseId: ex.exerciseId, libraryId: ex.libraryId, name: displayName,
       description: ex.description || (libEx.description as string) || null,
       video_url: ex.video_url || (libEx.video_url as string) || null,
       muscle_activation: ex.muscle_activation || (libEx.muscle_activation as Record<string, unknown>) || null,
@@ -1981,7 +1988,9 @@ router.get("/exercises/:libraryId", async (req, res) => {
   });
 });
 
-// GET /exercises/:libraryId/:exerciseName — single exercise detail
+// GET /exercises/:libraryId/:exerciseName — single exercise detail.
+// The :exerciseName segment may be either a display-name (legacy, name-keyed shape)
+// or a stable exerciseId (post-migration shape under exercises.{id}).
 router.get("/exercises/:libraryId/:exerciseName", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -1991,21 +2000,25 @@ router.get("/exercises/:libraryId/:exerciseName", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca de ejercicios no encontrada");
   }
 
-  const exerciseName = decodeURIComponent(req.params.exerciseName);
+  const lookupKey = decodeURIComponent(req.params.exerciseName);
   const data = doc.data()!;
-  const exercise = data[exerciseName];
+  const exercisesMap = (data.exercises as Record<string, unknown> | undefined) ?? {};
+  const exercise = (data[lookupKey] ?? exercisesMap[lookupKey]) as Record<string, unknown> | undefined;
 
   if (!exercise || typeof exercise !== "object") {
     throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
   }
 
+  const displayName = (exercise.displayName as string | undefined) ?? lookupKey;
+
   res.json({
     data: {
-      name: exerciseName,
-      description: (exercise as Record<string, unknown>).description ?? null,
-      video_url: (exercise as Record<string, unknown>).video_url ?? null,
-      muscle_activation: (exercise as Record<string, unknown>).muscle_activation ?? null,
-      implements: (exercise as Record<string, unknown>).implements ?? [],
+      name: displayName,
+      displayName,
+      description: exercise.description ?? null,
+      video_url: exercise.video_url ?? null,
+      muscle_activation: exercise.muscle_activation ?? null,
+      implements: exercise.implements ?? [],
     },
   });
 });

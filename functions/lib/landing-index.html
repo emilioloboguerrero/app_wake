@@ -12,12 +12,13 @@
     <meta property="og:title" content="Wake — Sé lo que admiras" />
     <meta property="og:description" content="Plataforma para los mejores atletas." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://wolf-20b8b.web.app/" />
+    <meta property="og:url" content="https://wakelab.co/" />
     <meta property="og:image" content="/app_icon.png" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Wake — Sé lo que admiras" />
     <meta name="twitter:description" content="Plataforma para los mejores atletas." />
     <meta name="twitter:image" content="/app_icon.png" />
+    <link rel="canonical" href="https://wakelab.co/" id="canonical-link" />
     <link rel="icon" href="/app_icon.png" />
     <link rel="apple-touch-icon" href="/app_icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -27,6 +28,19 @@
     <link rel="stylesheet" crossorigin href="/assets/index-6aFg25Ex.css">
   </head>
   <body>
+    <script>
+      // Canonicalize host: www.wakelab.co -> wakelab.co (preserves path/query/hash)
+      (function () {
+        if (location.hostname === 'www.wakelab.co') {
+          location.replace('https://wakelab.co' + location.pathname + location.search + location.hash);
+        }
+      })();
+      // Update canonical link to current path so each SPA route gets its own canonical
+      (function () {
+        var link = document.getElementById('canonical-link');
+        if (link) link.setAttribute('href', 'https://wakelab.co' + location.pathname);
+      })();
+    </script>
     <script>
       (function () {
         var ua = navigator.userAgent || '';

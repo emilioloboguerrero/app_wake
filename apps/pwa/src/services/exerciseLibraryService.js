@@ -37,6 +37,7 @@ class ExerciseLibraryService {
       }
 
       const result = {
+        displayName: exerciseData.displayName || exerciseData.name || exerciseName,
         description: exerciseData.description || '',
         video_url: exerciseData.video_url || '',
         muscle_activation: exerciseData.muscle_activation || null,
@@ -78,7 +79,7 @@ class ExerciseLibraryService {
     const exerciseData = await this.getExerciseData(libraryId, exerciseName);
 
     return {
-      title: exerciseName,
+      title: exerciseData.displayName || exerciseName,
       description: exerciseData.description,
       video_url: exerciseData.video_url,
       muscle_activation: exerciseData.muscle_activation,
