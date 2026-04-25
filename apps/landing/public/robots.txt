@@ -1,4 +1,8 @@
 User-agent: *
 Disallow: /app/
 Disallow: /creators/
+Disallow: /developers/
+Disallow: /e/
 Allow: /
+
+Sitemap: https://wakelab.co/sitemap.xml
