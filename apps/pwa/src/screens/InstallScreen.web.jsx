@@ -119,6 +119,29 @@ function isGoogleApp() {
   return navigator.userAgent.includes('GSA');
 }
 
+/** In-app browsers with no PWA install support (Instagram, Facebook, Messenger, TikTok, Twitter/X, LinkedIn, Snapchat, WhatsApp, Line, KakaoTalk).
+ *  Treated like Google App: user must open in Chrome/Safari first. */
+function isInAppBrowser() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  const ua = navigator.userAgent;
+  if (isGoogleApp()) return true;
+  // Meta family: FBAN/FBAV (Facebook), FB_IAB (FB in-app), Instagram, MessengerLiteForiOS, Messenger
+  if (/FBAN|FBAV|FB_IAB|FBIOS|Instagram|Messenger/i.test(ua)) return true;
+  // TikTok
+  if (/TikTok|musical_ly|BytedanceWebview/i.test(ua)) return true;
+  // Twitter/X
+  if (/Twitter/i.test(ua)) return true;
+  // LinkedIn
+  if (/LinkedInApp/i.test(ua)) return true;
+  // Snapchat
+  if (/Snapchat/i.test(ua)) return true;
+  // WhatsApp
+  if (/WhatsApp/i.test(ua)) return true;
+  // Line, KakaoTalk
+  if (/Line\/|KAKAOTALK/i.test(ua)) return true;
+  return false;
+}
+
 function isGoogleAppAndroid() {
   if (!isGoogleApp()) return false;
   const ua = navigator.userAgent;
@@ -129,10 +152,22 @@ function isGoogleAppIOS() {
   return isGoogleApp() && !isGoogleAppAndroid();
 }
 
-/** Android device (not in Google app – used for install flow). */
+/** Any unsupported in-app browser running on Android (Instagram, Facebook, TikTok, etc.). */
+function isInAppBrowserAndroid() {
+  if (!isInAppBrowser()) return false;
+  return /Android/i.test(navigator.userAgent || '');
+}
+
+/** Any unsupported in-app browser running on iOS. */
+function isInAppBrowserIOS() {
+  if (!isInAppBrowser()) return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
+/** Android device (not inside an unsupported in-app browser – used for install flow). */
 function isAndroidStandalone() {
   if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
-  return /Android/i.test(navigator.userAgent) && !isGoogleApp();
+  return /Android/i.test(navigator.userAgent) && !isInAppBrowser();
 }
 
 /** Safari on iOS (not Chrome, not Google app). */
@@ -331,10 +366,11 @@ function getOpenInChromeUrl() {
  */
 export default function InstallScreen() {
   const showChromeIOSMoreStep = isChromeOnIOS();
-  const isGoogleAppBrowser = isGoogleApp();
-  const googleAppAndroid = isGoogleAppAndroid();
-  const googleAppIOS = isGoogleAppIOS();
-  const openInChromeUrl = isGoogleAppBrowser ? getOpenInChromeUrl() : null;
+  const inAppBrowser = isInAppBrowser();
+  const isGoogleAppBrowser = inAppBrowser;
+  const googleAppAndroid = isGoogleAppAndroid() || isInAppBrowserAndroid();
+  const googleAppIOS = isGoogleAppIOS() || isInAppBrowserIOS();
+  const openInChromeUrl = inAppBrowser ? getOpenInChromeUrl() : null;
   const isAndroid = isAndroidStandalone();
 
   const [showSafariModal, setShowSafariModal] = useState(false);
@@ -426,7 +462,7 @@ export default function InstallScreen() {
         {isGoogleAppBrowser ? (
           <div className="install-steps install-steps-google">
             <p className="install-google-intro">
-              Estás en la <strong>app de Google</strong>. Para añadir Wake a la pantalla de inicio, ábrela primero en Chrome o Safari.
+              Estás en un <strong>navegador integrado</strong>. Para añadir Wake a la pantalla de inicio, abre esta página primero en Chrome o Safari.
             </p>
             <div className="install-open-buttons">
               {openInChromeUrl && (
