@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Send, Video, Bookmark, BookmarkCheck, MonitorPlay, X,
 } from 'lucide-react';
-import ScreenReactionRecorder from './reaction/ScreenReactionRecorder';
+import LoomRecorder from './reaction/LoomRecorder';
 import apiClient from '../../utils/apiClient';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
 import useVideoExchangeUpload from '../../hooks/useVideoExchangeUpload';
@@ -344,7 +344,7 @@ function ReactionScreen({ path, onClose, onComplete }) {
         <span className="vet-inline-title">Reaccionar</span>
       </div>
       {status === 'ready' && url ? (
-        <ScreenReactionRecorder
+        <LoomRecorder
           videoSrc={url}
           onComplete={onComplete}
           onCancel={onClose}

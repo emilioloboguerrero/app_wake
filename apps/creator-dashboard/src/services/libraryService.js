@@ -19,9 +19,11 @@ class LibraryService {
   }
 
   // Extracts exercises from a library document (map of exerciseName → exerciseData).
+  // `exercises` field (post-id-migration sub-map) is excluded — top-level name keys remain
+  // the source of truth for the dashboard until Phase 3 switches to ID-keyed reads.
   getExercisesFromLibrary(libraryDoc) {
     if (!libraryDoc) return [];
-    const metaKeys = new Set(['id', 'title', 'creator_id', 'creator_name', 'created_at', 'updated_at', 'icon']);
+    const metaKeys = new Set(['id', 'title', 'creator_id', 'creator_name', 'created_at', 'updated_at', 'icon', 'exercises']);
     return Object.entries(libraryDoc)
       .filter(([key, val]) => !metaKeys.has(key) && val && typeof val === 'object')
       .map(([name, data]) => ({ name, data: data || {} }));
@@ -30,7 +32,8 @@ class LibraryService {
   // Returns exercise count for a library document.
   getExerciseCount(libraryDoc) {
     if (!libraryDoc) return 0;
-    return Object.keys(libraryDoc).filter((k) => k !== 'id' && k !== 'title').length;
+    const metaKeys = new Set(['id', 'title', 'creator_id', 'creator_name', 'created_at', 'updated_at', 'icon', 'exercises']);
+    return Object.keys(libraryDoc).filter((k) => !metaKeys.has(k)).length;
   }
 
   // Creates a new exercise library (a new doc in exercises_library keyed by a generated id).
