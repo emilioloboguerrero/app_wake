@@ -3041,17 +3041,20 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         return;
       }
 
-      // Extract libraryId and exerciseName
+      // Extract libraryId and the library exercise id (post-migration shape).
+      // history keys are stored as `${libId}_${libraryExerciseId}` — the value of
+      // primary[libId] (which is a stable id post-migration, or a name pre-migration).
       const libraryId = currentExercise.primary ? Object.keys(currentExercise.primary)[0] : '';
+      const libraryExerciseId = libraryId && currentExercise.primary ? currentExercise.primary[libraryId] : '';
       const exerciseName = currentExercise.name;
-      
-      if (!libraryId || !exerciseName) {
+
+      if (!libraryId || !libraryExerciseId) {
         logger.error('❌ Missing exercise data for exercise progress:', { libraryId, exerciseName });
         return;
       }
 
-      // Create exercise key
-      const exerciseKey = `${libraryId}_${exerciseName}`;
+      // Create exercise key — same shape the server uses when writing history.
+      const exerciseKey = `${libraryId}_${libraryExerciseId}`;
       
       // Store basic exercise data first (needed for modal)
       const basicExerciseData = {

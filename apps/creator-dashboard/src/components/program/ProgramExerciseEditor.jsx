@@ -26,13 +26,15 @@ export default function ProgramExerciseEditor({
   const draft = exerciseDraft || exercise;
   if (!draft) return null;
 
-  // Get exercise title from primary field
+  // Get exercise title — prefer hydrated `name`/`title` (from API resolve), fall back to primary value.
   const getExerciseTitle = () => {
+    const t = draft.name || draft.title || '';
+    if (t && String(t).trim()) return String(t).trim();
     if (draft.primary && typeof draft.primary === 'object') {
       const vals = Object.values(draft.primary);
       if (vals.length > 0 && vals[0]) return vals[0];
     }
-    return draft.name || draft.title || 'Ejercicio';
+    return 'Ejercicio';
   };
 
   return (

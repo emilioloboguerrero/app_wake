@@ -376,6 +376,35 @@ const LibraryContentScreen = () => {
   const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
   const libraryDataCacheRef = useRef(libraryDataCache);
 
+  // Map: libraryId -> { exerciseId -> displayName }. Resolves post-migration
+  // primary[libId] values (which are stable IDs) back to the user-facing displayName.
+  const libraryExerciseNames = useMemo(() => {
+    const map = {};
+    for (const lib of Object.values(libraryDataCache || {})) {
+      if (!lib?.id && !lib?.exercises) continue;
+      const libId = lib.id || Object.keys(libraryDataCache).find((k) => libraryDataCache[k] === lib);
+      if (!libId) continue;
+      if (!map[libId]) map[libId] = {};
+      const exMap = lib.exercises;
+      if (exMap && typeof exMap === 'object' && !Array.isArray(exMap)) {
+        for (const [id, entry] of Object.entries(exMap)) {
+          if (entry && typeof entry === 'object' && entry.displayName) {
+            map[libId][id] = entry.displayName;
+          }
+        }
+      }
+    }
+    return map;
+  }, [libraryDataCache]);
+
+  const resolvePrimaryDisplayName = useCallback((libId, value) => {
+    if (typeof value !== 'string') {
+      if (value && typeof value === 'object') return value.displayName || value.name || value.title || value.id || '';
+      return '';
+    }
+    return libraryExerciseNames?.[libId]?.[value] || value;
+  }, [libraryExerciseNames]);
+
   useEffect(() => {
     if (isPresetSelectorOpen && user?.uid) {
       measureObjectivePresetsService.list(user.uid).then(setPresetsList).catch((err) => {
@@ -1163,9 +1192,11 @@ const LibraryContentScreen = () => {
         {exercises.map((exercise, index) => {
           const getExerciseTitle = () => {
             if (exercise.primary && typeof exercise.primary === 'object') {
-              const primaryValues = Object.values(exercise.primary);
-              if (primaryValues.length > 0 && primaryValues[0]) {
-                return primaryValues[0];
+              const entries = Object.entries(exercise.primary);
+              if (entries.length > 0) {
+                const [libId, val] = entries[0];
+                const resolved = resolvePrimaryDisplayName(libId, val);
+                if (resolved) return resolved;
               }
             }
             return exercise.name || exercise.title || `Ejercicio ${exercise.id?.slice(0, 8) || ''}`;
@@ -1464,9 +1495,11 @@ const LibraryContentScreen = () => {
   const getPrimaryExerciseName = () => {
     if (!activeExerciseForModal) return '';
     if (activeExerciseForModal.primary && typeof activeExerciseForModal.primary === 'object') {
-      const primaryValues = Object.values(activeExerciseForModal.primary);
-      if (primaryValues.length > 0 && primaryValues[0]) {
-        return primaryValues[0];
+      const entries = Object.entries(activeExerciseForModal.primary);
+      if (entries.length > 0) {
+        const [libId, val] = entries[0];
+        const resolved = resolvePrimaryDisplayName(libId, val);
+        if (resolved) return resolved;
       }
     }
     return activeExerciseForModal.name || activeExerciseForModal.title || '';
@@ -2876,9 +2909,11 @@ const LibraryContentScreen = () => {
           if (!source) return 'Ejercicio';
           if (source.primary && typeof source.primary === 'object' && source.primary !== null) {
             try {
-              const primaryValues = Object.values(source.primary);
-              if (primaryValues.length > 0 && primaryValues[0]) {
-                return primaryValues[0];
+              const entries = Object.entries(source.primary);
+              if (entries.length > 0) {
+                const [libId, val] = entries[0];
+                const resolved = resolvePrimaryDisplayName(libId, val);
+                if (resolved) return resolved;
               }
             } catch (error) {
               logger.error('Error extracting exercise title:', error);

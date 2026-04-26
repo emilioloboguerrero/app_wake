@@ -4155,21 +4155,33 @@ router.get("/creator/library/sessions", async (req, res) => {
         order: sessionData.order ?? null,
         exercises: exercises.map((eDoc) => {
           const exData = eDoc.data();
+          // primary[libId] is a stable exerciseId (post-migration) or a display name (legacy).
+          // Library doc has data at exercises.{id} (new shape) or top-level [name] (legacy).
           let resolvedMuscleActivation: Record<string, number> | null = null;
+          let resolvedDisplayName: string = exData.name ?? "";
           if (exData.primary && typeof exData.primary === "object") {
             const entries = Object.entries(exData.primary);
             if (entries.length > 0) {
-              const [libraryId, exerciseName] = entries[0];
-              const libData = libraryCache[libraryId as string];
-              if (libData?.[exerciseName as string]?.muscle_activation) {
-                resolvedMuscleActivation = libData[exerciseName as string].muscle_activation;
+              const [libraryId, idOrName] = entries[0];
+              const libData = libraryCache[libraryId as string] as Record<string, unknown> | null;
+              if (libData) {
+                const exMap = libData.exercises as Record<string, Record<string, unknown>> | undefined;
+                const fromMap = exMap?.[idOrName as string];
+                const fromTop = libData[idOrName as string] as Record<string, unknown> | undefined;
+                const entry = (fromMap && typeof fromMap === "object" ? fromMap : fromTop) as Record<string, unknown> | undefined;
+                if (entry?.muscle_activation && typeof entry.muscle_activation === "object") {
+                  resolvedMuscleActivation = entry.muscle_activation as Record<string, number>;
+                }
+                if (!resolvedDisplayName) {
+                  resolvedDisplayName = (entry?.displayName as string | undefined) || (idOrName as string);
+                }
               }
             }
           }
           return {
             exerciseId: eDoc.id,
             id: eDoc.id,
-            name: exData.name ?? "",
+            name: resolvedDisplayName,
             primary: exData.primary ?? null,
             primaryMuscles: exData.primaryMuscles ?? [],
             muscle_activation: resolvedMuscleActivation,
@@ -4288,12 +4300,47 @@ router.get("/creator/library/sessions/:sessionId", async (req, res) => {
 
   const exercisesSnap = await sessionRef.collection("exercises").orderBy("order", "asc").get();
 
-  const exercises = await Promise.all(
+  const exercisesRaw = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
       return {...eDoc.data(), exerciseId: eDoc.id, id: eDoc.id, sets: setsSnap.docs.map((s) => ({...s.data(), setId: s.id, id: s.id}))};
     })
   );
+
+  // Hydrate `name` per exercise from the library doc so clients render display names
+  // even when primary[libId] is a stable id (post-migration shape).
+  const libIds = new Set<string>();
+  for (const ex of exercisesRaw) {
+    const primary = (ex as Record<string, unknown>).primary as Record<string, string> | undefined;
+    if (primary && typeof primary === "object") {
+      Object.keys(primary).forEach((k) => libIds.add(k));
+    }
+  }
+  const libCache: Record<string, Record<string, unknown> | null> = {};
+  if (libIds.size > 0) {
+    const libDocs = await Promise.all(
+      Array.from(libIds).map((id) => db.collection("exercises_library").doc(id).get())
+    );
+    libDocs.forEach((ld) => {
+      libCache[ld.id] = ld.exists ? (ld.data() as Record<string, unknown>) : null;
+    });
+  }
+  const exercises = exercisesRaw.map((ex) => {
+    const primary = (ex as Record<string, unknown>).primary as Record<string, string> | undefined;
+    if (!primary || typeof primary !== "object") return ex;
+    const entries = Object.entries(primary);
+    if (entries.length === 0) return ex;
+    const [libId, idOrName] = entries[0];
+    const libData = libCache[libId];
+    if (!libData) return ex;
+    const exMap = libData.exercises as Record<string, Record<string, unknown>> | undefined;
+    const fromMap = exMap?.[idOrName];
+    const fromTop = libData[idOrName] as Record<string, unknown> | undefined;
+    const entry = (fromMap && typeof fromMap === "object" ? fromMap : fromTop);
+    if (!entry) return ex;
+    const displayName = (entry.displayName as string | undefined) || (idOrName);
+    return {...ex, name: displayName};
+  });
 
   res.json({data: {...doc.data(), sessionId: doc.id, id: doc.id, exercises}});
 });

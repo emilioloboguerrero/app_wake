@@ -1398,12 +1398,19 @@ const LibrarySessionDetailScreen = () => {
 
     const nextOrder = exercises.length;
     const library = availableLibraries.find(l => l.id === exerciseData.libraryId);
-    const exerciseFromLib = library && library[exerciseData.name];
+    // Prefer the data already attached on the picker item (from getExercisesFromLibrary).
+    // Fall back to looking up in the library doc by id (new shape) then name (legacy).
+    const exerciseFromLib = exerciseData.data
+      || library?.exercises?.[exerciseData.id]
+      || (library && library[exerciseData.name]);
 
     const tpl = sessionDefaultTemplate || {};
     const baseMeasures = exerciseFromLib?.measures?.length > 0 ? exerciseFromLib.measures : (tpl.measures?.length > 0 ? tpl.measures : ['reps', 'weight', 'intensity']);
+    // Write the stable exerciseId as the primary value (id-based shape). Falls back to
+    // displayName for unmigrated libraries that don't yet have stable ids.
+    const primaryValue = exerciseData.id || exerciseData.name;
     const newExercisePayload = {
-      primary: { [exerciseData.libraryId]: exerciseData.name },
+      primary: { [exerciseData.libraryId]: primaryValue },
       alternatives: {},
       measures: baseMeasures.includes('intensity') ? baseMeasures : [...baseMeasures, 'intensity'],
       objectives: exerciseFromLib?.objectives?.length > 0 ? exerciseFromLib.objectives : (tpl.objectives || []),
@@ -1531,20 +1538,20 @@ const LibrarySessionDetailScreen = () => {
   };
 
   const getExerciseDisplayName = (exercise) => {
-    const fromNameOrTitle = exercise?.name || exercise?.title;
-    const nameOrTitleStr = (fromNameOrTitle && typeof fromNameOrTitle === 'string' && fromNameOrTitle.trim()) ? fromNameOrTitle.trim() : '';
+    // Resolve primary[libId] through libraryExerciseNames so post-migration IDs become displayName.
     let primaryStr = '';
     if (exercise?.primary && typeof exercise.primary === 'object') {
-      const values = Object.values(exercise.primary);
-      const first = values[0];
-      if (typeof first === 'string' && first.trim()) primaryStr = first.trim();
-      else if (first && typeof first === 'object') primaryStr = first.name || first.title || first.id || '';
-      else if (first != null) primaryStr = String(first);
+      const entries = Object.entries(exercise.primary);
+      if (entries.length > 0) {
+        const [libId, val] = entries[0];
+        primaryStr = resolvePrimaryDisplayName(libId, val, libraryExerciseNames);
+      }
     }
-    if (nameOrTitleStr && nameOrTitleStr.toLowerCase() !== 'ejercicio') return nameOrTitleStr;
     if (primaryStr) return primaryStr;
-    if (nameOrTitleStr) return nameOrTitleStr;
-    return 'Ejercicio sin nombre';
+    const fromNameOrTitle = exercise?.name || exercise?.title;
+    const nameOrTitleStr = (fromNameOrTitle && typeof fromNameOrTitle === 'string' && fromNameOrTitle.trim()) ? fromNameOrTitle.trim() : '';
+    if (nameOrTitleStr && nameOrTitleStr.toLowerCase() !== 'ejercicio') return nameOrTitleStr;
+    return nameOrTitleStr || 'Ejercicio sin nombre';
   };
 
   // Check if library exercise is incomplete (only true when we have loaded and it's incomplete)
@@ -1619,9 +1626,11 @@ const LibrarySessionDetailScreen = () => {
     if (!activeExerciseForModal) return 'Sin ejercicio';
     const primary = activeExerciseForModal.primary;
     if (!primary || typeof primary !== 'object') return 'Sin ejercicio';
-    const values = Object.values(primary);
-    if (values.length === 0 || !values[0]) return 'Sin ejercicio';
-    return values[0];
+    const entries = Object.entries(primary);
+    if (entries.length === 0) return 'Sin ejercicio';
+    const [libId, val] = entries[0];
+    const resolved = resolvePrimaryDisplayName(libId, val, libraryExerciseNames);
+    return resolved || 'Sin ejercicio';
   };
 
   const getMeasureDisplayName = (measure) => {
@@ -4106,9 +4115,11 @@ const LibrarySessionDetailScreen = () => {
           if (!source) return 'Ejercicio';
           if (source.primary && typeof source.primary === 'object' && source.primary !== null) {
             try {
-              const primaryValues = Object.values(source.primary);
-              if (primaryValues.length > 0 && primaryValues[0]) {
-                return primaryValues[0];
+              const entries = Object.entries(source.primary);
+              if (entries.length > 0) {
+                const [libId, val] = entries[0];
+                const resolved = resolvePrimaryDisplayName(libId, val, libraryExerciseNames);
+                if (resolved) return resolved;
               }
             } catch (error) {
               logger.error('Error extracting exercise title:', error);

@@ -4,6 +4,8 @@
  * Used for single-session and week-aggregate volume.
  */
 
+import { getEntryFromLib } from './libraryExerciseResolver';
+
 export function getPrimaryReferences(exercise) {
   if (!exercise || typeof exercise.primary !== 'object' || exercise.primary === null) {
     return [];
@@ -35,7 +37,9 @@ export function computePlannedMuscleVolumes(exercises, libraryDataCache) {
     const primary = refs[0];
     if (!primary?.libraryId || !primary?.exerciseName) return;
     const library = libraryDataCache[primary.libraryId];
-    const exerciseData = library?.[primary.exerciseName];
+    // primary.exerciseName may be a stable exerciseId (post-migration) or a legacy
+    // top-level name. getEntryFromLib handles both shapes.
+    const exerciseData = getEntryFromLib(library, primary.exerciseName);
     const muscleActivation = exerciseData?.muscle_activation;
     if (!muscleActivation || typeof muscleActivation !== 'object') return;
     const sets = exercise.sets || [];

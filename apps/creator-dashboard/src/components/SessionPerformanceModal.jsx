@@ -28,13 +28,16 @@ function getHistoryKeyForPlannedExercise(ex, fallbackSessionId) {
 }
 
 function getPlannedExerciseDisplayName(ex) {
+  // Prefer `name`/`title` (server-hydrated post-Phase-0 from library displayName).
+  // Fall back to primary[libId] only for legacy data without hydrated names.
+  const t = ex.name || ex.title || '';
+  if (t && String(t).trim()) return String(t).trim();
   const primary = ex.primary && typeof ex.primary === 'object' ? ex.primary : null;
   if (primary) {
     const val = Object.values(primary)[0];
     if (val && String(val).trim()) return String(val).trim();
   }
-  const t = ex.title || ex.name || '';
-  return String(t).trim() || 'Sin nombre';
+  return 'Sin nombre';
 }
 
 function parseRpeValue(s) {
