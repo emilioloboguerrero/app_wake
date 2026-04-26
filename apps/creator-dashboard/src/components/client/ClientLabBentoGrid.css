@@ -1,53 +1,43 @@
-/* ─── Bento Grid Override ────────────────────────────────────── */
+/* ─── Grid wrapper ───────────────────────────────────────────── */
 .clbg-grid {
-  gap: 12px;
+  gap: 16px;
 }
 
-/* ─── Card Base ──────────────────────────────────────────────── */
+/* ─── Card base ──────────────────────────────────────────────── */
 .clbg-card {
   padding: 0;
+  overflow: hidden;
 }
 
 .clbg-card-inner {
   position: relative;
   z-index: 1;
-  padding: 16px;
+  padding: 18px;
   height: 100%;
   display: flex;
   flex-direction: column;
+  gap: 12px;
 }
 
-/* ─── Staggered entrance animation ───────────────────────────── */
+/* ─── Staggered entrance ─────────────────────────────────────── */
 .clbg-card--enter {
   animation: clbg-enter 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes clbg-enter {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* ─── Skeleton loading cards ─────────────────────────────────── */
-.clbg-card--skeleton .clbg-card-inner {
-  gap: 4px;
-}
-
-/* ─── Card Header ────────────────────────────────────────────── */
+/* ─── Header row ─────────────────────────────────────────────── */
 .clbg-card-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 8px;
 }
 
 .clbg-card-icon {
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.4);
   flex-shrink: 0;
 }
 
@@ -56,229 +46,577 @@
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.45);
 }
 
-/* ─── Card Value ─────────────────────────────────────────────── */
-.clbg-card-value {
-  font-size: 28px;
+/* ─── Hero number row ────────────────────────────────────────── */
+.clbg-card-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 30px;
   font-weight: 700;
   color: #fff;
-  line-height: 1.1;
-  margin-bottom: 8px;
+  line-height: 1;
 }
 
-.clbg-card-no-data {
+.clbg-card-hero > span,
+.clbg-card-hero > div {
+  font-variant-numeric: tabular-nums;
+}
+
+.clbg-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.clbg-empty-inline {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.25);
   font-weight: 400;
 }
 
-/* ─── Trend Badge ────────────────────────────────────────────── */
+/* ─── Trend chip ─────────────────────────────────────────────── */
 .clbg-trend {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 4px;
-  margin-left: 6px;
+  letter-spacing: 0.2px;
 }
 
 .clbg-trend--up {
-  color: rgba(74, 222, 128, 0.9);
+  color: rgba(74, 222, 128, 0.95);
   background: rgba(74, 222, 128, 0.1);
 }
 
 .clbg-trend--down {
-  color: rgba(248, 113, 113, 0.9);
+  color: rgba(248, 113, 113, 0.95);
   background: rgba(248, 113, 113, 0.1);
 }
 
 .clbg-trend--neutral {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.5);
   background: rgba(255, 255, 255, 0.06);
 }
 
-/* ─── Week Dots (Adherence) ──────────────────────────────────── */
+/* ─── Generic chart slot ─────────────────────────────────────── */
+.clbg-card-chart {
+  flex: 1;
+  min-height: 60px;
+}
+
+.clbg-card-chart--tall {
+  flex: 1;
+  min-height: 110px;
+}
+
+.clbg-card-chart--short {
+  flex: 0 0 50px;
+  min-height: 50px;
+}
+
+/* ─── Tooltip ─────────────────────────────────────────────────── */
+.clbg-tooltip {
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  pointer-events: none;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.clbg-tooltip-label {
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 0 2px 0;
+  font-size: 10px;
+}
+
+.clbg-tooltip-value {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ─── VOL: Volumen card (full-height) ────────────────────────── */
+.clbg-card--vol .clbg-card-header {
+  justify-content: space-between;
+}
+
+.clbg-vol-rpe {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.clbg-vol-inner {
+  gap: 14px;
+}
+
+.clbg-vol-svg {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  padding: 8px 0;
+}
+
+.clbg-vol-svg svg {
+  max-height: 100%;
+  max-width: 100%;
+  width: auto;
+  height: 100%;
+}
+
+.clbg-vol-sub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 10px;
+}
+
+.clbg-vol-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clbg-vol-row {
+  display: grid;
+  grid-template-columns: 78px 1fr 24px 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.clbg-vol-row-delta {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 10px;
+}
+
+.clbg-vol-row-new {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.clbg-vol-row-name {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clbg-vol-row-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.clbg-vol-row-fill {
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    rgba(var(--accent-rgb, 255, 255, 255), 0.35),
+    rgba(var(--accent-rgb, 255, 255, 255), 0.75)
+  );
+  border-radius: 2px;
+  transition: width 800ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clbg-vol-row-val {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── ADH: Adherencia card ───────────────────────────────────── */
+.clbg-adh-mode {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-top: 2px;
+}
+
+.clbg-adh-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.clbg-adh-nut {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clbg-adh-nut-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.4);
+  width: 60px;
+}
+
+.clbg-adh-nut-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.clbg-adh-nut-fill {
+  height: 100%;
+  background: rgba(var(--accent-rgb, 129, 140, 248), 0.55);
+  transition: width 800ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clbg-adh-nut-val {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  font-variant-numeric: tabular-nums;
+  width: 36px;
+  text-align: right;
+}
+
 .clbg-week-dots {
   display: flex;
   gap: 5px;
-  margin-top: auto;
-  padding-top: 8px;
 }
 
 .clbg-week-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 400ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.clbg-week-dot--active {
-  background: rgba(255, 255, 255, 0.6);
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-/* ─── PRs Card ───────────────────────────────────────────────── */
-.clbg-prs {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   flex: 1;
 }
 
-.clbg-pr-main {
+.clbg-week-dot--on {
+  background: rgba(var(--accent-rgb, 255, 255, 255), 0.65);
+  border-color: rgba(var(--accent-rgb, 255, 255, 255), 0.35);
+}
+
+/* ─── PESO: Peso card ────────────────────────────────────────── */
+.clbg-photo-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.clbg-photo-toggle:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.clbg-photo-toggle--on {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(var(--accent-rgb, 255, 255, 255), 0.18);
+  border-color: rgba(var(--accent-rgb, 255, 255, 255), 0.35);
+}
+
+/* ─── PRS: PRs Recientes card ────────────────────────────────── */
+.clbg-prs {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
   gap: 8px;
-  flex-wrap: wrap;
+  flex: 1;
+  overflow: hidden;
+}
+
+.clbg-pr {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.clbg-pr:last-child { border-bottom: none; }
+
+.clbg-pr--lead .clbg-pr-name {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.clbg-pr--lead .clbg-pr-value {
+  font-size: 18px;
+  color: #fff;
 }
 
 .clbg-pr-name {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.7);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clbg-pr-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .clbg-pr-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
 }
 
-.clbg-pr-secondary {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
+.clbg-pr-date {
+  font-size: 10px;
   color: rgba(255, 255, 255, 0.35);
-  padding: 3px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-left: auto;
 }
 
-/* ─── Radar Chart ────────────────────────────────────────────── */
-.clbg-radar-wrap {
-  flex: 1;
-  min-height: 100px;
-}
-
-/* ─── Macros Card ────────────────────────────────────────────── */
-.clbg-macros {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex: 1;
-}
-
-.clbg-macro-cal {
-  font-size: 22px;
-  font-weight: 700;
-  color: #fff;
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.clbg-macro-target {
+/* ─── NUT: Nutricion card ────────────────────────────────────── */
+.clbg-nut-target {
   font-size: 12px;
   font-weight: 400;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.35);
+  margin-left: 2px;
 }
 
-.clbg-macro-bars {
+.clbg-nut-macros {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-top: auto;
-}
-
-.clbg-macro-bar {
-  display: flex;
-  align-items: center;
   gap: 6px;
 }
 
-.clbg-macro-bar-label {
+.clbg-macro {
+  display: grid;
+  grid-template-columns: 14px 1fr 64px;
+  align-items: center;
+  gap: 8px;
+}
+
+.clbg-macro-label {
   font-size: 10px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.4);
-  width: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
   text-align: center;
 }
 
-.clbg-macro-bar-track {
-  flex: 1;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 2px;
+.clbg-macro-track {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
   overflow: hidden;
 }
 
-.clbg-macro-bar-fill {
+.clbg-macro-fill {
   height: 100%;
-  background: rgba(255, 255, 255, 0.4);
-  border-radius: 2px;
+  border-radius: 3px;
   transition: width 800ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.clbg-macro-bar-val {
+.clbg-macro-val {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.35);
-  width: 32px;
+  color: rgba(255, 255, 255, 0.45);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ─── RPE Card ───────────────────────────────────────────────── */
-.clbg-rpe-label {
-  font-size: 12px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.4);
-  margin-right: 2px;
-}
-
-/* ─── Readiness Card ─────────────────────────────────────────── */
-.clbg-readiness-row {
+/* ─── Lightbox ───────────────────────────────────────────────── */
+.clbg-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
   display: flex;
   align-items: center;
+  justify-content: center;
+  animation: clbg-fade 200ms ease-out;
+}
+
+@keyframes clbg-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.clbg-lightbox-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 180ms ease-out;
+}
+
+.clbg-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.clbg-lightbox-inner {
+  max-width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
+}
+
+.clbg-lightbox-date {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  letter-spacing: 0.3px;
+}
+
+.clbg-lightbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  overflow: auto;
+}
+
+.clbg-lightbox-img {
+  width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ─── Per-card skeleton primitives ───────────────────────────── */
+.clbg-skel {
+  display: inline-block;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: clbg-shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+.clbg-skel--icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.clbg-skel--label {
+  height: 11px;
+  border-radius: 3px;
+}
+
+.clbg-skel--sub {
+  height: 10px;
+  width: 60%;
+  margin-top: 6px;
+}
+
+.clbg-skel--hero {
+  height: 28px;
+  width: 96px;
+  border-radius: 6px;
+}
+
+.clbg-skel--chip {
+  height: 16px;
+  width: 44px;
+  border-radius: 4px;
+}
+
+.clbg-skel--bar {
+  height: 4px;
+  border-radius: 2px;
+}
+
+.clbg-skel--num {
+  height: 11px;
+  width: 24px;
+  border-radius: 3px;
+}
+
+.clbg-skel--dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   flex: 1;
 }
 
-.clbg-readiness-metrics {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.clbg-skel--text {
+  height: 11px;
+  width: 70%;
+  border-radius: 3px;
 }
 
-.clbg-readiness-metric {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.clbg-skel--chart {
+  border-radius: 8px;
 }
 
-.clbg-readiness-metric-label {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.35);
-  width: 42px;
+.clbg-skel--silhouette {
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.07) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: clbg-shimmer 1.4s ease-in-out infinite;
 }
 
-.clbg-readiness-metric-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
+@keyframes clbg-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* Skeleton cards skip the entrance animation so they appear instantly. */
+.clbg-card--skeleton {
+  animation: none;
 }
 
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .clbg-card-value {
-    font-size: 22px;
-  }
-
-  .clbg-pr-value {
-    font-size: 20px;
-  }
-
-  .clbg-macro-cal {
-    font-size: 18px;
-  }
+  .clbg-card-hero { font-size: 24px; }
+  .clbg-vol-svg { min-height: 200px; }
+  .clbg-vol-row { grid-template-columns: 70px 1fr 28px; }
 }

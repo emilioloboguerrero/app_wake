@@ -10,6 +10,7 @@
   overflow: hidden;
   max-height: 420px;
   animation: expPickerEnter 0.35s cubic-bezier(0.22,1,0.36,1) both;
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }

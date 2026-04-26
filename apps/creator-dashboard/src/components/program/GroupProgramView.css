@@ -568,6 +568,7 @@
   padding: 6px 14px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.7);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: rgba(255, 255, 255, 0.9);
@@ -667,6 +668,7 @@
   border: 1px solid rgba(255, 255, 255, 0.10);
   color: rgba(255, 255, 255, 0.65);
   transition: all 200ms var(--gp-spring);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 

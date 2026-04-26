@@ -7,6 +7,7 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: mp-fade-in 0.2s ease both;
@@ -388,6 +389,7 @@
   height: 22px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1.5px solid rgba(255, 255, 255, 0.5);
@@ -489,6 +491,7 @@
   height: 28px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.1);

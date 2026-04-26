@@ -163,12 +163,15 @@ function LoadingState() {
 }
 
 function splitThreads(list) {
+  // "Pendiente" follows the badge in the lab header: unread only. Once the
+  // coach opens a thread the markRead PATCH zeroes unreadByCreator and the
+  // thread shifts to Completados even before they reply.
   const pendientes = [];
   const completados = [];
   const sorted = [...list].sort((a, b) => msOf(b.lastMessageAt) - msOf(a.lastMessageAt));
   for (const t of sorted) {
-    const awaitingCoach = (t.unreadByCreator || 0) > 0 || t.lastMessageBy === 'client';
-    if (awaitingCoach && t.status !== 'closed') {
+    const isUnread = (t.unreadByCreator || 0) > 0;
+    if (isUnread && t.status !== 'closed') {
       pendientes.push(t);
     } else {
       completados.push(t);

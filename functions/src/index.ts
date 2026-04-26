@@ -2746,7 +2746,10 @@ const mercadopagoWebhookSecretV2 = defineSecret("MERCADOPAGO_WEBHOOK_SECRET");
 export const api = onRequest(
   {
     region: "us-central1",
-    memory: "256MiB",
+    // 512MiB ≈ doubles CPU per request vs 256MiB. The lab endpoint
+    // parallelizes 7 Firestore queries + a 30-doc library batch + photo
+    // signing + JSON serialization; tighter memory was a measurable bottleneck.
+    memory: "512MiB",
     timeoutSeconds: 60,
     concurrency: 80,
     minInstances: 1,

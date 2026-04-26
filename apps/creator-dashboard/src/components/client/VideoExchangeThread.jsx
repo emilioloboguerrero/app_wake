@@ -167,7 +167,7 @@ export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
 
       <div className="vet-stream">
         {isLoading ? (
-          <div className="vet-loading">Cargando…</div>
+          <ThreadSkeleton />
         ) : messages.length === 0 ? (
           <div className="vet-empty">No hay mensajes en esta conversación.</div>
         ) : (
@@ -225,6 +225,32 @@ export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
           </button>
         </footer>
       )}
+    </div>
+  );
+}
+
+function ThreadSkeleton() {
+  // Mirrors the message-stream rhythm so the slide-panel keeps its height
+  // while data resolves — avoids the "card collapses then expands" flicker.
+  return (
+    <div className="vet-skeleton" aria-hidden>
+      <div className="vet-skeleton-msg vet-skeleton-msg--client">
+        <div className="vet-skeleton-meta" />
+        <div className="vet-skeleton-video" />
+        <div className="vet-skeleton-actions">
+          <div className="vet-skeleton-btn" />
+          <div className="vet-skeleton-btn" />
+        </div>
+      </div>
+      <div className="vet-skeleton-msg vet-skeleton-msg--creator">
+        <div className="vet-skeleton-meta" />
+        <div className="vet-skeleton-line" />
+        <div className="vet-skeleton-line vet-skeleton-line--short" />
+      </div>
+      <div className="vet-skeleton-msg vet-skeleton-msg--client">
+        <div className="vet-skeleton-meta" />
+        <div className="vet-skeleton-video vet-skeleton-video--short" />
+      </div>
     </div>
   );
 }

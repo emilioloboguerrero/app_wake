@@ -25,6 +25,7 @@
   border-radius: 14px;
   border: 2px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   transform: skewY(-8deg);
   cursor: pointer;

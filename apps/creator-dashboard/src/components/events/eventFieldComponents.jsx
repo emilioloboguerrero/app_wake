@@ -73,7 +73,14 @@ export function extractAccentFromImage(imageUrl, onAccent) {
       const result = [bestR, bestG, bestB];
       _accentCache.set(imageUrl, result);
       onAccent(result);
-    } catch {}
+    } catch {
+      // Canvas tainted (CORS) or other read failure — caller should fall back.
+      onAccent(null);
+    }
+  };
+  img.onerror = () => {
+    if (cancelled) return;
+    onAccent(null);
   };
   img.src = imageUrl;
   return () => { cancelled = true; };

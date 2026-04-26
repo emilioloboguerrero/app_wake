@@ -71,6 +71,7 @@
   font-family: 'Inter', sans-serif;
   letter-spacing: 0.04em;
   cursor: pointer;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   transition: background 0.3s, border-color 0.3s;
 }
@@ -303,6 +304,7 @@
   font-family: 'Inter', sans-serif;
   letter-spacing: 0.04em;
   cursor: pointer;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   transition: background 0.3s, border-color 0.3s;
 }

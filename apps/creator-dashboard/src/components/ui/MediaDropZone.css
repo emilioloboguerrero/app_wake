@@ -11,6 +11,7 @@
   z-index: 950;
   border: 2px dashed rgba(255, 255, 255, 0.35);
   background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex;

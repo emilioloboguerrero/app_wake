@@ -10,6 +10,7 @@
   z-index: 100;
   background-color: transparent;
   padding: 16px 32px;
+  -webkit-backdrop-filter: blur(0px);
   backdrop-filter: blur(0px);
   border-bottom: 1px solid transparent;
   min-height: 120px;
@@ -20,6 +21,7 @@
 
 .sticky-header.sticky-header-scrolled {
   background-color: rgba(26, 26, 26, 0.8);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
@@ -38,6 +40,7 @@
   margin-right: -32px;
   width: calc(100% + 64px);
   border-bottom: none;
+  -webkit-backdrop-filter: none;
   backdrop-filter: none;
   background-color: transparent;
   box-sizing: content-box;

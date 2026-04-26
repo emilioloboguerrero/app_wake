@@ -837,7 +837,17 @@ const ClientesScreen = () => {
   const handleSelectClient = useCallback((client) => {
     const id = client.id || client.clientUserId || client.userId;
     navigate(`/clients/${id}`, {
-      state: { clientUserId: client.clientUserId || client.userId },
+      // Pass a hint payload so ClientScreen can prime React Query and the
+      // header can paint instantly without waiting on the detail GET.
+      state: {
+        clientUserId: client.clientUserId || client.userId,
+        clientHint: {
+          clientName: client.clientName || client.name || null,
+          avatarUrl: client.profilePictureUrl || client.avatarUrl || null,
+          profilePictureUrl: client.profilePictureUrl || client.avatarUrl || null,
+          email: client.email || client.clientEmail || null,
+        },
+      },
     });
   }, [navigate]);
 

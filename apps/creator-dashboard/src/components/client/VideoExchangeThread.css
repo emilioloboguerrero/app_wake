@@ -468,6 +468,107 @@
   to { transform: rotate(360deg); }
 }
 
+/* ─── Loading skeleton ─────────────────────────────────────── */
+.vet-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vet-skeleton-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.vet-skeleton-msg--creator {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  align-self: flex-end;
+  width: 80%;
+}
+
+.vet-skeleton-msg--client {
+  align-self: flex-start;
+  width: 88%;
+}
+
+.vet-skeleton-meta {
+  height: 10px;
+  width: 110px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: vet-shimmer 1.4s ease-in-out infinite;
+}
+
+.vet-skeleton-video {
+  height: 180px;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: vet-shimmer 1.4s ease-in-out infinite;
+}
+
+.vet-skeleton-video--short {
+  height: 130px;
+}
+
+.vet-skeleton-line {
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: vet-shimmer 1.4s ease-in-out infinite;
+}
+
+.vet-skeleton-line--short {
+  width: 60%;
+}
+
+.vet-skeleton-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vet-skeleton-btn {
+  height: 26px;
+  width: 100px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.10) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+  animation: vet-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes vet-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
 .vet-uploadpill-dismiss {
   width: 22px;
   height: 22px;

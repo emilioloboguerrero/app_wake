@@ -158,6 +158,7 @@
   letter-spacing: 0.07em;
   padding: 3px 9px;
   text-transform: uppercase;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
 

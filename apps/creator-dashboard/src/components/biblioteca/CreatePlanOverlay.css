@@ -8,6 +8,7 @@
   inset: 0;
   z-index: 1100;
   background: rgba(0, 0, 0, 0.78);
+  -webkit-backdrop-filter: blur(28px);
   backdrop-filter: blur(28px);
   display: flex;
   align-items: center;

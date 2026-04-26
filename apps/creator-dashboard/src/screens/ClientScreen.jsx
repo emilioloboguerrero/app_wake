@@ -1,13 +1,15 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import { TubelightNavBar, FullScreenError, KeepAlivePane } from '../components/ui';
 import ClientLabTab from '../components/client/ClientLabTab';
-import ClientPlanTab from '../components/client/ClientPlanTab';
-import ClientNutritionTab from '../components/client/ClientNutritionTab';
-import ClientProfileTab from '../components/client/ClientProfileTab';
+// Inactive tabs are lazy-loaded so their bundles (calendar, dnd-kit, recharts
+// configs, nutrition pickers) don't ship on first paint of the Lab tab.
+const ClientPlanTab = lazy(() => import('../components/client/ClientPlanTab'));
+const ClientNutritionTab = lazy(() => import('../components/client/ClientNutritionTab'));
+const ClientProfileTab = lazy(() => import('../components/client/ClientProfileTab'));
 import oneOnOneService from '../services/oneOnOneService';
 import apiClient from '../utils/apiClient';
 import { cacheConfig, queryKeys } from '../config/queryClient';
@@ -73,9 +75,29 @@ export default function ClientScreen() {
   const [currentWeekIndex, setCurrentWeekIndex] = useState(0);
 
   // ── Core data: single client detail query ────────────────────
-  // Use clientUserId from navigation state as early hint to allow
-  // parallel queries (e.g., Lab data) before client detail resolves.
+  // Use the navigation-state hints to (a) parallelize lab analytics before
+  // the detail GET resolves, and (b) seed the React Query cache so the
+  // header paints instantly with the client's name + avatar instead of
+  // showing skeletons during the ~1.5–2s detail fetch.
   const hintClientUserId = location.state?.clientUserId;
+  const clientHint = location.state?.clientHint;
+  const queryClient = useQueryClient();
+
+  // Prime the cache *synchronously* during render — only takes effect on the
+  // very first render before the query has a value, so React Query treats
+  // the hint as initial data, not a duplicate fetch.
+  if (clientId && clientHint) {
+    const key = queryKeys.clients.detail(clientId);
+    if (queryClient.getQueryData(key) === undefined) {
+      queryClient.setQueryData(key, {
+        clientId,
+        clientUserId: hintClientUserId,
+        ...clientHint,
+        enrolledPrograms: [],
+        notes: [],
+      });
+    }
+  }
 
   const { data: client, isLoading: clientLoading, error: clientError } = useQuery({
     queryKey: queryKeys.clients.detail(clientId),
@@ -211,6 +233,7 @@ export default function ClientScreen() {
               clientUserId={clientUserId}
               clientName={clientName}
               creatorId={creatorId}
+              avatarUrl={client?.profilePictureUrl || client?.avatarUrl}
             />
           </KeepAlivePane>
           {visitedTabs.has('contenido') && (
@@ -222,47 +245,51 @@ export default function ClientScreen() {
                   onSelect={handleSubtabChange}
                 />
               </div>
-              {visitedSubtabs.has('entrenamiento') && (
-                <KeepAlivePane active={contenidoSubtab === 'entrenamiento'}>
-                  <ClientPlanTab
-                    clientId={clientId}
-                    clientUserId={clientUserId}
-                    clientName={clientName}
-                    creatorId={creatorId}
-                    currentModule={currentModule}
-                    planId={planId}
-                    activeProgram={activeProgram}
-                    programs={programs}
-                    programsLoading={programsLoading}
-                    selectedProgramId={selectedProgramId}
-                    onProgramChange={setSelectedProgramId}
-                  />
-                </KeepAlivePane>
-              )}
-              {visitedSubtabs.has('nutricion') && (
-                <KeepAlivePane active={contenidoSubtab === 'nutricion'}>
-                  <ClientNutritionTab
-                    clientId={clientId}
-                    clientUserId={clientUserId}
-                    clientName={clientName}
-                    creatorId={creatorId}
-                    labData={labData}
-                    nutritionGoal={client?.onboardingData?.nutritionGoal}
-                    dietaryRestrictions={client?.onboardingData?.dietaryRestrictions || []}
-                  />
-                </KeepAlivePane>
-              )}
+              <Suspense fallback={null}>
+                {visitedSubtabs.has('entrenamiento') && (
+                  <KeepAlivePane active={contenidoSubtab === 'entrenamiento'}>
+                    <ClientPlanTab
+                      clientId={clientId}
+                      clientUserId={clientUserId}
+                      clientName={clientName}
+                      creatorId={creatorId}
+                      currentModule={currentModule}
+                      planId={planId}
+                      activeProgram={activeProgram}
+                      programs={programs}
+                      programsLoading={programsLoading}
+                      selectedProgramId={selectedProgramId}
+                      onProgramChange={setSelectedProgramId}
+                    />
+                  </KeepAlivePane>
+                )}
+                {visitedSubtabs.has('nutricion') && (
+                  <KeepAlivePane active={contenidoSubtab === 'nutricion'}>
+                    <ClientNutritionTab
+                      clientId={clientId}
+                      clientUserId={clientUserId}
+                      clientName={clientName}
+                      creatorId={creatorId}
+                      labData={labData}
+                      nutritionGoal={client?.onboardingData?.nutritionGoal}
+                      dietaryRestrictions={client?.onboardingData?.dietaryRestrictions || []}
+                    />
+                  </KeepAlivePane>
+                )}
+              </Suspense>
             </KeepAlivePane>
           )}
           {visitedTabs.has('perfil') && (
             <KeepAlivePane active={currentTab === 'perfil'}>
-              <ClientProfileTab
-                clientId={clientId}
-                clientUserId={clientUserId}
-                clientName={clientName}
-                creatorId={creatorId}
-                clientDetail={client}
-              />
+              <Suspense fallback={null}>
+                <ClientProfileTab
+                  clientId={clientId}
+                  clientUserId={clientUserId}
+                  clientName={clientName}
+                  creatorId={creatorId}
+                  clientDetail={client}
+                />
+              </Suspense>
             </KeepAlivePane>
           )}
         </div>

@@ -177,6 +177,7 @@
   background: rgba(20, 20, 20, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   white-space: nowrap;
   pointer-events: none;

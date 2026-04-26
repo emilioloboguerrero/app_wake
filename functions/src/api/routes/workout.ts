@@ -1422,6 +1422,9 @@ router.post("/workout/complete", async (req, res) => {
     batch.set(
       historyRef,
       {
+        // Store the display name on the history doc so downstream readers
+        // (analytics, PR cards) don't need to cross-reference lastPerformance.
+        exerciseName: exercise.exerciseName ?? null,
         sessions: FieldValue.arrayUnion({
           date: completionDate,
           sessionId: completionId,

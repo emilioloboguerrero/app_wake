@@ -89,12 +89,27 @@
     "C C D";
 }
 
+/* ─── Client Lab layout (3 col × 2 row, full-height left) ───── */
+/*  VOL spans both rows on the left; right is a 2×2 grid          */
+/*  VOL = col1 rows1-2  |  ADH = col2 row1  |  PESO = col3 row1   */
+/*  VOL              ‖   PRS = col2 row2   |  NUT = col3 row2     */
+.bento-grid--client-lab {
+  grid-template-columns: 1.1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    "VOL ADH PESO"
+    "VOL PRS NUT";
+  gap: 16px;
+  min-height: 640px;
+}
+
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .bento-grid--5-panel,
   .bento-grid--7-panel,
   .bento-grid--one-on-one,
-  .bento-grid--programs {
+  .bento-grid--programs,
+  .bento-grid--client-lab {
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -103,8 +118,13 @@
   .bento-grid--5-panel > *,
   .bento-grid--7-panel > *,
   .bento-grid--one-on-one > *,
-  .bento-grid--programs > * {
+  .bento-grid--programs > *,
+  .bento-grid--client-lab > * {
     grid-area: unset !important;
     min-height: 140px;
+  }
+
+  .bento-grid--client-lab {
+    min-height: 0;
   }
 }

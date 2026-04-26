@@ -209,6 +209,11 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
 
   await docRef.set(
     {
+      // Stamp `date` so photo-only docs (created via this endpoint without a
+      // prior PUT to /progress/body-log/:date) still match queries that use
+      // `where("date", ...)` or `orderBy("date", ...)`. Without this, photos
+      // were silently filtered out of the creator analytics view.
+      date: req.params.date,
       photos: FieldValue.arrayUnion({
         photoId,
         url: publicUrl,

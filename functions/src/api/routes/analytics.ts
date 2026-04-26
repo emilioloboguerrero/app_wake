@@ -200,6 +200,39 @@ function requireCreator(auth: { role: string }): void {
   }
 }
 
+function pickNumber(...values: unknown[]): number | null {
+  for (const v of values) {
+    if (typeof v === "number" && !Number.isNaN(v)) return v;
+  }
+  return null;
+}
+
+// Module-scoped signed-URL cache. Persists across requests on a warm function
+// instance, so repeated client-lab calls within ~50min skip Storage round
+// trips entirely. Keyed by storagePath.
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const SIGNED_URL_CACHE_TTL_MS = 50 * 60 * 1000;
+
+async function getCachedSignedUrl(
+  bucket: ReturnType<typeof admin.storage>["bucket"] extends () => infer B ? B : never,
+  storagePath: string
+): Promise<string | null> {
+  const now = Date.now();
+  const cached = signedUrlCache.get(storagePath);
+  if (cached && cached.expiresAt > now + 60_000) return cached.url;
+  try {
+    const [url] = await bucket.file(storagePath).getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: now + 60 * 60 * 1000, // 1h actual TTL on the URL
+    });
+    signedUrlCache.set(storagePath, {url, expiresAt: now + SIGNED_URL_CACHE_TTL_MS});
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 async function verifyCreatorOwnsClient(
   creatorId: string,
   clientId: string
@@ -806,8 +839,18 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   const coreQueries = [
     db.collection("users").doc(clientId).collection("sessionHistory")
       .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
+    // Body log: two parallel reads merged in memory.
+    //   1. Recent dated entries via `orderBy("date","desc").limit(60)` —
+    //      cheap and indexed (single-field on `date`, auto-maintained).
+    //   2. Up to 60 docs without filter to catch photo-only entries that
+    //      historically didn't write a `date` field — `orderBy("date")`
+    //      silently filters those out.
+    // Hard ceiling: ~120 reads regardless of how long the client has been
+    // logging. Was unbounded.
     db.collection("users").doc(clientId).collection("bodyLog")
-      .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
+      .orderBy("date", "desc").limit(60).get(),
+    db.collection("users").doc(clientId).collection("bodyLog")
+      .limit(60).get(),
     db.collection("users").doc(clientId).collection("readiness")
       .where("date", ">=", rangeAgoStr).orderBy("date", "desc").get(),
     db.collection("nutrition_assignments")
@@ -818,22 +861,39 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
 
   // Expensive queries (skipped in summary mode)
   const expensiveQueries = isSummary ?
-    [Promise.resolve(null), Promise.resolve(null)] :
+    [Promise.resolve(null), Promise.resolve(null), Promise.resolve(null)] :
     [
       db.collection("users").doc(clientId).collection("diary")
         .where("date", ">=", rangeAgoStr).where("date", "<=", nowStr).limit(300).get(),
       db.collection("users").doc(clientId).collection("exerciseHistory")
         .limit(50).get(),
+      // Name lookup: history docs only carry { sessions, updated_at } —
+      // exerciseName lives on exerciseLastPerformance, keyed by the same id.
+      db.collection("users").doc(clientId).collection("exerciseLastPerformance")
+        .limit(50).get(),
     ];
 
-  const [sessionsSnap, bodyLogSnap, readinessSnap, assignmentsSnap, diarySnapOrNull, exerciseHistSnapOrNull] =
-    await Promise.all([...coreQueries, ...expensiveQueries]) as [
-      FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot,
-      FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot,
-      FirebaseFirestore.QuerySnapshot | null, FirebaseFirestore.QuerySnapshot | null,
-    ];
+  const [
+    sessionsSnap, bodyLogDatedSnap, bodyLogUnsortedSnap,
+    readinessSnap, assignmentsSnap,
+    diarySnapOrNull, exerciseHistSnapOrNull, lastPerfSnapOrNull,
+  ] = await Promise.all([...coreQueries, ...expensiveQueries]) as [
+    FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot,
+    FirebaseFirestore.QuerySnapshot, FirebaseFirestore.QuerySnapshot,
+    FirebaseFirestore.QuerySnapshot | null, FirebaseFirestore.QuerySnapshot | null,
+    FirebaseFirestore.QuerySnapshot | null,
+  ];
+
+  // Merge the two body-log reads, dedupe by doc id.
+  const bodyLogDocsById = new Map<string, FirebaseFirestore.QueryDocumentSnapshot>();
+  for (const d of bodyLogDatedSnap.docs) bodyLogDocsById.set(d.id, d);
+  for (const d of bodyLogUnsortedSnap.docs) {
+    if (!bodyLogDocsById.has(d.id)) bodyLogDocsById.set(d.id, d);
+  }
+  const bodyLogDocs = Array.from(bodyLogDocsById.values());
   const diarySnap = diarySnapOrNull;
   const exerciseHistSnap = exerciseHistSnapOrNull;
+  const lastPerfSnap = lastPerfSnapOrNull;
 
   // ── Weekly volume (last 8 weeks) ─────────────────────────────
   const eightWeeksAgo = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000);
@@ -846,6 +906,64 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
 
   // ── Volume by muscle group ───────────────────────────────────
   const muscleVolume: Record<string, number> = {};
+  const muscleVolumeByWeek: Record<string, Record<string, number>> = {};
+
+  // First pass: collect every libraryId referenced by the session exercises
+  // and by the lastPerformance docs, so we can hydrate muscle_activation +
+  // displayName from `exercises_library`. Without this, post-migration sessions
+  // that only carry `{exerciseId, libraryId}` produce zero volume and PR cards
+  // show "Ejercicio" because the legacy code looked at inline `primaryMuscles`.
+  const libIdsNeeded = new Set<string>();
+  for (const doc of sessionsSnap.docs) {
+    const exs = (doc.data()?.exercises ?? []) as Array<{ libraryId?: string }>;
+    for (const ex of exs) {
+      if (typeof ex?.libraryId === "string" && ex.libraryId) libIdsNeeded.add(ex.libraryId);
+    }
+  }
+  for (const doc of (lastPerfSnap?.docs ?? [])) {
+    const lib = doc.data()?.libraryId;
+    if (typeof lib === "string" && lib) libIdsNeeded.add(lib);
+  }
+  const libIdsArr = Array.from(libIdsNeeded).slice(0, 30);
+  // db.getAll() batches all reads into a single Firestore RPC, vs. one round
+  // trip per doc with Promise.all(...get()).
+  const libDocs = libIdsArr.length > 0 ?
+    await db.getAll(...libIdsArr.map((id) => db.collection("exercises_library").doc(id))) :
+    [];
+  const libMap: Record<string, Record<string, unknown>> = {};
+  for (const d of libDocs) {
+    if (d.exists) libMap[d.id] = d.data() ?? {};
+  }
+
+  // Helper: resolve { displayName, muscle_activation } for an exercise from the
+  // library map. Supports both the post-migration (`exercises.{id}`) and the
+  // legacy (top-level keyed by name) library shapes.
+  const resolveExerciseMeta = (
+    libraryId?: string,
+    exerciseId?: string,
+    name?: string
+  ): { displayName: string | null; muscle_activation: Record<string, number> | null } => {
+    if (!libraryId || !libMap[libraryId]) return {displayName: null, muscle_activation: null};
+    const lib = libMap[libraryId];
+    const exercisesMap = (lib.exercises as Record<string, Record<string, unknown>> | undefined) ?? {};
+    const fromId = exerciseId ? exercisesMap[exerciseId] : undefined;
+    const fromName = name ? (exercisesMap[name] ?? (lib[name] as Record<string, unknown> | undefined)) : undefined;
+    const meta = fromId ?? fromName;
+    if (!meta) return {displayName: null, muscle_activation: null};
+    const displayName = (meta.displayName as string | undefined) ??
+      (meta.name as string | undefined) ??
+      null;
+    const rawAct = meta.muscle_activation as Record<string, unknown> | undefined;
+    let activation: Record<string, number> | null = null;
+    if (rawAct && typeof rawAct === "object") {
+      activation = {};
+      for (const [k, v] of Object.entries(rawAct)) {
+        const n = typeof v === "number" ? v : parseFloat(String(v));
+        if (Number.isFinite(n) && n > 0) activation[k.toLowerCase()] = n;
+      }
+    }
+    return {displayName, muscle_activation: activation};
+  };
 
   for (const doc of sessionsSnap.docs) {
     const data = doc.data();
@@ -875,17 +993,50 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
         sets?: unknown[];
         primaryMuscles?: string[];
         muscleGroup?: string;
+        muscle_activation?: Record<string, number | string>;
         name?: string;
+        exerciseName?: string;
+        exerciseId?: string;
+        libraryId?: string;
       }>;
       for (const ex of exercises) {
         const setCount = (ex.sets ?? []).length;
         weekMap[weekKey].totalSets += setCount;
 
-        // Muscle volume
-        const muscles = ex.primaryMuscles ?? (ex.muscleGroup ? [ex.muscleGroup] : []);
-        for (const m of muscles) {
-          const normalized = m.toLowerCase();
-          muscleVolume[normalized] = (muscleVolume[normalized] ?? 0) + setCount;
+        // Resolve activation: inline first, library fallback.
+        let activation: Record<string, number> | null = null;
+        if (ex.muscle_activation && typeof ex.muscle_activation === "object") {
+          activation = {};
+          for (const [k, v] of Object.entries(ex.muscle_activation)) {
+            const n = typeof v === "number" ? v : parseFloat(String(v));
+            if (Number.isFinite(n) && n > 0) activation[k.toLowerCase()] = n;
+          }
+          if (Object.keys(activation).length === 0) activation = null;
+        }
+        if (!activation) {
+          const meta = resolveExerciseMeta(ex.libraryId, ex.exerciseId, ex.exerciseName ?? ex.name);
+          activation = meta.muscle_activation;
+        }
+
+        if (activation) {
+          // Activation map: distribute set count by muscle %.
+          for (const [muscle, pct] of Object.entries(activation)) {
+            const contribution = setCount * (pct / 100);
+            muscleVolume[muscle] = (muscleVolume[muscle] ?? 0) + contribution;
+            if (!muscleVolumeByWeek[weekKey]) muscleVolumeByWeek[weekKey] = {};
+            muscleVolumeByWeek[weekKey][muscle] =
+              (muscleVolumeByWeek[weekKey][muscle] ?? 0) + contribution;
+          }
+        } else {
+          // Legacy fallback: flat primaryMuscles list, full set count per muscle.
+          const muscles = ex.primaryMuscles ?? (ex.muscleGroup ? [ex.muscleGroup] : []);
+          for (const m of muscles) {
+            const normalized = m.toLowerCase();
+            muscleVolume[normalized] = (muscleVolume[normalized] ?? 0) + setCount;
+            if (!muscleVolumeByWeek[weekKey]) muscleVolumeByWeek[weekKey] = {};
+            muscleVolumeByWeek[weekKey][normalized] =
+              (muscleVolumeByWeek[weekKey][normalized] ?? 0) + setCount;
+          }
         }
       }
     }
@@ -909,85 +1060,227 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       return {weekStart, days};
     });
 
-  // ── Workout adherence: completed sessions / planned sessions ──
-  const clientUserDoc = await db.collection("users").doc(clientId).get();
-  const clientCourses = (clientUserDoc.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
-  const activeCourseIds = Object.entries(clientCourses)
-    .filter(([, v]) => v.status === "active" && v.deliveryType === "one_on_one")
-    .map(([id]) => id);
-
-  let totalPlannedPerWeek = 0;
-  if (activeCourseIds.length > 0) {
-    await Promise.all(activeCourseIds.map(async (courseId) => {
-      const modulesSnap = await db.collection("courses").doc(courseId).collection("modules").get();
-      if (modulesSnap.empty) return;
-      const sessionCounts = await Promise.all(
-        modulesSnap.docs.map((m) =>
-          db.collection("courses").doc(courseId).collection("modules").doc(m.id).collection("sessions").get().then((s) => s.size)
-        )
-      );
-      const total = sessionCounts.reduce((a, b) => a + b, 0);
-      const moduleCount = Math.max(1, modulesSnap.size);
-      totalPlannedPerWeek += Math.max(1, Math.round(total / moduleCount));
-    }));
-  }
-
+  // ── Workout adherence ────────────────────────────────────────
+  // Frequency-based metric: % of a 4-day/week target. We dropped the planned-
+  // vs-completed walk over courses/modules/sessions — it cost up to ~80
+  // sequential reads per request and rarely produced a usable number for
+  // clients on plans/one-on-one programs anyway. If you ever want a planned
+  // schedule again, denormalize `weekly` onto the course doc at publish time
+  // and read it as a single field rather than counting modules at runtime.
   const weeksInRange = Math.max(1, rangeDays / 7);
-  const plannedSessions = Math.round(totalPlannedPerWeek * weeksInRange);
-  const completedSessionsCount = sessionsSnap.size;
-  const workoutAdherence = plannedSessions > 0 ?
-    Math.min(100, Math.round((completedSessionsCount / plannedSessions) * 100)) :
-    null;
+  const totalDaysTrained = Object.values(weekMap)
+    .reduce((s, w) => s + w.daysTrained.size, 0);
+  const avgDaysPerWeek = totalDaysTrained / weeksInRange;
+  const TARGET_DAYS_PER_WEEK = 4;
+  const workoutAdherence = Math.min(
+    100,
+    Math.round((avgDaysPerWeek / TARGET_DAYS_PER_WEEK) * 100)
+  );
+  const adherenceMode: "frequency" = "frequency";
 
   // ── Volume by muscle group (sorted) ──────────────────────────
   const volumeByMuscle = Object.entries(muscleVolume)
     .sort((a, b) => b[1] - a[1])
-    .map(([muscle, sets]) => ({muscle, sets}));
+    .map(([muscle, sets]) => ({muscle, sets: Math.round(sets * 10) / 10}));
+
+  // ── Volume by muscle group: current week vs past 3 weeks ─────
+  // The current week is the most recent week with any logged volume.
+  // `prevAvg` is the average per-week volume across the **3 weeks
+  // immediately preceding the current week**. `delta` is the % change.
+  const sortedWeekKeys = Object.keys(muscleVolumeByWeek).sort();
+  const currentWeekKey = sortedWeekKeys[sortedWeekKeys.length - 1] ?? null;
+  const PREV_WINDOW = 3;
+  const priorWeekKeys = currentWeekKey ?
+    sortedWeekKeys.slice(-1 - PREV_WINDOW, -1) :
+    [];
+  const muscleKeys = new Set<string>();
+  for (const w of sortedWeekKeys) {
+    for (const m of Object.keys(muscleVolumeByWeek[w])) muscleKeys.add(m);
+  }
+  const volumeByMuscleComparison = Array.from(muscleKeys)
+    .map((muscle) => {
+      const current = currentWeekKey ? (muscleVolumeByWeek[currentWeekKey]?.[muscle] ?? 0) : 0;
+      const priorTotal = priorWeekKeys.reduce(
+        (s, w) => s + (muscleVolumeByWeek[w]?.[muscle] ?? 0),
+        0
+      );
+      const prevAvg = priorWeekKeys.length > 0 ? priorTotal / priorWeekKeys.length : 0;
+      const delta = prevAvg > 0 ? Math.round(((current - prevAvg) / prevAvg) * 100) : null;
+      return {
+        muscle,
+        current: Math.round(current * 10) / 10,
+        prevAvg: Math.round(prevAvg * 10) / 10,
+        delta,
+        priorWeeks: priorWeekKeys.length,
+      };
+    })
+    .filter((m) => m.current > 0 || m.prevAvg > 0)
+    .sort((a, b) => b.current - a.current);
 
   // ── RPE average ──────────────────────────────────────────────
   const rpeAverage = rpeCount > 0 ? Math.round((rpeSum / rpeCount) * 10) / 10 : null;
   rpeTrend.sort((a, b) => a.date.localeCompare(b.date));
 
   // ── Body progress ────────────────────────────────────────────
-  const bodyProgress = bodyLogSnap.docs.map((d) => {
-    const data = d.data();
-    return {date: data.date, weight: data.weight ?? null};
-  }).reverse();
-  const bodyWeight = bodyProgress.length > 0 ? bodyProgress[bodyProgress.length - 1].weight : null;
+  // Merge of the dated and unsorted body-log reads. Sort by effective date
+  // (data.date when present, else doc.id which IS the YYYY-MM-DD key) and
+  // keep the most recent 30 for the chart + photos.
+  const bodyDateOf = (doc: FirebaseFirestore.QueryDocumentSnapshot) =>
+    (doc.data().date as string | undefined) ?? doc.id;
+  const sortedBodyDocs = [...bodyLogDocs]
+    .sort((a, b) => bodyDateOf(b).localeCompare(bodyDateOf(a))) // desc
+    .slice(0, 30);
+
+  const bodyProgress = sortedBodyDocs
+    .map((d) => {
+      const data = d.data();
+      const weightNum = pickNumber(data.weight, parseFloat(String(data.weight ?? "")));
+      return {date: data.date ?? d.id, weight: weightNum};
+    })
+    .filter((e) => e.weight != null)
+    .reverse(); // chart wants ascending
+  const bodyWeight: number | null = bodyProgress.length > 0 ?
+    bodyProgress[bodyProgress.length - 1].weight :
+    null;
 
   // ── Body photos ──────────────────────────────────────────────
+  // Stored as `photos: [{ photoId, url, storagePath, uploaded_at }]` per
+  // /progress/body-log/:date/photos/confirm. Older entries used a flat string
+  // array (`photoUrls`); legacy `photos` was a string array too.
+  //
+  // The stored `url` is `https://firebasestorage.googleapis.com/.../o/{path}?alt=media`
+  // *without* a download token, so storage rules apply when the browser
+  // fetches it. Body-log reads are restricted to the owner — a creator
+  // viewing a client's photos gets blocked. We regenerate v4 signed read
+  // URLs here (admin SDK bypasses rules) so the creator UI can load them.
   const bodyPhotos: Array<{ date: string; urls: string[] }> = [];
-  for (const doc of bodyLogSnap.docs) {
-    const data = doc.data();
-    const photos = data.photos ?? data.photoUrls ?? [];
-    if (Array.isArray(photos) && photos.length > 0) {
-      bodyPhotos.push({date: data.date, urls: photos});
+  const bucket = admin.storage().bucket();
+
+  // Photo objects come in several shapes across PWA versions:
+  //   { storageUrl, storagePath, id, angle }     ← current PWA (token in URL, public)
+  //   { url, storagePath, photoId, uploaded_at } ← /photos/confirm endpoint (no token)
+  //   "https://…?alt=media&token=…"              ← legacy bare-string entries
+  // For tokenized URLs (`?alt=…&token=…`) we use them as-is — they bypass
+  // storage rules. For untokenized URLs / objects with only a `storagePath`,
+  // we generate a v4 signed read URL via the admin SDK so the creator can
+  // load them despite the per-owner storage rule.
+  const looksTokenized = (u: string) =>
+    typeof u === "string" && u.includes("token=");
+
+  const extractDirectUrl = (raw: unknown): string | null => {
+    if (typeof raw === "string" && looksTokenized(raw)) return raw;
+    if (raw && typeof raw === "object") {
+      const r = raw as { storageUrl?: unknown; url?: unknown };
+      if (typeof r.storageUrl === "string" && looksTokenized(r.storageUrl)) return r.storageUrl;
+      if (typeof r.url === "string" && looksTokenized(r.url)) return r.url;
     }
+    return null;
+  };
+
+  const extractStoragePath = (raw: unknown): string | null => {
+    if (raw && typeof raw === "object") {
+      const r = raw as { storagePath?: unknown; storageUrl?: unknown; url?: unknown };
+      if (typeof r.storagePath === "string" && r.storagePath) return r.storagePath;
+      const candidateUrl = typeof r.storageUrl === "string" ?
+        r.storageUrl :
+        typeof r.url === "string" ? r.url : null;
+      if (candidateUrl) {
+        const match = candidateUrl.match(/\/o\/([^?]+)/);
+        if (match) {
+          try {
+            return decodeURIComponent(match[1]);
+          } catch {
+            return match[1];
+          }
+        }
+      }
+      return null;
+    }
+    if (typeof raw === "string" && raw) {
+      const match = raw.match(/\/o\/([^?]+)/);
+      if (match) {
+        try {
+          return decodeURIComponent(match[1]);
+        } catch {
+          return match[1];
+        }
+      }
+    }
+    return null;
+  };
+
+  for (const doc of sortedBodyDocs) {
+    const data = doc.data();
+    const raw = data.photos ?? data.photoUrls ?? [];
+    if (!Array.isArray(raw) || raw.length === 0) continue;
+
+    const resolved = await Promise.all(
+      raw.map(async (p) => {
+        // Prefer the tokenized URL when it's already there.
+        const direct = extractDirectUrl(p);
+        if (direct) return direct;
+
+        // Otherwise sign the storage path (cached at module scope so warm
+        // instances reuse signed URLs across requests).
+        const storagePath = extractStoragePath(p);
+        if (!storagePath) return null;
+        return getCachedSignedUrl(bucket, storagePath);
+      })
+    );
+    const urls = resolved.filter((u): u is string => typeof u === "string" && u.length > 0);
+    if (urls.length > 0) bodyPhotos.push({date: data.date ?? doc.id, urls});
   }
 
   // ── Readiness: average + breakdown ───────────────────────────
+  // Computes `overall` (0-10) as the mean of inverted-stress, inverted-soreness,
+  // energy, and mood — the higher-is-better wellbeing signals. Sleep is
+  // surfaced separately as hours.
   let readinessSum = 0;
   let readinessCount = 0;
   const readinessBreakdown: Array<{
     date: string;
-    overall: number;
+    overall: number | null;
     sleep: number | null;
     stress: number | null;
     energy: number | null;
+    soreness: number | null;
+    mood: number | null;
   }> = [];
 
   for (const doc of readinessSnap.docs) {
     const data = doc.data();
-    const score = data.score ?? data.overallScore;
-    if (typeof score === "number") {
-      readinessSum += score;
-      readinessCount++;
+    const energy = pickNumber(data.energy, data.energyLevel);
+    const stress = pickNumber(data.stress, data.stressLevel);
+    const soreness = pickNumber(data.soreness);
+    const mood = pickNumber(data.mood);
+    const sleep = pickNumber(data.sleep, data.sleep_hours, data.sleepHours);
+
+    const positives: number[] = [];
+    if (energy != null) positives.push(energy);
+    if (stress != null) positives.push(10 - stress);
+    if (soreness != null) positives.push(10 - soreness);
+    if (mood != null) positives.push(mood);
+
+    const stored = pickNumber(data.score, data.overallScore);
+    const overall = stored != null ?
+      stored :
+      (positives.length > 0 ?
+        Math.round((positives.reduce((s, n) => s + n, 0) / positives.length) * 10) / 10 :
+        null);
+
+    if (overall != null || energy != null || sleep != null || stress != null || soreness != null) {
+      if (overall != null) {
+        readinessSum += overall;
+        readinessCount++;
+      }
       readinessBreakdown.push({
         date: data.date,
-        overall: score,
-        sleep: data.sleep_hours ?? data.sleepHours ?? null,
-        stress: data.stressLevel ?? data.stress ?? null,
-        energy: data.energy ?? data.energyLevel ?? null,
+        overall,
+        sleep,
+        stress,
+        energy,
+        soreness,
+        mood,
       });
     }
   }
@@ -997,61 +1290,119 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     null;
 
   // ── PRs: recent from exerciseHistory ─────────────────────────
+  // Production exerciseHistory shape: `{ sessions: [{ date, sessionId, sets: [{weight, reps, ...}] }] }`.
+  // Walks each exercise's sessions in chronological order, tracks the
+  // running max set-weight, and records a PR event whenever a session's
+  // best set strictly exceeds the running max. Falls back to legacy
+  // `records[]` shape so older docs still render.
   interface PREntry {
     exercise: string;
     value: number;
+    reps: number | null;
     date: string;
     percentChange: number | null;
   }
   const recentPRs: PREntry[] = [];
   const stalledExercises: Array<{ exercise: string; lastPR: string; weeksSinceLastPR: number }> = [];
 
+  // Build name lookup. Resolution order, per doc id:
+  //   1. exerciseLastPerformance.exerciseName (when populated)
+  //   2. exercises_library lookup via libraryId + exerciseId on the lastPerf doc
+  //   3. exerciseHistory.exerciseName (newer history docs carry it)
+  //   4. "Ejercicio" placeholder
+  const nameById = new Map<string, string>();
+  for (const doc of (lastPerfSnap?.docs ?? [])) {
+    const d = doc.data() ?? {};
+    const direct = d.exerciseName;
+    if (typeof direct === "string" && direct.length > 0) {
+      nameById.set(doc.id, direct);
+      continue;
+    }
+    const meta = resolveExerciseMeta(
+      d.libraryId as string | undefined,
+      d.exerciseId as string | undefined,
+      d.exerciseName as string | undefined
+    );
+    if (meta.displayName) nameById.set(doc.id, meta.displayName);
+  }
+
   for (const doc of (exerciseHistSnap?.docs ?? [])) {
     const data = doc.data();
-    // doc.id post-migration is `${libraryId}_${exerciseId}` (the second part is a 20-char
-    // auto-id). Replacing _→space would yield "lib123 abc456" garbage, so we only fall
-    // back to a generic placeholder when the snapshotted exerciseName/name is missing.
-    const exerciseName = (data.exerciseName as string | undefined) ??
+    // doc.id post-migration is `${libraryId}_${exerciseId}`. exerciseHistory docs
+    // typically don't carry exerciseName themselves — pull it from lastPerformance.
+    const exerciseName = nameById.get(doc.id) ??
+      (data.exerciseName as string | undefined) ??
       (data.name as string | undefined) ??
       "Ejercicio";
-    const records = (data.records ?? data.history ?? []) as Array<{
-      value?: number;
-      weight?: number;
+
+    // Per-session best — supports both new `sessions[].sets[]` and legacy `records[]`.
+    type Best = { date: string; weight: number; reps: number | null };
+    const perSession: Best[] = [];
+
+    const sessions = (data.sessions ?? []) as Array<{
       date?: string;
-      previousValue?: number;
+      sets?: Array<{ weight?: number | string; reps?: number | string }>;
     }>;
-
-    if (records.length > 0) {
-      // Most recent record as PR
-      const sorted = [...records]
-        .filter((r) => r.date)
-        .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-
-      if (sorted.length > 0) {
-        const latest = sorted[0];
-        const val = latest.value ?? latest.weight ?? 0;
-        const prev = sorted[1]?.value ?? sorted[1]?.weight ?? latest.previousValue;
-        const pctChange = prev && prev > 0 ? Math.round(((val - prev) / prev) * 1000) / 10 : null;
-
-        recentPRs.push({
-          exercise: exerciseName,
-          value: val,
-          date: latest.date ?? "",
-          percentChange: pctChange,
-        });
-
-        // Stalled check: if last PR is > 3 weeks old
-        if (latest.date) {
-          const prDate = new Date(latest.date);
-          const weeksSince = Math.floor((now.getTime() - prDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
-          if (weeksSince >= 3) {
-            stalledExercises.push({
-              exercise: exerciseName,
-              lastPR: latest.date,
-              weeksSinceLastPR: weeksSince,
-            });
-          }
+    for (const s of sessions) {
+      if (!s.date || !Array.isArray(s.sets) || !s.sets.length) continue;
+      let bestW = -Infinity;
+      let bestReps: number | null = null;
+      for (const set of s.sets) {
+        const w = parseFloat(String(set.weight ?? 0));
+        if (Number.isFinite(w) && w > bestW) {
+          bestW = w;
+          const r = parseFloat(String(set.reps ?? 0));
+          bestReps = Number.isFinite(r) && r > 0 ? r : null;
         }
+      }
+      if (bestW > 0) perSession.push({date: s.date, weight: bestW, reps: bestReps});
+    }
+
+    // Legacy fallback
+    const legacy = (data.records ?? data.history ?? []) as Array<{
+      value?: number; weight?: number; date?: string; reps?: number;
+    }>;
+    for (const r of legacy) {
+      if (!r.date) continue;
+      const w = r.value ?? r.weight;
+      if (typeof w === "number" && w > 0) {
+        perSession.push({date: r.date, weight: w, reps: typeof r.reps === "number" ? r.reps : null});
+      }
+    }
+
+    if (perSession.length === 0) continue;
+    perSession.sort((a, b) => a.date.localeCompare(b.date));
+
+    let runningMax = -Infinity;
+    let prevMax = -Infinity;
+    let latestPR: PREntry | null = null;
+    for (const sess of perSession) {
+      if (sess.weight > runningMax) {
+        prevMax = runningMax === -Infinity ? 0 : runningMax;
+        runningMax = sess.weight;
+        const pct = prevMax > 0 ?
+          Math.round(((sess.weight - prevMax) / prevMax) * 1000) / 10 :
+          null;
+        latestPR = {
+          exercise: exerciseName,
+          value: sess.weight,
+          reps: sess.reps,
+          date: sess.date,
+          percentChange: pct,
+        };
+      }
+    }
+
+    if (latestPR) {
+      recentPRs.push(latestPR);
+      const prDate = new Date(latestPR.date);
+      const weeksSince = Math.floor((now.getTime() - prDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+      if (weeksSince >= 3) {
+        stalledExercises.push({
+          exercise: exerciseName,
+          lastPR: latestPR.date,
+          weeksSinceLastPR: weeksSince,
+        });
       }
     }
   }
@@ -1156,6 +1507,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       completionRate: sessionsSnap.size,
       // New flat fields for bento cards
       workoutAdherence,
+      adherenceMode,
       bodyWeight,
       readinessAvg,
       rpeAverage,
@@ -1163,6 +1515,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       recentPRs: topPRs,
       stalledExercises,
       volumeByMuscle,
+      volumeByMuscleComparison,
       rpeTrend,
       readinessBreakdown,
       adherenceHeatmap,
