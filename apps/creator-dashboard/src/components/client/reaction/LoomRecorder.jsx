@@ -52,7 +52,6 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [note, setNote] = useState('');
-  const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
 
   const setupVideoRef = useRef(null);
@@ -243,12 +242,17 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
       ...audioTracks,
     ]);
 
-    let mimeType = 'video/webm;codecs=vp9,opus';
-    if (!MediaRecorder.isTypeSupported(mimeType)) {
-      mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : 'video/webm';
-    }
+    // Prefer MP4 (H.264 + AAC) when the browser supports recording it directly —
+    // skips the slow FFmpeg.wasm transcode entirely on the upload side.
+    const candidates = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=h264,aac',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ];
+    let mimeType = candidates.find((m) => MediaRecorder.isTypeSupported(m)) || 'video/webm';
     mimeTypeRef.current = mimeType;
 
     const recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 3_000_000 });
@@ -447,22 +451,13 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     setPhase('setup');
   }, [previewUrl]);
 
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = useCallback(() => {
     const blob = blobRef.current;
     if (!blob || blob.size === 0) {
       setSendError('La grabación está vacía. Intenta de nuevo.');
       return;
     }
-    if (!onComplete) return;
-    setSending(true);
-    setSendError('');
-    try {
-      await onComplete(blob, note.trim());
-    } catch (err) {
-      console.error('[LoomRecorder] send failed', err);
-      setSendError(err?.message || 'No se pudo enviar la reacción.');
-      setSending(false);
-    }
+    if (onComplete) onComplete(blob, note.trim());
   }, [onComplete, note]);
 
   const handleCancelAll = useCallback(() => {

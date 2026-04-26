@@ -2880,16 +2880,61 @@ router.get("/workout/calendar", async (req, res) => {
 // Helper: load exercises → sets tree from a parent doc ref
 async function loadExerciseTree(parentRef: FirebaseFirestore.DocumentReference) {
   const exercisesSnap = await parentRef.collection("exercises").orderBy("order", "asc").get();
-  return Promise.all(
+  const exercises = await Promise.all(
     exercisesSnap.docs.map(async (eDoc) => {
       const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
       return {
         id: eDoc.id,
         ...eDoc.data(),
         sets: setsSnap.docs.map((s) => ({...s.data(), id: s.id})),
-      };
+      } as Record<string, unknown>;
     })
   );
+
+  // Hydrate displayName from exercises_library so the client renders human names
+  // instead of the 20-char exerciseId stored in primary[libId] post-migration.
+  const libIds = new Set<string>();
+  for (const ex of exercises) {
+    const primary = ex.primary as Record<string, string> | undefined;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) {
+      for (const id of Object.keys(primary)) if (id) libIds.add(id);
+    }
+  }
+  if (libIds.size === 0) return exercises;
+
+  const libDocs = await Promise.all(
+    Array.from(libIds).map((libId) =>
+      db.collection("exercises_library").doc(libId).get()
+    )
+  );
+  const libMap: Record<string, Record<string, unknown>> = {};
+  for (const doc of libDocs) {
+    if (doc.exists) libMap[doc.id] = doc.data()!;
+  }
+
+  for (const ex of exercises) {
+    const primary = ex.primary as Record<string, string> | undefined;
+    if (!primary || typeof primary !== "object") continue;
+    const [libId, val] = Object.entries(primary)[0] ?? [];
+    if (!libId || typeof val !== "string" || !val) continue;
+    const libData = libMap[libId];
+    if (!libData) continue;
+    const exMap = (libData.exercises as Record<string, Record<string, unknown>> | undefined) ?? {};
+    const fromMap = exMap[val]?.displayName;
+    if (typeof fromMap === "string" && fromMap.trim()) {
+      ex.name = fromMap;
+      ex.title = fromMap;
+      continue;
+    }
+    // Legacy: top-level entry where the key IS the displayName.
+    const fromTop = libData[val];
+    if (fromTop && typeof fromTop === "object" && !Array.isArray(fromTop)) {
+      ex.name = val;
+      ex.title = val;
+    }
+  }
+
+  return exercises;
 }
 
 // GET /workout/client-session-content/:clientSessionId

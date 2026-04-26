@@ -1518,15 +1518,27 @@ const LabScreen = () => {
 
   const userData = userQuery.data ?? null;
 
+  // Source PRs from the live /workout/prs endpoint (server-hydrated displayName,
+  // post-migration key shape). The legacy `userData.oneRepMaxEstimates` field on
+  // the user doc is no longer written by current code paths, so reading it gave
+  // either an empty source or stale data with raw `${libId}_${displayName}` keys.
+  const prsQuery = useQuery({
+    queryKey: queryKeys.prs.all(uid),
+    queryFn: () => oneRepMaxService.getEstimatesForUser(uid),
+    enabled: !!uid,
+    staleTime: STALE_TIMES.exerciseHistory,
+    gcTime: GC_TIMES.exerciseHistory,
+  });
+
+  const prsEstimates = prsQuery.data ?? {};
+
   const topKeys = useMemo(() => {
-    const est = userData?.oneRepMaxEstimates;
-    if (!est) return [];
-    return Object.entries(est)
+    return Object.entries(prsEstimates)
       .filter(([, v]) => v?.current && v?.lastUpdated)
       .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
       .slice(0, 5)
       .map(([k]) => k);
-  }, [userData?.oneRepMaxEstimates]);
+  }, [prsEstimates]);
 
   const oneRmQuery = useQuery({
     queryKey: ['workout', '1rm-histories', uid, topKeys],
@@ -1622,9 +1634,7 @@ const LabScreen = () => {
   );
 
   const topExercises = useMemo(() => {
-    const est = userData?.oneRepMaxEstimates;
-    if (!est) return [];
-    return Object.entries(est)
+    return Object.entries(prsEstimates)
       .filter(([, v]) => v?.current && v?.lastUpdated)
       .sort((a, b) => new Date(b[1].lastUpdated) - new Date(a[1].lastUpdated))
       .slice(0, 5)
@@ -1636,7 +1646,7 @@ const LabScreen = () => {
         lastUpdated: v.lastUpdated,
         achievedWith: v.achievedWith,
       }));
-  }, [userData?.oneRepMaxEstimates]);
+  }, [prsEstimates]);
 
   useEffect(() => {
     if (!selectedExerciseKey && topExercises.length > 0) setSelectedExerciseKey(topExercises[0].key);
@@ -1649,8 +1659,8 @@ const LabScreen = () => {
   }, [selectedExerciseKey, oneRepMaxHistories]);
 
   const current1RM = useMemo(() => {
-    if (!selectedExerciseKey || !userData?.oneRepMaxEstimates) return null;
-    const est = userData.oneRepMaxEstimates[selectedExerciseKey];
+    if (!selectedExerciseKey) return null;
+    const est = prsEstimates[selectedExerciseKey];
     if (!est?.current) return null;
     const fourWeeksAgo = new Date(); fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
     const hist = oneRepMaxHistories.find(h => h.exerciseKey === selectedExerciseKey);
@@ -1660,7 +1670,7 @@ const LabScreen = () => {
       if (old.length > 0) delta = est.current - old[old.length - 1].value;
     }
     return { current: est.current, delta, achievedWith: est.achievedWith };
-  }, [selectedExerciseKey, userData?.oneRepMaxEstimates, oneRepMaxHistories]);
+  }, [selectedExerciseKey, prsEstimates, oneRepMaxHistories]);
 
   const volumeByWeekGrouped = useMemo(() => {
     const wv = userData?.weeklyMuscleVolume || {};
