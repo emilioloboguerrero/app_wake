@@ -1781,13 +1781,9 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                                       }
                                       
                                       const rmEstimate = oneRepMaxService.calculate1RM(actualWeight, actualReps, objectiveIntensity);
-                                      let exerciseName = 'Exercise';
-                                      if (exercise.name) {
-                                        exerciseName = exercise.name;
-                                      } else if (exercise.primary && Object.keys(exercise.primary).length > 0) {
-                                        const libraryId = Object.keys(exercise.primary)[0];
-                                        exerciseName = exercise.primary[libraryId];
-                                      }
+                                      // Prefer hydrated name (Phase 0 server-side resolves displayName).
+                                      // Skip the primary fallback — it's now an exerciseId, not a name.
+                                      const exerciseName = exercise.name || exercise.exerciseName || 'Exercise';
                                       allSetsWithRM.push({
                                         exerciseName: exerciseName,
                                         weight: actualWeight,

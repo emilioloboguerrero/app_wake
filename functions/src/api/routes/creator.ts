@@ -4055,22 +4055,31 @@ router.get("/creator/library/exercises", async (req, res) => {
     .where("creator_id", "==", auth.userId)
     .get();
 
-  const metaKeys = new Set(["creator_id", "creator_name", "title", "created_at", "updated_at"]);
+  // Exclude 'exercises' (post-migration sub-map) and 'icon' from the legacy iteration —
+  // they're not exercise entries.
+  const metaKeys = new Set(["creator_id", "creator_name", "title", "created_at", "updated_at", "icon", "exercises"]);
 
   for (const libDoc of libSnap.docs) {
     const libData = libDoc.data();
-    for (const [fieldName, fieldVal] of Object.entries(libData)) {
-      if (metaKeys.has(fieldName) || typeof fieldVal !== "object" || fieldVal === null) continue;
-      const key = fieldName;
-      if (!seen.has(key)) {
-        const exData = fieldVal as Record<string, unknown>;
+
+    // Pass 1: post-migration sub-map (id-keyed entries, displayName field)
+    const exMap = libData.exercises as Record<string, Record<string, unknown>> | undefined;
+    if (exMap && typeof exMap === "object" && !Array.isArray(exMap)) {
+      for (const [exerciseId, exData] of Object.entries(exMap)) {
+        if (!exData || typeof exData !== "object") continue;
+        const displayName = (exData.displayName as string | undefined) || exerciseId;
+        // Dedupe by libraryId+displayName — covers both new id-keyed and legacy name-keyed entries.
+        const dedupeKey = `${libDoc.id}::${displayName}`;
+        if (seen.has(dedupeKey)) continue;
         const ma = (exData.muscle_activation || {}) as Record<string, number>;
         const primaryMuscles = Object.entries(ma)
           .sort((a, b) => b[1] - a[1])
           .map(([m]) => m);
-        seen.set(key, {
-          id: `${libDoc.id}_${fieldName}`,
-          name: fieldName,
+        seen.set(dedupeKey, {
+          id: exerciseId,
+          libraryExerciseId: exerciseId,
+          name: displayName,
+          displayName,
           primaryMuscles,
           video_url: (exData.video_url as string) || null,
           muscle_activation: exData.muscle_activation || null,
@@ -4078,6 +4087,30 @@ router.get("/creator/library/exercises", async (req, res) => {
           libraryId: libDoc.id,
         });
       }
+    }
+
+    // Pass 2: legacy top-level entries (display-name keyed). Only adds entries
+    // not already covered by the new sub-map (handles unmigrated libraries).
+    for (const [fieldName, fieldVal] of Object.entries(libData)) {
+      if (metaKeys.has(fieldName) || typeof fieldVal !== "object" || fieldVal === null || Array.isArray(fieldVal)) continue;
+      const dedupeKey = `${libDoc.id}::${fieldName}`;
+      if (seen.has(dedupeKey)) continue;
+      const exData = fieldVal as Record<string, unknown>;
+      const ma = (exData.muscle_activation || {}) as Record<string, number>;
+      const primaryMuscles = Object.entries(ma)
+        .sort((a, b) => b[1] - a[1])
+        .map(([m]) => m);
+      seen.set(dedupeKey, {
+        id: `${libDoc.id}_${fieldName}`,
+        libraryExerciseId: null,
+        name: fieldName,
+        displayName: fieldName,
+        primaryMuscles,
+        video_url: (exData.video_url as string) || null,
+        muscle_activation: exData.muscle_activation || null,
+        implements: exData.implements || null,
+        libraryId: libDoc.id,
+      });
     }
   }
 

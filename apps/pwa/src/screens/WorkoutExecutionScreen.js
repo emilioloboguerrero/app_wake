@@ -2770,28 +2770,28 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       // Load all alternative exercises from all libraries - OPTIMIZED with Promise.all
       const alternativeExercisePromises = [];
       
-      for (const [libraryId, exerciseNames] of Object.entries(alternatives)) {
-        for (const exerciseName of exerciseNames) {
-          // Skip empty or invalid exercise names
-          if (!exerciseName || exerciseName.trim() === '') {
-            continue;
-          }
-          
-          // Create promise for each exercise
-          const exercisePromise = exerciseLibraryService.getExerciseData(libraryId, exerciseName)
+      // alternatives shape: { [libId]: [valueOrId, ...] } — values may be a stable
+      // exerciseId (post-migration) or a legacy display name. The /exercises/:libraryId/:id
+      // endpoint accepts both and returns a hydrated displayName.
+      for (const [libraryId, alternativeValues] of Object.entries(alternatives)) {
+        if (!Array.isArray(alternativeValues)) continue;
+        for (const idOrName of alternativeValues) {
+          if (typeof idOrName !== 'string' || !idOrName.trim()) continue;
+
+          const exercisePromise = exerciseLibraryService.getExerciseData(libraryId, idOrName)
             .then(exerciseData => ({
-              name: exerciseName,
+              id: idOrName,
+              name: exerciseData.displayName || idOrName,
               description: exerciseData.description,
               video_url: exerciseData.video_url,
               muscle_activation: exerciseData.muscle_activation,
               libraryId: libraryId
             }))
             .catch(error => {
-              logger.error(`❌ Error loading alternative exercise ${exerciseName}:`, error);
-              // Return null on error so we can filter it out
+              logger.error(`❌ Error loading alternative exercise ${idOrName}:`, error);
               return null;
             });
-          
+
           alternativeExercisePromises.push(exercisePromise);
         }
       }
@@ -3112,29 +3112,34 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             // Create new alternatives object
             const newAlternatives = { ...exercise.alternatives };
             
-            // Add current exercise back to its original library
-            if (currentLibraryId) {
+            // Add current exercise back to its original library — use the stable
+            // libraryExerciseId (the value of primary[libId], which is an id post-migration)
+            // so refs survive renames.
+            const currentLibraryExerciseId = currentLibraryId && currentExercise.primary
+              ? currentExercise.primary[currentLibraryId] : null;
+            if (currentLibraryId && currentLibraryExerciseId) {
               if (!newAlternatives[currentLibraryId]) {
                 newAlternatives[currentLibraryId] = [];
               }
-              // Only add if not already there
-              if (!newAlternatives[currentLibraryId].includes(currentExercise.name)) {
-                newAlternatives[currentLibraryId].push(currentExercise.name);
+              if (!newAlternatives[currentLibraryId].includes(currentLibraryExerciseId)) {
+                newAlternatives[currentLibraryId].push(currentLibraryExerciseId);
               }
             }
-            
-            // Remove selected exercise from its library
+
+            // Remove selected exercise from its library — selectedExercise.id is the
+            // stable id when the picker came from the post-migration exercisesById map.
+            const selectedValue = selectedExercise.id || selectedExercise.name;
             if (newAlternatives[selectedExercise.libraryId]) {
               newAlternatives[selectedExercise.libraryId] = newAlternatives[selectedExercise.libraryId]
-                .filter(name => name !== selectedExercise.name);
+                .filter(v => v !== selectedValue && v !== selectedExercise.name);
             }
-            
+
             return {
               ...exercise,
               name: selectedExercise.name,
               description: selectedExercise.description,
               video_url: selectedExercise.video_url,
-              primary: { [selectedExercise.libraryId]: selectedExercise.name },
+              primary: { [selectedExercise.libraryId]: selectedValue },
               alternatives: newAlternatives
             };
           }
@@ -3398,6 +3403,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, []);
 
   const handleAddExerciseInEdit = useCallback((selectedExercise) => {
+    // Write the stable libraryExerciseId in primary so refs survive renames.
+    const primaryValue = selectedExercise.id || selectedExercise.name;
     const newExercise = {
       id: `added_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name: selectedExercise.name,
@@ -3405,7 +3412,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       video_url: selectedExercise.video_url,
       muscle_activation: selectedExercise.muscle_activation,
       libraryId: selectedExercise.libraryId,
-      primary: { [selectedExercise.libraryId]: selectedExercise.name },
+      primary: { [selectedExercise.libraryId]: primaryValue },
       alternatives: {},
       order: editingExercises.length,
       measures: ["reps", "weight", "intensity"],
@@ -3666,20 +3673,40 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         try {
           const libraryData = await exerciseLibraryService.getLibraryDocument(libraryId);
           if (libraryData) {
-            // API returns { id, creator_name, title, exercises: { name: data } }
-            const exercises = libraryData.exercises || libraryData;
-            Object.entries(exercises).forEach(([exerciseName, exerciseData]) => {
-              if (typeof exerciseData === 'object' && exerciseData !== null && exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at' && exerciseName !== 'id') {
+            // API returns { id, creator_name, title, exercises (legacy name-keyed), exercisesById (new id-keyed) }.
+            // Prefer the post-migration id-keyed map so picker items expose stable ids.
+            const idMap = libraryData.exercisesById && typeof libraryData.exercisesById === 'object'
+              ? libraryData.exercisesById : null;
+            if (idMap && Object.keys(idMap).length > 0) {
+              Object.entries(idMap).forEach(([exerciseId, exerciseData]) => {
+                if (!exerciseData || typeof exerciseData !== 'object') return;
                 exerciseEntries.push({
-                  name: exerciseName,
+                  id: exerciseId,
+                  name: exerciseData.displayName || exerciseId,
                   description: exerciseData.description || '',
                   video_url: exerciseData.video_url || '',
                   muscle_activation: exerciseData.muscle_activation || {},
                   implements: Array.isArray(exerciseData.implements) ? exerciseData.implements : [],
                   libraryId: libraryId
                 });
-              }
-            });
+              });
+            } else {
+              // Legacy fallback: iterate top-level name-keyed entries (unmigrated libraries).
+              const exercises = libraryData.exercises || libraryData;
+              Object.entries(exercises).forEach(([exerciseName, exerciseData]) => {
+                if (typeof exerciseData === 'object' && exerciseData !== null && exerciseName !== 'creator_name' && exerciseName !== 'creator_id' && exerciseName !== 'created_at' && exerciseName !== 'id' && exerciseName !== 'exercises' && exerciseName !== 'exercisesById') {
+                  exerciseEntries.push({
+                    id: null,
+                    name: exerciseName,
+                    description: exerciseData.description || '',
+                    video_url: exerciseData.video_url || '',
+                    muscle_activation: exerciseData.muscle_activation || {},
+                    implements: Array.isArray(exerciseData.implements) ? exerciseData.implements : [],
+                    libraryId: libraryId
+                  });
+                }
+              });
+            }
           }
         } catch (error) {
           logger.error(`❌ Error loading library ${libraryId}:`, error);

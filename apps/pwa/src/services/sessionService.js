@@ -136,7 +136,9 @@ class SessionService {
       // Map API exercises to internal workout exercise shape
       const workoutExercises = (apiSession.exercises ?? []).map(ex => ({
         id: ex.exerciseId,
-        name: ex.name || (ex.primary && typeof ex.primary === 'object' ? Object.values(ex.primary)[0] : '') || '',
+        // ex.name is hydrated server-side to the displayName. We deliberately do NOT
+        // fall back to Object.values(ex.primary)[0] because that's now an exerciseId.
+        name: ex.name || '',
         description: ex.description,
         video_url: ex.video_url,
         muscle_activation: ex.muscle_activation,
@@ -274,7 +276,9 @@ class SessionService {
       // Map API exercises to internal workout exercise shape (same as getCurrentSession)
       const workoutExercises = (apiSession.exercises ?? []).map(ex => ({
         id: ex.exerciseId,
-        name: ex.name || (ex.primary && typeof ex.primary === 'object' ? Object.values(ex.primary)[0] : '') || '',
+        // ex.name is hydrated server-side to the displayName. We deliberately do NOT
+        // fall back to Object.values(ex.primary)[0] because that's now an exerciseId.
+        name: ex.name || '',
         description: ex.description,
         video_url: ex.video_url,
         muscle_activation: ex.muscle_activation,

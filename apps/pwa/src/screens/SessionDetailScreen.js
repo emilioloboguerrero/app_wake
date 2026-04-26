@@ -55,8 +55,14 @@ const SessionDetailScreen = ({ navigation, route }) => {
   };
 
   const handleExercisePress = async (exerciseKey, exerciseData) => {
-    // Extract libraryId and exerciseName from the exerciseKey
-    const [libraryId, exerciseName] = exerciseKey.split('_');
+    // exerciseKey shape: `${libraryId}_${libraryExerciseId}` post-migration. Prefer the
+    // snapshotted exerciseName from the doc body (always present); only fall back to
+    // splitting the key for legacy/edge-case docs.
+    const sep = exerciseKey.indexOf('_');
+    const libraryId = sep > 0 ? exerciseKey.slice(0, sep) : exerciseKey;
+    const exerciseName = exerciseData?.exerciseName
+      || exerciseData?.name
+      || (sep > 0 ? exerciseKey.slice(sep + 1) : exerciseKey);
     
     // Try to load current estimate data if available
     let currentEstimate = null;

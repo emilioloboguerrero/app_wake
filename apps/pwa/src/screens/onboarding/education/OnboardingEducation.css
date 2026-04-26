@@ -244,14 +244,19 @@
 
 .pwa-ob-profile-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 28px;
+  padding: 0 28px 140px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   scrollbar-width: none;
+}
+
+.pwa-ob-profile-scroll > * {
+  flex-shrink: 0;
 }
 
 .pwa-ob-profile-scroll::-webkit-scrollbar {
@@ -350,6 +355,35 @@
   align-items: center;
   justify-content: center;
   color: rgba(255,255,255,0.2);
+}
+
+.pwa-ob-photo-remove {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(26, 26, 26, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 2;
+  transition: background-color 0.2s, transform 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.pwa-ob-photo-remove:hover {
+  background: #fff;
+  transform: scale(1.06);
+}
+
+.pwa-ob-photo-remove:active {
+  transform: scale(0.94);
 }
 
 /* ── Sections ── */
@@ -581,11 +615,17 @@
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 12px 28px 36px;
+  padding: 64px 28px calc(28px + env(safe-area-inset-bottom, 0px));
   display: flex;
   justify-content: center;
   z-index: 15;
-  background: linear-gradient(transparent, rgba(26,26,26,0.95) 40%);
+  background: linear-gradient(
+    to bottom,
+    rgba(26, 26, 26, 0) 0%,
+    rgba(26, 26, 26, 0.7) 40%,
+    rgba(26, 26, 26, 0.95) 70%,
+    #1a1a1a 100%
+  );
   pointer-events: none;
 }
 

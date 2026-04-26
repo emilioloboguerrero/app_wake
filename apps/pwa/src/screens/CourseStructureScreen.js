@@ -23,11 +23,9 @@ import WakeLoader from '../components/WakeLoader';
 const ExerciseList = ({ exercises, styles }) => {
   const resolvedExercises = useMemo(() =>
     exercises.map((exercise, index) => {
-      let title = exercise.name || `Exercise ${exercise.id}`;
-      if (!exercise.name && exercise.primary && typeof exercise.primary === 'object') {
-        const firstKey = Object.keys(exercise.primary)[0];
-        if (firstKey) title = exercise.primary[firstKey];
-      }
+      // exercise.name is hydrated server-side to displayName via Phase 0. The primary
+      // fallback would now leak an exerciseId, so we omit it.
+      const title = exercise.name || exercise.title || `Exercise ${exercise.id}`;
       return { id: exercise.id, title, index };
     }),
     [exercises]

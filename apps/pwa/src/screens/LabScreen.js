@@ -986,7 +986,8 @@ const LabScreen = ({ navigation }) => {
       .slice(0, 5)
       .map(([key, v]) => ({
         key,
-        name: key.split('_').slice(1).join(' '),
+        // Prefer snapshotted exerciseName; the key tail is now an exerciseId post-migration.
+        name: v.exerciseName || v.name || key.split('_').slice(1).join(' '),
         current: v.current,
         lastUpdated: v.lastUpdated,
         achievedWith: v.achievedWith,

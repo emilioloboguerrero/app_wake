@@ -1183,25 +1183,36 @@ const LibrarySessionDetailScreen = () => {
 
       const exercisesList = libraryService.getExercisesFromLibrary(library);
 
-      // Get exercise IDs that are already in session (read from ref to avoid dependency)
+      // Build a set of session-exercise refs already present. Each ref is keyed by
+      // both the stable id AND the displayName so the filter below catches matches
+      // regardless of which shape the picker exposes.
       const currentExercises = exercisesRef.current;
       const sessionExerciseIds = new Set();
       currentExercises.forEach(ex => {
         if (ex.primary) {
-          Object.entries(ex.primary).forEach(([libId, exName]) => {
-            if (libId === libraryId) {
-              sessionExerciseIds.add(`${libId}::${exName}`);
+          Object.entries(ex.primary).forEach(([libId, exVal]) => {
+            if (libId === libraryId && exVal) {
+              sessionExerciseIds.add(`${libId}::${exVal}`);
+              // Also add the displayName form via libraryExerciseNames so picker
+              // entries that only expose .name still match.
+              const dn = libraryExerciseNames?.[libId]?.[exVal];
+              if (dn) sessionExerciseIds.add(`${libId}::${dn}`);
             }
           });
         }
       });
 
-      // Prepare available exercises with drag IDs and sort by name
+      // Prepare available exercises with drag IDs and sort by name. Match the picker
+      // item against both its id and its name so filtering works for any shape.
       const available = exercisesList
-        .filter(ex => !sessionExerciseIds.has(`${libraryId}::${ex.name}`))
+        .filter(ex => {
+          if (sessionExerciseIds.has(`${libraryId}::${ex.id ?? ''}`)) return false;
+          if (sessionExerciseIds.has(`${libraryId}::${ex.name}`)) return false;
+          return true;
+        })
         .map(ex => ({
           ...ex,
-          dragId: `available-${libraryId}-${ex.name}`,
+          dragId: `available-${libraryId}-${ex.id || ex.name}`,
           libraryId,
           libraryTitle: library.title,
           isInSession: false
@@ -1255,7 +1266,12 @@ const LibrarySessionDetailScreen = () => {
             referenceLibrariesMap[libraryId].forEach((exerciseName) => {
               if (!exerciseName) return;
               const key = getLibraryExerciseKey(libraryId, exerciseName);
-              completenessUpdates[key] = libraryData ? isLibraryExerciseDataComplete(libraryData[exerciseName]) : false;
+              // exerciseName here may be a stable id (post-migration) or a legacy display
+              // name. Try the new sub-map first, then top-level.
+              const entry = libraryData
+                ? (libraryData.exercises?.[exerciseName] || libraryData[exerciseName])
+                : null;
+              completenessUpdates[key] = entry ? isLibraryExerciseDataComplete(entry) : false;
             });
           } catch (err) {
             referenceLibrariesMap[libraryId].forEach((exerciseName) => {
@@ -2559,8 +2575,15 @@ const LibrarySessionDetailScreen = () => {
     }
   };
 
-  const handleSelectExercise = async (exerciseName) => {
-    if (!selectedLibraryForExercise || !exerciseName) return;
+  const handleSelectExercise = async (exerciseOrName) => {
+    if (!selectedLibraryForExercise || !exerciseOrName) return;
+
+    // Accept either a full exercise object {id, name, ...} or a bare display name string
+    // (for legacy call sites). Always prefer the stable id when present so primary /
+    // alternatives values point at the post-migration exerciseId, not the display name.
+    const exerciseObj = typeof exerciseOrName === 'object' ? exerciseOrName : null;
+    const exerciseName = exerciseObj ? exerciseObj.name : exerciseOrName;
+    const valueToWrite = exerciseObj?.id || exerciseName;
 
     let apiUpdatePayload = null;
 
@@ -2568,7 +2591,7 @@ const LibrarySessionDetailScreen = () => {
       setIsSavingLibraryExerciseChoice(true);
 
       if (libraryExerciseModalMode === 'primary') {
-        const primaryUpdate = { [selectedLibraryForExercise]: exerciseName };
+        const primaryUpdate = { [selectedLibraryForExercise]: valueToWrite };
         apiUpdatePayload = { primary: primaryUpdate };
         setExerciseDraft(prev => ({
           ...prev,
@@ -2583,8 +2606,8 @@ const LibrarySessionDetailScreen = () => {
         if (!currentAlternatives[selectedLibraryForExercise]) {
           currentAlternatives[selectedLibraryForExercise] = [];
         }
-        if (!currentAlternatives[selectedLibraryForExercise].includes(exerciseName)) {
-          currentAlternatives[selectedLibraryForExercise].push(exerciseName);
+        if (!currentAlternatives[selectedLibraryForExercise].includes(valueToWrite)) {
+          currentAlternatives[selectedLibraryForExercise].push(valueToWrite);
         }
         apiUpdatePayload = { alternatives: currentAlternatives };
         setExerciseDraft(prev => ({
@@ -2599,7 +2622,7 @@ const LibrarySessionDetailScreen = () => {
         const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
         if (currentAlternatives[alternativeToEdit.libraryId] &&
             Array.isArray(currentAlternatives[alternativeToEdit.libraryId])) {
-          currentAlternatives[alternativeToEdit.libraryId][alternativeToEdit.index] = exerciseName;
+          currentAlternatives[alternativeToEdit.libraryId][alternativeToEdit.index] = valueToWrite;
         }
         apiUpdatePayload = { alternatives: currentAlternatives };
         setExerciseDraft(prev => ({
@@ -4251,8 +4274,8 @@ const LibrarySessionDetailScreen = () => {
                                     <div key={`${libraryId}-${index}`} className="exercise-horizontal-card">
                                       <span className="exercise-horizontal-card-name">
                                         {typeof alternativeName === 'string'
-                                          ? alternativeName
-                                          : alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`}
+                                          ? resolvePrimaryDisplayName(libraryId, alternativeName, libraryExerciseNames)
+                                          : alternativeName?.displayName || alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`}
                                         {(() => {
                                           const alternativeKeyName = typeof alternativeName === 'string'
                                             ? alternativeName
@@ -4857,14 +4880,14 @@ const objectivesFields = (draftObjectives || []).filter(obj => obj !== 'previous
                 <div className="library-picker-exercises-list">
                   {filteredExercises.map((exercise) => (
                     <button
-                      key={exercise.name}
+                      key={exercise.id || exercise.name}
                       type="button"
                       className="library-picker-exercise-item"
-                      onClick={() => handleSelectExercise(exercise.name)}
+                      onClick={() => handleSelectExercise(exercise)}
                       disabled={isSavingLibraryExerciseChoice}
                     >
                       <span className="library-picker-exercise-item-name">{exercise.name}</span>
-                      {isLibraryExerciseIncomplete(selectedLibraryForExercise, exercise.name) && (
+                      {isLibraryExerciseIncomplete(selectedLibraryForExercise, exercise.id || exercise.name) && (
                         <span
                           className="exercise-incomplete-icon-small"
                           title="Este ejercicio de la biblioteca está incompleto"

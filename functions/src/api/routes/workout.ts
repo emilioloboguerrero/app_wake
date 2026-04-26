@@ -678,11 +678,14 @@ router.get("/workout/daily", async (req, res) => {
         .orderBy("order", "asc")
         .get();
 
-      // Derive libraryId and name from primary map when not stored directly
+      // Derive libraryId, libraryExerciseId, and resolvedName.
+      // Post-migration: primaryMap[libId] is a stable exerciseId. Pre-migration: a name.
       const primaryMap = exData.primary as Record<string, string> | undefined;
       const primaryLibraryId = primaryMap ? Object.keys(primaryMap)[0] : null;
       const resolvedLibraryId = exData.libraryId ?? primaryLibraryId ?? null;
-      const resolvedName = exData.name || (primaryLibraryId ? primaryMap![primaryLibraryId] : "");
+      // libraryExerciseId is what history is keyed by — read from primary only.
+      const libraryExerciseId = primaryLibraryId && primaryMap ? primaryMap[primaryLibraryId] : null;
+      const resolvedName = exData.name || libraryExerciseId || "";
 
       return {
         exerciseId: exDoc.id,
@@ -714,8 +717,10 @@ router.get("/workout/daily", async (req, res) => {
             rep_sequence: setData.rep_sequence ?? null,
           };
         }),
-        exerciseKey: resolvedLibraryId && resolvedName ?
-          `${resolvedLibraryId}_${resolvedName}` :
+        // Always use libraryExerciseId for the history key (post-migration shape).
+        // Never use resolvedName — it could be a displayName which doesn't match the rekeyed history docs.
+        exerciseKey: resolvedLibraryId && libraryExerciseId ?
+          `${resolvedLibraryId}_${libraryExerciseId}` :
           exDoc.id,
       };
     })
@@ -997,11 +1002,14 @@ router.get("/workout/session-exercises", async (req, res) => {
       const exData = exDoc.data();
       const setsSnap = await exDoc.ref.collection("sets").orderBy("order", "asc").get();
 
-      // Derive libraryId and name from primary map when not stored directly
+      // Derive libraryId, libraryExerciseId, and resolvedName.
+      // Post-migration: primaryMap[libId] is a stable exerciseId. Pre-migration: a name.
       const primaryMap = exData.primary as Record<string, string> | undefined;
       const primaryLibraryId = primaryMap ? Object.keys(primaryMap)[0] : null;
       const resolvedLibraryId = exData.libraryId ?? primaryLibraryId ?? null;
-      const resolvedName = exData.name || (primaryLibraryId ? primaryMap![primaryLibraryId] : "");
+      // libraryExerciseId is what history is keyed by — read from primary only.
+      const libraryExerciseId = primaryLibraryId && primaryMap ? primaryMap[primaryLibraryId] : null;
+      const resolvedName = exData.name || libraryExerciseId || "";
 
       return {
         exerciseId: exDoc.id,
@@ -1033,8 +1041,10 @@ router.get("/workout/session-exercises", async (req, res) => {
             rep_sequence: setData.rep_sequence ?? null,
           };
         }),
-        exerciseKey: resolvedLibraryId && resolvedName ?
-          `${resolvedLibraryId}_${resolvedName}` :
+        // Always use libraryExerciseId for the history key (post-migration shape).
+        // Never use resolvedName — it could be a displayName which doesn't match the rekeyed history docs.
+        exerciseKey: resolvedLibraryId && libraryExerciseId ?
+          `${resolvedLibraryId}_${libraryExerciseId}` :
           exDoc.id,
       };
     })

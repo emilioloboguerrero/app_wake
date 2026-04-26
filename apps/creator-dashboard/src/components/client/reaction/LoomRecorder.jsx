@@ -57,6 +57,11 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   const bubbleVideoRef = useRef(null);
   const clientVideoRef = useRef(null);
   const timerRef = useRef(null);
+  const userStreamRef = useRef(null);
+
+  // Mirror userStream into a ref so the unmount cleanup sees the latest value
+  // (the cleanup effect runs once with [] deps, capturing initial closure).
+  useEffect(() => { userStreamRef.current = userStream; }, [userStream]);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -125,10 +130,21 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     if (timerRef.current) clearInterval(timerRef.current);
   }, [userStream]);
 
+  // Unmount-only cleanup — read from refs to avoid stale-closure bug.
   useEffect(() => () => {
-    cleanupAll();
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-  }, []); // eslint-disable-line
+    if (userStreamRef.current) {
+      userStreamRef.current.getTracks().forEach((t) => t.stop());
+      userStreamRef.current = null;
+    }
+    if (displayStreamRef.current) {
+      displayStreamRef.current.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      try { recorderRef.current.stop(); } catch { /* noop */ }
+    }
+    if (timerRef.current) clearInterval(timerRef.current);
+  }, []);
 
   // Mute video element based on mic state — when creator's mic is on,
   // tab audio is silenced so it isn't captured in the recording.
@@ -277,6 +293,15 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
       userStream.getAudioTracks().forEach((t) => { t.enabled = micOn; });
     }
   }, [micOn, userStream]);
+
+  // Release camera + mic the moment recording finishes so the OS indicator clears.
+  useEffect(() => {
+    if (phase !== 'preview') return;
+    if (userStream) {
+      userStream.getTracks().forEach((t) => t.stop());
+      setUserStream(null);
+    }
+  }, [phase]); // eslint-disable-line
 
   // Bubble drag
   const onBubblePointerDown = useCallback((e) => {

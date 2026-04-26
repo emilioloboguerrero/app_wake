@@ -1335,11 +1335,12 @@ const LibraryContentScreen = () => {
               referenceLibrariesMap[libraryId].forEach((exerciseName) => {
                 if (!exerciseName) return;
                 const key = getLibraryExerciseKey(libraryId, exerciseName);
-                if (libraryData) {
-                  completenessUpdates[key] = isLibraryExerciseDataComplete(libraryData[exerciseName]);
-                } else {
-                  completenessUpdates[key] = false;
-                }
+                // exerciseName may be a stable id (post-migration) or a legacy display
+                // name. Try the new sub-map first, then top-level.
+                const entry = libraryData
+                  ? (libraryData.exercises?.[exerciseName] || libraryData[exerciseName])
+                  : null;
+                completenessUpdates[key] = entry ? isLibraryExerciseDataComplete(entry) : false;
               });
             } catch (error) {
               logger.error(`Error fetching library ${libraryId}:`, error);
@@ -1596,10 +1597,16 @@ const LibraryContentScreen = () => {
     }
   };
 
-  const handleSelectExercise = async (exerciseName) => {
-    if (!selectedLibraryForExercise || !exerciseName) {
+  const handleSelectExercise = async (exerciseOrName) => {
+    if (!selectedLibraryForExercise || !exerciseOrName) {
       return;
     }
+
+    // Accept either an exercise object {id, name, ...} or a bare name. Prefer the
+    // stable id when present so primary/alternatives values are id-based post-migration.
+    const exerciseObj = typeof exerciseOrName === 'object' ? exerciseOrName : null;
+    const exerciseName = exerciseObj ? exerciseObj.name : exerciseOrName;
+    const valueToWrite = exerciseObj?.id || exerciseName;
 
     const exerciseId = currentExerciseId;
     if (!isCreatingExercise && (!exerciseId || !user || !sessionId)) {
@@ -1609,7 +1616,7 @@ const LibraryContentScreen = () => {
     try {
       if (libraryExerciseModalMode === 'primary') {
         const primaryUpdate = {
-          [selectedLibraryForExercise]: exerciseName
+          [selectedLibraryForExercise]: valueToWrite
         };
         
         // If creating exercise in main modal, update draft
@@ -1652,27 +1659,28 @@ const LibraryContentScreen = () => {
           }
         }
       } else if (libraryExerciseModalMode === 'add-alternative') {
-        // Add alternative
+        // Add alternative — store the stable id so future renames don't break this ref.
         const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
         let exerciseExists = false;
-        
+
         for (const libraryId in currentAlternatives) {
-          if (Array.isArray(currentAlternatives[libraryId]) && currentAlternatives[libraryId].includes(exerciseName)) {
+          if (Array.isArray(currentAlternatives[libraryId])
+              && (currentAlternatives[libraryId].includes(valueToWrite) || currentAlternatives[libraryId].includes(exerciseName))) {
             exerciseExists = true;
             break;
           }
         }
-        
+
         if (exerciseExists) {
           showToast('Esta alternativa ya está agregada.', 'error');
           handleCloseLibraryExerciseModal();
           return;
         }
-        
+
         if (!currentAlternatives[selectedLibraryForExercise]) {
           currentAlternatives[selectedLibraryForExercise] = [];
         }
-        currentAlternatives[selectedLibraryForExercise].push(exerciseName);
+        currentAlternatives[selectedLibraryForExercise].push(valueToWrite);
         
         if (isCreatingExercise) {
           setExerciseDraft(prev => ({
@@ -1713,30 +1721,32 @@ const LibraryContentScreen = () => {
           }
         }
       } else if (libraryExerciseModalMode === 'edit-alternative' && alternativeToEdit) {
-        // Edit alternative
+        // Edit alternative — write the stable id (or name fallback for legacy entries).
         const currentAlternatives = JSON.parse(JSON.stringify(draftAlternatives));
-        if (currentAlternatives[alternativeToEdit.libraryId] && 
+        if (currentAlternatives[alternativeToEdit.libraryId] &&
             Array.isArray(currentAlternatives[alternativeToEdit.libraryId]) &&
             alternativeToEdit.index < currentAlternatives[alternativeToEdit.libraryId].length) {
-          
+
           let exerciseExists = false;
           for (const libraryId in currentAlternatives) {
             if (Array.isArray(currentAlternatives[libraryId])) {
-              const indexInLibrary = currentAlternatives[libraryId].indexOf(exerciseName);
-              if (indexInLibrary !== -1 && !(libraryId === alternativeToEdit.libraryId && indexInLibrary === alternativeToEdit.index)) {
+              const matchesId = currentAlternatives[libraryId].indexOf(valueToWrite);
+              const matchesName = currentAlternatives[libraryId].indexOf(exerciseName);
+              const dupIndex = matchesId !== -1 ? matchesId : matchesName;
+              if (dupIndex !== -1 && !(libraryId === alternativeToEdit.libraryId && dupIndex === alternativeToEdit.index)) {
                 exerciseExists = true;
                 break;
               }
             }
           }
-          
+
           if (exerciseExists) {
             showToast('Esta alternativa ya está agregada.', 'error');
             handleCloseLibraryExerciseModal();
             return;
           }
-          
-          currentAlternatives[alternativeToEdit.libraryId][alternativeToEdit.index] = exerciseName;
+
+          currentAlternatives[alternativeToEdit.libraryId][alternativeToEdit.index] = valueToWrite;
           
           if (isCreatingExercise) {
             setExerciseDraft(prev => ({
@@ -3513,9 +3523,9 @@ const LibraryContentScreen = () => {
                 <div className="library-exercise-selection-list">
                   {exercisesFromSelectedLibrary.map((exercise) => (
                     <button
-                      key={exercise.name}
+                      key={exercise.id || exercise.name}
                       className="library-exercise-selection-item"
-                      onClick={() => handleSelectExercise(exercise.name)}
+                      onClick={() => handleSelectExercise(exercise)}
                     >
                       <span className="library-exercise-selection-item-name">{exercise.name}</span>
                     </button>
