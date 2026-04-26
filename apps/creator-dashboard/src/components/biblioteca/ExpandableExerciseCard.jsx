@@ -12,20 +12,35 @@ const DEFAULT_OBJECTIVE_LABELS = { reps: 'Repeticiones', intensity: 'RPE', previ
 const getMeasureLabel = (key, custom = {}) => custom[key] || DEFAULT_MEASURE_LABELS[key] || key;
 const getObjectiveLabel = (key, custom = {}) => custom[key] || DEFAULT_OBJECTIVE_LABELS[key] || key;
 
-const getExercisePrimaryName = (exercise) => {
-  if (!exercise?.primary || typeof exercise.primary !== 'object') return null;
-  const values = Object.values(exercise.primary);
-  if (values.length === 0 || !values[0]) return null;
-  const val = values[0];
-  return typeof val === 'string' ? val : val?.name || val?.title || null;
+// Resolves a primary[libId] value (could be a stable exerciseId or a legacy displayName)
+// to the human-readable displayName via the libraryExerciseNames map. Falls back to the
+// raw value when the map is missing or doesn't have the key (handles unmigrated entries).
+const resolveLibName = (libId, value, libraryExerciseNames) => {
+  if (typeof value !== 'string') {
+    if (value && typeof value === 'object') return value.displayName || value.name || value.title || '';
+    return '';
+  }
+  const fromMap = libraryExerciseNames?.[libId]?.[value];
+  return fromMap || value;
 };
 
-const getExerciseDisplayName = (exercise) => {
+const getExercisePrimaryName = (exercise, libraryExerciseNames) => {
+  if (!exercise?.primary || typeof exercise.primary !== 'object') return null;
+  const entries = Object.entries(exercise.primary);
+  if (entries.length === 0) return null;
+  const [libId, val] = entries[0];
+  const resolved = resolveLibName(libId, val, libraryExerciseNames);
+  return resolved || null;
+};
+
+const getExerciseDisplayName = (exercise, libraryExerciseNames) => {
+  // Prefer the freshly-resolved displayName from the library — survives renames.
+  const primaryStr = getExercisePrimaryName(exercise, libraryExerciseNames) || '';
+  if (primaryStr) return primaryStr;
   const nameOrTitle = exercise?.name || exercise?.title;
   const nameStr = (nameOrTitle && typeof nameOrTitle === 'string' && nameOrTitle.trim()) ? nameOrTitle.trim() : '';
-  const primaryStr = getExercisePrimaryName(exercise) || '';
   if (nameStr && nameStr.toLowerCase() !== 'ejercicio') return nameStr;
-  return primaryStr || nameStr || 'Ejercicio';
+  return nameStr || 'Ejercicio';
 };
 
 /* ── Scope prompt — "apply to all exercises or just this one?" ── */
@@ -80,6 +95,7 @@ const ExpandableExerciseCard = ({
   registerFlush,
   globalActivityRef,
   isLibraryMode,
+  libraryExerciseNames,
 }) => {
   const {
     attributes,
@@ -180,8 +196,8 @@ const ExpandableExerciseCard = ({
     return () => registerFlush?.(exercise.id, null);
   }, [exercise.id, registerFlush, setsHook.flushPendingSaves]);
 
-  const exerciseName = getExerciseDisplayName(exercise);
-  const primaryName = getExercisePrimaryName(exercise);
+  const exerciseName = getExerciseDisplayName(exercise, libraryExerciseNames);
+  const primaryName = getExercisePrimaryName(exercise, libraryExerciseNames);
   const fields = getObjectiveFields(effectiveObjectives);
 
   const liveSetsCount = setsHook.setsCount;
@@ -203,12 +219,12 @@ const ExpandableExerciseCard = ({
     Object.entries(exercise.alternatives).forEach(([libId, names]) => {
       if (!Array.isArray(names)) return;
       names.forEach((name, idx) => {
-        const displayName = typeof name === 'string' ? name : name?.name || name?.title || '';
+        const displayName = resolveLibName(libId, name, libraryExerciseNames);
         if (displayName) list.push({ libraryId: libId, index: idx, name: displayName });
       });
     });
     return list;
-  }, [exercise.alternatives]);
+  }, [exercise.alternatives, libraryExerciseNames]);
 
   const alternativeCount = alternativesList.length;
 

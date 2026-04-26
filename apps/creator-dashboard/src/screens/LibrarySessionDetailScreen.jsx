@@ -153,8 +153,19 @@ const DropZone = ({ id, children, className }) => {
   );
 };
 
+// Resolves a primary[libId] value (could be a stable exerciseId or a legacy displayName)
+// to the human-readable displayName via the libraryExerciseNames map.
+const resolvePrimaryDisplayName = (libId, value, libraryExerciseNames) => {
+  if (typeof value !== 'string') {
+    if (value && typeof value === 'object') return value.displayName || value.name || value.title || value.id || '';
+    return '';
+  }
+  const fromMap = libraryExerciseNames?.[libId]?.[value];
+  return fromMap || value;
+};
+
 // Draggable Exercise Item Component
-const DraggableExercise = ({ exercise, libraryTitle, isInSession = false, isIncomplete = false, onDelete, isEditMode, onClick, onAdd }) => {
+const DraggableExercise = ({ exercise, libraryTitle, isInSession = false, isIncomplete = false, onDelete, isEditMode, onClick, onAdd, libraryExerciseNames }) => {
   const [addAnimating, setAddAnimating] = useState(false);
   const {
     attributes,
@@ -175,10 +186,16 @@ const DraggableExercise = ({ exercise, libraryTitle, isInSession = false, isInco
   };
 
   const nameOrTitle = (exercise.name && typeof exercise.name === 'string' && exercise.name.trim()) ? exercise.name.trim() : (exercise.title && typeof exercise.title === 'string' && exercise.title.trim()) ? exercise.title.trim() : '';
-  const rawPrimaryName = exercise.primary && typeof exercise.primary === 'object' ? Object.values(exercise.primary)[0] : undefined;
-  const primaryStr = typeof rawPrimaryName === 'string' ? rawPrimaryName : (rawPrimaryName && typeof rawPrimaryName === 'object' ? (rawPrimaryName.name || rawPrimaryName.title || rawPrimaryName.id) : null);
-  const primaryDisplay = (primaryStr != null && String(primaryStr).trim()) ? String(primaryStr).trim() : '';
-  const exerciseName = (nameOrTitle && nameOrTitle.toLowerCase() !== 'ejercicio') ? nameOrTitle : primaryDisplay || nameOrTitle || 'Ejercicio';
+  // Resolve primary[libId] via libraryExerciseNames so post-migration IDs map back to displayName.
+  let primaryDisplay = '';
+  if (exercise.primary && typeof exercise.primary === 'object') {
+    const entries = Object.entries(exercise.primary);
+    if (entries.length > 0) {
+      const [libId, val] = entries[0];
+      primaryDisplay = resolvePrimaryDisplayName(libId, val, libraryExerciseNames);
+    }
+  }
+  const exerciseName = primaryDisplay || (nameOrTitle && nameOrTitle.toLowerCase() !== 'ejercicio' ? nameOrTitle : '') || nameOrTitle || 'Ejercicio';
 
   return (
     <div
@@ -405,6 +422,27 @@ const LibrarySessionDetailScreen = () => {
   const [libraryDataCache, setLibraryDataCache] = useState({}); // Map: libraryId -> full library data
   const libraryDataCacheRef = useRef(libraryDataCache);
   libraryDataCacheRef.current = libraryDataCache;
+
+  // Map: libraryId -> { exerciseId -> displayName }. Resolves post-migration ID
+  // values inside primary/alternatives back to their human-readable name. Falls back
+  // to the raw value when an entry isn't in the map (legacy/unmigrated).
+  const libraryExerciseNames = useMemo(() => {
+    const map = {};
+    const sources = [...(availableLibraries || []), ...Object.values(libraryDataCache || {})];
+    for (const lib of sources) {
+      if (!lib?.id) continue;
+      if (!map[lib.id]) map[lib.id] = {};
+      const exMap = lib.exercises;
+      if (exMap && typeof exMap === 'object' && !Array.isArray(exMap)) {
+        for (const [id, entry] of Object.entries(exMap)) {
+          if (entry && typeof entry === 'object' && entry.displayName) {
+            map[lib.id][id] = entry.displayName;
+          }
+        }
+      }
+    }
+    return map;
+  }, [availableLibraries, libraryDataCache]);
   const [libraryExerciseCompleteness, setLibraryExerciseCompleteness] = useState({}); // Map: libraryId::exerciseName -> boolean
   
   const [isLibraryExerciseModalOpen, setIsLibraryExerciseModalOpen] = useState(false);
@@ -3846,6 +3884,7 @@ const LibrarySessionDetailScreen = () => {
                         libraryTitle={exercise.libraryTitle}
                         isInSession={false}
                         onAdd={addExerciseToSession}
+                        libraryExerciseNames={libraryExerciseNames}
                       />
                     ))}
                   </AnimatedList>
@@ -3894,6 +3933,7 @@ const LibrarySessionDetailScreen = () => {
                       onToggleExpand={toggleExerciseExpand}
                       sessionDefaultTemplate={sessionDefaultTemplate}
                       libraryTitles={libraryTitles}
+                      libraryExerciseNames={libraryExerciseNames}
                       libraryExerciseCompleteness={libraryExerciseCompleteness}
                       onExerciseUpdated={handleExerciseUpdated}
                       onEditPrimary={handleCardEditPrimary}
