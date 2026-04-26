@@ -170,6 +170,27 @@ function isAndroidStandalone() {
   return /Android/i.test(navigator.userAgent) && !isInAppBrowser();
 }
 
+/**
+ * Android browsers that package their own low-targetSdk APK shell on "Add to Home Screen"
+ * instead of using Google's WebAPK Minting Service. The resulting APK is blocked by
+ * Google Play Protect on Android 14+ with the "designed for an older version of Android" warning.
+ * These users must open the page in Chrome (or another Chromium browser that uses the WebAPK service).
+ */
+function isUnsafeAndroidBrowser() {
+  if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
+  const ua = navigator.userAgent;
+  if (!/Android/i.test(ua)) return false;
+  return /MiuiBrowser/i.test(ua)
+    || /UCBrowser|UCWEB/i.test(ua)
+    || /HuaweiBrowser/i.test(ua)
+    || /VivoBrowser/i.test(ua)
+    || /HeyTapBrowser|OppoBrowser/i.test(ua)
+    || /MQQBrowser/i.test(ua)
+    || /QuarkBrowser/i.test(ua)
+    || /baidubrowser|baiduboxapp/i.test(ua)
+    || /SogouMobileBrowser/i.test(ua);
+}
+
 /** Safari on iOS (not Chrome, not Google app). */
 function isSafariIOS() {
   if (typeof navigator === 'undefined' || !navigator.userAgent) return false;
@@ -367,11 +388,12 @@ function getOpenInChromeUrl() {
 export default function InstallScreen() {
   const showChromeIOSMoreStep = isChromeOnIOS();
   const inAppBrowser = isInAppBrowser();
-  const isGoogleAppBrowser = inAppBrowser;
+  const unsafeAndroid = isUnsafeAndroidBrowser();
+  const needsBrowserSwitch = inAppBrowser || unsafeAndroid;
   const googleAppAndroid = isGoogleAppAndroid() || isInAppBrowserAndroid();
   const googleAppIOS = isGoogleAppIOS() || isInAppBrowserIOS();
-  const openInChromeUrl = inAppBrowser ? getOpenInChromeUrl() : null;
-  const isAndroid = isAndroidStandalone();
+  const openInChromeUrl = needsBrowserSwitch ? getOpenInChromeUrl() : null;
+  const isAndroid = isAndroidStandalone() && !unsafeAndroid;
 
   const [showSafariModal, setShowSafariModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -459,10 +481,14 @@ export default function InstallScreen() {
           </span>
           <WakeLogoInline className="install-hero-logo" />
         </h1>
-        {isGoogleAppBrowser ? (
+        {needsBrowserSwitch ? (
           <div className="install-steps install-steps-google">
             <p className="install-google-intro">
-              Estás en un <strong>navegador integrado</strong>. Para añadir Wake a la pantalla de inicio, abre esta página primero en Chrome o Safari.
+              {unsafeAndroid ? (
+                <>Tu navegador crea un instalador que Android bloquea por seguridad. Abre esta página en <strong>Chrome</strong> y la app se añade sin advertencias.</>
+              ) : (
+                <>Estás en un <strong>navegador integrado</strong>. Para añadir Wake a la pantalla de inicio, abre esta página primero en Chrome o Safari.</>
+              )}
             </p>
             <div className="install-open-buttons">
               {openInChromeUrl && (
