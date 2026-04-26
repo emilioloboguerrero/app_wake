@@ -2,20 +2,18 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Mic, MicOff, Camera, CameraOff, Pause, Play, Square,
-  Pencil, Trash2, X, Check, RotateCcw, Circle, ChevronLeft, Settings2,
+  Pencil, Trash2, X, Check, RotateCcw, Circle, Settings2,
 } from 'lucide-react';
 import './LoomRecorder.css';
 
-const CANVAS_W = 720;
-const CANVAS_H = 1280;
 const MAX_DURATION = 600;
 const COUNTDOWN_FROM = 3;
 const POINTER_FADE_MS = 1200;
 const POINTER_FADE_TAIL_MS = 400;
-const BUBBLE_D = 220;
+const BUBBLE_SIZE = 224;
 
 const PEN_COLORS = ['#ef4444', '#ffffff', '#facc15', '#22d3ee'];
-const PEN_WIDTHS = [4, 8, 14];
+const PEN_WIDTHS = [3, 6, 10];
 
 export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   const [phase, setPhase] = useState('setup');
@@ -25,24 +23,21 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   const [userStream, setUserStream] = useState(null);
   const [setupError, setSetupError] = useState('');
 
-  const [videoBlobUrl, setVideoBlobUrl] = useState(null);
-  const [videoLoadError, setVideoLoadError] = useState('');
-  const [sessionKey, setSessionKey] = useState(0);
-
+  const displayStreamRef = useRef(null);
   const recorderRef = useRef(null);
   const chunksRef = useRef([]);
-  const audioCtxRef = useRef(null);
-  const videoToRecordGainRef = useRef(null);
-  const micGainRef = useRef(null);
   const blobRef = useRef(null);
   const mimeTypeRef = useRef('video/webm');
-  const rafRef = useRef(null);
+  const recordingMicLockedRef = useRef(true);
 
   const [countdown, setCountdown] = useState(COUNTDOWN_FROM);
   const [elapsed, setElapsed] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
-  const [bubblePos, setBubblePos] = useState({ x: 32, y: CANVAS_H - BUBBLE_D - 32 });
+  const [bubblePos, setBubblePos] = useState(() => {
+    if (typeof window === 'undefined') return { x: 24, y: 24 };
+    return { x: 24, y: Math.max(24, window.innerHeight - BUBBLE_SIZE - 24) };
+  });
   const [bubbleVisible, setBubbleVisible] = useState(true);
   const dragRef = useRef({ active: false, ox: 0, oy: 0 });
 
@@ -51,6 +46,7 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   const [drawColor, setDrawColor] = useState(PEN_COLORS[0]);
   const [drawWidth, setDrawWidth] = useState(PEN_WIDTHS[1]);
   const [drawMode, setDrawMode] = useState('pointer');
+  const drawCanvasRef = useRef(null);
   const drawingRef = useRef(false);
   const strokesRef = useRef([]);
 
@@ -60,9 +56,6 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   const setupVideoRef = useRef(null);
   const bubbleVideoRef = useRef(null);
   const clientVideoRef = useRef(null);
-  const drawCanvasRef = useRef(null);
-  const compositeCanvasRef = useRef(null);
-  const stageRef = useRef(null);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -71,34 +64,7 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     return () => { document.body.style.overflow = prev; };
   }, []);
 
-  // Pre-fetch video as blob to avoid canvas taint
-  useEffect(() => {
-    if (!videoSrc) return;
-    let cancelled = false;
-    let createdUrl = null;
-    setVideoLoadError('');
-    fetch(videoSrc)
-      .then((r) => {
-        if (!r.ok) throw new Error('fetch failed');
-        return r.blob();
-      })
-      .then((blob) => {
-        if (cancelled) return;
-        createdUrl = URL.createObjectURL(blob);
-        setVideoBlobUrl(createdUrl);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setVideoLoadError('No se pudo cargar el video.');
-        setVideoBlobUrl(videoSrc);
-      });
-    return () => {
-      cancelled = true;
-      if (createdUrl) URL.revokeObjectURL(createdUrl);
-    };
-  }, [videoSrc]);
-
-  // Setup: camera + mic preview stream
+  // Setup: webcam preview stream
   useEffect(() => {
     if (phase !== 'setup') return;
     if (!camOn && !micOn) {
@@ -149,28 +115,60 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
 
   const cleanupAll = useCallback(() => {
     if (userStream) userStream.getTracks().forEach((t) => t.stop());
-    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-      audioCtxRef.current.close().catch(() => {});
-      audioCtxRef.current = null;
+    if (displayStreamRef.current) {
+      displayStreamRef.current.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current = null;
     }
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
       try { recorderRef.current.stop(); } catch { /* noop */ }
     }
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
   }, [userStream]);
 
   useEffect(() => () => {
     cleanupAll();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    if (videoBlobUrl && videoBlobUrl.startsWith('blob:')) URL.revokeObjectURL(videoBlobUrl);
   }, []); // eslint-disable-line
 
-  const handleStart = useCallback(() => {
-    if (!videoBlobUrl) return;
+  // Mute video element based on mic state — when creator's mic is on,
+  // tab audio is silenced so it isn't captured in the recording.
+  useEffect(() => {
+    if (clientVideoRef.current) {
+      clientVideoRef.current.muted = micOn;
+    }
+  }, [micOn, phase]);
+
+  const handleStart = useCallback(async () => {
     setSetupError('');
-    setPhase('countdown');
-  }, [videoBlobUrl]);
+    try {
+      const wantTabAudio = !micOn;
+      const constraints = {
+        video: { displaySurface: 'browser', frameRate: { ideal: 30 } },
+        audio: wantTabAudio,
+        preferCurrentTab: true,
+        selfBrowserSurface: 'include',
+        surfaceSwitching: 'exclude',
+        systemAudio: 'include',
+      };
+      const display = await navigator.mediaDevices.getDisplayMedia(constraints);
+      displayStreamRef.current = display;
+      recordingMicLockedRef.current = micOn;
+
+      display.getVideoTracks()[0].addEventListener('ended', () => {
+        if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+          recorderRef.current.stop();
+        }
+      });
+
+      setPhase('countdown');
+    } catch (err) {
+      if (err && err.name === 'NotAllowedError') {
+        setSetupError('Permiso denegado para compartir pantalla.');
+      } else {
+        setSetupError('Tu navegador no permite compartir esta pestaña. Usa Chrome o Edge.');
+      }
+    }
+  }, [micOn]);
 
   // Countdown
   useEffect(() => {
@@ -210,121 +208,21 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     if (elapsed >= MAX_DURATION && phase === 'recording') handleStop();
   }, [elapsed, phase]); // eslint-disable-line
 
-  // Composite render loop + MediaRecorder lifecycle
+  // Start MediaRecorder when entering recording
   useEffect(() => {
     if (phase !== 'recording') return;
+    const display = displayStreamRef.current;
+    if (!display) return;
 
-    const canvas = compositeCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    const clientVid = clientVideoRef.current;
-    const bubbleVid = bubbleVideoRef.current;
-    const drawCanvas = drawCanvasRef.current;
+    chunksRef.current = [];
 
-    const renderFrame = () => {
-      // Clear with black
-      ctx.fillStyle = '#000';
-      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    const audioTracks = recordingMicLockedRef.current
+      ? (userStream ? userStream.getAudioTracks() : [])
+      : display.getAudioTracks();
 
-      // Client video — object-fit: cover into portrait
-      if (clientVid && clientVid.readyState >= 2) {
-        const vw = clientVid.videoWidth;
-        const vh = clientVid.videoHeight;
-        if (vw > 0 && vh > 0) {
-          const scale = Math.max(CANVAS_W / vw, CANVAS_H / vh);
-          const dw = vw * scale;
-          const dh = vh * scale;
-          const dx = (CANVAS_W - dw) / 2;
-          const dy = (CANVAS_H - dh) / 2;
-          try { ctx.drawImage(clientVid, dx, dy, dw, dh); } catch { /* taint */ }
-        }
-      }
-
-      // Drawing layer (already in canvas coords)
-      if (drawCanvas) {
-        try { ctx.drawImage(drawCanvas, 0, 0, CANVAS_W, CANVAS_H); } catch { /* noop */ }
-      }
-
-      // Webcam bubble
-      if (camOn && bubbleVisible && bubbleVid && bubbleVid.readyState >= 2) {
-        const cx = bubblePos.x + BUBBLE_D / 2;
-        const cy = bubblePos.y + BUBBLE_D / 2;
-        const r = BUBBLE_D / 2;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-        const bw = bubbleVid.videoWidth || 1;
-        const bh = bubbleVid.videoHeight || 1;
-        const bScale = Math.max(BUBBLE_D / bw, BUBBLE_D / bh);
-        const bdw = bw * bScale;
-        const bdh = bh * bScale;
-        // Mirror horizontally
-        ctx.translate(bubblePos.x + BUBBLE_D, bubblePos.y);
-        ctx.scale(-1, 1);
-        const dx = (BUBBLE_D - bdw) / 2;
-        const dy = (BUBBLE_D - bdh) / 2;
-        try { ctx.drawImage(bubbleVid, dx, dy, bdw, bdh); } catch { /* noop */ }
-        ctx.restore();
-
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.30)';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-      }
-
-      rafRef.current = requestAnimationFrame(renderFrame);
-    };
-    rafRef.current = requestAnimationFrame(renderFrame);
-
-    // Audio graph
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    const actx = new Ctx();
-    audioCtxRef.current = actx;
-    if (actx.state === 'suspended') actx.resume().catch(() => {});
-
-    const recordDest = actx.createMediaStreamDestination();
-
-    let videoToRecordGain = null;
-    let micGain = null;
-
-    // Client video → speaker + record (gated)
-    if (clientVid) {
-      try {
-        const vSource = actx.createMediaElementSource(clientVid);
-        const speakerGain = actx.createGain();
-        speakerGain.gain.value = 1;
-        vSource.connect(speakerGain).connect(actx.destination);
-
-        videoToRecordGain = actx.createGain();
-        videoToRecordGain.gain.value = micOn ? 0 : 1;
-        vSource.connect(videoToRecordGain).connect(recordDest);
-      } catch { /* element source already created */ }
-    }
-
-    // Mic → record (gated)
-    if (userStream) {
-      const micTracks = userStream.getAudioTracks();
-      if (micTracks.length > 0) {
-        try {
-          const mSource = actx.createMediaStreamSource(new MediaStream([micTracks[0]]));
-          micGain = actx.createGain();
-          micGain.gain.value = micOn ? 1 : 0;
-          mSource.connect(micGain).connect(recordDest);
-        } catch { /* noop */ }
-      }
-    }
-
-    videoToRecordGainRef.current = videoToRecordGain;
-    micGainRef.current = micGain;
-
-    // Build combined stream
-    const canvasStream = canvas.captureStream(30);
     const combined = new MediaStream([
-      ...canvasStream.getVideoTracks(),
-      ...recordDest.stream.getAudioTracks(),
+      ...display.getVideoTracks(),
+      ...audioTracks,
     ]);
 
     let mimeType = 'video/webm;codecs=vp9,opus';
@@ -335,8 +233,7 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     }
     mimeTypeRef.current = mimeType;
 
-    chunksRef.current = [];
-    const recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 3_500_000 });
+    const recorder = new MediaRecorder(combined, { mimeType, videoBitsPerSecond: 3_000_000 });
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current });
@@ -344,29 +241,15 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
       const url = URL.createObjectURL(blob);
       setPreviewUrl(url);
       setPhase('preview');
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
+      const d = displayStreamRef.current;
+      if (d) {
+        d.getTracks().forEach((t) => t.stop());
+        displayStreamRef.current = null;
       }
     };
     recorder.start(1000);
     recorderRef.current = recorder;
-
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, [phase, sessionKey]); // eslint-disable-line
-
-  // Live mic toggle reroute
-  useEffect(() => {
-    if (phase !== 'recording') return;
-    if (videoToRecordGainRef.current) videoToRecordGainRef.current.gain.value = micOn ? 0 : 1;
-    if (micGainRef.current) micGainRef.current.gain.value = micOn ? 1 : 0;
-    if (userStream) {
-      userStream.getAudioTracks().forEach((t) => { t.enabled = micOn; });
-    }
-  }, [micOn, phase, userStream]);
+  }, [phase]); // eslint-disable-line
 
   const handleStop = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
@@ -388,33 +271,29 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     }
   }, []);
 
-  // Coordinate mapping: pointer → canvas coords (CANVAS_W × CANVAS_H)
-  const pointerToCanvas = useCallback((clientX, clientY) => {
-    const stage = stageRef.current;
-    if (!stage) return { x: 0, y: 0 };
-    const rect = stage.getBoundingClientRect();
-    const x = ((clientX - rect.left) / rect.width) * CANVAS_W;
-    const y = ((clientY - rect.top) / rect.height) * CANVAS_H;
-    return { x, y };
-  }, []);
+  // Live mic mute via track.enabled (no recorder restart)
+  useEffect(() => {
+    if (userStream) {
+      userStream.getAudioTracks().forEach((t) => { t.enabled = micOn; });
+    }
+  }, [micOn, userStream]);
 
+  // Bubble drag
   const onBubblePointerDown = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    const p = pointerToCanvas(e.clientX, e.clientY);
-    dragRef.current = { active: true, ox: p.x - bubblePos.x, oy: p.y - bubblePos.y };
-  }, [bubblePos, pointerToCanvas]);
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragRef.current = { active: true, ox: e.clientX - rect.left, oy: e.clientY - rect.top };
+  }, []);
 
   const onBubblePointerMove = useCallback((e) => {
     if (!dragRef.current.active) return;
     e.preventDefault();
-    const p = pointerToCanvas(e.clientX, e.clientY);
-    setBubblePos({
-      x: clamp(p.x - dragRef.current.ox, 0, CANVAS_W - BUBBLE_D),
-      y: clamp(p.y - dragRef.current.oy, 0, CANVAS_H - BUBBLE_D),
-    });
-  }, [pointerToCanvas]);
+    const x = clamp(e.clientX - dragRef.current.ox, 0, window.innerWidth - BUBBLE_SIZE);
+    const y = clamp(e.clientY - dragRef.current.oy, 0, window.innerHeight - BUBBLE_SIZE);
+    setBubblePos({ x, y });
+  }, []);
 
   const onBubblePointerUp = useCallback((e) => {
     if (dragRef.current.active) {
@@ -423,13 +302,19 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     }
   }, []);
 
-  // Drawing canvas — fixed at CANVAS_W × CANVAS_H, scaled via CSS
+  // Drawing layer
   useEffect(() => {
+    if (phase === 'setup' || phase === 'preview') return;
     const cv = drawCanvasRef.current;
     if (!cv) return;
-    cv.width = CANVAS_W;
-    cv.height = CANVAS_H;
-    redraw();
+    const fit = () => {
+      cv.width = window.innerWidth;
+      cv.height = window.innerHeight;
+      redraw();
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
   }, [phase]); // eslint-disable-line
 
   const redraw = useCallback(() => {
@@ -471,9 +356,8 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     strokesRef.current = live;
   }, []);
 
-  // Continuous redraw for fading pointer strokes
   useEffect(() => {
-    if (phase !== 'recording' && phase !== 'countdown') return;
+    if (phase === 'setup' || phase === 'preview') return;
     let raf;
     const tick = () => {
       const hasFading = strokesRef.current.some((s) => s.mode === 'pointer' && s.endedAt);
@@ -489,9 +373,8 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     e.preventDefault();
     drawingRef.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const p = pointerToCanvas(e.clientX, e.clientY);
     strokesRef.current.push({
-      points: [p],
+      points: [{ x: e.clientX, y: e.clientY }],
       color: drawColor,
       width: drawWidth,
       mode: drawMode,
@@ -499,17 +382,17 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
       endedAt: null,
     });
     redraw();
-  }, [drawTool, drawColor, drawWidth, drawMode, redraw, pointerToCanvas]);
+  }, [drawTool, drawColor, drawWidth, drawMode, redraw]);
 
   const onDrawMove = useCallback((e) => {
     if (!drawingRef.current || !drawTool) return;
     e.preventDefault();
     const stroke = strokesRef.current[strokesRef.current.length - 1];
     if (stroke) {
-      stroke.points.push(pointerToCanvas(e.clientX, e.clientY));
+      stroke.points.push({ x: e.clientX, y: e.clientY });
       redraw();
     }
-  }, [drawTool, redraw, pointerToCanvas]);
+  }, [drawTool, redraw]);
 
   const onDrawUp = useCallback((e) => {
     if (!drawingRef.current) return;
@@ -534,7 +417,6 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     setDrawTool(null);
     setDrawPopover(false);
     setNote('');
-    setSessionKey((k) => k + 1);
     setPhase('setup');
   }, [previewUrl]);
 
@@ -552,10 +434,9 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        if (phase === 'setup' || phase === 'preview') handleCancelAll();
-        else if (drawPopover) setDrawPopover(false);
-      }
+      if (e.key !== 'Escape') return;
+      if (phase === 'setup' || phase === 'preview') handleCancelAll();
+      else if (drawPopover) setDrawPopover(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -578,8 +459,8 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
         <div className="lr-setup-card">
           <h2 className="lr-setup-title">Reaccionar al video</h2>
           <p className="lr-setup-sub">
-            Se grabará un video vertical con el video del cliente y, opcionalmente,
-            tu cámara y voz por encima.
+            Graba tu pantalla mientras reproduces el video del cliente.
+            Tu cámara y voz se incluyen si las activas.
           </p>
 
           <div className="lr-setup-preview">
@@ -610,27 +491,22 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
             </button>
           </div>
 
-          {(setupError || videoLoadError) && (
-            <p className="lr-error">{setupError || videoLoadError}</p>
-          )}
+          {setupError && <p className="lr-error">{setupError}</p>}
 
           <div className="lr-setup-actions">
             <button className="lr-btn lr-btn--ghost" onClick={handleCancelAll}>
               Cancelar
             </button>
-            <button
-              className="lr-btn lr-btn--primary"
-              onClick={handleStart}
-              disabled={!videoBlobUrl}
-            >
+            <button className="lr-btn lr-btn--primary" onClick={handleStart}>
               <Circle size={11} fill="currentColor" />
-              {videoBlobUrl ? 'Empezar grabación' : 'Cargando video…'}
+              Empezar grabación
             </button>
           </div>
 
           <p className="lr-setup-hint">
+            Selecciona <strong>"Esta pestaña"</strong> en el diálogo del navegador.
             Cuando el micrófono está activado, el audio del video del cliente se silencia
-            en la grabación para que se escuche tu voz.
+            para que solo se escuche tu voz.
           </p>
         </div>
       </div>
@@ -641,59 +517,46 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     return (
       <div className="lr-root">
         <div className="lr-stage-wrap">
-          <div className="lr-stage" ref={stageRef}>
+          <div className="lr-stage">
             <video
               ref={clientVideoRef}
-              key={sessionKey}
-              src={videoBlobUrl || undefined}
+              src={videoSrc}
               className="lr-client-video"
               controls={phase === 'recording' && !drawTool}
               playsInline
               preload="auto"
             />
-
-            <canvas
-              ref={drawCanvasRef}
-              className={`lr-draw ${drawTool ? 'lr-draw--active' : ''}`}
-              onPointerDown={onDrawDown}
-              onPointerMove={onDrawMove}
-              onPointerUp={onDrawUp}
-              onPointerCancel={onDrawUp}
-              style={{ pointerEvents: drawTool ? 'auto' : 'none' }}
-            />
-
-            {camOn && bubbleVisible && (
-              <div
-                className="lr-bubble"
-                style={{
-                  left: `${(bubblePos.x / CANVAS_W) * 100}%`,
-                  top: `${(bubblePos.y / CANVAS_H) * 100}%`,
-                  width: `${(BUBBLE_D / CANVAS_W) * 100}%`,
-                }}
-                onPointerDown={onBubblePointerDown}
-                onPointerMove={onBubblePointerMove}
-                onPointerUp={onBubblePointerUp}
-                onPointerCancel={onBubblePointerUp}
-              >
-                <video ref={bubbleVideoRef} className="lr-bubble-video" autoPlay muted playsInline />
-              </div>
-            )}
-
-            {phase === 'countdown' && (
-              <div className="lr-countdown">
-                <span className="lr-countdown-num">{countdown}</span>
-              </div>
-            )}
           </div>
-
-          <canvas
-            ref={compositeCanvasRef}
-            width={CANVAS_W}
-            height={CANVAS_H}
-            className="lr-composite"
-            aria-hidden
-          />
         </div>
+
+        <canvas
+          ref={drawCanvasRef}
+          className={`lr-draw ${drawTool ? 'lr-draw--active' : ''}`}
+          onPointerDown={onDrawDown}
+          onPointerMove={onDrawMove}
+          onPointerUp={onDrawUp}
+          onPointerCancel={onDrawUp}
+          style={{ pointerEvents: drawTool ? 'auto' : 'none' }}
+        />
+
+        {camOn && bubbleVisible && (
+          <div
+            className="lr-bubble"
+            style={{ left: bubblePos.x, top: bubblePos.y }}
+            onPointerDown={onBubblePointerDown}
+            onPointerMove={onBubblePointerMove}
+            onPointerUp={onBubblePointerUp}
+            onPointerCancel={onBubblePointerUp}
+          >
+            <video ref={bubbleVideoRef} className="lr-bubble-video" autoPlay muted playsInline />
+          </div>
+        )}
+
+        {phase === 'countdown' && (
+          <div className="lr-countdown">
+            <span className="lr-countdown-num">{countdown}</span>
+          </div>
+        )}
 
         {phase === 'recording' && (
           <RecordingBar
@@ -815,18 +678,11 @@ function RecordingBar({
             onClick={() => setDrawPopover((v) => !v)}
             title="Opciones"
           >
-            <Settings2 size={12} />
+            <Settings2 size={11} />
           </button>
         )}
         {penActive && drawPopover && (
           <div className="lr-pop">
-            <button
-              className="lr-pop-close"
-              onClick={() => setDrawPopover(false)}
-              aria-label="Cerrar"
-            >
-              <ChevronLeft size={12} />
-            </button>
             <div className="lr-pop-row">
               {PEN_COLORS.map((c) => (
                 <button
@@ -846,7 +702,7 @@ function RecordingBar({
                   onClick={() => setDrawWidth(w)}
                   aria-label="Grosor"
                 >
-                  <span style={{ width: w * 1.4, height: w * 1.4, background: drawColor }} />
+                  <span style={{ width: w * 2, height: w * 2, background: drawColor }} />
                 </button>
               ))}
             </div>

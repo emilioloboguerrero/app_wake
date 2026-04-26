@@ -1978,13 +1978,21 @@ router.get("/exercises/:libraryId", async (req, res) => {
   }
 
   const data = doc.data()!;
-  const metaKeys = new Set(["creator_id", "creator_name", "created_at", "updated_at", "title"]);
+  // `exercises` is the post-migration sub-map ({id: {displayName, ...}}). Exclude it
+  // from the flat top-level iteration so callers iterating `data.exercises` don't see
+  // it as a fake entry. The legacy display-name-keyed top-level fields are still here.
+  const metaKeys = new Set(["creator_id", "creator_name", "created_at", "updated_at", "title", "icon", "exercises"]);
   const exercises: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(data)) {
-    if (!metaKeys.has(key) && typeof val === "object" && val !== null) {
+    if (!metaKeys.has(key) && typeof val === "object" && val !== null && !Array.isArray(val)) {
       exercises[key] = val;
     }
   }
+
+  // Also expose the post-migration sub-map under `exercisesById` for clients that
+  // want to use stable ids + displayName directly.
+  const exercisesById = (data.exercises && typeof data.exercises === "object" && !Array.isArray(data.exercises))
+    ? (data.exercises as Record<string, unknown>) : {};
 
   res.json({
     data: {
@@ -1992,6 +2000,7 @@ router.get("/exercises/:libraryId", async (req, res) => {
       creator_name: data.creator_name ?? null,
       title: data.title ?? null,
       exercises,
+      exercisesById,
     },
   });
 });
