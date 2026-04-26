@@ -44,6 +44,84 @@ function normalizeExerciseName(exercise: Record<string, unknown>): Record<string
   return exercise;
 }
 
+/**
+ * Resolve `name`/`title` on a list of session-exercises through the exercises_library
+ * collection so post-migration exerciseIds in primary[libId] map back to the human
+ * displayName. Falls back to `normalizeExerciseName` for legacy/unmigrated shapes.
+ *
+ * Mutates the exercises in place and returns them.
+ */
+async function hydrateExercisesWithLibraryNames(
+  exercises: Array<Record<string, unknown>>
+): Promise<Array<Record<string, unknown>>> {
+  const libIds = new Set<string>();
+  for (const ex of exercises) {
+    const primary = ex.primary as Record<string, string> | undefined;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) {
+      for (const libId of Object.keys(primary)) {
+        if (typeof libId === "string" && libId) libIds.add(libId);
+      }
+    }
+    const altMap = ex.alternatives as Record<string, unknown> | undefined;
+    if (altMap && typeof altMap === "object" && !Array.isArray(altMap)) {
+      for (const libId of Object.keys(altMap)) {
+        if (typeof libId === "string" && libId) libIds.add(libId);
+      }
+    }
+  }
+
+  if (libIds.size === 0) {
+    exercises.forEach((e) => normalizeExerciseName(e));
+    return exercises;
+  }
+
+  const libDocs = await Promise.all(
+    Array.from(libIds).map((libId) =>
+      db.collection("exercises_library").doc(libId).get()
+    )
+  );
+  const libraryMap: Record<string, Record<string, unknown>> = {};
+  for (const doc of libDocs) {
+    if (doc.exists) libraryMap[doc.id] = doc.data()!;
+  }
+
+  const resolveDisplayName = (libId: string, value: string): string => {
+    const libData = libraryMap[libId];
+    if (!libData) return value;
+    const libExMap = (libData.exercises as Record<string, Record<string, unknown>> | undefined) ?? {};
+    const fromMap = libExMap[value]?.displayName;
+    if (typeof fromMap === "string" && fromMap.trim()) return fromMap;
+    // Legacy: top-level entry where the key IS the displayName.
+    const fromTop = libData[value];
+    if (fromTop && typeof fromTop === "object" && !Array.isArray(fromTop)) return value;
+    return value;
+  };
+
+  for (const ex of exercises) {
+    const primary = ex.primary as Record<string, string> | undefined;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) {
+      const [libId, val] = Object.entries(primary)[0] ?? [];
+      if (libId && typeof val === "string" && val) {
+        const resolved = resolveDisplayName(libId, val);
+        // Overwrite name/title with the resolved displayName so reads always show
+        // current name even after a coach rename. If the entry doesn't resolve
+        // (unmigrated library or stale id), keep the existing name/title.
+        if (resolved && resolved !== val) {
+          ex.name = resolved;
+          ex.title = resolved;
+        } else {
+          normalizeExerciseName(ex);
+        }
+      } else {
+        normalizeExerciseName(ex);
+      }
+    } else {
+      normalizeExerciseName(ex);
+    }
+  }
+  return exercises;
+}
+
 // GET /creator/clients — paginated 50/page, optional ?programId=X filter, ?status=active|inactive|all
 router.get("/creator/clients", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -2764,7 +2842,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
         }
       }
 
-      exercises.forEach((e) => normalizeExerciseName(e as Record<string, unknown>));
+      await hydrateExercisesWithLibraryNames(exercises as Array<Record<string, unknown>>);
       return {id: sDoc.id, ...sData, exercises};
     })
   );
@@ -3737,7 +3815,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
     }
   }
 
-  exercises.forEach((e) => normalizeExerciseName(e as Record<string, unknown>));
+  await hydrateExercisesWithLibraryNames(exercises as Array<Record<string, unknown>>);
   res.json({data: {...sessionDoc.data(), sessionId: sessionDoc.id, id: sessionDoc.id, exercises}});
 });
 
@@ -4119,8 +4197,12 @@ router.get("/creator/library/exercises", async (req, res) => {
       const primaryMuscles = Object.entries(ma)
         .sort((a, b) => b[1] - a[1])
         .map(([m]) => m);
+      // For unmigrated libraries the canonical primary[libId] value is the displayName
+      // itself (top-level field key). Emitting `${libId}_${fieldName}` here would later
+      // be written verbatim into primary, breaking history keys and lookups. Use the
+      // bare fieldName so dual-shape readers resolve via the legacy top-level path.
       seen.set(dedupeKey, {
-        id: `${libDoc.id}_${fieldName}`,
+        id: fieldName,
         libraryExerciseId: null,
         name: fieldName,
         displayName: fieldName,
@@ -4208,7 +4290,7 @@ router.get("/creator/library/sessions", async (req, res) => {
         exercises: exercises.map((eDoc) => {
           const exData = eDoc.data();
           // primary[libId] is a stable exerciseId (post-migration) or a display name (legacy).
-          // Library doc has data at exercises.{id} (new shape) or top-level [name] (legacy).
+          // resolveLibraryExercise handles both shapes.
           let resolvedMuscleActivation: Record<string, number> | null = null;
           let resolvedDisplayName: string = exData.name ?? "";
           if (exData.primary && typeof exData.primary === "object") {
@@ -4217,15 +4299,13 @@ router.get("/creator/library/sessions", async (req, res) => {
               const [libraryId, idOrName] = entries[0];
               const libData = libraryCache[libraryId as string] as Record<string, unknown> | null;
               if (libData) {
-                const exMap = libData.exercises as Record<string, Record<string, unknown>> | undefined;
-                const fromMap = exMap?.[idOrName as string];
-                const fromTop = libData[idOrName as string] as Record<string, unknown> | undefined;
-                const entry = (fromMap && typeof fromMap === "object" ? fromMap : fromTop) as Record<string, unknown> | undefined;
+                const resolved = resolveLibraryExercise(libData, idOrName as string);
+                const entry = resolved?.data;
                 if (entry?.muscle_activation && typeof entry.muscle_activation === "object") {
                   resolvedMuscleActivation = entry.muscle_activation as Record<string, number>;
                 }
                 if (!resolvedDisplayName) {
-                  resolvedDisplayName = (entry?.displayName as string | undefined) || (idOrName as string);
+                  resolvedDisplayName = resolved?.displayName ?? (idOrName as string);
                 }
               }
             }
@@ -4385,13 +4465,9 @@ router.get("/creator/library/sessions/:sessionId", async (req, res) => {
     const [libId, idOrName] = entries[0];
     const libData = libCache[libId];
     if (!libData) return ex;
-    const exMap = libData.exercises as Record<string, Record<string, unknown>> | undefined;
-    const fromMap = exMap?.[idOrName];
-    const fromTop = libData[idOrName] as Record<string, unknown> | undefined;
-    const entry = (fromMap && typeof fromMap === "object" ? fromMap : fromTop);
-    if (!entry) return ex;
-    const displayName = (entry.displayName as string | undefined) || (idOrName);
-    return {...ex, name: displayName};
+    const resolved = resolveLibraryExercise(libData, idOrName);
+    if (!resolved) return ex;
+    return {...ex, name: resolved.displayName};
   });
 
   res.json({data: {...doc.data(), sessionId: doc.id, id: doc.id, exercises}});
@@ -8143,7 +8219,7 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
         }
       }
 
-      exercises.forEach((e) => normalizeExerciseName(e as Record<string, unknown>));
+      await hydrateExercisesWithLibraryNames(exercises as Array<Record<string, unknown>>);
       return {id: sDoc.id, ...sData, exercises};
     })
   );

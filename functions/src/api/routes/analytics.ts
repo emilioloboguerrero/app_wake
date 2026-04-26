@@ -1011,9 +1011,9 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     // doc.id post-migration is `${libraryId}_${exerciseId}` (the second part is a 20-char
     // auto-id). Replacing _→space would yield "lib123 abc456" garbage, so we only fall
     // back to a generic placeholder when the snapshotted exerciseName/name is missing.
-    const exerciseName = (data.exerciseName as string | undefined)
-      ?? (data.name as string | undefined)
-      ?? "Ejercicio";
+    const exerciseName = (data.exerciseName as string | undefined) ??
+      (data.name as string | undefined) ??
+      "Ejercicio";
     const records = (data.records ?? data.history ?? []) as Array<{
       value?: number;
       weight?: number;

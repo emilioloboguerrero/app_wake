@@ -2018,13 +2018,14 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
                               const rmEstimate = oneRepMaxService.calculate1RM(actualWeight, actualReps, objectiveIntensity);
 
-                              let exerciseName = 'Exercise';
-                              if (exercise.name) {
-                                exerciseName = exercise.name;
-                              } else if (exercise.primary && Object.keys(exercise.primary).length > 0) {
-                                const libraryId = Object.keys(exercise.primary)[0];
-                                exerciseName = exercise.primary[libraryId];
-                              }
+                              // Prefer hydrated display fields. Don't fall through to
+                              // exercise.primary[libId] — post-migration that's a 20-char
+                              // exerciseId and would surface as a hash in the RM card.
+                              const exerciseName =
+                                exercise.name ||
+                                exercise.exerciseName ||
+                                exercise.title ||
+                                'Ejercicio';
 
                               allSetsWithRM.push({
                                 exerciseName: exerciseName,

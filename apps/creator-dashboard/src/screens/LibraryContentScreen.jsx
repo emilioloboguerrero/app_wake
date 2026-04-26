@@ -2735,12 +2735,16 @@ const LibraryContentScreen = () => {
       setIsCreatingNewExercise(true);
       
       const primaryValues = Object.values(exerciseDraft.primary);
-      const primaryExerciseName = primaryValues[0];
-      
+      const primaryValue = primaryValues[0];
+      const primaryLibId = Object.keys(exerciseDraft.primary || {})[0];
+      // Post-migration primary[libId] is a stable exerciseId. Resolve to displayName
+      // before sending so the new exercise's `name` field is human-readable, not a 20-char id.
+      const primaryDisplayName = resolvePrimaryDisplayName(primaryLibId, primaryValue);
+
       const newExercise = await libraryService.createExerciseInLibrarySession(
         user.uid,
         sessionId,
-        primaryExerciseName
+        primaryDisplayName
       );
 
       const updateData = {
@@ -3062,9 +3066,10 @@ const LibraryContentScreen = () => {
                                 {Array.isArray(alternativesArray) && alternativesArray.length > 0 ? (
                                   <div className="exercise-horizontal-cards-list">
                                     {alternativesArray.map((alternativeName, index) => {
+                                      // Post-migration alternativeName is a stable exerciseId; resolve through libraryExerciseNames.
                                       const alternativeLabel = typeof alternativeName === 'string'
-                                        ? alternativeName
-                                        : alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`;
+                                        ? resolvePrimaryDisplayName(libraryId, alternativeName)
+                                        : alternativeName?.displayName || alternativeName?.name || alternativeName?.title || `Alternativa ${index + 1}`;
                                       return (
                                         <div key={`${libraryId}-${index}`} className="exercise-horizontal-card">
                                           <span className="exercise-horizontal-card-name">

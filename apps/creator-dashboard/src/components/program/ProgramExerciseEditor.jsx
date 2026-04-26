@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import Modal from '../Modal';
 import Button from '../Button';
 import Input from '../Input';
+import { resolveDisplayName } from '../../utils/libraryExerciseResolver';
 
 export default function ProgramExerciseEditor({
   isOpen,
@@ -18,6 +19,7 @@ export default function ProgramExerciseEditor({
   onSetsChange,
   onSave,
   onDelete,
+  libraryNamesMap,
 }) {
   const [activeTab, setActiveTab] = useState('general');
 
@@ -26,13 +28,18 @@ export default function ProgramExerciseEditor({
   const draft = exerciseDraft || exercise;
   if (!draft) return null;
 
-  // Get exercise title — prefer hydrated `name`/`title` (from API resolve), fall back to primary value.
+  // Get exercise title — prefer hydrated `name`/`title` (from API resolve), then resolve
+  // primary[libId] (a stable exerciseId post-migration) through libraryNamesMap.
   const getExerciseTitle = () => {
     const t = draft.name || draft.title || '';
     if (t && String(t).trim()) return String(t).trim();
     if (draft.primary && typeof draft.primary === 'object') {
-      const vals = Object.values(draft.primary);
-      if (vals.length > 0 && vals[0]) return vals[0];
+      const entries = Object.entries(draft.primary);
+      if (entries.length > 0) {
+        const [libId, val] = entries[0];
+        const resolved = resolveDisplayName(libId, val, libraryNamesMap);
+        if (resolved) return resolved;
+      }
     }
     return 'Ejercicio';
   };
@@ -64,9 +71,9 @@ export default function ProgramExerciseEditor({
               <h3 className="exercise-editor-section-title">Ejercicio principal</h3>
               {draft.primary && typeof draft.primary === 'object' ? (
                 <div className="exercise-editor-primary">
-                  {Object.entries(draft.primary).map(([libId, name]) => (
+                  {Object.entries(draft.primary).map(([libId, val]) => (
                     <div key={libId} className="exercise-editor-ref-chip">
-                      <span>{name}</span>
+                      <span>{resolveDisplayName(libId, val, libraryNamesMap)}</span>
                     </div>
                   ))}
                 </div>
@@ -82,7 +89,7 @@ export default function ProgramExerciseEditor({
                 Object.entries(draft.alternatives).map(([libId, values]) => (
                   Array.isArray(values) && values.map((val, idx) => (
                     <div key={`${libId}-${idx}`} className="exercise-editor-ref-chip">
-                      <span>{typeof val === 'string' ? val : val?.name || 'Alternativa'}</span>
+                      <span>{typeof val === 'string' ? resolveDisplayName(libId, val, libraryNamesMap) : (val?.displayName || val?.name || 'Alternativa')}</span>
                     </div>
                   ))
                 ))

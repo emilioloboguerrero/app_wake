@@ -4618,11 +4618,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const enrichPreviousData = async () => {
     if (!workout?.exercises?.length) return;
 
-    // Build exercise keys from primary map
+    // Build history keys: ${libraryId}_${primaryValue}. Post-migration primary[libId]
+    // is a stable exerciseId; pre-migration it's the displayName. Either way the
+    // history docs are keyed by the same value (rekeyed by the migration script).
     const keys = workout.exercises.map(ex => {
       const libraryId = ex.primary ? Object.keys(ex.primary)[0] : null;
-      const exName = libraryId ? ex.primary[libraryId] : ex.name;
-      return libraryId && exName ? `${libraryId}_${exName}` : null;
+      const primaryVal = libraryId ? ex.primary[libraryId] : ex.name;
+      return libraryId && primaryVal ? `${libraryId}_${primaryVal}` : null;
     });
 
     const validKeys = keys.filter(Boolean);

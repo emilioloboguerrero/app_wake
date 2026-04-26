@@ -1457,7 +1457,9 @@ const LibrarySessionDetailScreen = () => {
     try {
       let createdExercise;
       if (isAnyInstanceEdit && instanceService && instanceId && instanceModuleId) {
-        const name = newExercisePayload.primary ? Object.values(newExercisePayload.primary)[0] : 'Ejercicio';
+        // exerciseData.name carries the human-readable displayName from the picker.
+        // Object.values(primary)[0] would be the stable exerciseId post-migration.
+        const name = exerciseData.name || 'Ejercicio';
         createdExercise = await instanceService.createExercise(instanceId, instanceModuleId, sessionId, name, nextOrder);
         const realExId = createdExercise?.id || createdExercise?.exerciseId;
         if (realExId) {
@@ -2427,7 +2429,11 @@ const LibrarySessionDetailScreen = () => {
       return;
     }
 
-    const primaryExerciseName = primaryValues[0];
+    const primaryValue = primaryValues[0];
+    const primaryLibId = Object.keys(exerciseDraft.primary || {})[0];
+    // Post-migration primary[libId] is a stable exerciseId. Resolve to displayName
+    // before sending so the new exercise's `name` field is human-readable, not a 20-char id.
+    const primaryDisplayName = resolvePrimaryDisplayName(primaryLibId, primaryValue, libraryExerciseNames);
     const nextOrder = exercises.length;
 
     const updateData = {
@@ -2480,7 +2486,7 @@ const LibrarySessionDetailScreen = () => {
     setIsSavingNewExercise(true);
     try {
       const newExercise = await contentApi.createExerciseInLibrarySession(
-        user.uid, sessionId, primaryExerciseName, nextOrder
+        user.uid, sessionId, primaryDisplayName, nextOrder
       );
       const realId = newExercise.id || newExercise.exerciseId;
 

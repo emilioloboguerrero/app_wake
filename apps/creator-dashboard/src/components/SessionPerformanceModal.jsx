@@ -11,20 +11,27 @@ const STATUS = {
   extra: 'extra',
 };
 
-// PWA stores session history exercise keys as libraryId_exerciseName where libraryId
-// is from exercise.primary (exercises_library doc id), not the library session id.
-function getHistoryKeyForPlannedExercise(ex, fallbackSessionId) {
+// History exercise keys shape: ${libraryId}_${value}, where value is post-migration
+// the stable exerciseId (rekeyed by migration script) and pre-migration the display
+// name. Coach data may straddle both shapes — return all viable candidates so the
+// caller can dual-lookup against the performed map.
+function getHistoryKeyCandidatesForPlannedExercise(ex) {
   const primary = ex.primary && typeof ex.primary === 'object' ? ex.primary : null;
-  const keys = primary ? Object.keys(primary) : [];
-  if (keys.length > 0) {
-    const libId = keys[0];
-    const exerciseName = primary[libId];
-    if (libId && exerciseName) {
-      return `${libId}_${String(exerciseName).trim()}`;
+  const candidates = [];
+  if (primary) {
+    const libId = Object.keys(primary)[0];
+    const primaryVal = libId ? primary[libId] : null;
+    if (libId && primaryVal) {
+      candidates.push(`${libId}_${String(primaryVal).trim()}`);
+      // Legacy fallback: if primary[libId] is an exerciseId but a history doc was
+      // written before the migration completed, it would be keyed by displayName.
+      const displayName = ex.name || ex.title;
+      if (displayName && String(displayName).trim() && String(displayName).trim() !== String(primaryVal).trim()) {
+        candidates.push(`${libId}_${String(displayName).trim()}`);
+      }
     }
   }
-  const name = ex.title || ex.name || '';
-  return fallbackSessionId ? `${fallbackSessionId}_${String(name).trim()}` : null;
+  return candidates;
 }
 
 function getPlannedExerciseDisplayName(ex) {
@@ -162,15 +169,14 @@ export default function SessionPerformanceModal({
       }));
     }
     const performed = historyDoc?.exercises ? { ...historyDoc.exercises } : {};
-    const fallbackSessionId = session?.source_library_session_id ?? session?.librarySessionRef ?? sessionIdsToTry[0];
     const items = [];
 
     const matchedPerformedKeys = new Set();
 
     plannedExercises.forEach((ex, index) => {
       const displayName = getPlannedExerciseDisplayName(ex);
-      const key = getHistoryKeyForPlannedExercise(ex, fallbackSessionId);
-      if (!key) {
+      const candidates = getHistoryKeyCandidatesForPlannedExercise(ex);
+      if (candidates.length === 0) {
         items.push({
           id: `planned-${ex.id}-${index}`,
           type: STATUS.deleted,
@@ -182,9 +188,10 @@ export default function SessionPerformanceModal({
         });
         return;
       }
-      const performedData = performed[key];
-      delete performed[key];
-      matchedPerformedKeys.add(key);
+      const matchedKey = candidates.find((k) => performed[k]) || candidates[0];
+      const performedData = performed[matchedKey];
+      delete performed[matchedKey];
+      matchedPerformedKeys.add(matchedKey);
 
       const plannedSets = ex.sets || [];
       const performedSets = performedData?.sets || [];

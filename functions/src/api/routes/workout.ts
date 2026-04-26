@@ -1250,25 +1250,88 @@ router.post("/workout/complete", async (req, res) => {
     })
     .filter(Boolean) as string[];
 
+  // Fetch library docs to hydrate displayName for sessionHistory.exercises (W-7) and
+  // lastPerformance.exerciseName (W-4). Without this, both surfaces persist whatever the
+  // client sent — which after a coach rename or a bad client write becomes a stale name
+  // or a 20-char exerciseId.
+  const uniqueLibraryIdsForHydration = Array.from(new Set(
+    exercises
+      .map((ex) => {
+        const primary = (ex as Record<string, unknown>).primary as Record<string, string> | undefined;
+        return ex.libraryId ?? (primary ? Object.keys(primary)[0] : undefined);
+      })
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  ));
+
+  const [prDocs, completeLibraryDocs] = await Promise.all([
+    exerciseKeys.length > 0 ?
+      Promise.all(
+        exerciseKeys.map((key) =>
+          db
+            .collection("users")
+            .doc(auth.userId)
+            .collection("exerciseLastPerformance")
+            .doc(key)
+            .get()
+        )
+      ) :
+      Promise.resolve([]),
+    uniqueLibraryIdsForHydration.length > 0 ?
+      Promise.all(
+        uniqueLibraryIdsForHydration.map((libId) =>
+          db.collection("exercises_library").doc(libId).get()
+        )
+      ) :
+      Promise.resolve([]),
+  ]);
+
   const existingPrMap: Record<string, { estimate1RM: number }> = {};
-  if (exerciseKeys.length > 0) {
-    const prDocs = await Promise.all(
-      exerciseKeys.map((key) =>
-        db
-          .collection("users")
-          .doc(auth.userId)
-          .collection("exerciseLastPerformance")
-          .doc(key)
-          .get()
-      )
-    );
-    for (const doc of prDocs) {
-      if (doc.exists) {
-        const data = doc.data()!;
-        existingPrMap[doc.id] = {estimate1RM: data.estimate1RM ?? 0};
-      }
+  for (const doc of prDocs) {
+    if (doc.exists) {
+      const data = doc.data()!;
+      existingPrMap[doc.id] = {estimate1RM: data.estimate1RM ?? 0};
     }
   }
+
+  const completeLibraryMap: Record<string, Record<string, unknown>> = {};
+  for (const doc of completeLibraryDocs) {
+    if (doc.exists) completeLibraryMap[doc.id] = doc.data()!;
+  }
+
+  const resolveExerciseDisplayName = (
+    exercise: Record<string, unknown>
+  ): string | null => {
+    const primary = exercise.primary as Record<string, string> | undefined;
+    const libId =
+      (exercise.libraryId as string | undefined) ??
+      (primary ? Object.keys(primary)[0] : undefined);
+    const libExId =
+      (exercise.exerciseId as string | undefined) ??
+      (libId && primary ? primary[libId] : undefined);
+    const libData = libId ? completeLibraryMap[libId] : undefined;
+    if (libData && libExId) {
+      const libExMap =
+        (libData.exercises as Record<string, Record<string, unknown>> | undefined) ?? {};
+      const fromMap = libExMap[libExId]?.displayName;
+      if (typeof fromMap === "string" && fromMap.trim()) return fromMap;
+      // Legacy shape: top-level entry where the key IS the displayName.
+      const fromTop = libData[libExId];
+      if (fromTop && typeof fromTop === "object" && !Array.isArray(fromTop)) {
+        return libExId;
+      }
+    }
+    const snap = exercise.exerciseName;
+    return typeof snap === "string" && snap.trim() ? snap : null;
+  };
+
+  // Hydrate each exercise's exerciseName from library data once (W-7 storage + W-4 fallback).
+  const hydratedExercises = exercises.map((ex) => {
+    const resolved = resolveExerciseDisplayName(ex as Record<string, unknown>);
+    if (resolved && resolved !== ex.exerciseName) {
+      return {...ex, exerciseName: resolved};
+    }
+    return ex;
+  });
 
   // Read user doc for weekly volume + streak
   const userDoc = await db.collection("users").doc(auth.userId).get();
@@ -1298,7 +1361,7 @@ router.post("/workout/complete", async (req, res) => {
   batch.set(sessionHistoryRef, {
     courseId: body.courseId,
     sessionId: body.sessionId,
-    exercises: body.exercises,
+    exercises: hydratedExercises,
     durationMs: body.durationMs,
     date: completionDate,
     completedAt: body.completedAt,
@@ -1310,8 +1373,8 @@ router.post("/workout/complete", async (req, res) => {
   });
 
   // 2. Exercise history + last performance + 1RM per exercise
-  for (let i = 0; i < exercises.length; i++) {
-    const exercise = exercises[i];
+  for (let i = 0; i < hydratedExercises.length; i++) {
+    const exercise = hydratedExercises[i];
     const exerciseKey = exerciseKeys[i];
     if (!exerciseKey) continue;
 
@@ -1340,9 +1403,11 @@ router.post("/workout/complete", async (req, res) => {
 
     // Only count as PR if there's a previous record to beat (not first-time exercises)
     if (existingPr && bestEstimate1RM > existingEstimate && bestSet) {
+      // exercise.exerciseName is hydrated above. Don't fall through to exerciseKey
+      // (which is `${libId}_${exerciseId}`) — that surfaces a 20-char id in the PR card.
       personalRecords.push({
         exerciseKey,
-        exerciseName: exercise.exerciseName ?? exercise.exerciseKey ?? exerciseKey,
+        exerciseName: exercise.exerciseName ?? "Ejercicio",
         newEstimate1RM: Math.round(bestEstimate1RM * 100) / 100,
         achievedWith: bestSet,
       });
@@ -1385,7 +1450,10 @@ router.post("/workout/complete", async (req, res) => {
 
     batch.set(lastPerfRef, {
       exerciseId: exercise.exerciseId ?? null,
-      exerciseName: exercise.exerciseName ?? exercise.exerciseKey ?? exerciseKey,
+      // exercise.exerciseName was hydrated from library above. Avoid fallback to
+      // exercise.exerciseKey or exerciseKey — those are `${libId}_${exerciseId}` and
+      // would persist a 20-char id where the UI expects a display name.
+      exerciseName: exercise.exerciseName ?? null,
       libraryId: exercise.libraryId ?? null,
       lastSessionId: completionId,
       lastPerformedAt: completionDate,
@@ -2003,8 +2071,9 @@ router.get("/exercises/:libraryId", async (req, res) => {
 
   // Also expose the post-migration sub-map under `exercisesById` for clients that
   // want to use stable ids + displayName directly.
-  const exercisesById = (data.exercises && typeof data.exercises === "object" && !Array.isArray(data.exercises))
-    ? (data.exercises as Record<string, unknown>) : {};
+  const exercisesById = (data.exercises && typeof data.exercises === "object" && !Array.isArray(data.exercises)) ?
+    (data.exercises as Record<string, unknown>) :
+    {};
 
   res.json({
     data: {
