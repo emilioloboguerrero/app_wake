@@ -122,6 +122,55 @@ async function hydrateExercisesWithLibraryNames(
   return exercises;
 }
 
+/**
+ * Build a libId → libDoc map for a list of exercise docs (or doc snapshots),
+ * deduping libIds across primary maps. Used by backfill paths to resolve
+ * displayName before persisting copied exercises.
+ */
+async function buildLibraryMapForExerciseDocs(
+  docs: Array<FirebaseFirestore.QueryDocumentSnapshot | Record<string, unknown>>
+): Promise<Record<string, Record<string, unknown>>> {
+  const libIds = new Set<string>();
+  for (const d of docs) {
+    const data = (typeof (d as FirebaseFirestore.QueryDocumentSnapshot).data === "function" ?
+      (d as FirebaseFirestore.QueryDocumentSnapshot).data() :
+      d) as Record<string, unknown>;
+    const primary = data.primary as Record<string, unknown> | undefined;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) {
+      for (const id of Object.keys(primary)) if (id) libIds.add(id);
+    }
+  }
+  if (libIds.size === 0) return {};
+  const libDocs = await Promise.all(
+    Array.from(libIds).map((id) => db.collection("exercises_library").doc(id).get())
+  );
+  const map: Record<string, Record<string, unknown>> = {};
+  for (const ld of libDocs) if (ld.exists) map[ld.id] = ld.data()!;
+  return map;
+}
+
+/**
+ * Resolve `primary[libId]` to a current displayName via libraryMap. Returns null
+ * when no resolution is possible (caller should leave existing name as-is).
+ */
+function resolveDisplayNameForBackfill(
+  exData: Record<string, unknown>,
+  libraryMap: Record<string, Record<string, unknown>>
+): string | null {
+  const primary = exData.primary as Record<string, string> | undefined;
+  if (!primary || typeof primary !== "object") return null;
+  const [libId, val] = Object.entries(primary)[0] ?? [];
+  if (!libId || typeof val !== "string" || !val) return null;
+  const libData = libraryMap[libId];
+  if (!libData) return null;
+  const exMap = (libData.exercises as Record<string, Record<string, unknown>> | undefined) ?? {};
+  const fromMap = exMap[val]?.displayName;
+  if (typeof fromMap === "string" && fromMap.trim()) return fromMap;
+  const fromTop = libData[val];
+  if (fromTop && typeof fromTop === "object" && !Array.isArray(fromTop)) return val;
+  return null;
+}
+
 // GET /creator/clients — paginated 50/page, optional ?programId=X filter, ?status=active|inactive|all
 router.get("/creator/clients", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -2809,11 +2858,18 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
               let batch = db.batch();
               let batchCount = 0;
               const backfilled: typeof exercises = [];
+              // Resolve current displayNames from exercises_library before persisting
+              // so backfilled docs don't bake in a stale name from the source session.
+              const libraryMap = await buildLibraryMapForExerciseDocs(libExSnap.docs);
 
               for (const eDoc of libExSnap.docs) {
                 const exRef = sDoc.ref.collection("exercises").doc();
                 const exData = eDoc.data();
-                batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
+                const resolvedName = resolveDisplayNameForBackfill(exData, libraryMap);
+                const exDataPersist = resolvedName ?
+                  {...exData, name: resolvedName, title: resolvedName} :
+                  exData;
+                batch.set(exRef, {...exDataPersist, id: exRef.id, created_at: FieldValue.serverTimestamp()});
                 batchCount++;
 
                 const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
@@ -2828,7 +2884,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
                   await batch.commit(); batch = db.batch(); batchCount = 0;
                 }
 
-                backfilled.push({id: exRef.id, ...exData, sets});
+                backfilled.push({id: exRef.id, ...exDataPersist, sets});
               }
               if (batchCount > 0) await batch.commit();
 
@@ -3770,15 +3826,22 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
       if (libDoc.exists) {
         const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
         if (!libExSnap.empty) {
-          // Deep-copy exercises+sets into the plan session (self-healing backfill)
+          // Deep-copy exercises+sets into the plan session (self-healing backfill).
+          // Resolve current displayNames from exercises_library before persisting so
+          // backfilled docs don't bake in a stale name from the source session.
           let batch = db.batch();
           let batchCount = 0;
           const backfilledExercises: typeof exercises = [];
+          const libraryMap = await buildLibraryMapForExerciseDocs(libExSnap.docs);
 
           for (const eDoc of libExSnap.docs) {
             const exRef = sessionRef.collection("exercises").doc();
             const exData = eDoc.data();
-            batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
+            const resolvedName = resolveDisplayNameForBackfill(exData, libraryMap);
+            const exDataPersist = resolvedName ?
+              {...exData, name: resolvedName, title: resolvedName} :
+              exData;
+            batch.set(exRef, {...exDataPersist, id: exRef.id, created_at: FieldValue.serverTimestamp()});
             batchCount++;
 
             const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
@@ -3796,7 +3859,7 @@ router.get("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", async
             backfilledExercises.push({
               exerciseId: exRef.id,
               id: exRef.id,
-              ...exData,
+              ...exDataPersist,
               sets,
             });
           }
@@ -8186,11 +8249,18 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
               let batch = db.batch();
               let batchCount = 0;
               const backfilled: Array<Record<string, unknown>> = [];
+              // Resolve current displayNames before persisting (avoids baking in
+              // a stale name from the source library session).
+              const libraryMap = await buildLibraryMapForExerciseDocs(libExSnap.docs);
 
               for (const eDoc of libExSnap.docs) {
                 const exRef = sDoc.ref.collection("exercises").doc();
                 const exData = eDoc.data();
-                batch.set(exRef, {...exData, id: exRef.id, created_at: FieldValue.serverTimestamp()});
+                const resolvedName = resolveDisplayNameForBackfill(exData, libraryMap);
+                const exDataPersist = resolvedName ?
+                  {...exData, name: resolvedName, title: resolvedName} :
+                  exData;
+                batch.set(exRef, {...exDataPersist, id: exRef.id, created_at: FieldValue.serverTimestamp()});
                 batchCount++;
 
                 const setsSnap = await eDoc.ref.collection("sets").orderBy("order", "asc").get();
@@ -8205,7 +8275,7 @@ router.get("/creator/programs/:programId/plan-content/:weekKey", async (req, res
                   await batch.commit(); batch = db.batch(); batchCount = 0;
                 }
 
-                backfilled.push({id: exRef.id, ...exData, sets});
+                backfilled.push({id: exRef.id, ...exDataPersist, sets});
               }
               if (batchCount > 0) await batch.commit();
 

@@ -44,11 +44,18 @@ export default function useVideoExchangeUpload(exchangeId) {
     try {
       setError(null);
 
-      // Step 1: Compress
-      setIsCompressing(true);
-      const compressedFile = await compressVideo(videoBlob, setProgress);
+      // Step 1: Compress (skip if recorder already produced MP4)
+      const isAlreadyMp4 = (videoBlob.type || '').includes('mp4');
+      let compressedFile;
+      if (isAlreadyMp4) {
+        setIsCompressing(false);
+        compressedFile = new File([videoBlob], 'video.mp4', { type: 'video/mp4' });
+      } else {
+        setIsCompressing(true);
+        compressedFile = await compressVideo(videoBlob, setProgress);
+        setIsCompressing(false);
+      }
       const thumbnail = await generateThumbnail(compressedFile);
-      setIsCompressing(false);
 
       // Step 2: Get signed URLs
       setIsUploading(true);

@@ -5,6 +5,10 @@ import userProgressService from '../services/userProgressService';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 
 import logger from '../utils/logger.js';
+
+// Bump when the cached progress payload shape changes. Mismatched cache entries
+// are dropped on read instead of served stale.
+const CACHE_SCHEMA_VERSION = 2;
 class ProgressQueryService {
   /**
    * Get user's progress for a specific course
@@ -264,9 +268,10 @@ class ProgressQueryService {
       const cacheKey = `progress_cache_${userId}_${courseId}`;
       const cacheData = {
         ...progressData,
-        cachedAt: new Date().toISOString()
+        cachedAt: new Date().toISOString(),
+        _cacheSchemaVersion: CACHE_SCHEMA_VERSION,
       };
-      
+
       await AsyncStorage.setItem(cacheKey, JSON.stringify(cacheData));
     } catch (error) {
       logger.error('❌ Failed to cache progress data:', error);
@@ -284,9 +289,14 @@ class ProgressQueryService {
       if (!cachedData) return null;
       
       const cache = JSON.parse(cachedData);
+      // Drop stale shapes proactively — avoids serving pre-migration data after deploys.
+      if (cache?._cacheSchemaVersion !== CACHE_SCHEMA_VERSION) {
+        await AsyncStorage.removeItem(cacheKey);
+        return null;
+      }
       const cacheAge = Date.now() - new Date(cache.cachedAt).getTime();
       const maxAgeMs = maxAgeMinutes * 60 * 1000;
-      
+
       if (cacheAge > maxAgeMs) {
         return null;
       }

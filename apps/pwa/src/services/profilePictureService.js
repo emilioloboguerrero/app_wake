@@ -1,6 +1,7 @@
 import { isWeb } from '../utils/platform';
 import logger from '../utils/logger';
 import apiClient from '../utils/apiClient';
+import { queryClient, queryKeys } from '../config/queryClient';
 
 class ProfilePictureService {
   constructor() {
@@ -211,6 +212,10 @@ class ProfilePictureService {
         await AsyncStorage.setItem(`profile_${userId}`, downloadUrl);
       }
 
+      // Invalidate the React Query user cache so any component reading
+      // userData.profilePictureUrl rerenders with the new URL immediately.
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(userId) });
+
       return downloadUrl;
     } catch (error) {
       logger.error('Error uploading profile picture:', error);
@@ -295,6 +300,8 @@ class ProfilePictureService {
       } catch (cacheError) {
         // Could not clear cache
       }
+
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(userId) });
 
       return true;
     } catch (error) {

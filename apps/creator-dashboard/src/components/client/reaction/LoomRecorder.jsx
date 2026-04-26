@@ -626,12 +626,7 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   function renderPreview() {
     return (
       <div className="lr-root lr-root--preview">
-        <button
-          className="lr-fab lr-fab--close"
-          onClick={handleCancelAll}
-          aria-label="Cerrar"
-          disabled={sending}
-        >
+        <button className="lr-fab lr-fab--close" onClick={handleCancelAll} aria-label="Cerrar">
           <X size={18} />
         </button>
         <div className="lr-preview">
@@ -653,31 +648,16 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
               onChange={(e) => setNote(e.target.value)}
               rows={5}
               maxLength={500}
-              disabled={sending}
             />
             {sendError && <p className="lr-error">{sendError}</p>}
-            {sending && (
-              <div className="lr-sending">
-                <span className="lr-sending-spinner" aria-hidden />
-                <span className="lr-sending-label">Comprimiendo y enviando…</span>
-              </div>
-            )}
             <div className="lr-preview-actions">
-              <button
-                className="lr-btn lr-btn--ghost"
-                onClick={handleRetake}
-                disabled={sending}
-              >
+              <button className="lr-btn lr-btn--ghost" onClick={handleRetake}>
                 <RotateCcw size={14} />
                 Repetir
               </button>
-              <button
-                className="lr-btn lr-btn--primary"
-                onClick={handleConfirm}
-                disabled={sending}
-              >
+              <button className="lr-btn lr-btn--primary" onClick={handleConfirm}>
                 <Check size={14} />
-                {sending ? 'Enviando…' : 'Enviar reacción'}
+                Enviar reacción
               </button>
             </div>
           </aside>

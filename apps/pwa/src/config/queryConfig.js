@@ -1,7 +1,10 @@
 export const STALE_TIMES = {
   activeSession: 0,
   userProfile: 5 * 60 * 1000,
-  programStructure: 30 * 60 * 1000,
+  // Shorter window so coach edits to library exercises (rename, video, muscle activation)
+  // propagate to clients within ~2 min instead of 30. Combined with refetchOnWindowFocus
+  // in cacheConfig.programStructure this means clients see the change on next focus.
+  programStructure: 2 * 60 * 1000,
   nutritionDiary: 30 * 1000,
   exerciseHistory: 15 * 60 * 1000,
   sessionHistory: 10 * 60 * 1000,

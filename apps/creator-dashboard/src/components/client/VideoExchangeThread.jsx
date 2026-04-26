@@ -9,10 +9,12 @@ import { queryKeys, cacheConfig } from '../../config/queryClient';
 import useVideoExchangeUpload from '../../hooks/useVideoExchangeUpload';
 import VideoRecorder from './VideoRecorder';
 import AuthedVideo, { useResolvedStorageUrl } from './AuthedVideo';
+import { useToast } from '../../contexts/ToastContext';
 import './VideoExchangeThread.css';
 
 export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [note, setNote] = useState('');
   const [showRecorder, setShowRecorder] = useState(false);
   const [reactionPath, setReactionPath] = useState(null);
@@ -101,13 +103,18 @@ export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
       <ReactionScreen
         path={reactionPath}
         onClose={() => setReactionPath(null)}
-        onComplete={async (blob, reactionNote) => {
-          const ok = await upload(blob, reactionNote || '');
-          if (!ok) {
-            throw new Error(uploadError || 'No se pudo enviar la reacción');
-          }
+        onComplete={(blob, reactionNote) => {
+          // Optimistic close — fire upload in the background, notify on done.
           setReactionPath(null);
-          resetUpload();
+          showToast('Enviando reacción…', 'info', 2400);
+          upload(blob, reactionNote || '').then((ok) => {
+            if (ok) {
+              showToast('Reacción enviada', 'success');
+            } else {
+              showToast('No se pudo enviar la reacción. Intenta de nuevo.', 'error', 5000);
+            }
+            resetUpload();
+          });
         }}
       />
     );

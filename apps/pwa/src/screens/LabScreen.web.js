@@ -1518,10 +1518,8 @@ const LabScreen = () => {
 
   const userData = userQuery.data ?? null;
 
-  // Source PRs from the live /workout/prs endpoint (server-hydrated displayName,
-  // post-migration key shape). The legacy `userData.oneRepMaxEstimates` field on
-  // the user doc is no longer written by current code paths, so reading it gave
-  // either an empty source or stale data with raw `${libId}_${displayName}` keys.
+  // PRs come from the live /workout/prs endpoint (server-hydrated displayName,
+  // post-migration key shape).
   const prsQuery = useQuery({
     queryKey: queryKeys.prs.all(uid),
     queryFn: () => oneRepMaxService.getEstimatesForUser(uid),

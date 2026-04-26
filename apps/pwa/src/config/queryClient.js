@@ -29,7 +29,9 @@ export const cacheConfig = {
     staleTime: STALE_TIMES.programStructure,
     gcTime: GC_TIMES.programStructure,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    // Refetch on focus so coach edits to library exercises propagate to clients
+    // when they bring the tab/app back into focus.
+    refetchOnWindowFocus: true,
   },
 
   nutrition: {

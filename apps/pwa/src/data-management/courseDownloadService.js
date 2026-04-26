@@ -6,6 +6,11 @@ import { getMondayWeek } from '../utils/weekCalculation';
 import logger from '../utils/logger';
 import libraryResolutionService from '../services/libraryResolutionService';
 
+// Bump when the cached course payload shape changes (e.g. new hydration fields,
+// migrated key shapes). Mismatched cache entries are dropped on read instead of
+// served stale.
+const CACHE_SCHEMA_VERSION = 2;
+
 class CourseDownloadService {
   constructor() {
     this.currentUserId = null; // Will be set by calling context
@@ -332,7 +337,10 @@ class CourseDownloadService {
       const storageKey = `course_${courseId}`;
       const compressedData = await this.compressCourseData(courseData);
       
-      await AsyncStorage.setItem(storageKey, JSON.stringify(compressedData));
+      await AsyncStorage.setItem(storageKey, JSON.stringify({
+        ...compressedData,
+        _cacheSchemaVersion: CACHE_SCHEMA_VERSION,
+      }));
       
       // Update course index
       await this.updateCourseIndex(courseId, {
@@ -358,7 +366,14 @@ class CourseDownloadService {
         return null;
       }
       const courseData = JSON.parse(storedData);
-      
+
+      // Drop cache if the stored payload shape predates the current schema.
+      // Avoids serving stale shapes after migrations that don't bump publishedVersion.
+      if (courseData?._cacheSchemaVersion !== CACHE_SCHEMA_VERSION) {
+        await this.deleteCourse(courseId);
+        return null;
+      }
+
       // Check if course has expired
       if (this.isCourseExpired(courseData)) {
         await this.deleteCourse(courseId);
