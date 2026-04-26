@@ -52,6 +52,8 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
 
   const [previewUrl, setPreviewUrl] = useState(null);
   const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   const setupVideoRef = useRef(null);
   const bubbleVideoRef = useRef(null);
@@ -445,9 +447,21 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
     setPhase('setup');
   }, [previewUrl]);
 
-  const handleConfirm = useCallback(() => {
-    if (blobRef.current && onComplete) {
-      onComplete(blobRef.current, note.trim());
+  const handleConfirm = useCallback(async () => {
+    const blob = blobRef.current;
+    if (!blob || blob.size === 0) {
+      setSendError('La grabación está vacía. Intenta de nuevo.');
+      return;
+    }
+    if (!onComplete) return;
+    setSending(true);
+    setSendError('');
+    try {
+      await onComplete(blob, note.trim());
+    } catch (err) {
+      console.error('[LoomRecorder] send failed', err);
+      setSendError(err?.message || 'No se pudo enviar la reacción.');
+      setSending(false);
     }
   }, [onComplete, note]);
 
@@ -617,7 +631,12 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
   function renderPreview() {
     return (
       <div className="lr-root lr-root--preview">
-        <button className="lr-fab lr-fab--close" onClick={handleCancelAll} aria-label="Cerrar">
+        <button
+          className="lr-fab lr-fab--close"
+          onClick={handleCancelAll}
+          aria-label="Cerrar"
+          disabled={sending}
+        >
           <X size={18} />
         </button>
         <div className="lr-preview">
@@ -639,15 +658,31 @@ export default function LoomRecorder({ videoSrc, onComplete, onCancel }) {
               onChange={(e) => setNote(e.target.value)}
               rows={5}
               maxLength={500}
+              disabled={sending}
             />
+            {sendError && <p className="lr-error">{sendError}</p>}
+            {sending && (
+              <div className="lr-sending">
+                <span className="lr-sending-spinner" aria-hidden />
+                <span className="lr-sending-label">Comprimiendo y enviando…</span>
+              </div>
+            )}
             <div className="lr-preview-actions">
-              <button className="lr-btn lr-btn--ghost" onClick={handleRetake}>
+              <button
+                className="lr-btn lr-btn--ghost"
+                onClick={handleRetake}
+                disabled={sending}
+              >
                 <RotateCcw size={14} />
                 Repetir
               </button>
-              <button className="lr-btn lr-btn--primary" onClick={handleConfirm}>
+              <button
+                className="lr-btn lr-btn--primary"
+                onClick={handleConfirm}
+                disabled={sending}
+              >
                 <Check size={14} />
-                Enviar reacción
+                {sending ? 'Enviando…' : 'Enviar reacción'}
               </button>
             </div>
           </aside>

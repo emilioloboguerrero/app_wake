@@ -102,8 +102,11 @@ export default function VideoExchangeThread({ exchangeId, creatorId, onBack }) {
         path={reactionPath}
         onClose={() => setReactionPath(null)}
         onComplete={async (blob, reactionNote) => {
+          const ok = await upload(blob, reactionNote || '');
+          if (!ok) {
+            throw new Error(uploadError || 'No se pudo enviar la reacción');
+          }
           setReactionPath(null);
-          await upload(blob, reactionNote || '');
           resetUpload();
         }}
       />

@@ -113,6 +113,7 @@ export default function useVideoExchangeUpload(exchangeId) {
       setIsUploading(false);
       return true;
     } catch (err) {
+      console.error('[videoExchangeUpload] failed', err);
       setError(err.message || 'Error al subir el video');
       setIsCompressing(false);
       setIsUploading(false);
