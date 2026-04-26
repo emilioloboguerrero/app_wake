@@ -3248,7 +3248,9 @@ const LibrarySessionDetailScreen = () => {
       const primary = refs[0];
       if (!primary?.libraryId || !primary?.exerciseName) return;
       const library = libraryDataCache[primary.libraryId];
-      const exerciseData = library?.[primary.exerciseName];
+      // primary.exerciseName may be a stable exerciseId (post-migration) or a legacy
+      // top-level name. Try the new exercises.{id} sub-map first, then top-level.
+      const exerciseData = library?.exercises?.[primary.exerciseName] || library?.[primary.exerciseName];
       const muscleActivation = exerciseData?.muscle_activation;
       if (!muscleActivation || typeof muscleActivation !== 'object') return;
       const sets = liveSetsMap[exercise.id] || exercise.sets || [];
