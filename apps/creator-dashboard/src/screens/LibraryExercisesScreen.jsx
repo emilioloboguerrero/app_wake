@@ -31,13 +31,18 @@ const LibraryExercisesScreen = () => {
   const backPath = location.state?.returnTo || '/content';
   const backState = location.state?.returnState ?? {};
 
-  // UI state
-  const [selectedExerciseName, setSelectedExerciseName] = useState(null);
+  // UI state — selection tracked by stable exerciseId (survives rename).
+  const [selectedExerciseId, setSelectedExerciseId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [addExerciseStep, setAddExerciseStep] = useState('name');
   const [newExerciseName, setNewExerciseName] = useState('');
   const addExerciseInputRef = useRef(null);
+
+  // Inline rename state
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const renameInputRef = useRef(null);
 
   // Video state
   const [showVideoPicker, setShowVideoPicker] = useState(false);
@@ -59,9 +64,10 @@ const LibraryExercisesScreen = () => {
     return libraryService.getExercisesFromLibrary(libraryData).sort((a, b) => a.name.localeCompare(b.name));
   }, [libraryData]);
 
+  // Find by id when present (post-migration); fall back to name match for unmigrated libraries.
   const selectedExercise = useMemo(
-    () => exercises.find(ex => ex.name === selectedExerciseName) || null,
-    [exercises, selectedExerciseName]
+    () => exercises.find(ex => (ex.id ?? ex.name) === selectedExerciseId) || null,
+    [exercises, selectedExerciseId]
   );
 
   // Sort order from server data — only changes when server data refreshes (after save)
@@ -91,13 +97,14 @@ const LibraryExercisesScreen = () => {
   const implementsTimerRef = useRef(null);
   const SAVE_DELAY = 1200;
 
-  // Reset drafts when selected exercise changes
+  // Reset drafts and rename when selected exercise changes
   useEffect(() => {
     setDraftMuscles(null);
     setDraftImplements(null);
+    setIsRenaming(false);
     if (muscleTimerRef.current) clearTimeout(muscleTimerRef.current);
     if (implementsTimerRef.current) clearTimeout(implementsTimerRef.current);
-  }, [selectedExerciseName]);
+  }, [selectedExerciseId]);
 
   // Current values: draft if editing, otherwise from server
   const currentMuscles = draftMuscles ?? selectedExercise?.data?.muscle_activation ?? {};
@@ -118,12 +125,14 @@ const LibraryExercisesScreen = () => {
   const createExerciseMutation = useMutation({
     mutationKey: ['library-exercises', 'create'],
     mutationFn: (name) => libraryService.createExercise(libraryId, name),
-    onSuccess: (_data, name) => {
+    onSuccess: (data) => {
       invalidateLibrary();
       setAddExerciseStep('success');
       setTimeout(() => {
         setShowAddExercise(false);
-        setSelectedExerciseName(name);
+        // Backend returns { id, displayName, name } — select by id when available
+        if (data?.id) setSelectedExerciseId(data.id);
+        else if (data?.name) setSelectedExerciseId(data.name);
       }, 1200);
     },
     onError: (err) => {
@@ -135,26 +144,34 @@ const LibraryExercisesScreen = () => {
 
   const deleteExerciseMutation = useMutation({
     mutationKey: ['library-exercises', 'delete'],
-    mutationFn: (name) => libraryService.deleteExercise(libraryId, name),
-    onMutate: async (name) => {
+    // Pass id when available (stable across renames), else name as fallback.
+    mutationFn: ({ id, name }) => libraryService.deleteExercise(libraryId, id ?? name),
+    onMutate: async ({ id, name }) => {
       const queryKey = ['library', 'detail', libraryId];
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);
       queryClient.setQueryData(queryKey, (old) => {
         if (!old) return old;
         const next = { ...old };
-        delete next[name];
+        // Strip from new shape (preferred) and legacy top-level shape.
+        if (next.exercises && id) {
+          const nextEx = { ...next.exercises };
+          delete nextEx[id];
+          next.exercises = nextEx;
+        }
+        if (name) delete next[name];
         return next;
       });
-      if (selectedExerciseName === name) setSelectedExerciseName(null);
-      return { previous, wasSelected: selectedExerciseName === name ? name : null };
+      const wasSelected = selectedExerciseId === (id ?? name);
+      if (wasSelected) setSelectedExerciseId(null);
+      return { previous, wasSelected: wasSelected ? (id ?? name) : null };
     },
-    onError: (err, _name, context) => {
+    onError: (err, _vars, context) => {
       logger.error('Error deleting exercise:', err);
       if (context?.previous) {
         queryClient.setQueryData(['library', 'detail', libraryId], context.previous);
       }
-      if (context?.wasSelected) setSelectedExerciseName(context.wasSelected);
+      if (context?.wasSelected) setSelectedExerciseId(context.wasSelected);
       showToast('No pudimos eliminar el ejercicio. Intenta de nuevo.', 'error');
     },
     onSettled: () => {
@@ -164,8 +181,8 @@ const LibraryExercisesScreen = () => {
 
   const saveMusclesMutation = useMutation({
     mutationKey: ['library-exercises', 'save-muscles'],
-    mutationFn: ({ name, muscleActivation }) =>
-      libraryService.updateExercise(libraryId, name, { muscle_activation: muscleActivation }),
+    mutationFn: ({ idOrName, muscleActivation }) =>
+      libraryService.updateExercise(libraryId, idOrName, { muscle_activation: muscleActivation }),
     onSuccess: async () => {
       await invalidateLibrary();
       setDraftMuscles(null);
@@ -177,8 +194,8 @@ const LibraryExercisesScreen = () => {
   });
 
   const saveImplementsMutation = useMutation({
-    mutationFn: ({ name, implements: impl }) =>
-      libraryService.updateExercise(libraryId, name, { implements: impl }),
+    mutationFn: ({ idOrName, implements: impl }) =>
+      libraryService.updateExercise(libraryId, idOrName, { implements: impl }),
     onSuccess: async () => {
       await invalidateLibrary();
       setDraftImplements(null);
@@ -189,23 +206,43 @@ const LibraryExercisesScreen = () => {
     },
   });
 
+  // Rename — updates displayName on the stable exerciseId. Refs (sessions, history)
+  // keep working because they point at the id, not the name.
+  const renameExerciseMutation = useMutation({
+    mutationKey: ['library-exercises', 'rename'],
+    mutationFn: ({ exerciseId, displayName }) => libraryService.renameExercise(libraryId, exerciseId, displayName),
+    onSuccess: async () => {
+      await invalidateLibrary();
+      setIsRenaming(false);
+    },
+    onError: (err) => {
+      logger.error('Error renaming exercise:', err);
+      const msg = err?.response?.status === 409
+        ? 'Ya existe un ejercicio con ese nombre.'
+        : 'No pudimos renombrar el ejercicio. Intenta de nuevo.';
+      showToast(msg, 'error');
+    },
+  });
+
   // Flush pending saves immediately (used when switching exercises)
   const flushPendingSaves = useCallback(() => {
     if (muscleTimerRef.current) clearTimeout(muscleTimerRef.current);
     if (implementsTimerRef.current) clearTimeout(implementsTimerRef.current);
 
-    if (draftMuscles !== null && selectedExerciseName) {
-      saveMusclesMutation.mutate({ name: selectedExerciseName, muscleActivation: draftMuscles });
+    const idOrName = selectedExercise?.id ?? selectedExercise?.name;
+    if (draftMuscles !== null && idOrName) {
+      saveMusclesMutation.mutate({ idOrName, muscleActivation: draftMuscles });
     }
-    if (draftImplements !== null && selectedExerciseName) {
-      saveImplementsMutation.mutate({ name: selectedExerciseName, implements: draftImplements });
+    if (draftImplements !== null && idOrName) {
+      saveImplementsMutation.mutate({ idOrName, implements: draftImplements });
     }
-  }, [draftMuscles, draftImplements, selectedExerciseName, saveMusclesMutation, saveImplementsMutation]);
+  }, [draftMuscles, draftImplements, selectedExercise, saveMusclesMutation, saveImplementsMutation]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────
   const handleSelectExercise = useCallback((exercise) => {
     flushPendingSaves();
-    setSelectedExerciseName(prev => prev === exercise.name ? null : exercise.name);
+    const key = exercise.id ?? exercise.name;
+    setSelectedExerciseId(prev => prev === key ? null : key);
   }, [flushPendingSaves]);
 
   const handleAddExercise = useCallback(() => {
@@ -232,46 +269,72 @@ const LibraryExercisesScreen = () => {
   const handleDeleteExercise = useCallback(async (exercise) => {
     const ok = await confirm(`¿Eliminar "${exercise.name}"?`);
     if (!ok) return;
-    deleteExerciseMutation.mutate(exercise.name);
+    deleteExerciseMutation.mutate({ id: exercise.id, name: exercise.name });
   }, [confirm, deleteExerciseMutation]);
 
   const handleMuscleChange = useCallback((newActivation) => {
-    if (!selectedExerciseName) return;
+    const idOrName = selectedExercise?.id ?? selectedExercise?.name;
+    if (!idOrName) return;
     setDraftMuscles(newActivation);
 
     if (muscleTimerRef.current) clearTimeout(muscleTimerRef.current);
-    const name = selectedExerciseName;
     muscleTimerRef.current = setTimeout(() => {
-      saveMusclesMutation.mutate({ name, muscleActivation: newActivation });
+      saveMusclesMutation.mutate({ idOrName, muscleActivation: newActivation });
     }, SAVE_DELAY);
-  }, [selectedExerciseName, saveMusclesMutation]);
+  }, [selectedExercise, saveMusclesMutation]);
 
   const handleImplementsChange = useCallback((newImplements) => {
-    if (!selectedExerciseName) return;
+    const idOrName = selectedExercise?.id ?? selectedExercise?.name;
+    if (!idOrName) return;
     setDraftImplements(newImplements);
 
     if (implementsTimerRef.current) clearTimeout(implementsTimerRef.current);
-    const name = selectedExerciseName;
     implementsTimerRef.current = setTimeout(() => {
-      saveImplementsMutation.mutate({ name, implements: newImplements });
+      saveImplementsMutation.mutate({ idOrName, implements: newImplements });
     }, SAVE_DELAY);
-  }, [selectedExerciseName, saveImplementsMutation]);
+  }, [selectedExercise, saveImplementsMutation]);
+
+  // Rename UI handlers
+  const handleStartRename = useCallback(() => {
+    if (!selectedExercise?.id) {
+      // No id → legacy unmigrated entry. Could still rename via display-name path,
+      // but that's the bug the migration fixed. Block here to be safe.
+      showToast('Este ejercicio aún no tiene id. Refresca la página y vuelve a intentar.', 'error');
+      return;
+    }
+    setRenameDraft(selectedExercise.name);
+    setIsRenaming(true);
+    setTimeout(() => renameInputRef.current?.focus(), 50);
+  }, [selectedExercise, showToast]);
+
+  const handleConfirmRename = useCallback(() => {
+    const next = renameDraft.trim();
+    if (!next || !selectedExercise?.id) { setIsRenaming(false); return; }
+    if (next === selectedExercise.name) { setIsRenaming(false); return; }
+    renameExerciseMutation.mutate({ exerciseId: selectedExercise.id, displayName: next });
+  }, [renameDraft, selectedExercise, renameExerciseMutation]);
+
+  const handleCancelRename = useCallback(() => {
+    setIsRenaming(false);
+    setRenameDraft('');
+  }, []);
 
   const handleVideoSelect = useCallback(async (selected) => {
     if (!selectedExercise || !libraryId) return;
+    const idOrName = selectedExercise.id ?? selectedExercise.name;
 
     // External link (YouTube/Vimeo) selected from MediaPickerModal
     if (selected.contentType === 'video/external') {
       try {
         if (selectedExercise.data?.video_path) {
           try {
-            await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
+            await libraryService.deleteExerciseVideo(libraryId, idOrName);
           } catch (_err) {
             // Storage file may not exist, continue
           }
         }
 
-        await libraryService.updateExercise(libraryId, selectedExercise.name, {
+        await libraryService.updateExercise(libraryId, idOrName, {
           video_url: selected.url,
           video_source: selected.videoSource,
           video_path: null,
@@ -289,13 +352,13 @@ const LibraryExercisesScreen = () => {
     try {
       if (selectedExercise.data?.video_path) {
         try {
-          await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
+          await libraryService.deleteExerciseVideo(libraryId, idOrName);
         } catch (_err) {
           // Storage file may not exist, continue
         }
       }
 
-      await libraryService.updateExercise(libraryId, selectedExercise.name, {
+      await libraryService.updateExercise(libraryId, idOrName, {
         video_url: selected.url,
         video_source: 'upload',
         video_path: null,
@@ -336,8 +399,9 @@ const LibraryExercisesScreen = () => {
     const ok = await confirm('¿Eliminar el video de este ejercicio?');
     if (!ok) return;
 
+    const idOrName = selectedExercise.id ?? selectedExercise.name;
     try {
-      await libraryService.deleteExerciseVideo(libraryId, selectedExercise.name);
+      await libraryService.deleteExerciseVideo(libraryId, idOrName);
       await invalidateLibrary();
     } catch (err) {
       logger.error('Error deleting video:', err);
@@ -428,7 +492,7 @@ const LibraryExercisesScreen = () => {
             <Revealable step="exercise-sidebar">
               <ExerciseListSidebar
                 exercises={exercises}
-                selectedName={selectedExerciseName}
+                selectedName={selectedExercise?.name ?? null}
                 onSelect={handleSelectExercise}
                 onAdd={handleAddExercise}
                 onDelete={handleDeleteExercise}
@@ -453,7 +517,57 @@ const LibraryExercisesScreen = () => {
                 ) : (
                   <>
                     <div className="lex-workspace-header">
-                      <h2 className="lex-workspace-title">{selectedExercise.name}</h2>
+                      {isRenaming ? (
+                        <div className="lex-rename-row">
+                          <input
+                            ref={renameInputRef}
+                            className="lex-rename-input"
+                            type="text"
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleConfirmRename();
+                              else if (e.key === 'Escape') handleCancelRename();
+                            }}
+                            maxLength={80}
+                            disabled={renameExerciseMutation.isPending}
+                          />
+                          <button
+                            type="button"
+                            className="lex-rename-btn lex-rename-btn--confirm"
+                            onClick={handleConfirmRename}
+                            disabled={renameExerciseMutation.isPending || !renameDraft.trim()}
+                            aria-label="Guardar nombre"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                          </button>
+                          <button
+                            type="button"
+                            className="lex-rename-btn lex-rename-btn--cancel"
+                            onClick={handleCancelRename}
+                            disabled={renameExerciseMutation.isPending}
+                            aria-label="Cancelar"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="lex-rename-row">
+                          <h2 className="lex-workspace-title">{selectedExercise.name}</h2>
+                          <button
+                            type="button"
+                            className="lex-rename-trigger"
+                            onClick={handleStartRename}
+                            aria-label="Renombrar ejercicio"
+                            title="Renombrar"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="lex-workspace-main">

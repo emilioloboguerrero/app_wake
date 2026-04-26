@@ -296,6 +296,74 @@
   margin: 0;
 }
 
+.lex-rename-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lex-rename-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.lex-rename-trigger:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.lex-rename-input {
+  flex: 1;
+  font-size: 20px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.lex-rename-input:focus {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.04);
+}
+.lex-rename-input:disabled {
+  opacity: 0.6;
+}
+
+.lex-rename-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.lex-rename-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+.lex-rename-btn--confirm:hover:not(:disabled) {
+  border-color: rgba(74, 222, 128, 0.5);
+  color: rgba(74, 222, 128, 0.95);
+}
+.lex-rename-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .lex-workspace-main {
   flex: 1;
   min-height: 0;

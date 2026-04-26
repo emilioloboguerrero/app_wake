@@ -18,20 +18,36 @@ class LibraryService {
     return res.data;
   }
 
-  // Extracts exercises from a library document (map of exerciseName → exerciseData).
-  // `exercises` field (post-id-migration sub-map) is excluded — top-level name keys remain
-  // the source of truth for the dashboard until Phase 3 switches to ID-keyed reads.
+  // Extracts exercises from a library document.
+  // Post-migration shape: { exercises: { [id]: { displayName, ...data } } } — preferred.
+  // Legacy shape: top-level name-keyed fields. Used only for libraries that haven't
+  // been migrated. Returned objects have shape { id, name, data }.
   getExercisesFromLibrary(libraryDoc) {
     if (!libraryDoc) return [];
+    const exMap = libraryDoc.exercises;
+    if (exMap && typeof exMap === 'object' && !Array.isArray(exMap)) {
+      return Object.entries(exMap)
+        .filter(([_, val]) => val && typeof val === 'object')
+        .map(([id, data]) => ({
+          id,
+          name: data.displayName || id,
+          data: data || {},
+        }));
+    }
+    // Legacy fallback (unmigrated library): name-keyed top-level fields, no stable id.
     const metaKeys = new Set(['id', 'title', 'creator_id', 'creator_name', 'created_at', 'updated_at', 'icon', 'exercises']);
     return Object.entries(libraryDoc)
       .filter(([key, val]) => !metaKeys.has(key) && val && typeof val === 'object')
-      .map(([name, data]) => ({ name, data: data || {} }));
+      .map(([name, data]) => ({ id: null, name, data: data || {} }));
   }
 
   // Returns exercise count for a library document.
   getExerciseCount(libraryDoc) {
     if (!libraryDoc) return 0;
+    const exMap = libraryDoc.exercises;
+    if (exMap && typeof exMap === 'object' && !Array.isArray(exMap)) {
+      return Object.keys(exMap).length;
+    }
     const metaKeys = new Set(['id', 'title', 'creator_id', 'creator_name', 'created_at', 'updated_at', 'icon', 'exercises']);
     return Object.keys(libraryDoc).filter((k) => !metaKeys.has(k)).length;
   }
@@ -47,7 +63,7 @@ class LibraryService {
     await apiClient.delete(`/creator/exercises/libraries/${libraryId}`);
   }
 
-  // Creates an exercise inside a library.
+  // Creates an exercise inside a library. Returns { id, displayName, ... }.
   async createExercise(libraryId, exerciseName) {
     const res = await apiClient.post(`/creator/exercises/libraries/${libraryId}/exercises`, {
       name: exerciseName,
@@ -55,16 +71,27 @@ class LibraryService {
     return res.data;
   }
 
-  // Deletes an exercise from a library.
-  async deleteExercise(libraryId, exerciseName) {
-    await apiClient.delete(`/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}`);
+  // Deletes an exercise from a library. Pass either the stable id or the displayName.
+  async deleteExercise(libraryId, idOrName) {
+    await apiClient.delete(`/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(idOrName)}`);
   }
 
-  // Updates exercise data (muscle_activation, implements, etc.)
-  async updateExercise(libraryId, exerciseName, updates) {
+  // Updates exercise data (muscle_activation, implements, etc.). Pass id or name.
+  async updateExercise(libraryId, idOrName, updates) {
     const res = await apiClient.patch(
-      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}`,
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(idOrName)}`,
       updates
+    );
+    return res.data;
+  }
+
+  // Renames an exercise — changes the displayName field on the exercise without
+  // touching its id. All sessions/courses/plans/history continue to resolve correctly
+  // because they reference the id, not the name.
+  async renameExercise(libraryId, exerciseId, displayName) {
+    const res = await apiClient.patch(
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseId)}/rename`,
+      { displayName }
     );
     return res.data;
   }
@@ -75,9 +102,10 @@ class LibraryService {
     return res.data;
   }
 
-  // Uploads exercise video via signed URL flow: get URL → upload → confirm
-  async uploadExerciseVideo(libraryId, exerciseName, file, onProgress) {
-    const encodedName = encodeURIComponent(exerciseName);
+  // Uploads exercise video via signed URL flow: get URL → upload → confirm.
+  // Pass either the stable exerciseId (preferred) or the displayName.
+  async uploadExerciseVideo(libraryId, idOrName, file, onProgress) {
+    const encodedName = encodeURIComponent(idOrName);
 
     // Step 1: Get signed upload URL
     const urlRes = await apiClient.post(
@@ -116,10 +144,10 @@ class LibraryService {
     return confirmRes.data.video_url;
   }
 
-  // Deletes exercise video
-  async deleteExerciseVideo(libraryId, exerciseName) {
+  // Deletes exercise video. Pass either the stable exerciseId or the displayName.
+  async deleteExerciseVideo(libraryId, idOrName) {
     await apiClient.delete(
-      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(exerciseName)}/video`
+      `/creator/exercises/libraries/${libraryId}/exercises/${encodeURIComponent(idOrName)}/video`
     );
   }
 

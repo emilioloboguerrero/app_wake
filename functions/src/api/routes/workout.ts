@@ -1221,10 +1221,18 @@ router.post("/workout/complete", async (req, res) => {
     }
   }
 
-  // Pre-fetch existing PRs for all exercises to compare
+  // Pre-fetch existing PRs for all exercises to compare.
+  // History key shape: ${libraryId}_${libraryExerciseId} — keys to the *library's*
+  // stable exercise id (the value of primary[libId] post-migration), NOT the session-
+  // exercise doc id. This survives renames since the id is stable.
   const exerciseKeys = exercises
     .map((ex) => {
       if (ex.exerciseKey) return ex.exerciseKey;
+      const primary = (ex as Record<string, unknown>).primary as Record<string, string> | undefined;
+      const libId = ex.libraryId ?? (primary ? Object.keys(primary)[0] : null);
+      const libraryExId = libId && primary ? primary[libId] : null;
+      if (libId && libraryExId) return `${libId}_${libraryExId}`;
+      // Legacy fallback: name-based key (pre-migration data writing path)
       if (ex.libraryId && ex.exerciseName) return `${ex.libraryId}_${ex.exerciseName}`;
       return ex.exerciseId ?? null;
     })

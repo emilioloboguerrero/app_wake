@@ -7121,7 +7121,53 @@ router.delete("/creator/exercises/libraries/:libraryId", async (req, res) => {
   res.status(204).send();
 });
 
-// POST /creator/exercises/libraries/:libraryId/exercises — add exercise to library
+// ─── Library exercise resolver ────────────────────────────────────────────
+// The :exerciseId URL segment may be either a stable exerciseId (post-migration
+// shape under exercises.{id}) or a display-name (legacy top-level field key).
+// Returns { id, displayName, data, hasNewShape } so downstream code can dual-write.
+function resolveLibraryExercise(libData: Record<string, unknown>, idOrName: string): {
+  id: string | null;
+  displayName: string;
+  data: Record<string, unknown>;
+  hasNewShape: boolean;
+} | null {
+  const exMap = (libData.exercises as Record<string, Record<string, unknown>> | undefined) ?? null;
+  // 1) Try as ID in new map
+  if (exMap && exMap[idOrName] && typeof exMap[idOrName] === "object") {
+    const entry = exMap[idOrName];
+    return {
+      id: idOrName,
+      displayName: (entry.displayName as string | undefined) ?? idOrName,
+      data: entry,
+      hasNewShape: true,
+    };
+  }
+  // 2) Try as legacy top-level name
+  const top = libData[idOrName];
+  if (top && typeof top === "object") {
+    // If new map exists, look up the matching ID by displayName
+    let foundId: string | null = null;
+    if (exMap) {
+      for (const [id, entry] of Object.entries(exMap)) {
+        if ((entry as Record<string, unknown>).displayName === idOrName) {
+          foundId = id;
+          break;
+        }
+      }
+    }
+    return {
+      id: foundId,
+      displayName: idOrName,
+      data: top as Record<string, unknown>,
+      hasNewShape: !!foundId,
+    };
+  }
+  return null;
+}
+
+// POST /creator/exercises/libraries/:libraryId/exercises — add exercise to library.
+// Generates a stable exerciseId, dual-writes to exercises.{id} (new shape) and the
+// legacy top-level field (kept for forward compat until Phase 4 cleanup).
 router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
@@ -7134,19 +7180,22 @@ router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
+  const exerciseId = db.collection("_").doc().id;
   const now = FieldValue.serverTimestamp();
-  await ref.update(
-    new FieldPath(body.name),
-    {muscle_activation: {}, implements: [], created_at: now, updated_at: now},
-    "updated_at",
-    now
-  );
+  const baseEntry = {muscle_activation: {}, implements: [], created_at: now, updated_at: now};
 
-  res.status(201).json({data: {name: body.name, created: true}});
+  await ref.update({
+    [`exercises.${exerciseId}`]: {displayName: body.name, ...baseEntry},
+    [body.name]: baseEntry,
+    updated_at: now,
+  });
+
+  res.status(201).json({data: {id: exerciseId, name: body.name, displayName: body.name, created: true}});
 });
 
-// DELETE /creator/exercises/libraries/:libraryId/exercises/:name — remove exercise from library
-router.delete("/creator/exercises/libraries/:libraryId/exercises/:name", async (req, res) => {
+// DELETE /creator/exercises/libraries/:libraryId/exercises/:exerciseId — remove exercise.
+// :exerciseId param accepts either an ID or a display-name; resolver finds both shapes.
+router.delete("/creator/exercises/libraries/:libraryId/exercises/:exerciseId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
@@ -7156,19 +7205,24 @@ router.delete("/creator/exercises/libraries/:libraryId/exercises/:name", async (
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
-  const exerciseName = req.params.name;
-  await ref.update(
-    new FieldPath(exerciseName),
-    FieldValue.delete(),
-    "updated_at",
-    FieldValue.serverTimestamp()
-  );
+  const idOrName = decodeURIComponent(req.params.exerciseId);
+  const resolved = resolveLibraryExercise(doc.data()!, idOrName);
+  if (!resolved) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
+  }
+
+  const updates: Record<string, unknown> = {updated_at: FieldValue.serverTimestamp()};
+  if (resolved.id) updates[`exercises.${resolved.id}`] = FieldValue.delete();
+  // Always also strip the legacy top-level entry by displayName.
+  await ref.update(updates);
+  await ref.update(new FieldPath(resolved.displayName), FieldValue.delete());
 
   res.status(204).send();
 });
 
-// PATCH /creator/exercises/libraries/:libraryId/exercises/:name — update exercise data
-router.patch("/creator/exercises/libraries/:libraryId/exercises/:name", async (req, res) => {
+// PATCH /creator/exercises/libraries/:libraryId/exercises/:exerciseId — update exercise data.
+// Dual-writes to both shapes when the new map exists.
+router.patch("/creator/exercises/libraries/:libraryId/exercises/:exerciseId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
@@ -7178,44 +7232,84 @@ router.patch("/creator/exercises/libraries/:libraryId/exercises/:name", async (r
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
-  const exerciseName = decodeURIComponent(req.params.name);
-  const existingData = doc.data()?.[exerciseName];
-  if (!existingData || typeof existingData !== "object") {
+  const idOrName = decodeURIComponent(req.params.exerciseId);
+  const resolved = resolveLibraryExercise(doc.data()!, idOrName);
+  if (!resolved) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
   }
 
-  const updates: Record<string, unknown> = {};
   const body = req.body || {};
+  const fields = ["muscle_activation", "implements", "video_url", "video_path", "video_source"] as const;
+  const updates: Record<string, unknown> = {};
 
-  if (body.muscle_activation !== undefined) {
-    updates[`${exerciseName}.muscle_activation`] = body.muscle_activation;
-  }
-  if (body.implements !== undefined) {
-    updates[`${exerciseName}.implements`] = body.implements;
-  }
-  if (body.video_url !== undefined) {
-    updates[`${exerciseName}.video_url`] = body.video_url;
-  }
-  if (body.video_path !== undefined) {
-    updates[`${exerciseName}.video_path`] = body.video_path;
-  }
-  if (body.video_source !== undefined) {
-    updates[`${exerciseName}.video_source`] = body.video_source;
+  for (const f of fields) {
+    if (body[f] === undefined) continue;
+    // Always update legacy top-level shape (still the dashboard's read source today).
+    updates[`${resolved.displayName}.${f}`] = body[f];
+    // Mirror into new shape when present so post-migration reads stay fresh.
+    if (resolved.id) updates[`exercises.${resolved.id}.${f}`] = body[f];
   }
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No hay campos para actualizar");
   }
 
-  updates[`${exerciseName}.updated_at`] = FieldValue.serverTimestamp();
-  updates["updated_at"] = FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
+  updates[`${resolved.displayName}.updated_at`] = now;
+  if (resolved.id) updates[`exercises.${resolved.id}.updated_at`] = now;
+  updates["updated_at"] = now;
 
   await ref.update(updates);
-  res.json({data: {updated: true}});
+  res.json({data: {id: resolved.id, displayName: resolved.displayName, updated: true}});
 });
 
-// POST /creator/exercises/libraries/:libraryId/exercises/:name/upload-url
-router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url", async (req, res) => {
+// PATCH /creator/exercises/libraries/:libraryId/exercises/:exerciseId/rename — rename
+// without breaking refs. Updates exercises.{id}.displayName only; legacy top-level
+// key is FROZEN at the original name for forward compat. Refs (primary/alternatives,
+// history keys) point at the stable id, so the new displayName flows everywhere
+// the next read happens. Phase 4 cleanup eventually drops the legacy top-level keys.
+router.patch("/creator/exercises/libraries/:libraryId/exercises/:exerciseId/rename", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const body = validateBody<{ displayName: string }>({displayName: "string"}, req.body);
+  const newName = body.displayName.trim();
+  if (!newName) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "El nombre no puede estar vacío");
+  }
+
+  const ref = db.collection("exercises_library").doc(req.params.libraryId);
+  const doc = await ref.get();
+  if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
+  }
+
+  const exerciseId = decodeURIComponent(req.params.exerciseId);
+  const exMap = (doc.data()!.exercises as Record<string, Record<string, unknown>> | undefined) ?? {};
+  const entry = exMap[exerciseId];
+  if (!entry || typeof entry !== "object") {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
+  }
+
+  // Reject collisions with another active displayName in the same library.
+  for (const [id, e] of Object.entries(exMap)) {
+    if (id !== exerciseId && (e as Record<string, unknown>).displayName === newName) {
+      throw new WakeApiServerError("CONFLICT", 409, "Ya existe un ejercicio con ese nombre");
+    }
+  }
+
+  const now = FieldValue.serverTimestamp();
+  await ref.update({
+    [`exercises.${exerciseId}.displayName`]: newName,
+    [`exercises.${exerciseId}.updated_at`]: now,
+    updated_at: now,
+  });
+
+  res.json({data: {id: exerciseId, displayName: newName, renamed: true}});
+});
+
+// POST /creator/exercises/libraries/:libraryId/exercises/:exerciseId/upload-url
+router.post("/creator/exercises/libraries/:libraryId/exercises/:exerciseId/upload-url", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
@@ -7234,10 +7328,16 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url"
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
-  const exerciseName = decodeURIComponent(req.params.name);
-  const sanitizedName = exerciseName.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const idOrName = decodeURIComponent(req.params.exerciseId);
+  const resolved = resolveLibraryExercise(doc.data()!, idOrName);
+  if (!resolved) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
+  }
+
+  // Storage path: prefer ID (stable across renames). Fall back to sanitized name for legacy entries.
+  const pathSegment = resolved.id ?? resolved.displayName.replace(/[^a-zA-Z0-9_-]/g, "_");
   const ext = contentType.split("/")[1] === "quicktime" ? "mov" : (contentType.split("/")[1] || "mp4");
-  const storagePath = `exercises_library/${req.params.libraryId}/${sanitizedName}/video.${ext}`;
+  const storagePath = `exercises_library/${req.params.libraryId}/${pathSegment}/video.${ext}`;
 
   const bucket = admin.storage().bucket();
   const file = bucket.file(storagePath);
@@ -7252,8 +7352,8 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url"
   res.json({data: {uploadUrl: url, storagePath, contentType}});
 });
 
-// POST /creator/exercises/libraries/:libraryId/exercises/:name/upload-url/confirm
-router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/confirm", async (req, res) => {
+// POST /creator/exercises/libraries/:libraryId/exercises/:exerciseId/upload-url/confirm
+router.post("/creator/exercises/libraries/:libraryId/exercises/:exerciseId/upload-url/confirm", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
@@ -7262,15 +7362,20 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/
     req.body
   );
 
-  const exerciseName = decodeURIComponent(req.params.name);
-  const sanitizedName = exerciseName.replace(/[^a-zA-Z0-9_-]/g, "_");
-  validateStoragePath(storagePath, `exercises_library/${req.params.libraryId}/${sanitizedName}/`);
-
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
   if (!doc.exists || doc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
+
+  const idOrName = decodeURIComponent(req.params.exerciseId);
+  const resolved = resolveLibraryExercise(doc.data()!, idOrName);
+  if (!resolved) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
+  }
+
+  const pathSegment = resolved.id ?? resolved.displayName.replace(/[^a-zA-Z0-9_-]/g, "_");
+  validateStoragePath(storagePath, `exercises_library/${req.params.libraryId}/${pathSegment}/`);
 
   const bucket = admin.storage().bucket();
   const [exists] = await bucket.file(storagePath).exists();
@@ -7279,20 +7384,27 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:name/upload-url/
   }
 
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
-
-  await ref.update({
-    [`${exerciseName}.video_url`]: publicUrl,
-    [`${exerciseName}.video_path`]: storagePath,
-    [`${exerciseName}.video_source`]: "upload",
-    [`${exerciseName}.updated_at`]: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  const now = FieldValue.serverTimestamp();
+  const updates: Record<string, unknown> = {
+    [`${resolved.displayName}.video_url`]: publicUrl,
+    [`${resolved.displayName}.video_path`]: storagePath,
+    [`${resolved.displayName}.video_source`]: "upload",
+    [`${resolved.displayName}.updated_at`]: now,
+    updated_at: now,
+  };
+  if (resolved.id) {
+    updates[`exercises.${resolved.id}.video_url`] = publicUrl;
+    updates[`exercises.${resolved.id}.video_path`] = storagePath;
+    updates[`exercises.${resolved.id}.video_source`] = "upload";
+    updates[`exercises.${resolved.id}.updated_at`] = now;
+  }
+  await ref.update(updates);
 
   res.json({data: {video_url: publicUrl, video_path: storagePath, video_source: "upload"}});
 });
 
-// DELETE /creator/exercises/libraries/:libraryId/exercises/:name/video
-router.delete("/creator/exercises/libraries/:libraryId/exercises/:name/video", async (req, res) => {
+// DELETE /creator/exercises/libraries/:libraryId/exercises/:exerciseId/video
+router.delete("/creator/exercises/libraries/:libraryId/exercises/:exerciseId/video", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
@@ -7302,29 +7414,37 @@ router.delete("/creator/exercises/libraries/:libraryId/exercises/:name/video", a
     throw new WakeApiServerError("NOT_FOUND", 404, "Biblioteca no encontrada");
   }
 
-  const exerciseName = decodeURIComponent(req.params.name);
-  const existingData = doc.data()?.[exerciseName];
-  if (!existingData || typeof existingData !== "object") {
+  const idOrName = decodeURIComponent(req.params.exerciseId);
+  const resolved = resolveLibraryExercise(doc.data()!, idOrName);
+  if (!resolved) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
   }
 
-  // Delete from Storage if path exists
-  if (existingData.video_path) {
+  const videoPath = resolved.data.video_path as string | undefined;
+  if (videoPath) {
     try {
       const bucket = admin.storage().bucket();
-      await bucket.file(existingData.video_path).delete();
+      await bucket.file(videoPath).delete();
     } catch (_err) {
       // File may not exist, continue
     }
   }
 
-  await ref.update({
-    [`${exerciseName}.video_url`]: FieldValue.delete(),
-    [`${exerciseName}.video_path`]: FieldValue.delete(),
-    [`${exerciseName}.video_source`]: FieldValue.delete(),
-    [`${exerciseName}.updated_at`]: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  const now = FieldValue.serverTimestamp();
+  const updates: Record<string, unknown> = {
+    [`${resolved.displayName}.video_url`]: FieldValue.delete(),
+    [`${resolved.displayName}.video_path`]: FieldValue.delete(),
+    [`${resolved.displayName}.video_source`]: FieldValue.delete(),
+    [`${resolved.displayName}.updated_at`]: now,
+    updated_at: now,
+  };
+  if (resolved.id) {
+    updates[`exercises.${resolved.id}.video_url`] = FieldValue.delete();
+    updates[`exercises.${resolved.id}.video_path`] = FieldValue.delete();
+    updates[`exercises.${resolved.id}.video_source`] = FieldValue.delete();
+    updates[`exercises.${resolved.id}.updated_at`] = now;
+  }
+  await ref.update(updates);
 
   res.status(204).send();
 });
