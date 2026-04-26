@@ -517,16 +517,22 @@ router.get("/users/me/full", async (req, res) => {
 router.get("/users/me/username-check", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
-  const username = req.query.username as string;
-  if (!username || typeof username !== "string" || username.length > 50) {
+  const raw = req.query.username;
+  if (!raw || typeof raw !== "string" || raw.length > 50) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400, "username es requerido (máx 50 caracteres)", "username"
+    );
+  }
+  const normalized = raw.toLowerCase().trim();
+  if (!normalized) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "username es requerido", "username"
     );
   }
 
   const snapshot = await db
     .collection("users")
-    .where("username", "==", username)
+    .where("username", "==", normalized)
     .limit(1)
     .get();
 

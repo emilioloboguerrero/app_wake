@@ -85,8 +85,8 @@
   font-family: 'Inter', sans-serif;
   letter-spacing: 0.04em;
   cursor: pointer;
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   transition: background 0.3s, border-color 0.3s;
 }
 
@@ -188,8 +188,8 @@
   cursor: pointer;
   transition: border-color 0.25s, background 0.25s, color 0.25s;
   flex-shrink: 0;
-  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
 }
 
 .pwa-ob-nav-arrow:hover {
@@ -247,7 +247,6 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
   padding: 0 28px 140px;
   display: flex;
   flex-direction: column;
@@ -453,6 +452,7 @@
 .pwa-ob-date-display {
   cursor: pointer;
   color: rgba(255,255,255,0.18);
+  -webkit-user-select: none;
   user-select: none;
   position: relative;
 }
@@ -593,6 +593,7 @@
   font-weight: 500;
   font-size: 16px;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .pwa-ob-metric-input::-webkit-outer-spin-button,
@@ -782,8 +783,8 @@
   font-family: 'Inter', sans-serif;
   cursor: pointer;
   transition: background 0.3s, border-color 0.3s;
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .pwa-ob-done-cta:hover {

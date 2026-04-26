@@ -90,7 +90,8 @@ const ExerciseDetailContent = ({
       const data = await oneRepMaxService.getHistoryForExercise(
         user.uid,
         libraryId,
-        exerciseName
+        exerciseName,
+        exerciseKey
       );
       setHistory(data || []);
     } catch (error) {

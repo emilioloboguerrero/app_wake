@@ -764,13 +764,17 @@ const LibrarySessionDetailScreen = () => {
       });
   }, [user, sessionId, contentApi, showToast]);
 
-  const handlePickerSelect = useCallback((exercise, ex, exerciseName, mode) => {
-    if (!selectedLibraryForExercise || !exerciseName || !user || !sessionId) return;
+  // ExpandableExerciseCard now passes (sessionExercise, idOrName, mode, pickedExercise).
+  // The fourth arg is the full picker exercise object — prefer its stable id over the
+  // raw idOrName string so primary/alternatives writes are id-based.
+  const handlePickerSelect = useCallback((exercise, idOrNameArg, mode, pickedExercise) => {
+    if (!selectedLibraryForExercise || !idOrNameArg || !user || !sessionId) return;
     const libId = selectedLibraryForExercise;
+    const valueToWrite = pickedExercise?.id || idOrNameArg;
     let apiUpdatePayload = null;
 
     if (mode === 'primary') {
-      const primaryUpdate = { [libId]: exerciseName };
+      const primaryUpdate = { [libId]: valueToWrite };
       apiUpdatePayload = { primary: primaryUpdate };
       setExercises(prev => prev.map(e => e.id === exercise.id
         ? { ...e, primary: primaryUpdate, dragId: e.dragId || `session-${e.id}`, isInSession: true }
@@ -779,7 +783,7 @@ const LibrarySessionDetailScreen = () => {
     } else if (mode === 'add-alternative') {
       const currentAlts = JSON.parse(JSON.stringify(exercise.alternatives || {}));
       if (!currentAlts[libId]) currentAlts[libId] = [];
-      if (!currentAlts[libId].includes(exerciseName)) currentAlts[libId].push(exerciseName);
+      if (!currentAlts[libId].includes(valueToWrite)) currentAlts[libId].push(valueToWrite);
       apiUpdatePayload = { alternatives: currentAlts };
       setExercises(prev => prev.map(e => e.id === exercise.id
         ? { ...e, alternatives: currentAlts, dragId: e.dragId || `session-${e.id}`, isInSession: true }
@@ -1732,11 +1736,12 @@ const LibrarySessionDetailScreen = () => {
               referenceLibrariesMap[libraryId].forEach((exerciseName) => {
                 if (!exerciseName) return;
                 const key = getLibraryExerciseKey(libraryId, exerciseName);
-                if (libraryData) {
-                  completenessUpdates[key] = isLibraryExerciseDataComplete(libraryData[exerciseName]);
-                } else {
-                  completenessUpdates[key] = false;
-                }
+                // exerciseName may be a stable id (post-migration) or a legacy name.
+                // Try the new exercises.{id} sub-map first, then top-level.
+                const entry = libraryData
+                  ? (libraryData.exercises?.[exerciseName] || libraryData[exerciseName])
+                  : null;
+                completenessUpdates[key] = entry ? isLibraryExerciseDataComplete(entry) : false;
               });
             } catch (error) {
               logger.error(`Error fetching library ${libraryId}:`, error);
@@ -3979,7 +3984,7 @@ const LibrarySessionDetailScreen = () => {
                       pickerExercises={pickerActiveExerciseId === exercise.id ? exercisesFromSelectedLibrary : EMPTY_ARRAY}
                       pickerIsLoadingExercises={pickerActiveExerciseId === exercise.id && isLoadingExercisesFromLibrary}
                       pickerSelectedLibraryId={pickerActiveExerciseId === exercise.id ? selectedLibraryForExercise : null}
-                      onPickerSelect={(ex, exerciseName, mode) => handlePickerSelect(exercise, ex, exerciseName, mode)}
+                      onPickerSelect={(sessionExercise, idOrName, mode, pickedExercise) => handlePickerSelect(sessionExercise, idOrName, mode, pickedExercise)}
                       pickerIsSaving={pickerActiveExerciseId === exercise.id && isSavingLibraryExerciseChoice}
                       isLibraryMode={!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit}
                       onOpenPresetSelector={handleOpenPresetSelector}

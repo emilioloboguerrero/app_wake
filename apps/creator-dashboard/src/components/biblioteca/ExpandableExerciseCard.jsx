@@ -131,8 +131,10 @@ const ExpandableExerciseCard = ({
     else onAddAlternative?.(exercise, true);
   };
 
-  const handlePickerSelect = (exerciseName) => {
-    onPickerSelect?.(exercise, exerciseName, pickerMode);
+  // ExercisePicker passes (idOrName, fullExerciseObject). Forward both upstream so
+  // callers can write the stable id into primary/alternatives.
+  const handlePickerSelect = (idOrName, pickedExercise) => {
+    onPickerSelect?.(exercise, idOrName, pickerMode, pickedExercise);
     setPickerOpen(false);
     setPickerMode(null);
   };

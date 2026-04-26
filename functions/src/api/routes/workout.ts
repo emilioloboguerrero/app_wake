@@ -1242,9 +1242,11 @@ router.post("/workout/complete", async (req, res) => {
       const libId = ex.libraryId ?? (primary ? Object.keys(primary)[0] : null);
       const libraryExId = libId && primary ? primary[libId] : null;
       if (libId && libraryExId) return `${libId}_${libraryExId}`;
-      // Legacy fallback: name-based key (pre-migration data writing path)
-      if (ex.libraryId && ex.exerciseName) return `${ex.libraryId}_${ex.exerciseName}`;
-      return ex.exerciseId ?? null;
+      // Do NOT fall back to ${libId}_${ex.exerciseName} — that was the pre-migration shape.
+      // Writing it post-migration corrupts history because rekeyed docs use ${libId}_${exerciseId}.
+      // Any caller missing both exerciseKey and primary[libId] indicates a bug; skip the
+      // history write rather than persist a wrong-shape key.
+      return null;
     })
     .filter(Boolean) as string[];
 

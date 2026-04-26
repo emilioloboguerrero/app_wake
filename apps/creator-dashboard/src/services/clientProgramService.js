@@ -50,6 +50,25 @@ class ClientProgramService {
     return res.data || [];
   }
 
+  // Fetch the most recent sessionHistory doc matching a planned session slot id.
+  // Used by SessionPerformanceModal to compare planned vs performed for a slot.
+  async getSessionHistoryDoc(clientId, sessionId) {
+    if (!clientId || !sessionId) return null;
+    try {
+      const res = await apiClient.get(`/creator/clients/${clientId}/sessions`, {
+        params: { sessionId },
+      });
+      const list = res.data || [];
+      // The list endpoint returns recent sessionHistory docs. Filter by sessionId
+      // and return the most recent match.
+      const match = list.find((d) => d.sessionId === sessionId) || list[0] || null;
+      return match;
+    } catch (err) {
+      // 404 / no match — modal handles null gracefully
+      return null;
+    }
+  }
+
   async bulkReassignPrograms(programId, clientIds) {
     await Promise.all(
       clientIds.map((clientId) =>

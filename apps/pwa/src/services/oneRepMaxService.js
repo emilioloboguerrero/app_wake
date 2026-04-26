@@ -127,6 +127,12 @@ class OneRepMaxService {
             current: pr.estimate1RM > 0 ? pr.estimate1RM : this.calculate1RM(weight, reps, null),
             lastUpdated: pr.date ?? null,
             achievedWith: bestSet,
+            // Snapshot from server doc body (preserved by migration). Used by PR/Lab
+            // screens to render human-readable names — the exerciseKey tail is now an
+            // exerciseId post-migration and would render as a 20-char hash if shown.
+            exerciseName: pr.exerciseName ?? pr.name ?? null,
+            libraryId: pr.libraryId ?? null,
+            exerciseId: pr.exerciseId ?? null,
           };
         }
       });
@@ -214,10 +220,13 @@ class OneRepMaxService {
     }
   }
 
-  async getHistoryForExercise(userId, libraryId, exerciseName) {
+  async getHistoryForExercise(userId, libraryId, exerciseName, exerciseKey) {
     try {
-      const exerciseKey = `${libraryId}_${exerciseName}`;
-      const res = await apiClient.get(`/workout/prs/${encodeURIComponent(exerciseKey)}/history`);
+      // Prefer the exact exerciseKey when supplied — the rekeyed history docs use
+      // `${libraryId}_${exerciseId}`, which won't match a reconstructed name-based key
+      // post-migration.
+      const key = exerciseKey || `${libraryId}_${exerciseName}`;
+      const res = await apiClient.get(`/workout/prs/${encodeURIComponent(key)}/history`);
       const records = res?.data?.sessions ?? res?.data ?? [];
       if (!Array.isArray(records)) return [];
       // PRHistoryChart expects { estimate, date: { seconds } }

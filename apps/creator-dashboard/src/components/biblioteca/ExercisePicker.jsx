@@ -136,10 +136,12 @@ const ExercisePicker = ({
             <div className="exp-picker-list exp-picker-list--exercises">
               {filteredExercises.map((ex, i) => (
                 <button
-                  key={ex.name}
+                  key={ex.id || ex.name}
                   type="button"
                   className="exp-picker-item exp-picker-item--exercise"
-                  onClick={() => onSelect(ex.name)}
+                  // Pass the stable exerciseId (or name fallback for unmigrated libs) so
+                  // primary/alternatives writes use ids, not display names.
+                  onClick={() => onSelect(ex.id || ex.name, ex)}
                   disabled={isSaving}
                   style={{ '--item-delay': `${i * 25}ms` }}
                 >

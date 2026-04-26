@@ -103,12 +103,17 @@ const PRsScreen = ({ navigation, route }) => {
     return `${day}/${month}/${year}`;
   };
 
-  const parseExerciseKey = (key) => {
-    // Format: "libraryId_exerciseName"
-    const parts = key.split('_');
-    const libraryId = parts[0];
-    const exerciseName = parts.slice(1).join('_'); // Handle names with underscores
-    return { libraryId, exerciseName };
+  // Resolve the human-readable exercise name. Post-migration the key tail is a 20-char
+  // exerciseId; the display name comes from the snapshotted exerciseName on the doc body.
+  const getExerciseDisplay = (key) => {
+    const estimate = estimates?.[key];
+    const sep = key.indexOf('_');
+    const libraryId = sep > 0 ? key.slice(0, sep) : key;
+    const fallbackName = sep > 0 ? key.slice(sep + 1) : key;
+    return {
+      libraryId: estimate?.libraryId || libraryId,
+      exerciseName: estimate?.exerciseName || fallbackName,
+    };
   };
 
   const handleExercisePress = useCallback((exerciseKey) => {
@@ -128,7 +133,7 @@ const PRsScreen = ({ navigation, route }) => {
       return;
     }
     
-    const { libraryId, exerciseName } = parseExerciseKey(exerciseKey);
+    const { libraryId, exerciseName } = getExerciseDisplay(exerciseKey);
     const estimate = estimates[exerciseKey];
     
     try {
@@ -189,7 +194,7 @@ const PRsScreen = ({ navigation, route }) => {
   // Filter exercises based on search query
   const filteredExerciseKeys = exerciseKeys.filter(exerciseKey => {
     if (!searchQuery.trim()) return true;
-    const { exerciseName } = parseExerciseKey(exerciseKey);
+    const { exerciseName } = getExerciseDisplay(exerciseKey);
     return exerciseName.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
@@ -249,7 +254,7 @@ const PRsScreen = ({ navigation, route }) => {
             </View>
           ) : (
             filteredExerciseKeys.map((exerciseKey) => {
-              const { exerciseName } = parseExerciseKey(exerciseKey);
+              const { exerciseName } = getExerciseDisplay(exerciseKey);
               
               return (
                 <TouchableOpacity

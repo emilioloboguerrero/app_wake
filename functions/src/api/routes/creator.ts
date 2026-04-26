@@ -18,16 +18,23 @@ function requireCreator(auth: { role: string }): void {
   }
 }
 
-/** Ensure every exercise has a top-level `name` field, falling back to primary.name/title */
+/**
+ * Ensure every exercise has a top-level `name` and `title`. The session-exercise
+ * shape stores its identity in `primary: { [libraryId]: idOrDisplayName }`, NOT in
+ * `primary.name`/`primary.title` (those keys never existed). Pre-migration the value
+ * was a displayName; post-migration it's a stable exerciseId. Either way, falling
+ * back to that string keeps `name` non-empty so clients can resolve via library data
+ * (the dashboard's libraryExerciseNames map handles id→displayName resolution).
+ */
 function normalizeExerciseName(exercise: Record<string, unknown>): Record<string, unknown> {
   if (!exercise.name && !exercise.title) {
     const primary = exercise.primary as Record<string, unknown> | undefined;
-    if (primary?.name) {
-      exercise.name = primary.name;
-      exercise.title = primary.name;
-    } else if (primary?.title) {
-      exercise.name = primary.title;
-      exercise.title = primary.title;
+    if (primary && typeof primary === "object" && !Array.isArray(primary)) {
+      const firstValue = Object.values(primary)[0];
+      if (typeof firstValue === "string" && firstValue) {
+        exercise.name = firstValue;
+        exercise.title = firstValue;
+      }
     }
   } else if (exercise.name && !exercise.title) {
     exercise.title = exercise.name;
@@ -1442,13 +1449,25 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const snapshot = await db
+  // Optional ?sessionId=X filter — used by SessionPerformanceModal to find a single
+  // history doc matching a planned slot.
+  const sessionIdFilter = req.query.sessionId as string | undefined;
+  const courseIdFilter = req.query.courseId as string | undefined;
+
+  let q: Query = db
     .collection("users")
     .doc(req.params.clientId)
-    .collection("sessionHistory")
-    .orderBy("completed_at", "desc")
-    .limit(20)
-    .get();
+    .collection("sessionHistory");
+
+  if (sessionIdFilter) {
+    q = q.where("sessionId", "==", sessionIdFilter);
+  }
+  if (courseIdFilter) {
+    q = q.where("courseId", "==", courseIdFilter);
+  }
+  q = q.orderBy("completed_at", "desc").limit(20);
+
+  const snapshot = await q.get();
 
   res.json({
     data: snapshot.docs.map((d) => ({...d.data(), id: d.id})),
@@ -5984,14 +6003,15 @@ router.get("/creator/username-check", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const username = req.query.username as string | undefined;
-  if (!username || !username.trim()) {
+  const raw = req.query.username as string | undefined;
+  if (!raw || !raw.trim()) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "El parámetro username es requerido");
   }
+  const normalized = raw.toLowerCase().trim();
 
   const snapshot = await db
     .collection("users")
-    .where("username", "==", username.trim())
+    .where("username", "==", normalized)
     .limit(1)
     .get();
 

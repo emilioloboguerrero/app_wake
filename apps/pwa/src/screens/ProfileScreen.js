@@ -319,14 +319,18 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
   // Update profile field
   const updateProfileField = (field, value) => {
+    const nextValue = field === 'username'
+      ? String(value || '').toLowerCase().replace(/[^a-z0-9_-]/g, '')
+      : value;
+
     setUserProfile(prev => ({
       ...prev,
-      [field]: value
+      [field]: nextValue
     }));
-    
+
     // Check username uniqueness when username changes (with debouncing)
     if (field === 'username') {
-      debouncedUsernameCheck(value);
+      debouncedUsernameCheck(nextValue);
     }
   };
 
