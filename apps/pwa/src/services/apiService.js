@@ -344,16 +344,6 @@ class FirestoreService {
     await apiClient.delete(`/workout/client-programs/${programId}`);
   }
 
-  // Simple course management in user document (simplified)
-  async addCourseToUser(userId, courseId, expirationDate, accessDuration, courseDetails) {
-    try {
-      await apiClient.post('/users/me/move-course', { courseId, expirationDate, accessDuration, courseDetails });
-    } catch (error) {
-      logger.error('❌ Error in addCourseToUser:', error);
-      throw error;
-    }
-  }
-
   /**
    * Start a free trial for a course by assigning it locally to the user
    * @param {string} userId - User ID
@@ -463,36 +453,6 @@ class FirestoreService {
     } catch (error) {
       logger.error('[getUserActiveCourses] error:', error);
       return [];
-    }
-  }
-
-  async updateCourseStatus(userId, courseId, status, newExpirationDate = null) {
-    try {
-      await apiClient.patch(`/users/me/courses/${courseId}/status`, { status, expiresAt: newExpirationDate });
-      return true;
-    } catch (error) {
-      logger.error('Error updating course status:', error);
-      return false;
-    }
-  }
-
-  // Simple method to extend subscription
-  async extendCourseSubscription(userId, courseId, newExpirationDate) {
-    try {
-      return await this.updateCourseStatus(userId, courseId, 'active', newExpirationDate);
-    } catch (error) {
-      logger.error('Error extending course subscription:', error);
-      return false;
-    }
-  }
-
-  // Simple method to cancel subscription
-  async cancelCourseSubscription(userId, courseId) {
-    try {
-      return await this.updateCourseStatus(userId, courseId, 'cancelled');
-    } catch (error) {
-      logger.error('Error cancelling course subscription:', error);
-      return false;
     }
   }
 

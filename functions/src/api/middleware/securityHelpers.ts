@@ -100,6 +100,49 @@ export function assertAllowedDownloadPath(path: string, userId: string): void {
   }
 }
 
+// ─── Free-grant authorization (audit C-01) ───────────────────────────────────
+// Decides whether a user is allowed to call `/users/me/move-course` for a
+// given course. Mirrors the client-side pre-check at
+// apps/pwa/src/screens/CourseDetailScreen.js:730-734 — admins, creators of
+// the course, draft programs (creator preview), and explicitly-free programs.
+//
+// This replaces the pre-patch behavior where ANY user could grant themselves
+// ANY course (the audit-C-01 monetization bypass).
+export interface FreeGrantContext {
+  callerUserId: string;
+  callerRole: "user" | "creator" | "admin";
+  course: {
+    creator_id?: string;
+    creatorId?: string;
+    status?: string;
+    price?: number | null;
+    subscription_price?: number | null;
+  };
+}
+
+export function isFreeGrantAllowed(ctx: FreeGrantContext): boolean {
+  // Admins always allowed
+  if (ctx.callerRole === "admin") return true;
+
+  // Creator who owns this course (preview / self-grant of own program)
+  const courseCreatorId = ctx.course.creator_id ?? ctx.course.creatorId;
+  if (courseCreatorId && courseCreatorId === ctx.callerUserId) return true;
+
+  // Draft programs — anyone can preview (legitimate testing flow)
+  // The actual "publish" gate is a creator action, not a security boundary.
+  const status = ctx.course.status;
+  if (status && status !== "published") return true;
+
+  // Explicitly-free programs (price 0/null AND no subscription_price)
+  const price = ctx.course.price;
+  const subPrice = ctx.course.subscription_price;
+  const isOneTimeFree = (price === 0 || price === null || price === undefined);
+  const isSubFree = (subPrice === 0 || subPrice === null || subPrice === undefined);
+  if (isOneTimeFree && isSubFree) return true;
+
+  return false;
+}
+
 // ─── HTTPS URL scheme validator (Tier 2 — used by Tier 0 too) ────────────────
 // Rejects javascript:, data:, file:, and other non-http(s) schemes that can
 // be exploited when a stored URL is later rendered as an <a href> or <img src>.

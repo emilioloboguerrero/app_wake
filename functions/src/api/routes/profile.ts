@@ -9,6 +9,7 @@ import {
   assertAllowedDownloadPath,
   assertAllowedUserCourseStatus,
   clampTrialDurationDays,
+  isFreeGrantAllowed,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {calculateExpirationDate} from "../services/paymentHelpers.js";
@@ -416,19 +417,22 @@ router.post("/users/me/courses/:courseId/trial", async (req, res) => {
   res.json({data: {success: true, expirationDate: expiresAt.toISOString()}});
 });
 
-// POST /users/me/move-course — add/move a course to the user's courses map
+// POST /users/me/move-course — add a course to the user's courses map
 //
-// Security (audit C-01): admin-only. Previously any authenticated user could
-// grant themselves an active enrollment to any course with no payment proof.
-// Legitimate enrollment goes through /payments/preference + webhook.
+// Security (audit C-01): allowed only for legitimate free-grant cases.
+// Previously any authenticated user could grant themselves an active
+// enrollment to any course with no payment proof — the worst monetization
+// bypass in the audit.
+//
+// Allowed cases (mirrors PWA pre-check at CourseDetailScreen.js:730-734):
+//   - admin role
+//   - creator who owns the course (own-program preview)
+//   - draft programs (status !== 'published')
+//   - explicitly-free programs (price === 0 AND subscription_price === 0)
+//
+// Paid programs MUST go through /payments/preference + webhook.
 router.post("/users/me/move-course", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
-
-  if (auth.role !== "admin") {
-    throw new WakeApiServerError(
-      "FORBIDDEN", 403, "Solo administradores pueden usar este endpoint"
-    );
-  }
 
   const body = validateBody<{ courseId: string; targetUserId?: string }>(
     {courseId: "string", targetUserId: "optional_string"},
@@ -445,14 +449,38 @@ router.post("/users/me/move-course", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Programa sin duración de acceso");
   }
 
+  // Only admins may grant access to a different user; everyone else can only
+  // affect themselves.
   const targetUserId = body.targetUserId ?? auth.userId;
+  if (targetUserId !== auth.userId && auth.role !== "admin") {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403, "Solo administradores pueden usar targetUserId"
+    );
+  }
+
+  if (!isFreeGrantAllowed({
+    callerUserId: auth.userId,
+    callerRole: auth.role,
+    course,
+  })) {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "Este programa requiere compra. La asignación se hace al confirmar el pago."
+    );
+  }
+
   const expiresAt = calculateExpirationDate(course.access_duration);
   await assignCourseToUser(targetUserId, body.courseId, course, expiresAt);
 
-  functions.logger.info("admin.move-course", {
-    adminId: auth.userId,
+  functions.logger.info("move-course.granted", {
+    callerUserId: auth.userId,
+    callerRole: auth.role,
     targetUserId,
     courseId: body.courseId,
+    reason: auth.role === "admin" ? "admin" :
+      (course.creator_id === auth.userId || course.creatorId === auth.userId) ? "creator_owns" :
+        course.status !== "published" ? "draft" : "free",
   });
 
   res.json({data: {success: true}});

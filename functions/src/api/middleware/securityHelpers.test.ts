@@ -7,6 +7,7 @@ import {
   buildAllowedDownloadPrefixes,
   assertAllowedDownloadPath,
   assertHttpsUrl,
+  isFreeGrantAllowed,
 } from "./securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 
@@ -191,6 +192,102 @@ describe("assertAllowedDownloadPath", () => {
       expect(wakeErr.status).toBe(403);
       expect(wakeErr.code).toBe("FORBIDDEN");
     }
+  });
+});
+
+// ─── Free-grant authorization (audit C-01) ───────────────────────────────────
+
+describe("isFreeGrantAllowed", () => {
+  const baseCourse = {
+    creator_id: "creator-1",
+    status: "published" as const,
+    price: 10_000,
+    subscription_price: 5_000,
+  };
+
+  it("ALLOWS admin to grant any course", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "any-user",
+      callerRole: "admin",
+      course: baseCourse,
+    })).toBe(true);
+  });
+
+  it("ALLOWS creator who owns the course (own-program preview)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "creator-1",
+      callerRole: "creator",
+      course: baseCourse,
+    })).toBe(true);
+  });
+
+  it("ALLOWS creator who owns via creatorId field (alt schema)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "creator-2",
+      callerRole: "creator",
+      course: {creatorId: "creator-2", status: "published", price: 100},
+    })).toBe(true);
+  });
+
+  it("REJECTS creator who does NOT own the course (the C-01 cross-creator exploit)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "creator-2",
+      callerRole: "creator",
+      course: baseCourse,
+    })).toBe(false);
+  });
+
+  it("REJECTS regular user against a paid published course (the C-01 exploit)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: baseCourse,
+    })).toBe(false);
+  });
+
+  it("ALLOWS any user against a draft program (preview testing)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {...baseCourse, status: "draft"},
+    })).toBe(true);
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {...baseCourse, status: "archived"},
+    })).toBe(true);
+  });
+
+  it("ALLOWS any user against a free program (price=0 AND subscription_price=0)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "published", price: 0, subscription_price: 0},
+    })).toBe(true);
+  });
+
+  it("ALLOWS any user against a free program (price/sub_price null)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "published", price: null, subscription_price: null},
+    })).toBe(true);
+  });
+
+  it("REJECTS subscription program with price=0 but subscription_price>0", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "published", price: 0, subscription_price: 5_000},
+    })).toBe(false);
+  });
+
+  it("REJECTS one-time program with subscription_price=0 but price>0", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "published", price: 10_000, subscription_price: 0},
+    })).toBe(false);
   });
 });
 
