@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-04-21. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-04-27. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -410,50 +410,7 @@ API endpoints:
 
 ---
 
-### 9. Video Exchange System `SIMPLIFIED — AWAITING STAGING VALIDATION`
-
-One-on-one only. Client submits a form-check video from the PWA; coach reviews from the dashboard inbox and responds with a reaction recording (webcam + annotations composited over the client's clip). Coach↔client *requesting* happens on WhatsApp, not inside the app — the app is the video pipeline.
-
-**Data model (Firestore):**
-- `video_exchanges/{exchangeId}` — one per submission
-  - `creatorId`, `clientId`, `oneOnOneClientId`, `exerciseName` (free-text)
-  - `status: 'open' | 'closed'` — auto-closed when coach responds
-  - `lastMessageAt`, `lastMessageBy` (`'client' | 'creator'`)
-  - `unreadByCreator`, `unreadByClient`
-  - `exerciseKey` — reserved, currently dormant
-- `video_exchanges/{exchangeId}/messages/{messageId}` — typically 2 docs: client video + coach response
-  - `senderRole`, `note`, `videoPath`, `videoDurationSec`, `thumbnailPath`, `savedByCreator`, `createdAt`
-
-**Storage:** `video_exchanges/{exchangeId}/{messageId}/video.mp4` + `thumbnail.jpg`. Uploaded via 15-min v4 signed URLs. Read restricted to participants via `config/firebase/storage.rules`.
-
-**API (`functions/src/api/routes/videoExchanges.ts`):**
-- `POST /video-exchanges` — accepts optional `initialMessage` for atomic thread+message creation
-- `GET /video-exchanges/inbox` — creator review queue (open threads where `lastMessageBy === 'client'`)
-- `POST /video-exchanges/:id/messages` — auto-closes parent thread when `senderRole === 'creator'`
-- Other standard CRUD endpoints retained for future coach-initiated path
-
-**UI surfaces:**
-- PWA (`apps/pwa/src/components/videoExchange/`): `SubmitVideoScreen` (one-shot submission), `VideoExchangeTab` (list of past submissions with status chips), `VideoExchangeThreadView` (read-only detail with both videos). Client limit removed — submit as many as you want.
-- Creator dashboard: `ReviewInboxScreen` at `/creators/inbox` (global queue), sidebar badge with pending count. Per-client history remains in Lab tab's `VideoExchangeSection` (read-only; "Nueva conversación" removed).
-
-**Notifications:** Firestore `onCreate` trigger `sendVideoExchangeNotification` in `functions/src/index.ts` sends web-push (via existing VAPID infra) + Resend email to the OTHER party on each new message.
-
-**Deferred (architecture preserved — no rebuild required):**
-- Coach-initiated threads (backend supports; UI hidden)
-- Back-and-forth within a submission (schema supports N messages; flip auto-close flag)
-- Program-exercise linking (populate the dormant `exerciseKey` field)
-- Deep-link from workout screen to submit
-- Native mobile (swap `.web.jsx` recorders; upload flow identical)
-
-**Checklist:**
-- [ ] Deploy backend + index + storage rules to `wake-staging`
-- [ ] End-to-end validation on staging (PWA submit → notification → dashboard inbox → reaction response → client sees response)
-- [ ] Verify participant-only Storage rule (non-participant cannot read another exchange's media)
-- [ ] Promote to production
-
----
-
-### 10. Creator Email Platform `IN PROGRESS`
+### 9. Creator Email Platform `IN PROGRESS`
 
 Email marketing for creators — event broadcasts (built), manual campaigns, templates, and automated sequences. Built on Resend (`RESEND_API_KEY` in Secret Manager).
 
@@ -531,7 +488,7 @@ Variables: `{{nombre}}` works now. Future: `{{evento}}`, `{{fecha}}`, `{{program
 
 ---
 
-### 11. Feedback Board `NOT STARTED`
+### 10. Feedback Board `NOT STARTED`
 
 In-app feature request and bug report board. Users and creators submit items; others upvote to prioritize.
 
@@ -562,7 +519,7 @@ feedback_board/{itemId}/votes/{userId}
 
 ## Platform
 
-### 12. Third-party API Integration `NOT STARTED`
+### 11. Third-party API Integration `NOT STARTED`
 
 Developer portal for external integrations with the Wake API. Backend infrastructure already exists — `api_keys` Firestore collection, SHA-256 key hashing, and API key auth in `auth.ts`.
 
@@ -593,7 +550,6 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 | Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
 | PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
 | Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
-| Video Exchange (test) | 2 | 3 | 3 | 5 | **2.95** |
 | Security Audit | 3 | 1 | 4 | 3 | **2.75** |
 | App-wide Optimization | 3 | 3 | 2 | 3 | **2.75** |
 | Creator Email Platform | 3 | 3 | 2 | 2 | **2.60** | Phase 0 (event broadcasts) API done |
@@ -608,21 +564,19 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  Video Exchange (test)         — already built, just validate
-2.  PWA UI Redesign               — right time with small user base, no tech debt pressure
-3.  PostHog Analytics             — before driving traffic you need visibility
-4.  Security Audit                — before scaling, know your exposure
-5.  App-wide Optimization         — before cardio ships, clean the foundation
-6.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 3–5
-7.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-8.  Creator Email Platform Ph.1   — unlocks creator marketing
-9.  Stripe Migration (3c)         — decision-dependent, not urgent
-10. Feedback Board                — until user base warrants it
-11. Third-party API               — premature at current user count
+1.  PWA UI Redesign               — right time with small user base, no tech debt pressure
+2.  PostHog Analytics             — before driving traffic you need visibility
+3.  Security Audit                — before scaling, know your exposure
+4.  App-wide Optimization         — before cardio ships, clean the foundation
+5.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 2–4
+6.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
+7.  Creator Email Platform Ph.1   — unlocks creator marketing
+8.  Stripe Migration (3c)         — decision-dependent, not urgent
+9.  Feedback Board                — until user base warrants it
+10. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Item 1 is a quick win** (2–4 days). Clear it before the larger PWA and Cardio efforts.
-- **Cardio V1 (#6)** is a long-track build. Start architecture and wearable OAuth research during items 4–5. GPS and provider flows take time to get right.
-- **Stripe Migration (#9)** is gated on a business decision — don't start until that decision is made.
-- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21.
+- **Cardio V1 (#5)** is a long-track build. Start architecture and wearable OAuth research during items 3–4. GPS and provider flows take time to get right.
+- **Stripe Migration (#8)** is gated on a business decision — don't start until that decision is made.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27.
