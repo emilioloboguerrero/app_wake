@@ -2941,6 +2941,11 @@ async function loadExerciseTree(parentRef: FirebaseFirestore.DocumentReference) 
 }
 
 // GET /workout/client-session-content/:clientSessionId
+//
+// Security (audit M-34): verify ownership before returning content.
+// Previously any authenticated user could read another user's planned session
+// content by guessing the clientSessionId (Firestore IDs are 20 chars but
+// leak via creator-side endpoints).
 router.get("/workout/client-session-content/:clientSessionId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2953,8 +2958,29 @@ router.get("/workout/client-session-content/:clientSessionId", async (req, res) 
     return;
   }
 
+  // Ownership check: caller must be the assigned client OR the creator.
+  // Two paths because client_session_content does not always carry these
+  // fields directly (legacy data); fall back to the parent client_sessions doc.
+  const data = doc.data() ?? {};
+  let isOwner = data.client_id === auth.userId || data.creator_id === auth.userId;
+
+  if (!isOwner) {
+    const parentSession = await db
+      .collection("client_sessions")
+      .doc(req.params.clientSessionId)
+      .get();
+    if (parentSession.exists) {
+      const parent = parentSession.data() ?? {};
+      isOwner = parent.client_id === auth.userId || parent.creator_id === auth.userId;
+    }
+  }
+
+  if (!isOwner) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
   const exercises = await loadExerciseTree(docRef);
-  res.json({data: {...doc.data(), id: doc.id, exercises}});
+  res.json({data: {...data, id: doc.id, exercises}});
 });
 
 // GET /workout/client-plan-content/:userId/:programId/:weekKey

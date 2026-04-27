@@ -8668,8 +8668,16 @@ router.get("/creator/check-username/:username", async (req, res) => {
 });
 
 // POST /creator/register — bootstrap a new creator account
+//
+// Security (audit H-24): require verified email + write audit log entry.
+// Previously any authenticated user could self-elevate to creator role
+// (which unlocks course creation, email broadcasts, API keys, etc.) with no
+// friction beyond the 200rpm rate limit. This is the monetization-bypass
+// surface that combines worst with H-26 (creator email broadcasts use Wake's
+// brand From address).
 router.post("/creator/register", async (req, res) => {
-  const auth = await validateAuthAndRateLimit(req);
+  // Lower per-user rate limit to discourage brute attempts even before role check
+  const auth = await validateAuthAndRateLimit(req, 10);
 
   const userRef = db.collection("users").doc(auth.userId);
   const userDoc = await userRef.get();
@@ -8678,6 +8686,31 @@ router.post("/creator/register", async (req, res) => {
   if (currentRole === "creator" || currentRole === "admin") {
     res.json({data: {userId: auth.userId, alreadyCreator: true}});
     return;
+  }
+
+  // Require email-verified Firebase Auth status to prevent throwaway
+  // unverified accounts from elevating themselves.
+  let authRecord;
+  try {
+    authRecord = await admin.auth().getUser(auth.userId);
+  } catch {
+    throw new WakeApiServerError(
+      "UNAUTHENTICATED", 401, "Cuenta de autenticación no encontrada"
+    );
+  }
+  if (!authRecord.emailVerified) {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "Verifica tu correo electrónico antes de crear una cuenta de creador"
+    );
+  }
+  if (!authRecord.email) {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "Tu cuenta debe tener un correo electrónico para registrarse como creador"
+    );
   }
 
   const body = validateBody<{
@@ -8739,6 +8772,18 @@ router.post("/creator/register", async (req, res) => {
     profileCompleted: true,
     updated_at: FieldValue.serverTimestamp(),
   }, {merge: true});
+
+  // Audit log — every role elevation persisted for forensics
+  await db.collection("audit_log_role_elevation").add({
+    userId: auth.userId,
+    email: authRecord.email,
+    fromRole: currentRole ?? "user",
+    toRole: "creator",
+    via: "self_register",
+    ip: req.ip ?? null,
+    userAgent: req.header("user-agent") ?? null,
+    at: FieldValue.serverTimestamp(),
+  });
 
   res.status(201).json({data: {userId: auth.userId, role: "creator"}});
 });

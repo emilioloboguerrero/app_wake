@@ -388,7 +388,14 @@ service cloud.firestore {
     }
 
     match /event_signups/{eventId}/waitlist/{waitId} {
-      allow create: if true;
+      // Security (audit H-02): require auth + bind userId to caller. Previously
+      // `allow create: if true` allowed unauthenticated public writes with no
+      // schema constraints — anyone could spam arbitrary docs into any event's
+      // waitlist subcollection.
+      allow create: if isSignedIn() && (
+        request.resource.data.get('userId', '') == request.auth.uid
+        || waitId == request.auth.uid
+      );
       // Creator and admin can read all waitlist entries; waitlist user can read their own
       allow read: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid

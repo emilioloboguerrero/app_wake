@@ -38,7 +38,7 @@ import {
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
-import {assignBundleToUser} from "./api/services/bundleAssignment.js";
+import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
 import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
 
 const db = admin.firestore();
@@ -888,6 +888,61 @@ export const processPaymentWebhook = functions
         external_reference: paymentData.external_reference,
         preapproval_id: paymentData.preapproval_id,
       });
+
+      // ─── Refund / chargeback handling (audit H-18) ─────────────────────────
+      // Backported from Gen2 payments.ts. Without this branch, Wake had no
+      // production refund handling — refund a payment, the user kept access.
+      // Gen2 webhook is unreachable (audit C-07); Gen1 must handle refunds
+      // until the migration completes.
+      if (paymentData && (
+        paymentData.status === "refunded" ||
+        paymentData.status === "charged_back"
+      )) {
+        try {
+          const prev = await processedPaymentsRef.get();
+          const prevData = prev.exists ? prev.data() : null;
+          if (prevData?.bundleId && prevData?.userId) {
+            const revoked = await revokeBundleAccess(
+              prevData.userId as string,
+              prevData.bundleId as string
+            );
+            functions.logger.info("Bundle access revoked via refund", {
+              paymentId,
+              bundleId: prevData.bundleId,
+              userId: prevData.userId,
+              revoked,
+            });
+          } else if (prevData?.courseId && prevData?.userId) {
+            await db.collection("users").doc(prevData.userId as string).update({
+              [`courses.${prevData.courseId}.status`]: "cancelled",
+              [`courses.${prevData.courseId}.cancelled_at`]: new Date().toISOString(),
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            functions.logger.info("Course access revoked via refund", {
+              paymentId,
+              courseId: prevData.courseId,
+              userId: prevData.userId,
+            });
+          } else {
+            functions.logger.warn("Refund received but no prior course/bundle record", {
+              paymentId,
+              prevStatus: prevData?.status ?? "missing",
+            });
+          }
+        } catch (refundErr) {
+          functions.logger.error("Refund revocation failed", {
+            paymentId,
+            error: refundErr instanceof Error ? refundErr.message : String(refundErr),
+          });
+        }
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: paymentData.status,
+          refunded_at: new Date().toISOString(),
+        }, {merge: true});
+        response.status(200).send("OK");
+        return;
+      }
 
       // Check if payment is approved
       if (!paymentData || paymentData.status !== "approved") {

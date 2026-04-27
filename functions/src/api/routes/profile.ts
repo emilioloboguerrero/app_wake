@@ -5,6 +5,11 @@ import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth, validateAuthAndRateLimit} from "../middleware/auth.js";
 import {validateBody, validateStoragePath} from "../middleware/validate.js";
+import {
+  assertAllowedDownloadPath,
+  assertAllowedUserCourseStatus,
+  clampTrialDurationDays,
+} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
@@ -334,46 +339,76 @@ router.get("/users/:userId/public-profile", async (req, res) => {
 });
 
 // POST /users/me/courses/:courseId/trial — start a trial for a course
+//
+// Security (audit C-06, H-07):
+//   - durationInDays clamped server-side via course config + 14d hard cap
+//   - title/image_url/deliveryType read from course doc, NOT request body
+//   - trial_used flag persisted to prevent delete+recreate trial farming
+//   - course must declare free_trial.active === true
 router.post("/users/me/courses/:courseId/trial", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
   const body = validateBody<{
-    courseDetails: Record<string, unknown>;
-    durationInDays: number;
+    durationInDays?: number;
   }>(
     {
-      courseDetails: "object",
-      durationInDays: "number",
+      durationInDays: "optional_number",
     },
     req.body
   );
 
   const courseId = req.params.courseId;
 
-  // Verify course exists
+  // Verify course exists AND has trial enabled
   const courseDoc = await db.collection("courses").doc(courseId).get();
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
-
-  // Check user doesn't already have an active trial (reuse auth.userData)
-  const courses = (auth.userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
-  if (courses[courseId]?.status === "trial") {
-    throw new WakeApiServerError("CONFLICT", 409, "Ya tienes un trial activo para este programa");
+  const course = courseDoc.data()!;
+  const freeTrial = (course.free_trial ?? {}) as { active?: boolean; duration_days?: number };
+  if (freeTrial.active !== true) {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403, "Este programa no ofrece prueba gratuita"
+    );
   }
 
+  // Block if user has ever started a trial for this course (survives delete)
+  const userData = auth.userData ?? {};
+  const trialUsed = (userData.trial_used ?? {}) as Record<string, unknown>;
+  if (trialUsed[courseId]) {
+    throw new WakeApiServerError(
+      "CONFLICT", 409, "Ya usaste la prueba gratuita para este programa"
+    );
+  }
+
+  // Block concurrent active trial
+  const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
+  if (courses[courseId]?.status === "trial") {
+    throw new WakeApiServerError(
+      "CONFLICT", 409, "Ya tienes un trial activo para este programa"
+    );
+  }
+
+  // Clamp duration: max(course.free_trial.duration_days, 14d)
+  const requested = body.durationInDays ?? freeTrial.duration_days ?? 7;
+  const durationDays = clampTrialDurationDays(requested, freeTrial.duration_days);
+
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + body.durationInDays * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
   await db.collection("users").doc(auth.userId).update({
     [`courses.${courseId}`]: {
       status: "trial",
-      title: body.courseDetails.title ?? "",
-      image_url: body.courseDetails.image_url ?? "",
-      deliveryType: body.courseDetails.deliveryType ?? "low_ticket",
+      title: course.title ?? "",
+      image_url: course.image_url ?? "",
+      deliveryType: course.deliveryType ?? "low_ticket",
       purchased_at: now.toISOString(),
       expires_at: expiresAt.toISOString(),
       access_duration: "trial",
+    },
+    [`trial_used.${courseId}`]: {
+      started_at: now.toISOString(),
+      duration_days: durationDays,
     },
     updated_at: FieldValue.serverTimestamp(),
   });
@@ -382,11 +417,21 @@ router.post("/users/me/courses/:courseId/trial", async (req, res) => {
 });
 
 // POST /users/me/move-course — add/move a course to the user's courses map
+//
+// Security (audit C-01): admin-only. Previously any authenticated user could
+// grant themselves an active enrollment to any course with no payment proof.
+// Legitimate enrollment goes through /payments/preference + webhook.
 router.post("/users/me/move-course", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
-  const body = validateBody<{ courseId: string }>(
-    {courseId: "string"},
+  if (auth.role !== "admin") {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403, "Solo administradores pueden usar este endpoint"
+    );
+  }
+
+  const body = validateBody<{ courseId: string; targetUserId?: string }>(
+    {courseId: "string", targetUserId: "optional_string"},
     req.body
   );
 
@@ -400,32 +445,55 @@ router.post("/users/me/move-course", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Programa sin duración de acceso");
   }
 
+  const targetUserId = body.targetUserId ?? auth.userId;
   const expiresAt = calculateExpirationDate(course.access_duration);
-  await assignCourseToUser(auth.userId, body.courseId, course, expiresAt);
+  await assignCourseToUser(targetUserId, body.courseId, course, expiresAt);
+
+  functions.logger.info("admin.move-course", {
+    adminId: auth.userId,
+    targetUserId,
+    courseId: body.courseId,
+  });
 
   res.json({data: {success: true}});
 });
 
 // POST /users/me/courses/:programId/backfill — backfill a course entry for orphaned client_programs
+//
+// Security (audit H-09): requires an existing client_programs/{userId}_{programId}
+// doc proving the user was enrolled by a creator. Title/image/etc are read from
+// the program doc, NOT from the request body.
 router.post("/users/me/courses/:programId/backfill", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
-  const body = validateBody<{ courseData: Record<string, unknown> }>(
-    {courseData: "object"},
-    req.body
-  );
-
-  const courseData = body.courseData;
   const programId = req.params.programId;
+
+  // Proof of legitimate enrollment: must have a client_programs entry
+  const clientProgramRef = db
+    .collection("client_programs")
+    .doc(`${auth.userId}_${programId}`);
+  const clientProgramDoc = await clientProgramRef.get();
+  if (!clientProgramDoc.exists) {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403, "No tienes una asignación activa para este programa"
+    );
+  }
+
+  // Read program metadata server-side
+  const courseDoc = await db.collection("courses").doc(programId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  const course = courseDoc.data()!;
 
   await db.collection("users").doc(auth.userId).update({
     [`courses.${programId}`]: {
       status: "active",
-      deliveryType: courseData.deliveryType ?? "one_on_one",
-      title: courseData.title ?? "",
-      image_url: courseData.image_url ?? "",
-      discipline: courseData.discipline ?? "General",
-      creatorName: courseData.creatorName ?? "",
+      deliveryType: course.deliveryType ?? "one_on_one",
+      title: course.title ?? "",
+      image_url: course.image_url ?? "",
+      discipline: course.discipline ?? "General",
+      creatorName: course.creatorName ?? course.creator_name ?? "",
       purchased_at: new Date().toISOString(),
       expires_at: null,
       access_duration: "one_on_one",
@@ -648,6 +716,11 @@ router.patch("/users/me/courses/:courseId/version", async (req, res) => {
 });
 
 // PATCH /users/me/courses/:courseId/status — update course status
+//
+// Security (audit H-25): status restricted to enum. Previously accepted any
+// string, letting users set status="trial" on a paid course to game trial
+// logic. expiresAt only applies to "expired"/"cancelled" transitions —
+// extending paid access via this endpoint is not allowed.
 router.patch("/users/me/courses/:courseId/status", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
@@ -657,12 +730,24 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
     req.body
   );
 
+  assertAllowedUserCourseStatus(body.status);
+
   const updates: Record<string, unknown> = {
     [`courses.${courseId}.status`]: body.status,
     updated_at: FieldValue.serverTimestamp(),
   };
 
+  // Only allow setting expiresAt when transitioning to a terminal state.
+  // Forbids users from extending their own paid access by sending a future date.
   if (body.expiresAt !== undefined) {
+    if (body.status !== "expired" && body.status !== "cancelled") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR",
+        400,
+        "expiresAt solo se puede establecer al cancelar o expirar",
+        "expiresAt"
+      );
+    }
     updates[`courses.${courseId}.expires_at`] = body.expiresAt;
   }
 
@@ -721,21 +806,22 @@ router.get("/courses", async (req, res) => {
 });
 
 // GET /storage/download-url — return signed download URL for a storage path
+//
+// Security (audit C-09): caller can only request URLs for paths inside their
+// own namespace (progress_photos/{uid}/, body_log/{uid}/, profiles/{uid}/,
+// users/{uid}/). Previous implementation only blocked `..` and leading `/`,
+// which let any user read any storage path including other users' body-log
+// photos and video exchange media — Admin SDK signed URLs bypass Storage rules.
+//
+// For paths NOT in the allowlist (e.g. event covers, creator media), the
+// client should fetch via the public token URL returned at upload time, OR
+// a per-resource endpoint must be added that performs ownership checks
+// before signing.
 router.get("/storage/download-url", async (req, res) => {
-  await validateAuthAndRateLimit(req);
+  const auth = await validateAuthAndRateLimit(req);
 
   const path = req.query.path as string;
-  if (!path || typeof path !== "string") {
-    throw new WakeApiServerError(
-      "VALIDATION_ERROR", 400, "path es requerido", "path"
-    );
-  }
-
-  if (path.includes("..") || path.startsWith("/")) {
-    throw new WakeApiServerError(
-      "VALIDATION_ERROR", 400, "Ruta inválida", "path"
-    );
-  }
+  assertAllowedDownloadPath(path, auth.userId);
 
   const bucket = admin.storage().bucket();
   const file = bucket.file(path);
@@ -755,10 +841,25 @@ router.get("/storage/download-url", async (req, res) => {
 });
 
 // POST /purchases — log a purchase record
+//
+// Security (audit H-10): admin-only. Previously any user could write
+// arbitrary amount/currency/paymentMethod/receiptId entries to their own
+// purchase_logs subcollection, polluting any analytics or revenue calc that
+// reads from it. Real purchases are recorded by the payment webhook in
+// processed_payments, not via this endpoint.
 router.post("/purchases", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
+  if (auth.role !== "admin") {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "Solo administradores pueden crear registros de compra"
+    );
+  }
+
   const body = validateBody<{
+    targetUserId: string;
     courseId?: string;
     amount?: number;
     currency?: string;
@@ -766,6 +867,7 @@ router.post("/purchases", async (req, res) => {
     receiptId?: string;
   }>(
     {
+      targetUserId: "string",
       courseId: "optional_string",
       amount: "optional_number",
       currency: "optional_string",
@@ -775,15 +877,23 @@ router.post("/purchases", async (req, res) => {
     req.body
   );
 
+  const {targetUserId, ...purchaseFields} = body;
   const docRef = await db
     .collection("users")
-    .doc(auth.userId)
+    .doc(targetUserId)
     .collection("purchase_logs")
     .add({
-      ...body,
-      userId: auth.userId,
+      ...purchaseFields,
+      userId: targetUserId,
+      created_by_admin: auth.userId,
       created_at: FieldValue.serverTimestamp(),
     });
+
+  functions.logger.info("admin.purchases.create", {
+    adminId: auth.userId,
+    targetUserId,
+    purchaseLogId: docRef.id,
+  });
 
   res.status(201).json({data: {id: docRef.id}});
 });
