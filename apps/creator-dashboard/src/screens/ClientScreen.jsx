@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import { TubelightNavBar, FullScreenError, KeepAlivePane } from '../components/ui';
@@ -76,36 +76,28 @@ export default function ClientScreen() {
 
   // ── Core data: single client detail query ────────────────────
   // Use the navigation-state hints to (a) parallelize lab analytics before
-  // the detail GET resolves, and (b) seed the React Query cache so the
-  // header paints instantly with the client's name + avatar instead of
-  // showing skeletons during the ~1.5–2s detail fetch.
+  // the detail GET resolves, and (b) paint the header instantly with the
+  // client's name + avatar via placeholderData. Do NOT use setQueryData
+  // for priming — it writes dataUpdatedAt=now and combined with staleTime
+  // suppresses the real fetch, which silently masked enrolledPrograms.
   const hintClientUserId = location.state?.clientUserId;
   const clientHint = location.state?.clientHint;
-  const queryClient = useQueryClient();
 
-  // Prime the cache *synchronously* during render — only takes effect on the
-  // very first render before the query has a value, so React Query treats
-  // the hint as initial data, not a duplicate fetch.
-  if (clientId && clientHint) {
-    const key = queryKeys.clients.detail(clientId);
-    if (queryClient.getQueryData(key) === undefined) {
-      queryClient.setQueryData(key, {
-        clientId,
-        clientUserId: hintClientUserId,
-        ...clientHint,
-        enrolledPrograms: [],
-        notes: [],
-      });
-    }
-  }
+  const placeholderClient = clientHint ? {
+    clientId,
+    clientUserId: hintClientUserId,
+    ...clientHint,
+    notes: [],
+  } : undefined;
 
-  const { data: client, isLoading: clientLoading, error: clientError } = useQuery({
+  const { data: client, isLoading: clientLoading, isFetching: clientFetching, error: clientError } = useQuery({
     queryKey: queryKeys.clients.detail(clientId),
     queryFn: async () => {
       const result = await oneOnOneService.getClientById(clientId, { userId: hintClientUserId });
       return result;
     },
     enabled: !!clientId,
+    placeholderData: placeholderClient,
     ...cacheConfig.userProfile,
   });
 
@@ -131,7 +123,9 @@ export default function ClientScreen() {
       }));
   }, [client?.enrolledPrograms]);
 
-  const programsLoading = clientLoading;
+  // Treat the placeholder period as loading too so ClientPlanTab doesn't flash
+  // its empty state in the gap between paint-from-hint and the real GET resolving.
+  const programsLoading = clientLoading || (clientFetching && !client?.enrolledPrograms);
 
   const [selectedProgramId, setSelectedProgramId] = useState(null);
   const activeProgram = useMemo(() => {
