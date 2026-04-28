@@ -10,6 +10,11 @@ class SessionManager {
   #pendingCheckpoint = null;
   #checkpointTimer = null;
   #checkpointMaxWaitTimer = null;
+  // AbortController for the in-flight PUT /workout/checkpoint. Without this,
+  // a debounced PUT that's already on the wire when the user taps "complete"
+  // can land AFTER the activeSession DELETE and resurrect the doc. The user
+  // then sees a phantom "Continuar sesión" banner on DailyWorkoutScreen.
+  #checkpointInFlight = null;
 
   #scheduleCheckpoint(sessionData) {
     this.#pendingCheckpoint = sessionData;
@@ -26,13 +31,26 @@ class SessionManager {
     const payload = this.#pendingCheckpoint;
     if (!payload) return;
     this.#pendingCheckpoint = null;
-    apiClient.put('/workout/checkpoint', payload).catch(e => logger.error('Checkpoint save failed:', e));
+    const controller = new AbortController();
+    this.#checkpointInFlight = controller;
+    apiClient.put('/workout/checkpoint', payload, { signal: controller.signal })
+      .catch(e => {
+        if (e?.code === 'REQUEST_CANCELLED') return; // expected on completion race
+        logger.error('Checkpoint save failed:', e);
+      })
+      .finally(() => {
+        if (this.#checkpointInFlight === controller) this.#checkpointInFlight = null;
+      });
   }
 
   #cancelPendingCheckpoint() {
     if (this.#checkpointTimer) { clearTimeout(this.#checkpointTimer); this.#checkpointTimer = null; }
     if (this.#checkpointMaxWaitTimer) { clearTimeout(this.#checkpointMaxWaitTimer); this.#checkpointMaxWaitTimer = null; }
     this.#pendingCheckpoint = null;
+    if (this.#checkpointInFlight) {
+      this.#checkpointInFlight.abort();
+      this.#checkpointInFlight = null;
+    }
   }
 
   /**

@@ -1919,6 +1919,24 @@ router.put("/workout/checkpoint", async (req, res) => {
     req.body
   );
 
+  // Guard against the late-write race: a checkpoint PUT debounced before
+  // /workout/complete can land milliseconds after the activeSession DELETE
+  // and resurrect the doc, surfacing a phantom RecoveryModal on next mount.
+  // If any sessionHistory doc for this course was completed at-or-after the
+  // current session's startedAt, this PUT is stale — skip it.
+  // Uses the existing (courseId, completedAt) composite index.
+  const stalenessSnap = await db
+    .collection("users").doc(auth.userId)
+    .collection("sessionHistory")
+    .where("courseId", "==", body.courseId)
+    .where("completedAt", ">=", body.startedAt)
+    .limit(1)
+    .get();
+  if (!stalenessSnap.empty) {
+    res.json({data: {saved: false, reason: "session_already_completed"}});
+    return;
+  }
+
   await db
     .collection("users")
     .doc(auth.userId)
