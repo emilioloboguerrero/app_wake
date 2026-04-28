@@ -11,7 +11,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "export:web": "expo export --platform web --source-maps",
+    "export:web": "expo export --platform web --source-maps --clear",
     "build:android": "expo build:android",
     "build:ios": "npx eas-cli build --platform ios --profile production",
     "build:ios:local": "npx eas-cli build --local --platform ios --profile production",

@@ -28,6 +28,9 @@
       "**/node_modules/**",
       "**/*.map"
     ],
+    "predeploy": [
+      "node scripts/verify-prod-bundle.js"
+    ],
     "postdeploy": [
       "bash scripts/ops/upload-sourcemaps.sh",
       "bash scripts/ops/notify-deploy.sh hosting"
