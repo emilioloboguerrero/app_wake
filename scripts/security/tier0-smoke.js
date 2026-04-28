@@ -121,13 +121,17 @@ function patchJson(url, body, headers = {}) {
   });
 }
 
+const TEST_PASSWORD = "tier0-smoke-Pass-1234";
+
 async function ensureTestUser(uid, email, role = "user") {
+  // createCustomToken requires service account signing, which isn't
+  // available with ADC. Use email/password auth via REST instead — no
+  // signing needed. Re-create the user each run to ensure password matches.
   try {
-    await admin.auth().getUser(uid);
-  } catch {
-    await admin.auth().createUser({uid, email, emailVerified: true});
-  }
-  // Ensure Firestore user doc with role
+    await admin.auth().deleteUser(uid);
+  } catch {/* not found — ok */}
+  await admin.auth().createUser({uid, email, password: TEST_PASSWORD, emailVerified: true});
+
   const db = admin.firestore();
   await db.collection("users").doc(uid).set({
     role,
@@ -138,12 +142,15 @@ async function ensureTestUser(uid, email, role = "user") {
   return uid;
 }
 
-async function mintIdToken(uid) {
-  const customToken = await admin.auth().createCustomToken(uid);
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${WEB_API_KEY}`;
-  const result = await postJson(url, {token: customToken, returnSecureToken: true});
+async function mintIdToken(uid, email) {
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${WEB_API_KEY}`;
+  const result = await postJson(url, {
+    email,
+    password: TEST_PASSWORD,
+    returnSecureToken: true,
+  });
   if (result.status !== 200) {
-    throw new Error(`Token exchange failed: ${result.status} ${JSON.stringify(result.body)}`);
+    throw new Error(`Password signin failed for ${email}: ${result.status} ${JSON.stringify(result.body)}`);
   }
   return result.body.idToken;
 }
@@ -346,8 +353,8 @@ async function main() {
   try {
     await setupTestData();
 
-    const aliceToken = await mintIdToken(TEST_USERS.alice);
-    const adminToken = await mintIdToken(TEST_USERS.admin);
+    const aliceToken = await mintIdToken(TEST_USERS.alice, "alice@tier0-smoke.test");
+    const adminToken = await mintIdToken(TEST_USERS.admin, "admin@tier0-smoke.test");
 
     // C-01: move-course refined behavior
     await testC01_movePaidCourse(aliceToken);
