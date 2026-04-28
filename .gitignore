@@ -209,3 +209,6 @@ eas-build-*.json
 # src/config/firebase.js - needed for app
 # app.json - needed for builds
 # package.json - needed for dependencies
+
+# Security discovery output — may contain PII samples
+scripts/security/tier0-discovery-output.json

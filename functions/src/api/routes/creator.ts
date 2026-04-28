@@ -7,6 +7,7 @@ import {db, FieldValue, FieldPath} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
+import {validateDeletionPath} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 
@@ -16,6 +17,58 @@ function requireCreator(auth: { role: string }): void {
   if (auth.role !== "creator" && auth.role !== "admin") {
     throw new WakeApiServerError("FORBIDDEN", 403, "Acceso restringido a creadores");
   }
+}
+
+// Security (audit C-05): nutrition assignment content body validator with
+// tight per-field caps. Returns a typed body. Throws on overflow.
+const NUTRITION_CONTENT_NAME_MAX = 200;
+const NUTRITION_CONTENT_DESC_MAX = 5000;
+const NUTRITION_CONTENT_CATEGORIES_MAX = 50;
+const NUTRITION_CONTENT_CATEGORY_JSON_MAX = 5_000;
+
+interface NutritionContentBody {
+  source_plan_id?: string | null;
+  name?: string;
+  description?: string;
+  daily_calories?: number | null;
+  daily_protein_g?: number | null;
+  daily_carbs_g?: number | null;
+  daily_fat_g?: number | null;
+  categories?: unknown[];
+}
+
+function validateNutritionContentBody(body: unknown): NutritionContentBody {
+  const validated = validateBody<NutritionContentBody>({
+    source_plan_id: "optional_string",
+    name: "optional_string",
+    description: "optional_string",
+    daily_calories: "optional_number",
+    daily_protein_g: "optional_number",
+    daily_carbs_g: "optional_number",
+    daily_fat_g: "optional_number",
+    categories: "optional_array",
+  }, body, {maxStringLength: NUTRITION_CONTENT_DESC_MAX, maxArrayLength: NUTRITION_CONTENT_CATEGORIES_MAX});
+
+  if (validated.name && validated.name.length > NUTRITION_CONTENT_NAME_MAX) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `name excede el máximo de ${NUTRITION_CONTENT_NAME_MAX} caracteres`,
+      "name"
+    );
+  }
+  if (Array.isArray(validated.categories)) {
+    for (const cat of validated.categories) {
+      const size = JSON.stringify(cat ?? null).length;
+      if (size > NUTRITION_CONTENT_CATEGORY_JSON_MAX) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400,
+          "categories[*] excede el tamaño máximo permitido",
+          "categories"
+        );
+      }
+    }
+  }
+  return validated;
 }
 
 /**
@@ -787,6 +840,10 @@ router.post("/creator/clients/invite", async (req, res) => {
     return;
   }
 
+  // Security (audit C-10): new invites land in `pending` status. The user
+  // must explicitly accept via POST /users/me/client-relationships/:id/accept
+  // before the creator gains operational privileges (verifyClientAccess gates
+  // on status === 'active' OR field absent — back-compat for legacy rows).
   const invitedUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({
     creatorId: auth.userId,
@@ -794,6 +851,8 @@ router.post("/creator/clients/invite", async (req, res) => {
     clientName: invitedUserData?.displayName ?? invitedUserData?.name ?? null,
     clientEmail: invitedUserData?.email ?? null,
     courseId: [],
+    status: "pending",
+    invitedAt: FieldValue.serverTimestamp(),
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -802,6 +861,7 @@ router.post("/creator/clients/invite", async (req, res) => {
     data: {
       clientId: docRef.id,
       userId,
+      status: "pending",
     },
   });
 });
@@ -850,6 +910,7 @@ router.post("/creator/clients", async (req, res) => {
     ((mostRecentInactive.data() as Record<string, unknown>).endedAt ?? null) :
     null;
 
+  // Security (audit C-10): pending until target user accepts.
   const targetUserData = userDoc.data();
   const docRef = await db.collection("one_on_one_clients").add({
     creatorId: auth.userId,
@@ -857,13 +918,14 @@ router.post("/creator/clients", async (req, res) => {
     clientName: targetUserData?.displayName ?? targetUserData?.name ?? null,
     clientEmail: targetUserData?.email ?? null,
     courseId: [],
-    status: "active",
+    status: "pending",
+    invitedAt: FieldValue.serverTimestamp(),
     previousEnrollmentEndedAt,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  res.status(201).json({data: {id: docRef.id, clientId: docRef.id}});
+  res.status(201).json({data: {id: docRef.id, clientId: docRef.id, status: "pending"}});
 });
 
 // GET /creator/leaves/summary — aggregated counts of clients who left this creator's programs.
@@ -2054,7 +2116,10 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
 
 // ─── Client Nutrition Assignments ─────────────────────────────────────────
 
-// Helper to verify creator-client relationship
+// Helper to verify creator-client relationship.
+// Security (audit C-10): only treats relationships with status `active` (or
+// missing — back-compat for legacy rows) as authorizing access. Pending
+// relationships exist but do not grant the creator privileges over the user.
 async function verifyClientAccess(
   creatorId: string,
   clientId: string
@@ -2068,7 +2133,35 @@ async function verifyClientAccess(
   if (snap.empty) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
   }
+  const status = snap.docs[0].data().status;
+  if (status && status !== "active") {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "El cliente aún no ha aceptado la invitación"
+    );
+  }
   return clientId;
+}
+
+// Security (audit C-02 / H-12 / H-13): verify a client_session doc belongs
+// to the calling creator. Protects content endpoints whose URL key is the
+// session id (same id used for client_session_content).
+async function verifyClientSessionOwnership(
+  creatorId: string,
+  clientSessionId: string,
+  options: {requireExists?: boolean} = {requireExists: true}
+): Promise<void> {
+  const sessionDoc = await db.collection("client_sessions").doc(clientSessionId).get();
+  if (!sessionDoc.exists) {
+    if (options.requireExists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+    }
+    return;
+  }
+  if (sessionDoc.data()?.creator_id !== creatorId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta sesión");
+  }
 }
 
 // GET /creator/clients/:clientId/nutrition/assignments
@@ -2268,7 +2361,9 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
   }
 
-  const body = req.body ?? {};
+  // Security (audit C-05): explicit schema with tight caps. Previously read
+  // raw body with no validateBody, allowing 1MB blob writes per assignment.
+  const body = validateNutritionContentBody(req.body);
   const macros = {
     daily_calories: body.daily_calories ?? null,
     daily_protein_g: body.daily_protein_g ?? null,
@@ -2283,7 +2378,7 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
     name: body.name ?? "",
     description: body.description ?? "",
     ...macros,
-    categories: Array.isArray(body.categories) ? body.categories : [],
+    categories: body.categories ?? [],
     updated_at: FieldValue.serverTimestamp(),
   });
   batch.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
@@ -2310,7 +2405,8 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignacion no encontrada");
   }
 
-  const body = req.body ?? {};
+  // Security (audit C-05): same schema enforcement as the clients-side variant.
+  const body = validateNutritionContentBody(req.body);
   const macros2 = {
     daily_calories: body.daily_calories ?? null,
     daily_protein_g: body.daily_protein_g ?? null,
@@ -2325,7 +2421,7 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
     name: body.name ?? "",
     description: body.description ?? "",
     ...macros2,
-    categories: Array.isArray(body.categories) ? body.categories : [],
+    categories: body.categories ?? [],
     updated_at: FieldValue.serverTimestamp(),
   });
   batch2.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
@@ -2936,11 +3032,11 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
   const batch = db.batch();
   let batchCount = 0;
 
-  // Delete docs the client explicitly removed (paths like "sessions/X/exercises/Y/sets/Z")
+  // Security (audit C-03): validate each deletion path strictly before walking.
+  // Each path must be of the form "sessions/<id>" / "sessions/<id>/exercises/<id>"
+  // / "sessions/<id>/exercises/<id>/sets/<id>". Anything else is rejected.
   for (const delPath of deletions) {
-    if (typeof delPath !== "string" || !delPath.startsWith("sessions/")) continue;
-    const segments = delPath.split("/");
-    if (segments.length < 2 || segments.length > 6 || segments.length % 2 !== 0) continue;
+    const segments = validateDeletionPath(delPath);
     let ref: FirebaseFirestore.DocumentReference = docRef;
     for (let i = 0; i < segments.length; i += 2) {
       ref = ref.collection(segments[i]).doc(segments[i + 1]);
@@ -3054,16 +3150,32 @@ router.get("/creator/clients/:clientId/client-sessions", async (req, res) => {
 });
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId
+// Security (audit C-02): verify the doc, if it exists, belongs to this
+// creator+client pair; replace `...body` spread with pickFields allowlist.
+// Previously any creator could clobber another creator's client_sessions doc
+// by combining their own clientId with another creator's sessionId in the URL.
 router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
-  const body = req.body ?? {};
   const docRef = db.collection("client_sessions").doc(req.params.clientSessionId);
+  const existing = await docRef.get();
+  if (existing.exists) {
+    const data = existing.data()!;
+    if (data.creator_id !== auth.userId || data.client_id !== req.params.clientId) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta sesión");
+    }
+  }
+
+  const allowedFields = [
+    "date", "date_timestamp", "session_id", "module_id", "plan_id",
+    "program_id", "status", "notes", "title", "image_url", "source_session_id",
+  ];
+  const updates = pickFields(req.body, allowedFields);
 
   await docRef.set({
-    ...body,
+    ...updates,
     client_id: req.params.clientId,
     creator_id: auth.userId,
     updated_at: FieldValue.serverTimestamp(),
@@ -3160,16 +3272,28 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
 });
 
 // PUT /creator/clients/:clientId/client-sessions/:clientSessionId/content
+// Security (audit H-13): verify the parent client_sessions doc belongs to
+// this creator AND apply pickFields to the doc-level shape. Previously
+// `verifyClientAccess` confirmed creator/client relationship but anyone with
+// one client could write to ANY client_session_content doc by passing that id.
 router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyClientSessionOwnership(auth.userId, req.params.clientSessionId);
 
   const body = req.body ?? {};
-  const {exercises: exercisesArr, ...docFields} = body as {
+  const {exercises: exercisesArr, ...rawDocFields} = body as {
     exercises?: Array<Record<string, unknown>>;
     [key: string]: unknown;
   };
+
+  const docFields = pickFields(rawDocFields, [
+    "title", "notes", "date", "session_id", "session_name", "module_id",
+    "module_name", "plan_id", "program_id", "status", "duration_seconds",
+    "started_at", "ended_at", "image_url", "source_session_id", "type",
+    "tags", "discipline", "warmup", "cooldown", "metadata",
+  ]);
 
   const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
 
@@ -3236,10 +3360,12 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content
 // Updates doc-level fields only — does NOT touch exercises/sets subcollections
+// Security (audit H-13): verify parent ownership + pickFields allowlist.
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/content", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyClientSessionOwnership(auth.userId, req.params.clientSessionId);
 
   const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
   const doc = await docRef.get();
@@ -3247,17 +3373,33 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/conten
   if (!doc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Contenido de sesión no encontrado");
   }
+  if (doc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este contenido");
+  }
 
-  const {exercises: _ignored, ...updates} = req.body ?? {};
+  const {exercises: _ignored, ...rawUpdates} = req.body ?? {};
+  const updates = pickFields(rawUpdates, [
+    "title", "notes", "date", "session_id", "session_name", "module_id",
+    "module_name", "plan_id", "program_id", "status", "duration_seconds",
+    "started_at", "ended_at", "image_url", "source_session_id", "type",
+    "tags", "discipline", "warmup", "cooldown", "metadata",
+  ]);
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
   await docRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
   res.json({data: {id: req.params.clientSessionId, updated: true}});
 });
 
 // PATCH /creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId
+// Security (audit H-12): verify parent client_sessions doc belongs to this
+// creator AND apply pickFields. Previously verifyClientAccess alone allowed
+// any creator with any client to mutate exercises under any sessionId.
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/content/exercises/:exerciseId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyClientSessionOwnership(auth.userId, req.params.clientSessionId);
 
   const exRef = db.collection("client_session_content")
     .doc(req.params.clientSessionId)
@@ -3269,7 +3411,14 @@ router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId/conten
     throw new WakeApiServerError("NOT_FOUND", 404, "Ejercicio no encontrado");
   }
 
-  const updates = req.body ?? {};
+  const updates = pickFields(req.body, [
+    "displayName", "name", "title", "order", "type", "discipline",
+    "library_id", "exercise_id", "image_url", "video_url", "notes",
+    "tempo", "rest_seconds", "rest", "metadata", "tags",
+  ]);
+  if (Object.keys(updates).length === 0) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
   await exRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
   res.json({data: {id: req.params.exerciseId, updated: true}});
 });
@@ -5751,6 +5900,10 @@ router.get("/creator/clients/:clientId/programs/:programId/calendar", async (req
 });
 
 // POST /creator/clients/:clientId/programs/:programId/assign-plan
+// Security (audit H-28): verify plan ownership before reading modules.
+// Previously a creator could pass another creator's planId, snapshot the
+// full plan tree into ensureClientCopy, and effectively read+republish
+// any other creator's plan content.
 router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
@@ -5764,6 +5917,11 @@ router.post("/creator/clients/:clientId/programs/:programId/assign-plan", async 
   }
   if (!startWeekKey || typeof startWeekKey !== "string") {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "startWeekKey es requerido", "startWeekKey");
+  }
+
+  const planDoc = await db.collection("plans").doc(planId).get();
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
   // 1. Read plan modules
@@ -8103,6 +8261,7 @@ router.get("/creator/programs/:programId/calendar", async (req, res) => {
 });
 
 // POST /creator/programs/:programId/assign-plan
+// Security (audit H-28): verify plan ownership before reading modules.
 router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
@@ -8116,6 +8275,11 @@ router.post("/creator/programs/:programId/assign-plan", async (req, res) => {
   }
   if (!startWeekKey || typeof startWeekKey !== "string") {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "startWeekKey es requerido", "startWeekKey");
+  }
+
+  const planDoc = await db.collection("plans").doc(planId).get();
+  if (!planDoc.exists || planDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
   }
 
   // 1. Read plan modules
@@ -8323,11 +8487,10 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   const batch = db.batch();
   let batchCount = 0;
 
-  // Delete docs the client explicitly removed
+  // Security (audit C-04): same strict path validation as the clients-side
+  // sibling endpoint above (audit C-03).
   for (const delPath of deletions) {
-    if (typeof delPath !== "string" || !delPath.startsWith("sessions/")) continue;
-    const segments = delPath.split("/");
-    if (segments.length < 2 || segments.length > 6 || segments.length % 2 !== 0) continue;
+    const segments = validateDeletionPath(delPath);
     let ref: FirebaseFirestore.DocumentReference = docRef;
     for (let i = 0; i < segments.length; i += 2) {
       ref = ref.collection(segments[i]).doc(segments[i + 1]);
@@ -8668,8 +8831,16 @@ router.get("/creator/check-username/:username", async (req, res) => {
 });
 
 // POST /creator/register — bootstrap a new creator account
+//
+// Security (audit H-24): require verified email + write audit log entry.
+// Previously any authenticated user could self-elevate to creator role
+// (which unlocks course creation, email broadcasts, API keys, etc.) with no
+// friction beyond the 200rpm rate limit. This is the monetization-bypass
+// surface that combines worst with H-26 (creator email broadcasts use Wake's
+// brand From address).
 router.post("/creator/register", async (req, res) => {
-  const auth = await validateAuthAndRateLimit(req);
+  // Lower per-user rate limit to discourage brute attempts even before role check
+  const auth = await validateAuthAndRateLimit(req, 10);
 
   const userRef = db.collection("users").doc(auth.userId);
   const userDoc = await userRef.get();
@@ -8678,6 +8849,31 @@ router.post("/creator/register", async (req, res) => {
   if (currentRole === "creator" || currentRole === "admin") {
     res.json({data: {userId: auth.userId, alreadyCreator: true}});
     return;
+  }
+
+  // Require email-verified Firebase Auth status to prevent throwaway
+  // unverified accounts from elevating themselves.
+  let authRecord;
+  try {
+    authRecord = await admin.auth().getUser(auth.userId);
+  } catch {
+    throw new WakeApiServerError(
+      "UNAUTHENTICATED", 401, "Cuenta de autenticación no encontrada"
+    );
+  }
+  if (!authRecord.emailVerified) {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "Verifica tu correo electrónico antes de crear una cuenta de creador"
+    );
+  }
+  if (!authRecord.email) {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "Tu cuenta debe tener un correo electrónico para registrarse como creador"
+    );
   }
 
   const body = validateBody<{
@@ -8739,6 +8935,18 @@ router.post("/creator/register", async (req, res) => {
     profileCompleted: true,
     updated_at: FieldValue.serverTimestamp(),
   }, {merge: true});
+
+  // Audit log — every role elevation persisted for forensics
+  await db.collection("audit_log_role_elevation").add({
+    userId: auth.userId,
+    email: authRecord.email,
+    fromRole: currentRole ?? "user",
+    toRole: "creator",
+    via: "self_register",
+    ip: req.ip ?? null,
+    userAgent: req.header("user-agent") ?? null,
+    at: FieldValue.serverTimestamp(),
+  });
 
   res.status(201).json({data: {userId: auth.userId, role: "creator"}});
 });

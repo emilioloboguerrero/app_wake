@@ -22,9 +22,6 @@ import {runClientErrors} from "./ops/clientErrors.js";
 import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
-import {handleAgentWebhook} from "./ops/agentWebhook.js";
-import {dispatchMention} from "./ops/agentDispatch.js";
-import {runSynthesis} from "./ops/agentSynthesis.js";
 import {handleGithubWebhook} from "./ops/githubWebhook.js";
 import {parseTopicMap} from "./ops/telegram.js";
 import {
@@ -38,7 +35,7 @@ import {
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
-import {assignBundleToUser} from "./api/services/bundleAssignment.js";
+import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
 import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
 
 const db = admin.firestore();
@@ -692,6 +689,32 @@ export const processPaymentWebhook = functions
             .collection("subscriptions")
             .doc(preapprovalId);
 
+          // Security (audit H-21): require an existing local subscription
+          // doc whose userId matches the parsed external_reference. Without
+          // this check, an attacker who creates a preapproval off-platform
+          // (MP web UI) can cause us to silently `set({merge: true})` a new
+          // doc anywhere their crafted external_reference points.
+          const existingSub = await subscriptionRef.get();
+          if (!existingSub.exists) {
+            functions.logger.warn(
+              "Skipping preapproval webhook for unknown subscription doc",
+              {preapprovalId, userId: parsedReference.userId}
+            );
+            response.status(200).send("OK");
+            return;
+          }
+          const existingSubData = existingSub.data() ?? {};
+          const existingUserId = existingSubData.user_id ??
+            existingSubData.userId ?? parsedReference.userId;
+          if (existingUserId !== parsedReference.userId) {
+            functions.logger.error(
+              "Preapproval external_reference userId mismatch",
+              {preapprovalId, claimedUserId: parsedReference.userId, actualUserId: existingUserId}
+            );
+            response.status(200).send("OK");
+            return;
+          }
+
           const nextPaymentDate =
             preapprovalData?.next_payment_date ||
             preapprovalData?.auto_recurring?.next_payment_date ||
@@ -888,6 +911,61 @@ export const processPaymentWebhook = functions
         external_reference: paymentData.external_reference,
         preapproval_id: paymentData.preapproval_id,
       });
+
+      // ─── Refund / chargeback handling (audit H-18) ─────────────────────────
+      // Backported from Gen2 payments.ts. Without this branch, Wake had no
+      // production refund handling — refund a payment, the user kept access.
+      // Gen2 webhook is unreachable (audit C-07); Gen1 must handle refunds
+      // until the migration completes.
+      if (paymentData && (
+        paymentData.status === "refunded" ||
+        paymentData.status === "charged_back"
+      )) {
+        try {
+          const prev = await processedPaymentsRef.get();
+          const prevData = prev.exists ? prev.data() : null;
+          if (prevData?.bundleId && prevData?.userId) {
+            const revoked = await revokeBundleAccess(
+              prevData.userId as string,
+              prevData.bundleId as string
+            );
+            functions.logger.info("Bundle access revoked via refund", {
+              paymentId,
+              bundleId: prevData.bundleId,
+              userId: prevData.userId,
+              revoked,
+            });
+          } else if (prevData?.courseId && prevData?.userId) {
+            await db.collection("users").doc(prevData.userId as string).update({
+              [`courses.${prevData.courseId}.status`]: "cancelled",
+              [`courses.${prevData.courseId}.cancelled_at`]: new Date().toISOString(),
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            functions.logger.info("Course access revoked via refund", {
+              paymentId,
+              courseId: prevData.courseId,
+              userId: prevData.userId,
+            });
+          } else {
+            functions.logger.warn("Refund received but no prior course/bundle record", {
+              paymentId,
+              prevStatus: prevData?.status ?? "missing",
+            });
+          }
+        } catch (refundErr) {
+          functions.logger.error("Refund revocation failed", {
+            paymentId,
+            error: refundErr instanceof Error ? refundErr.message : String(refundErr),
+          });
+        }
+        await processedPaymentsRef.set({
+          processed_at: admin.firestore.FieldValue.serverTimestamp(),
+          status: paymentData.status,
+          refunded_at: new Date().toISOString(),
+        }, {merge: true});
+        response.status(200).send("OK");
+        return;
+      }
 
       // Check if payment is approved
       if (!paymentData || paymentData.status !== "approved") {
@@ -1088,46 +1166,55 @@ export const processPaymentWebhook = functions
         }
 
         try {
-          const result = await assignBundleToUser({
-            userId,
-            bundleId,
-            accessDuration,
-            paymentId,
-            subscriptionId: subscriptionIdForBundle,
-            isRenewal: isBundleRenewal,
-          });
+          // Security (audit H-17): bundle grant + processed_payments
+          // finalization must commit atomically. Mirror Gen2 path.
+          await db.runTransaction(async (tx: admin.firestore.Transaction) => {
+            const r = await assignBundleToUser({
+              userId,
+              bundleId,
+              accessDuration: accessDuration as string,
+              paymentId,
+              subscriptionId: subscriptionIdForBundle,
+              isRenewal: isBundleRenewal,
+              transaction: tx,
+            });
 
-          if (isSubscription && subscriptionIdForBundle) {
-            await db.collection("users").doc(userId)
-              .collection("subscriptions").doc(subscriptionIdForBundle).set({
-                status: "authorized",
-                last_payment_id: paymentId,
-                last_payment_date:
-                  paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-                transaction_amount: paymentData.transaction_amount || null,
-                currency_id: paymentData.currency_id || null,
-                management_url:
-                  `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionIdForBundle}`,
-                updated_at: admin.firestore.FieldValue.serverTimestamp(),
-              }, {merge: true});
-          }
+            if (isSubscription && subscriptionIdForBundle) {
+              tx.set(
+                db.collection("users").doc(userId)
+                  .collection("subscriptions").doc(subscriptionIdForBundle),
+                {
+                  status: "authorized",
+                  last_payment_id: paymentId,
+                  last_payment_date:
+                    paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+                  transaction_amount: paymentData.transaction_amount || null,
+                  currency_id: paymentData.currency_id || null,
+                  management_url:
+                    `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionIdForBundle}`,
+                  updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                {merge: true}
+              );
+            }
 
-          await processedPaymentsRef.set({
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved",
-            userId,
-            bundleId,
-            courseIds: result.courseIdsGranted,
-            isSubscription,
-            isRenewal: isBundleRenewal,
-            payment_type: paymentType,
-            userEmail,
-            userName,
-            bundleTitle: result.bundleTitle,
-            state: "completed",
-            amount: paymentData.transaction_amount ??
-              paymentData.transaction_details?.total_paid_amount ?? null,
-            currency_id: paymentData.currency_id ?? null,
+            tx.set(processedPaymentsRef, {
+              processed_at: admin.firestore.FieldValue.serverTimestamp(),
+              status: "approved",
+              userId,
+              bundleId,
+              courseIds: r.courseIdsGranted,
+              isSubscription,
+              isRenewal: isBundleRenewal,
+              payment_type: paymentType,
+              userEmail,
+              userName,
+              bundleTitle: r.bundleTitle,
+              state: "completed",
+              amount: paymentData.transaction_amount ??
+                paymentData.transaction_details?.total_paid_amount ?? null,
+              currency_id: paymentData.currency_id ?? null,
+            });
           });
         } catch (bundleError) {
           functions.logger.error("Bundle assignment failed", bundleError);
@@ -1200,29 +1287,40 @@ export const processPaymentWebhook = functions
           expirationDate = calculateExpirationDate(courseAccessDuration);
         }
 
-        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
-          isRenewal: true,
-          existingCourseData,
-        });
+        // Security (audit H-15 / H-16): wrap renewal grant + subscription
+        // update + processed_payments finalization in a single transaction.
+        // Previously the grant ran outside any transaction, allowing two
+        // concurrent webhooks to each compute expires_at from a stale read
+        // and double-extend the access window per duplicate event.
+        await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
+          await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
+            isRenewal: true,
+            existingCourseData,
+            transaction,
+          });
 
-        if (isSubscription && subscriptionId) {
-          await db
-            .collection("users").doc(userId)
-            .collection("subscriptions").doc(subscriptionId)
-            .set({
-              status: "authorized",
-              last_payment_id: paymentId,
-              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-              updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            }, {merge: true});
-        }
+          if (isSubscription && subscriptionId) {
+            transaction.set(
+              db
+                .collection("users").doc(userId)
+                .collection("subscriptions").doc(subscriptionId),
+              {
+                status: "authorized",
+                last_payment_id: paymentId,
+                last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+                updated_at: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              {merge: true}
+            );
+          }
 
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
-          payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
-          amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
-          currency_id: paymentData.currency_id ?? null,
+          transaction.set(processedPaymentsRef, {
+            processed_at: admin.firestore.FieldValue.serverTimestamp(),
+            status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
+            payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+            amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
+            currency_id: paymentData.currency_id ?? null,
+          });
         });
 
         response.status(200).send("OK");
@@ -3290,14 +3388,9 @@ export const cleanupVideoExchanges = onSchedule(
 const telegramSignalsBotToken = defineSecret("TELEGRAM_SIGNALS_BOT_TOKEN");
 const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
-const telegramAgentBotToken = defineSecret("TELEGRAM_AGENT_BOT_TOKEN");
-const telegramAgentWebhookSecret = defineSecret("TELEGRAM_AGENT_WEBHOOK_SECRET");
-const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
-const githubOpsToken = defineSecret("GITHUB_OPS_TOKEN");
 const githubWebhookSecret = defineSecret("GITHUB_WEBHOOK_SECRET");
 const opsApiKey = defineSecret("OPS_API_KEY");
 
-const AGENT_BOT_USERNAME = "agent_wake_bot";
 const GITHUB_OPS_OWNER = "emilioloboguerrero";
 const GITHUB_OPS_REPO = "wake";
 
@@ -3469,70 +3562,3 @@ export const wakeGithubWebhook = onRequest(
   }
 );
 
-// ─── Scheduled: agent daily synthesis (Mode A) ────────────────────────────
-export const wakeAgentSynthesisCron = onSchedule(
-  {
-    schedule: "every day 19:30",
-    timeZone: "America/Bogota",
-    region: "us-central1",
-    secrets: [
-      telegramAgentBotToken,
-      telegramChatId,
-      telegramTopics,
-      anthropicApiKey,
-      githubOpsToken,
-    ],
-    memory: "512MiB",
-    timeoutSeconds: 540,
-  },
-  async () => {
-    await runSynthesis({
-      agentBotUsername: AGENT_BOT_USERNAME,
-      agentBotToken: telegramAgentBotToken.value(),
-      chatId: telegramChatId.value(),
-      topics: readTopics(),
-      anthropicApiKey: anthropicApiKey.value(),
-      githubToken: githubOpsToken.value(),
-      githubOwner: GITHUB_OPS_OWNER,
-      githubRepo: GITHUB_OPS_REPO,
-    });
-  }
-);
-
-// ─── Webhook: agent bot receiver (archive + @mention dispatch) ────────────
-export const wakeAgentWebhook = onRequest(
-  {
-    region: "us-central1",
-    secrets: [
-      telegramAgentBotToken,
-      telegramChatId,
-      telegramAgentWebhookSecret,
-      telegramTopics,
-      anthropicApiKey,
-      githubOpsToken,
-    ],
-    memory: "512MiB",
-    timeoutSeconds: 300,
-    cors: false,
-  },
-  async (req, res) => {
-    await handleAgentWebhook(req, res, {
-      webhookSecret: telegramAgentWebhookSecret.value(),
-      allowedChatId: telegramChatId.value(),
-      topics: readTopics(),
-      onMessage: async (message) => {
-        await dispatchMention({
-          message,
-          agentBotUsername: AGENT_BOT_USERNAME,
-          agentBotToken: telegramAgentBotToken.value(),
-          chatId: telegramChatId.value(),
-          topics: readTopics(),
-          anthropicApiKey: anthropicApiKey.value(),
-          githubToken: githubOpsToken.value(),
-          githubOwner: GITHUB_OPS_OWNER,
-          githubRepo: GITHUB_OPS_REPO,
-        });
-      },
-    });
-  }
-);

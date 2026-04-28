@@ -21,6 +21,8 @@ module.exports = {
     "/lib/**/*", // Ignore built files.
     "/generated/**/*", // Ignore generated files.
     "list-collections.js", // One-off admin script, not in tsconfig.
+    "/tests/**/*", // Emulator/unit tests run via vitest, not part of build tsconfig.
+    "vitest.config.ts", // Vitest config not in build tsconfig.
   ],
   plugins: [
     "@typescript-eslint",

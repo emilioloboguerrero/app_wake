@@ -33,6 +33,50 @@ function setCachedToken(token: string, decoded: admin.auth.DecodedIdToken): void
   tokenCache.set(hash, {decoded, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS});
 }
 
+// Diagnostic logging for verifyIdToken failures. The Admin SDK error code
+// (auth/id-token-expired, auth/id-token-revoked, auth/argument-error,
+// auth/project-not-found, etc.) tells us why a real user's session is failing
+// without leaking the token itself. We log only the first/last few chars of
+// the token hash to correlate retries from the same client.
+function logVerifyIdTokenFailure(err: unknown, req: Request, token: string): void {
+  const errCode = (err as { code?: string } | null)?.code ?? "unknown";
+  const errMessage = err instanceof Error ? err.message : String(err);
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 12);
+  const tokenLen = token.length;
+  // Try to extract `iss`/`aud`/`uid`/`exp` from the JWT payload without
+  // verifying — purely diagnostic. If parsing fails, skip silently.
+  let claims: Record<string, unknown> | null = null;
+  try {
+    const parts = token.split(".");
+    if (parts.length === 3) {
+      const payloadJson = Buffer.from(parts[1], "base64url").toString("utf8");
+      const payload = JSON.parse(payloadJson) as Record<string, unknown>;
+      claims = {
+        iss: payload.iss,
+        aud: payload.aud,
+        uid: payload.user_id ?? payload.sub,
+        exp: payload.exp,
+        iat: payload.iat,
+      };
+    }
+  } catch {
+    // ignore — token may be malformed; that's itself a useful signal
+  }
+  functions.logger.warn("auth:verifyIdToken-failed", {
+    errCode,
+    errMessage,
+    tokenHash,
+    tokenLen,
+    claims,
+    nowSec: Math.floor(Date.now() / 1000),
+    path: req.path,
+    method: req.method,
+    origin: req.headers.origin ?? null,
+    userAgent: req.headers["user-agent"] ?? null,
+    appCheckPresent: !!req.headers["x-firebase-appcheck"],
+  });
+}
+
 export interface AuthResult {
   userId: string;
   role: "user" | "creator" | "admin";
@@ -150,7 +194,8 @@ export async function validateAuthAndRateLimit(
   if (!decoded) {
     try {
       decoded = await admin.auth().verifyIdToken(token, !isEmulator);
-    } catch {
+    } catch (err) {
+      logVerifyIdTokenFailure(err, req, token);
       throw new WakeApiServerError("UNAUTHENTICATED", 401, "Token de autenticación inválido o expirado");
     }
     setCachedToken(token, decoded);
@@ -239,7 +284,8 @@ async function validateFirebaseToken(
   if (!decoded) {
     try {
       decoded = await admin.auth().verifyIdToken(token, !isEmulator);
-    } catch {
+    } catch (err) {
+      logVerifyIdTokenFailure(err, req, token);
       throw new WakeApiServerError(
         "UNAUTHENTICATED",
         401,

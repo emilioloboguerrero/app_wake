@@ -3,7 +3,7 @@ import * as functions from "firebase-functions";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
-import {validateBody, validateDateFormat} from "../middleware/validate.js";
+import {validateBody, validateDateFormat, pickFields} from "../middleware/validate.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
@@ -330,7 +330,9 @@ router.get("/workout/daily", async (req, res) => {
       res.json({
         data: {
           hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week",
-          session: null, progress: {completed: 0, total: null}, allSessions: [],
+          session: null,
+          progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
+          allSessions: [],
         },
       });
       return;
@@ -356,7 +358,7 @@ router.get("/workout/daily", async (req, res) => {
           hasSession: false, isRestDay: false,
           emptyReason: requestedDate ? "no_session_today" : "no_planning_this_week",
           session: null,
-          progress: {completed: completedSessionIds.size, total: merged.length},
+          progress: {completed: completedSessionIds.size, total: merged.length, allSessionsCompleted: [...completedSessionIds]},
           allSessions: resolvedAllSessions,
         },
       });
@@ -458,7 +460,7 @@ router.get("/workout/daily", async (req, res) => {
 
       if (allSessions.length === 0) {
         res.json({
-          data: {hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: {completed: 0, total: null}, allSessions: []},
+          data: {hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]}, allSessions: []},
         });
         return;
       }
@@ -468,7 +470,7 @@ router.get("/workout/daily", async (req, res) => {
         allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
       if (!nextSession) {
         res.json({
-          data: {hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: {completed: completedSessionIds.size, total: allSessions.length}, allSessions: resolvedAllSessions},
+          data: {hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]}, allSessions: resolvedAllSessions},
         });
         return;
       }
@@ -559,7 +561,7 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "no_planning_this_week",
             session: null,
-            progress: {completed: 0, total: null},
+            progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
             allSessions: [],
           },
         });
@@ -577,7 +579,7 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "all_sessions_completed",
             session: null,
-            progress: {completed: completedSessionIds.size, total: allSessions.length},
+            progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]},
             allSessions: resolvedAllSessions,
           },
         });
@@ -596,7 +598,11 @@ router.get("/workout/daily", async (req, res) => {
         isRestDay: false,
         emptyReason: "no_planning_this_week",
         session: null,
-        progress: {completed: 0, total: null},
+        progress: {
+          completed: completedSessionIds ? completedSessionIds.size : 0,
+          total: null,
+          allSessionsCompleted: completedSessionIds ? [...completedSessionIds] : [],
+        },
         allSessions: resolvedAllSessions,
       },
     });
@@ -827,16 +833,25 @@ router.get("/workout/daily", async (req, res) => {
     };
   });
 
-  // Reuse completedSessionIds if already fetched (low_ticket path), otherwise fetch
-  const completedCount = completedSessionIds ?
-    completedSessionIds.size :
-    (await db
+  // Reuse completedSessionIds if already fetched (low_ticket path), otherwise fetch.
+  // Must populate the Set (not just count) so the response can include
+  // allSessionsCompleted — DailyWorkoutScreen needs the IDs to render the
+  // green checkmark on completed session cards.
+  if (!completedSessionIds) {
+    const completedSnap = await db
       .collection("users")
       .doc(auth.userId)
       .collection("sessionHistory")
       .where("courseId", "==", courseId)
-      .count()
-      .get()).data().count;
+      .select("sessionId")
+      .get();
+    completedSessionIds = new Set(
+      completedSnap.docs
+        .map((d) => d.data().sessionId as string | undefined)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    );
+  }
+  const completedCount = completedSessionIds.size;
 
   // Read module title for context
   let moduleTitle = "";
@@ -876,6 +891,7 @@ router.get("/workout/daily", async (req, res) => {
       progress: {
         completed: completedCount,
         total: resolvedAllSessions.length || null,
+        allSessionsCompleted: [...completedSessionIds],
       },
       allSessions: resolvedAllSessions,
       availableLibraries: Array.isArray(course.availableLibraries) ? course.availableLibraries : [],
@@ -1903,6 +1919,24 @@ router.put("/workout/checkpoint", async (req, res) => {
     req.body
   );
 
+  // Guard against the late-write race: a checkpoint PUT debounced before
+  // /workout/complete can land milliseconds after the activeSession DELETE
+  // and resurrect the doc, surfacing a phantom RecoveryModal on next mount.
+  // If any sessionHistory doc for this course was completed at-or-after the
+  // current session's startedAt, this PUT is stale — skip it.
+  // Uses the existing (courseId, completedAt) composite index.
+  const stalenessSnap = await db
+    .collection("users").doc(auth.userId)
+    .collection("sessionHistory")
+    .where("courseId", "==", body.courseId)
+    .where("completedAt", ">=", body.startedAt)
+    .limit(1)
+    .get();
+  if (!stalenessSnap.empty) {
+    res.json({data: {saved: false, reason: "session_already_completed"}});
+    return;
+  }
+
   await db
     .collection("users")
     .doc(auth.userId)
@@ -2564,6 +2598,10 @@ router.get("/workout/client-programs/:programId", async (req, res) => {
 });
 
 // POST /workout/client-programs/:programId
+// Security (audit H-14): replace `...req.body` spread with pickFields. Doc id
+// is `${userId}_${programId}` so users cannot impersonate, but the prior
+// shape allowed injection of arbitrary fields like `assigned_by`,
+// `expires_at`, `creator_id`, `status: "completed"`.
 router.post("/workout/client-programs/:programId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2572,8 +2610,15 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
   const docRef = db.collection("client_programs").doc(docId);
   const existing = await docRef.get();
 
+  const allowedFields = [
+    "currentSessionId", "currentModuleId", "currentWeek", "progress",
+    "lastSessionId", "lastSessionDate", "completedSessions",
+    "skippedSessions", "preferences", "notes",
+  ];
+  const updates = pickFields(req.body, allowedFields);
+
   const writeData: Record<string, unknown> = {
-    ...(req.body ?? {}),
+    ...updates,
     user_id: auth.userId,
     program_id: req.params.programId,
     updated_at: FieldValue.serverTimestamp(),
@@ -2941,6 +2986,11 @@ async function loadExerciseTree(parentRef: FirebaseFirestore.DocumentReference) 
 }
 
 // GET /workout/client-session-content/:clientSessionId
+//
+// Security (audit M-34): verify ownership before returning content.
+// Previously any authenticated user could read another user's planned session
+// content by guessing the clientSessionId (Firestore IDs are 20 chars but
+// leak via creator-side endpoints).
 router.get("/workout/client-session-content/:clientSessionId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2953,8 +3003,29 @@ router.get("/workout/client-session-content/:clientSessionId", async (req, res) 
     return;
   }
 
+  // Ownership check: caller must be the assigned client OR the creator.
+  // Two paths because client_session_content does not always carry these
+  // fields directly (legacy data); fall back to the parent client_sessions doc.
+  const data = doc.data() ?? {};
+  let isOwner = data.client_id === auth.userId || data.creator_id === auth.userId;
+
+  if (!isOwner) {
+    const parentSession = await db
+      .collection("client_sessions")
+      .doc(req.params.clientSessionId)
+      .get();
+    if (parentSession.exists) {
+      const parent = parentSession.data() ?? {};
+      isOwner = parent.client_id === auth.userId || parent.creator_id === auth.userId;
+    }
+  }
+
+  if (!isOwner) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
   const exercises = await loadExerciseTree(docRef);
-  res.json({data: {...doc.data(), id: doc.id, exercises}});
+  res.json({data: {...data, id: doc.id, exercises}});
 });
 
 // GET /workout/client-plan-content/:userId/:programId/:weekKey
@@ -3009,6 +3080,11 @@ router.get("/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", 
 });
 
 // GET /library/sessions/:sessionId — library session with full exercise tree
+// Security (audit H-29): caller must have a relationship with the creator —
+// the creator themselves, an admin, or an active one-on-one client. Library
+// sessions are creator IP; the prior shape allowed any authenticated user
+// (including competing creators) to read any creator's library by passing
+// an arbitrary creatorId query param.
 router.get("/library/sessions/:sessionId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -3016,6 +3092,42 @@ router.get("/library/sessions/:sessionId", async (req, res) => {
   const creatorId = req.query.creatorId as string;
   if (!creatorId) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "creatorId es requerido", "creatorId");
+  }
+
+  const isOwner = creatorId === auth.userId;
+  const isAdmin = auth.role === "admin";
+  if (!isOwner && !isAdmin) {
+    // Caller must have a relationship with this creator: either an active
+    // one-on-one client OR enrolled in a course this creator owns. Library
+    // sessions are creator IP, so unrelated users (incl. competing creators)
+    // are denied even if they pass a guessed creatorId.
+    const relSnap = await db
+      .collection("one_on_one_clients")
+      .where("creatorId", "==", creatorId)
+      .where("clientUserId", "==", auth.userId)
+      .limit(1)
+      .get();
+    const hasActiveRelationship = !relSnap.empty &&
+      (relSnap.docs[0].data().status === undefined ||
+        relSnap.docs[0].data().status === "active");
+
+    let hasEnrolledCourse = false;
+    if (!hasActiveRelationship) {
+      const userDoc = await db.collection("users").doc(auth.userId).get();
+      const courses = (userDoc.data()?.courses ?? {}) as Record<string, unknown>;
+      const courseIds = Object.keys(courses);
+      if (courseIds.length > 0) {
+        const courseRefs = courseIds.slice(0, 50)
+          .map((id) => db.collection("courses").doc(id));
+        const courseDocs = await db.getAll(...courseRefs);
+        hasEnrolledCourse = courseDocs.some((cDoc) => cDoc.exists &&
+          cDoc.data()?.creator_id === creatorId);
+      }
+    }
+
+    if (!hasActiveRelationship && !hasEnrolledCourse) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta biblioteca");
+    }
   }
 
   const sessionRef = db
