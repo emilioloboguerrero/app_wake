@@ -447,9 +447,14 @@ class SessionService {
         logger.error('Error calculating muscle volumes:', error);
       }
 
-      // Clear caches to force refresh
+      // Clear caches to force refresh.
+      // The dailySession queryKey is `['programs', courseId, 'daily', ...]` —
+      // without invalidating it, the just-completed session keeps showing as
+      // not-completed (no green checkmark) until the 5-min cache expires.
       this.clearCache(userId, courseId);
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
+      queryClient.invalidateQueries({ queryKey: ['programs', courseId] });
+      queryClient.invalidateQueries({ queryKey: ['workout', 'calendar'] });
 
 
       return {

@@ -330,7 +330,9 @@ router.get("/workout/daily", async (req, res) => {
       res.json({
         data: {
           hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week",
-          session: null, progress: {completed: 0, total: null}, allSessions: [],
+          session: null,
+          progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
+          allSessions: [],
         },
       });
       return;
@@ -356,7 +358,7 @@ router.get("/workout/daily", async (req, res) => {
           hasSession: false, isRestDay: false,
           emptyReason: requestedDate ? "no_session_today" : "no_planning_this_week",
           session: null,
-          progress: {completed: completedSessionIds.size, total: merged.length},
+          progress: {completed: completedSessionIds.size, total: merged.length, allSessionsCompleted: [...completedSessionIds]},
           allSessions: resolvedAllSessions,
         },
       });
@@ -458,7 +460,7 @@ router.get("/workout/daily", async (req, res) => {
 
       if (allSessions.length === 0) {
         res.json({
-          data: {hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: {completed: 0, total: null}, allSessions: []},
+          data: {hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week", session: null, progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]}, allSessions: []},
         });
         return;
       }
@@ -468,7 +470,7 @@ router.get("/workout/daily", async (req, res) => {
         allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
       if (!nextSession) {
         res.json({
-          data: {hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: {completed: completedSessionIds.size, total: allSessions.length}, allSessions: resolvedAllSessions},
+          data: {hasSession: false, isRestDay: false, emptyReason: "all_sessions_completed", session: null, progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]}, allSessions: resolvedAllSessions},
         });
         return;
       }
@@ -559,7 +561,7 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "no_planning_this_week",
             session: null,
-            progress: {completed: 0, total: null},
+            progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
             allSessions: [],
           },
         });
@@ -577,7 +579,7 @@ router.get("/workout/daily", async (req, res) => {
             isRestDay: false,
             emptyReason: "all_sessions_completed",
             session: null,
-            progress: {completed: completedSessionIds.size, total: allSessions.length},
+            progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]},
             allSessions: resolvedAllSessions,
           },
         });
@@ -596,7 +598,11 @@ router.get("/workout/daily", async (req, res) => {
         isRestDay: false,
         emptyReason: "no_planning_this_week",
         session: null,
-        progress: {completed: 0, total: null},
+        progress: {
+          completed: completedSessionIds ? completedSessionIds.size : 0,
+          total: null,
+          allSessionsCompleted: completedSessionIds ? [...completedSessionIds] : [],
+        },
         allSessions: resolvedAllSessions,
       },
     });
@@ -827,16 +833,25 @@ router.get("/workout/daily", async (req, res) => {
     };
   });
 
-  // Reuse completedSessionIds if already fetched (low_ticket path), otherwise fetch
-  const completedCount = completedSessionIds ?
-    completedSessionIds.size :
-    (await db
+  // Reuse completedSessionIds if already fetched (low_ticket path), otherwise fetch.
+  // Must populate the Set (not just count) so the response can include
+  // allSessionsCompleted — DailyWorkoutScreen needs the IDs to render the
+  // green checkmark on completed session cards.
+  if (!completedSessionIds) {
+    const completedSnap = await db
       .collection("users")
       .doc(auth.userId)
       .collection("sessionHistory")
       .where("courseId", "==", courseId)
-      .count()
-      .get()).data().count;
+      .select("sessionId")
+      .get();
+    completedSessionIds = new Set(
+      completedSnap.docs
+        .map((d) => d.data().sessionId as string | undefined)
+        .filter((id): id is string => typeof id === "string" && id.length > 0)
+    );
+  }
+  const completedCount = completedSessionIds.size;
 
   // Read module title for context
   let moduleTitle = "";
@@ -876,6 +891,7 @@ router.get("/workout/daily", async (req, res) => {
       progress: {
         completed: completedCount,
         total: resolvedAllSessions.length || null,
+        allSessionsCompleted: [...completedSessionIds],
       },
       allSessions: resolvedAllSessions,
       availableLibraries: Array.isArray(course.availableLibraries) ? course.availableLibraries : [],
