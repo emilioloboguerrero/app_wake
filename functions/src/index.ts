@@ -22,9 +22,6 @@ import {runClientErrors} from "./ops/clientErrors.js";
 import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
-import {handleAgentWebhook} from "./ops/agentWebhook.js";
-import {dispatchMention} from "./ops/agentDispatch.js";
-import {runSynthesis} from "./ops/agentSynthesis.js";
 import {handleGithubWebhook} from "./ops/githubWebhook.js";
 import {parseTopicMap} from "./ops/telegram.js";
 import {
@@ -3345,14 +3342,9 @@ export const cleanupVideoExchanges = onSchedule(
 const telegramSignalsBotToken = defineSecret("TELEGRAM_SIGNALS_BOT_TOKEN");
 const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
-const telegramAgentBotToken = defineSecret("TELEGRAM_AGENT_BOT_TOKEN");
-const telegramAgentWebhookSecret = defineSecret("TELEGRAM_AGENT_WEBHOOK_SECRET");
-const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
-const githubOpsToken = defineSecret("GITHUB_OPS_TOKEN");
 const githubWebhookSecret = defineSecret("GITHUB_WEBHOOK_SECRET");
 const opsApiKey = defineSecret("OPS_API_KEY");
 
-const AGENT_BOT_USERNAME = "agent_wake_bot";
 const GITHUB_OPS_OWNER = "emilioloboguerrero";
 const GITHUB_OPS_REPO = "wake";
 
@@ -3524,70 +3516,3 @@ export const wakeGithubWebhook = onRequest(
   }
 );
 
-// ─── Scheduled: agent daily synthesis (Mode A) ────────────────────────────
-export const wakeAgentSynthesisCron = onSchedule(
-  {
-    schedule: "every day 19:30",
-    timeZone: "America/Bogota",
-    region: "us-central1",
-    secrets: [
-      telegramAgentBotToken,
-      telegramChatId,
-      telegramTopics,
-      anthropicApiKey,
-      githubOpsToken,
-    ],
-    memory: "512MiB",
-    timeoutSeconds: 540,
-  },
-  async () => {
-    await runSynthesis({
-      agentBotUsername: AGENT_BOT_USERNAME,
-      agentBotToken: telegramAgentBotToken.value(),
-      chatId: telegramChatId.value(),
-      topics: readTopics(),
-      anthropicApiKey: anthropicApiKey.value(),
-      githubToken: githubOpsToken.value(),
-      githubOwner: GITHUB_OPS_OWNER,
-      githubRepo: GITHUB_OPS_REPO,
-    });
-  }
-);
-
-// ─── Webhook: agent bot receiver (archive + @mention dispatch) ────────────
-export const wakeAgentWebhook = onRequest(
-  {
-    region: "us-central1",
-    secrets: [
-      telegramAgentBotToken,
-      telegramChatId,
-      telegramAgentWebhookSecret,
-      telegramTopics,
-      anthropicApiKey,
-      githubOpsToken,
-    ],
-    memory: "512MiB",
-    timeoutSeconds: 300,
-    cors: false,
-  },
-  async (req, res) => {
-    await handleAgentWebhook(req, res, {
-      webhookSecret: telegramAgentWebhookSecret.value(),
-      allowedChatId: telegramChatId.value(),
-      topics: readTopics(),
-      onMessage: async (message) => {
-        await dispatchMention({
-          message,
-          agentBotUsername: AGENT_BOT_USERNAME,
-          agentBotToken: telegramAgentBotToken.value(),
-          chatId: telegramChatId.value(),
-          topics: readTopics(),
-          anthropicApiKey: anthropicApiKey.value(),
-          githubToken: githubOpsToken.value(),
-          githubOwner: GITHUB_OPS_OWNER,
-          githubRepo: GITHUB_OPS_REPO,
-        });
-      },
-    });
-  }
-);
