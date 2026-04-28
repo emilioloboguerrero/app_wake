@@ -50,7 +50,6 @@
       flex-direction: column;
     }
 
-    /* Loading screen – pointer-events: none so taps pass through if still visible */
     #loading-screen {
       position: fixed;
       top: 0;
@@ -70,6 +69,10 @@
       display: none;
     }
 
+    #loading-screen.recovery {
+      pointer-events: auto;
+    }
+
     .loading-logo {
       width: 120px;
       height: auto;
@@ -81,9 +84,47 @@
       width: 40px;
       height: 40px;
       border: 3px solid rgba(255, 255, 255, 0.1);
-      border-top-color: rgba(191, 168, 77, 1);
+      border-top-color: rgba(255, 255, 255, 0.9);
       border-radius: 50%;
       animation: spin 1s linear infinite;
+    }
+
+    .loading-recovery {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 32px;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    #loading-screen.recovery .loading-spinner {
+      display: none;
+    }
+
+    #loading-screen.recovery .loading-recovery {
+      display: flex;
+    }
+
+    .loading-recovery-text {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 15px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .loading-recovery-button {
+      background: rgba(255, 255, 255, 0.9);
+      color: #1a1a1a;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: inherit;
     }
 
     @keyframes spin {
@@ -134,6 +175,10 @@
   <div id="loading-screen">
     <img src="/assets/wake-logo-new.png" alt="Wake" class="loading-logo" />
     <div class="loading-spinner"></div>
+    <div class="loading-recovery">
+      <div class="loading-recovery-text">No pudimos cargar la app. Reintenta para continuar.</div>
+      <button type="button" class="loading-recovery-button" id="loading-recovery-button">Reintentar</button>
+    </div>
   </div>
 
   <script>
@@ -161,15 +206,71 @@
       });
     }
 
-    // Hide loading screen when app loads
-    window.addEventListener('load', () => {
-      setTimeout(() => {
-        const loadingScreen = document.getElementById('loading-screen');
-        if (loadingScreen) {
-          loadingScreen.classList.add('hidden');
+    // Hide loading screen only when React mounts. If the bundle fails to
+    // execute (e.g. cached shell points at a deleted hash and Hosting's SPA
+    // rewrite returns HTML for a .js URL → "Unexpected token '<'"), the
+    // recovery UI is shown instead of leaving the user on a black screen.
+    (function() {
+      var loadingScreen = document.getElementById('loading-screen');
+      var rootEl = document.getElementById('root');
+      if (!loadingScreen || !rootEl) return;
+
+      var hidden = false;
+      function hideLoading() {
+        if (hidden) return;
+        hidden = true;
+        loadingScreen.classList.add('hidden');
+      }
+      function showRecovery() {
+        if (hidden) return;
+        loadingScreen.classList.add('recovery');
+      }
+
+      var observer = new MutationObserver(function() {
+        if (rootEl.firstElementChild) {
+          observer.disconnect();
+          hideLoading();
         }
-      }, 500);
-    });
+      });
+      observer.observe(rootEl, { childList: true });
+      if (rootEl.firstElementChild) {
+        observer.disconnect();
+        hideLoading();
+        return;
+      }
+
+      var fallbackTimer = setTimeout(showRecovery, 12000);
+
+      window.addEventListener('error', function(e) {
+        var msg = (e && e.message) || '';
+        if (msg.indexOf('Unexpected token') !== -1 || msg.indexOf('SyntaxError') !== -1) {
+          clearTimeout(fallbackTimer);
+          showRecovery();
+        }
+      });
+
+      var btn = document.getElementById('loading-recovery-button');
+      if (btn) {
+        btn.addEventListener('click', function() {
+          btn.disabled = true;
+          var clearAll = Promise.resolve();
+          if (window.caches && caches.keys) {
+            clearAll = caches.keys().then(function(keys) {
+              return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+            }).catch(function() {});
+          }
+          var unregister = Promise.resolve();
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            unregister = navigator.serviceWorker.getRegistrations().then(function(regs) {
+              return Promise.all(regs.map(function(r) { return r.unregister(); }));
+            }).catch(function() {});
+          }
+          Promise.all([clearAll, unregister]).then(function() {
+            window.location.reload();
+          });
+        });
+      }
+    })();
 
     // Prevent zoom on double tap (iOS) – only prevent when same target, so button/link taps work
     let lastTouchEnd = 0;

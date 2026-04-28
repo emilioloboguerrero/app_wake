@@ -1,27 +1,19 @@
 // Wake PWA Service Worker — Workbox-based
-// Per OFFLINE_ARCHITECTURE.md §5: scope is /app/, no skipWaiting + clients.claim
-// Activate on next load to avoid mid-session cache mismatch
-
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.3.0/workbox-sw.js');
 
 const { registerRoute } = workbox.routing;
-const { CacheFirst, NetworkOnly, NetworkFirst } = workbox.strategies;
+const { CacheFirst, NetworkOnly } = workbox.strategies;
 const { ExpirationPlugin } = workbox.expiration;
 const { CacheableResponsePlugin } = workbox.cacheableResponse;
 
-// ─── App shell: NetworkFirst for navigations ──────────────────────────────
-// Never precache /app/index.html — it references hashed bundle filenames
-// that get deleted on the next deploy. A stale precached shell causes
-// "Unexpected token '<'" errors when the old bundle URL 404s and Hosting's
-// SPA rewrite returns the current index.html as HTML.
+// App shell navigations: NetworkOnly. Never cache /app/* HTML — the cached
+// shell embeds hashed bundle URLs that get deleted on the next deploy, and
+// Hosting's SPA rewrite then serves index.html as text/html for the dead
+// bundle URL → "Unexpected token '<'" → black screen on reopen.
 registerRoute(
   ({ request, url }) =>
     request.mode === 'navigate' && url.pathname.startsWith('/app'),
-  new NetworkFirst({
-    cacheName: 'wake-app-shell-v1',
-    networkTimeoutSeconds: 5,
-    plugins: [new CacheableResponsePlugin({ statuses: [200] })],
-  })
+  new NetworkOnly()
 );
 
 // ─── Cache strategies ─────────────────────────────────────────────────────
@@ -119,14 +111,16 @@ self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
 });
 
-// ─── Activate: clean up ALL old caches (including workbox-precache) ──────
+// Activate: purge every cache except the storage-image cache. This evicts
+// any prior wake-app-shell-v1 entries left over from the NetworkFirst era,
+// which is the cache that caused the cold-reopen black screen.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key !== 'wake-storage-images-v2' && key !== 'wake-app-shell-v1')
+          .filter((key) => key !== 'wake-storage-images-v2')
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();
