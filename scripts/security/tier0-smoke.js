@@ -28,12 +28,8 @@ if (!WEB_API_KEY) {
 
 admin.initializeApp({projectId: PROJECT_ID});
 
-const TEST_USER_PREFIX = "tier0-smoke-";
-const TEST_USERS = {
-  alice: `${TEST_USER_PREFIX}alice`,
-  bob: `${TEST_USER_PREFIX}bob`,
-  admin: `${TEST_USER_PREFIX}admin`,
-};
+// Test user identities are minted at runtime (uid + token returned together)
+const createdUserIds = []; // tracked for cleanup
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -123,36 +119,38 @@ function patchJson(url, body, headers = {}) {
 
 const TEST_PASSWORD = "tier0-smoke-Pass-1234";
 
-async function ensureTestUser(uid, email, role = "user") {
-  // createCustomToken requires service account signing, which isn't
-  // available with ADC. Use email/password auth via REST instead — no
-  // signing needed. Re-create the user each run to ensure password matches.
-  try {
-    await admin.auth().deleteUser(uid);
-  } catch {/* not found — ok */}
-  await admin.auth().createUser({uid, email, password: TEST_PASSWORD, emailVerified: true});
+// Sidesteps email enumeration protection by using accounts:signUp instead
+// of accounts:signInWithPassword. signUp creates the auth user AND returns
+// an ID token in one call — no probing of existing accounts.
+async function createTestUserAndMintToken(emailPrefix, role = "user") {
+  // Unique email per run to avoid "EMAIL_EXISTS" on retry
+  const email = `${emailPrefix}-${Date.now()}-${Math.floor(Math.random() * 9999)}@tier0-smoke.test`;
 
-  const db = admin.firestore();
-  await db.collection("users").doc(uid).set({
-    role,
-    email,
-    displayName: uid,
-    created_at: admin.firestore.FieldValue.serverTimestamp(),
-  }, {merge: true});
-  return uid;
-}
-
-async function mintIdToken(uid, email) {
-  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${WEB_API_KEY}`;
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${WEB_API_KEY}`;
   const result = await postJson(url, {
     email,
     password: TEST_PASSWORD,
     returnSecureToken: true,
   });
   if (result.status !== 200) {
-    throw new Error(`Password signin failed for ${email}: ${result.status} ${JSON.stringify(result.body)}`);
+    throw new Error(`signUp failed for ${email}: ${result.status} ${JSON.stringify(result.body)}`);
   }
-  return result.body.idToken;
+
+  const {idToken, localId: uid} = result.body;
+
+  // Set role + Firestore user doc via Admin SDK. emailVerified is not needed
+  // for Tier 0 tests; updateUser via Admin SDK has a propagation delay
+  // immediately after signUp.
+  const db = admin.firestore();
+  await db.collection("users").doc(uid).set({
+    role,
+    email,
+    displayName: emailPrefix,
+    created_at: admin.firestore.FieldValue.serverTimestamp(),
+    smokeTestUser: true, // marker for cleanup
+  }, {merge: true});
+
+  return {uid, email, idToken};
 }
 
 let passed = 0;
@@ -172,12 +170,8 @@ function assertStatus(label, actual, expected) {
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
 
-async function setupTestData() {
-  console.log("\n[setup] Creating test users + test course…");
-  await ensureTestUser(TEST_USERS.alice, "alice@tier0-smoke.test", "user");
-  await ensureTestUser(TEST_USERS.bob, "bob@tier0-smoke.test", "user");
-  await ensureTestUser(TEST_USERS.admin, "admin@tier0-smoke.test", "admin");
-
+async function setupTestCourses() {
+  console.log("\n[setup] Creating test courses…");
   const db = admin.firestore();
   // Test course: paid, published — should reject move-course for regular users
   await db.collection("courses").doc("tier0-smoke-paid-course").set({
@@ -275,10 +269,10 @@ async function testC06_trialClamp(aliceToken) {
   }
 }
 
-async function testC09_storageOtherUser(aliceToken) {
+async function testC09_storageOtherUser(aliceToken, bobUid) {
   console.log("\n[C-09] /storage/download-url for ANOTHER user's path → expect 403");
   const r = await getJson(
-    `${API_BASE}/v1/storage/download-url?path=body_log/${TEST_USERS.bob}/photo.jpg`,
+    `${API_BASE}/v1/storage/download-url?path=body_log/${bobUid}/photo.jpg`,
     {Authorization: `Bearer ${aliceToken}`}
   );
   assertStatus("alice fetching bob's body_log", r.status, 403);
@@ -328,7 +322,7 @@ async function testH25_expiresOnActive(aliceToken) {
 async function cleanup() {
   console.log("\n[cleanup] Removing test users + test data…");
   const db = admin.firestore();
-  for (const uid of Object.values(TEST_USERS)) {
+  for (const uid of createdUserIds) {
     try {
       await admin.auth().deleteUser(uid);
     } catch {/* ignore */}
@@ -351,28 +345,32 @@ async function main() {
   console.log(`\n=== Tier 0 Smoke Test — project: ${PROJECT_ID} — base: ${API_BASE} ===\n`);
 
   try {
-    await setupTestData();
+    await setupTestCourses();
 
-    const aliceToken = await mintIdToken(TEST_USERS.alice, "alice@tier0-smoke.test");
-    const adminToken = await mintIdToken(TEST_USERS.admin, "admin@tier0-smoke.test");
+    console.log("\n[setup] Minting test users via signUp…");
+    const alice = await createTestUserAndMintToken("alice", "user");
+    const bob = await createTestUserAndMintToken("bob", "user");
+    const adminUser = await createTestUserAndMintToken("admin", "admin");
+    createdUserIds.push(alice.uid, bob.uid, adminUser.uid);
+    console.log(`  ✓ alice=${alice.uid}, bob=${bob.uid}, admin=${adminUser.uid}`);
 
     // C-01: move-course refined behavior
-    await testC01_movePaidCourse(aliceToken);
-    await testC01_moveFreeCourse(aliceToken);
-    await testC01_moveDraftCourse(aliceToken);
-    await testC01_admin(adminToken);
+    await testC01_movePaidCourse(alice.idToken);
+    await testC01_moveFreeCourse(alice.idToken);
+    await testC01_moveDraftCourse(alice.idToken);
+    await testC01_admin(adminUser.idToken);
 
     // C-06: trial duration clamp
-    await testC06_trialClamp(aliceToken);
+    await testC06_trialClamp(alice.idToken);
 
     // C-09: storage download URL
-    await testC09_storageOtherUser(aliceToken);
-    await testC09_storageVideoExchange(aliceToken);
+    await testC09_storageOtherUser(alice.idToken, bob.uid);
+    await testC09_storageVideoExchange(alice.idToken);
 
     // H-25: status enum
-    await testH25_statusEnum(aliceToken);
-    await testH25_statusEnumValid(aliceToken);
-    await testH25_expiresOnActive(aliceToken);
+    await testH25_statusEnum(alice.idToken);
+    await testH25_statusEnumValid(alice.idToken);
+    await testH25_expiresOnActive(alice.idToken);
   } catch (err) {
     console.error("\n✗ Suite failed:", err);
     failed++;
