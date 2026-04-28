@@ -163,6 +163,13 @@ router.post("/events/:eventId/register", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "Las inscripciones están cerradas");
   }
 
+  // Security (audit M-43 / Tier 5.4): close the gap where the public endpoint
+  // ignored event.wake_users_only even though the Firestore rules enforce it
+  // for direct-from-client writes.
+  if (event.wake_users_only === true) {
+    await validateAuth(req);
+  }
+
   // Check capacity
   if (event.maxRegistrations || event.capacity) {
     const cap = event.maxRegistrations || event.capacity;

@@ -174,24 +174,31 @@ service cloud.firestore {
       allow delete: if isAdmin();
       
       // Modules subcollection - nested under courses
+      // Security (audit H-01): writes scoped to the creator who owns the
+      // parent course doc. Previously `isCreator() || isAdmin()` allowed any
+      // creator to mutate or delete any other creator's program content.
       match /modules/{moduleId} {
         allow read: if isSignedIn();
-        allow write: if isSignedIn() && (isCreator() || isAdmin());
-        
+        allow write: if isAdmin() || (isCreator() &&
+          get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
+
         // Sessions subcollection - nested under modules
         match /sessions/{sessionId} {
           allow read: if isSignedIn();
-          allow write: if isSignedIn() && (isCreator() || isAdmin());
-          
+          allow write: if isAdmin() || (isCreator() &&
+            get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
+
           // Exercises subcollection - nested under sessions
           match /exercises/{exerciseId} {
             allow read: if isSignedIn();
-            allow write: if isSignedIn() && (isCreator() || isAdmin());
-            
+            allow write: if isAdmin() || (isCreator() &&
+              get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
+
             // Sets subcollection - nested under exercises
             match /sets/{setId} {
               allow read: if isSignedIn();
-              allow write: if isSignedIn() && (isCreator() || isAdmin());
+              allow write: if isAdmin() || (isCreator() &&
+                get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
             }
           }
         }
@@ -287,8 +294,11 @@ service cloud.firestore {
     // ============================================
     // CALL BOOKING: Creator availability (time slots)
     // ============================================
+    // Security (audit H-03 / Tier 5.1): owner-only read. Booking flows on PWA
+    // and creator dashboard read availability via the API, so no client needs
+    // direct Firestore read access. Closes BI leakage of competitor schedules.
     match /creator_availability/{creatorId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(creatorId) || isAdmin();
       allow create, update: if isSignedIn() && request.auth.uid == creatorId;
       allow delete: if isSignedIn() && request.auth.uid == creatorId;
     }
@@ -471,9 +481,16 @@ service cloud.firestore {
     // ============================================
     // EXERCISES LIBRARY (shared)
     // ============================================
+    // Security (audit H-04): writes scoped to the document's creator_id field.
+    // Previously `allow create, update: if isCreator()` let any creator
+    // overwrite any other creator's exercise library.
     match /exercises_library/{exerciseId} {
       allow read: if isSignedIn();
-      allow create, update: if isCreator();
+      allow create: if isCreator()
+        && request.resource.data.get('creator_id', '') == request.auth.uid;
+      allow update: if isAdmin() || (isCreator()
+        && resource.data.get('creator_id', '') == request.auth.uid
+        && request.resource.data.get('creator_id', '') == request.auth.uid);
       allow delete: if isAdmin();
     }
 

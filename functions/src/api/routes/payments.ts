@@ -595,12 +595,34 @@ router.post("/payments/webhook", async (req: Request, res) => {
         updateData.cancelled_at = FieldValue.serverTimestamp();
       }
 
-      await db
+      // Security (audit H-21): require existing local subscription doc with
+      // matching userId. Without this, an off-platform preapproval with a
+      // crafted external_reference can cause us to merge writes into an
+      // arbitrary user's subscriptions namespace.
+      const subRef = db
         .collection("users")
         .doc(parsed.userId)
         .collection("subscriptions")
-        .doc(preapprovalId)
-        .set(updateData, {merge: true});
+        .doc(preapprovalId);
+      const existingSub = await subRef.get();
+      if (!existingSub.exists) {
+        functions.logger.warn("Skipping preapproval for unknown subscription", {
+          preapprovalId, userId: parsed.userId,
+        });
+        res.status(200).send("OK");
+        return;
+      }
+      const existingSubData = existingSub.data() ?? {};
+      const existingUserId = (existingSubData.user_id ?? existingSubData.userId ?? parsed.userId) as string;
+      if (existingUserId !== parsed.userId) {
+        functions.logger.error("Preapproval external_reference userId mismatch", {
+          preapprovalId, claimedUserId: parsed.userId, actualUserId: existingUserId,
+        });
+        res.status(200).send("OK");
+        return;
+      }
+
+      await subRef.set(updateData, {merge: true});
     } catch (err) {
       functions.logger.error("Error processing subscription_preapproval webhook", err);
     }
@@ -835,44 +857,58 @@ router.post("/payments/webhook", async (req: Request, res) => {
     const accessDuration: string = isSubscription ? "monthly" : "yearly";
 
     try {
-      const result = await assignBundleToUser({
-        userId,
-        bundleId,
-        accessDuration,
-        paymentId: paymentId!,
-        subscriptionId,
-        isRenewal: isBundleRenewal,
-      });
+      // Security (audit H-17): bundle grant + processed_payments finalization
+      // run in a single runTransaction. Without this, a crash between the
+      // grant and the processed_payments write enabled full retry, and two
+      // concurrent renewal webhooks could both compute new expires_at off the
+      // same stale snapshot.
+      const result = await db.runTransaction(async (tx) => {
+        const r = await assignBundleToUser({
+          userId,
+          bundleId,
+          accessDuration,
+          paymentId: paymentId!,
+          subscriptionId,
+          isRenewal: isBundleRenewal,
+          transaction: tx,
+        });
 
-      if (isSubscription && subscriptionId) {
-        await db.collection("users").doc(userId)
-          .collection("subscriptions").doc(subscriptionId).set({
-            status: "authorized",
-            last_payment_id: paymentId,
-            last_payment_date:
-              paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-            transaction_amount: paymentData.transaction_amount || null,
-            currency_id: paymentData.currency_id || null,
-            management_url:
-              `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
-            updated_at: FieldValue.serverTimestamp(),
-          }, {merge: true});
-      }
+        if (isSubscription && subscriptionId) {
+          tx.set(
+            db.collection("users").doc(userId)
+              .collection("subscriptions").doc(subscriptionId),
+            {
+              status: "authorized",
+              last_payment_id: paymentId,
+              last_payment_date:
+                paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+              transaction_amount: paymentData.transaction_amount || null,
+              currency_id: paymentData.currency_id || null,
+              management_url:
+                `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
+              updated_at: FieldValue.serverTimestamp(),
+            },
+            {merge: true}
+          );
+        }
 
-      await processedRef.set({
-        processed_at: FieldValue.serverTimestamp(),
-        status: "approved",
-        userId,
-        bundleId,
-        courseIds: result.courseIdsGranted,
-        isSubscription,
-        isRenewal: isBundleRenewal,
-        payment_type: paymentType,
-        bundleTitle: result.bundleTitle,
-        state: "completed",
-        amount: paymentData.transaction_amount ?? null,
-        currency_id: paymentData.currency_id ?? null,
+        tx.set(processedRef, {
+          processed_at: FieldValue.serverTimestamp(),
+          status: "approved",
+          userId,
+          bundleId,
+          courseIds: r.courseIdsGranted,
+          isSubscription,
+          isRenewal: isBundleRenewal,
+          payment_type: paymentType,
+          bundleTitle: r.bundleTitle,
+          state: "completed",
+          amount: paymentData.transaction_amount ?? null,
+          currency_id: paymentData.currency_id ?? null,
+        });
+        return r;
       });
+      void result;
     } catch (bundleErr) {
       functions.logger.error("Bundle assignment failed", bundleErr);
       const errType = classifyError(bundleErr);
@@ -921,24 +957,34 @@ router.post("/payments/webhook", async (req: Request, res) => {
     const currentExpiration = existingCourseData?.expires_at ?? undefined;
     const expirationDate = calculateExpirationDate(courseAccessDuration, currentExpiration);
 
-    await assignCourseToUser(userId, courseId, courseDetails, expirationDate, {
-      isRenewal: true,
-      existingCourseData,
-    });
+    // Security (audit H-15 / H-16): wrap renewal grant + subscription update +
+    // processed_payments finalization in a single transaction. The on-disk
+    // expires_at compare lives in assignCourseToUser when run with a transaction.
+    await db.runTransaction(async (tx) => {
+      await assignCourseToUser(userId, courseId, courseDetails, expirationDate, {
+        isRenewal: true,
+        existingCourseData,
+        transaction: tx,
+      });
 
-    if (isSubscription && subscriptionId) {
-      await db.collection("users").doc(userId).collection("subscriptions").doc(subscriptionId).set({
-        status: "authorized",
-        last_payment_id: paymentId,
-        last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-        updated_at: FieldValue.serverTimestamp(),
-      }, {merge: true});
-    }
+      if (isSubscription && subscriptionId) {
+        tx.set(
+          db.collection("users").doc(userId).collection("subscriptions").doc(subscriptionId),
+          {
+            status: "authorized",
+            last_payment_id: paymentId,
+            last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+            updated_at: FieldValue.serverTimestamp(),
+          },
+          {merge: true}
+        );
+      }
 
-    await processedRef.set({
-      processed_at: FieldValue.serverTimestamp(),
-      status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
-      payment_type: paymentType, courseTitle, state: "completed",
+      tx.set(processedRef, {
+        processed_at: FieldValue.serverTimestamp(),
+        status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
+        payment_type: paymentType, courseTitle, state: "completed",
+      });
     });
 
     res.status(200).send("OK");

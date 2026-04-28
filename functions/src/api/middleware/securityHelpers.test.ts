@@ -8,6 +8,7 @@ import {
   assertAllowedDownloadPath,
   assertHttpsUrl,
   isFreeGrantAllowed,
+  validateDeletionPath,
 } from "./securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 
@@ -325,5 +326,78 @@ describe("assertHttpsUrl", () => {
 
   it("REJECTS empty string", () => {
     expect(() => assertHttpsUrl("", "url")).toThrow(WakeApiServerError);
+  });
+});
+
+// ─── Deletion path validator (audit C-03 / C-04) ─────────────────────────────
+
+describe("validateDeletionPath", () => {
+  it("ACCEPTS sessions/<id>", () => {
+    expect(validateDeletionPath("sessions/abc-123")).toEqual(["sessions", "abc-123"]);
+  });
+
+  it("ACCEPTS sessions/<id>/exercises/<id>", () => {
+    expect(validateDeletionPath("sessions/s1/exercises/e1"))
+      .toEqual(["sessions", "s1", "exercises", "e1"]);
+  });
+
+  it("ACCEPTS sessions/<id>/exercises/<id>/sets/<id>", () => {
+    expect(validateDeletionPath("sessions/s1/exercises/e1/sets/set9"))
+      .toEqual(["sessions", "s1", "exercises", "e1", "sets", "set9"]);
+  });
+
+  it("REJECTS path traversal attempts (.. as id)", () => {
+    expect(() => validateDeletionPath("sessions/..")).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath("sessions/../../users")).toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS top-level collection names not in allowlist", () => {
+    expect(() => validateDeletionPath("users/alice")).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath("processed_payments/x")).toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS odd number of segments (would target a collection, not doc)", () => {
+    expect(() => validateDeletionPath("sessions")).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath("sessions/s1/exercises")).toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS empty / non-string", () => {
+    expect(() => validateDeletionPath(null)).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath({})).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath("")).toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS segments with disallowed characters", () => {
+    expect(() => validateDeletionPath("sessions/has spaces")).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath("sessions/has/slash")).toThrow(WakeApiServerError);
+    expect(() => validateDeletionPath("sessions/has.dot")).toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS segments longer than 128 chars", () => {
+    expect(() => validateDeletionPath("sessions/" + "a".repeat(129)))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS depths beyond maxDepth (default 3 = sessions/exercises/sets)", () => {
+    expect(() => validateDeletionPath("sessions/a/exercises/b/sets/c/extras/d"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS even-segment but middle collection not in allowlist", () => {
+    // sessions/<id>/HACKED/<id> — should reject because 'HACKED' not allowed
+    expect(() => validateDeletionPath("sessions/s1/HACKED/e1")).toThrow(WakeApiServerError);
+  });
+
+  it("returns 400 VALIDATION_ERROR on rejection", () => {
+    try {
+      validateDeletionPath("../etc/passwd");
+      throw new Error("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(WakeApiServerError);
+      const wakeErr = err as WakeApiServerError;
+      expect(wakeErr.status).toBe(400);
+      expect(wakeErr.code).toBe("VALIDATION_ERROR");
+      expect(wakeErr.field).toBe("deletions");
+    }
   });
 });

@@ -143,6 +143,65 @@ export function isFreeGrantAllowed(ctx: FreeGrantContext): boolean {
   return false;
 }
 
+// ─── Deletion path validator (audit C-03 / C-04) ─────────────────────────────
+// Used by plan-content PUTs that walk client-supplied paths under a parent doc
+// to delete sessions/exercises/sets subdocuments. The prior `startsWith` +
+// length-of-segments-array check was insufficient; an attacker could supply
+// arbitrary collection/document segments to traverse to siblings of the parent.
+//
+// Returns the validated segments. Throws WakeApiServerError on rejection.
+const DELETION_SEGMENT_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const DELETION_ALLOWED_COLLECTIONS = new Set(["sessions", "exercises", "sets"]);
+
+export interface ValidateDeletionPathOptions {
+  maxDepth?: number; // max number of (collection, docId) pairs (default 3)
+}
+
+export function validateDeletionPath(
+  path: unknown,
+  options: ValidateDeletionPathOptions = {}
+): string[] {
+  const maxDepth = options.maxDepth ?? 3;
+
+  if (typeof path !== "string" || path.length === 0 || path.length > 1024) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR",
+      400,
+      "deletions[*] debe ser un string no vacío",
+      "deletions"
+    );
+  }
+  const segments = path.split("/");
+  if (segments.length < 2 || segments.length % 2 !== 0 || segments.length > maxDepth * 2) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR",
+      400,
+      "deletions[*] formato inválido",
+      "deletions"
+    );
+  }
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (!DELETION_SEGMENT_RE.test(seg)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR",
+        400,
+        "deletions[*] contiene segmento inválido",
+        "deletions"
+      );
+    }
+    if (i % 2 === 0 && !DELETION_ALLOWED_COLLECTIONS.has(seg)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR",
+        400,
+        "deletions[*] colección no permitida",
+        "deletions"
+      );
+    }
+  }
+  return segments;
+}
+
 // ─── HTTPS URL scheme validator (Tier 2 — used by Tier 0 too) ────────────────
 // Rejects javascript:, data:, file:, and other non-http(s) schemes that can
 // be exploited when a stored URL is later rendered as an <a href> or <img src>.

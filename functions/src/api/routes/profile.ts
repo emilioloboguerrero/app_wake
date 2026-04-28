@@ -4,6 +4,7 @@ import * as functions from "firebase-functions";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth, validateAuthAndRateLimit} from "../middleware/auth.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
 import {validateBody, validateStoragePath} from "../middleware/validate.js";
 import {
   assertAllowedDownloadPath,
@@ -536,6 +537,100 @@ router.post("/users/me/courses/:programId/backfill", async (req, res) => {
 router.post("/auth/logout", async (req, res) => {
   await validateAuth(req);
   res.json({data: {logged_out: true}});
+});
+
+// ─── Client relationship acceptance (audit C-10) ───────────────────────────
+// Coach invites land in `one_on_one_clients` with status `pending`. The
+// invited user must accept here before the creator gains operational access.
+// This closes the consent-free enrollment exploit where any creator could
+// silently attach any user as their client.
+
+// GET /users/me/client-relationships — list relationships where caller is the client
+router.get("/users/me/client-relationships", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 60, "rate_limit_first_party");
+
+  const status = typeof req.query.status === "string" ? req.query.status : null;
+  let query: FirebaseFirestore.Query = db.collection("one_on_one_clients")
+    .where("clientUserId", "==", auth.userId);
+  if (status === "pending" || status === "active" || status === "inactive") {
+    query = query.where("status", "==", status);
+  }
+  const snap = await query.limit(100).get();
+
+  res.json({
+    data: snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        creatorId: data.creatorId ?? null,
+        creatorName: data.creatorName ?? null,
+        status: data.status ?? "active",
+        invitedAt: data.invitedAt ?? null,
+        createdAt: data.createdAt ?? null,
+      };
+    }),
+  });
+});
+
+// POST /users/me/client-relationships/:relationshipId/accept
+router.post("/users/me/client-relationships/:relationshipId/accept", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
+  const ref = db.collection("one_on_one_clients").doc(req.params.relationshipId);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
+  }
+  const data = doc.data()!;
+  if (data.clientUserId !== auth.userId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No puedes aceptar esta invitación");
+  }
+  if (data.status === "active") {
+    res.json({data: {id: doc.id, status: "active", alreadyActive: true}});
+    return;
+  }
+  if (data.status && data.status !== "pending") {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      "La invitación no está pendiente",
+    );
+  }
+
+  await ref.update({
+    status: "active",
+    acceptedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  res.json({data: {id: doc.id, status: "active"}});
+});
+
+// POST /users/me/client-relationships/:relationshipId/decline
+router.post("/users/me/client-relationships/:relationshipId/decline", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
+  const ref = db.collection("one_on_one_clients").doc(req.params.relationshipId);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
+  }
+  const data = doc.data()!;
+  if (data.clientUserId !== auth.userId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No puedes rechazar esta invitación");
+  }
+  if (data.status === "declined" || data.status === "inactive") {
+    res.json({data: {id: doc.id, status: data.status}});
+    return;
+  }
+
+  await ref.update({
+    status: "declined",
+    declinedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  res.json({data: {id: doc.id, status: "declined"}});
 });
 
 // PATCH /creator/profile

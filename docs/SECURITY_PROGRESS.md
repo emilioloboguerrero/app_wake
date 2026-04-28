@@ -1,8 +1,8 @@
 # Wake — Security Remediation Progress
 
 **Audit:** [SECURITY_AUDIT_2026-04-27.md](SECURITY_AUDIT_2026-04-27.md) — 156 findings (10 C, 29 H, 45 M, 41 L)
-**Branch:** `security-hardening`
-**Status:** Tier 0 SHIPPED to production. Tier 1 not started.
+**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, awaiting staging deploy)
+**Status:** Tier 0 SHIPPED to production. Tier 1 patches written + tested locally; awaiting deploy approval.
 **Last updated:** 2026-04-27
 
 ---
@@ -47,26 +47,55 @@
 
 ---
 
-## Tier 1 — pending (next milestone)
+## Tier 1 — written, tested locally, awaiting deploy (`tier-1-security` branch)
 
-Higher-severity batch. Cross-tenant boundaries, content-tree write hardening, payment race fixes. Roughly 12 patches, 2-3 days.
+Higher-severity batch. Cross-tenant boundaries, content-tree write hardening, payment race fixes, preapproval verification, plus three Tier 5 product decisions resolved by investigation. **15 patches.**
 
-| ID | Title | File:line |
-|---|---|---|
-| C-02 | client-sessions cross-creator overwrite — needs ownership check + pickFields | creator.ts:3057 |
-| C-03 | plan-content path-traversal via body.deletions | creator.ts:2910 |
-| C-04 | Same path-traversal in /creator/programs sibling | creator.ts:8301 |
-| C-05 | Nutrition assignments PUT raw body — needs validateBody schema + size cap | creator.ts:2261 |
-| C-10 | Consent-free enrollment — add `status: 'pending'` + acceptance flow | creator.ts:739 |
-| H-01 | Rules: cross-creator program tampering on courses/{id}/modules/** | firestore.rules:179 |
-| H-04 | Rules: exercises_library cross-creator tampering | firestore.rules:469 |
-| H-12, H-13 | client-session content writes — parent ownership + pickFields | creator.ts:3163, 3257 |
-| H-14 | client_programs raw body spread — pickFields | workout.ts:2567 |
-| H-15, H-16 | Renewal double-extend race — wrap assignCourseToUser in transaction | index.ts:771, courseAssignment.ts:36 |
-| H-17 | Bundle assignment not transactional | bundleAssignment.ts:34 |
-| H-21 | Subscription preapproval webhook — verify subscriptionId belongs to userId | index.ts:689 |
-| H-28 | assign-plan ownership check (both call sites) | creator.ts:5754, 8106 |
-| H-29 | /library/sessions/:id?creatorId=X — ownership check | workout.ts:3011 |
+| ID | Title | File | Status |
+|---|---|---|---|
+| **Rules-side** | | | |
+| H-01 | Cross-creator program tampering on `courses/{id}/modules/**` | firestore.rules:177 | ✅ patched + 4 emulator tests |
+| H-04 | `exercises_library` writes scoped to `creator_id` field | firestore.rules:474 | ✅ patched + 5 emulator tests |
+| H-03 / 5.1 | `creator_availability` reads owner-only (clients use API, not direct reads) | firestore.rules:290 | ✅ patched + 5 emulator tests |
+| **Cross-tenant API** | | | |
+| C-02 | client-sessions PUT — parent ownership + pickFields | creator.ts:3070 | ✅ patched |
+| H-12, H-13 | client-session content PUT/PATCH + content/exercises PATCH — `verifyClientSessionOwnership` helper + pickFields | creator.ts:3214, 3274, 3300 | ✅ patched |
+| H-14 | `POST /workout/client-programs/:programId` raw body → pickFields | workout.ts:2570 | ✅ patched |
+| H-28 | `assign-plan` ownership check (both call sites) | creator.ts:5856, 8210 | ✅ patched |
+| H-29 | `/library/sessions/:id?creatorId=X` — owner OR active 1-on-1 client OR enrolled course | workout.ts:3054 | ✅ patched |
+| **Content-tree path-traversal** | | | |
+| C-03, C-04 | `body.deletions` segment regex via shared `validateDeletionPath` helper | creator.ts:2974, 8429 | ✅ patched + 10 unit tests |
+| C-05 | nutrition assignments PUT — `validateNutritionContentBody` schema + 50-array + 5KB-per-item cap | creator.ts:2300, 2342 | ✅ patched |
+| **Consent** | | | |
+| C-10 | `one_on_one_clients` writes default to `status: 'pending'`; `verifyClientAccess` requires `active`/missing; new accept/decline endpoints at `/users/me/client-relationships/:id/{accept,decline}`; list endpoint at `GET /users/me/client-relationships` | creator.ts:861, 919, profile.ts:548 | ✅ backend gate (acceptance UI is a Tier 6 follow-up) |
+| **Payment race fixes** | | | |
+| H-15, H-16 | Renewal double-extend race — Gen1 + Gen2 wrapped in `runTransaction`; `courseAssignment.ts` re-reads on-disk `expires_at` inside transaction and no-ops if `onDisk ≥ candidate` | index.ts:1255, payments.ts:920, courseAssignment.ts:54 | ✅ patched |
+| H-17 | Bundle assignment transactional — `bundleAssignment.ts` accepts a `Transaction`; both webhook paths wrap grant + sub update + `processed_payments` finalization atomically | index.ts:1142, payments.ts:838, bundleAssignment.ts:34 | ✅ patched |
+| H-21 | Preapproval webhook verifies local `subscriptions/{preapprovalId}` exists AND its `userId` matches the parsed `external_reference` before merging | index.ts:687, payments.ts:598 | ✅ patched |
+| **API enforcement bug** | | | |
+| M-43 / 5.4 | `wake_users_only` enforced in public `POST /events/:eventId/register` (was only enforced by Firestore rules for direct writes) | events.ts:166 | ✅ patched |
+
+**Helpers added (Tier 1):**
+- `securityHelpers.ts::validateDeletionPath()` — strict path validator for content-tree deletions (closes C-03/C-04 systemically; reusable by future content-tree endpoints).
+- `creator.ts::verifyClientSessionOwnership()` — local helper used by H-12/H-13.
+- `creator.ts::validateNutritionContentBody()` — local helper used by C-05.
+- `verifyClientAccess()` extended in-place to gate on `status === 'active'` (the C-10 backend gate).
+
+**Test infrastructure:**
+- `functions/tests/rules/crossCreator.test.ts` — 14 emulator tests for H-01 / H-04 / H-03.
+- `functions/src/api/middleware/securityHelpers.test.ts` — +10 unit tests for `validateDeletionPath`.
+- Total: 53 unit tests pass; 21 rules emulator tests pass under `firebase emulators:exec --only firestore`.
+- `functions/.eslintrc.js` — added `/tests/**/*` and `vitest.config.ts` to `ignorePatterns` (config drift cleanup; both were errored on Tier 0 too).
+
+**Tier 5 product decisions resolved by investigation:**
+- **5.1** Lock down — done in Tier 1 via H-03 above (clients use the API path; rule was unused).
+- **5.2** Profile picture lockdown — defer to **early Tier 2** (storage-rule change + needs verification of creator-discovery flow).
+- **5.3** Bundle reads — leave open; bundle schema is marketing-shaped (`pricing` is a price tag). Defer the response-shape allowlist tightening (`...data` spread at bundles.ts:187) to Tier 2.
+- **5.4** `wake_users_only` API — done in Tier 1 via M-43 above.
+
+**Out of Tier 1:** H-10 (already shipped in Tier 0). C-10 acceptance UI (UX-shaped, separate milestone). Payment migration (Tier 4.1). 5.2 / 5.3 cleanup (early Tier 2).
+
+**Pre-existing lint error preserved:** `analytics.ts:1079` (`prefer-as-const`) was on `security-hardening` before Tier 1 and is out of scope for security work.
 
 ---
 

@@ -1,4 +1,5 @@
 import {db, FieldValue} from "../firestore.js";
+import type {Transaction} from "firebase-admin/firestore";
 import {calculateExpirationDate} from "./paymentHelpers.js";
 
 export interface AssignBundleOptions {
@@ -8,6 +9,11 @@ export interface AssignBundleOptions {
   paymentId: string;
   subscriptionId?: string | null;
   isRenewal: boolean;
+  // Security (audit H-17): pass a transaction so bundle grant and the
+  // surrounding processed_payments finalization commit atomically. The audit
+  // showed concurrent renewal webhooks could each compute a fresh expires_at
+  // from the same stale snapshot and double-extend.
+  transaction?: Transaction;
 }
 
 export interface AssignBundleResult {
@@ -34,9 +40,10 @@ export interface AssignBundleResult {
 export async function assignBundleToUser(
   opts: AssignBundleOptions
 ): Promise<AssignBundleResult> {
-  const {userId, bundleId, accessDuration, paymentId, subscriptionId, isRenewal} = opts;
+  const {userId, bundleId, accessDuration, paymentId, subscriptionId, isRenewal, transaction} = opts;
 
-  const bundleDoc = await db.collection("bundles").doc(bundleId).get();
+  const bundleRef = db.collection("bundles").doc(bundleId);
+  const bundleDoc = transaction ? await transaction.get(bundleRef) : await bundleRef.get();
   if (!bundleDoc.exists) {
     throw new Error(`Bundle not found: ${bundleId}`);
   }
@@ -44,7 +51,7 @@ export async function assignBundleToUser(
   const bundleTitle = (bundleData.title as string) ?? "Bundle";
 
   const userRef = db.collection("users").doc(userId);
-  const userDoc = await userRef.get();
+  const userDoc = transaction ? await transaction.get(userRef) : await userRef.get();
   if (!userDoc.exists) {
     throw new Error(`User not found: ${userId}`);
   }
@@ -71,7 +78,9 @@ export async function assignBundleToUser(
   }
 
   const courseRefs = courseIdsForGrant.map((id) => db.collection("courses").doc(id));
-  const courseDocs = await db.getAll(...courseRefs);
+  const courseDocs = transaction ?
+    await transaction.getAll(...courseRefs) :
+    await db.getAll(...courseRefs);
 
   const now = new Date();
   const courseIdsGranted: string[] = [];
@@ -161,7 +170,11 @@ export async function assignBundleToUser(
   }
 
   if (courseIdsGranted.length > 0) {
-    await userRef.update(updatePayload);
+    if (transaction) {
+      transaction.update(userRef, updatePayload);
+    } else {
+      await userRef.update(updatePayload);
+    }
   }
 
   return {

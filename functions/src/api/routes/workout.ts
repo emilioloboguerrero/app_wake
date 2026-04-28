@@ -3,7 +3,7 @@ import * as functions from "firebase-functions";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
-import {validateBody, validateDateFormat} from "../middleware/validate.js";
+import {validateBody, validateDateFormat, pickFields} from "../middleware/validate.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
@@ -2564,6 +2564,10 @@ router.get("/workout/client-programs/:programId", async (req, res) => {
 });
 
 // POST /workout/client-programs/:programId
+// Security (audit H-14): replace `...req.body` spread with pickFields. Doc id
+// is `${userId}_${programId}` so users cannot impersonate, but the prior
+// shape allowed injection of arbitrary fields like `assigned_by`,
+// `expires_at`, `creator_id`, `status: "completed"`.
 router.post("/workout/client-programs/:programId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2572,8 +2576,15 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
   const docRef = db.collection("client_programs").doc(docId);
   const existing = await docRef.get();
 
+  const allowedFields = [
+    "currentSessionId", "currentModuleId", "currentWeek", "progress",
+    "lastSessionId", "lastSessionDate", "completedSessions",
+    "skippedSessions", "preferences", "notes",
+  ];
+  const updates = pickFields(req.body, allowedFields);
+
   const writeData: Record<string, unknown> = {
-    ...(req.body ?? {}),
+    ...updates,
     user_id: auth.userId,
     program_id: req.params.programId,
     updated_at: FieldValue.serverTimestamp(),
@@ -3035,6 +3046,11 @@ router.get("/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", 
 });
 
 // GET /library/sessions/:sessionId — library session with full exercise tree
+// Security (audit H-29): caller must have a relationship with the creator —
+// the creator themselves, an admin, or an active one-on-one client. Library
+// sessions are creator IP; the prior shape allowed any authenticated user
+// (including competing creators) to read any creator's library by passing
+// an arbitrary creatorId query param.
 router.get("/library/sessions/:sessionId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -3042,6 +3058,42 @@ router.get("/library/sessions/:sessionId", async (req, res) => {
   const creatorId = req.query.creatorId as string;
   if (!creatorId) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "creatorId es requerido", "creatorId");
+  }
+
+  const isOwner = creatorId === auth.userId;
+  const isAdmin = auth.role === "admin";
+  if (!isOwner && !isAdmin) {
+    // Caller must have a relationship with this creator: either an active
+    // one-on-one client OR enrolled in a course this creator owns. Library
+    // sessions are creator IP, so unrelated users (incl. competing creators)
+    // are denied even if they pass a guessed creatorId.
+    const relSnap = await db
+      .collection("one_on_one_clients")
+      .where("creatorId", "==", creatorId)
+      .where("clientUserId", "==", auth.userId)
+      .limit(1)
+      .get();
+    const hasActiveRelationship = !relSnap.empty &&
+      (relSnap.docs[0].data().status === undefined ||
+        relSnap.docs[0].data().status === "active");
+
+    let hasEnrolledCourse = false;
+    if (!hasActiveRelationship) {
+      const userDoc = await db.collection("users").doc(auth.userId).get();
+      const courses = (userDoc.data()?.courses ?? {}) as Record<string, unknown>;
+      const courseIds = Object.keys(courses);
+      if (courseIds.length > 0) {
+        const courseRefs = courseIds.slice(0, 50)
+          .map((id) => db.collection("courses").doc(id));
+        const courseDocs = await db.getAll(...courseRefs);
+        hasEnrolledCourse = courseDocs.some((cDoc) => cDoc.exists &&
+          cDoc.data()?.creator_id === creatorId);
+      }
+    }
+
+    if (!hasActiveRelationship && !hasEnrolledCourse) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a esta biblioteca");
+    }
   }
 
   const sessionRef = db

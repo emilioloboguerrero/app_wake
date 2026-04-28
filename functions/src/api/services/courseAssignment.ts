@@ -42,6 +42,23 @@ export async function assignCourseToUser(
       return;
     }
 
+    // Security (audit H-15 / H-16): on renewal, compare the candidate
+    // expiresAt against the on-disk value within the transaction. Two
+    // concurrent webhooks for the same payment would otherwise each compute
+    // a candidate from the same stale snapshot and double-extend the
+    // expiration. If the on-disk value is already ≥ candidate, no-op.
+    if (isRenewal && courses[courseId]?.expires_at) {
+      try {
+        const onDisk = new Date(courses[courseId].expires_at).getTime();
+        const candidate = new Date(expiresAt).getTime();
+        if (Number.isFinite(onDisk) && Number.isFinite(candidate) && onDisk >= candidate) {
+          return;
+        }
+      } catch {
+        // fall through; will overwrite with fresh entry
+      }
+    }
+
     courses[courseId] = courseEntry;
 
     const updatePayload: Record<string, unknown> = {courses};

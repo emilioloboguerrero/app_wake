@@ -689,6 +689,32 @@ export const processPaymentWebhook = functions
             .collection("subscriptions")
             .doc(preapprovalId);
 
+          // Security (audit H-21): require an existing local subscription
+          // doc whose userId matches the parsed external_reference. Without
+          // this check, an attacker who creates a preapproval off-platform
+          // (MP web UI) can cause us to silently `set({merge: true})` a new
+          // doc anywhere their crafted external_reference points.
+          const existingSub = await subscriptionRef.get();
+          if (!existingSub.exists) {
+            functions.logger.warn(
+              "Skipping preapproval webhook for unknown subscription doc",
+              {preapprovalId, userId: parsedReference.userId}
+            );
+            response.status(200).send("OK");
+            return;
+          }
+          const existingSubData = existingSub.data() ?? {};
+          const existingUserId = existingSubData.user_id ??
+            existingSubData.userId ?? parsedReference.userId;
+          if (existingUserId !== parsedReference.userId) {
+            functions.logger.error(
+              "Preapproval external_reference userId mismatch",
+              {preapprovalId, claimedUserId: parsedReference.userId, actualUserId: existingUserId}
+            );
+            response.status(200).send("OK");
+            return;
+          }
+
           const nextPaymentDate =
             preapprovalData?.next_payment_date ||
             preapprovalData?.auto_recurring?.next_payment_date ||
@@ -1140,46 +1166,55 @@ export const processPaymentWebhook = functions
         }
 
         try {
-          const result = await assignBundleToUser({
-            userId,
-            bundleId,
-            accessDuration,
-            paymentId,
-            subscriptionId: subscriptionIdForBundle,
-            isRenewal: isBundleRenewal,
-          });
+          // Security (audit H-17): bundle grant + processed_payments
+          // finalization must commit atomically. Mirror Gen2 path.
+          await db.runTransaction(async (tx: admin.firestore.Transaction) => {
+            const r = await assignBundleToUser({
+              userId,
+              bundleId,
+              accessDuration: accessDuration as string,
+              paymentId,
+              subscriptionId: subscriptionIdForBundle,
+              isRenewal: isBundleRenewal,
+              transaction: tx,
+            });
 
-          if (isSubscription && subscriptionIdForBundle) {
-            await db.collection("users").doc(userId)
-              .collection("subscriptions").doc(subscriptionIdForBundle).set({
-                status: "authorized",
-                last_payment_id: paymentId,
-                last_payment_date:
-                  paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-                transaction_amount: paymentData.transaction_amount || null,
-                currency_id: paymentData.currency_id || null,
-                management_url:
-                  `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionIdForBundle}`,
-                updated_at: admin.firestore.FieldValue.serverTimestamp(),
-              }, {merge: true});
-          }
+            if (isSubscription && subscriptionIdForBundle) {
+              tx.set(
+                db.collection("users").doc(userId)
+                  .collection("subscriptions").doc(subscriptionIdForBundle),
+                {
+                  status: "authorized",
+                  last_payment_id: paymentId,
+                  last_payment_date:
+                    paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+                  transaction_amount: paymentData.transaction_amount || null,
+                  currency_id: paymentData.currency_id || null,
+                  management_url:
+                    `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionIdForBundle}`,
+                  updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                },
+                {merge: true}
+              );
+            }
 
-          await processedPaymentsRef.set({
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved",
-            userId,
-            bundleId,
-            courseIds: result.courseIdsGranted,
-            isSubscription,
-            isRenewal: isBundleRenewal,
-            payment_type: paymentType,
-            userEmail,
-            userName,
-            bundleTitle: result.bundleTitle,
-            state: "completed",
-            amount: paymentData.transaction_amount ??
-              paymentData.transaction_details?.total_paid_amount ?? null,
-            currency_id: paymentData.currency_id ?? null,
+            tx.set(processedPaymentsRef, {
+              processed_at: admin.firestore.FieldValue.serverTimestamp(),
+              status: "approved",
+              userId,
+              bundleId,
+              courseIds: r.courseIdsGranted,
+              isSubscription,
+              isRenewal: isBundleRenewal,
+              payment_type: paymentType,
+              userEmail,
+              userName,
+              bundleTitle: r.bundleTitle,
+              state: "completed",
+              amount: paymentData.transaction_amount ??
+                paymentData.transaction_details?.total_paid_amount ?? null,
+              currency_id: paymentData.currency_id ?? null,
+            });
           });
         } catch (bundleError) {
           functions.logger.error("Bundle assignment failed", bundleError);
@@ -1252,29 +1287,40 @@ export const processPaymentWebhook = functions
           expirationDate = calculateExpirationDate(courseAccessDuration);
         }
 
-        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
-          isRenewal: true,
-          existingCourseData,
-        });
+        // Security (audit H-15 / H-16): wrap renewal grant + subscription
+        // update + processed_payments finalization in a single transaction.
+        // Previously the grant ran outside any transaction, allowing two
+        // concurrent webhooks to each compute expires_at from a stale read
+        // and double-extend the access window per duplicate event.
+        await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
+          await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
+            isRenewal: true,
+            existingCourseData,
+            transaction,
+          });
 
-        if (isSubscription && subscriptionId) {
-          await db
-            .collection("users").doc(userId)
-            .collection("subscriptions").doc(subscriptionId)
-            .set({
-              status: "authorized",
-              last_payment_id: paymentId,
-              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-              updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            }, {merge: true});
-        }
+          if (isSubscription && subscriptionId) {
+            transaction.set(
+              db
+                .collection("users").doc(userId)
+                .collection("subscriptions").doc(subscriptionId),
+              {
+                status: "authorized",
+                last_payment_id: paymentId,
+                last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+                updated_at: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              {merge: true}
+            );
+          }
 
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
-          payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
-          amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
-          currency_id: paymentData.currency_id ?? null,
+          transaction.set(processedPaymentsRef, {
+            processed_at: admin.firestore.FieldValue.serverTimestamp(),
+            status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
+            payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
+            amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
+            currency_id: paymentData.currency_id ?? null,
+          });
         });
 
         response.status(200).send("OK");
