@@ -1,0 +1,67 @@
+{
+  "project": "wake-staging",
+  "ranAt": "2026-04-28T01:17:23.099Z",
+  "checks": {
+    "userCourseStatusEnum": {
+      "totalUsers": 4,
+      "totalCourseEntries": 7,
+      "activeTrialEntries": 0,
+      "enumViolations": 0,
+      "sample": []
+    },
+    "trialDurations": {
+      "activeTrials": 0,
+      "longTrials": 0,
+      "sample": [],
+      "note": "Existing long trials are NOT modified by the patch. Only new trial creations are clamped.",
+      "futureCleanup": "Consider truncating expires_at on existing long trials > 14 days as a one-time migration."
+    },
+    "clientPrograms": {
+      "sampleSize": 0,
+      "note": "Backfill patch requires client_programs/{userId}_{programId}. If this collection is sparse, the patch may unintentionally block legitimate users — investigate."
+    },
+    "purchaseLogs": {
+      "usersChecked": 4,
+      "usersWithPurchaseLogs": 0,
+      "totalLogsSampled": 0,
+      "note": "Patch makes POST /purchases admin-only. Existing purchase_logs entries are untouched. If client code calls POST /purchases routinely, that path will start returning 403."
+    },
+    "subscriptionStates": {
+      "usersChecked": 4,
+      "totalSubs": 30,
+      "stateBreakdown": {
+        "pending": 15,
+        "cancelled": 12,
+        "active": 3
+      }
+    },
+    "processedPaymentRefunds": {
+      "refunded": 0,
+      "chargedBack": 0,
+      "note": "Existing refunded/charged_back entries were silently logged but never revoked access. Consider a one-time backfill to revoke access on these.",
+      "refundedSample": []
+    },
+    "trialUsedField": {
+      "docsFound": 0,
+      "note": "Patch writes trial_used.{courseId} on every new trial. Existing users have no trial_used field — they CAN start a trial after the patch. This is acceptable for first deploy; revisit if needed."
+    },
+    "storageDownloadUrl": {
+      "note": "Static analysis required — check apps/pwa/src and apps/creator-dashboard/src for callers."
+    },
+    "unverifiedCreators": {
+      "sampleSize": 2,
+      "unverifiedInSample": 2,
+      "sample": [
+        {
+          "userId": "bUCvwdPYolPe6i8JuCaY5w2PcB53",
+          "email": "test@gmail.com"
+        },
+        {
+          "userId": "d1iz7hHvb5VvDOlYECqCuhT3ZEd2",
+          "email": "ensayo@gmail.com"
+        }
+      ],
+      "note": "Existing unverified creators retain access — patch only affects NEW /creator/register calls."
+    }
+  }
+}

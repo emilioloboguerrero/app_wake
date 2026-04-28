@@ -342,7 +342,7 @@ export default function ClientPlanTab({
   const handleDateSelect = useCallback(() => {}, []);
 
   // ── Loading skeleton ─────────────────────────────────────────
-  if (programsLoading || !programs?.length) {
+  if (programsLoading) {
     return (
       <div className="cpt-layout">
         {/* Sidebar skeleton */}
@@ -379,6 +379,28 @@ export default function ClientPlanTab({
               <ShimmerSkeleton key={i} width="100%" height={80} borderRadius={8} />
             ))}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Empty state: client has no active 1-on-1 program with this creator ──
+  if (!programs?.length) {
+    return (
+      <div className="cpt-empty">
+        <div className="cpt-empty-card">
+          <div className="cpt-empty-title">Sin programa activo</div>
+          <div className="cpt-empty-body">
+            {clientName} no tiene un programa 1-a-1 activo contigo. Asigna uno
+            desde la sección de programas para empezar a planear su semana.
+          </div>
+          <button
+            type="button"
+            className="cpt-empty-cta"
+            onClick={() => navigate('/programas')}
+          >
+            Ir a programas
+          </button>
         </div>
       </div>
     );
