@@ -19,6 +19,7 @@ import {runCronHeartbeat} from "./ops/cronHeartbeat.js";
 import {runPaymentsPulse} from "./ops/paymentsPulse.js";
 import {runQuotaWatch} from "./ops/quotaWatch.js";
 import {runClientErrors} from "./ops/clientErrors.js";
+import {runDataIntegrity} from "./ops/dataIntegrity.js";
 import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
@@ -3409,6 +3410,7 @@ export const wakeDailyPulseCron = onSchedule(
       ["pwa-errors", () => runClientErrors(ctx, {source: "pwa"})],
       ["creator-errors", () => runClientErrors(ctx, {source: "creator"})],
       ["quota", () => runQuotaWatch(ctx)],
+      ["data-integrity", () => runDataIntegrity(ctx)],
     ];
     for (const [name, fn] of steps) {
       try {

@@ -2178,6 +2178,27 @@ async function verifyClientAccess(
   return clientId;
 }
 
+// All writes to `client_sessions` must go through this helper. The required
+// creator_id / client_id parameters make it impossible to forget the
+// ownership fields the rules + API checks depend on. (See the 2026-04-28
+// incident: 151 legacy docs with creator_id=undefined caused every DELETE
+// from creators to 404.)
+async function writeClientSession(
+  clientSessionId: string,
+  fields: {
+    creator_id: string;
+    client_id: string;
+    [key: string]: unknown;
+  }
+): Promise<void> {
+  if (!fields.creator_id) throw new Error("writeClientSession: creator_id is required");
+  if (!fields.client_id) throw new Error("writeClientSession: client_id is required");
+  await db.collection("client_sessions").doc(clientSessionId).set({
+    ...fields,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+}
+
 // Security (audit C-02 / H-12 / H-13): verify a client_session doc belongs
 // to the calling creator. Protects content endpoints whose URL key is the
 // session id (same id used for client_session_content).
@@ -3208,11 +3229,10 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
   ];
   const updates = pickFields(req.body, allowedFields);
 
-  await docRef.set({
+  await writeClientSession(req.params.clientSessionId, {
     ...updates,
     client_id: req.params.clientId,
     creator_id: auth.userId,
-    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({data: {id: req.params.clientSessionId}});

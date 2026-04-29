@@ -99,20 +99,49 @@ Higher-severity batch. Cross-tenant boundaries, content-tree write hardening, pa
 
 ---
 
-## Tier 2 — defense-in-depth batch (single PR)
+## Tier 2 — defense-in-depth batch (split into 2a + 2b)
 
-Pattern-based fixes that close many findings at once. Roughly 1 day.
+Pattern-based fixes that close many findings at once. Split into two sub-batches
+on the `tier-2-security` branch so the input-hardening half ships independently
+of the email/log half.
 
-- **URL scheme allowlist** at 4 write sites (M-41 profilePictureUrl/websiteUrl, M-42 callLink, M-38 event.image_url) — single helper
-- **Length caps** on creator-controlled text (M-39 bundles/events/client_notes/video_exchange notes)
+### 2a — input hardening + cross-tenant scoping (written, tested locally, awaiting staging deploy)
+
+13 patches. Branch `tier-2-security` off `main`.
+
+| ID | Title | File | Status |
+|---|---|---|---|
+| M-41 | https-only on `profilePictureUrl` / `websiteUrl` | profile.ts:177 | ✅ patched |
+| M-42 | callLink scheme + vendor-domain allowlist (Zoom/Meet/Jitsi/Daily/Whereby/Teams) | bookings.ts:561 | ✅ patched |
+| M-38 | `event.image_url` scheme check on PATCH | events.ts:419 | ✅ patched |
+| M-39 | length caps (titles 200, descriptions 5000, notes 2000) | bundles.ts:286/336, events.ts:323/422, creator.ts:1071, videoExchanges.ts:362 | ✅ patched |
+| M-44 | sessionHistory filtered to creator's owned courseIds (closes cross-creator leak) | creator.ts:1635, analytics.ts:840 | ✅ patched |
+| M-45 | lookup tightened: 30rpm, matched `{found: bool, ...}` shape, masked email, photoURL/PII dropped (Gen2 + Gen1) | creator.ts:746, index.ts:1603 | ✅ patched + dashboard client updated |
+| M-07 | AsyncStorage email cache removed (saveAuthState/getAuthState/hasAuthState dead, only clearAuthState retained for legacy scrub) | apps/pwa/src/utils/authStorage.js | ✅ patched |
+| M-31 | dead `GET /creator/availability` + `PUT /creator/availability/template` deleted from bookings.ts; stricter weeklyTemplate validators ported into creator.ts | bookings.ts (delete), creator.ts:6660 | ✅ patched |
+| Tier 5.2 | profile picture storage lockdown — owner OR target user is creator/admin OR caller is admin (covers `profiles/` legacy + `profile_pictures/` current path) | config/firebase/storage.rules:6 | ✅ patched (creator-discovery flow needs staging UAT) |
+| Tier 5.3 | `normalizeBundleResponse` switched from `...data` spread to explicit field allowlist | bundles.ts:183 | ✅ patched |
+
+**Helpers added to `securityHelpers.ts`:**
+- `assertHttpsUrl()` now returns the parsed URL for reuse.
+- `assertAllowedCallLinkUrl()` — scheme + suffix-match against `CALL_LINK_DOMAIN_SUFFIXES`.
+- `assertTextLength()` + `TEXT_CAP_TITLE` / `TEXT_CAP_DESCRIPTION` / `TEXT_CAP_NOTE` constants.
+- `maskEmail()` — `alex@example.com → al***@example.com`.
+- `loadCreatorOwnedCourseIds(db, creatorId)` — returns `Set<string>` of courses the caller owns.
+
+**Tests:**
+- 20 new vitest unit tests in `securityHelpers.test.ts` (callLink allowlist, length caps, masked email, course-id loader). 73 total unit tests pass.
+- All 21 existing rules emulator tests still pass against the firestore emulator.
+- Storage emulator test for 5.2 deferred — rule logic is straightforward; creator-discovery flow will be verified by staging UAT.
+
+**Out of 2a (deferred to 2b or later tiers):** H-26, H-27, M-32, log hygiene (M-25/M-26/M-27/M-28/L-41) — those are 2b. C-10 PWA acceptance UI — pushed to Tier 6 (UX milestone).
+
+### 2b — email sanitization + ops/log hygiene (planned; same `tier-2-security` branch)
+
 - **Server-side sanitize-html** on broadcast email bodyHtml (H-26) — closes phishing-via-Wake-domain risk
 - **Push notification spoofing** fix (H-27) — clamp + quote senderName
 - **Rate limits** on /notifications/* (M-32) — currently zero
-- **Logging cleanup**: safeErrorPayload helper at ~6 sites in index.ts; redact emails at M-26/M-27/M-28
-- **Drop AsyncStorage email cache** (M-07) — Firebase persistence already retains session
-- **Filter sessionHistory by creator's courseIds** (M-44) — close cross-creator history leak
-- **Tighten lookup endpoint rate limit + matched response shapes** (M-45) — close enumeration
-- **Delete dead bookings.ts routes** (M-31)
+- **Logging cleanup**: `safeErrorPayload()` helper at ~6 sites in index.ts; redact emails at M-26/M-27/M-28
 
 ---
 
