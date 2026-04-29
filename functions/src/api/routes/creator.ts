@@ -5962,16 +5962,36 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
   // when the relationship is pending, attach the program to the row so it
   // auto-grants on the user's accept. Active relationships keep the existing
   // immediate-assignment behavior.
+  //
+  // A creator/user pair commonly has multiple historical rows (prior leaves
+  // → inactive, prior declines → declined, plus the new pending row). The
+  // lookup MUST prefer the row that's currently engageable: prioritize
+  // pending → active → newest fallback. Without this, .limit(1) without
+  // ordering returned an arbitrary row (often an old inactive one), so the
+  // pendingProgramAssignment was silently written to the wrong row — or
+  // the active path was skipped — leaving the new pending row without a
+  // program reference and the user's home screen empty after accept.
   const relationshipSnap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .where("clientUserId", "==", req.params.clientId)
-    .limit(1)
+    .orderBy("createdAt", "desc")
     .get();
   if (relationshipSnap.empty) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
   }
-  const relationshipDoc = relationshipSnap.docs[0];
+  const RELATIONSHIP_PRIORITY: Record<string, number> = {
+    pending: 0,
+    active: 1,
+    declined: 2,
+    inactive: 3,
+  };
+  const sortedRows = [...relationshipSnap.docs].sort((a, b) => {
+    const sa = (a.data().status as string | undefined) ?? "active";
+    const sb = (b.data().status as string | undefined) ?? "active";
+    return (RELATIONSHIP_PRIORITY[sa] ?? 9) - (RELATIONSHIP_PRIORITY[sb] ?? 9);
+  });
+  const relationshipDoc = sortedRows[0];
   const relationshipStatus = (relationshipDoc.data().status as string | undefined) ?? "active";
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
