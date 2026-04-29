@@ -80,7 +80,15 @@ function toInputDate(dateStr) {
 
 function RosterRow({ client, isSelected, onClick, style }) {
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
-  const isActive = client.status !== 'inactive';
+  // C-10 v2: 3-state dot — green (active), amber (pending invite), grey (inactive).
+  const isPending = client.status === 'pending';
+  const isInactive = client.status === 'inactive';
+  const dotColor = isPending
+    ? 'rgba(251,191,36,0.95)'
+    : isInactive
+      ? 'var(--text-tertiary, rgba(255,255,255,0.25))'
+      : 'rgba(74,222,128,0.9)';
+  const dotLabel = isPending ? 'Invitación pendiente' : isInactive ? 'Inactivo' : 'Activo';
 
   return (
     <button
@@ -99,12 +107,9 @@ function RosterRow({ client, isSelected, onClick, style }) {
       <span className="roster-row__name">{name}</span>
       <span
         className="roster-row__status-dot"
-        style={{
-          background: isActive
-            ? 'rgba(74,222,128,0.9)'
-            : 'var(--text-tertiary, rgba(255,255,255,0.25))',
-        }}
-        aria-label={isActive ? 'Activo' : 'Inactivo'}
+        style={{ background: dotColor }}
+        aria-label={dotLabel}
+        title={dotLabel}
       />
     </button>
   );

@@ -123,6 +123,47 @@ function ClientCard({ client, onClick, unreadVideos = 0 }) {
   );
 }
 
+// C-10 v2: pending invite card. Visually distinct from active clients
+// (amber pill instead of green dot) and surfaces the program the creator
+// invited the user to so the row isn't ambiguous.
+function PendingInviteCard({ invite, programTitle, onClick }) {
+  const name = invite.clientName || invite.clientEmail || `Cliente ${(invite.clientUserId || '').slice(0, 8)}`;
+  return (
+    <button type="button" className="cl-card" onClick={onClick}>
+      <GlowingEffect spread={20} proximity={48} inactiveZone={0.6} />
+      <div className="cl-card__avatar">
+        {invite.avatarUrl
+          ? <img src={invite.avatarUrl} alt={name} className="cl-card__avatar-img" />
+          : <span className="cl-card__avatar-initial">{getInitial(name)}</span>}
+      </div>
+      <div className="cl-card__info">
+        <span className="cl-card__name">{name}</span>
+        {invite.clientEmail && invite.clientName && (
+          <span className="cl-card__email">{invite.clientEmail}</span>
+        )}
+        {programTitle && (
+          <span className="cl-card__rejoin-pill" style={{
+            background: 'rgba(251,191,36,0.15)',
+            color: 'rgba(251,191,36,0.92)',
+            borderColor: 'rgba(251,191,36,0.32)',
+          }}>
+            Invitado a {programTitle}
+          </span>
+        )}
+      </div>
+      <span
+        className="cl-card__status"
+        style={{ background: 'rgba(251,191,36,0.95)' }}
+        aria-label="Pendiente"
+        title="Esperando que el usuario acepte"
+      />
+      <svg className="cl-card__arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
 function LeavesSummaryBlock({ creatorId }) {
   const { data } = useQuery({
     queryKey: ['creator', 'leaves', 'summary', creatorId, 'current'],
@@ -752,9 +793,15 @@ const ClientesScreen = () => {
     return map;
   }, [programsData]);
 
-  // Active clients only — inactive ones live in the "Anteriores" tab
-  const activeClients = useMemo(
-    () => clients.filter((c) => c.status !== 'inactive'),
+  // C-10 v2: pending invites get their own section so they don't
+  // visually masquerade as enrolled clients.
+  const pendingInvites = useMemo(
+    () => clients.filter((c) => c.status === 'pending'),
+    [clients]
+  );
+  // Enrolled clients = currently active relationships (excludes pending + inactive)
+  const enrolledClients = useMemo(
+    () => clients.filter((c) => c.status !== 'inactive' && c.status !== 'pending'),
     [clients]
   );
   const inactiveClients = useMemo(
@@ -768,12 +815,21 @@ const ClientesScreen = () => {
     [clients]
   );
 
-  // Group active clients by asesoría program
+  // Map programId → title for pending-invite enrichment
+  const programTitleById = useMemo(() => {
+    const map = {};
+    for (const p of programsData) {
+      if (p?.id) map[p.id] = p.title || 'Programa sin nombre';
+    }
+    return map;
+  }, [programsData]);
+
+  // Group enrolled clients by asesoría program
   const grouped = useMemo(() => {
     const groups = {};
     const ungrouped = [];
 
-    for (const client of activeClients) {
+    for (const client of enrolledClients) {
       const programs = client.enrolledPrograms;
       if (!programs?.length) {
         ungrouped.push(client);
@@ -792,7 +848,7 @@ const ClientesScreen = () => {
     }
 
     return { groups: Object.values(groups), ungrouped };
-  }, [activeClients]);
+  }, [enrolledClients]);
 
   // Filter + sort
   const filterAndSortClients = useCallback((clientList) => {
@@ -1016,6 +1072,29 @@ const ClientesScreen = () => {
               <EmptyClients onAddClient={() => setIsFindUserOpen(true)} />
             ) : (
               <div className="cl-groups">
+                {/* C-10 v2: pending invites get their own section above the
+                    program groups so a creator never confuses a sent invite
+                    with an active client. The section is hidden when filters
+                    target a specific program (those filters are only for
+                    enrolled clients). */}
+                {pendingInvites.length > 0 && filters.program === 'all' && (
+                  <div className="cl-group">
+                    <div className="cl-group__header" style={{ cursor: 'default' }}>
+                      <span className="cl-group__title">Invitaciones pendientes</span>
+                      <span className="cl-group__count">{pendingInvites.length}</span>
+                    </div>
+                    <div className="cl-group__grid">
+                      {pendingInvites.map((invite) => (
+                        <PendingInviteCard
+                          key={invite.id || invite.clientUserId}
+                          invite={invite}
+                          programTitle={programTitleById[invite.pendingProgramAssignment?.programId]}
+                          onClick={() => handleSelectClient(invite)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {grouped.groups.map((group) => {
                   if (filters.program !== 'all' && group.programId !== filters.program) return null;
                   const filteredGroupClients = filterAndSortClients(group.clients);
