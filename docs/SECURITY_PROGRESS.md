@@ -1,8 +1,8 @@
 # Wake — Security Remediation Progress
 
 **Audit:** [SECURITY_AUDIT_2026-04-27.md](SECURITY_AUDIT_2026-04-27.md) — 156 findings (10 C, 29 H, 45 M, 41 L)
-**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tier 2 + functions/ Tier 3, shipped)
-**Status:** Tiers 0, 1, 2a, 2b, and Tier 3 (functions/) SHIPPED to production. Tier 3 (apps/* npm audits) and Tier 4 (Gen1→Gen2 migration, rules emulator suite expansion) remain.
+**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tiers 2a + 2b + 3 + remaining Highs + M cluster + Tier 4.2 + Tier 6, shipped)
+**Status:** All Tiers SHIPPED except Tier 4.1 (Gen1→Gen2 payment migration — multi-week project with 30-day shadow). Two Highs (H-11 + H-20) and the M-tier input-validation cluster shipped 2026-04-29 alongside rules emulator suite expansion (Tier 4.2) and the C-10 PWA acceptance UI (Tier 6).
 **Last updated:** 2026-04-29
 
 ---
@@ -165,13 +165,56 @@ of the server, breaking lookup; rolling forward was the fastest fix.)
 
 ---
 
-## Tier 3 — quick-win infrastructure pass (functions/ SHIPPED 2026-04-29)
+## Tier 3 — quick-win infrastructure pass (functions/ + landing + creator-dashboard SHIPPED 2026-04-29)
 
-- ✅ `cd functions && npm audit fix` ran. Vulnerabilities went from **26 → 16** (cleared 2 critical + 6 high). `protobufjs` is now at **7.5.6** (patched; CVE-2024-43788 was for <7.2.5). Functions deployed at commit `43c0f65`.
-- Remaining 16 issues are all moderate/low transitive through `firebase-admin`/`@google-cloud/*`/`mercadopago`/`resend`/`svix` — clearable only via `npm audit fix --force` (firebase-admin major upgrade); deferred.
-- `cd apps/landing && npm audit fix` + `cd apps/creator-dashboard && npm audit fix` — pending (non-breaking; can ship anytime alongside hosting work).
-- `cd apps/pwa && npm audit fix` — pending (Expo chain needs runtime testing).
+- ✅ `cd functions && npm audit fix` ran. Vulnerabilities **26 → 16** (cleared 2 critical + 6 high). `protobufjs` is now at **7.5.6** (patched; CVE-2024-43788 was for <7.2.5). Functions deployed at commit `43c0f65`.
+- ✅ `cd apps/landing && npm audit fix` — **0 vulnerabilities** post-fix.
+- ✅ `cd apps/creator-dashboard && npm audit fix` — **0 vulnerabilities** post-fix.
+- ⏳ `cd apps/pwa && npm audit fix` — pending (Expo SDK chain needs runtime regression testing first; defer until next opportunistic batch).
+- Remaining 16 functions/ issues are all moderate/low transitive through `firebase-admin`/`@google-cloud/*`/`mercadopago`/`resend`/`svix` — clearable only via `npm audit fix --force` (firebase-admin major upgrade); deferred.
 - **DO NOT** `npm audit fix --force` at root (would downgrade firebase-tools to v1.2.0).
+
+---
+
+## Late-Tier-2 follow-on (SHIPPED 2026-04-29)
+
+After Tier 2 closed, the remaining open Highs and a batch of input-validation Mediums were also rolled forward in the same `tier-2-security` branch (commit `25bce28`).
+
+| ID | Title | File | Status |
+|---|---|---|---|
+| **H-11** | `GET /workout/programs/:courseId` response field allowlist (`pickPublicCourseFields`); applied to sibling gated route too | workout.ts:1181, 2326 | ✅ live |
+| **H-20** | Subscription state-machine guards (`assertAllowedSubscriptionTransition`); cancel-after-cancel / resume-after-cancel / pause-after-cancel rejected before MP call; `cancelled_at` only set if previously unset | index.ts:1530 | ✅ live |
+| M-09 | `accessDuration` enum + `expiresAt` ISO + 5-year cap on creator client-program POST + PATCH | creator.ts:5783, 5825 | ✅ live |
+| M-13 | `/creator/feedback` `type` allowlist (`bug`, `suggestion`, `praise`, `other`) + text length cap | creator.ts:2715 | ✅ live |
+| M-23 | `course.price` validated as positive integer (COP, no subunits) before MP `preference.create` (Gen1 + Gen2) | index.ts:225, payments.ts:115 | ✅ live |
+| M-29 | `apikey:last-used-update-failed` raw error stringified | auth.ts:267 | ✅ live |
+| M-30 | `opsApi: auth mismatch` log no longer logs `expectedLen` / `providedLen` (ops secret length side-channel) | opsApi.ts:62 | ✅ live |
+| M-33 | `GET/PATCH /creator/clients/:clientId/client-sessions/:clientSessionId` now calls `verifyClientAccess` (legacy docs without `creator_id` no longer fail open) | creator.ts:3357, 3375 | ✅ live |
+| M-40 | Event-confirmation email subject strips control + bidi-override chars; capped at 120 chars | index.ts:2199 | ✅ live |
+
+## Tier 4.2 — rules emulator suite expansion (SHIPPED 2026-04-29)
+
+`functions/tests/rules/serverOnlyAndIsolation.test.ts` adds **26 emulator tests** that codify the firestore-rules invariants for collections the audit treated as out of scope for the original suite:
+
+- `api_keys` / `processed_payments` / `fatsecret_cache` (server-only — audit L-07): read AND write denied for any client (incl. owner + admin).
+- `subscription_cancellation_feedback` (audit L-06): create binds `userId == request.auth.uid` (impersonation rejected); read/update/delete admin-only.
+- `one_on_one_clients` (covers C-10 from the rules side): cross-creator read / update / delete / impersonation-on-create all rejected; owning creator + the bound client + admin allowed.
+- `video_exchanges` party-only reads (creator + client of the exchange + admin); messages subcollection same gating; client writes rejected (API-only).
+- `nutrition_assignments` cross-creator read / update / delete / impersonation rejected; the assigned client can read their own.
+
+Total emulator suite: **47 tests** (waitlist 7 + crossCreator 14 + serverOnlyAndIsolation 26).
+Total unit suite: **108 tests** (was 95 before late-Tier-2 follow-on).
+Combined: **155 tests pass** in `firebase emulators:exec --only firestore`.
+
+## Tier 6 — C-10 PWA acceptance UI (SHIPPED 2026-04-29 — code; awaits PWA build/deploy)
+
+The backend gate already shipped in Tier 1 (new one-on-one invites land as `status: 'pending'` and `verifyClientAccess` enforces `active` before any creator action). The companion UI:
+
+- `apps/pwa/src/hooks/relationships/useClientRelationships.js` — React Query hook (list/accept/decline) with `staleTime: 30s` and `refetchOnWindowFocus: true` so newly-sent invites surface within seconds.
+- `apps/pwa/src/components/PendingInviteBanner.jsx` — banner rendered on `MainScreen` above the cards section. Shows coach name, accept (primary) / decline (secondary) buttons with `ActivityIndicator` while the mutation is pending. Wake dark-cinematic styling per `docs/STANDARDS.md`.
+- `apps/pwa/src/screens/MainScreen.js` — wires `<PendingInviteBanner userId={user?.uid} />` between the greeting and the cards section.
+
+PWA hosting deploy needed before this is live to end users (Metro build + `firebase deploy --only hosting`); deferring that to the user's normal hosting deploy cadence rather than rolling forward without a UI smoke test.
 
 ---
 

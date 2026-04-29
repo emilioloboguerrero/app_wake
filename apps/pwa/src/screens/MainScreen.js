@@ -29,6 +29,7 @@ import BottomSpacer from '../components/BottomSpacer';
 import libraryImage from '../assets/images/library.jpg';
 import logger from '../utils/logger.js';
 import WakeLoader from '../components/WakeLoader';
+import PendingInviteBanner from '../components/PendingInviteBanner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
@@ -1409,6 +1410,12 @@ const MainScreen = ({ navigation, route }) => {
               Hola, <Text style={styles.username}>{firstName}</Text>
             </Text>
           </Animated.View>
+
+          {/* Audit C-10: surface pending one-on-one invitations so the user
+              can accept or decline. Backend gate (Tier 1) sets new invites
+              to status: 'pending'; the creator can't operate on the client
+              until the user explicitly accepts here. */}
+          <PendingInviteBanner userId={user?.uid} />
 
           {/* Swipeable Cards Section */}
           <View style={styles.cardsSection}>
