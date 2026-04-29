@@ -2,6 +2,7 @@ import {Router} from "express";
 import * as admin from "firebase-admin";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {validateDateFormat} from "../middleware/validate.js";
+import {loadCreatorOwnedCourseIds} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
@@ -895,6 +896,16 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   const exerciseHistSnap = exerciseHistSnapOrNull;
   const lastPerfSnap = lastPerfSnapOrNull;
 
+  // Audit M-44: filter sessionHistory to programs the caller owns. A client
+  // shared between two creators accumulates sessions across both; the lab
+  // endpoint aggregates volumes, RPE, and PRs that would otherwise leak the
+  // other creator's program data.
+  const ownedCourseIds = await loadCreatorOwnedCourseIds(admin.firestore(), auth.userId);
+  const sessionsDocs = sessionsSnap.docs.filter((d) => {
+    const cid = d.data()?.courseId;
+    return typeof cid === "string" && ownedCourseIds.has(cid);
+  });
+
   // ── Weekly volume (last 8 weeks) ─────────────────────────────
   const eightWeeksAgo = new Date(now.getTime() - 56 * 24 * 60 * 60 * 1000);
   const weekMap: Record<string, { sessions: number; totalSets: number; daysTrained: Set<string> }> = {};
@@ -914,7 +925,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   // that only carry `{exerciseId, libraryId}` produce zero volume and PR cards
   // show "Ejercicio" because the legacy code looked at inline `primaryMuscles`.
   const libIdsNeeded = new Set<string>();
-  for (const doc of sessionsSnap.docs) {
+  for (const doc of sessionsDocs) {
     const exs = (doc.data()?.exercises ?? []) as Array<{ libraryId?: string }>;
     for (const ex of exs) {
       if (typeof ex?.libraryId === "string" && ex.libraryId) libIdsNeeded.add(ex.libraryId);
@@ -965,7 +976,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     return {displayName, muscle_activation: activation};
   };
 
-  for (const doc of sessionsSnap.docs) {
+  for (const doc of sessionsDocs) {
     const data = doc.data();
     const date = new Date(data.date);
 
@@ -1504,7 +1515,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   res.json({
     data: {
       // Backward-compatible fields
-      completionRate: sessionsSnap.size,
+      completionRate: sessionsDocs.length,
       // New flat fields for bento cards
       workoutAdherence,
       adherenceMode,

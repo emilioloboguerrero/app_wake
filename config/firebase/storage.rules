@@ -1,17 +1,39 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Profile pictures
-    // Upload enforcement is at the API layer via signed URLs
+    // Profile pictures (Tier 5.2 lockdown)
+    // Read: owner, any user looking at a creator/admin's photo, or an admin
+    // looking at any user. Wake isn't a social product; non-creator photos
+    // are private.
+    // Write enforcement is at the API layer via signed URLs.
     match /profiles/{userId}/{fileName} {
-      // Allow users to read any profile picture (for viewing other users)
-      allow read: if request.auth != null;
+      allow read: if request.auth != null
+        && (
+          request.auth.uid == userId
+          || firestore.get(/databases/(default)/documents/users/$(userId)).data.role in ['creator', 'admin']
+          || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        );
 
-      // Allow users to write only their own profile picture
       allow write: if request.auth != null
         && request.auth.uid == userId
         && request.resource.size < 200 * 1024  // Max 200KB (compress before upload)
         && request.resource.contentType.matches('image/.*');  // Only images
+    }
+
+    // Profile pictures — current path used by signed-URL uploads
+    // (profiles/{userId}/ above is legacy data). Same lockdown applies.
+    match /profile_pictures/{userId}/{fileName} {
+      allow read: if request.auth != null
+        && (
+          request.auth.uid == userId
+          || firestore.get(/databases/(default)/documents/users/$(userId)).data.role in ['creator', 'admin']
+          || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        );
+
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 200 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
     
     // Exercise library videos — shared asset library, readable by any authenticated user.

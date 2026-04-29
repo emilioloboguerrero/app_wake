@@ -63,7 +63,7 @@ const AssignProgramModal = ({
           </div>
           <div className="apm__client-info">
             <p className="apm__client-name">{name}</p>
-            {clientUser?.email && <p className="apm__client-email">{clientUser.email}</p>}
+            {clientUser?.emailMasked && <p className="apm__client-email">{clientUser.emailMasked}</p>}
           </div>
         </div>
 

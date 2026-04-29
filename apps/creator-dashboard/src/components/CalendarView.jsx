@@ -967,7 +967,7 @@ const CalendarView = ({
                       const isCompleted = isSessionCompleted(slotId);
                       const hasNotes = isCompleted && slotId && completedSessionHasNotes(completedHistoryForDay, slotId);
                       const sessionWithSlot = slotId ? { ...session, slotId } : session;
-                      const isBeingDeleted = isDeletingSessionAssignment && deletingSessionAssignmentId === session.session_id;
+                      const isBeingDeleted = isDeletingSessionAssignment && deletingSessionAssignmentId === session.id;
                       return (
                         <motion.div
                           key={sessionDocId}

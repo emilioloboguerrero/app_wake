@@ -205,7 +205,7 @@ export function validateDeletionPath(
 // ─── HTTPS URL scheme validator (Tier 2 — used by Tier 0 too) ────────────────
 // Rejects javascript:, data:, file:, and other non-http(s) schemes that can
 // be exploited when a stored URL is later rendered as an <a href> or <img src>.
-export function assertHttpsUrl(value: string, field: string): void {
+export function assertHttpsUrl(value: string, field: string): URL {
   if (typeof value !== "string" || value.length === 0) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR",
@@ -233,4 +233,113 @@ export function assertHttpsUrl(value: string, field: string): void {
       field
     );
   }
+  return parsed;
+}
+
+// ─── Call-link domain allowlist (audit M-42) ─────────────────────────────────
+// Creators can attach an external meeting URL to a booking; we ship that URL
+// in branded reminder emails. Restrict to the handful of vendor domains we
+// recognize so a creator can't redirect Wake-branded mail to a phishing site
+// or javascript: scheme. Match suffixes only (zoom.us, *.zoom.us etc).
+const CALL_LINK_DOMAIN_SUFFIXES = [
+  "zoom.us",
+  "meet.google.com",
+  "meet.jit.si",
+  "daily.co",
+  "whereby.com",
+  "teams.microsoft.com",
+  "teams.live.com",
+  "wakelab.co",
+];
+
+export function assertAllowedCallLinkUrl(value: string, field = "callLink"): void {
+  const parsed = assertHttpsUrl(value, field);
+  const host = parsed.hostname.toLowerCase();
+  const ok = CALL_LINK_DOMAIN_SUFFIXES.some(
+    (suffix) => host === suffix || host.endsWith(`.${suffix}`)
+  );
+  if (!ok) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR",
+      400,
+      `${field} debe apuntar a un proveedor permitido (Zoom, Meet, Jitsi, Daily, Whereby, Teams)`,
+      field
+    );
+  }
+}
+
+// ─── Length caps for creator-controlled text (audit M-39) ────────────────────
+// Creators can write 1MiB into a single Firestore field; clients that fetch
+// the doc pay bandwidth and storage. Cap by field role.
+export const TEXT_CAP_TITLE = 200;
+export const TEXT_CAP_DESCRIPTION = 5000;
+export const TEXT_CAP_NOTE = 2000;
+
+export function assertTextLength(
+  value: unknown,
+  field: string,
+  max: number,
+  options: { allowEmpty?: boolean } = {}
+): string {
+  if (typeof value !== "string") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR",
+      400,
+      `${field} debe ser texto`,
+      field
+    );
+  }
+  if (!options.allowEmpty && value.trim().length === 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR",
+      400,
+      `${field} no puede estar vacío`,
+      field
+    );
+  }
+  if (value.length > max) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR",
+      400,
+      `${field} no puede exceder ${max} caracteres`,
+      field
+    );
+  }
+  return value;
+}
+
+// ─── Email masking for enumeration responses (audit M-45) ────────────────────
+// Reveals enough of the email for a creator to confirm they reached the right
+// person without disclosing a full harvestable address.
+//   alex@example.com → al***@example.com
+//   ab@example.com   → a***@example.com
+export function maskEmail(email: unknown): string | null {
+  if (typeof email !== "string") return null;
+  const trimmed = email.trim();
+  const at = trimmed.indexOf("@");
+  if (at <= 0 || at === trimmed.length - 1) return null;
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  const visible = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2);
+  return `${visible}***@${domain}`;
+}
+
+// ─── Creator-owned course IDs (audit M-44) ───────────────────────────────────
+// Returns the set of course IDs a creator owns, used to scope cross-tenant
+// reads (e.g., a shared client's sessionHistory) to programs the caller has
+// legitimate authority over.
+export interface CreatorCourseIdsLoader {
+  load(creatorId: string): Promise<Set<string>>;
+}
+
+export async function loadCreatorOwnedCourseIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: { collection: (path: string) => any },
+  creatorId: string
+): Promise<Set<string>> {
+  const snap = await db.collection("courses")
+    .where("creator_id", "==", creatorId)
+    .select()
+    .get();
+  return new Set<string>(snap.docs.map((d: { id: string }) => d.id));
 }

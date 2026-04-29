@@ -164,9 +164,9 @@ export default function ClientPlanTab({
 
   const deleteDateSessionMutation = useMutation({
     mutationKey: ['client-sessions', 'delete-date'],
-    mutationFn: ({ date, sessionId }) =>
-      clientSessionService.removeSessionFromDate(clientUserId, date, sessionId),
-    onSuccess: () => invalidateCalendar(),
+    mutationFn: ({ clientSessionId }) =>
+      clientSessionService.deleteClientSession(clientUserId, clientSessionId),
+    onSettled: () => invalidateCalendar(),
   });
 
   // ── Handlers (each is now a single mutation call) ──────────────
@@ -311,7 +311,7 @@ export default function ClientPlanTab({
       );
     } else if (deleteConfirm.type === 'date') {
       deleteDateSessionMutation.mutate(
-        { date: deleteConfirm.date, sessionId: deleteConfirm.session.session_id },
+        { clientSessionId: deleteConfirm.session.id },
         { onSuccess: onDone, onError: () => { onDone(); alert('Error al eliminar la sesion'); } }
       );
     } else if (deleteConfirm.type === 'removePlan') {
@@ -465,7 +465,7 @@ export default function ClientPlanTab({
             removingPlanId={removePlanMutation.isPending ? removePlanMutation.variables?.removePlanId : null}
             isAssigningSession={assignDateSessionMutation.isPending}
             isDeletingSessionAssignment={deleteDateSessionMutation.isPending}
-            deletingSessionAssignmentId={deleteDateSessionMutation.isPending ? deleteDateSessionMutation.variables?.sessionId : null}
+            deletingSessionAssignmentId={deleteDateSessionMutation.isPending ? deleteDateSessionMutation.variables?.clientSessionId : null}
             showVolumeButton={false}
             onVolumeClick={() => {}}
             onWeekClick={() => {}}

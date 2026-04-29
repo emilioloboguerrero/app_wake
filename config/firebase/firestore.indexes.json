@@ -207,6 +207,14 @@
       ]
     },
     {
+      "collectionGroup": "sessionHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "courseId", "order": "ASCENDING"},
+        {"fieldPath": "completedAt", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "email_sends",
       "queryScope": "COLLECTION",
       "fields": [

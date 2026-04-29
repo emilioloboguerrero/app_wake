@@ -93,20 +93,16 @@ const FindUserModal = ({
           <>
             <div className="fum__result">
               <div className="fum__avatar">
-                {foundUser.photoURL ? (
-                  <img src={foundUser.photoURL} alt="" className="fum__avatar-img" />
-                ) : (
-                  <span className="fum__avatar-initial">
-                    {(foundUser.displayName || foundUser.email || '?').charAt(0).toUpperCase()}
-                  </span>
-                )}
+                <span className="fum__avatar-initial">
+                  {(foundUser.displayName || foundUser.username || '?').charAt(0).toUpperCase()}
+                </span>
               </div>
               <div className="fum__result-info">
                 <p className="fum__result-name">
                   {foundUser.displayName || foundUser.username || 'Sin nombre'}
                 </p>
-                {foundUser.email && (
-                  <p className="fum__result-email">{foundUser.email}</p>
+                {foundUser.emailMasked && (
+                  <p className="fum__result-email">{foundUser.emailMasked}</p>
                 )}
               </div>
               {isAlready && (

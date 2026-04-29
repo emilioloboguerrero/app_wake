@@ -1,41 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import logger from './logger.js';
+
+// Audit M-07: previously the helper persisted { uid, email, displayName,
+// photoURL, providerId, lastLogin } to AsyncStorage on sign-in. On web
+// AsyncStorage falls back to localStorage, so any XSS could read the user's
+// email. The save/get/has methods were no longer called from anywhere — only
+// clearAuthState ran on sign-out, as a defensive cleanup. We keep that cleanup
+// (so any legacy installs scrub the stored payload on next sign-out) and
+// remove the writers entirely. Firebase Auth's own persistence already
+// retains the session.
 const AUTH_STORAGE_KEY = '@wake_app_auth_state';
 
 export const authStorage = {
-  // Save auth state
-  async saveAuthState(user) {
-    try {
-      const authData = {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        providerId: user.providerData[0]?.providerId || 'password',
-        lastLogin: new Date().toISOString(),
-      };
-      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
-    } catch (error) {
-      logger.error('Error saving auth state:', error);
-    }
-  },
-
-  // Get saved auth state
-  async getAuthState() {
-    try {
-      const authData = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (authData) {
-        return JSON.parse(authData);
-      }
-      return null;
-    } catch (error) {
-      logger.error('Error retrieving auth state:', error);
-      return null;
-    }
-  },
-
-  // Clear auth state
   async clearAuthState() {
     try {
       await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
@@ -43,17 +20,6 @@ export const authStorage = {
       logger.error('Error clearing auth state:', error);
     }
   },
-
-  // Check if auth state exists
-  async hasAuthState() {
-    try {
-      const authData = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      return authData !== null;
-    } catch (error) {
-      logger.error('Error checking auth state:', error);
-      return false;
-    }
-  }
 };
 
 export default authStorage;

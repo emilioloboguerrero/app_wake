@@ -4,6 +4,7 @@ import {db, FieldValue} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
 import {validateBody, validateStoragePath} from "../middleware/validate.js";
+import {assertTextLength, TEXT_CAP_NOTE} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
@@ -359,6 +360,11 @@ router.post("/video-exchanges/:id/messages", async (req, res) => {
       "VALIDATION_ERROR", 400,
       "Debes enviar un mensaje de texto o un video"
     );
+  }
+
+  // Audit M-39: cap creator-controlled text.
+  if (body.note) {
+    assertTextLength(body.note, "note", TEXT_CAP_NOTE);
   }
 
   // Validate video path prefix if provided

@@ -118,6 +118,10 @@ class ClientSessionService {
     }
   }
 
+  async deleteClientSession(clientId, clientSessionId) {
+    await apiClient.delete(`/creator/clients/${clientId}/client-sessions/${clientSessionId}`);
+  }
+
   async updateSessionMetadata(sessionId, metadata) {
     // sessionId is the composite id clientId_date_sessionId
     const parts = sessionId.split('_');
