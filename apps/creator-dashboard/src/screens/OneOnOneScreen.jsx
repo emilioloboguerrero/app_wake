@@ -15,12 +15,14 @@ import programService from '../services/programService';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import logger from '../utils/logger';
 import ContextualHint from '../components/hints/ContextualHint';
+import { useToast } from '../contexts/ToastContext';
 import './OneOnOneScreen.css';
 
 const OneOnOneScreen = ({ noLayout = false }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
 
   const { data: clients = [], isLoading: loading, isError: isClientsError } = useQuery({
     queryKey: queryKeys.clients.byCreator(user?.uid),
@@ -145,11 +147,17 @@ const OneOnOneScreen = ({ noLayout = false }) => {
     try {
       setIsAssigning(true);
       setAssignError(null);
-      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
+      const result = await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
       await queryClient.invalidateQueries({ queryKey: queryKeys.clients.byCreator(user.uid) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.clients.programs(clientUserId, user.uid) });
       setSelectedClientId(clientUserId);
       handleCloseAssignProgramModal();
+      // C-10 v2: differentiate immediate-assign vs invite-pending.
+      if (result?.assignment?.status === 'pending') {
+        showToast('Invitación enviada. El programa se asignará cuando el usuario acepte.', 'info');
+      } else {
+        showToast('Cliente agregado y programa asignado.', 'success');
+      }
     } catch (err) {
       logger.error('Error adding client:', err);
       setAssignError(err.message || 'Error al agregar el cliente');

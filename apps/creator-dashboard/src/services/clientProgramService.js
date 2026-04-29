@@ -1,6 +1,9 @@
 import apiClient from '../utils/apiClient';
 
 class ClientProgramService {
+  // Returns { status: 'active' | 'pending', pending?, assignedAt?, message? }.
+  // Pending happens when the user hasn't accepted the relationship yet —
+  // the program attaches to the invite and applies on accept (C-10 v2).
   async assignProgramToClient(programId, clientId) {
     const res = await apiClient.post(`/creator/clients/${clientId}/programs/${programId}`, {
       expiresAt: null,

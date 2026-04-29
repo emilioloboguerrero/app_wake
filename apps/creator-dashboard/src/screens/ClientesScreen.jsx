@@ -593,6 +593,7 @@ const ClientesScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') || 'clientes';
@@ -875,19 +876,25 @@ const ClientesScreen = () => {
     try {
       setIsAssigning(true);
       setAssignError(null);
-      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
+      const result = await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
       await queryClient.invalidateQueries({ queryKey: ['clients', 'overview', user.uid] });
       queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user.uid] });
       queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user.uid] });
       setIsAssignOpen(false);
       setLookedUpUser(null);
+      // C-10 v2: differentiate immediate-assign vs invite-pending.
+      if (result?.assignment?.status === 'pending') {
+        showToast('Invitación enviada. El programa se asignará cuando el usuario acepte.', 'info');
+      } else {
+        showToast('Cliente agregado y programa asignado.', 'success');
+      }
     } catch (err) {
       setAssignError(err.message || 'Error al agregar el cliente');
     } finally {
       setIsAssigning(false);
     }
-  }, [user, queryClient]);
+  }, [user, queryClient, showToast]);
 
   const handleAsesoriaCreated = useCallback(() => {
     setShowCreateAsesoria(false);
@@ -897,8 +904,6 @@ const ClientesScreen = () => {
     queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user?.uid] });
     setActiveTab('asesorias');
   }, [queryClient, user?.uid]);
-
-  const { showToast } = useToast();
 
   const [deleteTarget, setDeleteTarget] = useState(null);
 

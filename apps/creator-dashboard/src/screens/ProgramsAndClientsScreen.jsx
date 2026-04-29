@@ -871,16 +871,24 @@ const ProgramsAndClientsScreen = () => {
     try {
       setIsAssigning(true);
       setAssignError(null);
-      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
+      const result = await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
       await queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
       setSelectedClientId(clientUserId);
       handleCloseAssign();
+      // C-10 v2: differentiate immediate-assign vs invite-pending so the
+      // creator sees the correct outcome instead of the prior misleading
+      // "user has not accepted" 403.
+      if (result?.assignment?.status === 'pending') {
+        showToast('Invitación enviada. El programa se asignará cuando el usuario acepte.', 'info');
+      } else {
+        showToast('Cliente agregado y programa asignado.', 'success');
+      }
     } catch (err) {
       setAssignError(err.message || 'Error al agregar el cliente');
     } finally {
       setIsAssigning(false);
     }
-  }, [user, queryClient, handleCloseAssign]);
+  }, [user, queryClient, handleCloseAssign, showToast]);
 
   const handleViewClientFromModal = useCallback((clientId) => {
     handleCloseFindUser();

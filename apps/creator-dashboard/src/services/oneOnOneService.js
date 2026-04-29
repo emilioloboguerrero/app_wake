@@ -30,11 +30,13 @@ class OneOnOneService {
     return res.data;
   }
 
+  // C-10 v2: returns { client, assignment } so the caller can differentiate
+  // pending (invite sent, program will apply on accept) vs active assignments.
   async addClientToProgram(_creatorId, clientUserId, programId) {
     const client = await this.addClient(_creatorId, clientUserId);
     const clientProgramService = (await import('./clientProgramService')).default;
-    await clientProgramService.assignProgramToClient(programId, clientUserId);
-    return client;
+    const assignment = await clientProgramService.assignProgramToClient(programId, clientUserId);
+    return { client, assignment };
   }
 
   async getClientById(clientId, { userId } = {}) {

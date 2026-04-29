@@ -5855,47 +5855,48 @@ router.get("/creator/clients/:clientId/programs", async (req, res) => {
 router.post("/creator/clients/:clientId/programs/:programId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  // C-10 v2: support the "creator assigns a program to a not-yet-accepted
+  // client" flow. Today verifyClientAccess fails closed on `pending`; instead,
+  // when the relationship is pending, attach the program to the row so it
+  // auto-grants on the user's accept. Active relationships keep the existing
+  // immediate-assignment behavior.
+  const relationshipSnap = await db
+    .collection("one_on_one_clients")
+    .where("creatorId", "==", auth.userId)
+    .where("clientUserId", "==", req.params.clientId)
+    .limit(1)
+    .get();
+  if (relationshipSnap.empty) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
+  }
+  const relationshipDoc = relationshipSnap.docs[0];
+  const relationshipStatus = (relationshipDoc.data().status as string | undefined) ?? "active";
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const userRef = db.collection("users").doc(req.params.clientId);
-  const userDoc = await userRef.get();
-  const courses = userDoc.data()?.courses ?? {};
-
-  // Idempotent: if already assigned, return success
-  if (courses[req.params.programId]) {
-    const existing = courses[req.params.programId];
-    res.status(200).json({data: {assignedAt: existing.assigned_at ?? existing.purchased_at ?? null}});
-    return;
-  }
-
-  const courseData = courseDoc.data()!;
-  const now = new Date().toISOString();
-
   // Audit M-09: validate creator-supplied accessDuration + expiresAt before
-  // writing into user.courses[programId]. Otherwise a creator could grant
-  // far-future access bypassing payment-derived expiry.
-  const ALLOWED_ACCESS_DURATIONS = new Set([
+  // writing into user.courses[programId] OR pendingProgramAssignment.
+  const ALLOWED_ACCESS_DURATIONS_LOCAL = new Set([
     "one_on_one", "monthly", "3-month", "6-month", "yearly", "lifetime",
   ]);
-  let accessDuration = "one_on_one";
+  let accessDurationInput = "one_on_one";
   if (req.body.accessDuration !== undefined) {
     if (typeof req.body.accessDuration !== "string" ||
-        !ALLOWED_ACCESS_DURATIONS.has(req.body.accessDuration)) {
+        !ALLOWED_ACCESS_DURATIONS_LOCAL.has(req.body.accessDuration)) {
       throw new WakeApiServerError(
         "VALIDATION_ERROR", 400,
-        `accessDuration debe ser uno de: ${[...ALLOWED_ACCESS_DURATIONS].join(", ")}`,
+        `accessDuration debe ser uno de: ${[...ALLOWED_ACCESS_DURATIONS_LOCAL].join(", ")}`,
         "accessDuration"
       );
     }
-    accessDuration = req.body.accessDuration;
+    accessDurationInput = req.body.accessDuration;
   }
 
-  let expiresAt: string | null = null;
+  let expiresAtInput: string | null = null;
   if (req.body.expiresAt !== undefined && req.body.expiresAt !== null) {
     if (typeof req.body.expiresAt !== "string") {
       throw new WakeApiServerError(
@@ -5908,21 +5909,59 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
         "VALIDATION_ERROR", 400, "expiresAt debe ser una fecha válida", "expiresAt"
       );
     }
-    // Cap at 5 years out — no creator should grant beyond a realistic horizon.
     const fiveYears = Date.now() + 5 * 365 * 24 * 60 * 60 * 1000;
     if (parsed.getTime() > fiveYears) {
       throw new WakeApiServerError(
         "VALIDATION_ERROR", 400, "expiresAt no puede exceder 5 años", "expiresAt"
       );
     }
-    expiresAt = parsed.toISOString();
+    expiresAtInput = parsed.toISOString();
   }
 
+  // Pending branch — stash the intent; user's accept will run the actual
+  // assignment. Idempotent on the same program; overwrites a different one.
+  if (relationshipStatus === "pending") {
+    await relationshipDoc.ref.update({
+      pendingProgramAssignment: {
+        programId: req.params.programId,
+        accessDuration: accessDurationInput,
+        expiresAt: expiresAtInput,
+        attachedAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    res.status(202).json({data: {
+      status: "pending",
+      pending: true,
+      message: "Invitación enviada. Se asignará el programa cuando el usuario acepte.",
+    }});
+    return;
+  }
+
+  const userRef = db.collection("users").doc(req.params.clientId);
+  const userDoc = await userRef.get();
+  const courses = userDoc.data()?.courses ?? {};
+
+  // Idempotent: if already assigned, return success
+  if (courses[req.params.programId]) {
+    const existing = courses[req.params.programId];
+    res.status(200).json({data: {
+      status: "active",
+      assignedAt: existing.assigned_at ?? existing.purchased_at ?? null,
+    }});
+    return;
+  }
+
+  const courseData = courseDoc.data()!;
+  const now = new Date().toISOString();
+
+  // accessDuration / expiresAt were already validated above, before the
+  // pending branch — reuse them here.
   await userRef.update({
     [`courses.${req.params.programId}`]: {
       status: "active",
       deliveryType: "one_on_one",
-      access_duration: accessDuration,
+      access_duration: accessDurationInput,
       title: courseData.title ?? "",
       image_url: courseData.image_url ?? null,
       discipline: courseData.discipline ?? "General",
@@ -5936,11 +5975,11 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
       assigned_by: auth.userId,
       assigned_at: now,
       purchased_at: now,
-      expires_at: expiresAt,
+      expires_at: expiresAtInput,
     },
   });
 
-  res.status(201).json({data: {assignedAt: now}});
+  res.status(201).json({data: {status: "active", assignedAt: now}});
 });
 
 // DELETE /creator/clients/:clientId/programs/:programId

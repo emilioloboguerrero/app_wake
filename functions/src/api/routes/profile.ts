@@ -554,6 +554,9 @@ router.post("/auth/logout", async (req, res) => {
 // silently attach any user as their client.
 
 // GET /users/me/client-relationships — list relationships where caller is the client
+// C-10 v2: hydrate pendingProgramAssignment with course title / image_url /
+// creatorName so the PWA can render the pending invite as a program-shaped
+// card without a second round-trip per invite.
 router.get("/users/me/client-relationships", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 60, "rate_limit_first_party");
@@ -566,22 +569,65 @@ router.get("/users/me/client-relationships", async (req, res) => {
   }
   const snap = await query.limit(100).get();
 
+  // Batch-load every referenced program + creator profile in parallel.
+  const programIds = new Set<string>();
+  const creatorIds = new Set<string>();
+  for (const d of snap.docs) {
+    const data = d.data();
+    const pid = data.pendingProgramAssignment?.programId as string | undefined;
+    if (pid) programIds.add(pid);
+    const cid = data.creatorId as string | undefined;
+    if (cid) creatorIds.add(cid);
+  }
+  const programDocs = programIds.size > 0 ?
+    await db.getAll(...[...programIds].map((id) => db.collection("courses").doc(id))) :
+    [];
+  const creatorDocs = creatorIds.size > 0 ?
+    await db.getAll(...[...creatorIds].map((id) => db.collection("users").doc(id))) :
+    [];
+  const programById = new Map<string, FirebaseFirestore.DocumentData>();
+  for (const pd of programDocs) {
+    if (pd.exists) programById.set(pd.id, pd.data()!);
+  }
+  const creatorById = new Map<string, FirebaseFirestore.DocumentData>();
+  for (const cd of creatorDocs) {
+    if (cd.exists) creatorById.set(cd.id, cd.data()!);
+  }
+
   res.json({
     data: snap.docs.map((d) => {
       const data = d.data();
+      const creatorId = (data.creatorId as string | undefined) ?? null;
+      const fallbackCreatorName = creatorId ?
+        (creatorById.get(creatorId)?.displayName as string | undefined) ?? null :
+        null;
+      const pendingProgramId = data.pendingProgramAssignment?.programId as string | undefined;
+      const program = pendingProgramId ? programById.get(pendingProgramId) : undefined;
+      const pendingProgramAssignment = pendingProgramId && program ? {
+        programId: pendingProgramId,
+        title: (program.title as string | undefined) ?? null,
+        imageUrl: (program.image_url as string | undefined) ?? null,
+        discipline: (program.discipline as string | undefined) ?? null,
+        accessDuration: (data.pendingProgramAssignment?.accessDuration as string | undefined) ?? null,
+      } : null;
       return {
         id: d.id,
-        creatorId: data.creatorId ?? null,
-        creatorName: data.creatorName ?? null,
+        creatorId,
+        creatorName: data.creatorName ?? fallbackCreatorName,
         status: data.status ?? "active",
         invitedAt: data.invitedAt ?? null,
         createdAt: data.createdAt ?? null,
+        pendingProgramAssignment,
       };
     }),
   });
 });
 
 // POST /users/me/client-relationships/:relationshipId/accept
+// C-10 v2: when the invite carries a pendingProgramAssignment (set by the
+// creator's POST /creator/clients/:clientId/programs/:programId on a pending
+// row), apply it now so the user's enrolled-courses list updates atomically
+// with the relationship flip.
 router.post("/users/me/client-relationships/:relationshipId/accept", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
@@ -606,12 +652,74 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
     );
   }
 
-  await ref.update({
-    status: "active",
-    acceptedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+  const pending = data.pendingProgramAssignment as
+    | {programId?: string; accessDuration?: string; expiresAt?: string | null}
+    | undefined;
+
+  // Run flip + program assignment atomically. The creator owns the program
+  // (validated when the pendingProgramAssignment was attached), so we just
+  // re-resolve course metadata and write the user.courses entry.
+  let programAssigned = false;
+  let assignedProgramId: string | null = null;
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(ref);
+    if (!fresh.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
+    }
+    const freshData = fresh.data()!;
+    if (freshData.status === "active") return;
+
+    tx.update(ref, {
+      status: "active",
+      acceptedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      pendingProgramAssignment: FieldValue.delete(),
+    });
+
+    if (pending?.programId && typeof pending.programId === "string") {
+      const courseRef = db.collection("courses").doc(pending.programId);
+      const courseSnap = await tx.get(courseRef);
+      if (courseSnap.exists && courseSnap.data()?.creator_id === freshData.creatorId) {
+        const courseData = courseSnap.data()!;
+        const userRef = db.collection("users").doc(auth.userId);
+        const userSnap = await tx.get(userRef);
+        const courses = (userSnap.data()?.courses ?? {}) as Record<string, unknown>;
+        if (!courses[pending.programId]) {
+          const now = new Date().toISOString();
+          tx.update(userRef, {
+            [`courses.${pending.programId}`]: {
+              status: "active",
+              deliveryType: "one_on_one",
+              access_duration: pending.accessDuration ?? "one_on_one",
+              title: courseData.title ?? "",
+              image_url: courseData.image_url ?? null,
+              discipline: courseData.discipline ?? "General",
+              creatorName: courseData.creatorName ?? courseData.creator_name ?? "",
+              completedTutorials: {
+                dailyWorkout: [],
+                warmup: [],
+                workoutExecution: [],
+                workoutCompletion: [],
+              },
+              assigned_by: freshData.creatorId,
+              assigned_at: now,
+              purchased_at: now,
+              expires_at: pending.expiresAt ?? null,
+            },
+          });
+        }
+        programAssigned = true;
+        assignedProgramId = pending.programId;
+      }
+    }
   });
-  res.json({data: {id: doc.id, status: "active"}});
+
+  res.json({data: {
+    id: doc.id,
+    status: "active",
+    programAssigned,
+    programId: assignedProgramId,
+  }});
 });
 
 // POST /users/me/client-relationships/:relationshipId/decline

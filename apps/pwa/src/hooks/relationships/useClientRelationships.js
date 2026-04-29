@@ -31,8 +31,10 @@ export function useAcceptRelationship(userId) {
         .post(`/users/me/client-relationships/${relationshipId}/accept`)
         .then((r) => r?.data ?? null),
     onSuccess: () => {
-      // Invalidate both pending + active scopes so the banner clears and any
-      // active-relationship UI picks up the new state.
+      // C-10 v2: when an invite carried a pendingProgramAssignment, accept
+      // also writes user.courses[programId]. Invalidate the user query (which
+      // backs purchasedCourses on MainScreen) so the new program card appears
+      // immediately, plus the relationship lists so the pending overlay clears.
       queryClient.invalidateQueries({ queryKey: ['client-relationships', userId] });
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
     },

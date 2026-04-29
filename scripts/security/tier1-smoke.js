@@ -652,6 +652,62 @@ async function testC10_postAcceptOpsAllowed(creatorA, clientUser) {
   assertStatus("post-accept PUT accepted", r.status, 200);
 }
 
+// C-10 v2: pending-aware program assignment + auto-grant on accept
+async function testC10v2_assignToPendingAttachesProgram(creatorA, pendingUser) {
+  console.log("\n[C-10v2] assigning a program to pending user → expect 202 + relationship gets pendingProgramAssignment");
+  // Step 1: invite the user (creates pending relationship).
+  await post(
+    `${API_BASE}/v1/creator/clients/invite`,
+    {email: pendingUser.email},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  // Step 2: creator hits the program-assign endpoint while user still pending.
+  const r = await post(
+    `${API_BASE}/v1/creator/clients/${pendingUser.uid}/programs/${COURSE_A}`,
+    {accessDuration: "monthly"},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("assign-to-pending returns 202", r.status, 202);
+  assertCondition("response status=pending", r.body?.data?.status === "pending",
+    `got ${r.body?.data?.status}`);
+  const db = admin.firestore();
+  const snap = await db.collection("one_on_one_clients")
+    .where("creatorId", "==", creatorA.uid)
+    .where("clientUserId", "==", pendingUser.uid)
+    .limit(1).get();
+  const pending = snap.empty ? null : snap.docs[0].data().pendingProgramAssignment;
+  assertCondition("pendingProgramAssignment.programId set on row",
+    pending?.programId === COURSE_A,
+    `got ${JSON.stringify(pending)}`);
+  return snap.empty ? null : snap.docs[0].id;
+}
+
+async function testC10v2_acceptAppliesPendingProgram(pendingUser, relationshipId) {
+  console.log("\n[C-10v2] accept invite that carries a pending program → expect program assigned to user.courses");
+  if (!relationshipId) {
+    console.log("  ✗ skipped — no relationshipId");
+    failed++; failures.push({label: "C-10v2 missing relationshipId"}); return;
+  }
+  const r = await post(
+    `${API_BASE}/v1/users/me/client-relationships/${relationshipId}/accept`,
+    {},
+    {Authorization: `Bearer ${pendingUser.idToken}`}
+  );
+  assertStatus("accept returns 200", r.status, 200);
+  assertCondition("response programAssigned=true", r.body?.data?.programAssigned === true,
+    `got ${JSON.stringify(r.body?.data)}`);
+  // Verify user.courses got populated.
+  const db = admin.firestore();
+  const userDoc = await db.collection("users").doc(pendingUser.uid).get();
+  const course = userDoc.data()?.courses?.[COURSE_A];
+  assertCondition("user.courses[COURSE_A] exists with status=active",
+    course?.status === "active",
+    `got ${JSON.stringify(course)}`);
+  assertCondition("user.courses[COURSE_A].deliveryType=one_on_one",
+    course?.deliveryType === "one_on_one",
+    `got ${course?.deliveryType}`);
+}
+
 async function testC10_decline(creatorA, declineUser) {
   console.log("\n[C-10] decline flow: invite → decline → status declined");
   const r1 = await post(
@@ -908,6 +964,16 @@ async function main() {
       await testC10_postAcceptOpsAllowed(creatorA, pendingUserA);
     }
     await testC10_decline(creatorA, declineUser);
+
+    // ── C-10 v2: pending-aware assign + auto-grant on accept ──
+    // Use a freshly-minted user so we're not interfering with prior pendingUserA state.
+    const c10v2User = await mintUser("c10v2", "user");
+    createdUserIds.push(c10v2User.uid);
+    const c10v2RelId = await testC10v2_assignToPendingAttachesProgram(creatorA, c10v2User);
+    if (c10v2RelId) {
+      createdCollections.push({collection: "one_on_one_clients", id: c10v2RelId});
+    }
+    await testC10v2_acceptAppliesPendingProgram(c10v2User, c10v2RelId);
 
     // ── M-43 wake_users_only ──
     await testM43_wakeOnlyEventBlocksAnon();
