@@ -1,9 +1,9 @@
 # Wake — Security Remediation Progress
 
 **Audit:** [SECURITY_AUDIT_2026-04-27.md](SECURITY_AUDIT_2026-04-27.md) — 156 findings (10 C, 29 H, 45 M, 41 L)
-**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, awaiting staging deploy)
-**Status:** Tier 0 SHIPPED to production. Tier 1 patches written + tested locally; awaiting deploy approval.
-**Last updated:** 2026-04-27
+**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tier 2 + functions/ Tier 3, shipped)
+**Status:** Tiers 0, 1, 2a, 2b, and Tier 3 (functions/) SHIPPED to production. Tier 3 (apps/* npm audits) and Tier 4 (Gen1→Gen2 migration, rules emulator suite expansion) remain.
+**Last updated:** 2026-04-29
 
 ---
 
@@ -165,14 +165,13 @@ of the server, breaking lookup; rolling forward was the fastest fix.)
 
 ---
 
-## Tier 3 — quick-win infrastructure pass
+## Tier 3 — quick-win infrastructure pass (functions/ SHIPPED 2026-04-29)
 
-- `cd functions && npm audit fix` — clears `protobufjs` ACE in production. Non-breaking.
-- `cd apps/landing && npm audit fix` + `cd apps/creator-dashboard && npm audit fix` — non-breaking
-- `cd apps/pwa && npm audit fix` — careful, may need testing for Expo chain
-- **DO NOT** `npm audit fix --force` at root (would downgrade firebase-tools to v1.2.0)
-
-15 minutes.
+- ✅ `cd functions && npm audit fix` ran. Vulnerabilities went from **26 → 16** (cleared 2 critical + 6 high). `protobufjs` is now at **7.5.6** (patched; CVE-2024-43788 was for <7.2.5). Functions deployed at commit `43c0f65`.
+- Remaining 16 issues are all moderate/low transitive through `firebase-admin`/`@google-cloud/*`/`mercadopago`/`resend`/`svix` — clearable only via `npm audit fix --force` (firebase-admin major upgrade); deferred.
+- `cd apps/landing && npm audit fix` + `cd apps/creator-dashboard && npm audit fix` — pending (non-breaking; can ship anytime alongside hosting work).
+- `cd apps/pwa && npm audit fix` — pending (Expo chain needs runtime testing).
+- **DO NOT** `npm audit fix --force` at root (would downgrade firebase-tools to v1.2.0).
 
 ---
 
