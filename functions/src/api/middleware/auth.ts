@@ -95,6 +95,39 @@ declare global {
   }
 }
 
+// M-14: shared App Check enforcement. Used by both validateAuth's Firebase
+// branch and the parallelized validateAuthAndRateLimit Firebase branch.
+//   - emulator: skipped (test fixtures don't mint App Check tokens).
+//   - missing token: 401 unless APP_CHECK_ENFORCE=false (escape hatch for
+//     synthetic test runners; default behavior matches Gen1).
+//   - present + invalid token: always 401, regardless of the env flag — this
+//     is the silent-pass bug the audit specifically called out.
+async function enforceAppCheck(req: Request, uid: string, isEmulator: boolean): Promise<void> {
+  if (isEmulator) return;
+  const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
+  if (!appCheckToken) {
+    if (process.env.APP_CHECK_ENFORCE === "false") {
+      functions.logger.warn("appCheck:missing-token-allowed-by-flag", {uid});
+      return;
+    }
+    throw new WakeApiServerError(
+      "UNAUTHENTICATED",
+      401,
+      "App Check token requerido"
+    );
+  }
+  try {
+    await admin.appCheck().verifyToken(appCheckToken);
+  } catch (err) {
+    functions.logger.warn("appCheck:verify-failed", {uid, error: String(err)});
+    throw new WakeApiServerError(
+      "UNAUTHENTICATED",
+      401,
+      "App Check token inválido o expirado"
+    );
+  }
+}
+
 export async function validateAuth(req: Request): Promise<AuthResult> {
   // Return cached result if already validated in this request.
   // Safe: no preceding middleware sets req.auth — only this function does.
@@ -201,17 +234,14 @@ export async function validateAuthAndRateLimit(
     setCachedToken(token, decoded);
   }
 
-  // App Check (skip in emulator) — advisory only, never blocks auth
-  if (!isEmulator) {
-    const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
-    if (appCheckToken) {
-      try {
-        await admin.appCheck().verifyToken(appCheckToken);
-      } catch {
-        // Log but don't reject — client may send stale token when IndexedDB fails
-      }
-    }
-  }
+  // App Check enforcement for first-party Firebase callers (M-14).
+  // Skipped in the emulator (test fixtures don't mint App Check tokens) and
+  // for the API-key path above (third-party clients can't obtain App Check).
+  // Gen1 endpoints already require App Check; this brings Gen2 to parity.
+  // The env escape hatch (APP_CHECK_ENFORCE=false) only relaxes the missing-
+  // token case so smoke runners can authenticate; an invalid (forged/stale)
+  // token always 401s regardless.
+  await enforceAppCheck(req, decoded.uid, isEmulator);
 
   const [userDoc] = await Promise.all([
     db.collection("users").doc(decoded.uid).get(),
@@ -297,20 +327,9 @@ async function validateFirebaseToken(
     setCachedToken(token, decoded);
   }
 
-  // App Check (skip in emulator) — advisory only, never blocks auth.
-  // Client may send stale/invalid tokens when IndexedDB is unavailable.
-  if (!isEmulator) {
-    const appCheckToken = req.headers["x-firebase-appcheck"] as
-      | string
-      | undefined;
-    if (appCheckToken) {
-      try {
-        await admin.appCheck().verifyToken(appCheckToken);
-      } catch {
-        // Log but don't reject — Firebase ID token is the primary auth gate
-      }
-    }
-  }
+  // App Check enforcement for first-party Firebase callers (M-14).
+  // Mirrors the gate in validateAuthAndRateLimit above.
+  await enforceAppCheck(req, decoded.uid, isEmulator);
 
   // Lookup user role from Firestore — keep full doc data for reuse by handlers
   const userDoc = await db.collection("users").doc(decoded.uid).get();

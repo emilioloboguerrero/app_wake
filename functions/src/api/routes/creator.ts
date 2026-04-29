@@ -14,6 +14,7 @@ import {
   maskEmail,
   TEXT_CAP_DESCRIPTION,
   TEXT_CAP_NOTE,
+  TEXT_CAP_TITLE,
   validateDeletionPath,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
@@ -761,15 +762,16 @@ router.post("/creator/clients/lookup", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
 
-  const {emailOrUsername} = req.body as { emailOrUsername?: string };
-  if (!emailOrUsername?.trim()) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email o username requerido");
-  }
-  if (emailOrUsername.length > 256) {
+  // M-12: schema-validate body (was raw req.body read).
+  const body = validateBody<{ emailOrUsername: string }>(
+    {emailOrUsername: "string"},
+    req.body
+  );
+  if (body.emailOrUsername.length > 256) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Consulta demasiado larga", "emailOrUsername");
   }
 
-  const query = emailOrUsername.trim().toLowerCase();
+  const query = body.emailOrUsername.trim().toLowerCase();
 
   // Search by email first
   let userSnap = await db.collection("users")
@@ -809,12 +811,16 @@ router.post("/creator/clients/invite", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const {email} = req.body as { email?: string };
-  if (!email?.trim()) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email requerido");
+  // M-12: schema-validate body (was raw req.body read).
+  const body = validateBody<{ email: string }>(
+    {email: "string"},
+    req.body
+  );
+  if (body.email.length > 256) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email demasiado largo", "email");
   }
 
-  const query = email.trim().toLowerCase();
+  const query = body.email.trim().toLowerCase();
 
   // Look up user by email
   let userSnap = await db.collection("users")
@@ -1084,13 +1090,14 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
   }
 
-  const rawText = req.body.text ?? "";
-  // Audit M-39: cap creator-controlled text.
-  assertTextLength(rawText, "text", TEXT_CAP_NOTE);
-  const text = rawText.trim();
-  if (!text) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "El texto es requerido", "text");
-  }
+  // M-10 + M-39: validateBody enforces string type + non-empty trim;
+  // assertTextLength enforces the per-field 2000-char cap.
+  const noteBody = validateBody<{ text: string }>(
+    {text: "string"},
+    req.body
+  );
+  assertTextLength(noteBody.text, "text", TEXT_CAP_NOTE);
+  const text = noteBody.text.trim();
 
   const noteRef = await docRef.collection("notes").add({
     text,
@@ -1277,7 +1284,9 @@ router.post("/creator/programs", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  // Only destructure validated fields
+  // Only destructure validated fields. availableLibraries / free_trial are
+  // declared in the schema so stripUnknown drops anything else, then the
+  // shape of each is validated below before being written to Firestore (M-08).
   const body = validateBody<{
     title: string;
     deliveryType: string;
@@ -1289,6 +1298,8 @@ router.post("/creator/programs", async (req, res) => {
     weight_suggestions?: boolean;
     duration?: string;
     visibility?: string;
+    availableLibraries?: unknown[];
+    free_trial?: Record<string, unknown>;
   }>(
     {
       title: "string",
@@ -1301,6 +1312,8 @@ router.post("/creator/programs", async (req, res) => {
       weight_suggestions: "optional_boolean",
       duration: "optional_string",
       visibility: "optional_string",
+      availableLibraries: "optional_array",
+      free_trial: "optional_object",
     },
     req.body
   );
@@ -1311,6 +1324,48 @@ router.post("/creator/programs", async (req, res) => {
       "visibility debe ser standalone, bundle-only o both",
       "visibility"
     );
+  }
+
+  // M-24: price (one-time) must be a positive integer (COP, no subunits).
+  // Validated here on creator-side write so MP webhooks downstream can trust
+  // the field. Skip when undefined — handlers default to free.
+  if (body.price !== undefined &&
+      (!Number.isInteger(body.price) || body.price < 0)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "price debe ser un entero mayor o igual a 0 (COP, sin decimales)",
+      "price"
+    );
+  }
+
+  // M-08: availableLibraries shape — optional array of non-empty strings.
+  const availableLibraries: string[] = Array.isArray(body.availableLibraries) ?
+    body.availableLibraries.filter(
+      (id): id is string => typeof id === "string" && id.length > 0 && id.length <= 128
+    ) :
+    [];
+
+  // M-08: free_trial shape — { active: boolean, duration_days: integer 0-365 }.
+  let freeTrial: { active: boolean; duration_days: number } = {active: false, duration_days: 0};
+  if (body.free_trial !== undefined) {
+    const ft = body.free_trial as Record<string, unknown>;
+    const active = ft.active === true;
+    const rawDays = ft.duration_days;
+    let days = 0;
+    if (typeof rawDays === "number" && Number.isFinite(rawDays)) {
+      days = Math.floor(rawDays);
+    } else if (typeof rawDays === "string") {
+      const parsed = parseInt(rawDays, 10);
+      if (Number.isFinite(parsed)) days = parsed;
+    }
+    if (days < 0 || days > 365) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "free_trial.duration_days debe ser un entero entre 0 y 365",
+        "free_trial.duration_days"
+      );
+    }
+    freeTrial = {active, duration_days: days};
   }
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
@@ -1328,9 +1383,7 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.discipline !== undefined && {discipline: body.discipline}),
     ...(body.weight_suggestions !== undefined && {weight_suggestions: body.weight_suggestions}),
     ...(body.duration !== undefined && {duration: body.duration}),
-    availableLibraries: Array.isArray(req.body.availableLibraries) ?
-      req.body.availableLibraries.filter((id: unknown) => typeof id === "string") :
-      [],
+    availableLibraries,
     creator_id: auth.userId,
     creatorName,
     status: "draft",
@@ -1343,9 +1396,7 @@ router.post("/creator/programs", async (req, res) => {
       workoutCompletion: [],
       workoutExecution: [],
     },
-    free_trial: req.body.free_trial && typeof req.body.free_trial === "object" ?
-      {active: !!req.body.free_trial.active, duration_days: Math.max(0, parseInt(req.body.free_trial.duration_days, 10) || 0)} :
-      {active: false, duration_days: 0},
+    free_trial: freeTrial,
     version: versionStr,
     published_version: versionStr,
     created_at: FieldValue.serverTimestamp(),
@@ -1400,6 +1451,19 @@ router.patch("/creator/programs/:programId", async (req, res) => {
       "visibility debe ser standalone, bundle-only o both",
       "visibility"
     );
+  }
+
+  // M-24: currency fields must be non-negative integers (COP, no subunits).
+  for (const priceField of ["price", "subscription_price", "compare_at_price"] as const) {
+    const v = updates[priceField];
+    if (v === undefined) continue;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `${priceField} debe ser un entero mayor o igual a 0 (COP, sin decimales)`,
+        priceField
+      );
+    }
   }
 
   await docRef.update({
@@ -1589,6 +1653,18 @@ router.post("/creator/programs/:programId/image/upload-url", async (req, res) =>
     {contentType: "string"},
     req.body
   );
+
+  // L-15: contentType allowlist matches sibling upload endpoints (creator
+  // bookings cover image, profile picture). Without this, a creator could
+  // upload an arbitrary mime type into the courses/ namespace.
+  const allowedImageTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedImageTypes.includes(contentType)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Tipo de archivo no soportado",
+      "contentType"
+    );
+  }
 
   const storagePath = `courses/${req.params.programId}/image.${contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1]}`;
   const bucket = admin.storage().bucket();
@@ -3605,13 +3681,26 @@ router.post("/creator/plans", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const {title, description, discipline} = req.body as {
-    title?: string;
+  // M-11: validateBody covers all written fields; stripUnknown drops anything
+  // else from req.body so Firestore writes are bounded to the declared shape.
+  const body = validateBody<{
+    title: string;
     description?: string;
     discipline?: string;
-  };
-  if (!title || typeof title !== "string") {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "title es requerido");
+  }>(
+    {
+      title: "string",
+      description: "optional_string",
+      discipline: "optional_string",
+    },
+    req.body
+  );
+  assertTextLength(body.title, "title", TEXT_CAP_TITLE);
+  if (body.description !== undefined) {
+    assertTextLength(body.description, "description", TEXT_CAP_DESCRIPTION, {allowEmpty: true});
+  }
+  if (body.discipline !== undefined) {
+    assertTextLength(body.discipline, "discipline", TEXT_CAP_TITLE, {allowEmpty: true});
   }
 
   // Look up creator's displayName
@@ -3619,14 +3708,14 @@ router.post("/creator/plans", async (req, res) => {
   const creatorName = creatorDoc.data()?.displayName ?? "";
 
   const planData: Record<string, unknown> = {
-    title,
-    description: description || "",
+    title: body.title,
+    description: body.description || "",
     creator_id: auth.userId,
     creatorName,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   };
-  if (discipline) planData.discipline = discipline;
+  if (body.discipline) planData.discipline = body.discipline;
 
   const planRef = await db.collection("plans").add(planData);
 
@@ -9163,7 +9252,13 @@ router.post("/creator/request-api-access", async (req, res) => {
 });
 
 // GET /creator/check-username/:username — check username availability
+// L-27: any authenticated user can call this (intentional for the pre-creator
+// signup flow). Rate-limit to deter username enumeration. requireCreator is
+// not used because callers haven't been promoted yet.
 router.get("/creator/check-username/:username", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
   const username = req.params.username?.toLowerCase();
   if (!username || !/^[a-z0-9_-]+$/.test(username)) {
     res.json({data: {available: false}});
@@ -9295,6 +9390,18 @@ router.post("/creator/register", async (req, res) => {
     userAgent: req.header("user-agent") ?? null,
     at: FieldValue.serverTimestamp(),
   });
+
+  // L-05: stamp role onto the Firebase ID token via a custom claim so
+  // firestore.rules can read request.auth.token.role directly. The PWA forces
+  // a token refresh after this call so the new claim takes effect immediately.
+  try {
+    await admin.auth().setCustomUserClaims(auth.userId, {role: "creator"});
+  } catch (err) {
+    functions.logger.warn("creator-register: setCustomUserClaims failed", {
+      uid: auth.userId,
+      error: String(err),
+    });
+  }
 
   res.status(201).json({data: {userId: auth.userId, role: "creator"}});
 });

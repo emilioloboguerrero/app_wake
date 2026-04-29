@@ -311,10 +311,18 @@ service cloud.firestore {
         isAdmin()
       );
       allow create: if isSignedIn() && request.resource.data.clientUserId == request.auth.uid;
+      // L-08: clients may only mutate their own status / notes fields. Creator
+      // and admin retain full update. Server (Admin SDK) bypasses rules and
+      // owns all other transitions. Without this, a client could overwrite
+      // creator-owned fields (callLink, slotStartUtc, creatorId).
       allow update: if isSignedIn() && (
         resource.data.creatorId == request.auth.uid ||
-        resource.data.clientUserId == request.auth.uid ||
-        isAdmin()
+        isAdmin() ||
+        (resource.data.clientUserId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'status', 'cancelled_by_client', 'cancellation_reason',
+           'notes', 'updatedAt'
+         ]))
       );
       allow delete: if false;
     }
@@ -607,7 +615,17 @@ service cloud.firestore {
     // SUBSCRIPTION CANCELLATION FEEDBACK
     // ============================================
     match /subscription_cancellation_feedback/{feedbackId} {
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // L-06: bound the keys a client can write so a single doc can't blow
+      // up to the 1 MiB Firestore limit. Server (Admin SDK) writes bypass
+      // rules and may set additional internal fields.
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'userId', 'type', 'feedback', 'submittedAt',
+          'subscriptionId', 'answers', 'source',
+          'statusBefore', 'statusAfter',
+          'courseId', 'courseTitle'
+        ]);
       allow read, update, delete: if isAdmin();
     }
 

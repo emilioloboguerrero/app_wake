@@ -27,6 +27,12 @@
  *
  * USAGE
  *   FIREBASE_PROJECT=wake-staging WAKE_WEB_API_KEY=... node scripts/security/tier1-smoke.js
+ *
+ * NOTE on App Check (M-14): the deployed API now enforces App Check for
+ * first-party Firebase callers. The smoke runner cannot mint App Check
+ * tokens server-side, so the staging functions config must set
+ * APP_CHECK_ENFORCE=false during smoke runs (production keeps it unset =
+ * enforced). Invalid tokens still 401 in both modes.
  */
 
 /* eslint-disable no-console */
@@ -694,6 +700,77 @@ async function testM43_wakeOnlyAllowsAuthed(clientUser) {
   assertStatus("authed register to wake-only accepted", r.status, 201);
 }
 
+// ─── tier-finish: validateBody schemas (M-08 / M-11 / M-12) ────────────────
+
+async function testM08_programsFreeTrialDurationOutOfRange(creatorA) {
+  console.log("\n[M-08] POST /creator/programs free_trial.duration_days > 365 → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/programs`,
+    {
+      title: "Smoke M-08 prog",
+      deliveryType: "low_ticket",
+      free_trial: {active: true, duration_days: 9999},
+    },
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("oversized free_trial.duration_days rejected", r.status, 400);
+}
+
+async function testM08_programsAvailableLibrariesArrayShape(creatorA) {
+  console.log("\n[M-08] POST /creator/programs availableLibraries non-array → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/programs`,
+    {
+      title: "Smoke M-08 prog 2",
+      deliveryType: "low_ticket",
+      availableLibraries: "not-an-array",
+    },
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("non-array availableLibraries rejected", r.status, 400);
+}
+
+async function testM24_programsPriceInteger(creatorA) {
+  console.log("\n[M-24] POST /creator/programs price = 1.5 → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/programs`,
+    {title: "Smoke M-24 prog", deliveryType: "low_ticket", price: 1.5},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("non-integer price rejected", r.status, 400);
+}
+
+async function testM11_plansMissingTitle(creatorA) {
+  console.log("\n[M-11] POST /creator/plans without title → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/plans`,
+    {description: "no title"},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("plans missing title rejected", r.status, 400);
+}
+
+async function testM12_lookupNonStringEmail(creatorA) {
+  console.log("\n[M-12] POST /creator/clients/lookup emailOrUsername=number → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/clients/lookup`,
+    {emailOrUsername: 12345},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("non-string lookup body rejected", r.status, 400);
+}
+
+async function testM12_inviteEmailTooLong(creatorA) {
+  console.log("\n[M-12] POST /creator/clients/invite long email → expect 400");
+  const longEmail = `${"a".repeat(500)}@example.com`;
+  const r = await post(
+    `${API_BASE}/v1/creator/clients/invite`,
+    {email: longEmail},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("oversized invite email rejected", r.status, 400);
+}
+
 // ─── Cleanup ────────────────────────────────────────────────────────────────
 
 async function cleanup() {
@@ -820,6 +897,14 @@ async function main() {
     await testM43_wakeOnlyEventBlocksAnon();
     await testM43_openEventAllowsAnon();
     await testM43_wakeOnlyAllowsAuthed(clientUser);
+
+    // ── tier-finish: validateBody schemas (M-08, M-11, M-12, M-24) ──
+    await testM08_programsFreeTrialDurationOutOfRange(creatorA);
+    await testM08_programsAvailableLibrariesArrayShape(creatorA);
+    await testM24_programsPriceInteger(creatorA);
+    await testM11_plansMissingTitle(creatorA);
+    await testM12_lookupNonStringEmail(creatorA);
+    await testM12_inviteEmailTooLong(creatorA);
   } catch (err) {
     console.error("\n✗ Suite crashed:", err);
     failed++;

@@ -121,12 +121,10 @@ function calculateExpirationDate(
 
 
 // ─── App Check helper ─────────────────────────────────────────────────────────
-// Note: Gen1 functions **require** App Check (verifyAppCheck returns false when
-// header is missing, causing 401). Gen2 auth middleware treats App Check as
-// **optional** (only verified if header is present). This inconsistency is
-// intentional during migration — Gen1 clients always send the header, while
-// Gen2 also serves third-party API-key clients that never will. Align behavior
-// when Gen1 functions are retired.
+// Both Gen1 and Gen2 first-party (Firebase token) callers must present a valid
+// App Check token (M-14). Gen2 auth middleware skips the check only for the
+// API-key path (third-party callers can't obtain App Check tokens) and for the
+// emulator. The two paths now share enforcement semantics.
 async function verifyAppCheck(request: Request): Promise<boolean> {
   const token = request.headers["x-firebase-appcheck"] as string | undefined;
   if (!token) return false;
@@ -375,8 +373,8 @@ export const createSubscriptionCheckout = functions
       });
 
       if (result.init_point && result.id) {
+        // L-40: don't log the one-time payment URL; it's a tokenized link.
         functions.logger.info("Subscription created", {
-          init_point: result.init_point,
           subscription_id: result.id,
           external_reference: externalRef,
         });
@@ -468,10 +466,8 @@ export const createSubscriptionCheckout = functions
 export const processPaymentWebhook = functions
   .runWith({secrets: [mercadopagoWebhookSecret, mercadopagoAccessToken]})
   .https.onRequest(async (request: Request, response: Response) => {
-    response.set("Access-Control-Allow-Origin", "*");
-    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
-
+    // L-10: MercadoPago webhooks are server-to-server; no CORS preflight is
+    // ever performed. Drop the wildcard CORS headers — they were noise.
     if (request.method === "OPTIONS") {
       response.status(204).send("");
       return;
@@ -2117,6 +2113,7 @@ export const nutritionBarcodeLookup = functions
 // Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
 // Creates the Firestore user doc so all downstream reads have a document to work with.
 export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
+  let resolvedRole: "user" | "creator" | "admin" = "user";
   try {
     const docRef = db.collection("users").doc(user.uid);
     const existing = await docRef.get();
@@ -2125,6 +2122,10 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
     // in missing fields — never overwrite role or other data set by registration.
     if (existing.exists) {
       const data = existing.data() || {};
+      const existingRole = data.role as "user" | "creator" | "admin" | undefined;
+      if (existingRole === "creator" || existingRole === "admin") {
+        resolvedRole = existingRole;
+      }
       const patch: Record<string, unknown> = {};
       if (!data.email) patch.email = user.email ?? null;
       if (!data.displayName) patch.displayName = user.displayName ?? null;
@@ -2133,21 +2134,34 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
         await docRef.update(patch);
       }
       functions.logger.info("onUserCreated: doc already existed, patched missing fields", {uid: user.uid});
-      return;
+    } else {
+      // No doc yet — bootstrap with role: "user"
+      await docRef.set({
+        role: "user",
+        email: user.email ?? null,
+        displayName: user.displayName ?? null,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
     }
-
-    // No doc yet — bootstrap with role: "user"
-    await docRef.set({
-      role: "user",
-      email: user.email ?? null,
-      displayName: user.displayName ?? null,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
   } catch (error) {
     functions.logger.error("onUserCreated: failed to bootstrap user doc", {
       uid: user.uid,
       error: toErrorMessage(error),
+    });
+  }
+
+  // L-05: stamp role onto the Firebase ID token via a custom claim so
+  // firestore.rules can read request.auth.token.role directly instead of
+  // falling back to a per-eval get(/users/{uid}). Existing sessions pick up
+  // the claim on the next token refresh (~1h). Best-effort — failure here
+  // does not block user creation.
+  try {
+    await admin.auth().setCustomUserClaims(user.uid, {role: resolvedRole});
+  } catch (err) {
+    functions.logger.warn("onUserCreated: setCustomUserClaims failed", {
+      uid: user.uid,
+      error: toErrorMessage(err),
     });
   }
 });
@@ -2824,13 +2838,21 @@ export const processEmailQueue = onSchedule(
           retriedThisTick += retriedNow;
           failedThisTick += failedNow;
 
+          // L-35: Resend echoes parts of raw from/subject in error messages.
+          // Truncate + redact email-shaped substrings before they hit Cloud
+          // Logging where they'd be searchable + retained.
+          const safeBatchErr = batchErrorMsg ?
+            batchErrorMsg
+              .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "***@***")
+              .slice(0, 240) :
+            null;
           functions.logger.warn("processEmailQueue: batch failed", {
             sendId: sendDoc.id,
             batchSize: batchDocs.length,
             errorKind,
             retried: retriedNow,
             failed: failedNow,
-            error: batchErrorMsg,
+            error: safeBatchErr,
           });
 
           // If the error was transient and everything got retried, stop this
@@ -3016,7 +3038,15 @@ export const eventPage = onRequest(
 );
 
 function escapeOgAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  // L-34: cover the full HTML special-char set so the helper stays safe if
+  // a future change moves any of these meta values into a single-quoted attr
+  // or inline JSON-LD where >, ' would otherwise turn into XSS sinks.
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // ─── Scheduled: expand weekly availability templates into concrete slots ───

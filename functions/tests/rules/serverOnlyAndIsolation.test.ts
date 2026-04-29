@@ -170,6 +170,102 @@ describe("subscription_cancellation_feedback (audit L-06)", () => {
     const ctx = testEnv.authenticatedContext("admin1", {role: "admin"});
     await assertSucceeds(getDoc(doc(ctx.firestore(), "subscription_cancellation_feedback/fb-existing")));
   });
+
+  // L-06: keys().hasOnly() bound on create
+  it("REJECTS create with keys outside the allowlist (L-06)", async () => {
+    const ctx = testEnv.authenticatedContext("user1", {role: "user"});
+    await assertFails(
+      setDoc(doc(ctx.firestore(), "subscription_cancellation_feedback/fb-evil"), {
+        userId: "user1",
+        answers: {},
+        injectedHugePayload: "x".repeat(10_000),
+      })
+    );
+  });
+
+  it("ALLOWS create within the keys allowlist (L-06)", async () => {
+    const ctx = testEnv.authenticatedContext("user1", {role: "user"});
+    await assertSucceeds(
+      setDoc(doc(ctx.firestore(), "subscription_cancellation_feedback/fb-ok"), {
+        userId: "user1",
+        type: "subscription_cancel",
+        feedback: {a: 1},
+        submittedAt: new Date().toISOString(),
+        subscriptionId: "sub-123",
+        answers: {reason: "price"},
+        source: "in_app_cancel_flow_v1",
+        statusBefore: "authorized",
+        statusAfter: "cancelled",
+        courseId: "course-1",
+        courseTitle: "T",
+      })
+    );
+  });
+});
+
+// ─── call_bookings client-side update whitelist (audit L-08) ─────────────────
+
+describe("call_bookings client update whitelist (audit L-08)", () => {
+  beforeEach(async () => {
+    await seedUserRole("creatorA", "creator");
+    await seedUserRole("clientX", "user");
+    await seedUserRole("randomY", "user");
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "call_bookings/bk1"), {
+        creatorId: "creatorA",
+        clientUserId: "clientX",
+        status: "scheduled",
+        callLink: "https://meet.google.com/abc-defg-hij",
+        slotStartUtc: "2026-05-01T15:00:00Z",
+      });
+    });
+  });
+
+  it("ALLOWS client updating only allowlisted fields (status / notes)", async () => {
+    const ctx = testEnv.authenticatedContext("clientX", {role: "user"});
+    await assertSucceeds(
+      updateDoc(doc(ctx.firestore(), "call_bookings/bk1"), {
+        status: "cancelled",
+        notes: "I had a conflict.",
+        cancelled_by_client: true,
+      })
+    );
+  });
+
+  it("REJECTS client mutating creator-owned fields (callLink)", async () => {
+    const ctx = testEnv.authenticatedContext("clientX", {role: "user"});
+    await assertFails(
+      updateDoc(doc(ctx.firestore(), "call_bookings/bk1"), {
+        callLink: "https://attacker.example.com/phish",
+      })
+    );
+  });
+
+  it("REJECTS client mutating creator-owned fields (slotStartUtc)", async () => {
+    const ctx = testEnv.authenticatedContext("clientX", {role: "user"});
+    await assertFails(
+      updateDoc(doc(ctx.firestore(), "call_bookings/bk1"), {
+        slotStartUtc: "2026-06-01T10:00:00Z",
+      })
+    );
+  });
+
+  it("REJECTS unrelated user from updating", async () => {
+    const ctx = testEnv.authenticatedContext("randomY", {role: "user"});
+    await assertFails(
+      updateDoc(doc(ctx.firestore(), "call_bookings/bk1"), {status: "cancelled"})
+    );
+  });
+
+  it("ALLOWS owning creator to do a full-shape update (callLink)", async () => {
+    const ctx = testEnv.authenticatedContext("creatorA", {role: "creator"});
+    await assertSucceeds(
+      updateDoc(doc(ctx.firestore(), "call_bookings/bk1"), {
+        callLink: "https://meet.google.com/new-room",
+        notes: "moved rooms",
+      })
+    );
+  });
 });
 
 // ─── one_on_one_clients (covers cross-creator + audit C-10 rules side) ───────
