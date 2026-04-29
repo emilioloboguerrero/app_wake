@@ -900,20 +900,29 @@ router.post("/creator/clients/invite", async (req, res) => {
   const userDoc = userSnap.docs[0];
   const userId = userDoc.id;
 
-  // Check if already a client
+  // Check for an existing engageable (active OR pending) relationship.
+  // Inactive/declined rows from prior cycles are intentionally NOT reused —
+  // the creator wants to start a fresh invite. Without the status filter we
+  // were returning a stale inactive row's id, falsely claiming "already
+  // exists" while the dashboard expected a usable pending invite.
   const existing = await db.collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .where("clientUserId", "==", userId)
-    .limit(1)
+    .orderBy("createdAt", "desc")
     .get();
 
-  if (!existing.empty) {
-    const existingDoc = existing.docs[0];
+  const reusable = existing.docs.find((d) => {
+    const s = (d.data() as Record<string, unknown>).status as string | undefined;
+    return !s || s === "active" || s === "pending";
+  });
+
+  if (reusable) {
     res.status(200).json({
       data: {
-        clientId: existingDoc.id,
+        clientId: reusable.id,
         userId,
         alreadyExisted: true,
+        status: (reusable.data() as Record<string, unknown>).status ?? "active",
       },
     });
     return;
@@ -961,9 +970,15 @@ router.post("/creator/clients", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  // Idempotent: return existing active record if client already linked to this creator.
-  // If only an inactive (prior-leave) record exists, create a new active record and
-  // surface previousEnrollmentEndedAt so the dashboard can show the "regresó" pill.
+  // Idempotent: return existing engageable record (active OR pending) if
+  // client is already linked to this creator. Without the pending check,
+  // clicking "Asignar programa" twice for the same user creates duplicate
+  // pending rows — the assign endpoint then attaches the program to one
+  // and the user might accept the OTHER (program-less) duplicate, ending
+  // up enrolled with no course on home screen.
+  // If only an inactive (prior-leave) record exists, create a new pending
+  // record and surface previousEnrollmentEndedAt so the dashboard can show
+  // the "regresó" pill.
   const existing = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
@@ -971,13 +986,18 @@ router.post("/creator/clients", async (req, res) => {
     .orderBy("createdAt", "desc")
     .get();
 
-  const activeExisting = existing.docs.find((d) => {
+  const reusableExisting = existing.docs.find((d) => {
     const s = (d.data() as Record<string, unknown>).status as string | undefined;
-    return !s || s === "active";
+    return !s || s === "active" || s === "pending";
   });
 
-  if (activeExisting) {
-    res.status(200).json({data: {id: activeExisting.id, clientId: activeExisting.id}});
+  if (reusableExisting) {
+    const reusableData = reusableExisting.data() as Record<string, unknown>;
+    res.status(200).json({data: {
+      id: reusableExisting.id,
+      clientId: reusableExisting.id,
+      status: (reusableData.status as string | undefined) ?? "active",
+    }});
     return;
   }
 
