@@ -104,10 +104,14 @@ export const cacheConfig = {
     refetchOnWindowFocus: true,
   },
   clientsOverview: {
-    staleTime: 5 * 60 * 1000,
+    // staleTime kept short so leaves/joins on the user side surface on the
+    // creator's dashboard within ~1 min instead of waiting 5. Refetch on
+    // window focus picks up changes when the creator switches back to the
+    // tab without needing a manual reload.
+    staleTime: 60 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
   },
   libraries: {
     staleTime: 30 * 60 * 1000,

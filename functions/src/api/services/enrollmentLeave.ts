@@ -225,12 +225,18 @@ export async function leaveOneOnOneEnrollment(params: {
   // 2. Pre-find an active subscription before opening the batch
   const subscriptionId = await findActiveSubscription(userId, courseId);
 
-  // 3. Pre-query everything that needs to be touched in the batch
+  // 3. Pre-query everything that needs to be touched in the batch.
+  // Sort by createdAt desc so if a creator/user pair has multiple rows
+  // (e.g. an old declined invite + the current active one), we flip the
+  // newest. Filtering by status='active' would miss legacy rows that
+  // never had a status field, so we keep the lookup permissive and let
+  // the sort pick the most recent.
   const [oneOnOneClientSnap, nutritionSnap, bookingsSnap] = await Promise.all([
     creatorId ?
       db.collection("one_on_one_clients")
         .where("creatorId", "==", creatorId)
         .where("clientUserId", "==", userId)
+        .orderBy("createdAt", "desc")
         .limit(1)
         .get() :
       Promise.resolve(null),

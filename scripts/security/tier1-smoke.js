@@ -708,6 +708,36 @@ async function testC10v2_pendingClientDetailDenied(creatorA, pendingUser, relati
     `got ${JSON.stringify(row?.pendingProgramAssignment)}`);
 }
 
+async function testC10v2_userLeaveDropsEnrollmentRow(creatorA, c10v2User, c10v2RelId) {
+  console.log("\n[C-10v2] user leaves program → relationship flips to inactive + dashboard view drops them");
+  if (!c10v2RelId) {
+    console.log("  ✗ skipped — no relationshipId");
+    failed++; failures.push({label: "leave test missing relationshipId"}); return;
+  }
+  // User leaves via /enrollments/:courseId/leave (the same path the PWA's
+  // "Terminar programa" button hits).
+  const r = await post(
+    `${API_BASE}/v1/enrollments/${COURSE_A}/leave`,
+    {reason: "no_time_to_continue"},
+    {Authorization: `Bearer ${c10v2User.idToken}`}
+  );
+  assertStatus("leave accepted", r.status, 200);
+
+  // Dashboard's clients-overview should now show the user under inactive
+  // (status='inactive'), with no active enrolledPrograms.
+  const overview = await get(
+    `${API_BASE}/v1/creator/clients-overview`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const row = (overview.body?.data?.clients || []).find((c) => c.id === c10v2RelId);
+  assertCondition("relationship flipped to inactive",
+    row?.status === "inactive",
+    `got ${row?.status}`);
+  assertCondition("no active enrolledPrograms remain after leave",
+    Array.isArray(row?.enrolledPrograms) && row.enrolledPrograms.length === 0,
+    `got ${JSON.stringify(row?.enrolledPrograms)}`);
+}
+
 async function testC10v2_acceptAppliesPendingProgram(pendingUser, relationshipId) {
   console.log("\n[C-10v2] accept invite that carries a pending program → expect program assigned to user.courses");
   if (!relationshipId) {
@@ -1079,6 +1109,7 @@ async function main() {
     }
     await testC10v2_pendingClientDetailDenied(creatorA, c10v2User, c10v2RelId);
     await testC10v2_acceptAppliesPendingProgram(c10v2User, c10v2RelId);
+    await testC10v2_userLeaveDropsEnrollmentRow(creatorA, c10v2User, c10v2RelId);
 
     // ── M-43 wake_users_only ──
     await testM43_wakeOnlyEventBlocksAnon();

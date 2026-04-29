@@ -470,8 +470,14 @@ router.get("/creator/clients", async (req, res) => {
     }
 
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    // C-10 v2: only currently-active enrollments. An expired entry from a
+    // prior leave should not surface as enrolled.
     const enrolledPrograms = Object.entries(courses)
-      .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
+      .filter(([courseId, v]) =>
+        v.deliveryType === "one_on_one" &&
+        creatorCourseIds.has(courseId) &&
+        v.status === "active"
+      )
       .map(([courseId, v]) => ({courseId, title: v.title, status: v.status}));
 
     // accessEndsAt: earliest expires_at among active one_on_one enrollments for THIS creator
@@ -563,8 +569,15 @@ router.get("/creator/clients-overview", async (req, res) => {
     const userId = (client as Record<string, unknown>).clientUserId as string;
     const userData = userDocsMap[userId];
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    // C-10 v2: only count currently-active enrollments. Otherwise leaving
+    // a program (which sets user.courses[id].status='expired') would still
+    // show the user under that program group on the dashboard.
     const enrolledPrograms = Object.entries(courses)
-      .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
+      .filter(([courseId, v]) =>
+        v.deliveryType === "one_on_one" &&
+        creatorCourseIds.has(courseId) &&
+        v.status === "active"
+      )
       .map(([courseId, v]) => ({courseId, title: v.title, status: v.status}));
 
     let accessEndsAt: string | null = null;
