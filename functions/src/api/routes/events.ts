@@ -7,6 +7,12 @@ import type {Query, DocumentSnapshot} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
 import {checkRateLimit, checkIpRateLimit} from "../middleware/rateLimit.js";
+import {
+  assertHttpsUrl,
+  assertTextLength,
+  TEXT_CAP_TITLE,
+  TEXT_CAP_DESCRIPTION,
+} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import * as functions from "firebase-functions";
 
@@ -319,6 +325,16 @@ router.post("/creator/events", async (req, res) => {
     req.body
   );
 
+  // Audit M-39: cap creator-controlled text to bound Firestore doc size and
+  // downstream bandwidth. Title is required, description optional.
+  assertTextLength(body.title, "title", TEXT_CAP_TITLE);
+  if (body.description !== undefined) {
+    assertTextLength(body.description, "description", TEXT_CAP_DESCRIPTION, {allowEmpty: true});
+  }
+  if (body.location !== undefined) {
+    assertTextLength(body.location, "location", TEXT_CAP_TITLE, {allowEmpty: true});
+  }
+
   const now = FieldValue.serverTimestamp();
   const docData: Record<string, unknown> = {
     title: body.title,
@@ -413,6 +429,28 @@ router.patch("/creator/events/:eventId", async (req, res) => {
 
   if (updates.status && !["draft", "active", "closed"].includes(updates.status as string)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Estado inválido. Usa: draft, active o closed", "status");
+  }
+
+  // Audit M-38: image_url is interpolated into email CSS background-image; an
+  // attacker could escape the url('...') context with a quote. Require https.
+  if (updates.image_url !== undefined && updates.image_url !== null && updates.image_url !== "") {
+    if (typeof updates.image_url !== "string") {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "image_url inválido", "image_url");
+    }
+    if (updates.image_url.length > 2048) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "image_url demasiado largo", "image_url");
+    }
+    assertHttpsUrl(updates.image_url, "image_url");
+  }
+  // Audit M-39: enforce length caps on creator-controlled text fields.
+  if (updates.title !== undefined) {
+    assertTextLength(updates.title, "title", TEXT_CAP_TITLE);
+  }
+  if (updates.description !== undefined) {
+    assertTextLength(updates.description, "description", TEXT_CAP_DESCRIPTION, {allowEmpty: true});
+  }
+  if (updates.location !== undefined) {
+    assertTextLength(updates.location, "location", TEXT_CAP_TITLE, {allowEmpty: true});
   }
 
   await doc.ref.update({

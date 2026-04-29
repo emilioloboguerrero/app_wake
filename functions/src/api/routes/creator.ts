@@ -6,8 +6,15 @@ import {Resend} from "resend";
 import {db, FieldValue, FieldPath} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
 import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
-import {validateDeletionPath} from "../middleware/securityHelpers.js";
+import {
+  assertTextLength,
+  loadCreatorOwnedCourseIds,
+  maskEmail,
+  TEXT_CAP_NOTE,
+  validateDeletionPath,
+} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 
@@ -744,13 +751,21 @@ router.get("/creator/clients-overview", async (req, res) => {
 });
 
 // POST /creator/clients/lookup
+// Audit M-45: tighter rate limit (was 200 RPM via the default), matched
+// response shape on hit/miss, masked email, drop photoURL. Combined with
+// C-10's pending-status default these reduce the directory-harvesting +
+// impose-as-coach chain to a slow per-creator probe.
 router.post("/creator/clients/lookup", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
 
   const {emailOrUsername} = req.body as { emailOrUsername?: string };
   if (!emailOrUsername?.trim()) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email o username requerido");
+  }
+  if (emailOrUsername.length > 256) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Consulta demasiado larga", "emailOrUsername");
   }
 
   const query = emailOrUsername.trim().toLowerCase();
@@ -770,7 +785,7 @@ router.post("/creator/clients/lookup", async (req, res) => {
   }
 
   if (userSnap.empty) {
-    res.json({data: null});
+    res.json({data: {found: false}});
     return;
   }
 
@@ -779,11 +794,11 @@ router.post("/creator/clients/lookup", async (req, res) => {
 
   res.json({
     data: {
+      found: true,
       userId: userDoc.id,
-      email: userData.email ?? null,
       displayName: userData.displayName ?? null,
-      photoURL: userData.photoURL ?? null,
       username: userData.username ?? null,
+      emailMasked: maskEmail(userData.email),
     },
   });
 });
@@ -1068,9 +1083,12 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
   }
 
-  const text = (req.body.text ?? "").trim();
+  const rawText = req.body.text ?? "";
+  // Audit M-39: cap creator-controlled text.
+  assertTextLength(rawText, "text", TEXT_CAP_NOTE);
+  const text = rawText.trim();
   if (!text) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "El texto es requerido");
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "El texto es requerido", "text");
   }
 
   const noteRef = await docRef.collection("notes").add({
@@ -1643,6 +1661,15 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
   const sessionIdFilter = req.query.sessionId as string | undefined;
   const courseIdFilter = req.query.courseId as string | undefined;
 
+  // Audit M-44: a shared client (enrolled with multiple creators) accumulates
+  // sessionHistory across all programs. Restrict the result set to programs
+  // owned by this caller so creator A can't read creator B's workout data.
+  const ownedCourseIds = await loadCreatorOwnedCourseIds(db, auth.userId);
+  if (courseIdFilter && !ownedCourseIds.has(courseIdFilter)) {
+    res.json({data: []});
+    return;
+  }
+
   let q: Query = db
     .collection("users")
     .doc(req.params.clientId)
@@ -1654,12 +1681,19 @@ router.get("/creator/clients/:clientId/sessions", async (req, res) => {
   if (courseIdFilter) {
     q = q.where("courseId", "==", courseIdFilter);
   }
-  q = q.orderBy("completed_at", "desc").limit(20);
+  q = q.orderBy("completed_at", "desc").limit(50);
 
   const snapshot = await q.get();
+  const filtered = snapshot.docs
+    .filter((d) => {
+      const cid = d.data().courseId;
+      // Drop sessions whose courseId is missing or owned by another creator.
+      return typeof cid === "string" && ownedCourseIds.has(cid);
+    })
+    .slice(0, 20);
 
   res.json({
-    data: snapshot.docs.map((d) => ({...d.data(), id: d.id})),
+    data: filtered.map((d) => ({...d.data(), id: d.id})),
   });
 });
 
@@ -2142,6 +2176,27 @@ async function verifyClientAccess(
     );
   }
   return clientId;
+}
+
+// All writes to `client_sessions` must go through this helper. The required
+// creator_id / client_id parameters make it impossible to forget the
+// ownership fields the rules + API checks depend on. (See the 2026-04-28
+// incident: 151 legacy docs with creator_id=undefined caused every DELETE
+// from creators to 404.)
+async function writeClientSession(
+  clientSessionId: string,
+  fields: {
+    creator_id: string;
+    client_id: string;
+    [key: string]: unknown;
+  }
+): Promise<void> {
+  if (!fields.creator_id) throw new Error("writeClientSession: creator_id is required");
+  if (!fields.client_id) throw new Error("writeClientSession: client_id is required");
+  await db.collection("client_sessions").doc(clientSessionId).set({
+    ...fields,
+    updated_at: FieldValue.serverTimestamp(),
+  });
 }
 
 // Security (audit C-02 / H-12 / H-13): verify a client_session doc belongs
@@ -3174,11 +3229,10 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
   ];
   const updates = pickFields(req.body, allowedFields);
 
-  await docRef.set({
+  await writeClientSession(req.params.clientSessionId, {
     ...updates,
     client_id: req.params.clientId,
     creator_id: auth.userId,
-    updated_at: FieldValue.serverTimestamp(),
   });
 
   res.json({data: {id: req.params.clientSessionId}});
@@ -6639,12 +6693,19 @@ router.get("/creator/availability", async (req, res) => {
 });
 
 // PUT /creator/availability/template
+// Strict validators (audit M-31): port of the previously-dead checks from
+// bookings.ts. Enforces day-of-week keys, slot duration enum, and intra-day
+// overlap detection so a creator can't write a malformed schedule that the
+// reminder/booking pipeline can't safely render.
+const AVAILABILITY_TIME_RE = /^\d{2}:\d{2}$/;
+const AVAILABILITY_VALID_DURATIONS = new Set([15, 30, 45, 60]);
+
 router.put("/creator/availability/template", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
   const body = validateBody<{
-    weeklyTemplate: unknown;
+    weeklyTemplate: Record<string, unknown>;
     disabledDates?: unknown[];
     defaultSlotDuration?: number;
     timezone?: string;
@@ -6658,10 +6719,102 @@ router.put("/creator/availability/template", async (req, res) => {
     req.body
   );
 
+  if (body.defaultSlotDuration !== undefined &&
+      !AVAILABILITY_VALID_DURATIONS.has(body.defaultSlotDuration)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Duración debe ser 15, 30, 45 o 60", "defaultSlotDuration"
+    );
+  }
+
+  const validDays = new Set(["1", "2", "3", "4", "5", "6", "7"]);
+  const cleanTemplate: Record<string, Array<{ startTime: string; durationMinutes: number }>> = {};
+
+  for (const [dayKey, slots] of Object.entries(body.weeklyTemplate)) {
+    if (!validDays.has(dayKey)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `Día inválido: ${dayKey}. Usa 1-7 (Lun-Dom)`, "weeklyTemplate"
+      );
+    }
+    if (!Array.isArray(slots)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `Los slots del día ${dayKey} deben ser un array`, "weeklyTemplate"
+      );
+    }
+    if (slots.length > 20) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "Máximo 20 franjas por día", "weeklyTemplate"
+      );
+    }
+
+    const daySlots: Array<{ startTime: string; durationMinutes: number }> = [];
+    for (const slot of slots as unknown[]) {
+      if (!slot || typeof slot !== "object") {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400, "Formato de franja inválido", "weeklyTemplate"
+        );
+      }
+      const s = slot as { startTime?: unknown; durationMinutes?: unknown };
+      if (typeof s.startTime !== "string" || !AVAILABILITY_TIME_RE.test(s.startTime)) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400,
+          `startTime inválido: ${String(s.startTime)}`, "weeklyTemplate"
+        );
+      }
+      if (typeof s.durationMinutes !== "number" ||
+          !AVAILABILITY_VALID_DURATIONS.has(s.durationMinutes)) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400,
+          "Duración debe ser 15, 30, 45 o 60", "weeklyTemplate"
+        );
+      }
+      daySlots.push({startTime: s.startTime, durationMinutes: s.durationMinutes});
+    }
+
+    const sorted = [...daySlots].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const curr = sorted[i];
+      const [ph, pm] = prev.startTime.split(":").map(Number);
+      const prevEnd = ph * 60 + pm + prev.durationMinutes;
+      const [ch, cm] = curr.startTime.split(":").map(Number);
+      const currStart = ch * 60 + cm;
+      if (prevEnd > currStart) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400,
+          `Franjas se superponen en día ${dayKey}`, "weeklyTemplate"
+        );
+      }
+    }
+
+    if (daySlots.length > 0) cleanTemplate[dayKey] = daySlots;
+  }
+
+  let cleanDates: string[] | undefined;
+  if (body.disabledDates !== undefined) {
+    if (body.disabledDates.length > 90) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "Máximo 90 fechas bloqueadas", "disabledDates"
+      );
+    }
+    cleanDates = [];
+    for (const d of body.disabledDates) {
+      if (typeof d !== "string") continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        throw new WakeApiServerError(
+          "VALIDATION_ERROR", 400, "Fecha inválida (YYYY-MM-DD)", "disabledDates"
+        );
+      }
+      cleanDates.push(d);
+    }
+  }
+
   await db.collection("creator_availability").doc(auth.userId).set(
     {
-      weeklyTemplate: body.weeklyTemplate,
-      ...(body.disabledDates !== undefined ? {disabledDates: body.disabledDates} : {}),
+      weeklyTemplate: cleanTemplate,
+      ...(cleanDates !== undefined ? {disabledDates: cleanDates} : {}),
       ...(body.defaultSlotDuration !== undefined ? {defaultSlotDuration: body.defaultSlotDuration} : {}),
       ...(body.timezone ? {timezone: body.timezone} : {}),
       updated_at: FieldValue.serverTimestamp(),

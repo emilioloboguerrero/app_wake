@@ -5,7 +5,12 @@ class OneOnOneService {
     const res = await apiClient.post('/creator/clients/lookup', {
       emailOrUsername: emailOrUsername.trim(),
     });
-    return res.data;
+    // API returns { found: bool, userId?, displayName?, username?, emailMasked? }
+    // (audit M-45). Earlier shape was null on miss / full record on hit; existing
+    // call sites still expect a falsy return on miss and an object on hit.
+    const data = res.data;
+    if (!data || data.found !== true) return null;
+    return data;
   }
 
   async getClientsByCreator() {

@@ -6,8 +6,14 @@ import {
   clampTrialDurationDays,
   buildAllowedDownloadPrefixes,
   assertAllowedDownloadPath,
+  assertAllowedCallLinkUrl,
   assertHttpsUrl,
+  assertTextLength,
   isFreeGrantAllowed,
+  loadCreatorOwnedCourseIds,
+  maskEmail,
+  TEXT_CAP_NOTE,
+  TEXT_CAP_TITLE,
   validateDeletionPath,
 } from "./securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
@@ -399,5 +405,169 @@ describe("validateDeletionPath", () => {
       expect(wakeErr.code).toBe("VALIDATION_ERROR");
       expect(wakeErr.field).toBe("deletions");
     }
+  });
+});
+
+// ─── Call-link domain allowlist (audit M-42) ─────────────────────────────────
+
+describe("assertAllowedCallLinkUrl", () => {
+  it("ACCEPTS allowlisted vendor domains", () => {
+    expect(() => assertAllowedCallLinkUrl("https://zoom.us/j/123456")).not.toThrow();
+    expect(() => assertAllowedCallLinkUrl("https://us02web.zoom.us/j/123")).not.toThrow();
+    expect(() => assertAllowedCallLinkUrl("https://meet.google.com/abc-defg-hij")).not.toThrow();
+    expect(() => assertAllowedCallLinkUrl("https://meet.jit.si/wake-room")).not.toThrow();
+    expect(() => assertAllowedCallLinkUrl("https://wake.daily.co/room")).not.toThrow();
+    expect(() => assertAllowedCallLinkUrl("https://whereby.com/wake")).not.toThrow();
+    expect(() => assertAllowedCallLinkUrl("https://teams.microsoft.com/l/meetup/abc")).not.toThrow();
+  });
+
+  it("REJECTS arbitrary phishing domain", () => {
+    expect(() => assertAllowedCallLinkUrl("https://evil.example.com/zoom"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS javascript: scheme", () => {
+    expect(() => assertAllowedCallLinkUrl("javascript:alert(1)"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS http:// (no scheme downgrade)", () => {
+    expect(() => assertAllowedCallLinkUrl("http://zoom.us/j/123"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS lookalike domain (zoom-us.com)", () => {
+    expect(() => assertAllowedCallLinkUrl("https://zoom-us.com/j/123"))
+      .toThrow(WakeApiServerError);
+    expect(() => assertAllowedCallLinkUrl("https://zoom.us.evil.com/j/123"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("ACCEPTS subdomains of allowlisted domains", () => {
+    expect(() => assertAllowedCallLinkUrl("https://x.y.zoom.us/j/123")).not.toThrow();
+  });
+});
+
+// ─── Length caps (audit M-39) ────────────────────────────────────────────────
+
+describe("assertTextLength", () => {
+  it("accepts strings within the cap", () => {
+    expect(assertTextLength("hello", "field", 10)).toBe("hello");
+  });
+
+  it("rejects non-string input", () => {
+    expect(() => assertTextLength(123, "field", 10)).toThrow(WakeApiServerError);
+    expect(() => assertTextLength(null, "field", 10)).toThrow(WakeApiServerError);
+    expect(() => assertTextLength(undefined, "field", 10)).toThrow(WakeApiServerError);
+  });
+
+  it("rejects empty/whitespace by default", () => {
+    expect(() => assertTextLength("", "field", 10)).toThrow(WakeApiServerError);
+    expect(() => assertTextLength("   ", "field", 10)).toThrow(WakeApiServerError);
+  });
+
+  it("allows empty when allowEmpty is set", () => {
+    expect(assertTextLength("", "field", 10, {allowEmpty: true})).toBe("");
+  });
+
+  it("rejects strings over the cap", () => {
+    expect(() => assertTextLength("a".repeat(11), "field", 10)).toThrow(WakeApiServerError);
+  });
+
+  it("uses the canonical cap constants", () => {
+    expect(() => assertTextLength("a".repeat(TEXT_CAP_TITLE), "title", TEXT_CAP_TITLE)).not.toThrow();
+    expect(() => assertTextLength("a".repeat(TEXT_CAP_TITLE + 1), "title", TEXT_CAP_TITLE))
+      .toThrow(WakeApiServerError);
+    expect(() => assertTextLength("a".repeat(TEXT_CAP_NOTE + 1), "note", TEXT_CAP_NOTE))
+      .toThrow(WakeApiServerError);
+  });
+});
+
+// ─── Email masking (audit M-45) ──────────────────────────────────────────────
+
+describe("maskEmail", () => {
+  it("masks a normal email", () => {
+    expect(maskEmail("alex@example.com")).toBe("al***@example.com");
+  });
+
+  it("masks a 1-char local part with a single visible char", () => {
+    expect(maskEmail("a@example.com")).toBe("a***@example.com");
+  });
+
+  it("masks a 2-char local part with both chars visible", () => {
+    expect(maskEmail("ab@example.com")).toBe("a***@example.com");
+  });
+
+  it("returns null for non-strings", () => {
+    expect(maskEmail(undefined)).toBeNull();
+    expect(maskEmail(null)).toBeNull();
+    expect(maskEmail(42)).toBeNull();
+  });
+
+  it("returns null for malformed addresses", () => {
+    expect(maskEmail("no-at-sign")).toBeNull();
+    expect(maskEmail("@example.com")).toBeNull();
+    expect(maskEmail("foo@")).toBeNull();
+  });
+
+  it("preserves the domain in plain text (deliberate)", () => {
+    expect(maskEmail("longusername@gmail.com")).toBe("lo***@gmail.com");
+  });
+});
+
+// ─── Creator-owned course IDs (audit M-44) ───────────────────────────────────
+
+describe("loadCreatorOwnedCourseIds", () => {
+  it("returns the doc ids from the courses query keyed on creator_id", async () => {
+    const calls: Array<{collection?: string; where?: [string, string, string]}> = [];
+    const fakeDb = {
+      collection(path: string) {
+        calls.push({collection: path});
+        return {
+          where(field: string, op: string, value: string) {
+            calls.push({where: [field, op, value]});
+            return this;
+          },
+          select() {
+            return this;
+          },
+          async get() {
+            return {
+              docs: [
+                {id: "course-a"},
+                {id: "course-b"},
+              ],
+            };
+          },
+        };
+      },
+    };
+    const ids = await loadCreatorOwnedCourseIds(fakeDb, "creator-1");
+    expect(ids).toBeInstanceOf(Set);
+    expect(ids.has("course-a")).toBe(true);
+    expect(ids.has("course-b")).toBe(true);
+    expect(ids.has("course-c")).toBe(false);
+    expect(calls[0]).toEqual({collection: "courses"});
+    expect(calls[1]).toEqual({where: ["creator_id", "==", "creator-1"]});
+  });
+
+  it("returns an empty set when the creator owns nothing", async () => {
+    const fakeDb = {
+      collection() {
+        return {
+          where() {
+            return this;
+          },
+          select() {
+            return this;
+          },
+          async get() {
+            return {docs: []};
+          },
+        };
+      },
+    };
+    const ids = await loadCreatorOwnedCourseIds(fakeDb, "creator-1");
+    expect(ids.size).toBe(0);
   });
 });

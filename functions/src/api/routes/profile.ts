@@ -9,6 +9,7 @@ import {validateBody, validateStoragePath} from "../middleware/validate.js";
 import {
   assertAllowedDownloadPath,
   assertAllowedUserCourseStatus,
+  assertHttpsUrl,
   clampTrialDurationDays,
   isFreeGrantAllowed,
 } from "../middleware/securityHelpers.js";
@@ -175,11 +176,18 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
           );
         }
       } else if (urlFields.has(field)) {
-        if (value !== null && (typeof value !== "string" || value.length > 2048)) {
-          throw new WakeApiServerError(
-            "VALIDATION_ERROR", 400,
-            `${field} debe ser un string de máximo 2048 caracteres`, field
-          );
+        if (value !== null) {
+          if (typeof value !== "string" || value.length > 2048) {
+            throw new WakeApiServerError(
+              "VALIDATION_ERROR", 400,
+              `${field} debe ser un string de máximo 2048 caracteres`, field
+            );
+          }
+          // Audit M-41: enforce https:// on stored URLs that later render as
+          // <img src> or <a href>. Empty string is allowed (clears the field).
+          if (value !== "") {
+            assertHttpsUrl(value, field);
+          }
         }
       } else if (numberFields.has(field)) {
         if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1000) {

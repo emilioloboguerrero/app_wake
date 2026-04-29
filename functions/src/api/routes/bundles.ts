@@ -4,6 +4,12 @@ import type {DocumentSnapshot} from "../firestore.js";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {checkIpRateLimit} from "../middleware/rateLimit.js";
 import {validateBody, pickFields} from "../middleware/validate.js";
+import {
+  assertHttpsUrl,
+  assertTextLength,
+  TEXT_CAP_TITLE,
+  TEXT_CAP_DESCRIPTION,
+} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {COURSE_ID_RE} from "../services/paymentHelpers.js";
 
@@ -180,13 +186,24 @@ function validatePricing(pricing: unknown): BundlePricing {
   return result;
 }
 
+// Audit Tier 5.3: explicit field allowlist instead of `...data` spread, so a
+// future internal field on the bundle doc (e.g., audit metadata, payout state)
+// can't leak through public reads of `/bundles/:id`.
 function normalizeBundleResponse(doc: DocumentSnapshot): Record<string, unknown> {
   const data = doc.data()!;
   return {
     id: doc.id,
-    ...data,
+    creatorId: data.creatorId ?? null,
+    title: data.title ?? null,
+    description: data.description ?? "",
     imageUrl: data.image_url ?? null,
+    image_path: data.image_path ?? null,
+    courseIds: Array.isArray(data.courseIds) ? data.courseIds : [],
     pricing: normalizeLegacyPricing(data.pricing),
+    status: data.status ?? null,
+    version: data.version ?? null,
+    created_at: data.created_at ?? null,
+    updated_at: data.updated_at ?? null,
   };
 }
 
@@ -283,6 +300,19 @@ router.post("/creator/bundles", async (req, res) => {
     pricing: "object",
   }, req.body);
 
+  // Audit M-39: cap creator-controlled text fields. Audit M-41/M-38 family:
+  // image_url is rendered as <img src> in client surfaces — require https.
+  assertTextLength(body.title, "title", TEXT_CAP_TITLE);
+  if (body.description !== undefined) {
+    assertTextLength(body.description, "description", TEXT_CAP_DESCRIPTION, {allowEmpty: true});
+  }
+  if (body.image_url) {
+    if (body.image_url.length > 2048) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "image_url demasiado largo", "image_url");
+    }
+    assertHttpsUrl(body.image_url, "image_url");
+  }
+
   const courseIds = validateCourseIds(body.courseIds);
   await validateBundleConstituents(courseIds, auth.userId);
   const pricing = validatePricing(body.pricing);
@@ -333,8 +363,22 @@ router.patch("/creator/bundles/:bundleId", async (req, res) => {
     updates.pricing = validatePricing(updates.pricing);
   }
 
-  if (updates.title !== undefined && (typeof updates.title !== "string" || updates.title.trim() === "")) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "title no puede estar vacío", "title");
+  // Audit M-39: length caps on creator-controlled text. Audit M-41/M-38: scheme
+  // check on stored image URL (rendered later as <img src>).
+  if (updates.title !== undefined) {
+    assertTextLength(updates.title, "title", TEXT_CAP_TITLE);
+  }
+  if (updates.description !== undefined) {
+    assertTextLength(updates.description, "description", TEXT_CAP_DESCRIPTION, {allowEmpty: true});
+  }
+  if (updates.image_url !== undefined && updates.image_url !== null && updates.image_url !== "") {
+    if (typeof updates.image_url !== "string") {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "image_url inválido", "image_url");
+    }
+    if (updates.image_url.length > 2048) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "image_url demasiado largo", "image_url");
+    }
+    assertHttpsUrl(updates.image_url, "image_url");
   }
 
   await docRef.update({

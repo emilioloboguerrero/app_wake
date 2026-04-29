@@ -6,6 +6,7 @@ import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {validateBody, validateDateFormat} from "../middleware/validate.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
+import {assertAllowedCallLinkUrl} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 
@@ -18,7 +19,6 @@ function requireCreator(auth: { role: string }): void {
 }
 
 const TIME_RE = /^\d{2}:\d{2}$/;
-const VALID_DURATIONS = new Set([15, 30, 45, 60]);
 
 // ─── Email helpers ──────────────────────────────────────────────────────────
 
@@ -196,138 +196,10 @@ function freeSlotInAvailability(
 }
 
 // ─── Creator Availability & Bookings (§7.7) ────────────────────────────────
-
-// GET /creator/availability — get creator's availability slots + template
-router.get("/creator/availability", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const doc = await db.collection("creator_availability").doc(auth.userId).get();
-  if (!doc.exists) {
-    res.json({
-      data: {
-        timezone: "America/Bogota",
-        days: {},
-        weeklyTemplate: {},
-        disabledDates: [],
-        defaultSlotDuration: 45,
-      },
-    });
-    return;
-  }
-
-  const data = doc.data()!;
-  res.json({
-    data: {
-      timezone: data.timezone ?? "America/Bogota",
-      days: data.days ?? {},
-      weeklyTemplate: data.weeklyTemplate ?? {},
-      disabledDates: data.disabledDates ?? [],
-      defaultSlotDuration: data.defaultSlotDuration ?? 45,
-    },
-  });
-});
-
-// PUT /creator/availability/template — save weekly recurring template
-router.put("/creator/availability/template", async (req, res) => {
-  const auth = await validateAuth(req);
-  requireCreator(auth);
-  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
-
-  const body = validateBody<{
-    weeklyTemplate: Record<string, Array<{ startTime: string; durationMinutes: number }>>;
-    disabledDates: string[];
-    defaultSlotDuration: number;
-    timezone: string;
-  }>(
-    {
-      weeklyTemplate: "object",
-      disabledDates: "array",
-      defaultSlotDuration: "number",
-      timezone: "string",
-    },
-    req.body
-  );
-
-  // Validate defaultSlotDuration
-  if (!VALID_DURATIONS.has(body.defaultSlotDuration)) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Duración debe ser 15, 30, 45 o 60", "defaultSlotDuration");
-  }
-
-  // Validate weeklyTemplate
-  const validDays = new Set(["1", "2", "3", "4", "5", "6", "7"]);
-  const cleanTemplate: Record<string, Array<{ startTime: string; durationMinutes: number }>> = {};
-
-  for (const [dayKey, slots] of Object.entries(body.weeklyTemplate)) {
-    if (!validDays.has(dayKey)) {
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, `Día inválido: ${dayKey}. Usa 1-7 (Lun-Dom)`, "weeklyTemplate");
-    }
-    if (!Array.isArray(slots)) {
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, `Los slots del día ${dayKey} deben ser un array`, "weeklyTemplate");
-    }
-    if (slots.length > 20) {
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, "Máximo 20 franjas por día", "weeklyTemplate");
-    }
-
-    const daySlots: Array<{ startTime: string; durationMinutes: number }> = [];
-    for (const slot of slots) {
-      if (!slot || typeof slot !== "object") {
-        throw new WakeApiServerError("VALIDATION_ERROR", 400, "Formato de franja inválido", "weeklyTemplate");
-      }
-      if (!TIME_RE.test(slot.startTime)) {
-        throw new WakeApiServerError("VALIDATION_ERROR", 400, `startTime inválido: ${slot.startTime}`, "weeklyTemplate");
-      }
-      if (!VALID_DURATIONS.has(slot.durationMinutes)) {
-        throw new WakeApiServerError("VALIDATION_ERROR", 400, "Duración debe ser 15, 30, 45 o 60", "weeklyTemplate");
-      }
-      daySlots.push({startTime: slot.startTime, durationMinutes: slot.durationMinutes});
-    }
-
-    // Check for overlaps within the same day
-    const sorted = [...daySlots].sort((a, b) => a.startTime.localeCompare(b.startTime));
-    for (let i = 1; i < sorted.length; i++) {
-      const prev = sorted[i - 1];
-      const curr = sorted[i];
-      const [ph, pm] = prev.startTime.split(":").map(Number);
-      const prevEnd = ph * 60 + pm + prev.durationMinutes;
-      const [ch, cm] = curr.startTime.split(":").map(Number);
-      const currStart = ch * 60 + cm;
-      if (prevEnd > currStart) {
-        throw new WakeApiServerError("VALIDATION_ERROR", 400, `Franjas se superponen en día ${dayKey}`, "weeklyTemplate");
-      }
-    }
-
-    if (daySlots.length > 0) {
-      cleanTemplate[dayKey] = daySlots;
-    }
-  }
-
-  // Validate disabledDates
-  if (body.disabledDates.length > 90) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Máximo 90 fechas bloqueadas", "disabledDates");
-  }
-  const cleanDates: string[] = [];
-  for (const d of body.disabledDates) {
-    if (typeof d !== "string") continue;
-    validateDateFormat(d, "disabledDates");
-    cleanDates.push(d);
-  }
-
-  const docRef = db.collection("creator_availability").doc(auth.userId);
-  await docRef.set(
-    {
-      weeklyTemplate: cleanTemplate,
-      disabledDates: cleanDates,
-      defaultSlotDuration: body.defaultSlotDuration,
-      timezone: body.timezone,
-      updated_at: FieldValue.serverTimestamp(),
-    },
-    {merge: true}
-  );
-
-  res.json({data: {saved: true}});
-});
+// Note: GET /creator/availability and PUT /creator/availability/template are
+// served from creator.ts (mounted earlier in app.ts). Stricter weeklyTemplate
+// validators previously duplicated here have been ported into creator.ts —
+// see audit M-31.
 
 // POST /creator/availability/slots — add availability slots for a day
 router.post("/creator/availability/slots", async (req, res) => {
@@ -561,6 +433,18 @@ router.patch("/creator/bookings/:bookingId", async (req, res) => {
     {callLink: "optional_string"},
     req.body
   );
+
+  // Audit M-42: callLink is rendered as <a href> in branded reminder emails.
+  // Allow null (clear) or a vendor-allowlisted https URL — never javascript:
+  // or arbitrary phishing domains.
+  if (body.callLink) {
+    if (body.callLink.length > 2048) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "callLink demasiado largo", "callLink"
+      );
+    }
+    assertAllowedCallLinkUrl(body.callLink, "callLink");
+  }
 
   const docRef = db.collection("call_bookings").doc(req.params.bookingId);
   const doc = await docRef.get();

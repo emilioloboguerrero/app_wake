@@ -86,7 +86,7 @@ export default function AddClientModal({
 
   if (!isOpen) return null;
 
-  const name = foundUser?.displayName || foundUser?.username || foundUser?.email || 'Usuario';
+  const name = foundUser?.displayName || foundUser?.username || foundUser?.emailMasked || 'Usuario';
   const initial = name.charAt(0).toUpperCase();
 
   return (
@@ -151,49 +151,17 @@ export default function AddClientModal({
           <div className="acm__step acm__step--enter">
             <div className="acm__profile">
               <div className="acm__profile-avatar">
-                {foundUser.photoURL ? (
-                  <img src={foundUser.photoURL} alt="" />
-                ) : (
-                  <span>{initial}</span>
-                )}
+                <span>{initial}</span>
               </div>
               <div className="acm__profile-info">
                 <h3 className="acm__profile-name">{name}</h3>
-                {foundUser.email && (
-                  <p className="acm__profile-email">{foundUser.email}</p>
+                {foundUser.emailMasked && (
+                  <p className="acm__profile-email">{foundUser.emailMasked}</p>
                 )}
                 {foundUser.username && foundUser.displayName && (
                   <p className="acm__profile-username">@{foundUser.username}</p>
                 )}
               </div>
-            </div>
-
-            {/* User details */}
-            <div className="acm__details">
-              {foundUser.country && (
-                <div className="acm__detail">
-                  <span className="acm__detail-label">Pais</span>
-                  <span className="acm__detail-value">{foundUser.country}</span>
-                </div>
-              )}
-              {foundUser.city && (
-                <div className="acm__detail">
-                  <span className="acm__detail-label">Ciudad</span>
-                  <span className="acm__detail-value">{foundUser.city}</span>
-                </div>
-              )}
-              {foundUser.age && (
-                <div className="acm__detail">
-                  <span className="acm__detail-label">Edad</span>
-                  <span className="acm__detail-value">{foundUser.age} anos</span>
-                </div>
-              )}
-              {foundUser.gender && (
-                <div className="acm__detail">
-                  <span className="acm__detail-label">Genero</span>
-                  <span className="acm__detail-value">{foundUser.gender}</span>
-                </div>
-              )}
             </div>
 
             {existingClient && (

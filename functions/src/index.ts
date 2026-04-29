@@ -19,6 +19,7 @@ import {runCronHeartbeat} from "./ops/cronHeartbeat.js";
 import {runPaymentsPulse} from "./ops/paymentsPulse.js";
 import {runQuotaWatch} from "./ops/quotaWatch.js";
 import {runClientErrors} from "./ops/clientErrors.js";
+import {runDataIntegrity} from "./ops/dataIntegrity.js";
 import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
@@ -1627,6 +1628,13 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
         "Proporciona un email o nombre de usuario"
       );
     }
+    // Audit M-45: cap input length to prevent denial via huge queries.
+    if (emailOrUsername.length > 256) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Consulta demasiado larga"
+      );
+    }
 
     // Check caller is creator or admin
     const creatorDoc = await db.collection("users").doc(creatorId).get();
@@ -1637,6 +1645,16 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       throw new functions.https.HttpsError(
         "permission-denied",
         "Solo creadores pueden buscar usuarios"
+      );
+    }
+
+    // Audit M-45: tighten rate limit on this enumeration-prone endpoint.
+    // Gen1 in-memory limiter (10rpm, see checkRateLimit above) is a best-effort
+    // backstop while this Gen1 callable is awaiting Phase 3 retirement.
+    if (!checkRateLimit(`lookup_${creatorId}`)) {
+      throw new functions.https.HttpsError(
+        "resource-exhausted",
+        "Demasiadas búsquedas. Intenta en un momento."
       );
     }
 
@@ -1698,65 +1716,29 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       );
     }
 
-    // Build extra profile fields for creator preview
-    let age: number | null = null;
-    let gender = "";
-    let country = "";
-    let city = "";
-    let height: number | string | null = null;
-    let weight: number | string | null = null;
-    if (userDocData) {
-      const d = userDocData as Record<string, unknown>;
-      const ageVal = d.age;
-      age =
-        typeof ageVal === "number" && !Number.isNaN(ageVal) ? ageVal : null;
-      if (age == null && d.birthDate) {
-        const raw = d.birthDate as { toDate?: () => Date } | string;
-        const birthDate =
-          typeof raw === "object" && raw?.toDate ?
-            raw.toDate() :
-            new Date(raw as string);
-        if (!isNaN(birthDate.getTime())) {
-          age =
-            new Date().getFullYear() -
-            birthDate.getFullYear();
-          const monthDiff =
-            new Date().getMonth() - birthDate.getMonth();
-          if (
-            monthDiff < 0 ||
-            (monthDiff === 0 &&
-              new Date().getDate() < birthDate.getDate())
-          ) {
-            age--;
-          }
-        }
+    // Audit M-45: return only userId + display fields + masked email. The
+    // previous response shipped age/gender/country/city/height/weight to a
+    // creator-scoped lookup, which combined with C-10 made the endpoint a
+    // directory-harvester. The dashboard's invite flow only needs enough
+    // information to confirm the right person.
+    let emailMasked: string | null = null;
+    if (email) {
+      const at = email.indexOf("@");
+      if (at > 0 && at < email.length - 1) {
+        const local = email.slice(0, at);
+        const domain = email.slice(at + 1);
+        const visible = local.length <= 2 ? local.slice(0, 1) : local.slice(0, 2);
+        emailMasked = `${visible}***@${domain}`;
       }
-      gender = String(d.gender ?? "");
-      country = String(d.country ?? "");
-      city = String(d.city ?? d.location ?? "");
-      const h = d.height;
-      height =
-        h != null && (typeof h === "number" || typeof h === "string") ?
-          h :
-          null;
-      const w = d.bodyweight ?? d.weight;
-      weight =
-        w != null && (typeof w === "number" || typeof w === "string") ?
-          w :
-          null;
     }
-
+    // Reference userDocData so the eslint unused-var rule passes after the
+    // PII calc block was removed.
+    void userDocData;
     return {
       userId,
       displayName: displayName || undefined,
-      email: email || undefined,
       username: username || undefined,
-      age: age ?? null,
-      gender: gender || null,
-      country: country || null,
-      city: city || null,
-      height: height ?? null,
-      weight: weight ?? null,
+      emailMasked,
     };
   }
 );
@@ -3428,6 +3410,7 @@ export const wakeDailyPulseCron = onSchedule(
       ["pwa-errors", () => runClientErrors(ctx, {source: "pwa"})],
       ["creator-errors", () => runClientErrors(ctx, {source: "creator"})],
       ["quota", () => runQuotaWatch(ctx)],
+      ["data-integrity", () => runDataIntegrity(ctx)],
     ];
     for (const [name, fn] of steps) {
       try {
