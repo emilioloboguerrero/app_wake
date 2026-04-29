@@ -5,6 +5,7 @@ import * as crypto from "node:crypto";
 import {db} from "../firestore.js";
 import {WakeApiServerError} from "../errors.js";
 import {checkRateLimit} from "./rateLimit.js";
+import {enforceAppCheck} from "./appCheck.js";
 
 // ─── In-memory token verification cache ───────────────────────────────────
 // Caches decoded ID tokens by a truncated SHA-256 hash of the raw token.
@@ -92,39 +93,6 @@ declare global {
     interface Request {
       auth?: AuthResult;
     }
-  }
-}
-
-// M-14: shared App Check enforcement. Used by both validateAuth's Firebase
-// branch and the parallelized validateAuthAndRateLimit Firebase branch.
-//   - emulator: skipped (test fixtures don't mint App Check tokens).
-//   - missing token: 401 unless APP_CHECK_ENFORCE=false (escape hatch for
-//     synthetic test runners; default behavior matches Gen1).
-//   - present + invalid token: always 401, regardless of the env flag — this
-//     is the silent-pass bug the audit specifically called out.
-async function enforceAppCheck(req: Request, uid: string, isEmulator: boolean): Promise<void> {
-  if (isEmulator) return;
-  const appCheckToken = req.headers["x-firebase-appcheck"] as string | undefined;
-  if (!appCheckToken) {
-    if (process.env.APP_CHECK_ENFORCE === "false") {
-      functions.logger.warn("appCheck:missing-token-allowed-by-flag", {uid});
-      return;
-    }
-    throw new WakeApiServerError(
-      "UNAUTHENTICATED",
-      401,
-      "App Check token requerido"
-    );
-  }
-  try {
-    await admin.appCheck().verifyToken(appCheckToken);
-  } catch (err) {
-    functions.logger.warn("appCheck:verify-failed", {uid, error: String(err)});
-    throw new WakeApiServerError(
-      "UNAUTHENTICATED",
-      401,
-      "App Check token inválido o expirado"
-    );
   }
 }
 
