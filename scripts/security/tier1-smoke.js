@@ -510,14 +510,29 @@ async function testC05_nutritionNameTooLong(creatorA, clientUser) {
 }
 
 async function testC05_nutritionOversizedCategory(creatorA, clientUser) {
-  console.log("\n[C-05] nutrition PUT with 1MB category JSON → expect 400");
-  const big = {meal: "x".repeat(6000)};
+  console.log("\n[C-05] nutrition PUT with > 100KB single category → expect 400");
+  // Per-category cap is now 100 KB (raised from 5 KB after the original cap
+  // rejected legitimate library payloads). Push past the new cap.
+  const big = {meal: "x".repeat(120_000)};
   const r = await put(
     `${API_BASE}/v1/creator/clients/${clientUser.uid}/nutrition/assignments/${NUTRITION_ASSIGNMENT_A}/content`,
     {name: "ok", categories: [big]},
     {Authorization: `Bearer ${creatorA.idToken}`}
   );
-  assertStatus("oversized category rejected", r.status, 400);
+  assertStatus("oversized single category rejected", r.status, 400);
+}
+
+async function testC05_nutritionTotalCategoriesOversized(creatorA, clientUser) {
+  console.log("\n[C-05] nutrition PUT with combined categories > 800KB → expect 400");
+  // Each category 30 KB, 40 of them → ~1.2 MB total → exceeds the 800 KB
+  // combined cap (still under each category's 100 KB ceiling).
+  const cats = Array.from({length: 40}, (_, i) => ({i, blob: "x".repeat(30_000)}));
+  const r = await put(
+    `${API_BASE}/v1/creator/clients/${clientUser.uid}/nutrition/assignments/${NUTRITION_ASSIGNMENT_A}/content`,
+    {name: "ok", categories: cats},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("combined oversized categories rejected", r.status, 400);
 }
 
 async function testC05_nutritionTooManyCategories(creatorA, clientUser) {
@@ -878,6 +893,7 @@ async function main() {
     // ── C-05 nutrition validation ──
     await testC05_nutritionNameTooLong(creatorA, clientUser);
     await testC05_nutritionOversizedCategory(creatorA, clientUser);
+    await testC05_nutritionTotalCategoriesOversized(creatorA, clientUser);
     await testC05_nutritionTooManyCategories(creatorA, clientUser);
     await testC05_nutritionValid(creatorA, clientUser);
 

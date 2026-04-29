@@ -29,11 +29,17 @@ function requireCreator(auth: { role: string }): void {
 }
 
 // Security (audit C-05): nutrition assignment content body validator with
-// tight per-field caps. Returns a typed body. Throws on overflow.
+// per-field caps that hold total payload under the 1 MiB Firestore doc limit
+// without rejecting legitimate rich plans (multiple meals per category, each
+// with ingredients/notes/photoURL routinely run 1-2 KB → a category easily
+// reaches 10 KB). The original 5 KB-per-category cap was too tight and
+// rejected real-world setFromLibrary payloads; the new caps preserve the
+// audit's anti-DoS intent while accommodating production data.
 const NUTRITION_CONTENT_NAME_MAX = 200;
 const NUTRITION_CONTENT_DESC_MAX = 5000;
 const NUTRITION_CONTENT_CATEGORIES_MAX = 50;
-const NUTRITION_CONTENT_CATEGORY_JSON_MAX = 5_000;
+const NUTRITION_CONTENT_CATEGORY_JSON_MAX = 100_000; // 100 KB per category
+const NUTRITION_CONTENT_CATEGORIES_TOTAL_JSON_MAX = 800_000; // 800 KB combined (Firestore doc cap is 1 MiB)
 
 interface NutritionContentBody {
   source_plan_id?: string | null;
@@ -66,6 +72,7 @@ function validateNutritionContentBody(body: unknown): NutritionContentBody {
     );
   }
   if (Array.isArray(validated.categories)) {
+    let totalSize = 0;
     for (const cat of validated.categories) {
       const size = JSON.stringify(cat ?? null).length;
       if (size > NUTRITION_CONTENT_CATEGORY_JSON_MAX) {
@@ -75,6 +82,14 @@ function validateNutritionContentBody(body: unknown): NutritionContentBody {
           "categories"
         );
       }
+      totalSize += size;
+    }
+    if (totalSize > NUTRITION_CONTENT_CATEGORIES_TOTAL_JSON_MAX) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "categories en conjunto exceden el tamaño máximo permitido",
+        "categories"
+      );
     }
   }
   return validated;
