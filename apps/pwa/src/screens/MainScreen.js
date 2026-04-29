@@ -245,12 +245,6 @@ const MainScreen = ({ navigation, route }) => {
       fontWeight: '700',
       lineHeight: 32,
     },
-    pendingInviteSubtitle: {
-      color: 'rgba(255,255,255,0.78)',
-      fontSize: 14,
-      lineHeight: 20,
-      marginTop: 4,
-    },
     pendingInviteActions: {
       flexDirection: 'row',
       gap: 10,
@@ -1464,7 +1458,6 @@ const MainScreen = ({ navigation, route }) => {
       const program = invite.pendingProgramAssignment || null;
       const inviteImageUrl = program?.imageUrl ?? null;
       const inviteTitle = program?.title ?? 'Invitación de coaching 1:1';
-      const inviteCoach = invite.creatorName ?? 'tu coach';
       const isActing = inviteActionId === invite.id;
       const isAccepting = isActing && acceptInvite.isPending;
       const isDeclining = isActing && declineInvite.isPending;
@@ -1487,9 +1480,6 @@ const MainScreen = ({ navigation, route }) => {
               <View style={styles.pendingInviteHeader}>
                 <Text style={styles.pendingInviteEyebrow}>Invitación 1:1</Text>
                 <Text style={styles.pendingInviteTitle}>{inviteTitle}</Text>
-                <Text style={styles.pendingInviteSubtitle}>
-                  De {inviteCoach}. Al aceptar, tendrás acceso al programa.
-                </Text>
               </View>
               <View style={styles.pendingInviteActions}>
                 <TouchableOpacity
