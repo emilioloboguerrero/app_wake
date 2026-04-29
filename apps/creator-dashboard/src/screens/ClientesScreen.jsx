@@ -1051,9 +1051,25 @@ const ClientesScreen = () => {
 
   const resendInviteMutation = useMutation({
     mutationFn: (clientId) => oneOnOneService.resendInvite(clientId),
+    // Optimistic update: drop the row from the declined query immediately so
+    // the UI reflects the new state before the refetch lands.
+    onMutate: async (clientId) => {
+      const declinedKey = ['clients', 'creator', user?.uid, 'declined'];
+      await queryClient.cancelQueries({ queryKey: declinedKey });
+      const prevDeclined = queryClient.getQueryData(declinedKey);
+      queryClient.setQueryData(declinedKey, (old) =>
+        Array.isArray(old) ? old.filter((c) => c.id !== clientId) : old
+      );
+      return { prevDeclined, declinedKey };
+    },
+    onError: (err, _clientId, context) => {
+      // Rollback the optimistic remove on failure.
+      if (context?.prevDeclined !== undefined) {
+        queryClient.setQueryData(context.declinedKey, context.prevDeclined);
+      }
+      showToast(err?.message || 'No pudimos reenviar la invitación.', 'error');
+    },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user?.uid] });
-      queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user?.uid, 'declined'] });
       const remaining = data?.resendsRemaining ?? 0;
       showToast(
         remaining > 0
@@ -1062,7 +1078,11 @@ const ClientesScreen = () => {
         'success'
       );
     },
-    onError: (err) => showToast(err?.message || 'No pudimos reenviar la invitación.', 'error'),
+    // Refetch all clients-* queries (overview, declined, etc.) so the row
+    // shows up in the pending section + drops from declined for real.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+    },
   });
 
   const handleDeleteAsesoria = useCallback((program) => {
