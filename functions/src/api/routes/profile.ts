@@ -641,26 +641,22 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
   if (data.clientUserId !== auth.userId) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No puedes aceptar esta invitación");
   }
-  if (data.status === "active") {
-    res.json({data: {id: doc.id, status: "active", alreadyActive: true}});
-    return;
-  }
-  if (data.status && data.status !== "pending") {
+  if (data.status && data.status !== "pending" && data.status !== "active") {
     throw new WakeApiServerError(
       "CONFLICT", 409,
       "La invitación no está pendiente",
     );
   }
 
-  const pending = data.pendingProgramAssignment as
-    | {programId?: string; accessDuration?: string; expiresAt?: string | null}
-    | undefined;
-
-  // Run flip + program assignment atomically. The creator owns the program
-  // (validated when the pendingProgramAssignment was attached), so we just
-  // re-resolve course metadata and write the user.courses entry.
-  // Firestore transactions require ALL reads before ANY writes, so the
-  // transaction body batches reads up front, then performs the writes.
+  // Run flip + program assignment atomically. The transaction is idempotent:
+  //   - status pending + pending program → flip + assign
+  //   - status pending + no pending program → flip only
+  //   - status active + pending program → assign only (recovers from a partial
+  //     accept where status flipped on an older handler that didn't know
+  //     about pendingProgramAssignment)
+  //   - status active + no pending program → no-op
+  // Firestore transactions require ALL reads before ANY writes, so the body
+  // batches reads up front, then performs the writes.
   let programAssigned = false;
   let assignedProgramId: string | null = null;
   await db.runTransaction(async (tx) => {
@@ -670,37 +666,50 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
       throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
     }
     const freshData = fresh.data()!;
-    if (freshData.status === "active") return;
+    const wasPending = freshData.status !== "active";
+    const pendingFresh = freshData.pendingProgramAssignment as
+      | {programId?: string; accessDuration?: string; expiresAt?: string | null}
+      | undefined;
+
+    // Nothing to do — relationship already active and no pending program left.
+    if (!wasPending && !pendingFresh) return;
 
     const userRef = db.collection("users").doc(auth.userId);
-    const courseRef = pending?.programId && typeof pending.programId === "string" ?
-      db.collection("courses").doc(pending.programId) :
+    const courseRef = pendingFresh?.programId && typeof pendingFresh.programId === "string" ?
+      db.collection("courses").doc(pendingFresh.programId) :
       null;
-    // Issue both reads in parallel to keep the transaction tight.
     const [userSnap, courseSnap] = await Promise.all([
       tx.get(userRef),
       courseRef ? tx.get(courseRef) : Promise.resolve(null),
     ]);
 
     // ─── Writes ────────────────────────────────────────────────────────
-    tx.update(ref, {
-      status: "active",
-      acceptedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-      pendingProgramAssignment: FieldValue.delete(),
-    });
+    if (wasPending) {
+      tx.update(ref, {
+        status: "active",
+        acceptedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        pendingProgramAssignment: FieldValue.delete(),
+      });
+    } else if (pendingFresh) {
+      // Already active, just clear the leftover pending pointer.
+      tx.update(ref, {
+        pendingProgramAssignment: FieldValue.delete(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
 
     if (courseSnap?.exists && courseSnap.data()?.creator_id === freshData.creatorId &&
-        pending?.programId) {
+        pendingFresh?.programId) {
       const courseData = courseSnap.data()!;
       const courses = (userSnap.data()?.courses ?? {}) as Record<string, unknown>;
-      if (!courses[pending.programId]) {
+      if (!courses[pendingFresh.programId]) {
         const now = new Date().toISOString();
         tx.update(userRef, {
-          [`courses.${pending.programId}`]: {
+          [`courses.${pendingFresh.programId}`]: {
             status: "active",
             deliveryType: "one_on_one",
-            access_duration: pending.accessDuration ?? "one_on_one",
+            access_duration: pendingFresh.accessDuration ?? "one_on_one",
             title: courseData.title ?? "",
             image_url: courseData.image_url ?? null,
             discipline: courseData.discipline ?? "General",
@@ -714,12 +723,12 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
             assigned_by: freshData.creatorId,
             assigned_at: now,
             purchased_at: now,
-            expires_at: pending.expiresAt ?? null,
+            expires_at: pendingFresh.expiresAt ?? null,
           },
         });
       }
       programAssigned = true;
-      assignedProgramId = pending.programId;
+      assignedProgramId = pendingFresh.programId;
     }
   });
 
