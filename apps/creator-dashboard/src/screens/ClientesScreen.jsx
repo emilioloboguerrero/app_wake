@@ -186,11 +186,45 @@ function DeclinedInviteCard({ invite, programTitle, onResend, isResending }) {
   );
 }
 
+// Small inline "remove" button used by pending + orphaned-client cards
+// so a creator can cancel a stuck invite or delete an active relationship
+// that ended up with no enrolled programs (e.g., the user left every
+// program but the row is still active).
+function RemoveClientButton({ onRemove, isRemoving, label = 'Eliminar' }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onRemove(); }}
+      disabled={isRemoving}
+      title={label}
+      style={{
+        marginRight: 12,
+        width: 28,
+        height: 28,
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.18)',
+        background: 'rgba(255,255,255,0.04)',
+        color: 'rgba(255,255,255,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: isRemoving ? 'wait' : 'pointer',
+        opacity: isRemoving ? 0.5 : 1,
+      }}
+      aria-label={label}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M6 6L18 18M6 18L18 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
 // C-10 v2: pending invite card. Display-only (no navigation) — the creator
 // has no operational rights over a user who hasn't accepted, and the
 // backend now hard-403s the detail endpoint for pending rows. Showing this
 // as a non-clickable row keeps that boundary visible in the UI.
-function PendingInviteCard({ invite, programTitle }) {
+function PendingInviteCard({ invite, programTitle, onRemove, isRemoving }) {
   const name = invite.clientName || invite.clientEmail || `Cliente ${(invite.clientUserId || '').slice(0, 8)}`;
   return (
     <div className="cl-card" style={{ cursor: 'default', opacity: 0.92 }} aria-disabled="true">
@@ -214,11 +248,62 @@ function PendingInviteCard({ invite, programTitle }) {
           </span>
         )}
       </div>
+      {onRemove && (
+        <RemoveClientButton onRemove={onRemove} isRemoving={isRemoving} label="Cancelar invitación" />
+      )}
       <span
         className="cl-card__status"
         style={{ background: 'rgba(251,191,36,0.95)' }}
         aria-label="Pendiente"
         title="Esperando que el usuario acepte"
+      />
+    </div>
+  );
+}
+
+// C-10 v2: minimal card for orphaned active clients (relationship is
+// 'active' but they have no enrolled programs from this creator). The
+// creator can hard-delete the relationship to start over — the user-side
+// data isn't touched, only the creator's view of them.
+function OrphanedClientCard({ client, onSelect, onRemove, isRemoving }) {
+  const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
+  return (
+    <div className="cl-card">
+      <button
+        type="button"
+        onClick={onSelect}
+        style={{
+          all: 'unset',
+          display: 'contents',
+          cursor: 'pointer',
+        }}
+      >
+        <div className="cl-card__avatar">
+          {client.avatarUrl
+            ? <img src={client.avatarUrl} alt={name} className="cl-card__avatar-img" />
+            : <span className="cl-card__avatar-initial">{getInitial(name)}</span>}
+        </div>
+        <div className="cl-card__info">
+          <span className="cl-card__name">{name}</span>
+          {client.clientEmail && client.clientName && (
+            <span className="cl-card__email">{client.clientEmail}</span>
+          )}
+          <span className="cl-card__rejoin-pill" style={{
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.6)',
+            borderColor: 'rgba(255,255,255,0.12)',
+          }}>
+            Sin programa asignado
+          </span>
+        </div>
+      </button>
+      {onRemove && (
+        <RemoveClientButton onRemove={onRemove} isRemoving={isRemoving} label="Eliminar cliente" />
+      )}
+      <span
+        className="cl-card__status"
+        style={{ background: 'rgba(74,222,128,0.9)' }}
+        aria-label="Activo"
       />
     </div>
   );
@@ -1049,6 +1134,36 @@ const ClientesScreen = () => {
     enabled: !!user?.uid,
   });
 
+  // C-10 v2: hard-delete a relationship row. Used by the inline X button on
+  // pending invites (cancels the invite) and orphaned-active clients (frees
+  // the row so the creator can re-invite cleanly). Backend route deletes
+  // by relationship-doc-id; we pass invite.id / client.id.
+  const removeClientMutation = useMutation({
+    mutationFn: (clientRowId) => oneOnOneService.deleteClient(clientRowId),
+    onMutate: async (clientRowId) => {
+      const declinedKey = ['clients', 'creator', user?.uid, 'declined'];
+      await queryClient.cancelQueries({ queryKey: ['clients'] });
+      // Optimistic remove from declined list (in case it's a declined row).
+      const prevDeclined = queryClient.getQueryData(declinedKey);
+      queryClient.setQueryData(declinedKey, (old) =>
+        Array.isArray(old) ? old.filter((c) => c.id !== clientRowId) : old
+      );
+      return { prevDeclined, declinedKey };
+    },
+    onError: (err, _clientId, context) => {
+      if (context?.prevDeclined !== undefined) {
+        queryClient.setQueryData(context.declinedKey, context.prevDeclined);
+      }
+      showToast(err?.message || 'No pudimos eliminar el cliente.', 'error');
+    },
+    onSuccess: () => {
+      showToast('Cliente eliminado.', 'success');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+    },
+  });
+
   const resendInviteMutation = useMutation({
     mutationFn: (clientId) => oneOnOneService.resendInvite(clientId),
     // Optimistic update: drop the row from the declined query immediately so
@@ -1198,6 +1313,8 @@ const ClientesScreen = () => {
                           key={invite.id || invite.clientUserId}
                           invite={invite}
                           programTitle={programTitleById[invite.pendingProgramAssignment?.programId]}
+                          onRemove={() => removeClientMutation.mutate(invite.id)}
+                          isRemoving={removeClientMutation.isPending && removeClientMutation.variables === invite.id}
                         />
                       ))}
                     </div>
@@ -1224,15 +1341,23 @@ const ClientesScreen = () => {
                   const filteredUngrouped = filterAndSortClients(grouped.ungrouped);
                   if (filteredUngrouped.length === 0) return null;
                   return (
-                    <ClientGroup
-                      title="Sin programa"
-                      clients={filteredUngrouped}
-                      programId={null}
-                      imageUrl={null}
-                      onSelectClient={handleSelectClient}
-                      onConfigClick={() => {}}
-                      videoUnreadMap={videoUnreadMap}
-                    />
+                    <div className="cl-group">
+                      <div className="cl-group__header" style={{ cursor: 'default' }}>
+                        <span className="cl-group__title">Sin programa</span>
+                        <span className="cl-group__count">{filteredUngrouped.length}</span>
+                      </div>
+                      <div className="cl-group__grid">
+                        {filteredUngrouped.map((client) => (
+                          <OrphanedClientCard
+                            key={client.id || client.clientUserId}
+                            client={client}
+                            onSelect={() => handleSelectClient(client)}
+                            onRemove={() => removeClientMutation.mutate(client.id)}
+                            isRemoving={removeClientMutation.isPending && removeClientMutation.variables === client.id}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   );
                 })()}
                 {/* C-10 v2: declined invites section. Each card has a Resend
