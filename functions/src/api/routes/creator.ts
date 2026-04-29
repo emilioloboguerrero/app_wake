@@ -260,11 +260,13 @@ router.get("/creator/clients", async (req, res) => {
   // C-10 v2: explicit allowlist per filter so a future status (e.g. 'declined',
   // 'expired') doesn't leak into the default view as it did when 'declined'
   // first shipped. Default ("active") shows currently-engaged relationships
-  // plus pending invites; inactive + declined are intentionally hidden.
+  // plus pending invites; inactive + declined are intentionally hidden unless
+  // explicitly requested via ?status=declined or ?status=all.
   const matchesStatus = (data: Record<string, unknown>): boolean => {
     if (statusFilter === "all") return true;
     const s = ((data.status as string | undefined) ?? "active") as string;
     if (statusFilter === "inactive") return s === "inactive";
+    if (statusFilter === "declined") return s === "declined";
     return s === "active" || s === "pending";
   };
 
@@ -445,20 +447,23 @@ router.get("/creator/clients", async (req, res) => {
     const userId = clientRow.clientUserId as string;
     const userData = userDocsMap[userId];
     const isPending = clientRow.status === "pending";
+    const isDeclined = clientRow.status === "declined";
 
-    // C-10 v2: pending rows return only minimal info (relationship-doc
-    // fields + the pending program reference). No body data, no avatar, no
-    // session stats — the creator hasn't been authorized to see those yet.
-    if (isPending) {
+    // C-10 v2: pending + declined rows return only minimal info (relationship-
+    // doc fields + the program reference). No body data, no avatar, no
+    // session stats — the creator hasn't been authorized to see those.
+    if (isPending || isDeclined) {
       return {
         id: clientRow.id,
         clientUserId: userId,
         creatorId: clientRow.creatorId,
         clientName: (clientRow.clientName as string | null) ?? null,
         clientEmail: (clientRow.clientEmail as string | null) ?? null,
-        status: "pending",
+        status: clientRow.status,
         invitedAt: clientRow.invitedAt ?? null,
         createdAt: clientRow.createdAt ?? null,
+        declinedAt: clientRow.declinedAt ?? null,
+        resendCount: (clientRow.resendCount as number | undefined) ?? 0,
         pendingProgramAssignment: clientRow.pendingProgramAssignment ?? null,
         enrolledPrograms: [],
       };
@@ -987,6 +992,52 @@ router.post("/creator/clients", async (req, res) => {
   });
 
   res.status(201).json({data: {id: docRef.id, clientId: docRef.id, status: "pending"}});
+});
+
+// POST /creator/clients/:clientId/resend-invite — re-send a declined invite.
+// Caps total resends at 2 so a creator can't spam the user. Preserves any
+// pendingProgramAssignment from the original invite so the second invite
+// still carries the program. Status flips back to 'pending'.
+const MAX_INVITE_RESENDS = 2;
+router.post("/creator/clients/:clientId/resend-invite", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
+  const ref = db.collection("one_on_one_clients").doc(req.params.clientId);
+  const doc = await ref.get();
+  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
+  }
+  const data = doc.data()!;
+  if (data.status !== "declined") {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      "Solo puedes reenviar invitaciones rechazadas"
+    );
+  }
+  const previousResends = (data.resendCount as number | undefined) ?? 0;
+  if (previousResends >= MAX_INVITE_RESENDS) {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      `Has alcanzado el máximo de ${MAX_INVITE_RESENDS} reenvíos para esta invitación`
+    );
+  }
+
+  const nextResendCount = previousResends + 1;
+  await ref.update({
+    status: "pending",
+    resendCount: nextResendCount,
+    resentAt: FieldValue.serverTimestamp(),
+    declinedAt: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  res.json({data: {
+    id: doc.id,
+    status: "pending",
+    resendCount: nextResendCount,
+    resendsRemaining: MAX_INVITE_RESENDS - nextResendCount,
+  }});
 });
 
 // GET /creator/leaves/summary — aggregated counts of clients who left this creator's programs.

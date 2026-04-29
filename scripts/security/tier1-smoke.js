@@ -734,6 +734,66 @@ async function testC10v2_acceptAppliesPendingProgram(pendingUser, relationshipId
     `got ${course?.deliveryType}`);
 }
 
+async function testC10v2_resendCapEnforced(creatorA, declineUser) {
+  console.log("\n[C-10v2] resend declined invite — capped at 2");
+  // Find the declined relationship row for this user (created by testC10_decline).
+  const list = await get(
+    `${API_BASE}/v1/creator/clients?status=declined`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const row = (list.body?.data || []).find((c) => c.clientUserId === declineUser.uid);
+  assertCondition("declined row visible via ?status=declined", !!row,
+    `got rows: ${JSON.stringify((list.body?.data || []).map((c) => c.clientUserId))}`);
+  if (!row) return;
+
+  // First resend → 200, status=pending, resendsRemaining=1.
+  const r1 = await post(
+    `${API_BASE}/v1/creator/clients/${row.id}/resend-invite`,
+    {},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("first resend accepted", r1.status, 200);
+  assertCondition("first resend → status=pending",
+    r1.body?.data?.status === "pending",
+    `got ${r1.body?.data?.status}`);
+  assertCondition("first resend → resendsRemaining=1",
+    r1.body?.data?.resendsRemaining === 1,
+    `got ${r1.body?.data?.resendsRemaining}`);
+
+  // User declines again so we can resend a second time.
+  await post(
+    `${API_BASE}/v1/users/me/client-relationships/${row.id}/decline`,
+    {},
+    {Authorization: `Bearer ${declineUser.idToken}`}
+  );
+
+  // Second resend → 200, resendsRemaining=0.
+  const r2 = await post(
+    `${API_BASE}/v1/creator/clients/${row.id}/resend-invite`,
+    {},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("second resend accepted", r2.status, 200);
+  assertCondition("second resend → resendsRemaining=0",
+    r2.body?.data?.resendsRemaining === 0,
+    `got ${r2.body?.data?.resendsRemaining}`);
+
+  // User declines a third time.
+  await post(
+    `${API_BASE}/v1/users/me/client-relationships/${row.id}/decline`,
+    {},
+    {Authorization: `Bearer ${declineUser.idToken}`}
+  );
+
+  // Third resend → 409 (cap exceeded).
+  const r3 = await post(
+    `${API_BASE}/v1/creator/clients/${row.id}/resend-invite`,
+    {},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("third resend rejected (cap)", r3.status, 409);
+}
+
 async function testC10v2_declinedRowHiddenFromDefaultList(creatorA, declineUser) {
   console.log("\n[C-10v2] declined relationships absent from GET /creator/clients (default 'active' filter)");
   const list = await get(
@@ -1007,6 +1067,7 @@ async function main() {
     }
     await testC10_decline(creatorA, declineUser);
     await testC10v2_declinedRowHiddenFromDefaultList(creatorA, declineUser);
+    await testC10v2_resendCapEnforced(creatorA, declineUser);
 
     // ── C-10 v2: pending-aware assign + auto-grant on accept ──
     // Use a freshly-minted user so we're not interfering with prior pendingUserA state.

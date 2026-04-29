@@ -39,6 +39,21 @@ class OneOnOneService {
     return { client, assignment };
   }
 
+  // C-10 v2: re-send a declined invite. Server caps at 2 total resends.
+  // Returns { id, status: 'pending', resendCount, resendsRemaining }.
+  async resendInvite(clientId) {
+    const res = await apiClient.post(`/creator/clients/${clientId}/resend-invite`);
+    return res.data;
+  }
+
+  // List declined invites for the rejected-invitations section.
+  async getDeclinedInvites() {
+    const res = await apiClient.get('/creator/clients', {
+      params: { status: 'declined' },
+    });
+    return res.data || [];
+  }
+
   async getClientById(clientId, { userId } = {}) {
     const params = userId ? { userId } : undefined;
     const res = await apiClient.get(`/creator/clients/${clientId}`, { params });

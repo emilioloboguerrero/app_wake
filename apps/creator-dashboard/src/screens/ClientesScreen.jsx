@@ -123,6 +123,69 @@ function ClientCard({ client, onClick, unreadVideos = 0 }) {
   );
 }
 
+// C-10 v2: declined invite card. Shows the user the creator invited, the
+// program target, and a resend button. Server caps total resends at 2 —
+// surfacedhere as the disabled state + remaining-count pill.
+function DeclinedInviteCard({ invite, programTitle, onResend, isResending }) {
+  const name = invite.clientName || invite.clientEmail || `Cliente ${(invite.clientUserId || '').slice(0, 8)}`;
+  const resendCount = invite.resendCount ?? 0;
+  const resendsRemaining = Math.max(0, 2 - resendCount);
+  const canResend = resendsRemaining > 0 && !isResending;
+  return (
+    <div className="cl-card" style={{ cursor: 'default', opacity: 0.95 }} aria-disabled="true">
+      <div className="cl-card__avatar">
+        <span className="cl-card__avatar-initial">{getInitial(name)}</span>
+      </div>
+      <div className="cl-card__info">
+        <span className="cl-card__name">{name}</span>
+        {invite.clientEmail && invite.clientName && (
+          <span className="cl-card__email">{invite.clientEmail}</span>
+        )}
+        {programTitle && (
+          <span className="cl-card__rejoin-pill" style={{
+            background: 'rgba(248,113,113,0.15)',
+            color: 'rgba(248,113,113,0.92)',
+            borderColor: 'rgba(248,113,113,0.32)',
+          }}>
+            Rechazó {programTitle}
+          </span>
+        )}
+        <span className="cl-card__rejoin-pill" style={{
+          background: 'rgba(255,255,255,0.06)',
+          color: 'rgba(255,255,255,0.7)',
+          borderColor: 'rgba(255,255,255,0.12)',
+          marginTop: 4,
+        }}>
+          {resendsRemaining > 0
+            ? `${resendsRemaining} reenvío${resendsRemaining === 1 ? '' : 's'} disponible${resendsRemaining === 1 ? '' : 's'}`
+            : 'Sin reenvíos disponibles'}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onResend(invite.id); }}
+        disabled={!canResend}
+        title={canResend
+          ? 'Reenviar invitación al usuario'
+          : 'Has alcanzado el máximo de reenvíos'}
+        style={{
+          padding: '8px 14px',
+          borderRadius: 999,
+          border: '1px solid rgba(255,255,255,0.18)',
+          background: canResend ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.06)',
+          color: canResend ? '#1a1a1a' : 'rgba(255,255,255,0.4)',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: canResend ? 'pointer' : 'not-allowed',
+          marginRight: 12,
+        }}
+      >
+        {isResending ? 'Reenviando…' : 'Reenviar'}
+      </button>
+    </div>
+  );
+}
+
 // C-10 v2: pending invite card. Display-only (no navigation) — the creator
 // has no operational rights over a user who hasn't accepted, and the
 // backend now hard-403s the detail endpoint for pending rows. Showing this
@@ -976,6 +1039,32 @@ const ClientesScreen = () => {
     onError: () => showToast('No pudimos eliminar el programa. Intenta de nuevo.', 'error'),
   });
 
+  // C-10 v2: declined invites — fetched on demand and shown in a dedicated
+  // section. Resend mutation re-flips the row to pending; backend caps at 2
+  // resends total.
+  const { data: declinedInvites = [] } = useQuery({
+    queryKey: ['clients', 'creator', user?.uid, 'declined'],
+    queryFn: () => oneOnOneService.getDeclinedInvites(),
+    ...cacheConfig.userProfile,
+    enabled: !!user?.uid,
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: (clientId) => oneOnOneService.resendInvite(clientId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user?.uid] });
+      queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user?.uid, 'declined'] });
+      const remaining = data?.resendsRemaining ?? 0;
+      showToast(
+        remaining > 0
+          ? `Invitación reenviada. Te quedan ${remaining} reenvío${remaining === 1 ? '' : 's'}.`
+          : 'Invitación reenviada. Este es el último reenvío disponible.',
+        'success'
+      );
+    },
+    onError: (err) => showToast(err?.message || 'No pudimos reenviar la invitación.', 'error'),
+  });
+
   const handleDeleteAsesoria = useCallback((program) => {
     setDeleteTarget(program);
   }, []);
@@ -1126,6 +1215,27 @@ const ClientesScreen = () => {
                     />
                   );
                 })()}
+                {/* C-10 v2: declined invites section. Each card has a Resend
+                    button; backend caps total resends at 2 per row. */}
+                {declinedInvites.length > 0 && filters.program === 'all' && (
+                  <div className="cl-group">
+                    <div className="cl-group__header" style={{ cursor: 'default' }}>
+                      <span className="cl-group__title">Invitaciones rechazadas</span>
+                      <span className="cl-group__count">{declinedInvites.length}</span>
+                    </div>
+                    <div className="cl-group__grid">
+                      {declinedInvites.map((invite) => (
+                        <DeclinedInviteCard
+                          key={invite.id || invite.clientUserId}
+                          invite={invite}
+                          programTitle={programTitleById[invite.pendingProgramAssignment?.programId]}
+                          onResend={(id) => resendInviteMutation.mutate(id)}
+                          isResending={resendInviteMutation.isPending && resendInviteMutation.variables === invite.id}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           )}
