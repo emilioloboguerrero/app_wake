@@ -682,6 +682,32 @@ async function testC10v2_assignToPendingAttachesProgram(creatorA, pendingUser) {
   return snap.empty ? null : snap.docs[0].id;
 }
 
+async function testC10v2_pendingClientDetailDenied(creatorA, pendingUser, relationshipId) {
+  console.log("\n[C-10v2] GET /creator/clients/:relId while pending → expect 403");
+  if (!relationshipId) {
+    console.log("  ✗ skipped — no relationshipId");
+    failed++; failures.push({label: "C-10v2 pending-detail missing relationshipId"}); return;
+  }
+  const r = await get(
+    `${API_BASE}/v1/creator/clients/${relationshipId}`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("client detail blocked while pending", r.status, 403);
+  // Also confirm the list endpoint redacts pending rows (no avatar / no
+  // session stats on the pending row).
+  const list = await get(
+    `${API_BASE}/v1/creator/clients`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const row = (list.body?.data || []).find((c) => c.id === relationshipId);
+  assertCondition("pending row in list has no avatarUrl",
+    row && !row.avatarUrl,
+    `got ${JSON.stringify(row?.avatarUrl)}`);
+  assertCondition("pending row exposes pendingProgramAssignment",
+    row?.pendingProgramAssignment?.programId === COURSE_A,
+    `got ${JSON.stringify(row?.pendingProgramAssignment)}`);
+}
+
 async function testC10v2_acceptAppliesPendingProgram(pendingUser, relationshipId) {
   console.log("\n[C-10v2] accept invite that carries a pending program → expect program assigned to user.courses");
   if (!relationshipId) {
@@ -973,6 +999,7 @@ async function main() {
     if (c10v2RelId) {
       createdCollections.push({collection: "one_on_one_clients", id: c10v2RelId});
     }
+    await testC10v2_pendingClientDetailDenied(creatorA, c10v2User, c10v2RelId);
     await testC10v2_acceptAppliesPendingProgram(c10v2User, c10v2RelId);
 
     // ── M-43 wake_users_only ──

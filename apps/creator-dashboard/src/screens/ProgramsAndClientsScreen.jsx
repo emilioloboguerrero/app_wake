@@ -94,9 +94,11 @@ function RosterRow({ client, isSelected, onClick, style }) {
     <button
       type="button"
       className={`roster-row ${isSelected ? 'roster-row--active' : ''}`}
-      onClick={onClick}
+      onClick={isPending ? undefined : onClick}
+      disabled={isPending}
       aria-current={isSelected ? 'true' : undefined}
-      style={style}
+      title={isPending ? 'Esperando que el usuario acepte la invitación' : undefined}
+      style={isPending ? { ...(style || {}), cursor: 'default', opacity: 0.78 } : style}
     >
       {isSelected && <span className="roster-row__accent-bar" aria-hidden="true" />}
       <div className="roster-row__avatar" aria-hidden="true">

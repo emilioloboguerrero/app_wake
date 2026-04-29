@@ -438,8 +438,29 @@ router.get("/creator/clients", async (req, res) => {
   }));
 
   const enriched = clientDocs.map((client) => {
-    const userId = (client as Record<string, unknown>).clientUserId as string;
+    const clientRow = client as Record<string, unknown>;
+    const userId = clientRow.clientUserId as string;
     const userData = userDocsMap[userId];
+    const isPending = clientRow.status === "pending";
+
+    // C-10 v2: pending rows return only minimal info (relationship-doc
+    // fields + the pending program reference). No body data, no avatar, no
+    // session stats — the creator hasn't been authorized to see those yet.
+    if (isPending) {
+      return {
+        id: clientRow.id,
+        clientUserId: userId,
+        creatorId: clientRow.creatorId,
+        clientName: (clientRow.clientName as string | null) ?? null,
+        clientEmail: (clientRow.clientEmail as string | null) ?? null,
+        status: "pending",
+        invitedAt: clientRow.invitedAt ?? null,
+        createdAt: clientRow.createdAt ?? null,
+        pendingProgramAssignment: clientRow.pendingProgramAssignment ?? null,
+        enrolledPrograms: [],
+      };
+    }
+
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
     const enrolledPrograms = Object.entries(courses)
       .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
@@ -458,8 +479,8 @@ router.get("/creator/clients", async (req, res) => {
 
     return {
       ...client,
-      clientName: userData?.displayName ?? userData?.name ?? (client as Record<string, unknown>).clientName ?? null,
-      clientEmail: userData?.email ?? (client as Record<string, unknown>).clientEmail ?? null,
+      clientName: userData?.displayName ?? userData?.name ?? clientRow.clientName ?? null,
+      clientEmail: userData?.email ?? clientRow.clientEmail ?? null,
       avatarUrl: userData?.profilePictureUrl ?? userData?.photoURL ?? null,
       enrolledPrograms,
       sessionsCompleted: stats.sessionsCompleted,
@@ -1053,6 +1074,19 @@ router.get("/creator/clients/:clientId", async (req, res) => {
   }
 
   const clientData = doc.data()!;
+
+  // C-10 v2: deny full-profile reads while the relationship is pending.
+  // Backend gate on every creator-side mutation already blocks state changes
+  // via verifyClientAccess; this closes the read path so the creator can't
+  // fetch body data, sessions, onboarding answers, etc. for someone who
+  // hasn't accepted the invite.
+  if (clientData.status === "pending") {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "El cliente aún no ha aceptado la invitación"
+    );
+  }
 
   const userData = userDoc.exists ? userDoc.data()! : {};
   const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;

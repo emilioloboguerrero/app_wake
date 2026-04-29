@@ -123,14 +123,14 @@ function ClientCard({ client, onClick, unreadVideos = 0 }) {
   );
 }
 
-// C-10 v2: pending invite card. Visually distinct from active clients
-// (amber pill instead of green dot) and surfaces the program the creator
-// invited the user to so the row isn't ambiguous.
-function PendingInviteCard({ invite, programTitle, onClick }) {
+// C-10 v2: pending invite card. Display-only (no navigation) — the creator
+// has no operational rights over a user who hasn't accepted, and the
+// backend now hard-403s the detail endpoint for pending rows. Showing this
+// as a non-clickable row keeps that boundary visible in the UI.
+function PendingInviteCard({ invite, programTitle }) {
   const name = invite.clientName || invite.clientEmail || `Cliente ${(invite.clientUserId || '').slice(0, 8)}`;
   return (
-    <button type="button" className="cl-card" onClick={onClick}>
-      <GlowingEffect spread={20} proximity={48} inactiveZone={0.6} />
+    <div className="cl-card" style={{ cursor: 'default', opacity: 0.92 }} aria-disabled="true">
       <div className="cl-card__avatar">
         {invite.avatarUrl
           ? <img src={invite.avatarUrl} alt={name} className="cl-card__avatar-img" />
@@ -157,10 +157,7 @@ function PendingInviteCard({ invite, programTitle, onClick }) {
         aria-label="Pendiente"
         title="Esperando que el usuario acepte"
       />
-      <svg className="cl-card__arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path d="M9 18L15 12L9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
+    </div>
   );
 }
 
@@ -1089,7 +1086,6 @@ const ClientesScreen = () => {
                           key={invite.id || invite.clientUserId}
                           invite={invite}
                           programTitle={programTitleById[invite.pendingProgramAssignment?.programId]}
-                          onClick={() => handleSelectClient(invite)}
                         />
                       ))}
                     </div>
