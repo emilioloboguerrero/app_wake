@@ -659,9 +659,12 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
   // Run flip + program assignment atomically. The creator owns the program
   // (validated when the pendingProgramAssignment was attached), so we just
   // re-resolve course metadata and write the user.courses entry.
+  // Firestore transactions require ALL reads before ANY writes, so the
+  // transaction body batches reads up front, then performs the writes.
   let programAssigned = false;
   let assignedProgramId: string | null = null;
   await db.runTransaction(async (tx) => {
+    // ─── Reads ─────────────────────────────────────────────────────────
     const fresh = await tx.get(ref);
     if (!fresh.exists) {
       throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
@@ -669,6 +672,17 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
     const freshData = fresh.data()!;
     if (freshData.status === "active") return;
 
+    const userRef = db.collection("users").doc(auth.userId);
+    const courseRef = pending?.programId && typeof pending.programId === "string" ?
+      db.collection("courses").doc(pending.programId) :
+      null;
+    // Issue both reads in parallel to keep the transaction tight.
+    const [userSnap, courseSnap] = await Promise.all([
+      tx.get(userRef),
+      courseRef ? tx.get(courseRef) : Promise.resolve(null),
+    ]);
+
+    // ─── Writes ────────────────────────────────────────────────────────
     tx.update(ref, {
       status: "active",
       acceptedAt: FieldValue.serverTimestamp(),
@@ -676,41 +690,36 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
       pendingProgramAssignment: FieldValue.delete(),
     });
 
-    if (pending?.programId && typeof pending.programId === "string") {
-      const courseRef = db.collection("courses").doc(pending.programId);
-      const courseSnap = await tx.get(courseRef);
-      if (courseSnap.exists && courseSnap.data()?.creator_id === freshData.creatorId) {
-        const courseData = courseSnap.data()!;
-        const userRef = db.collection("users").doc(auth.userId);
-        const userSnap = await tx.get(userRef);
-        const courses = (userSnap.data()?.courses ?? {}) as Record<string, unknown>;
-        if (!courses[pending.programId]) {
-          const now = new Date().toISOString();
-          tx.update(userRef, {
-            [`courses.${pending.programId}`]: {
-              status: "active",
-              deliveryType: "one_on_one",
-              access_duration: pending.accessDuration ?? "one_on_one",
-              title: courseData.title ?? "",
-              image_url: courseData.image_url ?? null,
-              discipline: courseData.discipline ?? "General",
-              creatorName: courseData.creatorName ?? courseData.creator_name ?? "",
-              completedTutorials: {
-                dailyWorkout: [],
-                warmup: [],
-                workoutExecution: [],
-                workoutCompletion: [],
-              },
-              assigned_by: freshData.creatorId,
-              assigned_at: now,
-              purchased_at: now,
-              expires_at: pending.expiresAt ?? null,
+    if (courseSnap?.exists && courseSnap.data()?.creator_id === freshData.creatorId &&
+        pending?.programId) {
+      const courseData = courseSnap.data()!;
+      const courses = (userSnap.data()?.courses ?? {}) as Record<string, unknown>;
+      if (!courses[pending.programId]) {
+        const now = new Date().toISOString();
+        tx.update(userRef, {
+          [`courses.${pending.programId}`]: {
+            status: "active",
+            deliveryType: "one_on_one",
+            access_duration: pending.accessDuration ?? "one_on_one",
+            title: courseData.title ?? "",
+            image_url: courseData.image_url ?? null,
+            discipline: courseData.discipline ?? "General",
+            creatorName: courseData.creatorName ?? courseData.creator_name ?? "",
+            completedTutorials: {
+              dailyWorkout: [],
+              warmup: [],
+              workoutExecution: [],
+              workoutCompletion: [],
             },
-          });
-        }
-        programAssigned = true;
-        assignedProgramId = pending.programId;
+            assigned_by: freshData.creatorId,
+            assigned_at: now,
+            purchased_at: now,
+            expires_at: pending.expiresAt ?? null,
+          },
+        });
       }
+      programAssigned = true;
+      assignedProgramId = pending.programId;
     }
   });
 
