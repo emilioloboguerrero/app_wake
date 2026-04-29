@@ -470,6 +470,88 @@ export function safeErrorPayload(err: unknown): Record<string, unknown> {
   return out;
 }
 
+// ─── Public course-doc field allowlist (audit H-11) ──────────────────────────
+// `GET /workout/programs/:courseId` returns to any authenticated user. The
+// previous `...courseDoc.data()` spread leaks any field present on the doc —
+// today that includes pricing, but tomorrow it could include payout details,
+// internal moderation flags, creator email, etc. Allowlist only what client
+// surfaces (purchase flow, course detail, workout execution, calendar) need.
+//
+// Fields not listed here drop. Add a field deliberately, never by spread.
+export const PUBLIC_COURSE_FIELDS = [
+  // Identity / display
+  "title", "description", "image_url", "image_path", "video_intro_url",
+  // Pricing + purchase flow
+  "price", "subscription_price", "currency", "access_duration",
+  "free_trial",
+  // Structure (consumed by workout execution + creator dashboard)
+  "deliveryType", "visibility", "weekly", "discipline", "duration",
+  "weight_suggestions", "availableLibraries", "tutorials",
+  "planAssignments", "content_plan_id",
+  // Status / version
+  "status", "version", "published_version",
+  // Authorship (display only — never email or payout fields)
+  "creator_id", "creatorId", "creatorName",
+  // Catalog metadata
+  "tags",
+  // Counts (computed at write time; safe)
+  "modules_count", "sessions_count", "duration_weeks",
+  // Timestamps
+  "created_at", "updated_at",
+];
+
+export function pickPublicCourseFields(
+  data: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of PUBLIC_COURSE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(data, k)) out[k] = data[k];
+  }
+  return out;
+}
+
+// ─── Subscription state-machine guards (audit H-20) ──────────────────────────
+// `updateSubscriptionStatus` previously called MP's preapproval.update without
+// reading the on-disk status first, so cancel-after-cancel rewrote
+// `cancelled_at` (audit-trail loss), pause-after-cancel + resume-after-cancel
+// erased the original cancellation. Define legal transitions and reject
+// anything else with a CONFLICT.
+export const ALLOWED_SUBSCRIPTION_TRANSITIONS: Record<string, ReadonlySet<string>> = {
+  pending: new Set(["authorized", "cancelled", "paused"]),
+  authorized: new Set(["cancelled", "paused"]),
+  paused: new Set(["authorized", "cancelled"]),
+  cancelled: new Set([]), // terminal
+};
+
+export function assertAllowedSubscriptionTransition(
+  currentStatus: string | null | undefined,
+  targetStatus: string
+): void {
+  // Unknown / missing on-disk status — allow (lets the app self-heal legacy docs).
+  if (!currentStatus) return;
+  if (currentStatus === targetStatus) {
+    throw new WakeApiServerError(
+      "CONFLICT",
+      409,
+      `La suscripción ya está en estado ${targetStatus}`,
+      "status"
+    );
+  }
+  const allowed = ALLOWED_SUBSCRIPTION_TRANSITIONS[currentStatus];
+  if (!allowed) {
+    // Unknown current state (e.g., legacy "in_process") — let it through.
+    return;
+  }
+  if (!allowed.has(targetStatus)) {
+    throw new WakeApiServerError(
+      "CONFLICT",
+      409,
+      `Transición no permitida: ${currentStatus} → ${targetStatus}`,
+      "status"
+    );
+  }
+}
+
 // ─── Email redaction for logs (audit M-26 / M-27 / M-28) ─────────────────────
 // Replace the local part with a domain-only marker so deliverability/error
 // logs remain useful for debugging without harvestable email addresses.

@@ -12,6 +12,7 @@ import {
   assertTextLength,
   loadCreatorOwnedCourseIds,
   maskEmail,
+  TEXT_CAP_DESCRIPTION,
   TEXT_CAP_NOTE,
   validateDeletionPath,
 } from "../middleware/securityHelpers.js";
@@ -2126,7 +2127,10 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
 
   for (const assignDoc of activeDocs) {
     const contentRef = db.collection("client_nutrition_plan_content").doc(assignDoc.id);
-    batch.set(contentRef, buildNutritionContentDoc(planData, assignDoc.id, req.params.planId, true));
+    batch.set(contentRef, clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: (assignDoc.data().userId as string | undefined) ?? null},
+      buildNutritionContentDoc(planData, assignDoc.id, req.params.planId, true)
+    ));
 
     // Keep assignment's embedded snapshot and planName in sync
     batch.update(assignDoc.ref, {
@@ -2199,6 +2203,75 @@ async function writeClientSession(
   });
 }
 
+// Ownership-field payload builders for the other collections that bit us in
+// the 2026-04-29 audit (76 client_plan_content, 13 nutrition_assignments,
+// 12 client_nutrition_plan_content docs missing ownership fields). Same
+// motivation as writeClientSession above: every API handler that mutates
+// these collections gates on creator_id (sometimes plus client_id /
+// clientUserId), so a `.set()` without those fields strands the doc as a
+// "creator can't touch this" zombie.
+//
+// These build the payload (instead of doing the write themselves) because
+// the call sites need to dispatch through tx/batch as well as direct
+// `.set()`. The required `ownership` parameter is what makes it impossible
+// for a future write path to omit the fields.
+//
+// The ownership types use `string | null` for the client side because the
+// same collections legitimately hold program-scoped templates (id starts
+// with "program_") that have no specific client. Pass `null` explicitly to
+// document the intent at every call site.
+
+type ClientPlanContentOwnership = {
+  creator_id: string;
+  client_id: string | null; // null only for program-scoped templates
+};
+
+function clientPlanContentPayload(
+  ownership: ClientPlanContentOwnership,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  if (!ownership.creator_id) throw new Error("clientPlanContentPayload: creator_id is required");
+  return {
+    ...fields,
+    creator_id: ownership.creator_id,
+    client_id: ownership.client_id,
+  };
+}
+
+type NutritionAssignmentOwnership = {
+  creator_id: string;
+  clientUserId: string | null; // null only for program-scoped templates
+};
+
+function nutritionAssignmentPayload(
+  ownership: NutritionAssignmentOwnership,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  if (!ownership.creator_id) throw new Error("nutritionAssignmentPayload: creator_id is required");
+  return {
+    ...fields,
+    creator_id: ownership.creator_id,
+    clientUserId: ownership.clientUserId,
+  };
+}
+
+type ClientNutritionPlanContentOwnership = {
+  creator_id: string;
+  client_id: string | null; // null only for program-scoped templates
+};
+
+function clientNutritionPlanContentPayload(
+  ownership: ClientNutritionPlanContentOwnership,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  if (!ownership.creator_id) throw new Error("clientNutritionPlanContentPayload: creator_id is required");
+  return {
+    ...fields,
+    creator_id: ownership.creator_id,
+    client_id: ownership.client_id,
+  };
+}
+
 // Security (audit C-02 / H-12 / H-13): verify a client_session doc belongs
 // to the calling creator. Protects content endpoints whose URL key is the
 // session id (same id used for client_session_content).
@@ -2268,22 +2341,28 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
     const userDoc = await tx.get(userRef);
 
     const assignmentRef = db.collection("nutrition_assignments").doc();
-    tx.set(assignmentRef, {
-      userId: req.params.clientId,
-      assignedBy: auth.userId,
-      planId: body.planId,
-      planName: planData.name ?? "",
-      plan: planData,
-      startDate: body.startDate ?? null,
-      endDate: body.endDate ?? null,
-      status: "active",
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    tx.set(assignmentRef, nutritionAssignmentPayload(
+      {creator_id: auth.userId, clientUserId: req.params.clientId},
+      {
+        userId: req.params.clientId,
+        assignedBy: auth.userId,
+        planId: body.planId,
+        planName: planData.name ?? "",
+        plan: planData,
+        startDate: body.startDate ?? null,
+        endDate: body.endDate ?? null,
+        status: "active",
+        createdAt: FieldValue.serverTimestamp(),
+      }
+    ));
 
     // Snapshot plan content
     tx.set(
       db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
-      buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+      clientNutritionPlanContentPayload(
+        {creator_id: auth.userId, client_id: req.params.clientId},
+        buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+      )
     );
 
     // Pin on user if no existing pinned assignment
@@ -2352,7 +2431,10 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
     });
     batch.set(
       db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
-      buildNutritionContentDoc(newPlanData, req.params.assignmentId, updates.planId as string, false)
+      clientNutritionPlanContentPayload(
+        {creator_id: auth.userId, client_id: req.params.clientId},
+        buildNutritionContentDoc(newPlanData, req.params.assignmentId, updates.planId as string, false)
+      )
     );
     await batch.commit();
   } else {
@@ -2427,15 +2509,21 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
   };
 
   const batch = db.batch();
-  batch.set(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId), {
-    source_plan_id: body.source_plan_id ?? null,
-    assignment_id: req.params.assignmentId,
-    name: body.name ?? "",
-    description: body.description ?? "",
-    ...macros,
-    categories: body.categories ?? [],
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  batch.set(
+    db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
+    clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: req.params.clientId},
+      {
+        source_plan_id: body.source_plan_id ?? null,
+        assignment_id: req.params.assignmentId,
+        name: body.name ?? "",
+        description: body.description ?? "",
+        ...macros,
+        categories: body.categories ?? [],
+        updated_at: FieldValue.serverTimestamp(),
+      }
+    )
+  );
   batch.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
     ...macros,
     "plan.daily_calories": macros.daily_calories,
@@ -2470,15 +2558,22 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
   };
 
   const batch2 = db.batch();
-  batch2.set(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId), {
-    source_plan_id: body.source_plan_id ?? null,
-    assignment_id: req.params.assignmentId,
-    name: body.name ?? "",
-    description: body.description ?? "",
-    ...macros2,
-    categories: body.categories ?? [],
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped variant: no clientId in URL — pass client_id: null explicitly.
+  batch2.set(
+    db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
+    clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: null},
+      {
+        source_plan_id: body.source_plan_id ?? null,
+        assignment_id: req.params.assignmentId,
+        name: body.name ?? "",
+        description: body.description ?? "",
+        ...macros2,
+        categories: body.categories ?? [],
+        updated_at: FieldValue.serverTimestamp(),
+      }
+    )
+  );
   batch2.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
     ...macros2,
     "plan.daily_calories": macros2.daily_calories,
@@ -2617,6 +2712,17 @@ router.post("/creator/feedback", async (req, res) => {
     },
     req.body
   );
+
+  // Audit M-13: type allowlist + text length cap.
+  const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "suggestion", "praise", "other"]);
+  if (!ALLOWED_FEEDBACK_TYPES.has(body.type)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `type debe ser uno de: ${[...ALLOWED_FEEDBACK_TYPES].join(", ")}`,
+      "type"
+    );
+  }
+  assertTextLength(body.text, "text", TEXT_CAP_DESCRIPTION);
 
   const docRef = await db.collection("creator_feedback").add({
     creatorId: auth.userId,
@@ -2778,14 +2884,17 @@ async function ensureClientCopy(
   const assignment = planAssignments[weekKey];
   if (!assignment?.planId || !assignment?.moduleId) {
     // No plan assigned — create an empty client_plan_content doc so sessions can be added directly
-    await docRef.set({
-      title: weekKey,
-      order: 0,
-      source_plan_id: null,
-      source_module_id: null,
-      created_at: FieldValue.serverTimestamp(),
-      updated_at: FieldValue.serverTimestamp(),
-    });
+    await docRef.set(clientPlanContentPayload(
+      {creator_id: creatorId, client_id: clientId},
+      {
+        title: weekKey,
+        order: 0,
+        source_plan_id: null,
+        source_module_id: null,
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
+      }
+    ));
     return {docId, alreadyExisted: false};
   }
 
@@ -2865,14 +2974,17 @@ async function ensureClientCopy(
   let batch = db.batch();
   let batchCount = 0;
 
-  batch.set(docRef, {
-    title: moduleTitle,
-    order: 0,
-    source_plan_id: assignment.planId,
-    source_module_id: assignment.moduleId,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  batch.set(docRef, clientPlanContentPayload(
+    {creator_id: creatorId, client_id: clientId},
+    {
+      title: moduleTitle,
+      order: 0,
+      source_plan_id: assignment.planId,
+      source_module_id: assignment.moduleId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
   batchCount++;
 
   for (const session of sessions) {
@@ -3075,14 +3187,17 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
   const sessions = Array.isArray(body.sessions) ? body.sessions : [];
   const deletions = Array.isArray(body.deletions) ? body.deletions as string[] : [];
 
-  await docRef.set({
-    title: body.title ?? req.params.weekKey,
-    order: body.order ?? 0,
-    source_plan_id: body.source_plan_id ?? null,
-    source_module_id: body.source_module_id ?? null,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  await docRef.set(clientPlanContentPayload(
+    {creator_id: auth.userId, client_id: req.params.clientId},
+    {
+      title: body.title ?? req.params.weekKey,
+      order: body.order ?? 0,
+      source_plan_id: body.source_plan_id ?? null,
+      source_module_id: body.source_module_id ?? null,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
 
   const batch = db.batch();
   let batchCount = 0;
@@ -3242,6 +3357,10 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
 router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
+  // Audit M-33: align with sibling endpoints by gating on the creator/client
+  // relationship. The previous creator_id-only check fails open if a legacy
+  // doc lacks the field.
+  await verifyClientAccess(auth.userId, req.params.clientId);
 
   const doc = await db.collection("client_sessions").doc(req.params.clientSessionId).get();
   if (!doc.exists) {
@@ -3260,6 +3379,8 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
+  // Audit M-33: see GET sibling above.
+  await verifyClientAccess(auth.userId, req.params.clientId);
 
   const docRef = db.collection("client_sessions").doc(req.params.clientSessionId);
   const doc = await docRef.get();
@@ -5651,11 +5772,53 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
   const courseData = courseDoc.data()!;
   const now = new Date().toISOString();
 
+  // Audit M-09: validate creator-supplied accessDuration + expiresAt before
+  // writing into user.courses[programId]. Otherwise a creator could grant
+  // far-future access bypassing payment-derived expiry.
+  const ALLOWED_ACCESS_DURATIONS = new Set([
+    "one_on_one", "monthly", "3-month", "6-month", "yearly", "lifetime",
+  ]);
+  let accessDuration = "one_on_one";
+  if (req.body.accessDuration !== undefined) {
+    if (typeof req.body.accessDuration !== "string" ||
+        !ALLOWED_ACCESS_DURATIONS.has(req.body.accessDuration)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `accessDuration debe ser uno de: ${[...ALLOWED_ACCESS_DURATIONS].join(", ")}`,
+        "accessDuration"
+      );
+    }
+    accessDuration = req.body.accessDuration;
+  }
+
+  let expiresAt: string | null = null;
+  if (req.body.expiresAt !== undefined && req.body.expiresAt !== null) {
+    if (typeof req.body.expiresAt !== "string") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt debe ser ISO string", "expiresAt"
+      );
+    }
+    const parsed = new Date(req.body.expiresAt);
+    if (isNaN(parsed.getTime())) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt debe ser una fecha válida", "expiresAt"
+      );
+    }
+    // Cap at 5 years out — no creator should grant beyond a realistic horizon.
+    const fiveYears = Date.now() + 5 * 365 * 24 * 60 * 60 * 1000;
+    if (parsed.getTime() > fiveYears) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt no puede exceder 5 años", "expiresAt"
+      );
+    }
+    expiresAt = parsed.toISOString();
+  }
+
   await userRef.update({
     [`courses.${req.params.programId}`]: {
       status: "active",
       deliveryType: "one_on_one",
-      access_duration: req.body.accessDuration ?? "one_on_one",
+      access_duration: accessDuration,
       title: courseData.title ?? "",
       image_url: courseData.image_url ?? null,
       discipline: courseData.discipline ?? "General",
@@ -5669,7 +5832,7 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
       assigned_by: auth.userId,
       assigned_at: now,
       purchased_at: now,
-      expires_at: req.body.expiresAt ?? null,
+      expires_at: expiresAt,
     },
   });
 
@@ -5698,10 +5861,23 @@ router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) 
   const {expiresAt} = req.body;
   const update: Record<string, unknown> = {};
 
+  // Audit M-09: validate expiresAt before writing.
   if (expiresAt === null) {
     update[`courses.${req.params.programId}.expires_at`] = FieldValue.delete();
   } else if (typeof expiresAt === "string") {
-    update[`courses.${req.params.programId}.expires_at`] = expiresAt;
+    const parsed = new Date(expiresAt);
+    if (isNaN(parsed.getTime())) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt debe ser una fecha válida", "expiresAt"
+      );
+    }
+    const fiveYears = Date.now() + 5 * 365 * 24 * 60 * 60 * 1000;
+    if (parsed.getTime() > fiveYears) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt no puede exceder 5 años", "expiresAt"
+      );
+    }
+    update[`courses.${req.params.programId}.expires_at`] = parsed.toISOString();
   }
 
   if (Object.keys(update).length === 0) {
@@ -8159,14 +8335,18 @@ async function ensureProgramCopy(
   const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
   const assignment = planAssignments[weekKey];
   if (!assignment?.planId || !assignment?.moduleId) {
-    // No plan assigned — create an empty personalized content doc so sessions can be added directly
-    await docRef.set({
-      courseId,
-      weekKey,
-      title: weekKey,
-      isPersonalized: true,
-      created_at: FieldValue.serverTimestamp(),
-    });
+    // No plan assigned — create an empty personalized content doc so sessions can be added directly.
+    // Program-scoped template (id is `program_…`): no client.
+    await docRef.set(clientPlanContentPayload(
+      {creator_id: creatorId, client_id: null},
+      {
+        courseId,
+        weekKey,
+        title: weekKey,
+        isPersonalized: true,
+        created_at: FieldValue.serverTimestamp(),
+      }
+    ));
     return {docId, alreadyExisted: false};
   }
 
@@ -8241,14 +8421,18 @@ async function ensureProgramCopy(
   let batch = db.batch();
   let batchCount = 0;
 
-  batch.set(docRef, {
-    title: moduleTitle,
-    order: 0,
-    source_plan_id: assignment.planId,
-    source_module_id: assignment.moduleId,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped template (id is `program_…`): no specific client.
+  batch.set(docRef, clientPlanContentPayload(
+    {creator_id: creatorId, client_id: null},
+    {
+      title: moduleTitle,
+      order: 0,
+      source_plan_id: assignment.planId,
+      source_module_id: assignment.moduleId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
   batchCount++;
 
   for (const session of sessions) {
@@ -8628,14 +8812,18 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   const sessions = Array.isArray(body.sessions) ? body.sessions : [];
   const deletions = Array.isArray(body.deletions) ? body.deletions as string[] : [];
 
-  await docRef.set({
-    title: body.title ?? weekKey,
-    order: body.order ?? 0,
-    source_plan_id: body.source_plan_id ?? null,
-    source_module_id: body.source_module_id ?? null,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped template (id is `program_…`): no specific client.
+  await docRef.set(clientPlanContentPayload(
+    {creator_id: auth.userId, client_id: null},
+    {
+      title: body.title ?? weekKey,
+      order: body.order ?? 0,
+      source_plan_id: body.source_plan_id ?? null,
+      source_module_id: body.source_module_id ?? null,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
 
   const batch = db.batch();
   let batchCount = 0;
@@ -8883,24 +9071,31 @@ router.post("/creator/programs/:programId/nutrition/assignments", async (req, re
   const assignmentRef = db.collection("nutrition_assignments").doc();
   const batch = db.batch();
 
-  batch.set(assignmentRef, {
-    userId: null,
-    programId: req.params.programId,
-    source: "program",
-    assignedBy: auth.userId,
-    planId: body.planId,
-    planName: planData.name ?? "",
-    plan: planData,
-    startDate: null,
-    endDate: null,
-    status: "active",
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped assignment template — no specific client.
+  batch.set(assignmentRef, nutritionAssignmentPayload(
+    {creator_id: auth.userId, clientUserId: null},
+    {
+      userId: null,
+      programId: req.params.programId,
+      source: "program",
+      assignedBy: auth.userId,
+      planId: body.planId,
+      planName: planData.name ?? "",
+      plan: planData,
+      startDate: null,
+      endDate: null,
+      status: "active",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }
+  ));
 
   batch.set(
     db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
-    buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+    clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: null},
+      buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+    )
   );
 
   await batch.commit();

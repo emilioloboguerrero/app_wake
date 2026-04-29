@@ -37,6 +37,7 @@ import {
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
 import {
+  assertAllowedSubscriptionTransition,
   clampPushSenderName,
   redactEmailForLog,
   safeErrorPayload,
@@ -216,6 +217,19 @@ export const createPaymentPreference = functions
       if (!course) {
         response.status(404).json({
           error: {code: "NOT_FOUND", message: "Curso no encontrado"},
+        });
+        return;
+      }
+
+      // Audit M-23: course.price must be a positive number before calling MP.
+      // Without this guard, a free/null price would either error in MP or
+      // silently grant access depending on MP behavior. Currency is COP and
+      // doesn't have decimal subunits in practice, so require an integer.
+      if (typeof course.price !== "number" ||
+          !Number.isInteger(course.price) ||
+          course.price <= 0) {
+        response.status(400).json({
+          error: {code: "VALIDATION_ERROR", message: "El precio del curso no es válido", field: "course.price"},
         });
         return;
       }
@@ -1523,6 +1537,24 @@ export const updateSubscriptionStatus = functions
 
       const subscriptionData = subscriptionDoc.data() ?? {};
 
+      // Audit H-20: gate transitions on the on-disk status. Without this,
+      // cancel-after-cancel rewrites cancelled_at (audit-trail loss),
+      // resume-after-cancel erases cancelled_at via FieldValue.delete(),
+      // pause-after-cancel produces drift. Reject illegal transitions before
+      // calling MP.
+      const currentStatus = (subscriptionData?.status as string | undefined) ?? null;
+      try {
+        assertAllowedSubscriptionTransition(currentStatus, targetStatus);
+      } catch (err: unknown) {
+        const errObj = err as Record<string, unknown> | null;
+        const status = typeof errObj?.status === "number" ? errObj.status : 409;
+        const message = typeof errObj?.message === "string" ?
+          errObj.message :
+          "Transición de suscripción inválida";
+        response.status(status).json({error: {code: "CONFLICT", message}});
+        return;
+      }
+
       const client = getClient();
       const preapproval = new PreApproval(client);
 
@@ -1540,7 +1572,13 @@ export const updateSubscriptionStatus = functions
       };
 
       if (targetStatus === "cancelled") {
-        updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
+        // Audit H-20: only set cancelled_at if it doesn't already exist.
+        // The transition guard above already rejects cancel-after-cancel, so
+        // this is a belt-and-braces check against any future code path that
+        // bypasses the guard.
+        if (!subscriptionData.cancelled_at) {
+          updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
+        }
       } else if (targetStatus === "authorized") {
         updateData.cancelled_at = admin.firestore.FieldValue.delete();
       }
@@ -2161,7 +2199,24 @@ export const sendEventConfirmationEmail = functions
     }
 
     const fromAddress = "Wake Eventos <eventos@wakelab.co>";
-    const eventTitleRaw = (event.title as string) ?? "Evento Wake";
+    // Audit M-40: strip control + bidi-override chars from event title before
+    // using in the email Subject header. Resend normalizes header values, so
+    // CRLF injection isn't exploitable, but bidi overrides can spoof the
+    // recipient's inbox display. Cap length to keep the subject readable.
+    const rawTitle = (event.title as string) ?? "Evento Wake";
+    const sanitizedTitle = Array.from(rawTitle)
+      .filter((ch) => {
+        const code = ch.charCodeAt(0);
+        if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return false;
+        // Bidi override range: U+202A-U+202E, U+2066-U+2069
+        if (code >= 0x202A && code <= 0x202E) return false;
+        if (code >= 0x2066 && code <= 0x2069) return false;
+        return true;
+      })
+      .join("")
+      .trim()
+      .slice(0, 120) || "Evento Wake";
+    const eventTitleRaw = sanitizedTitle;
     const eventTitle = escapeHtml(eventTitleRaw);
     const confirmationMsg = escapeHtml(
       ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined) ??

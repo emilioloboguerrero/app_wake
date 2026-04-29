@@ -2,6 +2,7 @@ import {describe, it, expect} from "vitest";
 import {
   ALLOWED_USER_COURSE_STATUSES,
   assertAllowedUserCourseStatus,
+  assertAllowedSubscriptionTransition,
   MAX_TRIAL_DURATION_DAYS,
   clampTrialDurationDays,
   buildAllowedDownloadPrefixes,
@@ -13,6 +14,8 @@ import {
   isFreeGrantAllowed,
   loadCreatorOwnedCourseIds,
   maskEmail,
+  pickPublicCourseFields,
+  PUBLIC_COURSE_FIELDS,
   PUSH_SENDER_NAME_MAX,
   redactEmailForLog,
   safeErrorPayload,
@@ -740,5 +743,119 @@ describe("safeErrorPayload", () => {
     expect(safeErrorPayload("oops").message).toBe("oops");
     expect(safeErrorPayload(null).message).toBe("null");
     expect(safeErrorPayload(undefined).message).toBe("undefined");
+  });
+});
+
+// ─── Public course-doc allowlist (audit H-11) ────────────────────────────────
+
+describe("pickPublicCourseFields", () => {
+  it("preserves documented public fields", () => {
+    const data = {
+      title: "Hypertrophy 8wk",
+      description: "Lift big",
+      image_url: "https://x.example/img.jpg",
+      price: 150000,
+      subscription_price: 30000,
+      access_duration: "monthly",
+      deliveryType: "low_ticket",
+      visibility: "both",
+      free_trial: {active: true, duration_days: 7},
+      status: "published",
+      version: "2026-01",
+      creator_id: "creator-1",
+      creatorName: "Coach",
+      tags: ["strength"],
+      tutorials: {dailyWorkout: []},
+      created_at: "ts",
+      updated_at: "ts",
+    };
+    const out = pickPublicCourseFields(data);
+    for (const k of Object.keys(data)) {
+      expect(out).toHaveProperty(k);
+    }
+  });
+
+  it("DROPS internal/future fields not on the allowlist", () => {
+    const data = {
+      title: "X",
+      // simulated future leakage
+      creator_email: "creator@example.com",
+      payout_account: "bank-1234",
+      internal_notes: "low quality, demote",
+      moderation_flags: ["pending_review"],
+      enrollment_count: 42,
+      __admin_only: true,
+    };
+    const out = pickPublicCourseFields(data);
+    expect(out.title).toBe("X");
+    expect(out.creator_email).toBeUndefined();
+    expect(out.payout_account).toBeUndefined();
+    expect(out.internal_notes).toBeUndefined();
+    expect(out.moderation_flags).toBeUndefined();
+    expect(out.enrollment_count).toBeUndefined();
+    expect(out.__admin_only).toBeUndefined();
+  });
+
+  it("does not invent fields that aren't on the input", () => {
+    const out = pickPublicCourseFields({title: "Only"});
+    expect(Object.keys(out)).toEqual(["title"]);
+  });
+
+  it("PUBLIC_COURSE_FIELDS does not include creator_email or payout fields", () => {
+    expect(PUBLIC_COURSE_FIELDS).not.toContain("creator_email");
+    expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("payout"))).toBeUndefined();
+    expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("internal"))).toBeUndefined();
+  });
+});
+
+// ─── Subscription state-machine guard (audit H-20) ───────────────────────────
+
+describe("assertAllowedSubscriptionTransition", () => {
+  it("ALLOWS pending → cancelled/paused/authorized", () => {
+    expect(() => assertAllowedSubscriptionTransition("pending", "cancelled")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("pending", "paused")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("pending", "authorized")).not.toThrow();
+  });
+
+  it("ALLOWS authorized → paused/cancelled", () => {
+    expect(() => assertAllowedSubscriptionTransition("authorized", "paused")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("authorized", "cancelled")).not.toThrow();
+  });
+
+  it("ALLOWS paused → authorized/cancelled", () => {
+    expect(() => assertAllowedSubscriptionTransition("paused", "authorized")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("paused", "cancelled")).not.toThrow();
+  });
+
+  it("REJECTS cancel-after-cancel (the audit-trail-loss case)", () => {
+    expect(() => assertAllowedSubscriptionTransition("cancelled", "cancelled"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS resume-after-cancel (cancelled is terminal)", () => {
+    expect(() => assertAllowedSubscriptionTransition("cancelled", "authorized"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS pause-after-cancel", () => {
+    expect(() => assertAllowedSubscriptionTransition("cancelled", "paused"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS no-op transitions (already in target state)", () => {
+    expect(() => assertAllowedSubscriptionTransition("authorized", "authorized"))
+      .toThrow(WakeApiServerError);
+    expect(() => assertAllowedSubscriptionTransition("paused", "paused"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("ALLOWS legacy/missing on-disk status to self-heal", () => {
+    expect(() => assertAllowedSubscriptionTransition(null, "authorized")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition(undefined, "cancelled")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("", "paused")).not.toThrow();
+  });
+
+  it("ALLOWS unknown legacy MP states to pass through", () => {
+    expect(() => assertAllowedSubscriptionTransition("in_process", "authorized")).not.toThrow();
   });
 });

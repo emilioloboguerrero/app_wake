@@ -263,8 +263,10 @@ async function validateApiKey(key: string): Promise<AuthResult> {
   }
 
   // Update last_used_at (fire-and-forget)
+  // Audit M-29: stringify error so Firestore internals (request bodies, etc.)
+  // don't end up in Cloud Logging.
   doc.ref.update({last_used_at: new Date().toISOString()})
-    .catch((err) => functions.logger.warn("apikey:last-used-update-failed", err));
+    .catch((err) => functions.logger.warn("apikey:last-used-update-failed", {error: String(err)}));
 
   return {
     userId: data.owner_id,

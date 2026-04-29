@@ -5,6 +5,7 @@ import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {validateBody, validateDateFormat, pickFields} from "../middleware/validate.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
+import {pickPublicCourseFields} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
 
@@ -1178,7 +1179,10 @@ router.get("/workout/courses/:courseId", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
-  res.json({data: {...courseDoc.data(), id: courseDoc.id}});
+  // Audit H-11: defense-in-depth allowlist — even gated readers don't need
+  // internal fields. Creators see the same shape via /creator/programs.
+  const data = courseDoc.data() ?? {};
+  res.json({data: {...pickPublicCourseFields(data), id: courseDoc.id}});
 });
 
 // POST /workout/complete — atomic session completion
@@ -2312,6 +2316,11 @@ router.post("/workout/courses/:courseId/progress/last-session", async (req, res)
 // PWA apiService.js and purchaseService.js call /workout/programs/ paths
 // Any authenticated user can read course metadata (needed for purchase flow).
 // Actual workout content is in subcollections, gated separately.
+//
+// Audit H-11: response was previously a full `...courseDoc.data()` spread,
+// risking leakage of any private field present on the doc (creator email,
+// payout details, future internal fields). Allowlist via
+// `pickPublicCourseFields` so only documented public fields ship.
 router.get("/workout/programs/:courseId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2321,7 +2330,8 @@ router.get("/workout/programs/:courseId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  res.json({data: {...courseDoc.data(), id: courseDoc.id}});
+  const data = courseDoc.data() ?? {};
+  res.json({data: {...pickPublicCourseFields(data), id: courseDoc.id}});
 });
 
 // GET /workout/programs/:courseId/modules — list modules for a course
