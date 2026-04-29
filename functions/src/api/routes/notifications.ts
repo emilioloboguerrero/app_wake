@@ -4,6 +4,7 @@ import {defineSecret} from "firebase-functions/params";
 import {db, FieldValue, Timestamp} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {validateBody} from "../middleware/validate.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
@@ -28,6 +29,8 @@ function getVapid() {
 router.post("/notifications/subscribe", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
+    // Audit M-32: rate-limit notification endpoints (was effectively unbounded).
+    await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
     const body = validateBody<{
       endpoint: string;
       keys: Record<string, unknown>;
@@ -78,6 +81,9 @@ router.post("/notifications/subscribe", async (req, res, next) => {
 router.post("/notifications/test", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
+    // Audit M-32: rate-limit. Test endpoint sends real web-push (network-bound,
+    // costs money) — abuse should not multiply linearly.
+    await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
     const vapid = getVapid();
 
     webpush.setVapidDetails(
@@ -155,6 +161,8 @@ router.post("/notifications/test", async (req, res, next) => {
 router.post("/notifications/schedule-timer", async (req, res, next) => {
   try {
     const auth = await validateAuth(req);
+    // Audit M-32: rate-limit. Each call writes a Firestore doc.
+    await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
     const body = validateBody<{
       endAtIso: string;
       metadata?: Record<string, unknown>;
@@ -173,6 +181,21 @@ router.post("/notifications/schedule-timer", async (req, res, next) => {
         400,
         "endAtIso debe ser una fecha ISO válida",
         "endAtIso"
+      );
+    }
+    // Audit M-32: validate endAt window — only schedule rest timers within
+    // a reasonable horizon (max 24h ahead, min now). Prevents creators of
+    // synthetic-timer payloads from poisoning the workout_timers collection.
+    const nowMs = Date.now();
+    const endMs = endAt.getTime();
+    if (endMs < nowMs - 60_000) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "endAtIso no puede ser pasado", "endAtIso"
+      );
+    }
+    if (endMs > nowMs + 24 * 60 * 60 * 1000) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "endAtIso debe estar dentro de 24 horas", "endAtIso"
       );
     }
 

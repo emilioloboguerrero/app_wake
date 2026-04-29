@@ -36,6 +36,11 @@ import {
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
+import {
+  clampPushSenderName,
+  redactEmailForLog,
+  safeErrorPayload,
+} from "./api/middleware/securityHelpers.js";
 import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
 import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
 
@@ -246,7 +251,9 @@ export const createPaymentPreference = functions
 
       response.json({data: {init_point: result.init_point}});
     } catch (error: unknown) {
-      functions.logger.error("createPaymentPreference error", error);
+      // Audit M-25: scrub MP SDK errors before logging (drops payer.email,
+      // identification, BIN, additional_info from Cloud Logging).
+      functions.logger.error("createPaymentPreference error", safeErrorPayload(error));
       response.status(500).json({
         error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"},
       });
@@ -415,7 +422,8 @@ export const createSubscriptionCheckout = functions
       });
     } catch (error: unknown) {
       const message = toErrorMessage(error);
-      functions.logger.error("Error creating subscription:", error);
+      // Audit M-25: scrub MP SDK error before logging.
+      functions.logger.error("Error creating subscription:", safeErrorPayload(error));
 
       const normalizedMessage = message?.toLowerCase?.() || "";
       const requiresAlternateEmail =
@@ -509,7 +517,8 @@ export const processPaymentWebhook = functions
             expectedSignatureBuffer
           );
         } catch (compareError) {
-          functions.logger.error("Error comparing webhook signatures", compareError);
+          // Audit L-41: drop raw error to avoid leaking webhook payload bytes.
+          functions.logger.error("Error comparing webhook signatures", safeErrorPayload(compareError));
           return false;
         }
       };
@@ -887,7 +896,8 @@ export const processPaymentWebhook = functions
         }
       } catch (apiError: unknown) {
         const errorMessage = toErrorMessage(apiError);
-        functions.logger.error("Error fetching payment from API:", apiError);
+        // Audit M-25: scrub MP API error before logging.
+        functions.logger.error("Error fetching payment from API:", safeErrorPayload(apiError));
 
         const errorType = classifyError(apiError);
 
@@ -1393,7 +1403,8 @@ export const processPaymentWebhook = functions
       response.status(200).send("OK");
     } catch (error: unknown) {
       const message = toErrorMessage(error);
-      functions.logger.error("Error in webhook:", error);
+      // Audit M-25: scrub webhook handler error (may carry MP payload).
+      functions.logger.error("Error in webhook:", safeErrorPayload(error));
 
       // Fix #4: Classify errors and return appropriate status codes
       const errorType = classifyError(error);
@@ -1589,7 +1600,8 @@ export const updateSubscriptionStatus = functions
 
       response.json({data: {status: targetStatus}});
     } catch (error: unknown) {
-      functions.logger.error("Error updating subscription status:", error);
+      // Audit M-25: scrub MP SDK error before logging.
+      functions.logger.error("Error updating subscription status:", safeErrorPayload(error));
       response.status(500).json({
         error: {code: "INTERNAL_ERROR", message: "Error al actualizar la suscripción"},
       });
@@ -2386,7 +2398,7 @@ export const sendVideoExchangeNotification = functions
       if (senderUser.exists) {
         const d = senderUser.data() as Record<string, unknown>;
         const dn = (d.displayName as string) || "";
-        if (dn.trim()) senderName = dn.trim();
+        if (dn.trim()) senderName = clampPushSenderName(dn);
       }
     } catch (err: unknown) {
       functions.logger.warn("sendVideoExchangeNotification: failed to load sender", {err: toErrorMessage(err)});
@@ -2407,8 +2419,11 @@ export const sendVideoExchangeNotification = functions
           .get();
 
         if (!subsSnap.empty) {
+          // Audit H-27: quote senderName so a creator-controlled display name
+          // can't impersonate a system verb ("Wake admin: tu cuenta..."). The
+          // display name was already clamped to PUSH_SENDER_NAME_MAX above.
           const title = isToCoach ?
-            `Nuevo video de ${senderName}` :
+            `Nuevo video de "${senderName}"` :
             "Tu coach respondió tu video";
           const body = isToCoach ?
             `${exerciseName} — toca para revisar` :
@@ -2506,7 +2521,8 @@ export const sendVideoExchangeNotification = functions
       if (resendError) {
         functions.logger.error("sendVideoExchangeNotification: resend error", {exchangeId, messageId, error: resendError});
       } else {
-        functions.logger.info("sendVideoExchangeNotification: email sent", {exchangeId, messageId, toEmail});
+        // Audit M-27: redact recipient email in info log (PII).
+        functions.logger.info("sendVideoExchangeNotification: email sent", {exchangeId, messageId, toEmail: redactEmailForLog(toEmail)});
       }
     } catch (err: unknown) {
       functions.logger.error("sendVideoExchangeNotification: email failed", {exchangeId, messageId, error: toErrorMessage(err)});
@@ -3140,7 +3156,8 @@ export const sendCallReminders = onSchedule(
           },
         });
       } catch (err) {
-        functions.logger.error("sendCallReminders: email failed", {to, error: String(err)});
+        // Audit M-28: redact recipient email in error log.
+        functions.logger.error("sendCallReminders: email failed", {to: redactEmailForLog(to), error: String(err)});
       }
     }
 
