@@ -734,6 +734,22 @@ async function testC10v2_acceptAppliesPendingProgram(pendingUser, relationshipId
     `got ${course?.deliveryType}`);
 }
 
+async function testC10v2_declinedRowHiddenFromDefaultList(creatorA, declineUser) {
+  console.log("\n[C-10v2] declined relationships absent from GET /creator/clients (default 'active' filter)");
+  const list = await get(
+    `${API_BASE}/v1/creator/clients`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const declinedRows = (list.body?.data || []).filter(
+    (c) => c.clientUserId === declineUser.uid
+  );
+  assertCondition(
+    "no declined-user rows in default list",
+    declinedRows.length === 0,
+    `got ${declinedRows.length} rows: ${JSON.stringify(declinedRows.map((r) => r.status))}`
+  );
+}
+
 async function testC10_decline(creatorA, declineUser) {
   console.log("\n[C-10] decline flow: invite → decline → status declined");
   const r1 = await post(
@@ -990,6 +1006,7 @@ async function main() {
       await testC10_postAcceptOpsAllowed(creatorA, pendingUserA);
     }
     await testC10_decline(creatorA, declineUser);
+    await testC10v2_declinedRowHiddenFromDefaultList(creatorA, declineUser);
 
     // ── C-10 v2: pending-aware assign + auto-grant on accept ──
     // Use a freshly-minted user so we're not interfering with prior pendingUserA state.

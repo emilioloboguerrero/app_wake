@@ -257,12 +257,15 @@ router.get("/creator/clients", async (req, res) => {
   const pageToken = req.query.pageToken as string | undefined;
   const statusFilter = (req.query.status as string | undefined) ?? "active";
 
-  // status filter helper (active is default; inactive docs get filtered unless asked)
+  // C-10 v2: explicit allowlist per filter so a future status (e.g. 'declined',
+  // 'expired') doesn't leak into the default view as it did when 'declined'
+  // first shipped. Default ("active") shows currently-engaged relationships
+  // plus pending invites; inactive + declined are intentionally hidden.
   const matchesStatus = (data: Record<string, unknown>): boolean => {
     if (statusFilter === "all") return true;
-    const s = (data.status as string | undefined) ?? "active";
+    const s = ((data.status as string | undefined) ?? "active") as string;
     if (statusFilter === "inactive") return s === "inactive";
-    return s !== "inactive";
+    return s === "active" || s === "pending";
   };
 
   if (programId) {

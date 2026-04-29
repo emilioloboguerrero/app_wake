@@ -790,15 +790,18 @@ const ClientesScreen = () => {
     return map;
   }, [programsData]);
 
-  // C-10 v2: pending invites get their own section so they don't
-  // visually masquerade as enrolled clients.
+  // C-10 v2: explicit allowlist per status so future states (e.g. 'declined',
+  // 'expired') don't fall into the enrolled bucket by accident. Legacy rows
+  // without a status field default to 'active' for back-compat.
   const pendingInvites = useMemo(
     () => clients.filter((c) => c.status === 'pending'),
     [clients]
   );
-  // Enrolled clients = currently active relationships (excludes pending + inactive)
   const enrolledClients = useMemo(
-    () => clients.filter((c) => c.status !== 'inactive' && c.status !== 'pending'),
+    () => clients.filter((c) => {
+      const s = c.status ?? 'active';
+      return s === 'active';
+    }),
     [clients]
   );
   const inactiveClients = useMemo(
