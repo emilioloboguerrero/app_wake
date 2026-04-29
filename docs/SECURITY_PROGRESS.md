@@ -102,10 +102,13 @@ Higher-severity batch. Cross-tenant boundaries, content-tree write hardening, pa
 ## Tier 2 — defense-in-depth batch (split into 2a + 2b)
 
 Pattern-based fixes that close many findings at once. Split into two sub-batches
-on the `tier-2-security` branch so the input-hardening half ships independently
-of the email/log half.
+on the `tier-2-security` branch.
 
-### 2a — input hardening + cross-tenant scoping (written, tested locally, awaiting staging deploy)
+**Status: 2a + 2b SHIPPED to production 2026-04-29.** (Skipped staging UAT —
+hosting deploy at 18c7794 had inadvertently shipped the dashboard half ahead
+of the server, breaking lookup; rolling forward was the fastest fix.)
+
+### 2a — input hardening + cross-tenant scoping (SHIPPED 2026-04-29)
 
 13 patches. Branch `tier-2-security` off `main`.
 
@@ -136,12 +139,29 @@ of the email/log half.
 
 **Out of 2a (deferred to 2b or later tiers):** H-26, H-27, M-32, log hygiene (M-25/M-26/M-27/M-28/L-41) — those are 2b. C-10 PWA acceptance UI — pushed to Tier 6 (UX milestone).
 
-### 2b — email sanitization + ops/log hygiene (planned; same `tier-2-security` branch)
+### 2b — email sanitization + ops/log hygiene (SHIPPED 2026-04-29, commit `03a9bf4`)
 
-- **Server-side sanitize-html** on broadcast email bodyHtml (H-26) — closes phishing-via-Wake-domain risk
-- **Push notification spoofing** fix (H-27) — clamp + quote senderName
-- **Rate limits** on /notifications/* (M-32) — currently zero
-- **Logging cleanup**: `safeErrorPayload()` helper at ~6 sites in index.ts; redact emails at M-26/M-27/M-28
+| ID | Title | File | Status |
+|---|---|---|---|
+| H-26 | server-side sanitize-html on broadcast `bodyHtml` (allowlisted marketing tags + style props; forces `target="_blank" rel="noopener noreferrer"`; strips `<script>/<style>/<iframe>/<form>` + `on*=`; restricts schemes to `http`/`https`/`mailto`/`tel`; img can use `https`/`data:`) | email.ts:225 | ✅ live |
+| H-27 | push notification senderName clamped to 40 chars (with bidi-override stripping) and quoted in title (`Nuevo video de "X"`) | index.ts:2389, 2411 | ✅ live |
+| M-32 | rate limits on `/notifications/{subscribe,test,schedule-timer}` (30 RPM each); `endAtIso` window validated to ±24h | notifications.ts:33, 88, 165 | ✅ live |
+| M-25 / L-41 | `safeErrorPayload()` helper at 6 MP/payment `logger.error` sites (drops `payer`, `card`, `additional_info`, `external_reference`, `transaction_amount`) | index.ts:254, 423, 517, 895, 1401, 1597 | ✅ live |
+| M-26 | unsubscribe info log redacted to `***@domain` | email.ts:447 | ✅ live |
+| M-27 | video-exchange notification email log redacted | index.ts:2511 | ✅ live |
+| M-28 | sendCallReminders email failure log redacted | index.ts:3155 | ✅ live |
+
+**Helpers added to `securityHelpers.ts`:**
+- `sanitizeBroadcastHtml(html)` — uses `sanitize-html` package; `BROADCAST_SAFE_TAGS` + `BROADCAST_SAFE_STYLE_PROPS` allowlists.
+- `clampPushSenderName(value)` — strips bidi overrides + control chars; clamps to `PUSH_SENDER_NAME_MAX` (40) with ellipsis.
+- `safeErrorPayload(err)` — extracts `message`/`name`/`code`/`status`/`statusCode`; drops `payer`/`card`/`additional_info`/`raw`/`request`/`response`/`config`/`headers`/`metadata`/`external_reference`/`transaction_amount`; truncates messages to 500 chars and stack to 5 lines.
+- `redactEmailForLog(email)` — `alex@example.com → ***@example.com`.
+
+**New dependency:** `sanitize-html@^2.17.3` + `@types/sanitize-html` added to `functions/package.json`.
+
+**Tests:** 22 additional vitest unit tests (95 total unit; 116 with rules emulator). All pass under `firebase emulators:exec --only firestore`.
+
+**Deploy log:** `firebase deploy --only functions` shipped all 25 functions cleanly. Postdeploy notify hook auto-pushed `tier-2-security` to GitHub at commit `03a9bf4`.
 
 ---
 
