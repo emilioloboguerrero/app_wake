@@ -702,8 +702,14 @@ router.post("/users/me/client-relationships/:relationshipId/accept", async (req,
     if (courseSnap?.exists && courseSnap.data()?.creator_id === freshData.creatorId &&
         pendingFresh?.programId) {
       const courseData = courseSnap.data()!;
-      const courses = (userSnap.data()?.courses ?? {}) as Record<string, unknown>;
-      if (!courses[pendingFresh.programId]) {
+      const courses = (userSnap.data()?.courses ?? {}) as Record<string, Record<string, unknown> | undefined>;
+      // Re-enrollment: a prior leave or creator-side delete may leave a stale
+      // entry behind (status='expired' from soft-delete leave, or no entry at
+      // all from the cascade-delete path). Treat anything not currently
+      // 'active' as overwritable so a re-invite for the same program lands a
+      // fresh entry instead of silently no-op'ing on the stale one.
+      const existing = courses[pendingFresh.programId];
+      if (!existing || existing.status !== "active") {
         const now = new Date().toISOString();
         tx.update(userRef, {
           [`courses.${pendingFresh.programId}`]: {

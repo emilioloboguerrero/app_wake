@@ -273,11 +273,13 @@ export async function leaveOneOnOneEnrollment(params: {
   // 5. Cascade batch
   const batch = db.batch();
 
+  // Hard-delete the enrollment entry. Earlier versions soft-marked it
+  // expired+endedByUser, but that left a stale record in user.courses that
+  // shadowed re-enrollments (re-invite to the same program found a matching
+  // entry and silently skipped writing). The idempotency check above still
+  // honors any legacy soft-deleted entries that exist in prod data.
   batch.update(userRef, {
-    [`courses.${courseId}.status`]: "expired",
-    [`courses.${courseId}.expires_at`]: nowIso,
-    [`courses.${courseId}.endedByUser`]: true,
-    [`courses.${courseId}.endedAt`]: nowIso,
+    [`courses.${courseId}`]: FieldValue.delete(),
   });
 
   let oneOnOneFlipped = false;

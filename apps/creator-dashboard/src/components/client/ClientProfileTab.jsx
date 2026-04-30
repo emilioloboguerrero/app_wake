@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../utils/apiClient';
 import { queryKeys } from '../../config/queryClient';
-import { ShimmerSkeleton, GlowingEffect } from '../ui';
+import { ShimmerSkeleton, GlowingEffect, ConfirmDeleteModal } from '../ui';
 import {
   MapPin, Mail, User, Dumbbell,
   Plus, Trash2, Calendar, ShieldCheck, Info, X,
@@ -12,8 +13,10 @@ import './ClientProfileTab.css';
 
 export default function ClientProfileTab({ clientId, clientUserId, clientName, creatorId, clientDetail }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [newNote, setNewNote] = useState('');
   const [accessModal, setAccessModal] = useState(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const profile = clientDetail;
 
@@ -39,6 +42,20 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.clients.detail(clientId) });
       setAccessModal(null);
+    },
+  });
+
+  // Backend cascades on active rows: deletes the relationship + every
+  // user.courses entry where assigned_by matches this creator. Safe to call
+  // for clients with active assigned programs.
+  const removeClient = useMutation({
+    mutationKey: ['clients', 'remove'],
+    mutationFn: () => apiClient.delete(`/creator/clients/${clientId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+      setConfirmRemove(false);
+      navigate('/clientes');
     },
   });
 
@@ -169,6 +186,21 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
         </div>
       </div>
 
+      <div className="cprt-danger">
+        <button
+          type="button"
+          className="cprt-danger-btn"
+          onClick={() => setConfirmRemove(true)}
+          disabled={removeClient.isPending}
+        >
+          <Trash2 size={14} />
+          <span>Eliminar cliente</span>
+        </button>
+        <p className="cprt-danger-hint">
+          Termina la relación con este cliente. Pierde acceso a los programas que le asignaste.
+        </p>
+      </div>
+
       {accessModal && (
         <AccessDateModal
           title={accessModal.title}
@@ -178,6 +210,15 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
           onClose={() => setAccessModal(null)}
         />
       )}
+
+      <ConfirmDeleteModal
+        isOpen={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => removeClient.mutate()}
+        itemName={clientName || 'este cliente'}
+        description="El cliente perderá acceso a los programas que le asignaste. Esta acción no se puede deshacer."
+        isDeleting={removeClient.isPending}
+      />
     </div>
   );
 }

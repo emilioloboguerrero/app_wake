@@ -1037,11 +1037,8 @@ router.post("/creator/clients/:clientId/resend-invite", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
 
-  const ref = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const doc = await ref.get();
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Invitación no encontrada");
-  }
+  const doc = await resolveClientRow(auth.userId, req.params.clientId, {preferStatus: "declined"});
+  const ref = doc.ref;
   const data = doc.data()!;
   if (data.status !== "declined") {
     throw new WakeApiServerError(
@@ -1124,41 +1121,20 @@ router.get("/creator/clients/:clientId", async (req, res) => {
 
   const hintUserId = req.query.userId as string | undefined;
 
-  let doc: FirebaseFirestore.DocumentSnapshot;
-  let userDoc: FirebaseFirestore.DocumentSnapshot;
-  let creatorPrograms: FirebaseFirestore.QuerySnapshot;
-  let notesSnap: FirebaseFirestore.QuerySnapshot;
+  // resolveClientRow accepts either form (relationship doc id or user uid),
+  // so the dashboard's two navigation paths (ClientesScreen passes the row
+  // id, OneOnOneProgramView passes the user uid) both reach the same row.
+  const doc = await resolveClientRow(auth.userId, req.params.clientId);
+  const resolvedUserId = (doc.data()!.clientUserId ?? doc.data()!.userId) as string;
 
-  if (hintUserId) {
-    [doc, userDoc, creatorPrograms, notesSnap] = await Promise.all([
-      db.collection("one_on_one_clients").doc(req.params.clientId).get(),
-      db.collection("users").doc(hintUserId).get(),
-      db.collection("courses")
-        .where("creator_id", "==", auth.userId)
-        .where("deliveryType", "==", "one_on_one")
-        .get(),
-      db.collection("one_on_one_clients").doc(req.params.clientId)
-        .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
-    ]);
-  } else {
-    [doc, creatorPrograms, notesSnap] = await Promise.all([
-      db.collection("one_on_one_clients").doc(req.params.clientId).get(),
-      db.collection("courses")
-        .where("creator_id", "==", auth.userId)
-        .where("deliveryType", "==", "one_on_one")
-        .get(),
-      db.collection("one_on_one_clients").doc(req.params.clientId)
-        .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
-    ]);
-    if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-    }
-    const resolvedUserId = doc.data()!.clientUserId ?? doc.data()!.userId;
-    userDoc = await db.collection("users").doc(resolvedUserId).get();
-  }
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-  }
+  const [userDoc, creatorPrograms, notesSnap] = await Promise.all([
+    db.collection("users").doc(hintUserId ?? resolvedUserId).get(),
+    db.collection("courses")
+      .where("creator_id", "==", auth.userId)
+      .where("deliveryType", "==", "one_on_one")
+      .get(),
+    doc.ref.collection("notes").orderBy("createdAt", "desc").limit(50).get(),
+  ]);
 
   const clientData = doc.data()!;
 
@@ -1220,11 +1196,7 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const doc = await docRef.get();
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-  }
+  const doc = await resolveClientRow(auth.userId, req.params.clientId);
 
   // M-10 + M-39: validateBody enforces string type + non-empty trim;
   // assertTextLength enforces the per-field 2000-char cap.
@@ -1235,7 +1207,7 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
   assertTextLength(noteBody.text, "text", TEXT_CAP_NOTE);
   const text = noteBody.text.trim();
 
-  const noteRef = await docRef.collection("notes").add({
+  const noteRef = await doc.ref.collection("notes").add({
     text,
     createdAt: new Date().toISOString(),
     creatorId: auth.userId,
@@ -1249,29 +1221,46 @@ router.delete("/creator/clients/:clientId/notes/:noteId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const clientRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const clientDoc = await clientRef.get();
-  if (!clientDoc.exists || clientDoc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-  }
-
-  await clientRef.collection("notes").doc(req.params.noteId).delete();
+  const clientDoc = await resolveClientRow(auth.userId, req.params.clientId);
+  await clientDoc.ref.collection("notes").doc(req.params.noteId).delete();
   res.json({data: {deleted: true}});
 });
 
-// DELETE /creator/clients/:clientId — remove client
+// DELETE /creator/clients/:clientId — remove client + cascade
+//
+// For pending/declined/inactive rows the caller is just clearing list noise;
+// the user has no enrollments to revoke, so we just drop the row.
+//
+// For an active row we also revoke the user's enrollment in any one_on_one
+// program owned by this creator: delete user.courses[programId] for each
+// program the user has tied to this creator. Without that the PWA keeps
+// showing the program card after the creator removes them, and the dashboard
+// re-paints the program (now relationship-less) on the next refetch.
 router.delete("/creator/clients/:clientId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const doc = await docRef.get();
+  const doc = await resolveClientRow(auth.userId, req.params.clientId);
+  const data = doc.data()!;
+  const clientUserId = (data.clientUserId ?? data.userId) as string | undefined;
+  const status = (data.status as string | undefined) ?? "active";
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
+  if (status === "active" && clientUserId) {
+    const userRef = db.collection("users").doc(clientUserId);
+    const userSnap = await userRef.get();
+    const courses = (userSnap.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    const updates: Record<string, unknown> = {};
+    for (const [courseId, entry] of Object.entries(courses)) {
+      if (entry.deliveryType === "one_on_one" && entry.assigned_by === auth.userId) {
+        updates[`courses.${courseId}`] = FieldValue.delete();
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      await userRef.update(updates);
+    }
   }
 
-  await docRef.delete();
+  await doc.ref.delete();
   res.status(204).send();
 });
 
@@ -2370,26 +2359,68 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
 // Security (audit C-10): only treats relationships with status `active` (or
 // missing — back-compat for legacy rows) as authorizing access. Pending
 // relationships exist but do not grant the creator privileges over the user.
+// Resolve a `:clientId` URL param to a one_on_one_clients DocumentSnapshot.
+// Two URL conventions exist in the dashboard: some screens navigate with the
+// relationship-doc id, others with the user uid. Try direct doc id first
+// (single read); fall back to a where(clientUserId == param) lookup with
+// status priority sort so duplicates from prior cycles don't shadow the
+// current row.
+async function resolveClientRow(
+  creatorId: string,
+  clientIdParam: string,
+  options: { preferStatus?: string } = {},
+): Promise<FirebaseFirestore.DocumentSnapshot> {
+  const direct = await db.collection("one_on_one_clients").doc(clientIdParam).get();
+  if (direct.exists && direct.data()?.creatorId === creatorId) {
+    return direct;
+  }
+  const snap = await db
+    .collection("one_on_one_clients")
+    .where("creatorId", "==", creatorId)
+    .where("clientUserId", "==", clientIdParam)
+    .get();
+  if (snap.empty) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
+  }
+  const PRIORITY: Record<string, number> = {active: 1, pending: 2, declined: 3, inactive: 4};
+  const sorted = [...snap.docs].sort((a, b) => {
+    const sa = (a.data().status as string | undefined) ?? "active";
+    const sb = (b.data().status as string | undefined) ?? "active";
+    const pa = sa === options.preferStatus ? 0 : (PRIORITY[sa] ?? 9);
+    const pb = sb === options.preferStatus ? 0 : (PRIORITY[sb] ?? 9);
+    return pa - pb;
+  });
+  return sorted[0];
+}
+
 async function verifyClientAccess(
   creatorId: string,
   clientId: string
 ): Promise<string> {
+  // A creator/user pair can have many historical rows (prior leaves →
+  // inactive, prior declines → declined, plus the current active one).
+  // .limit(1) without ordering returned an arbitrary row, so an inactive
+  // duplicate could shadow the active relationship and 403 every mutation.
   const snap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", creatorId)
     .where("clientUserId", "==", clientId)
-    .limit(1)
     .get();
   if (snap.empty) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
   }
-  const status = snap.docs[0].data().status;
-  if (status && status !== "active") {
-    throw new WakeApiServerError(
-      "FORBIDDEN",
-      403,
-      "El cliente aún no ha aceptado la invitación"
-    );
+  const accessibleRow = snap.docs.find((d) => {
+    const s = d.data().status as string | undefined;
+    return !s || s === "active";
+  });
+  if (!accessibleRow) {
+    const statuses = snap.docs.map((d) => d.data().status ?? null);
+    if (statuses.some((s) => s === "pending")) {
+      throw new WakeApiServerError(
+        "FORBIDDEN", 403, "El cliente aún no ha aceptado la invitación",
+      );
+    }
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
   }
   return clientId;
 }
@@ -6083,12 +6114,14 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
   const userDoc = await userRef.get();
   const courses = userDoc.data()?.courses ?? {};
 
-  // Idempotent: if already assigned, return success
-  if (courses[req.params.programId]) {
-    const existing = courses[req.params.programId];
+  // Idempotent: if already actively assigned, return success. An expired
+  // entry from a prior leave (or any non-active state) is not "already
+  // assigned" — fall through so re-enrollment lands a fresh entry.
+  const existingEnrollment = courses[req.params.programId];
+  if (existingEnrollment && existingEnrollment.status === "active") {
     res.status(200).json({data: {
       status: "active",
-      assignedAt: existing.assigned_at ?? existing.purchased_at ?? null,
+      assignedAt: existingEnrollment.assigned_at ?? existingEnrollment.purchased_at ?? null,
     }});
     return;
   }
