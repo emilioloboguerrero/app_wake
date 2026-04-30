@@ -1,9 +1,9 @@
 # Wake — Security Remediation Progress
 
 **Audit:** [SECURITY_AUDIT_2026-04-27.md](SECURITY_AUDIT_2026-04-27.md) — 156 findings (10 C, 29 H, 45 M, 41 L)
-**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tiers 2a + 2b + 3 + remaining Highs + M cluster + Tier 4.2 + Tier 6, shipped) → `tier-finish` (ops cleanup + apps/pwa Tier 3 partial)
-**Status:** All Tiers SHIPPED except Tier 4.1 (Gen1→Gen2 payment migration — multi-week project with 30-day shadow). Two Highs (H-11 + H-20) and the M-tier input-validation cluster shipped 2026-04-29 alongside rules emulator suite expansion (Tier 4.2) and the C-10 PWA acceptance UI (Tier 6).
-**Last updated:** 2026-04-29 (tier-finish: ops drift closures + apps/pwa npm audit + dead PendingInviteBanner removed)
+**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tiers 2a + 2b + 3 + remaining Highs + M cluster + Tier 4.2 + Tier 6, shipped) → `tier-finish` (ops cleanup + apps/pwa Tier 3 + C-10 v2 finishing) — **all merged to main and shipped to prod 2026-04-30** (commit `ae5853e`).
+**Status:** All Tiers SHIPPED except Tier 4.1 (Gen1→Gen2 payment migration), which has been **folded into the Stripe Migration product decision** — see [PENDING_WORK.md §3c](PENDING_WORK.md). If Stripe replaces MercadoPago within ~6 months, Tier 4.1 is obsoleted; otherwise it ships separately to close the refund-handling gap.
+**Last updated:** 2026-04-30 (full deploy: rules + indexes + 25 functions + hosting on `wolf-20b8b`. C-10 v2 finishing — client-removal cascade, re-enrollment recovery, dashboard polish — included)
 
 ---
 
@@ -207,7 +207,7 @@ Total emulator suite: **47 tests** (waitlist 7 + crossCreator 14 + serverOnlyAnd
 Total unit suite: **108 tests** (was 95 before late-Tier-2 follow-on).
 Combined: **155 tests pass** in `firebase emulators:exec --only firestore`.
 
-## Tier 6 — C-10 PWA acceptance UI (code on `tier-finish`; deploy staged + verified 2026-04-29, awaits prod push)
+## Tier 6 — C-10 PWA acceptance UI (SHIPPED to prod 2026-04-30, commit `ae5853e`)
 
 The backend gate already shipped in Tier 1 (new one-on-one invites land as `status: 'pending'` and `verifyClientAccess` enforces `active` before any creator action). The companion UI evolved in two stages on `tier-finish`:
 
@@ -218,7 +218,16 @@ The backend gate already shipped in Tier 1 (new one-on-one invites land as `stat
 - `apps/pwa/src/screens/MainScreen.js:688` — uses `useClientRelationships(user?.uid, { status: 'pending' })` directly; pending invites render as overlays on the program cards they're tied to (commits `47f8d88`, `f8239bd`, `46859fc`).
 - Backend changes on `tier-finish`: `POST /creator/clients/:clientId/programs/:programId` branches on relationship status (active → immediate-assign 201; pending → attaches `pendingProgramAssignment` 202). `POST /users/me/client-relationships/:id/accept` reads `pendingProgramAssignment` and grants the program inside the same transaction as the status flip.
 
-**Deploy state 2026-04-29:** clean build of all three apps assembled at `hosting/` 22:57. PWA bundle verified — 4× `wolf-20b8b` refs, only the prod Firebase Web API key, `pendingProgramAssignment` + `client-relationships` strings present. The single `wake-staging` reference is intentional runtime hostname-routing for `wakeClientErrorsIngest`, not a config leak. Awaits explicit `firebase deploy --only hosting` greenlight.
+**Deploy verification 2026-04-30:** `verify-prod-bundle.js` predeploy hook scanned 162 files, reported "no staging identifiers, prod marker present." The two `wake-staging` strings in the PWA + dashboard bundles are intentional runtime hostname-routing for `wakeClientErrorsIngest` (staging hostname → staging error ingest, prod hostname → prod), not a config leak.
+
+## C-10 v2 finishing (SHIPPED to prod 2026-04-30, commit `28d85b9`)
+
+After Tier 6 hosting shipped, two follow-on issues surfaced and were patched in the same `tier-finish` branch and deployed alongside the merge:
+
+- **Client-removal cascade.** `DELETE /creator/clients/:clientId` previously only removed the relationship row, leaving `user.courses[programId]` entries owned by that creator behind. The PWA kept showing the program card after removal. Now cascades: for active rows, also deletes every `user.courses` entry where `deliveryType === one_on_one` and `assigned_by === creatorId`. UI: a "Eliminar cliente" danger zone in `ClientProfileTab` drives the cascade.
+- **Re-enrollment recovery.** `enrollmentLeave` was soft-marking `user.courses[id]` as `expired+endedByUser`, which then shadowed re-enrollments (a re-invite for the same program found a "matching" entry and silently no-op'd). Now hard-deletes the entry. The accept handler also treats any non-active courses entry as overwritable so legacy soft-deleted rows in prod recover on next re-invite.
+- **`verifyClientAccess` duplicate-row fix.** Removed `.limit(1)` from the lookup; with multiple historical rows for the same `(creatorId, clientUserId)` pair (e.g. prior leave → inactive, current → active), the unordered `.limit(1)` could shadow the active row and 403 every mutation. Now picks the active/missing-status row even when prior decline/inactive rows exist.
+- **`resolveClientRow` helper.** New helper that accepts either the relationship-doc id or the user uid as `:clientId`, with status priority sort. Lets the dashboard's two navigation paths (ClientesScreen → relationship id; OneOnOneProgramView → user uid) both reach the right row.
 
 ---
 
