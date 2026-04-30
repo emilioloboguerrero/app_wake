@@ -7,7 +7,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendEmailVerification
 } from 'firebase/auth';
 class AuthService {
   async registerUser(email, password, displayName) {
@@ -18,7 +19,26 @@ class AuthService {
     await updateProfile(user, { displayName: initialDisplayName });
     await user.reload();
 
+    try {
+      await sendEmailVerification(user);
+    } catch (err) {
+      logger.warn('[AuthService] sendEmailVerification failed (non-fatal):', err?.message || err);
+    }
+
     return user;
+  }
+
+  async resendEmailVerification() {
+    const current = auth.currentUser;
+    if (!current) throw new Error('No hay sesión activa');
+    await sendEmailVerification(current);
+  }
+
+  async reloadCurrentUser() {
+    const current = auth.currentUser;
+    if (!current) return null;
+    await current.reload();
+    return auth.currentUser;
   }
 
   async signInUser(email, password) {
