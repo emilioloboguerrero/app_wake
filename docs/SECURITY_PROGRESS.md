@@ -1,9 +1,9 @@
 # Wake — Security Remediation Progress
 
 **Audit:** [SECURITY_AUDIT_2026-04-27.md](SECURITY_AUDIT_2026-04-27.md) — 156 findings (10 C, 29 H, 45 M, 41 L)
-**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tiers 2a + 2b + 3 + remaining Highs + M cluster + Tier 4.2 + Tier 6, shipped)
+**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tiers 2a + 2b + 3 + remaining Highs + M cluster + Tier 4.2 + Tier 6, shipped) → `tier-finish` (ops cleanup + apps/pwa Tier 3 partial)
 **Status:** All Tiers SHIPPED except Tier 4.1 (Gen1→Gen2 payment migration — multi-week project with 30-day shadow). Two Highs (H-11 + H-20) and the M-tier input-validation cluster shipped 2026-04-29 alongside rules emulator suite expansion (Tier 4.2) and the C-10 PWA acceptance UI (Tier 6).
-**Last updated:** 2026-04-29
+**Last updated:** 2026-04-29 (tier-finish: ops drift closures + apps/pwa npm audit + dead PendingInviteBanner removed)
 
 ---
 
@@ -165,12 +165,13 @@ of the server, breaking lookup; rolling forward was the fastest fix.)
 
 ---
 
-## Tier 3 — quick-win infrastructure pass (functions/ + landing + creator-dashboard SHIPPED 2026-04-29)
+## Tier 3 — quick-win infrastructure pass (functions/ + landing + creator-dashboard SHIPPED 2026-04-29; apps/pwa partial 2026-04-29)
 
 - ✅ `cd functions && npm audit fix` ran. Vulnerabilities **26 → 16** (cleared 2 critical + 6 high). `protobufjs` is now at **7.5.6** (patched; CVE-2024-43788 was for <7.2.5). Functions deployed at commit `43c0f65`.
 - ✅ `cd apps/landing && npm audit fix` — **0 vulnerabilities** post-fix.
 - ✅ `cd apps/creator-dashboard && npm audit fix` — **0 vulnerabilities** post-fix.
-- ⏳ `cd apps/pwa && npm audit fix` — pending (Expo SDK chain needs runtime regression testing first; defer until next opportunistic batch).
+- ✅ `cd apps/pwa && npm audit fix` (non-force) ran 2026-04-29. **17 → 16** vulnerabilities; cleared the 1 high (`picomatch 2.3.1 → 2.3.2`, semver patch on a Metro/Expo build-tool transitive). Lockfile bump only, no source changes.
+- Remaining 16 apps/pwa moderate vulns are all transitive through Expo CLI dev tooling (`xcode` → `uuid`, `@expo/config-plugins`, `@expo/prebuild-config`, `expo-dev-client`, `expo-dev-launcher`). Clearable only via `npm audit fix --force` which would install **expo@49.0.23** (downgrade from SDK 54 — **breakage, not a fix**). Deferred until next Expo SDK upgrade lands.
 - Remaining 16 functions/ issues are all moderate/low transitive through `firebase-admin`/`@google-cloud/*`/`mercadopago`/`resend`/`svix` — clearable only via `npm audit fix --force` (firebase-admin major upgrade); deferred.
 - **DO NOT** `npm audit fix --force` at root (would downgrade firebase-tools to v1.2.0).
 
@@ -206,15 +207,18 @@ Total emulator suite: **47 tests** (waitlist 7 + crossCreator 14 + serverOnlyAnd
 Total unit suite: **108 tests** (was 95 before late-Tier-2 follow-on).
 Combined: **155 tests pass** in `firebase emulators:exec --only firestore`.
 
-## Tier 6 — C-10 PWA acceptance UI (SHIPPED 2026-04-29 — code; awaits PWA build/deploy)
+## Tier 6 — C-10 PWA acceptance UI (code on `tier-finish`; deploy staged + verified 2026-04-29, awaits prod push)
 
-The backend gate already shipped in Tier 1 (new one-on-one invites land as `status: 'pending'` and `verifyClientAccess` enforces `active` before any creator action). The companion UI:
+The backend gate already shipped in Tier 1 (new one-on-one invites land as `status: 'pending'` and `verifyClientAccess` enforces `active` before any creator action). The companion UI evolved in two stages on `tier-finish`:
 
-- `apps/pwa/src/hooks/relationships/useClientRelationships.js` — React Query hook (list/accept/decline) with `staleTime: 30s` and `refetchOnWindowFocus: true` so newly-sent invites surface within seconds.
-- `apps/pwa/src/components/PendingInviteBanner.jsx` — banner rendered on `MainScreen` above the cards section. Shows coach name, accept (primary) / decline (secondary) buttons with `ActivityIndicator` while the mutation is pending. Wake dark-cinematic styling per `docs/STANDARDS.md`.
-- `apps/pwa/src/screens/MainScreen.js` — wires `<PendingInviteBanner userId={user?.uid} />` between the greeting and the cards section.
+**v1 (initial Tier 6)** — `PendingInviteBanner.jsx` rendered above MainScreen cards. **Removed 2026-04-29** as dead code; superseded by v2 below.
 
-PWA hosting deploy needed before this is live to end users (Metro build + `firebase deploy --only hosting`); deferring that to the user's normal hosting deploy cadence rather than rolling forward without a UI smoke test.
+**v2 (current)** — invite UI is coupled to the program assignment and rendered as a program-card overlay rather than a separate banner:
+- `apps/pwa/src/hooks/relationships/useClientRelationships.js` — React Query hook (list/accept/decline) with `staleTime: 30s` and `refetchOnWindowFocus: true`.
+- `apps/pwa/src/screens/MainScreen.js:688` — uses `useClientRelationships(user?.uid, { status: 'pending' })` directly; pending invites render as overlays on the program cards they're tied to (commits `47f8d88`, `f8239bd`, `46859fc`).
+- Backend changes on `tier-finish`: `POST /creator/clients/:clientId/programs/:programId` branches on relationship status (active → immediate-assign 201; pending → attaches `pendingProgramAssignment` 202). `POST /users/me/client-relationships/:id/accept` reads `pendingProgramAssignment` and grants the program inside the same transaction as the status flip.
+
+**Deploy state 2026-04-29:** clean build of all three apps assembled at `hosting/` 22:57. PWA bundle verified — 4× `wolf-20b8b` refs, only the prod Firebase Web API key, `pendingProgramAssignment` + `client-relationships` strings present. The single `wake-staging` reference is intentional runtime hostname-routing for `wakeClientErrorsIngest`, not a config leak. Awaits explicit `firebase deploy --only hosting` greenlight.
 
 ---
 
@@ -255,9 +259,9 @@ These four answers shape rules patches and need user input.
 
 These came up during the Tier 0 deploy and are worth fixing during Tier 1 work:
 
-1. **Staging missing 10 wake_ops secrets** — Tier 0 set placeholders. Replace with real staging values when wake_ops on staging is needed.
-2. **`WAKE_WEB_API_KEY` in staging Secret Manager holds the PRODUCTION value** — config drift. Real staging key: `AIzaSyAcBpsxXfW77qlikRQvhvGRoxSBAtGl8L0`. Update the secret.
-3. **Sourcemap upload script (`scripts/ops/upload-sourcemaps.sh`) defaults to prod bucket** even when deploying to staging. Minor cleanup.
+1. **Staging missing 10 wake_ops secrets** — Tier 0 set placeholders. Replace with real staging values when wake_ops on staging is needed. ⏳ open (needs human-held values).
+2. ✅ **`WAKE_WEB_API_KEY` in staging Secret Manager** — drift closed 2026-04-29. New version 2 holds the staging key `AIzaSyAcBpsxXfW77qlikRQvhvGRoxSBAtGl8L0`. **Bonus finding:** no code in `functions/src/` reads this secret, so the prior wrong value never had runtime impact. Cleanup is purely belt-and-braces for future code that may read it.
+3. ✅ **Sourcemap upload script** (`scripts/ops/upload-sourcemaps.sh`) — fixed 2026-04-29. Now resolves project from arg → `GCLOUD_PROJECT` env (set by firebase deploy hooks) → `FIREBASE_PROJECT_ID`, then **fails loud** if none set. Removed prod default. Mirrors the precedent in `notify-deploy.sh`.
 4. **Staging email enumeration protection on** — blocks `accounts:signInWithPassword`. Smoke test uses `accounts:signUp` workaround. If running other API tests, either disable enum protection on staging OR use signUp pattern.
 
 ---

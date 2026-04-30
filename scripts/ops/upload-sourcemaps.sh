@@ -8,11 +8,18 @@
 #
 # Usage:
 #   bash scripts/ops/upload-sourcemaps.sh [project]
-# Defaults to wolf-20b8b.
+# Project resolution order: arg → GCLOUD_PROJECT → FIREBASE_PROJECT_ID → fail.
+# Firebase CLI sets GCLOUD_PROJECT when invoking this as a postdeploy hook,
+# so the deploy target is auto-detected. No prod default — staging deploys
+# previously uploaded into the prod bucket.
 
 set -e
 
-PROJECT="${1:-wolf-20b8b}"
+PROJECT="${1:-${GCLOUD_PROJECT:-${FIREBASE_PROJECT_ID:-}}}"
+if [ -z "$PROJECT" ]; then
+  echo "ERROR: project not specified. Pass as arg or set GCLOUD_PROJECT/FIREBASE_PROJECT_ID." >&2
+  exit 1
+fi
 BUCKET="${PROJECT}.firebasestorage.app"
 SOURCE_DIR="${SOURCE_DIR:-hosting/app}"
 
