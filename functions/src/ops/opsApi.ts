@@ -59,9 +59,11 @@ function checkAuth(req: Request, expected: string): boolean {
     provided.length === expectedTrim.length &&
     provided === expectedTrim;
   if (!ok) {
+    // Audit M-30: drop expectedLen / providedLen — they leak ops secret
+    // length to anyone with logs access. Knowing whether the header or query
+    // path was attempted is still useful for debugging without that side
+    // channel.
     functions.logger.info("opsApi: auth mismatch", {
-      expectedLen: expectedTrim.length,
-      providedLen: provided.length,
       hasHeader: header.length > 0,
       hasQuery: query.length > 0,
     });

@@ -60,11 +60,17 @@ export default function OneOnOneProgramView({ program, programId, backTo, refetc
   const editor = useProgramEditor(programId, program);
 
   // ── Accent color ──────────────────────────────────────────────
+  // extractAccentFromImage emits null when the image is CORS-blocked or
+  // fails to load. Ignore null callbacks so accentRgb stays at the white
+  // default — without the guard the destructuring below crashed every
+  // time Firebase Storage returned without CORS headers.
   const [accentRgb, setAccentRgb] = useState([255, 255, 255]);
 
   useEffect(() => {
     if (!program?.image_url) return;
-    return extractAccentFromImage(program.image_url, setAccentRgb);
+    return extractAccentFromImage(program.image_url, (rgb) => {
+      if (rgb) setAccentRgb(rgb);
+    });
   }, [program?.image_url]);
 
   const cssVars = {

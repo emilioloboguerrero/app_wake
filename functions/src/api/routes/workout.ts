@@ -5,6 +5,7 @@ import type {Query} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {validateBody, validateDateFormat, pickFields} from "../middleware/validate.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
+import {pickPublicCourseFields} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
 
@@ -1178,7 +1179,10 @@ router.get("/workout/courses/:courseId", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
-  res.json({data: {...courseDoc.data(), id: courseDoc.id}});
+  // Audit H-11: defense-in-depth allowlist — even gated readers don't need
+  // internal fields. Creators see the same shape via /creator/programs.
+  const data = courseDoc.data() ?? {};
+  res.json({data: {...pickPublicCourseFields(data), id: courseDoc.id}});
 });
 
 // POST /workout/complete — atomic session completion
@@ -2312,6 +2316,11 @@ router.post("/workout/courses/:courseId/progress/last-session", async (req, res)
 // PWA apiService.js and purchaseService.js call /workout/programs/ paths
 // Any authenticated user can read course metadata (needed for purchase flow).
 // Actual workout content is in subcollections, gated separately.
+//
+// Audit H-11: response was previously a full `...courseDoc.data()` spread,
+// risking leakage of any private field present on the doc (creator email,
+// payout details, future internal fields). Allowlist via
+// `pickPublicCourseFields` so only documented public fields ship.
 router.get("/workout/programs/:courseId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2321,7 +2330,8 @@ router.get("/workout/programs/:courseId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  res.json({data: {...courseDoc.data(), id: courseDoc.id}});
+  const data = courseDoc.data() ?? {};
+  res.json({data: {...pickPublicCourseFields(data), id: courseDoc.id}});
 });
 
 // GET /workout/programs/:courseId/modules — list modules for a course
@@ -2341,7 +2351,9 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   const courseData_ = courseDoc.data()!;
   const isCreator = courseData_.creator_id === auth.userId;
   const isAdmin = auth.role === "admin";
-  const isPublished = courseData_.status === "published" || courseData_.status === "publicado";
+  // M-36: only "published" is a valid status; the legacy "publicado" branch
+  // was never written by any current endpoint.
+  const isPublished = courseData_.status === "published";
   if (!hasAccess && !isCreator && !isAdmin && !isPublished) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
@@ -2825,6 +2837,51 @@ router.get("/workout/calendar/planned", async (req, res) => {
   res.json({data: allDates});
 });
 
+// M-16: shared helper. Pushes the date range filter into Firestore (uses the
+// existing (courseId asc, date asc) composite index) so users with > 500
+// completed sessions in a course no longer get truncated calendars. The cap
+// at 2000 is an absolute safety bound — a 1-year date range can't realistically
+// produce more than ~365 distinct dates, and dedup runs anyway.
+async function fetchCompletedSessionDates(
+  userId: string,
+  courseId: string,
+  startDate: string,
+  endDate: string
+): Promise<string[]> {
+  const snap = await db
+    .collection("users")
+    .doc(userId)
+    .collection("sessionHistory")
+    .where("courseId", "==", courseId)
+    .where("date", ">=", startDate)
+    .where("date", "<=", endDate)
+    .orderBy("date", "asc")
+    .limit(2000)
+    .get();
+
+  const dates = new Set<string>();
+  for (const d of snap.docs) {
+    const data = d.data();
+    let dateStr: string | null = typeof data.date === "string" ? data.date : null;
+    if (!dateStr && data.completedAt) {
+      if (typeof data.completedAt === "string") {
+        dateStr = data.completedAt.slice(0, 10);
+      } else if (data.completedAt.toDate) {
+        dateStr = data.completedAt.toDate().toISOString().slice(0, 10);
+      }
+    }
+    if (!dateStr) {
+      const idParts = d.id.split("_");
+      const lastPart = idParts[idParts.length - 1];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) dateStr = lastPart;
+    }
+    if (dateStr && dateStr >= startDate && dateStr <= endDate) {
+      dates.add(dateStr);
+    }
+  }
+  return [...dates];
+}
+
 // GET /workout/calendar/completed — completed session dates in range
 router.get("/workout/calendar/completed", async (req, res) => {
   const auth = await validateAuth(req);
@@ -2840,38 +2897,7 @@ router.get("/workout/calendar/completed", async (req, res) => {
   validateDateFormat(startDate, "startDate");
   validateDateFormat(endDate, "endDate");
 
-  // Fetch all sessionHistory for this course, then filter date range in memory
-  // (avoids needing a composite index on courseId + date)
-  const snap = await db
-    .collection("users")
-    .doc(auth.userId)
-    .collection("sessionHistory")
-    .where("courseId", "==", courseId)
-    .limit(500)
-    .get();
-
-  const allDates = snap.docs.map((d) => {
-    const data = d.data();
-    let dateStr: string | null = data.date ?? null;
-    if (!dateStr && data.completedAt) {
-      if (typeof data.completedAt === "string") {
-        dateStr = data.completedAt.slice(0, 10);
-      } else if (data.completedAt.toDate) {
-        dateStr = data.completedAt.toDate().toISOString().slice(0, 10);
-      }
-    }
-    if (!dateStr) {
-      const idParts = d.id.split("_");
-      const lastPart = idParts[idParts.length - 1];
-      if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) dateStr = lastPart;
-    }
-    return dateStr;
-  });
-
-  const dates = [...new Set(
-    allDates.filter((date): date is string => !!date && date >= startDate && date <= endDate)
-  )];
-
+  const dates = await fetchCompletedSessionDates(auth.userId, courseId, startDate, endDate);
   res.json({data: dates});
 });
 
@@ -2890,36 +2916,7 @@ router.get("/workout/calendar", async (req, res) => {
   validateDateFormat(startDate, "startDate");
   validateDateFormat(endDate, "endDate");
 
-  const snap = await db
-    .collection("users")
-    .doc(auth.userId)
-    .collection("sessionHistory")
-    .where("courseId", "==", courseId)
-    .limit(500)
-    .get();
-
-  const allDates = snap.docs.map((d) => {
-    const data = d.data();
-    // Derive date: prefer explicit `date` field, fall back to extracting from `completedAt`
-    let dateStr: string | null = data.date ?? null;
-    if (!dateStr && data.completedAt) {
-      if (typeof data.completedAt === "string") {
-        dateStr = data.completedAt.slice(0, 10);
-      } else if (data.completedAt.toDate) {
-        dateStr = data.completedAt.toDate().toISOString().slice(0, 10);
-      }
-    }
-    // Last resort: extract from doc ID (format: userId_sessionId_YYYY-MM-DD)
-    if (!dateStr) {
-      const idParts = d.id.split("_");
-      const lastPart = idParts[idParts.length - 1];
-      if (/^\d{4}-\d{2}-\d{2}$/.test(lastPart)) dateStr = lastPart;
-    }
-    return dateStr;
-  });
-  const dates = [...new Set(
-    allDates.filter((date): date is string => !!date && date >= startDate && date <= endDate)
-  )];
+  const dates = await fetchCompletedSessionDates(auth.userId, courseId, startDate, endDate);
   res.json({data: dates});
 });
 

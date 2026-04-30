@@ -114,6 +114,16 @@ router.post("/payments/preference", async (req, res) => {
     }
   }
 
+  // Audit M-23: course.price must be a positive integer (COP, no subunits).
+  if (typeof course.price !== "number" ||
+      !Number.isInteger(course.price) ||
+      course.price <= 0) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "El precio del curso no es válido", "course.price"
+    );
+  }
+
   const externalReference = buildExternalReference(auth.userId, courseId, "otp");
 
   const client = getMPClient();

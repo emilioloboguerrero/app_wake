@@ -80,15 +80,25 @@ function toInputDate(dateStr) {
 
 function RosterRow({ client, isSelected, onClick, style }) {
   const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
-  const isActive = client.status !== 'inactive';
+  // C-10 v2: 3-state dot — green (active), amber (pending invite), grey (inactive).
+  const isPending = client.status === 'pending';
+  const isInactive = client.status === 'inactive';
+  const dotColor = isPending
+    ? 'rgba(251,191,36,0.95)'
+    : isInactive
+      ? 'var(--text-tertiary, rgba(255,255,255,0.25))'
+      : 'rgba(74,222,128,0.9)';
+  const dotLabel = isPending ? 'Invitación pendiente' : isInactive ? 'Inactivo' : 'Activo';
 
   return (
     <button
       type="button"
       className={`roster-row ${isSelected ? 'roster-row--active' : ''}`}
-      onClick={onClick}
+      onClick={isPending ? undefined : onClick}
+      disabled={isPending}
       aria-current={isSelected ? 'true' : undefined}
-      style={style}
+      title={isPending ? 'Esperando que el usuario acepte la invitación' : undefined}
+      style={isPending ? { ...(style || {}), cursor: 'default', opacity: 0.78 } : style}
     >
       {isSelected && <span className="roster-row__accent-bar" aria-hidden="true" />}
       <div className="roster-row__avatar" aria-hidden="true">
@@ -99,12 +109,9 @@ function RosterRow({ client, isSelected, onClick, style }) {
       <span className="roster-row__name">{name}</span>
       <span
         className="roster-row__status-dot"
-        style={{
-          background: isActive
-            ? 'rgba(74,222,128,0.9)'
-            : 'var(--text-tertiary, rgba(255,255,255,0.25))',
-        }}
-        aria-label={isActive ? 'Activo' : 'Inactivo'}
+        style={{ background: dotColor }}
+        aria-label={dotLabel}
+        title={dotLabel}
       />
     </button>
   );
@@ -871,16 +878,24 @@ const ProgramsAndClientsScreen = () => {
     try {
       setIsAssigning(true);
       setAssignError(null);
-      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
+      const result = await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
       await queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
       setSelectedClientId(clientUserId);
       handleCloseAssign();
+      // C-10 v2: differentiate immediate-assign vs invite-pending so the
+      // creator sees the correct outcome instead of the prior misleading
+      // "user has not accepted" 403.
+      if (result?.assignment?.status === 'pending') {
+        showToast('Invitación enviada. El programa se asignará cuando el usuario acepte.', 'info');
+      } else {
+        showToast('Cliente agregado y programa asignado.', 'success');
+      }
     } catch (err) {
       setAssignError(err.message || 'Error al agregar el cliente');
     } finally {
       setIsAssigning(false);
     }
-  }, [user, queryClient, handleCloseAssign]);
+  }, [user, queryClient, handleCloseAssign, showToast]);
 
   const handleViewClientFromModal = useCallback((clientId) => {
     handleCloseFindUser();

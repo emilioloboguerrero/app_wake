@@ -2,6 +2,7 @@ import {describe, it, expect} from "vitest";
 import {
   ALLOWED_USER_COURSE_STATUSES,
   assertAllowedUserCourseStatus,
+  assertAllowedSubscriptionTransition,
   MAX_TRIAL_DURATION_DAYS,
   clampTrialDurationDays,
   buildAllowedDownloadPrefixes,
@@ -9,9 +10,16 @@ import {
   assertAllowedCallLinkUrl,
   assertHttpsUrl,
   assertTextLength,
+  clampPushSenderName,
   isFreeGrantAllowed,
   loadCreatorOwnedCourseIds,
   maskEmail,
+  pickPublicCourseFields,
+  PUBLIC_COURSE_FIELDS,
+  PUSH_SENDER_NAME_MAX,
+  redactEmailForLog,
+  safeErrorPayload,
+  sanitizeBroadcastHtml,
   TEXT_CAP_NOTE,
   TEXT_CAP_TITLE,
   validateDeletionPath,
@@ -569,5 +577,285 @@ describe("loadCreatorOwnedCourseIds", () => {
     };
     const ids = await loadCreatorOwnedCourseIds(fakeDb, "creator-1");
     expect(ids.size).toBe(0);
+  });
+});
+
+// ─── Broadcast HTML sanitizer (audit H-26) ───────────────────────────────────
+
+describe("sanitizeBroadcastHtml", () => {
+  it("strips <script>", () => {
+    const out = sanitizeBroadcastHtml("hi<script>alert(1)</script>there");
+    expect(out).not.toContain("<script");
+    expect(out).not.toContain("alert");
+  });
+
+  it("strips on*= event handlers", () => {
+    const out = sanitizeBroadcastHtml("<a href=\"https://example.com\" onclick=\"alert(1)\">x</a>");
+    expect(out).not.toContain("onclick");
+    expect(out).toContain("href=\"https://example.com\"");
+  });
+
+  it("strips <iframe>", () => {
+    const out = sanitizeBroadcastHtml("<iframe src=\"https://evil.com\"></iframe>hello");
+    expect(out).not.toContain("iframe");
+    expect(out).toContain("hello");
+  });
+
+  it("strips <form>", () => {
+    const out = sanitizeBroadcastHtml("<form action=\"https://evil.com\"><input/></form>ok");
+    expect(out).not.toContain("<form");
+    expect(out).not.toContain("<input");
+    expect(out).toContain("ok");
+  });
+
+  it("strips <style>", () => {
+    const out = sanitizeBroadcastHtml("<style>body{display:none}</style>visible");
+    expect(out).not.toContain("<style");
+    expect(out).toContain("visible");
+  });
+
+  it("REJECTS javascript: in href", () => {
+    const out = sanitizeBroadcastHtml("<a href=\"javascript:alert(1)\">x</a>");
+    expect(out).not.toContain("javascript:");
+  });
+
+  it("forces target=_blank rel=noopener noreferrer on links", () => {
+    const out = sanitizeBroadcastHtml("<a href=\"https://example.com\">x</a>");
+    expect(out).toContain("target=\"_blank\"");
+    expect(out).toContain("rel=\"noopener noreferrer\"");
+  });
+
+  it("preserves safe marketing tags + inline styles", () => {
+    const out = sanitizeBroadcastHtml(
+      "<h1 style=\"color:#fff;text-align:center\">Hello</h1>" +
+      "<p style=\"font-size:16px\">Body <strong>bold</strong></p>" +
+      "<a href=\"https://wakelab.co\">link</a>"
+    );
+    expect(out).toContain("<h1");
+    expect(out).toContain("<p");
+    expect(out).toContain("<strong>");
+    expect(out).toContain("color:#fff");
+    expect(out).toContain("font-size:16px");
+  });
+
+  it("returns empty string for non-string input", () => {
+    expect(sanitizeBroadcastHtml(undefined as unknown as string)).toBe("");
+    expect(sanitizeBroadcastHtml(null as unknown as string)).toBe("");
+  });
+});
+
+// ─── Push notification senderName clamp (audit H-27) ─────────────────────────
+
+describe("clampPushSenderName", () => {
+  it("returns the name unchanged when within cap", () => {
+    expect(clampPushSenderName("Alex Smith")).toBe("Alex Smith");
+  });
+
+  it("truncates long names with ellipsis", () => {
+    const long = "x".repeat(PUSH_SENDER_NAME_MAX + 20);
+    const out = clampPushSenderName(long);
+    expect(out.length).toBeLessThanOrEqual(PUSH_SENDER_NAME_MAX);
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("strips bidi override characters (impersonation defense)", () => {
+    // U+202E RIGHT-TO-LEFT OVERRIDE
+    const evil = "Wake admin‮";
+    expect(clampPushSenderName(evil)).toBe("Wake admin");
+  });
+
+  it("returns 'Alguien' for non-strings", () => {
+    expect(clampPushSenderName(undefined)).toBe("Alguien");
+    expect(clampPushSenderName(null)).toBe("Alguien");
+    expect(clampPushSenderName(42)).toBe("Alguien");
+  });
+
+  it("returns 'Alguien' for empty/whitespace-only", () => {
+    expect(clampPushSenderName("   ")).toBe("Alguien");
+    expect(clampPushSenderName("")).toBe("Alguien");
+  });
+});
+
+// ─── Email redaction (audit M-26 / M-27 / M-28) ──────────────────────────────
+
+describe("redactEmailForLog", () => {
+  it("returns ***@domain", () => {
+    expect(redactEmailForLog("alex@example.com")).toBe("***@example.com");
+  });
+
+  it("preserves the full domain (deliberate, helps with deliverability triage)", () => {
+    expect(redactEmailForLog("anyone@gmail.com")).toBe("***@gmail.com");
+  });
+
+  it("returns empty for non-strings", () => {
+    expect(redactEmailForLog(undefined)).toBe("");
+    expect(redactEmailForLog(null)).toBe("");
+    expect(redactEmailForLog(42)).toBe("");
+  });
+
+  it("returns [invalid] for malformed addresses", () => {
+    expect(redactEmailForLog("foo")).toBe("[invalid]");
+    expect(redactEmailForLog("@example.com")).toBe("[invalid]");
+    expect(redactEmailForLog("foo@")).toBe("[invalid]");
+  });
+});
+
+// ─── Safe error payload (audit M-25 / L-41) ──────────────────────────────────
+
+describe("safeErrorPayload", () => {
+  it("returns name + truncated message for Error instances", () => {
+    const err = new Error("boom");
+    const out = safeErrorPayload(err);
+    expect(out.message).toBe("boom");
+    expect(out.name).toBe("Error");
+  });
+
+  it("strips MP-style PII fields from arbitrary error objects", () => {
+    const mpError = {
+      message: "Payment validation failed",
+      name: "MercadoPagoError",
+      status: 400,
+      code: "PAYER_ERROR",
+      payer: {email: "victim@example.com", identification: "12345"},
+      card: {last_four_digits: "1111"},
+      additional_info: {bin: "411111"},
+      transaction_amount: 50000,
+      external_reference: "v1|user-123|course-x|otp",
+    };
+    const out = safeErrorPayload(mpError);
+    expect(out.message).toBe("Payment validation failed");
+    expect(out.code).toBe("PAYER_ERROR");
+    expect(out.status).toBe(400);
+    expect(out.payer).toBeUndefined();
+    expect(out.card).toBeUndefined();
+    expect(out.additional_info).toBeUndefined();
+    expect(out.transaction_amount).toBeUndefined();
+    expect(out.external_reference).toBeUndefined();
+  });
+
+  it("truncates long messages", () => {
+    const long = "a".repeat(2000);
+    const out = safeErrorPayload(new Error(long));
+    expect((out.message as string).length).toBe(500);
+  });
+
+  it("handles strings + primitives", () => {
+    expect(safeErrorPayload("oops").message).toBe("oops");
+    expect(safeErrorPayload(null).message).toBe("null");
+    expect(safeErrorPayload(undefined).message).toBe("undefined");
+  });
+});
+
+// ─── Public course-doc allowlist (audit H-11) ────────────────────────────────
+
+describe("pickPublicCourseFields", () => {
+  it("preserves documented public fields", () => {
+    const data = {
+      title: "Hypertrophy 8wk",
+      description: "Lift big",
+      image_url: "https://x.example/img.jpg",
+      price: 150000,
+      subscription_price: 30000,
+      access_duration: "monthly",
+      deliveryType: "low_ticket",
+      visibility: "both",
+      free_trial: {active: true, duration_days: 7},
+      status: "published",
+      version: "2026-01",
+      creator_id: "creator-1",
+      creatorName: "Coach",
+      tags: ["strength"],
+      tutorials: {dailyWorkout: []},
+      created_at: "ts",
+      updated_at: "ts",
+    };
+    const out = pickPublicCourseFields(data);
+    for (const k of Object.keys(data)) {
+      expect(out).toHaveProperty(k);
+    }
+  });
+
+  it("DROPS internal/future fields not on the allowlist", () => {
+    const data = {
+      title: "X",
+      // simulated future leakage
+      creator_email: "creator@example.com",
+      payout_account: "bank-1234",
+      internal_notes: "low quality, demote",
+      moderation_flags: ["pending_review"],
+      enrollment_count: 42,
+      __admin_only: true,
+    };
+    const out = pickPublicCourseFields(data);
+    expect(out.title).toBe("X");
+    expect(out.creator_email).toBeUndefined();
+    expect(out.payout_account).toBeUndefined();
+    expect(out.internal_notes).toBeUndefined();
+    expect(out.moderation_flags).toBeUndefined();
+    expect(out.enrollment_count).toBeUndefined();
+    expect(out.__admin_only).toBeUndefined();
+  });
+
+  it("does not invent fields that aren't on the input", () => {
+    const out = pickPublicCourseFields({title: "Only"});
+    expect(Object.keys(out)).toEqual(["title"]);
+  });
+
+  it("PUBLIC_COURSE_FIELDS does not include creator_email or payout fields", () => {
+    expect(PUBLIC_COURSE_FIELDS).not.toContain("creator_email");
+    expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("payout"))).toBeUndefined();
+    expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("internal"))).toBeUndefined();
+  });
+});
+
+// ─── Subscription state-machine guard (audit H-20) ───────────────────────────
+
+describe("assertAllowedSubscriptionTransition", () => {
+  it("ALLOWS pending → cancelled/paused/authorized", () => {
+    expect(() => assertAllowedSubscriptionTransition("pending", "cancelled")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("pending", "paused")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("pending", "authorized")).not.toThrow();
+  });
+
+  it("ALLOWS authorized → paused/cancelled", () => {
+    expect(() => assertAllowedSubscriptionTransition("authorized", "paused")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("authorized", "cancelled")).not.toThrow();
+  });
+
+  it("ALLOWS paused → authorized/cancelled", () => {
+    expect(() => assertAllowedSubscriptionTransition("paused", "authorized")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("paused", "cancelled")).not.toThrow();
+  });
+
+  it("REJECTS cancel-after-cancel (the audit-trail-loss case)", () => {
+    expect(() => assertAllowedSubscriptionTransition("cancelled", "cancelled"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS resume-after-cancel (cancelled is terminal)", () => {
+    expect(() => assertAllowedSubscriptionTransition("cancelled", "authorized"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS pause-after-cancel", () => {
+    expect(() => assertAllowedSubscriptionTransition("cancelled", "paused"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("REJECTS no-op transitions (already in target state)", () => {
+    expect(() => assertAllowedSubscriptionTransition("authorized", "authorized"))
+      .toThrow(WakeApiServerError);
+    expect(() => assertAllowedSubscriptionTransition("paused", "paused"))
+      .toThrow(WakeApiServerError);
+  });
+
+  it("ALLOWS legacy/missing on-disk status to self-heal", () => {
+    expect(() => assertAllowedSubscriptionTransition(null, "authorized")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition(undefined, "cancelled")).not.toThrow();
+    expect(() => assertAllowedSubscriptionTransition("", "paused")).not.toThrow();
+  });
+
+  it("ALLOWS unknown legacy MP states to pass through", () => {
+    expect(() => assertAllowedSubscriptionTransition("in_process", "authorized")).not.toThrow();
   });
 });

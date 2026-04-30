@@ -250,12 +250,16 @@ router.get("/nutrition/foods/search", async (req, res) => {
     );
   }
 
-  // Check Firestore cache first (cost optimization per COST_MODEL.md)
+  // Check Firestore cache first (cost optimization per COST_MODEL.md).
+  // M-15: scope cache key with operation namespace + locale + version so a
+  // future cache user (e.g., a per-user enrichment) can't collide with the
+  // public FatSecret search response under the same hash.
   const crypto = await import("node:crypto");
-  const cacheKey = crypto
+  const cacheScope = "fs:search:v4:es";
+  const cacheKey = `${cacheScope}__${crypto
     .createHash("md5")
     .update(`${q.trim().toLowerCase()}_${page}`)
-    .digest("hex");
+    .digest("hex")}`;
 
   const cacheRef = db.collection("nutrition_food_cache").doc(cacheKey);
   const cached = await cacheRef.get();

@@ -6,9 +6,11 @@ import DOMPurify from 'dompurify';
 const svgModule = require('../assets/icons/vectors_fig/porfin.svg');
 
 const sanitizeSvg = (svg) => {
+  // L-01: SVG is bundled-static; <style> tags would only enable CSS-injection
+  // vectors against future dynamic content. Inline styles set via the
+  // styledSvg pipeline below are sufficient.
   return DOMPurify.sanitize(svg, {
     USE_PROFILES: { svg: true, svgFilters: true },
-    ADD_TAGS: ['style'],
   });
 };
 

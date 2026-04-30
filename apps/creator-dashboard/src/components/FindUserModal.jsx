@@ -9,22 +9,40 @@ const FindUserModal = ({
   onLookup,
   onViewClient,
   clients = [],
-  isLookingUp = false,
+  isLookingUp: isLookingUpProp = false,
   error = null,
 }) => {
   const [email, setEmail] = useState('');
   const [foundUser, setFoundUser] = useState(null);
+  // Local loading state — caller can leave isLookingUp unset and the modal
+  // tracks the await around onLookup itself. Falls back to the prop so a
+  // caller that already drives loading (e.g. via React Query) still works.
+  const [isLookingUpLocal, setIsLookingUpLocal] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  const isLookingUp = isLookingUpLocal || isLookingUpProp;
 
   useEffect(() => {
-    if (!isOpen) { setEmail(''); setFoundUser(null); }
+    if (!isOpen) { setEmail(''); setFoundUser(null); setNotFound(false); }
   }, [isOpen]);
 
-  const handleClose = () => { setEmail(''); setFoundUser(null); onClose(); };
+  const handleClose = () => {
+    setEmail('');
+    setFoundUser(null);
+    setNotFound(false);
+    onClose();
+  };
 
   const handleLookup = async () => {
-    if (!email.trim()) return;
-    const result = await onLookup(email.trim());
-    if (result) setFoundUser(result);
+    if (!email.trim() || isLookingUp) return;
+    setIsLookingUpLocal(true);
+    setNotFound(false);
+    try {
+      const result = await onLookup(email.trim());
+      if (result) setFoundUser(result);
+      else setNotFound(true);
+    } finally {
+      setIsLookingUpLocal(false);
+    }
   };
 
   const handleReset = () => { setEmail(''); setFoundUser(null); };
@@ -61,12 +79,16 @@ const FindUserModal = ({
                 type="text"
                 placeholder="juan@ejemplo.com o @juanperez"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); if (notFound) setNotFound(false); }}
                 onKeyDown={handleKeyDown}
                 autoFocus
+                disabled={isLookingUp}
               />
             </div>
             {error && <p className="fum__error">{error}</p>}
+            {!error && notFound && !isLookingUp && (
+              <p className="fum__error">No encontramos a ningún usuario con ese email o nombre.</p>
+            )}
             <div className="fum__actions">
               <button type="button" className="fum__btn fum__btn--ghost" onClick={handleClose} disabled={isLookingUp}>
                 Cancelar

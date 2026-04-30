@@ -150,10 +150,11 @@ async function validateConstituentsForPublish(courseIds: string[]): Promise<void
 
 function validateScalarPrice(value: unknown, field: string): number | null {
   if (value === null || value === undefined) return null;
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+  // M-24: COP doesn't have decimal subunits in practice; require positive integer.
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400,
-      `${field} debe ser un número positivo o null`,
+      `${field} debe ser un entero positivo o null (COP, sin decimales)`,
       "pricing",
     );
   }

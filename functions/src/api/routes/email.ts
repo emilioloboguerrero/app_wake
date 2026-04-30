@@ -4,6 +4,7 @@ import type {Query} from "../firestore.js";
 import {validateAuth, type AuthResult} from "../middleware/auth.js";
 import {validateBody} from "../middleware/validate.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
+import {redactEmailForLog, sanitizeBroadcastHtml} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import * as functions from "firebase-functions";
 import {
@@ -208,6 +209,19 @@ router.post("/creator/email/send", async (req, res) => {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Todos los destinatarios se han dado de baja");
   }
 
+  // Audit H-26: sanitize creator-supplied HTML before storage. Strips
+  // <script>/<style>/<iframe>/<form> + on*= handlers, restricts schemes to
+  // http(s)/mailto/tel, forces target="_blank" rel="noopener noreferrer" on
+  // every link. Closes the phishing-via-Wake-domain risk on broadcast email.
+  const sanitizedBodyHtml = sanitizeBroadcastHtml(body.bodyHtml);
+  if (!sanitizedBodyHtml.trim()) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "El cuerpo del email no contiene contenido válido tras sanitizarlo",
+      "bodyHtml"
+    );
+  }
+
   // Create the email_sends document
   const sendRef = db.collection("email_sends").doc();
   const sendData = {
@@ -216,7 +230,7 @@ router.post("/creator/email/send", async (req, res) => {
     sourceType: recipientsConfig.type,
     sourceId: recipientsConfig.eventId || null,
     subject: body.subject,
-    bodyHtml: body.bodyHtml,
+    bodyHtml: sanitizedBodyHtml,
     fromAddress: "Wake <notificaciones@wakelab.co>",
     status: "queued",
     stats: {
@@ -426,7 +440,8 @@ router.get("/email/unsubscribe", async (req, res) => {
     {merge: true}
   );
 
-  functions.logger.info("email.unsubscribe", {email, creatorId});
+  // Audit M-26: domain-only log to avoid logging full recipient emails.
+  functions.logger.info("email.unsubscribe", {email: redactEmailForLog(email), creatorId});
 
   res.status(200).send(unsubscribePageHtml("Te has dado de baja correctamente", true));
 });

@@ -123,6 +123,192 @@ function ClientCard({ client, onClick, unreadVideos = 0 }) {
   );
 }
 
+// C-10 v2: declined invite card. Shows the user the creator invited, the
+// program target, and a resend button. Server caps total resends at 2 —
+// surfacedhere as the disabled state + remaining-count pill.
+function DeclinedInviteCard({ invite, programTitle, onResend, isResending }) {
+  const name = invite.clientName || invite.clientEmail || `Cliente ${(invite.clientUserId || '').slice(0, 8)}`;
+  const resendCount = invite.resendCount ?? 0;
+  const resendsRemaining = Math.max(0, 2 - resendCount);
+  const canResend = resendsRemaining > 0 && !isResending;
+  return (
+    <div className="cl-card" style={{ cursor: 'default', opacity: 0.95 }} aria-disabled="true">
+      <div className="cl-card__avatar">
+        <span className="cl-card__avatar-initial">{getInitial(name)}</span>
+      </div>
+      <div className="cl-card__info">
+        <span className="cl-card__name">{name}</span>
+        {invite.clientEmail && invite.clientName && (
+          <span className="cl-card__email">{invite.clientEmail}</span>
+        )}
+        {programTitle && (
+          <span className="cl-card__rejoin-pill" style={{
+            background: 'rgba(248,113,113,0.15)',
+            color: 'rgba(248,113,113,0.92)',
+            borderColor: 'rgba(248,113,113,0.32)',
+          }}>
+            Rechazó {programTitle}
+          </span>
+        )}
+        <span className="cl-card__rejoin-pill" style={{
+          background: 'rgba(255,255,255,0.06)',
+          color: 'rgba(255,255,255,0.7)',
+          borderColor: 'rgba(255,255,255,0.12)',
+          marginTop: 4,
+        }}>
+          {resendsRemaining > 0
+            ? `${resendsRemaining} reenvío${resendsRemaining === 1 ? '' : 's'} disponible${resendsRemaining === 1 ? '' : 's'}`
+            : 'Sin reenvíos disponibles'}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onResend(invite.id); }}
+        disabled={!canResend}
+        title={canResend
+          ? 'Reenviar invitación al usuario'
+          : 'Has alcanzado el máximo de reenvíos'}
+        style={{
+          padding: '8px 14px',
+          borderRadius: 999,
+          border: '1px solid rgba(255,255,255,0.18)',
+          background: canResend ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.06)',
+          color: canResend ? '#1a1a1a' : 'rgba(255,255,255,0.4)',
+          fontSize: 13,
+          fontWeight: 600,
+          cursor: canResend ? 'pointer' : 'not-allowed',
+          marginRight: 12,
+        }}
+      >
+        {isResending ? 'Reenviando…' : 'Reenviar'}
+      </button>
+    </div>
+  );
+}
+
+// Small inline "remove" button used by pending + orphaned-client cards
+// so a creator can cancel a stuck invite or delete an active relationship
+// that ended up with no enrolled programs (e.g., the user left every
+// program but the row is still active).
+function RemoveClientButton({ onRemove, isRemoving, label = 'Eliminar' }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onRemove(); }}
+      disabled={isRemoving}
+      title={label}
+      style={{
+        marginRight: 12,
+        width: 28,
+        height: 28,
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.18)',
+        background: 'rgba(255,255,255,0.04)',
+        color: 'rgba(255,255,255,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: isRemoving ? 'wait' : 'pointer',
+        opacity: isRemoving ? 0.5 : 1,
+      }}
+      aria-label={label}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path d="M6 6L18 18M6 18L18 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+}
+
+// C-10 v2: pending invite card. Display-only (no navigation) — the creator
+// has no operational rights over a user who hasn't accepted, and the
+// backend now hard-403s the detail endpoint for pending rows. Showing this
+// as a non-clickable row keeps that boundary visible in the UI.
+function PendingInviteCard({ invite, programTitle, onRemove, isRemoving }) {
+  const name = invite.clientName || invite.clientEmail || `Cliente ${(invite.clientUserId || '').slice(0, 8)}`;
+  return (
+    <div className="cl-card" style={{ cursor: 'default', opacity: 0.92 }} aria-disabled="true">
+      <div className="cl-card__avatar">
+        {invite.avatarUrl
+          ? <img src={invite.avatarUrl} alt={name} className="cl-card__avatar-img" />
+          : <span className="cl-card__avatar-initial">{getInitial(name)}</span>}
+      </div>
+      <div className="cl-card__info">
+        <span className="cl-card__name">{name}</span>
+        {invite.clientEmail && invite.clientName && (
+          <span className="cl-card__email">{invite.clientEmail}</span>
+        )}
+        {programTitle && (
+          <span className="cl-card__rejoin-pill" style={{
+            background: 'rgba(251,191,36,0.15)',
+            color: 'rgba(251,191,36,0.92)',
+            borderColor: 'rgba(251,191,36,0.32)',
+          }}>
+            Invitado a {programTitle}
+          </span>
+        )}
+      </div>
+      {onRemove && (
+        <RemoveClientButton onRemove={onRemove} isRemoving={isRemoving} label="Cancelar invitación" />
+      )}
+      <span
+        className="cl-card__status"
+        style={{ background: 'rgba(251,191,36,0.95)' }}
+        aria-label="Pendiente"
+        title="Esperando que el usuario acepte"
+      />
+    </div>
+  );
+}
+
+// C-10 v2: minimal card for orphaned active clients (relationship is
+// 'active' but they have no enrolled programs from this creator). The
+// creator can hard-delete the relationship to start over — the user-side
+// data isn't touched, only the creator's view of them.
+function OrphanedClientCard({ client, onSelect, onRemove, isRemoving }) {
+  const name = client.clientName || client.clientEmail || `Cliente ${(client.clientUserId || '').slice(0, 8)}`;
+  return (
+    <div className="cl-card">
+      <button
+        type="button"
+        onClick={onSelect}
+        style={{
+          all: 'unset',
+          display: 'contents',
+          cursor: 'pointer',
+        }}
+      >
+        <div className="cl-card__avatar">
+          {client.avatarUrl
+            ? <img src={client.avatarUrl} alt={name} className="cl-card__avatar-img" />
+            : <span className="cl-card__avatar-initial">{getInitial(name)}</span>}
+        </div>
+        <div className="cl-card__info">
+          <span className="cl-card__name">{name}</span>
+          {client.clientEmail && client.clientName && (
+            <span className="cl-card__email">{client.clientEmail}</span>
+          )}
+          <span className="cl-card__rejoin-pill" style={{
+            background: 'rgba(255,255,255,0.06)',
+            color: 'rgba(255,255,255,0.6)',
+            borderColor: 'rgba(255,255,255,0.12)',
+          }}>
+            Sin programa asignado
+          </span>
+        </div>
+      </button>
+      {onRemove && (
+        <RemoveClientButton onRemove={onRemove} isRemoving={isRemoving} label="Eliminar cliente" />
+      )}
+      <span
+        className="cl-card__status"
+        style={{ background: 'rgba(74,222,128,0.9)' }}
+        aria-label="Activo"
+      />
+    </div>
+  );
+}
+
 function LeavesSummaryBlock({ creatorId }) {
   const { data } = useQuery({
     queryKey: ['creator', 'leaves', 'summary', creatorId, 'current'],
@@ -593,6 +779,7 @@ const ClientesScreen = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') || 'clientes';
@@ -751,9 +938,18 @@ const ClientesScreen = () => {
     return map;
   }, [programsData]);
 
-  // Active clients only — inactive ones live in the "Anteriores" tab
-  const activeClients = useMemo(
-    () => clients.filter((c) => c.status !== 'inactive'),
+  // C-10 v2: explicit allowlist per status so future states (e.g. 'declined',
+  // 'expired') don't fall into the enrolled bucket by accident. Legacy rows
+  // without a status field default to 'active' for back-compat.
+  const pendingInvites = useMemo(
+    () => clients.filter((c) => c.status === 'pending'),
+    [clients]
+  );
+  const enrolledClients = useMemo(
+    () => clients.filter((c) => {
+      const s = c.status ?? 'active';
+      return s === 'active';
+    }),
     [clients]
   );
   const inactiveClients = useMemo(
@@ -767,12 +963,21 @@ const ClientesScreen = () => {
     [clients]
   );
 
-  // Group active clients by asesoría program
+  // Map programId → title for pending-invite enrichment
+  const programTitleById = useMemo(() => {
+    const map = {};
+    for (const p of programsData) {
+      if (p?.id) map[p.id] = p.title || 'Programa sin nombre';
+    }
+    return map;
+  }, [programsData]);
+
+  // Group enrolled clients by asesoría program
   const grouped = useMemo(() => {
     const groups = {};
     const ungrouped = [];
 
-    for (const client of activeClients) {
+    for (const client of enrolledClients) {
       const programs = client.enrolledPrograms;
       if (!programs?.length) {
         ungrouped.push(client);
@@ -791,7 +996,7 @@ const ClientesScreen = () => {
     }
 
     return { groups: Object.values(groups), ungrouped };
-  }, [activeClients]);
+  }, [enrolledClients]);
 
   // Filter + sort
   const filterAndSortClients = useCallback((clientList) => {
@@ -875,19 +1080,25 @@ const ClientesScreen = () => {
     try {
       setIsAssigning(true);
       setAssignError(null);
-      await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
+      const result = await oneOnOneService.addClientToProgram(user.uid, clientUserId, programId);
       await queryClient.invalidateQueries({ queryKey: ['clients', 'overview', user.uid] });
       queryClient.invalidateQueries({ queryKey: ['clients', 'creator', user.uid] });
       queryClient.invalidateQueries({ queryKey: ['programs', 'creator', user.uid] });
       queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user.uid] });
       setIsAssignOpen(false);
       setLookedUpUser(null);
+      // C-10 v2: differentiate immediate-assign vs invite-pending.
+      if (result?.assignment?.status === 'pending') {
+        showToast('Invitación enviada. El programa se asignará cuando el usuario acepte.', 'info');
+      } else {
+        showToast('Cliente agregado y programa asignado.', 'success');
+      }
     } catch (err) {
       setAssignError(err.message || 'Error al agregar el cliente');
     } finally {
       setIsAssigning(false);
     }
-  }, [user, queryClient]);
+  }, [user, queryClient, showToast]);
 
   const handleAsesoriaCreated = useCallback(() => {
     setShowCreateAsesoria(false);
@@ -897,8 +1108,6 @@ const ClientesScreen = () => {
     queryClient.invalidateQueries({ queryKey: ['analytics', 'adherence', user?.uid] });
     setActiveTab('asesorias');
   }, [queryClient, user?.uid]);
-
-  const { showToast } = useToast();
 
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -913,6 +1122,82 @@ const ClientesScreen = () => {
       showToast('Programa eliminado.', 'success');
     },
     onError: () => showToast('No pudimos eliminar el programa. Intenta de nuevo.', 'error'),
+  });
+
+  // C-10 v2: declined invites — fetched on demand and shown in a dedicated
+  // section. Resend mutation re-flips the row to pending; backend caps at 2
+  // resends total.
+  const { data: declinedInvites = [] } = useQuery({
+    queryKey: ['clients', 'creator', user?.uid, 'declined'],
+    queryFn: () => oneOnOneService.getDeclinedInvites(),
+    ...cacheConfig.userProfile,
+    enabled: !!user?.uid,
+  });
+
+  // C-10 v2: hard-delete a relationship row. Used by the inline X button on
+  // pending invites (cancels the invite) and orphaned-active clients (frees
+  // the row so the creator can re-invite cleanly). Backend route deletes
+  // by relationship-doc-id; we pass invite.id / client.id.
+  const removeClientMutation = useMutation({
+    mutationFn: (clientRowId) => oneOnOneService.deleteClient(clientRowId),
+    onMutate: async (clientRowId) => {
+      const declinedKey = ['clients', 'creator', user?.uid, 'declined'];
+      await queryClient.cancelQueries({ queryKey: ['clients'] });
+      // Optimistic remove from declined list (in case it's a declined row).
+      const prevDeclined = queryClient.getQueryData(declinedKey);
+      queryClient.setQueryData(declinedKey, (old) =>
+        Array.isArray(old) ? old.filter((c) => c.id !== clientRowId) : old
+      );
+      return { prevDeclined, declinedKey };
+    },
+    onError: (err, _clientId, context) => {
+      if (context?.prevDeclined !== undefined) {
+        queryClient.setQueryData(context.declinedKey, context.prevDeclined);
+      }
+      showToast(err?.message || 'No pudimos eliminar el cliente.', 'error');
+    },
+    onSuccess: () => {
+      showToast('Cliente eliminado.', 'success');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: (clientId) => oneOnOneService.resendInvite(clientId),
+    // Optimistic update: drop the row from the declined query immediately so
+    // the UI reflects the new state before the refetch lands.
+    onMutate: async (clientId) => {
+      const declinedKey = ['clients', 'creator', user?.uid, 'declined'];
+      await queryClient.cancelQueries({ queryKey: declinedKey });
+      const prevDeclined = queryClient.getQueryData(declinedKey);
+      queryClient.setQueryData(declinedKey, (old) =>
+        Array.isArray(old) ? old.filter((c) => c.id !== clientId) : old
+      );
+      return { prevDeclined, declinedKey };
+    },
+    onError: (err, _clientId, context) => {
+      // Rollback the optimistic remove on failure.
+      if (context?.prevDeclined !== undefined) {
+        queryClient.setQueryData(context.declinedKey, context.prevDeclined);
+      }
+      showToast(err?.message || 'No pudimos reenviar la invitación.', 'error');
+    },
+    onSuccess: (data) => {
+      const remaining = data?.resendsRemaining ?? 0;
+      showToast(
+        remaining > 0
+          ? `Invitación reenviada. Te quedan ${remaining} reenvío${remaining === 1 ? '' : 's'}.`
+          : 'Invitación reenviada. Este es el último reenvío disponible.',
+        'success'
+      );
+    },
+    // Refetch all clients-* queries (overview, declined, etc.) so the row
+    // shows up in the pending section + drops from declined for real.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+    },
   });
 
   const handleDeleteAsesoria = useCallback((program) => {
@@ -1011,6 +1296,30 @@ const ClientesScreen = () => {
               <EmptyClients onAddClient={() => setIsFindUserOpen(true)} />
             ) : (
               <div className="cl-groups">
+                {/* C-10 v2: pending invites get their own section above the
+                    program groups so a creator never confuses a sent invite
+                    with an active client. The section is hidden when filters
+                    target a specific program (those filters are only for
+                    enrolled clients). */}
+                {pendingInvites.length > 0 && filters.program === 'all' && (
+                  <div className="cl-group">
+                    <div className="cl-group__header" style={{ cursor: 'default' }}>
+                      <span className="cl-group__title">Invitaciones pendientes</span>
+                      <span className="cl-group__count">{pendingInvites.length}</span>
+                    </div>
+                    <div className="cl-group__grid">
+                      {pendingInvites.map((invite) => (
+                        <PendingInviteCard
+                          key={invite.id || invite.clientUserId}
+                          invite={invite}
+                          programTitle={programTitleById[invite.pendingProgramAssignment?.programId]}
+                          onRemove={() => removeClientMutation.mutate(invite.id)}
+                          isRemoving={removeClientMutation.isPending && removeClientMutation.variables === invite.id}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {grouped.groups.map((group) => {
                   if (filters.program !== 'all' && group.programId !== filters.program) return null;
                   const filteredGroupClients = filterAndSortClients(group.clients);
@@ -1032,17 +1341,46 @@ const ClientesScreen = () => {
                   const filteredUngrouped = filterAndSortClients(grouped.ungrouped);
                   if (filteredUngrouped.length === 0) return null;
                   return (
-                    <ClientGroup
-                      title="Sin programa"
-                      clients={filteredUngrouped}
-                      programId={null}
-                      imageUrl={null}
-                      onSelectClient={handleSelectClient}
-                      onConfigClick={() => {}}
-                      videoUnreadMap={videoUnreadMap}
-                    />
+                    <div className="cl-group">
+                      <div className="cl-group__header" style={{ cursor: 'default' }}>
+                        <span className="cl-group__title">Sin programa</span>
+                        <span className="cl-group__count">{filteredUngrouped.length}</span>
+                      </div>
+                      <div className="cl-group__grid">
+                        {filteredUngrouped.map((client) => (
+                          <OrphanedClientCard
+                            key={client.id || client.clientUserId}
+                            client={client}
+                            onSelect={() => handleSelectClient(client)}
+                            onRemove={() => removeClientMutation.mutate(client.id)}
+                            isRemoving={removeClientMutation.isPending && removeClientMutation.variables === client.id}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   );
                 })()}
+                {/* C-10 v2: declined invites section. Each card has a Resend
+                    button; backend caps total resends at 2 per row. */}
+                {declinedInvites.length > 0 && filters.program === 'all' && (
+                  <div className="cl-group">
+                    <div className="cl-group__header" style={{ cursor: 'default' }}>
+                      <span className="cl-group__title">Invitaciones rechazadas</span>
+                      <span className="cl-group__count">{declinedInvites.length}</span>
+                    </div>
+                    <div className="cl-group__grid">
+                      {declinedInvites.map((invite) => (
+                        <DeclinedInviteCard
+                          key={invite.id || invite.clientUserId}
+                          invite={invite}
+                          programTitle={programTitleById[invite.pendingProgramAssignment?.programId]}
+                          onResend={(id) => resendInviteMutation.mutate(id)}
+                          isResending={resendInviteMutation.isPending && resendInviteMutation.variables === invite.id}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )
           )}

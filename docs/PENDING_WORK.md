@@ -46,13 +46,15 @@ Potential future replacement of MercadoPago with Stripe for better subscription 
 
 **Prerequisites:** confirm Colombian user card acceptance on Stripe, decide parallel vs hard-cutover.
 
+**Supersedes the Gen1→Gen2 MercadoPago migration (security audit Tier 4.1).** The audit recommends moving MP webhook handling from the legacy Gen1 functions in [functions/src/index.ts:172-1498](functions/src/index.ts#L172-L1498) onto the Gen2 Express API at `/api/v1/payments/*` (which already has refund handling, transactional renewal grants, and replay protection that Gen1 lacks). That's a 1–2 week build plus a 30-day shadow window. **If Stripe replaces MP, all of that Gen2 MP work gets thrown away.** Decision rule: if the Stripe call is "yes, within ~6 months," skip Tier 4.1 and let Stripe be the migration. If Stripe is "no" or "much later," do Tier 4.1 first to close the refund-handling gap. Open security risk while deferred: Gen1 silently ignores refunds — a refunded customer keeps course access until manually revoked.
+
 **Checklist:**
-- [ ] Business decision made
+- [ ] Business decision made (this also resolves whether to do security-audit Tier 4.1)
 - [ ] Stripe account + Colombia configuration
 - [ ] Cloud Functions for Stripe checkout and webhook
 - [ ] Stripe Customer Portal integration
 - [ ] Migrate existing subscribers
-- [ ] Deprecate MercadoPago subscription functions
+- [ ] Deprecate MercadoPago subscription functions (Gen1 + the dormant Gen2 routes both)
 
 ---
 

@@ -9,6 +9,7 @@ import {
   ScrollView,
   RefreshControl,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../components/Text';
@@ -33,6 +34,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { useUserCourses } from '../hooks/workout/useUserCourses';
+import {
+  useClientRelationships,
+  useAcceptRelationship,
+  useDeclineRelationship,
+} from '../hooks/relationships/useClientRelationships';
 
 // Cards share no spacing — they overlap for the 3D carousel effect
 const CARD_SPACING = 0;
@@ -204,6 +210,80 @@ const MainScreen = ({ navigation, route }) => {
       fontSize: 20,
       color: '#ffffff',
       marginBottom: 15,
+    },
+    // C-10 v2: pending-invite overlay card. Visually identical envelope as a
+    // program card (image background, same dimensions, same radius), then
+    // covered with a darker scrim + the accept/decline action layer.
+    pendingInviteScrim: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      borderRadius: 16,
+    },
+    pendingInviteOverlay: {
+      flex: 1,
+      paddingHorizontal: 22,
+      paddingVertical: 26,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderRadius: 16,
+      gap: 24,
+    },
+    pendingInviteHeader: {
+      gap: 10,
+      alignItems: 'center',
+    },
+    pendingInviteEyebrow: {
+      color: 'rgba(255,255,255,0.65)',
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1.6,
+      textTransform: 'uppercase',
+      textAlign: 'center',
+    },
+    pendingInviteTitle: {
+      color: '#ffffff',
+      fontSize: 28,
+      fontWeight: '700',
+      lineHeight: 34,
+      textAlign: 'center',
+    },
+    pendingInviteActions: {
+      flexDirection: 'row',
+      gap: 10,
+      alignSelf: 'stretch',
+    },
+    pendingInviteBtn: {
+      flex: 1,
+      paddingVertical: 13,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 46,
+    },
+    pendingInviteBtnPrimary: {
+      backgroundColor: '#ffffff',
+    },
+    pendingInviteBtnPrimaryText: {
+      color: '#1a1a1a',
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    pendingInviteBtnSecondary: {
+      backgroundColor: 'transparent',
+      borderColor: 'rgba(255,255,255,0.22)',
+      borderWidth: 1,
+    },
+    pendingInviteBtnSecondaryText: {
+      color: 'rgba(255,255,255,0.92)',
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    pendingInviteBtnDisabled: {
+      opacity: 0.55,
     },
     loadingContainer: {
       alignItems: 'center',
@@ -601,6 +681,24 @@ const MainScreen = ({ navigation, route }) => {
     return unsubscribe; // Cleanup on unmount
   }, []);
 
+  // C-10 v2: pending one-on-one invitations surface as program-shaped cards
+  // with an accept/decline overlay, mixed in alongside the user's enrolled
+  // programs. The hook returns hydrated `pendingProgramAssignment` so we can
+  // render the actual program image + title before the user accepts.
+  const { data: pendingInvites = [] } = useClientRelationships(user?.uid, { status: 'pending' });
+  const acceptInvite = useAcceptRelationship(user?.uid);
+  const declineInvite = useDeclineRelationship(user?.uid);
+  const [inviteActionId, setInviteActionId] = useState(null);
+
+  const handleInviteAccept = useCallback((inviteId) => {
+    setInviteActionId(inviteId);
+    acceptInvite.mutate(inviteId, { onSettled: () => setInviteActionId(null) });
+  }, [acceptInvite]);
+  const handleInviteDecline = useCallback((inviteId) => {
+    setInviteActionId(inviteId);
+    declineInvite.mutate(inviteId, { onSettled: () => setInviteActionId(null) });
+  }, [declineInvite]);
+
   // Card list — must be declared before any useEffect that uses it in a dep array
   const swipeableCards = useMemo(() => {
     const cards = [];
@@ -612,6 +710,18 @@ const MainScreen = ({ navigation, route }) => {
         type: 'upcoming_call',
         data: item,
         index: idx,
+      });
+    });
+
+    // Pending invites — render before enrolled programs so the user sees
+    // them prominently. After accept the row drops out (status changes) and
+    // a real course card takes its place via purchasedCourses refresh.
+    pendingInvites.forEach((invite) => {
+      cards.push({
+        id: `pending_invite_${invite.id}`,
+        type: 'pending_invite',
+        data: invite,
+        index: cards.length,
       });
     });
 
@@ -638,7 +748,7 @@ const MainScreen = ({ navigation, route }) => {
     });
 
     return cards;
-  }, [upcomingCallCards, purchasedCourses, downloadedCourses]);
+  }, [upcomingCallCards, pendingInvites, purchasedCourses, downloadedCourses]);
 
   useEffect(() => {
     if (!loading && swipeableCards.length > 0) {
@@ -1346,6 +1456,68 @@ const MainScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </Animated.View>
       );
+    } else if (item.type === 'pending_invite') {
+      // C-10 v2: pending invite shown as a program card with an accept/
+      // decline overlay. The invite carries the pending program's title +
+      // image (if attached creator-side). Without an attached program the
+      // card falls back to a neutral coaching-invite visual.
+      const invite = item.data || {};
+      const program = invite.pendingProgramAssignment || null;
+      const inviteImageUrl = program?.imageUrl ?? null;
+      const inviteTitle = program?.title ?? 'Invitación de coaching 1:1';
+      const isActing = inviteActionId === invite.id;
+      const isAccepting = isActing && acceptInvite.isPending;
+      const isDeclining = isActing && declineInvite.isPending;
+      return (
+        <Animated.View style={[styles.swipeableCard, cardStyle]}>
+          <View style={styles.cardContentWithImage}>
+            {inviteImageUrl ? (
+              <ExpoImage
+                source={{ uri: inviteImageUrl }}
+                style={styles.cardBackgroundImage}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={200}
+                priority="high"
+                recyclingKey={`invite_${invite.id}`}
+              />
+            ) : null}
+            <View style={styles.pendingInviteScrim} />
+            <View style={styles.pendingInviteOverlay}>
+              <View style={styles.pendingInviteHeader}>
+                <Text style={styles.pendingInviteEyebrow}>Invitación 1:1</Text>
+                <Text style={styles.pendingInviteTitle}>{inviteTitle}</Text>
+              </View>
+              <View style={styles.pendingInviteActions}>
+                <TouchableOpacity
+                  style={[styles.pendingInviteBtn, styles.pendingInviteBtnPrimary, isActing && styles.pendingInviteBtnDisabled]}
+                  onPress={() => handleInviteAccept(invite.id)}
+                  disabled={isActing}
+                  accessibilityRole="button"
+                >
+                  {isAccepting ? (
+                    <ActivityIndicator size="small" color="#1a1a1a" />
+                  ) : (
+                    <Text style={styles.pendingInviteBtnPrimaryText}>Aceptar</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pendingInviteBtn, styles.pendingInviteBtnSecondary, isActing && styles.pendingInviteBtnDisabled]}
+                  onPress={() => handleInviteDecline(invite.id)}
+                  disabled={isActing}
+                  accessibilityRole="button"
+                >
+                  {isDeclining ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.pendingInviteBtnSecondaryText}>Rechazar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Animated.View>
+      );
     } else if (item.type === 'library') {
       return (
         <Animated.View style={[styles.swipeableCard, cardStyle]}>
@@ -1409,6 +1581,11 @@ const MainScreen = ({ navigation, route }) => {
               Hola, <Text style={styles.username}>{firstName}</Text>
             </Text>
           </Animated.View>
+
+          {/* C-10 v2: pending one-on-one invitations now render inside the
+              swipeable cards row as program-shaped cards with an accept /
+              decline overlay (see renderSwipeableCard, type 'pending_invite').
+              The previous standalone banner has been retired. */}
 
           {/* Swipeable Cards Section */}
           <View style={styles.cardsSection}>

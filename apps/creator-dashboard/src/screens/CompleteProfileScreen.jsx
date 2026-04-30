@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
+import authService from '../services/authService';
 import apiClient from '../utils/apiClient';
 import { ASSET_BASE } from '../config/assets';
 import logger from '../utils/logger';
@@ -35,6 +36,10 @@ const CompleteProfileScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [usernameAvailable, setUsernameAvailable] = useState(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState(null);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [checkingVerification, setCheckingVerification] = useState(false);
   const usernameTimerRef = useRef(null);
   const photoInputRef = useRef(null);
 
@@ -94,8 +99,42 @@ const CompleteProfileScreen = () => {
     setErrors(prev => { const n = { ...prev }; delete n.photo; return n; });
   };
 
+  const submitProfile = async () => {
+    await apiClient.post('/creator/register', {
+      displayName: user?.displayName || username,
+      username: username.toLowerCase(),
+      birthDate,
+      gender,
+      country,
+      city,
+    });
+
+    if (photo) {
+      try {
+        const { data: uploadData } = await apiClient.post('/creator/profile/upload-url', { contentType: photo.type });
+        if (uploadData?.signedUrl) {
+          await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': photo.type }, body: photo });
+          await apiClient.post('/creator/profile/upload-url/confirm', { storagePath: uploadData.storagePath });
+        }
+      } catch (photoErr) {
+        logger.error('[CompleteProfile] Photo upload failed (non-blocking):', photoErr);
+      }
+    }
+
+    await refreshUserData();
+    navigate('/onboarding', { replace: true });
+  };
+
+  const isEmailVerificationError = (error) => {
+    if (!error) return false;
+    if (error.code === 'FORBIDDEN' && /verifica tu correo/i.test(error.message || '')) return true;
+    if (error.status === 403 && /verifica tu correo/i.test(error.message || '')) return true;
+    return false;
+  };
+
   const handleSubmit = async () => {
     setFormError(null);
+    setVerifyMessage(null);
     const errs = {};
     if (!username.trim() || username.length < 3) errs.username = 'Username debe tener al menos 3 caracteres';
     else if (!/^[a-z0-9_-]+$/.test(username)) errs.username = 'Solo letras, numeros, guiones y guiones bajos';
@@ -113,37 +152,73 @@ const CompleteProfileScreen = () => {
 
     setIsLoading(true);
     try {
-      await apiClient.post('/creator/register', {
-        displayName: user?.displayName || username,
-        username: username.toLowerCase(),
-        birthDate,
-        gender,
-        country,
-        city,
-      });
-
-      if (photo) {
-        try {
-          const { data: uploadData } = await apiClient.post('/creator/profile/upload-url', { contentType: photo.type });
-          if (uploadData?.signedUrl) {
-            await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': photo.type }, body: photo });
-            await apiClient.post('/creator/profile/upload-url/confirm', { storagePath: uploadData.storagePath });
-          }
-        } catch (photoErr) {
-          logger.error('[CompleteProfile] Photo upload failed (non-blocking):', photoErr);
-        }
-      }
-
-      await refreshUserData();
-      navigate('/onboarding', { replace: true });
+      await submitProfile();
     } catch (error) {
       setIsLoading(false);
+      if (isEmailVerificationError(error)) {
+        setNeedsEmailVerification(true);
+        return;
+      }
       if (error.code === 'CONFLICT') {
         setErrors({ username: 'Este username ya esta en uso' });
       } else {
         logger.error('[CompleteProfile] Error:', error);
         setFormError(error.message || 'Algo salio mal. Intenta de nuevo');
       }
+    }
+  };
+
+  const handleResendVerification = async () => {
+    setVerifyMessage(null);
+    setResendingVerification(true);
+    try {
+      await authService.resendEmailVerification();
+      setVerifyMessage({ type: 'ok', text: `Correo enviado a ${user?.email || 'tu cuenta'}. Revisa tu bandeja y spam.` });
+    } catch (err) {
+      logger.error('[CompleteProfile] Resend verification failed:', err);
+      const tooMany = err?.code === 'auth/too-many-requests';
+      setVerifyMessage({
+        type: 'err',
+        text: tooMany
+          ? 'Has solicitado demasiados correos. Espera unos minutos antes de intentar de nuevo.'
+          : 'No pudimos enviar el correo. Intenta de nuevo en unos segundos.',
+      });
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
+  const handleConfirmVerified = async () => {
+    setVerifyMessage(null);
+    setCheckingVerification(true);
+    try {
+      const reloaded = await authService.reloadCurrentUser();
+      if (!reloaded?.emailVerified) {
+        setVerifyMessage({
+          type: 'err',
+          text: 'Aun no detectamos la verificación. Abre el enlace del correo y vuelve a intentarlo.',
+        });
+        setCheckingVerification(false);
+        return;
+      }
+      setNeedsEmailVerification(false);
+      setIsLoading(true);
+      try {
+        await submitProfile();
+      } catch (error) {
+        setIsLoading(false);
+        if (error.code === 'CONFLICT') {
+          setErrors({ username: 'Este username ya esta en uso' });
+        } else {
+          logger.error('[CompleteProfile] Error after verification:', error);
+          setFormError(error.message || 'Algo salio mal. Intenta de nuevo');
+        }
+      }
+    } catch (err) {
+      logger.error('[CompleteProfile] Reload user failed:', err);
+      setVerifyMessage({ type: 'err', text: 'No pudimos comprobar tu verificación. Intenta de nuevo.' });
+    } finally {
+      setCheckingVerification(false);
     }
   };
 
@@ -179,6 +254,63 @@ const CompleteProfileScreen = () => {
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.7, ease, delay: 0.25 }}
       >
+        <AnimatePresence>
+          {needsEmailVerification && (
+            <motion.div
+              key="verify-card"
+              className="cp-verify-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3, ease }}
+            >
+              <motion.div
+                className="cp-verify-card"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 16 }}
+                transition={{ duration: 0.4, ease }}
+              >
+                <div className="cp-verify-icon" aria-hidden="true">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="m3 7 9 6 9-6" />
+                  </svg>
+                </div>
+                <h2 className="cp-verify-title">Verifica tu correo</h2>
+                <p className="cp-verify-body">
+                  Para crear tu cuenta de creador necesitamos confirmar tu correo.
+                  {user?.email ? <> Te enviamos un enlace a <strong>{user.email}</strong>.</> : ' Te enviamos un enlace de verificación.'}
+                </p>
+                <p className="cp-verify-hint">Revisa tu bandeja y la carpeta de spam. Cuando hagas clic en el enlace, vuelve aquí y continúa.</p>
+                {verifyMessage && (
+                  <div className={`cp-verify-msg cp-verify-msg--${verifyMessage.type}`}>
+                    {verifyMessage.text}
+                  </div>
+                )}
+                <div className="cp-verify-actions">
+                  <button
+                    type="button"
+                    className="cp-cta"
+                    onClick={handleConfirmVerified}
+                    disabled={checkingVerification || resendingVerification}
+                  >
+                    {checkingVerification ? <span className="cp-spinner" /> : 'Ya verifiqué, continuar'}
+                  </button>
+                  <button
+                    type="button"
+                    className="cp-verify-secondary"
+                    onClick={handleResendVerification}
+                    disabled={resendingVerification || checkingVerification}
+                  >
+                    {resendingVerification ? 'Enviando...' : 'Reenviar correo'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="cp-form-scroll">
           {/* Error */}
           <AnimatePresence>

@@ -1,9 +1,9 @@
 # Wake — Security Remediation Progress
 
 **Audit:** [SECURITY_AUDIT_2026-04-27.md](SECURITY_AUDIT_2026-04-27.md) — 156 findings (10 C, 29 H, 45 M, 41 L)
-**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, awaiting staging deploy)
-**Status:** Tier 0 SHIPPED to production. Tier 1 patches written + tested locally; awaiting deploy approval.
-**Last updated:** 2026-04-27
+**Branches:** `security-hardening` (Tier 0, shipped) → `tier-1-security` (Tier 1, shipped) → `tier-2-security` (Tiers 2a + 2b + 3 + remaining Highs + M cluster + Tier 4.2 + Tier 6, shipped) → `tier-finish` (ops cleanup + apps/pwa Tier 3 partial)
+**Status:** All Tiers SHIPPED except Tier 4.1 (Gen1→Gen2 payment migration — multi-week project with 30-day shadow). Two Highs (H-11 + H-20) and the M-tier input-validation cluster shipped 2026-04-29 alongside rules emulator suite expansion (Tier 4.2) and the C-10 PWA acceptance UI (Tier 6).
+**Last updated:** 2026-04-29 (tier-finish: ops drift closures + apps/pwa npm audit + dead PendingInviteBanner removed)
 
 ---
 
@@ -102,10 +102,13 @@ Higher-severity batch. Cross-tenant boundaries, content-tree write hardening, pa
 ## Tier 2 — defense-in-depth batch (split into 2a + 2b)
 
 Pattern-based fixes that close many findings at once. Split into two sub-batches
-on the `tier-2-security` branch so the input-hardening half ships independently
-of the email/log half.
+on the `tier-2-security` branch.
 
-### 2a — input hardening + cross-tenant scoping (written, tested locally, awaiting staging deploy)
+**Status: 2a + 2b SHIPPED to production 2026-04-29.** (Skipped staging UAT —
+hosting deploy at 18c7794 had inadvertently shipped the dashboard half ahead
+of the server, breaking lookup; rolling forward was the fastest fix.)
+
+### 2a — input hardening + cross-tenant scoping (SHIPPED 2026-04-29)
 
 13 patches. Branch `tier-2-security` off `main`.
 
@@ -136,23 +139,86 @@ of the email/log half.
 
 **Out of 2a (deferred to 2b or later tiers):** H-26, H-27, M-32, log hygiene (M-25/M-26/M-27/M-28/L-41) — those are 2b. C-10 PWA acceptance UI — pushed to Tier 6 (UX milestone).
 
-### 2b — email sanitization + ops/log hygiene (planned; same `tier-2-security` branch)
+### 2b — email sanitization + ops/log hygiene (SHIPPED 2026-04-29, commit `03a9bf4`)
 
-- **Server-side sanitize-html** on broadcast email bodyHtml (H-26) — closes phishing-via-Wake-domain risk
-- **Push notification spoofing** fix (H-27) — clamp + quote senderName
-- **Rate limits** on /notifications/* (M-32) — currently zero
-- **Logging cleanup**: `safeErrorPayload()` helper at ~6 sites in index.ts; redact emails at M-26/M-27/M-28
+| ID | Title | File | Status |
+|---|---|---|---|
+| H-26 | server-side sanitize-html on broadcast `bodyHtml` (allowlisted marketing tags + style props; forces `target="_blank" rel="noopener noreferrer"`; strips `<script>/<style>/<iframe>/<form>` + `on*=`; restricts schemes to `http`/`https`/`mailto`/`tel`; img can use `https`/`data:`) | email.ts:225 | ✅ live |
+| H-27 | push notification senderName clamped to 40 chars (with bidi-override stripping) and quoted in title (`Nuevo video de "X"`) | index.ts:2389, 2411 | ✅ live |
+| M-32 | rate limits on `/notifications/{subscribe,test,schedule-timer}` (30 RPM each); `endAtIso` window validated to ±24h | notifications.ts:33, 88, 165 | ✅ live |
+| M-25 / L-41 | `safeErrorPayload()` helper at 6 MP/payment `logger.error` sites (drops `payer`, `card`, `additional_info`, `external_reference`, `transaction_amount`) | index.ts:254, 423, 517, 895, 1401, 1597 | ✅ live |
+| M-26 | unsubscribe info log redacted to `***@domain` | email.ts:447 | ✅ live |
+| M-27 | video-exchange notification email log redacted | index.ts:2511 | ✅ live |
+| M-28 | sendCallReminders email failure log redacted | index.ts:3155 | ✅ live |
+
+**Helpers added to `securityHelpers.ts`:**
+- `sanitizeBroadcastHtml(html)` — uses `sanitize-html` package; `BROADCAST_SAFE_TAGS` + `BROADCAST_SAFE_STYLE_PROPS` allowlists.
+- `clampPushSenderName(value)` — strips bidi overrides + control chars; clamps to `PUSH_SENDER_NAME_MAX` (40) with ellipsis.
+- `safeErrorPayload(err)` — extracts `message`/`name`/`code`/`status`/`statusCode`; drops `payer`/`card`/`additional_info`/`raw`/`request`/`response`/`config`/`headers`/`metadata`/`external_reference`/`transaction_amount`; truncates messages to 500 chars and stack to 5 lines.
+- `redactEmailForLog(email)` — `alex@example.com → ***@example.com`.
+
+**New dependency:** `sanitize-html@^2.17.3` + `@types/sanitize-html` added to `functions/package.json`.
+
+**Tests:** 22 additional vitest unit tests (95 total unit; 116 with rules emulator). All pass under `firebase emulators:exec --only firestore`.
+
+**Deploy log:** `firebase deploy --only functions` shipped all 25 functions cleanly. Postdeploy notify hook auto-pushed `tier-2-security` to GitHub at commit `03a9bf4`.
 
 ---
 
-## Tier 3 — quick-win infrastructure pass
+## Tier 3 — quick-win infrastructure pass (functions/ + landing + creator-dashboard SHIPPED 2026-04-29; apps/pwa partial 2026-04-29)
 
-- `cd functions && npm audit fix` — clears `protobufjs` ACE in production. Non-breaking.
-- `cd apps/landing && npm audit fix` + `cd apps/creator-dashboard && npm audit fix` — non-breaking
-- `cd apps/pwa && npm audit fix` — careful, may need testing for Expo chain
-- **DO NOT** `npm audit fix --force` at root (would downgrade firebase-tools to v1.2.0)
+- ✅ `cd functions && npm audit fix` ran. Vulnerabilities **26 → 16** (cleared 2 critical + 6 high). `protobufjs` is now at **7.5.6** (patched; CVE-2024-43788 was for <7.2.5). Functions deployed at commit `43c0f65`.
+- ✅ `cd apps/landing && npm audit fix` — **0 vulnerabilities** post-fix.
+- ✅ `cd apps/creator-dashboard && npm audit fix` — **0 vulnerabilities** post-fix.
+- ✅ `cd apps/pwa && npm audit fix` (non-force) ran 2026-04-29. **17 → 16** vulnerabilities; cleared the 1 high (`picomatch 2.3.1 → 2.3.2`, semver patch on a Metro/Expo build-tool transitive). Lockfile bump only, no source changes.
+- Remaining 16 apps/pwa moderate vulns are all transitive through Expo CLI dev tooling (`xcode` → `uuid`, `@expo/config-plugins`, `@expo/prebuild-config`, `expo-dev-client`, `expo-dev-launcher`). Clearable only via `npm audit fix --force` which would install **expo@49.0.23** (downgrade from SDK 54 — **breakage, not a fix**). Deferred until next Expo SDK upgrade lands.
+- Remaining 16 functions/ issues are all moderate/low transitive through `firebase-admin`/`@google-cloud/*`/`mercadopago`/`resend`/`svix` — clearable only via `npm audit fix --force` (firebase-admin major upgrade); deferred.
+- **DO NOT** `npm audit fix --force` at root (would downgrade firebase-tools to v1.2.0).
 
-15 minutes.
+---
+
+## Late-Tier-2 follow-on (SHIPPED 2026-04-29)
+
+After Tier 2 closed, the remaining open Highs and a batch of input-validation Mediums were also rolled forward in the same `tier-2-security` branch (commit `25bce28`).
+
+| ID | Title | File | Status |
+|---|---|---|---|
+| **H-11** | `GET /workout/programs/:courseId` response field allowlist (`pickPublicCourseFields`); applied to sibling gated route too | workout.ts:1181, 2326 | ✅ live |
+| **H-20** | Subscription state-machine guards (`assertAllowedSubscriptionTransition`); cancel-after-cancel / resume-after-cancel / pause-after-cancel rejected before MP call; `cancelled_at` only set if previously unset | index.ts:1530 | ✅ live |
+| M-09 | `accessDuration` enum + `expiresAt` ISO + 5-year cap on creator client-program POST + PATCH | creator.ts:5783, 5825 | ✅ live |
+| M-13 | `/creator/feedback` `type` allowlist (`bug`, `suggestion`, `praise`, `other`) + text length cap | creator.ts:2715 | ✅ live |
+| M-23 | `course.price` validated as positive integer (COP, no subunits) before MP `preference.create` (Gen1 + Gen2) | index.ts:225, payments.ts:115 | ✅ live |
+| M-29 | `apikey:last-used-update-failed` raw error stringified | auth.ts:267 | ✅ live |
+| M-30 | `opsApi: auth mismatch` log no longer logs `expectedLen` / `providedLen` (ops secret length side-channel) | opsApi.ts:62 | ✅ live |
+| M-33 | `GET/PATCH /creator/clients/:clientId/client-sessions/:clientSessionId` now calls `verifyClientAccess` (legacy docs without `creator_id` no longer fail open) | creator.ts:3357, 3375 | ✅ live |
+| M-40 | Event-confirmation email subject strips control + bidi-override chars; capped at 120 chars | index.ts:2199 | ✅ live |
+
+## Tier 4.2 — rules emulator suite expansion (SHIPPED 2026-04-29)
+
+`functions/tests/rules/serverOnlyAndIsolation.test.ts` adds **26 emulator tests** that codify the firestore-rules invariants for collections the audit treated as out of scope for the original suite:
+
+- `api_keys` / `processed_payments` / `fatsecret_cache` (server-only — audit L-07): read AND write denied for any client (incl. owner + admin).
+- `subscription_cancellation_feedback` (audit L-06): create binds `userId == request.auth.uid` (impersonation rejected); read/update/delete admin-only.
+- `one_on_one_clients` (covers C-10 from the rules side): cross-creator read / update / delete / impersonation-on-create all rejected; owning creator + the bound client + admin allowed.
+- `video_exchanges` party-only reads (creator + client of the exchange + admin); messages subcollection same gating; client writes rejected (API-only).
+- `nutrition_assignments` cross-creator read / update / delete / impersonation rejected; the assigned client can read their own.
+
+Total emulator suite: **47 tests** (waitlist 7 + crossCreator 14 + serverOnlyAndIsolation 26).
+Total unit suite: **108 tests** (was 95 before late-Tier-2 follow-on).
+Combined: **155 tests pass** in `firebase emulators:exec --only firestore`.
+
+## Tier 6 — C-10 PWA acceptance UI (code on `tier-finish`; deploy staged + verified 2026-04-29, awaits prod push)
+
+The backend gate already shipped in Tier 1 (new one-on-one invites land as `status: 'pending'` and `verifyClientAccess` enforces `active` before any creator action). The companion UI evolved in two stages on `tier-finish`:
+
+**v1 (initial Tier 6)** — `PendingInviteBanner.jsx` rendered above MainScreen cards. **Removed 2026-04-29** as dead code; superseded by v2 below.
+
+**v2 (current)** — invite UI is coupled to the program assignment and rendered as a program-card overlay rather than a separate banner:
+- `apps/pwa/src/hooks/relationships/useClientRelationships.js` — React Query hook (list/accept/decline) with `staleTime: 30s` and `refetchOnWindowFocus: true`.
+- `apps/pwa/src/screens/MainScreen.js:688` — uses `useClientRelationships(user?.uid, { status: 'pending' })` directly; pending invites render as overlays on the program cards they're tied to (commits `47f8d88`, `f8239bd`, `46859fc`).
+- Backend changes on `tier-finish`: `POST /creator/clients/:clientId/programs/:programId` branches on relationship status (active → immediate-assign 201; pending → attaches `pendingProgramAssignment` 202). `POST /users/me/client-relationships/:id/accept` reads `pendingProgramAssignment` and grants the program inside the same transaction as the status flip.
+
+**Deploy state 2026-04-29:** clean build of all three apps assembled at `hosting/` 22:57. PWA bundle verified — 4× `wolf-20b8b` refs, only the prod Firebase Web API key, `pendingProgramAssignment` + `client-relationships` strings present. The single `wake-staging` reference is intentional runtime hostname-routing for `wakeClientErrorsIngest`, not a config leak. Awaits explicit `firebase deploy --only hosting` greenlight.
 
 ---
 
@@ -193,9 +259,9 @@ These four answers shape rules patches and need user input.
 
 These came up during the Tier 0 deploy and are worth fixing during Tier 1 work:
 
-1. **Staging missing 10 wake_ops secrets** — Tier 0 set placeholders. Replace with real staging values when wake_ops on staging is needed.
-2. **`WAKE_WEB_API_KEY` in staging Secret Manager holds the PRODUCTION value** — config drift. Real staging key: `AIzaSyAcBpsxXfW77qlikRQvhvGRoxSBAtGl8L0`. Update the secret.
-3. **Sourcemap upload script (`scripts/ops/upload-sourcemaps.sh`) defaults to prod bucket** even when deploying to staging. Minor cleanup.
+1. **Staging missing 10 wake_ops secrets** — Tier 0 set placeholders. Replace with real staging values when wake_ops on staging is needed. ⏳ open (needs human-held values).
+2. ✅ **`WAKE_WEB_API_KEY` in staging Secret Manager** — drift closed 2026-04-29. New version 2 holds the staging key `AIzaSyAcBpsxXfW77qlikRQvhvGRoxSBAtGl8L0`. **Bonus finding:** no code in `functions/src/` reads this secret, so the prior wrong value never had runtime impact. Cleanup is purely belt-and-braces for future code that may read it.
+3. ✅ **Sourcemap upload script** (`scripts/ops/upload-sourcemaps.sh`) — fixed 2026-04-29. Now resolves project from arg → `GCLOUD_PROJECT` env (set by firebase deploy hooks) → `FIREBASE_PROJECT_ID`, then **fails loud** if none set. Removed prod default. Mirrors the precedent in `notify-deploy.sh`.
 4. **Staging email enumeration protection on** — blocks `accounts:signInWithPassword`. Smoke test uses `accounts:signUp` workaround. If running other API tests, either disable enum protection on staging OR use signUp pattern.
 
 ---

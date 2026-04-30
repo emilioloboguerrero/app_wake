@@ -737,6 +737,53 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════ */
+/*  DANGER ZONE                                                   */
+/* ═══════════════════════════════════════════════════════════════ */
+.cprt-danger {
+  margin-top: 24px;
+  padding: 18px 20px;
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: 14px;
+  background: rgba(248, 113, 113, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cprt-danger-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  background: rgba(248, 113, 113, 0.08);
+  color: rgba(248, 113, 113, 0.95);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.cprt-danger-btn:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.14);
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.cprt-danger-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cprt-danger-hint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+}
+
+/* ═══════════════════════════════════════════════════════════════ */
 /*  RESPONSIVE                                                    */
 /* ═══════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {

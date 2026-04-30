@@ -36,6 +36,12 @@ import {
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
+import {
+  assertAllowedSubscriptionTransition,
+  clampPushSenderName,
+  redactEmailForLog,
+  safeErrorPayload,
+} from "./api/middleware/securityHelpers.js";
 import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
 import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
 
@@ -115,12 +121,10 @@ function calculateExpirationDate(
 
 
 // ─── App Check helper ─────────────────────────────────────────────────────────
-// Note: Gen1 functions **require** App Check (verifyAppCheck returns false when
-// header is missing, causing 401). Gen2 auth middleware treats App Check as
-// **optional** (only verified if header is present). This inconsistency is
-// intentional during migration — Gen1 clients always send the header, while
-// Gen2 also serves third-party API-key clients that never will. Align behavior
-// when Gen1 functions are retired.
+// Both Gen1 and Gen2 first-party (Firebase token) callers must present a valid
+// App Check token (M-14). Gen2 auth middleware skips the check only for the
+// API-key path (third-party callers can't obtain App Check tokens) and for the
+// emulator. The two paths now share enforcement semantics.
 async function verifyAppCheck(request: Request): Promise<boolean> {
   const token = request.headers["x-firebase-appcheck"] as string | undefined;
   if (!token) return false;
@@ -215,6 +219,19 @@ export const createPaymentPreference = functions
         return;
       }
 
+      // Audit M-23: course.price must be a positive number before calling MP.
+      // Without this guard, a free/null price would either error in MP or
+      // silently grant access depending on MP behavior. Currency is COP and
+      // doesn't have decimal subunits in practice, so require an integer.
+      if (typeof course.price !== "number" ||
+          !Number.isInteger(course.price) ||
+          course.price <= 0) {
+        response.status(400).json({
+          error: {code: "VALIDATION_ERROR", message: "El precio del curso no es válido", field: "course.price"},
+        });
+        return;
+      }
+
       const externalReference = buildExternalReference(userId, courseId, "otp");
 
       const client = getClient();
@@ -246,7 +263,9 @@ export const createPaymentPreference = functions
 
       response.json({data: {init_point: result.init_point}});
     } catch (error: unknown) {
-      functions.logger.error("createPaymentPreference error", error);
+      // Audit M-25: scrub MP SDK errors before logging (drops payer.email,
+      // identification, BIN, additional_info from Cloud Logging).
+      functions.logger.error("createPaymentPreference error", safeErrorPayload(error));
       response.status(500).json({
         error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"},
       });
@@ -354,8 +373,8 @@ export const createSubscriptionCheckout = functions
       });
 
       if (result.init_point && result.id) {
+        // L-40: don't log the one-time payment URL; it's a tokenized link.
         functions.logger.info("Subscription created", {
-          init_point: result.init_point,
           subscription_id: result.id,
           external_reference: externalRef,
         });
@@ -415,7 +434,8 @@ export const createSubscriptionCheckout = functions
       });
     } catch (error: unknown) {
       const message = toErrorMessage(error);
-      functions.logger.error("Error creating subscription:", error);
+      // Audit M-25: scrub MP SDK error before logging.
+      functions.logger.error("Error creating subscription:", safeErrorPayload(error));
 
       const normalizedMessage = message?.toLowerCase?.() || "";
       const requiresAlternateEmail =
@@ -446,10 +466,8 @@ export const createSubscriptionCheckout = functions
 export const processPaymentWebhook = functions
   .runWith({secrets: [mercadopagoWebhookSecret, mercadopagoAccessToken]})
   .https.onRequest(async (request: Request, response: Response) => {
-    response.set("Access-Control-Allow-Origin", "*");
-    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type");
-
+    // L-10: MercadoPago webhooks are server-to-server; no CORS preflight is
+    // ever performed. Drop the wildcard CORS headers — they were noise.
     if (request.method === "OPTIONS") {
       response.status(204).send("");
       return;
@@ -509,7 +527,8 @@ export const processPaymentWebhook = functions
             expectedSignatureBuffer
           );
         } catch (compareError) {
-          functions.logger.error("Error comparing webhook signatures", compareError);
+          // Audit L-41: drop raw error to avoid leaking webhook payload bytes.
+          functions.logger.error("Error comparing webhook signatures", safeErrorPayload(compareError));
           return false;
         }
       };
@@ -887,7 +906,8 @@ export const processPaymentWebhook = functions
         }
       } catch (apiError: unknown) {
         const errorMessage = toErrorMessage(apiError);
-        functions.logger.error("Error fetching payment from API:", apiError);
+        // Audit M-25: scrub MP API error before logging.
+        functions.logger.error("Error fetching payment from API:", safeErrorPayload(apiError));
 
         const errorType = classifyError(apiError);
 
@@ -1393,7 +1413,8 @@ export const processPaymentWebhook = functions
       response.status(200).send("OK");
     } catch (error: unknown) {
       const message = toErrorMessage(error);
-      functions.logger.error("Error in webhook:", error);
+      // Audit M-25: scrub webhook handler error (may carry MP payload).
+      functions.logger.error("Error in webhook:", safeErrorPayload(error));
 
       // Fix #4: Classify errors and return appropriate status codes
       const errorType = classifyError(error);
@@ -1512,6 +1533,24 @@ export const updateSubscriptionStatus = functions
 
       const subscriptionData = subscriptionDoc.data() ?? {};
 
+      // Audit H-20: gate transitions on the on-disk status. Without this,
+      // cancel-after-cancel rewrites cancelled_at (audit-trail loss),
+      // resume-after-cancel erases cancelled_at via FieldValue.delete(),
+      // pause-after-cancel produces drift. Reject illegal transitions before
+      // calling MP.
+      const currentStatus = (subscriptionData?.status as string | undefined) ?? null;
+      try {
+        assertAllowedSubscriptionTransition(currentStatus, targetStatus);
+      } catch (err: unknown) {
+        const errObj = err as Record<string, unknown> | null;
+        const status = typeof errObj?.status === "number" ? errObj.status : 409;
+        const message = typeof errObj?.message === "string" ?
+          errObj.message :
+          "Transición de suscripción inválida";
+        response.status(status).json({error: {code: "CONFLICT", message}});
+        return;
+      }
+
       const client = getClient();
       const preapproval = new PreApproval(client);
 
@@ -1529,7 +1568,13 @@ export const updateSubscriptionStatus = functions
       };
 
       if (targetStatus === "cancelled") {
-        updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
+        // Audit H-20: only set cancelled_at if it doesn't already exist.
+        // The transition guard above already rejects cancel-after-cancel, so
+        // this is a belt-and-braces check against any future code path that
+        // bypasses the guard.
+        if (!subscriptionData.cancelled_at) {
+          updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
+        }
       } else if (targetStatus === "authorized") {
         updateData.cancelled_at = admin.firestore.FieldValue.delete();
       }
@@ -1589,7 +1634,8 @@ export const updateSubscriptionStatus = functions
 
       response.json({data: {status: targetStatus}});
     } catch (error: unknown) {
-      functions.logger.error("Error updating subscription status:", error);
+      // Audit M-25: scrub MP SDK error before logging.
+      functions.logger.error("Error updating subscription status:", safeErrorPayload(error));
       response.status(500).json({
         error: {code: "INTERNAL_ERROR", message: "Error al actualizar la suscripción"},
       });
@@ -2067,6 +2113,7 @@ export const nutritionBarcodeLookup = functions
 // Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
 // Creates the Firestore user doc so all downstream reads have a document to work with.
 export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
+  let resolvedRole: "user" | "creator" | "admin" = "user";
   try {
     const docRef = db.collection("users").doc(user.uid);
     const existing = await docRef.get();
@@ -2075,6 +2122,10 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
     // in missing fields — never overwrite role or other data set by registration.
     if (existing.exists) {
       const data = existing.data() || {};
+      const existingRole = data.role as "user" | "creator" | "admin" | undefined;
+      if (existingRole === "creator" || existingRole === "admin") {
+        resolvedRole = existingRole;
+      }
       const patch: Record<string, unknown> = {};
       if (!data.email) patch.email = user.email ?? null;
       if (!data.displayName) patch.displayName = user.displayName ?? null;
@@ -2083,21 +2134,34 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
         await docRef.update(patch);
       }
       functions.logger.info("onUserCreated: doc already existed, patched missing fields", {uid: user.uid});
-      return;
+    } else {
+      // No doc yet — bootstrap with role: "user"
+      await docRef.set({
+        role: "user",
+        email: user.email ?? null,
+        displayName: user.displayName ?? null,
+        created_at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
     }
-
-    // No doc yet — bootstrap with role: "user"
-    await docRef.set({
-      role: "user",
-      email: user.email ?? null,
-      displayName: user.displayName ?? null,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    functions.logger.info("onUserCreated: bootstrapped user doc", {uid: user.uid});
   } catch (error) {
     functions.logger.error("onUserCreated: failed to bootstrap user doc", {
       uid: user.uid,
       error: toErrorMessage(error),
+    });
+  }
+
+  // L-05: stamp role onto the Firebase ID token via a custom claim so
+  // firestore.rules can read request.auth.token.role directly instead of
+  // falling back to a per-eval get(/users/{uid}). Existing sessions pick up
+  // the claim on the next token refresh (~1h). Best-effort — failure here
+  // does not block user creation.
+  try {
+    await admin.auth().setCustomUserClaims(user.uid, {role: resolvedRole});
+  } catch (err) {
+    functions.logger.warn("onUserCreated: setCustomUserClaims failed", {
+      uid: user.uid,
+      error: toErrorMessage(err),
     });
   }
 });
@@ -2149,7 +2213,24 @@ export const sendEventConfirmationEmail = functions
     }
 
     const fromAddress = "Wake Eventos <eventos@wakelab.co>";
-    const eventTitleRaw = (event.title as string) ?? "Evento Wake";
+    // Audit M-40: strip control + bidi-override chars from event title before
+    // using in the email Subject header. Resend normalizes header values, so
+    // CRLF injection isn't exploitable, but bidi overrides can spoof the
+    // recipient's inbox display. Cap length to keep the subject readable.
+    const rawTitle = (event.title as string) ?? "Evento Wake";
+    const sanitizedTitle = Array.from(rawTitle)
+      .filter((ch) => {
+        const code = ch.charCodeAt(0);
+        if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return false;
+        // Bidi override range: U+202A-U+202E, U+2066-U+2069
+        if (code >= 0x202A && code <= 0x202E) return false;
+        if (code >= 0x2066 && code <= 0x2069) return false;
+        return true;
+      })
+      .join("")
+      .trim()
+      .slice(0, 120) || "Evento Wake";
+    const eventTitleRaw = sanitizedTitle;
     const eventTitle = escapeHtml(eventTitleRaw);
     const confirmationMsg = escapeHtml(
       ((event.settings as Record<string, unknown>)?.confirmation_message as string | undefined) ??
@@ -2386,7 +2467,7 @@ export const sendVideoExchangeNotification = functions
       if (senderUser.exists) {
         const d = senderUser.data() as Record<string, unknown>;
         const dn = (d.displayName as string) || "";
-        if (dn.trim()) senderName = dn.trim();
+        if (dn.trim()) senderName = clampPushSenderName(dn);
       }
     } catch (err: unknown) {
       functions.logger.warn("sendVideoExchangeNotification: failed to load sender", {err: toErrorMessage(err)});
@@ -2407,8 +2488,11 @@ export const sendVideoExchangeNotification = functions
           .get();
 
         if (!subsSnap.empty) {
+          // Audit H-27: quote senderName so a creator-controlled display name
+          // can't impersonate a system verb ("Wake admin: tu cuenta..."). The
+          // display name was already clamped to PUSH_SENDER_NAME_MAX above.
           const title = isToCoach ?
-            `Nuevo video de ${senderName}` :
+            `Nuevo video de "${senderName}"` :
             "Tu coach respondió tu video";
           const body = isToCoach ?
             `${exerciseName} — toca para revisar` :
@@ -2506,7 +2590,8 @@ export const sendVideoExchangeNotification = functions
       if (resendError) {
         functions.logger.error("sendVideoExchangeNotification: resend error", {exchangeId, messageId, error: resendError});
       } else {
-        functions.logger.info("sendVideoExchangeNotification: email sent", {exchangeId, messageId, toEmail});
+        // Audit M-27: redact recipient email in info log (PII).
+        functions.logger.info("sendVideoExchangeNotification: email sent", {exchangeId, messageId, toEmail: redactEmailForLog(toEmail)});
       }
     } catch (err: unknown) {
       functions.logger.error("sendVideoExchangeNotification: email failed", {exchangeId, messageId, error: toErrorMessage(err)});
@@ -2753,13 +2838,21 @@ export const processEmailQueue = onSchedule(
           retriedThisTick += retriedNow;
           failedThisTick += failedNow;
 
+          // L-35: Resend echoes parts of raw from/subject in error messages.
+          // Truncate + redact email-shaped substrings before they hit Cloud
+          // Logging where they'd be searchable + retained.
+          const safeBatchErr = batchErrorMsg ?
+            batchErrorMsg
+              .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "***@***")
+              .slice(0, 240) :
+            null;
           functions.logger.warn("processEmailQueue: batch failed", {
             sendId: sendDoc.id,
             batchSize: batchDocs.length,
             errorKind,
             retried: retriedNow,
             failed: failedNow,
-            error: batchErrorMsg,
+            error: safeBatchErr,
           });
 
           // If the error was transient and everything got retried, stop this
@@ -2945,7 +3038,15 @@ export const eventPage = onRequest(
 );
 
 function escapeOgAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  // L-34: cover the full HTML special-char set so the helper stays safe if
+  // a future change moves any of these meta values into a single-quoted attr
+  // or inline JSON-LD where >, ' would otherwise turn into XSS sinks.
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // ─── Scheduled: expand weekly availability templates into concrete slots ───
@@ -3140,7 +3241,8 @@ export const sendCallReminders = onSchedule(
           },
         });
       } catch (err) {
-        functions.logger.error("sendCallReminders: email failed", {to, error: String(err)});
+        // Audit M-28: redact recipient email in error log.
+        functions.logger.error("sendCallReminders: email failed", {to: redactEmailForLog(to), error: String(err)});
       }
     }
 

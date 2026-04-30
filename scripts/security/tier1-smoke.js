@@ -27,6 +27,12 @@
  *
  * USAGE
  *   FIREBASE_PROJECT=wake-staging WAKE_WEB_API_KEY=... node scripts/security/tier1-smoke.js
+ *
+ * NOTE on App Check (M-14): the deployed API now enforces App Check for
+ * first-party Firebase callers. The smoke runner cannot mint App Check
+ * tokens server-side, so the staging functions config must set
+ * APP_CHECK_ENFORCE=false during smoke runs (production keeps it unset =
+ * enforced). Invalid tokens still 401 in both modes.
  */
 
 /* eslint-disable no-console */
@@ -504,14 +510,29 @@ async function testC05_nutritionNameTooLong(creatorA, clientUser) {
 }
 
 async function testC05_nutritionOversizedCategory(creatorA, clientUser) {
-  console.log("\n[C-05] nutrition PUT with 1MB category JSON → expect 400");
-  const big = {meal: "x".repeat(6000)};
+  console.log("\n[C-05] nutrition PUT with > 100KB single category → expect 400");
+  // Per-category cap is now 100 KB (raised from 5 KB after the original cap
+  // rejected legitimate library payloads). Push past the new cap.
+  const big = {meal: "x".repeat(120_000)};
   const r = await put(
     `${API_BASE}/v1/creator/clients/${clientUser.uid}/nutrition/assignments/${NUTRITION_ASSIGNMENT_A}/content`,
     {name: "ok", categories: [big]},
     {Authorization: `Bearer ${creatorA.idToken}`}
   );
-  assertStatus("oversized category rejected", r.status, 400);
+  assertStatus("oversized single category rejected", r.status, 400);
+}
+
+async function testC05_nutritionTotalCategoriesOversized(creatorA, clientUser) {
+  console.log("\n[C-05] nutrition PUT with combined categories > 800KB → expect 400");
+  // Each category 30 KB, 40 of them → ~1.2 MB total → exceeds the 800 KB
+  // combined cap (still under each category's 100 KB ceiling).
+  const cats = Array.from({length: 40}, (_, i) => ({i, blob: "x".repeat(30_000)}));
+  const r = await put(
+    `${API_BASE}/v1/creator/clients/${clientUser.uid}/nutrition/assignments/${NUTRITION_ASSIGNMENT_A}/content`,
+    {name: "ok", categories: cats},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("combined oversized categories rejected", r.status, 400);
 }
 
 async function testC05_nutritionTooManyCategories(creatorA, clientUser) {
@@ -631,6 +652,194 @@ async function testC10_postAcceptOpsAllowed(creatorA, clientUser) {
   assertStatus("post-accept PUT accepted", r.status, 200);
 }
 
+// C-10 v2: pending-aware program assignment + auto-grant on accept
+async function testC10v2_assignToPendingAttachesProgram(creatorA, pendingUser) {
+  console.log("\n[C-10v2] assigning a program to pending user → expect 202 + relationship gets pendingProgramAssignment");
+  // Step 1: invite the user (creates pending relationship).
+  await post(
+    `${API_BASE}/v1/creator/clients/invite`,
+    {email: pendingUser.email},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  // Step 2: creator hits the program-assign endpoint while user still pending.
+  const r = await post(
+    `${API_BASE}/v1/creator/clients/${pendingUser.uid}/programs/${COURSE_A}`,
+    {accessDuration: "monthly"},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("assign-to-pending returns 202", r.status, 202);
+  assertCondition("response status=pending", r.body?.data?.status === "pending",
+    `got ${r.body?.data?.status}`);
+  const db = admin.firestore();
+  const snap = await db.collection("one_on_one_clients")
+    .where("creatorId", "==", creatorA.uid)
+    .where("clientUserId", "==", pendingUser.uid)
+    .limit(1).get();
+  const pending = snap.empty ? null : snap.docs[0].data().pendingProgramAssignment;
+  assertCondition("pendingProgramAssignment.programId set on row",
+    pending?.programId === COURSE_A,
+    `got ${JSON.stringify(pending)}`);
+  return snap.empty ? null : snap.docs[0].id;
+}
+
+async function testC10v2_pendingClientDetailDenied(creatorA, pendingUser, relationshipId) {
+  console.log("\n[C-10v2] GET /creator/clients/:relId while pending → expect 403");
+  if (!relationshipId) {
+    console.log("  ✗ skipped — no relationshipId");
+    failed++; failures.push({label: "C-10v2 pending-detail missing relationshipId"}); return;
+  }
+  const r = await get(
+    `${API_BASE}/v1/creator/clients/${relationshipId}`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("client detail blocked while pending", r.status, 403);
+  // Also confirm the list endpoint redacts pending rows (no avatar / no
+  // session stats on the pending row).
+  const list = await get(
+    `${API_BASE}/v1/creator/clients`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const row = (list.body?.data || []).find((c) => c.id === relationshipId);
+  assertCondition("pending row in list has no avatarUrl",
+    row && !row.avatarUrl,
+    `got ${JSON.stringify(row?.avatarUrl)}`);
+  assertCondition("pending row exposes pendingProgramAssignment",
+    row?.pendingProgramAssignment?.programId === COURSE_A,
+    `got ${JSON.stringify(row?.pendingProgramAssignment)}`);
+}
+
+async function testC10v2_userLeaveDropsEnrollmentRow(creatorA, c10v2User, c10v2RelId) {
+  console.log("\n[C-10v2] user leaves program → relationship flips to inactive + dashboard view drops them");
+  if (!c10v2RelId) {
+    console.log("  ✗ skipped — no relationshipId");
+    failed++; failures.push({label: "leave test missing relationshipId"}); return;
+  }
+  // User leaves via /enrollments/:courseId/leave (the same path the PWA's
+  // "Terminar programa" button hits).
+  const r = await post(
+    `${API_BASE}/v1/enrollments/${COURSE_A}/leave`,
+    {reason: "no_time_to_continue"},
+    {Authorization: `Bearer ${c10v2User.idToken}`}
+  );
+  assertStatus("leave accepted", r.status, 200);
+
+  // Dashboard's clients-overview should now show the user under inactive
+  // (status='inactive'), with no active enrolledPrograms.
+  const overview = await get(
+    `${API_BASE}/v1/creator/clients-overview`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const row = (overview.body?.data?.clients || []).find((c) => c.id === c10v2RelId);
+  assertCondition("relationship flipped to inactive",
+    row?.status === "inactive",
+    `got ${row?.status}`);
+  assertCondition("no active enrolledPrograms remain after leave",
+    Array.isArray(row?.enrolledPrograms) && row.enrolledPrograms.length === 0,
+    `got ${JSON.stringify(row?.enrolledPrograms)}`);
+}
+
+async function testC10v2_acceptAppliesPendingProgram(pendingUser, relationshipId) {
+  console.log("\n[C-10v2] accept invite that carries a pending program → expect program assigned to user.courses");
+  if (!relationshipId) {
+    console.log("  ✗ skipped — no relationshipId");
+    failed++; failures.push({label: "C-10v2 missing relationshipId"}); return;
+  }
+  const r = await post(
+    `${API_BASE}/v1/users/me/client-relationships/${relationshipId}/accept`,
+    {},
+    {Authorization: `Bearer ${pendingUser.idToken}`}
+  );
+  assertStatus("accept returns 200", r.status, 200);
+  assertCondition("response programAssigned=true", r.body?.data?.programAssigned === true,
+    `got ${JSON.stringify(r.body?.data)}`);
+  // Verify user.courses got populated.
+  const db = admin.firestore();
+  const userDoc = await db.collection("users").doc(pendingUser.uid).get();
+  const course = userDoc.data()?.courses?.[COURSE_A];
+  assertCondition("user.courses[COURSE_A] exists with status=active",
+    course?.status === "active",
+    `got ${JSON.stringify(course)}`);
+  assertCondition("user.courses[COURSE_A].deliveryType=one_on_one",
+    course?.deliveryType === "one_on_one",
+    `got ${course?.deliveryType}`);
+}
+
+async function testC10v2_resendCapEnforced(creatorA, declineUser) {
+  console.log("\n[C-10v2] resend declined invite — capped at 2");
+  // Find the declined relationship row for this user (created by testC10_decline).
+  const list = await get(
+    `${API_BASE}/v1/creator/clients?status=declined`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const row = (list.body?.data || []).find((c) => c.clientUserId === declineUser.uid);
+  assertCondition("declined row visible via ?status=declined", !!row,
+    `got rows: ${JSON.stringify((list.body?.data || []).map((c) => c.clientUserId))}`);
+  if (!row) return;
+
+  // First resend → 200, status=pending, resendsRemaining=1.
+  const r1 = await post(
+    `${API_BASE}/v1/creator/clients/${row.id}/resend-invite`,
+    {},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("first resend accepted", r1.status, 200);
+  assertCondition("first resend → status=pending",
+    r1.body?.data?.status === "pending",
+    `got ${r1.body?.data?.status}`);
+  assertCondition("first resend → resendsRemaining=1",
+    r1.body?.data?.resendsRemaining === 1,
+    `got ${r1.body?.data?.resendsRemaining}`);
+
+  // User declines again so we can resend a second time.
+  await post(
+    `${API_BASE}/v1/users/me/client-relationships/${row.id}/decline`,
+    {},
+    {Authorization: `Bearer ${declineUser.idToken}`}
+  );
+
+  // Second resend → 200, resendsRemaining=0.
+  const r2 = await post(
+    `${API_BASE}/v1/creator/clients/${row.id}/resend-invite`,
+    {},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("second resend accepted", r2.status, 200);
+  assertCondition("second resend → resendsRemaining=0",
+    r2.body?.data?.resendsRemaining === 0,
+    `got ${r2.body?.data?.resendsRemaining}`);
+
+  // User declines a third time.
+  await post(
+    `${API_BASE}/v1/users/me/client-relationships/${row.id}/decline`,
+    {},
+    {Authorization: `Bearer ${declineUser.idToken}`}
+  );
+
+  // Third resend → 409 (cap exceeded).
+  const r3 = await post(
+    `${API_BASE}/v1/creator/clients/${row.id}/resend-invite`,
+    {},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("third resend rejected (cap)", r3.status, 409);
+}
+
+async function testC10v2_declinedRowHiddenFromDefaultList(creatorA, declineUser) {
+  console.log("\n[C-10v2] declined relationships absent from GET /creator/clients (default 'active' filter)");
+  const list = await get(
+    `${API_BASE}/v1/creator/clients`,
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  const declinedRows = (list.body?.data || []).filter(
+    (c) => c.clientUserId === declineUser.uid
+  );
+  assertCondition(
+    "no declined-user rows in default list",
+    declinedRows.length === 0,
+    `got ${declinedRows.length} rows: ${JSON.stringify(declinedRows.map((r) => r.status))}`
+  );
+}
+
 async function testC10_decline(creatorA, declineUser) {
   console.log("\n[C-10] decline flow: invite → decline → status declined");
   const r1 = await post(
@@ -692,6 +901,77 @@ async function testM43_wakeOnlyAllowsAuthed(clientUser) {
     {Authorization: `Bearer ${clientUser.idToken}`}
   );
   assertStatus("authed register to wake-only accepted", r.status, 201);
+}
+
+// ─── tier-finish: validateBody schemas (M-08 / M-11 / M-12) ────────────────
+
+async function testM08_programsFreeTrialDurationOutOfRange(creatorA) {
+  console.log("\n[M-08] POST /creator/programs free_trial.duration_days > 365 → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/programs`,
+    {
+      title: "Smoke M-08 prog",
+      deliveryType: "low_ticket",
+      free_trial: {active: true, duration_days: 9999},
+    },
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("oversized free_trial.duration_days rejected", r.status, 400);
+}
+
+async function testM08_programsAvailableLibrariesArrayShape(creatorA) {
+  console.log("\n[M-08] POST /creator/programs availableLibraries non-array → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/programs`,
+    {
+      title: "Smoke M-08 prog 2",
+      deliveryType: "low_ticket",
+      availableLibraries: "not-an-array",
+    },
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("non-array availableLibraries rejected", r.status, 400);
+}
+
+async function testM24_programsPriceInteger(creatorA) {
+  console.log("\n[M-24] POST /creator/programs price = 1.5 → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/programs`,
+    {title: "Smoke M-24 prog", deliveryType: "low_ticket", price: 1.5},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("non-integer price rejected", r.status, 400);
+}
+
+async function testM11_plansMissingTitle(creatorA) {
+  console.log("\n[M-11] POST /creator/plans without title → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/plans`,
+    {description: "no title"},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("plans missing title rejected", r.status, 400);
+}
+
+async function testM12_lookupNonStringEmail(creatorA) {
+  console.log("\n[M-12] POST /creator/clients/lookup emailOrUsername=number → expect 400");
+  const r = await post(
+    `${API_BASE}/v1/creator/clients/lookup`,
+    {emailOrUsername: 12345},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("non-string lookup body rejected", r.status, 400);
+}
+
+async function testM12_inviteEmailTooLong(creatorA) {
+  console.log("\n[M-12] POST /creator/clients/invite long email → expect 400");
+  const longEmail = `${"a".repeat(500)}@example.com`;
+  const r = await post(
+    `${API_BASE}/v1/creator/clients/invite`,
+    {email: longEmail},
+    {Authorization: `Bearer ${creatorA.idToken}`}
+  );
+  assertStatus("oversized invite email rejected", r.status, 400);
 }
 
 // ─── Cleanup ────────────────────────────────────────────────────────────────
@@ -801,6 +1081,7 @@ async function main() {
     // ── C-05 nutrition validation ──
     await testC05_nutritionNameTooLong(creatorA, clientUser);
     await testC05_nutritionOversizedCategory(creatorA, clientUser);
+    await testC05_nutritionTotalCategoriesOversized(creatorA, clientUser);
     await testC05_nutritionTooManyCategories(creatorA, clientUser);
     await testC05_nutritionValid(creatorA, clientUser);
 
@@ -815,11 +1096,33 @@ async function main() {
       await testC10_postAcceptOpsAllowed(creatorA, pendingUserA);
     }
     await testC10_decline(creatorA, declineUser);
+    await testC10v2_declinedRowHiddenFromDefaultList(creatorA, declineUser);
+    await testC10v2_resendCapEnforced(creatorA, declineUser);
+
+    // ── C-10 v2: pending-aware assign + auto-grant on accept ──
+    // Use a freshly-minted user so we're not interfering with prior pendingUserA state.
+    const c10v2User = await mintUser("c10v2", "user");
+    createdUserIds.push(c10v2User.uid);
+    const c10v2RelId = await testC10v2_assignToPendingAttachesProgram(creatorA, c10v2User);
+    if (c10v2RelId) {
+      createdCollections.push({collection: "one_on_one_clients", id: c10v2RelId});
+    }
+    await testC10v2_pendingClientDetailDenied(creatorA, c10v2User, c10v2RelId);
+    await testC10v2_acceptAppliesPendingProgram(c10v2User, c10v2RelId);
+    await testC10v2_userLeaveDropsEnrollmentRow(creatorA, c10v2User, c10v2RelId);
 
     // ── M-43 wake_users_only ──
     await testM43_wakeOnlyEventBlocksAnon();
     await testM43_openEventAllowsAnon();
     await testM43_wakeOnlyAllowsAuthed(clientUser);
+
+    // ── tier-finish: validateBody schemas (M-08, M-11, M-12, M-24) ──
+    await testM08_programsFreeTrialDurationOutOfRange(creatorA);
+    await testM08_programsAvailableLibrariesArrayShape(creatorA);
+    await testM24_programsPriceInteger(creatorA);
+    await testM11_plansMissingTitle(creatorA);
+    await testM12_lookupNonStringEmail(creatorA);
+    await testM12_inviteEmailTooLong(creatorA);
   } catch (err) {
     console.error("\n✗ Suite crashed:", err);
     failed++;

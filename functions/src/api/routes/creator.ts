@@ -12,7 +12,9 @@ import {
   assertTextLength,
   loadCreatorOwnedCourseIds,
   maskEmail,
+  TEXT_CAP_DESCRIPTION,
   TEXT_CAP_NOTE,
+  TEXT_CAP_TITLE,
   validateDeletionPath,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
@@ -27,11 +29,17 @@ function requireCreator(auth: { role: string }): void {
 }
 
 // Security (audit C-05): nutrition assignment content body validator with
-// tight per-field caps. Returns a typed body. Throws on overflow.
+// per-field caps that hold total payload under the 1 MiB Firestore doc limit
+// without rejecting legitimate rich plans (multiple meals per category, each
+// with ingredients/notes/photoURL routinely run 1-2 KB → a category easily
+// reaches 10 KB). The original 5 KB-per-category cap was too tight and
+// rejected real-world setFromLibrary payloads; the new caps preserve the
+// audit's anti-DoS intent while accommodating production data.
 const NUTRITION_CONTENT_NAME_MAX = 200;
 const NUTRITION_CONTENT_DESC_MAX = 5000;
 const NUTRITION_CONTENT_CATEGORIES_MAX = 50;
-const NUTRITION_CONTENT_CATEGORY_JSON_MAX = 5_000;
+const NUTRITION_CONTENT_CATEGORY_JSON_MAX = 100_000; // 100 KB per category
+const NUTRITION_CONTENT_CATEGORIES_TOTAL_JSON_MAX = 800_000; // 800 KB combined (Firestore doc cap is 1 MiB)
 
 interface NutritionContentBody {
   source_plan_id?: string | null;
@@ -64,6 +72,7 @@ function validateNutritionContentBody(body: unknown): NutritionContentBody {
     );
   }
   if (Array.isArray(validated.categories)) {
+    let totalSize = 0;
     for (const cat of validated.categories) {
       const size = JSON.stringify(cat ?? null).length;
       if (size > NUTRITION_CONTENT_CATEGORY_JSON_MAX) {
@@ -73,6 +82,14 @@ function validateNutritionContentBody(body: unknown): NutritionContentBody {
           "categories"
         );
       }
+      totalSize += size;
+    }
+    if (totalSize > NUTRITION_CONTENT_CATEGORIES_TOTAL_JSON_MAX) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "categories en conjunto exceden el tamaño máximo permitido",
+        "categories"
+      );
     }
   }
   return validated;
@@ -240,12 +257,17 @@ router.get("/creator/clients", async (req, res) => {
   const pageToken = req.query.pageToken as string | undefined;
   const statusFilter = (req.query.status as string | undefined) ?? "active";
 
-  // status filter helper (active is default; inactive docs get filtered unless asked)
+  // C-10 v2: explicit allowlist per filter so a future status (e.g. 'declined',
+  // 'expired') doesn't leak into the default view as it did when 'declined'
+  // first shipped. Default ("active") shows currently-engaged relationships
+  // plus pending invites; inactive + declined are intentionally hidden unless
+  // explicitly requested via ?status=declined or ?status=all.
   const matchesStatus = (data: Record<string, unknown>): boolean => {
     if (statusFilter === "all") return true;
-    const s = (data.status as string | undefined) ?? "active";
+    const s = ((data.status as string | undefined) ?? "active") as string;
     if (statusFilter === "inactive") return s === "inactive";
-    return s !== "inactive";
+    if (statusFilter === "declined") return s === "declined";
+    return s === "active" || s === "pending";
   };
 
   if (programId) {
@@ -421,11 +443,41 @@ router.get("/creator/clients", async (req, res) => {
   }));
 
   const enriched = clientDocs.map((client) => {
-    const userId = (client as Record<string, unknown>).clientUserId as string;
+    const clientRow = client as Record<string, unknown>;
+    const userId = clientRow.clientUserId as string;
     const userData = userDocsMap[userId];
+    const isPending = clientRow.status === "pending";
+    const isDeclined = clientRow.status === "declined";
+
+    // C-10 v2: pending + declined rows return only minimal info (relationship-
+    // doc fields + the program reference). No body data, no avatar, no
+    // session stats — the creator hasn't been authorized to see those.
+    if (isPending || isDeclined) {
+      return {
+        id: clientRow.id,
+        clientUserId: userId,
+        creatorId: clientRow.creatorId,
+        clientName: (clientRow.clientName as string | null) ?? null,
+        clientEmail: (clientRow.clientEmail as string | null) ?? null,
+        status: clientRow.status,
+        invitedAt: clientRow.invitedAt ?? null,
+        createdAt: clientRow.createdAt ?? null,
+        declinedAt: clientRow.declinedAt ?? null,
+        resendCount: (clientRow.resendCount as number | undefined) ?? 0,
+        pendingProgramAssignment: clientRow.pendingProgramAssignment ?? null,
+        enrolledPrograms: [],
+      };
+    }
+
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    // C-10 v2: only currently-active enrollments. An expired entry from a
+    // prior leave should not surface as enrolled.
     const enrolledPrograms = Object.entries(courses)
-      .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
+      .filter(([courseId, v]) =>
+        v.deliveryType === "one_on_one" &&
+        creatorCourseIds.has(courseId) &&
+        v.status === "active"
+      )
       .map(([courseId, v]) => ({courseId, title: v.title, status: v.status}));
 
     // accessEndsAt: earliest expires_at among active one_on_one enrollments for THIS creator
@@ -441,8 +493,8 @@ router.get("/creator/clients", async (req, res) => {
 
     return {
       ...client,
-      clientName: userData?.displayName ?? userData?.name ?? (client as Record<string, unknown>).clientName ?? null,
-      clientEmail: userData?.email ?? (client as Record<string, unknown>).clientEmail ?? null,
+      clientName: userData?.displayName ?? userData?.name ?? clientRow.clientName ?? null,
+      clientEmail: userData?.email ?? clientRow.clientEmail ?? null,
       avatarUrl: userData?.profilePictureUrl ?? userData?.photoURL ?? null,
       enrolledPrograms,
       sessionsCompleted: stats.sessionsCompleted,
@@ -517,8 +569,15 @@ router.get("/creator/clients-overview", async (req, res) => {
     const userId = (client as Record<string, unknown>).clientUserId as string;
     const userData = userDocsMap[userId];
     const courses = (userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    // C-10 v2: only count currently-active enrollments. Otherwise leaving
+    // a program (which sets user.courses[id].status='expired') would still
+    // show the user under that program group on the dashboard.
     const enrolledPrograms = Object.entries(courses)
-      .filter(([courseId, v]) => v.deliveryType === "one_on_one" && creatorCourseIds.has(courseId))
+      .filter(([courseId, v]) =>
+        v.deliveryType === "one_on_one" &&
+        creatorCourseIds.has(courseId) &&
+        v.status === "active"
+      )
       .map(([courseId, v]) => ({courseId, title: v.title, status: v.status}));
 
     let accessEndsAt: string | null = null;
@@ -760,15 +819,16 @@ router.post("/creator/clients/lookup", async (req, res) => {
   requireCreator(auth);
   await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
 
-  const {emailOrUsername} = req.body as { emailOrUsername?: string };
-  if (!emailOrUsername?.trim()) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email o username requerido");
-  }
-  if (emailOrUsername.length > 256) {
+  // M-12: schema-validate body (was raw req.body read).
+  const body = validateBody<{ emailOrUsername: string }>(
+    {emailOrUsername: "string"},
+    req.body
+  );
+  if (body.emailOrUsername.length > 256) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Consulta demasiado larga", "emailOrUsername");
   }
 
-  const query = emailOrUsername.trim().toLowerCase();
+  const query = body.emailOrUsername.trim().toLowerCase();
 
   // Search by email first
   let userSnap = await db.collection("users")
@@ -808,12 +868,16 @@ router.post("/creator/clients/invite", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const {email} = req.body as { email?: string };
-  if (!email?.trim()) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email requerido");
+  // M-12: schema-validate body (was raw req.body read).
+  const body = validateBody<{ email: string }>(
+    {email: "string"},
+    req.body
+  );
+  if (body.email.length > 256) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email demasiado largo", "email");
   }
 
-  const query = email.trim().toLowerCase();
+  const query = body.email.trim().toLowerCase();
 
   // Look up user by email
   let userSnap = await db.collection("users")
@@ -836,20 +900,29 @@ router.post("/creator/clients/invite", async (req, res) => {
   const userDoc = userSnap.docs[0];
   const userId = userDoc.id;
 
-  // Check if already a client
+  // Check for an existing engageable (active OR pending) relationship.
+  // Inactive/declined rows from prior cycles are intentionally NOT reused —
+  // the creator wants to start a fresh invite. Without the status filter we
+  // were returning a stale inactive row's id, falsely claiming "already
+  // exists" while the dashboard expected a usable pending invite.
   const existing = await db.collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
     .where("clientUserId", "==", userId)
-    .limit(1)
+    .orderBy("createdAt", "desc")
     .get();
 
-  if (!existing.empty) {
-    const existingDoc = existing.docs[0];
+  const reusable = existing.docs.find((d) => {
+    const s = (d.data() as Record<string, unknown>).status as string | undefined;
+    return !s || s === "active" || s === "pending";
+  });
+
+  if (reusable) {
     res.status(200).json({
       data: {
-        clientId: existingDoc.id,
+        clientId: reusable.id,
         userId,
         alreadyExisted: true,
+        status: (reusable.data() as Record<string, unknown>).status ?? "active",
       },
     });
     return;
@@ -897,9 +970,15 @@ router.post("/creator/clients", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  // Idempotent: return existing active record if client already linked to this creator.
-  // If only an inactive (prior-leave) record exists, create a new active record and
-  // surface previousEnrollmentEndedAt so the dashboard can show the "regresó" pill.
+  // Idempotent: return existing engageable record (active OR pending) if
+  // client is already linked to this creator. Without the pending check,
+  // clicking "Asignar programa" twice for the same user creates duplicate
+  // pending rows — the assign endpoint then attaches the program to one
+  // and the user might accept the OTHER (program-less) duplicate, ending
+  // up enrolled with no course on home screen.
+  // If only an inactive (prior-leave) record exists, create a new pending
+  // record and surface previousEnrollmentEndedAt so the dashboard can show
+  // the "regresó" pill.
   const existing = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", auth.userId)
@@ -907,13 +986,18 @@ router.post("/creator/clients", async (req, res) => {
     .orderBy("createdAt", "desc")
     .get();
 
-  const activeExisting = existing.docs.find((d) => {
+  const reusableExisting = existing.docs.find((d) => {
     const s = (d.data() as Record<string, unknown>).status as string | undefined;
-    return !s || s === "active";
+    return !s || s === "active" || s === "pending";
   });
 
-  if (activeExisting) {
-    res.status(200).json({data: {id: activeExisting.id, clientId: activeExisting.id}});
+  if (reusableExisting) {
+    const reusableData = reusableExisting.data() as Record<string, unknown>;
+    res.status(200).json({data: {
+      id: reusableExisting.id,
+      clientId: reusableExisting.id,
+      status: (reusableData.status as string | undefined) ?? "active",
+    }});
     return;
   }
 
@@ -941,6 +1025,49 @@ router.post("/creator/clients", async (req, res) => {
   });
 
   res.status(201).json({data: {id: docRef.id, clientId: docRef.id, status: "pending"}});
+});
+
+// POST /creator/clients/:clientId/resend-invite — re-send a declined invite.
+// Caps total resends at 2 so a creator can't spam the user. Preserves any
+// pendingProgramAssignment from the original invite so the second invite
+// still carries the program. Status flips back to 'pending'.
+const MAX_INVITE_RESENDS = 2;
+router.post("/creator/clients/:clientId/resend-invite", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
+  const doc = await resolveClientRow(auth.userId, req.params.clientId, {preferStatus: "declined"});
+  const ref = doc.ref;
+  const data = doc.data()!;
+  if (data.status !== "declined") {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      "Solo puedes reenviar invitaciones rechazadas"
+    );
+  }
+  const previousResends = (data.resendCount as number | undefined) ?? 0;
+  if (previousResends >= MAX_INVITE_RESENDS) {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      `Has alcanzado el máximo de ${MAX_INVITE_RESENDS} reenvíos para esta invitación`
+    );
+  }
+
+  const nextResendCount = previousResends + 1;
+  await ref.update({
+    status: "pending",
+    resendCount: nextResendCount,
+    resentAt: FieldValue.serverTimestamp(),
+    declinedAt: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  res.json({data: {
+    id: doc.id,
+    status: "pending",
+    resendCount: nextResendCount,
+    resendsRemaining: MAX_INVITE_RESENDS - nextResendCount,
+  }});
 });
 
 // GET /creator/leaves/summary — aggregated counts of clients who left this creator's programs.
@@ -994,43 +1121,35 @@ router.get("/creator/clients/:clientId", async (req, res) => {
 
   const hintUserId = req.query.userId as string | undefined;
 
-  let doc: FirebaseFirestore.DocumentSnapshot;
-  let userDoc: FirebaseFirestore.DocumentSnapshot;
-  let creatorPrograms: FirebaseFirestore.QuerySnapshot;
-  let notesSnap: FirebaseFirestore.QuerySnapshot;
+  // resolveClientRow accepts either form (relationship doc id or user uid),
+  // so the dashboard's two navigation paths (ClientesScreen passes the row
+  // id, OneOnOneProgramView passes the user uid) both reach the same row.
+  const doc = await resolveClientRow(auth.userId, req.params.clientId);
+  const resolvedUserId = (doc.data()!.clientUserId ?? doc.data()!.userId) as string;
 
-  if (hintUserId) {
-    [doc, userDoc, creatorPrograms, notesSnap] = await Promise.all([
-      db.collection("one_on_one_clients").doc(req.params.clientId).get(),
-      db.collection("users").doc(hintUserId).get(),
-      db.collection("courses")
-        .where("creator_id", "==", auth.userId)
-        .where("deliveryType", "==", "one_on_one")
-        .get(),
-      db.collection("one_on_one_clients").doc(req.params.clientId)
-        .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
-    ]);
-  } else {
-    [doc, creatorPrograms, notesSnap] = await Promise.all([
-      db.collection("one_on_one_clients").doc(req.params.clientId).get(),
-      db.collection("courses")
-        .where("creator_id", "==", auth.userId)
-        .where("deliveryType", "==", "one_on_one")
-        .get(),
-      db.collection("one_on_one_clients").doc(req.params.clientId)
-        .collection("notes").orderBy("createdAt", "desc").limit(50).get(),
-    ]);
-    if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-      throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-    }
-    const resolvedUserId = doc.data()!.clientUserId ?? doc.data()!.userId;
-    userDoc = await db.collection("users").doc(resolvedUserId).get();
-  }
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-  }
+  const [userDoc, creatorPrograms, notesSnap] = await Promise.all([
+    db.collection("users").doc(hintUserId ?? resolvedUserId).get(),
+    db.collection("courses")
+      .where("creator_id", "==", auth.userId)
+      .where("deliveryType", "==", "one_on_one")
+      .get(),
+    doc.ref.collection("notes").orderBy("createdAt", "desc").limit(50).get(),
+  ]);
 
   const clientData = doc.data()!;
+
+  // C-10 v2: deny full-profile reads while the relationship is pending.
+  // Backend gate on every creator-side mutation already blocks state changes
+  // via verifyClientAccess; this closes the read path so the creator can't
+  // fetch body data, sessions, onboarding answers, etc. for someone who
+  // hasn't accepted the invite.
+  if (clientData.status === "pending") {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "El cliente aún no ha aceptado la invitación"
+    );
+  }
 
   const userData = userDoc.exists ? userDoc.data()! : {};
   const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
@@ -1077,21 +1196,18 @@ router.post("/creator/clients/:clientId/notes", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const doc = await docRef.get();
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-  }
+  const doc = await resolveClientRow(auth.userId, req.params.clientId);
 
-  const rawText = req.body.text ?? "";
-  // Audit M-39: cap creator-controlled text.
-  assertTextLength(rawText, "text", TEXT_CAP_NOTE);
-  const text = rawText.trim();
-  if (!text) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "El texto es requerido", "text");
-  }
+  // M-10 + M-39: validateBody enforces string type + non-empty trim;
+  // assertTextLength enforces the per-field 2000-char cap.
+  const noteBody = validateBody<{ text: string }>(
+    {text: "string"},
+    req.body
+  );
+  assertTextLength(noteBody.text, "text", TEXT_CAP_NOTE);
+  const text = noteBody.text.trim();
 
-  const noteRef = await docRef.collection("notes").add({
+  const noteRef = await doc.ref.collection("notes").add({
     text,
     createdAt: new Date().toISOString(),
     creatorId: auth.userId,
@@ -1105,29 +1221,46 @@ router.delete("/creator/clients/:clientId/notes/:noteId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const clientRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const clientDoc = await clientRef.get();
-  if (!clientDoc.exists || clientDoc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
-  }
-
-  await clientRef.collection("notes").doc(req.params.noteId).delete();
+  const clientDoc = await resolveClientRow(auth.userId, req.params.clientId);
+  await clientDoc.ref.collection("notes").doc(req.params.noteId).delete();
   res.json({data: {deleted: true}});
 });
 
-// DELETE /creator/clients/:clientId — remove client
+// DELETE /creator/clients/:clientId — remove client + cascade
+//
+// For pending/declined/inactive rows the caller is just clearing list noise;
+// the user has no enrollments to revoke, so we just drop the row.
+//
+// For an active row we also revoke the user's enrollment in any one_on_one
+// program owned by this creator: delete user.courses[programId] for each
+// program the user has tied to this creator. Without that the PWA keeps
+// showing the program card after the creator removes them, and the dashboard
+// re-paints the program (now relationship-less) on the next refetch.
 router.delete("/creator/clients/:clientId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const docRef = db.collection("one_on_one_clients").doc(req.params.clientId);
-  const doc = await docRef.get();
+  const doc = await resolveClientRow(auth.userId, req.params.clientId);
+  const data = doc.data()!;
+  const clientUserId = (data.clientUserId ?? data.userId) as string | undefined;
+  const status = (data.status as string | undefined) ?? "active";
 
-  if (!doc.exists || doc.data()?.creatorId !== auth.userId) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
+  if (status === "active" && clientUserId) {
+    const userRef = db.collection("users").doc(clientUserId);
+    const userSnap = await userRef.get();
+    const courses = (userSnap.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    const updates: Record<string, unknown> = {};
+    for (const [courseId, entry] of Object.entries(courses)) {
+      if (entry.deliveryType === "one_on_one" && entry.assigned_by === auth.userId) {
+        updates[`courses.${courseId}`] = FieldValue.delete();
+      }
+    }
+    if (Object.keys(updates).length > 0) {
+      await userRef.update(updates);
+    }
   }
 
-  await docRef.delete();
+  await doc.ref.delete();
   res.status(204).send();
 });
 
@@ -1276,7 +1409,9 @@ router.post("/creator/programs", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  // Only destructure validated fields
+  // Only destructure validated fields. availableLibraries / free_trial are
+  // declared in the schema so stripUnknown drops anything else, then the
+  // shape of each is validated below before being written to Firestore (M-08).
   const body = validateBody<{
     title: string;
     deliveryType: string;
@@ -1288,6 +1423,8 @@ router.post("/creator/programs", async (req, res) => {
     weight_suggestions?: boolean;
     duration?: string;
     visibility?: string;
+    availableLibraries?: unknown[];
+    free_trial?: Record<string, unknown>;
   }>(
     {
       title: "string",
@@ -1300,6 +1437,8 @@ router.post("/creator/programs", async (req, res) => {
       weight_suggestions: "optional_boolean",
       duration: "optional_string",
       visibility: "optional_string",
+      availableLibraries: "optional_array",
+      free_trial: "optional_object",
     },
     req.body
   );
@@ -1310,6 +1449,48 @@ router.post("/creator/programs", async (req, res) => {
       "visibility debe ser standalone, bundle-only o both",
       "visibility"
     );
+  }
+
+  // M-24: price (one-time) must be a positive integer (COP, no subunits).
+  // Validated here on creator-side write so MP webhooks downstream can trust
+  // the field. Skip when undefined — handlers default to free.
+  if (body.price !== undefined &&
+      (!Number.isInteger(body.price) || body.price < 0)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "price debe ser un entero mayor o igual a 0 (COP, sin decimales)",
+      "price"
+    );
+  }
+
+  // M-08: availableLibraries shape — optional array of non-empty strings.
+  const availableLibraries: string[] = Array.isArray(body.availableLibraries) ?
+    body.availableLibraries.filter(
+      (id): id is string => typeof id === "string" && id.length > 0 && id.length <= 128
+    ) :
+    [];
+
+  // M-08: free_trial shape — { active: boolean, duration_days: integer 0-365 }.
+  let freeTrial: { active: boolean; duration_days: number } = {active: false, duration_days: 0};
+  if (body.free_trial !== undefined) {
+    const ft = body.free_trial as Record<string, unknown>;
+    const active = ft.active === true;
+    const rawDays = ft.duration_days;
+    let days = 0;
+    if (typeof rawDays === "number" && Number.isFinite(rawDays)) {
+      days = Math.floor(rawDays);
+    } else if (typeof rawDays === "string") {
+      const parsed = parseInt(rawDays, 10);
+      if (Number.isFinite(parsed)) days = parsed;
+    }
+    if (days < 0 || days > 365) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "free_trial.duration_days debe ser un entero entre 0 y 365",
+        "free_trial.duration_days"
+      );
+    }
+    freeTrial = {active, duration_days: days};
   }
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
@@ -1327,9 +1508,7 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.discipline !== undefined && {discipline: body.discipline}),
     ...(body.weight_suggestions !== undefined && {weight_suggestions: body.weight_suggestions}),
     ...(body.duration !== undefined && {duration: body.duration}),
-    availableLibraries: Array.isArray(req.body.availableLibraries) ?
-      req.body.availableLibraries.filter((id: unknown) => typeof id === "string") :
-      [],
+    availableLibraries,
     creator_id: auth.userId,
     creatorName,
     status: "draft",
@@ -1342,9 +1521,7 @@ router.post("/creator/programs", async (req, res) => {
       workoutCompletion: [],
       workoutExecution: [],
     },
-    free_trial: req.body.free_trial && typeof req.body.free_trial === "object" ?
-      {active: !!req.body.free_trial.active, duration_days: Math.max(0, parseInt(req.body.free_trial.duration_days, 10) || 0)} :
-      {active: false, duration_days: 0},
+    free_trial: freeTrial,
     version: versionStr,
     published_version: versionStr,
     created_at: FieldValue.serverTimestamp(),
@@ -1399,6 +1576,19 @@ router.patch("/creator/programs/:programId", async (req, res) => {
       "visibility debe ser standalone, bundle-only o both",
       "visibility"
     );
+  }
+
+  // M-24: currency fields must be non-negative integers (COP, no subunits).
+  for (const priceField of ["price", "subscription_price", "compare_at_price"] as const) {
+    const v = updates[priceField];
+    if (v === undefined) continue;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `${priceField} debe ser un entero mayor o igual a 0 (COP, sin decimales)`,
+        priceField
+      );
+    }
   }
 
   await docRef.update({
@@ -1588,6 +1778,18 @@ router.post("/creator/programs/:programId/image/upload-url", async (req, res) =>
     {contentType: "string"},
     req.body
   );
+
+  // L-15: contentType allowlist matches sibling upload endpoints (creator
+  // bookings cover image, profile picture). Without this, a creator could
+  // upload an arbitrary mime type into the courses/ namespace.
+  const allowedImageTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!allowedImageTypes.includes(contentType)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Tipo de archivo no soportado",
+      "contentType"
+    );
+  }
 
   const storagePath = `courses/${req.params.programId}/image.${contentType.split("/")[1] === "jpeg" ? "jpg" : contentType.split("/")[1]}`;
   const bucket = admin.storage().bucket();
@@ -2126,7 +2328,10 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
 
   for (const assignDoc of activeDocs) {
     const contentRef = db.collection("client_nutrition_plan_content").doc(assignDoc.id);
-    batch.set(contentRef, buildNutritionContentDoc(planData, assignDoc.id, req.params.planId, true));
+    batch.set(contentRef, clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: (assignDoc.data().userId as string | undefined) ?? null},
+      buildNutritionContentDoc(planData, assignDoc.id, req.params.planId, true)
+    ));
 
     // Keep assignment's embedded snapshot and planName in sync
     batch.update(assignDoc.ref, {
@@ -2154,26 +2359,68 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
 // Security (audit C-10): only treats relationships with status `active` (or
 // missing — back-compat for legacy rows) as authorizing access. Pending
 // relationships exist but do not grant the creator privileges over the user.
+// Resolve a `:clientId` URL param to a one_on_one_clients DocumentSnapshot.
+// Two URL conventions exist in the dashboard: some screens navigate with the
+// relationship-doc id, others with the user uid. Try direct doc id first
+// (single read); fall back to a where(clientUserId == param) lookup with
+// status priority sort so duplicates from prior cycles don't shadow the
+// current row.
+async function resolveClientRow(
+  creatorId: string,
+  clientIdParam: string,
+  options: { preferStatus?: string } = {},
+): Promise<FirebaseFirestore.DocumentSnapshot> {
+  const direct = await db.collection("one_on_one_clients").doc(clientIdParam).get();
+  if (direct.exists && direct.data()?.creatorId === creatorId) {
+    return direct;
+  }
+  const snap = await db
+    .collection("one_on_one_clients")
+    .where("creatorId", "==", creatorId)
+    .where("clientUserId", "==", clientIdParam)
+    .get();
+  if (snap.empty) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Cliente no encontrado");
+  }
+  const PRIORITY: Record<string, number> = {active: 1, pending: 2, declined: 3, inactive: 4};
+  const sorted = [...snap.docs].sort((a, b) => {
+    const sa = (a.data().status as string | undefined) ?? "active";
+    const sb = (b.data().status as string | undefined) ?? "active";
+    const pa = sa === options.preferStatus ? 0 : (PRIORITY[sa] ?? 9);
+    const pb = sb === options.preferStatus ? 0 : (PRIORITY[sb] ?? 9);
+    return pa - pb;
+  });
+  return sorted[0];
+}
+
 async function verifyClientAccess(
   creatorId: string,
   clientId: string
 ): Promise<string> {
+  // A creator/user pair can have many historical rows (prior leaves →
+  // inactive, prior declines → declined, plus the current active one).
+  // .limit(1) without ordering returned an arbitrary row, so an inactive
+  // duplicate could shadow the active relationship and 403 every mutation.
   const snap = await db
     .collection("one_on_one_clients")
     .where("creatorId", "==", creatorId)
     .where("clientUserId", "==", clientId)
-    .limit(1)
     .get();
   if (snap.empty) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
   }
-  const status = snap.docs[0].data().status;
-  if (status && status !== "active") {
-    throw new WakeApiServerError(
-      "FORBIDDEN",
-      403,
-      "El cliente aún no ha aceptado la invitación"
-    );
+  const accessibleRow = snap.docs.find((d) => {
+    const s = d.data().status as string | undefined;
+    return !s || s === "active";
+  });
+  if (!accessibleRow) {
+    const statuses = snap.docs.map((d) => d.data().status ?? null);
+    if (statuses.some((s) => s === "pending")) {
+      throw new WakeApiServerError(
+        "FORBIDDEN", 403, "El cliente aún no ha aceptado la invitación",
+      );
+    }
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
   }
   return clientId;
 }
@@ -2197,6 +2444,75 @@ async function writeClientSession(
     ...fields,
     updated_at: FieldValue.serverTimestamp(),
   });
+}
+
+// Ownership-field payload builders for the other collections that bit us in
+// the 2026-04-29 audit (76 client_plan_content, 13 nutrition_assignments,
+// 12 client_nutrition_plan_content docs missing ownership fields). Same
+// motivation as writeClientSession above: every API handler that mutates
+// these collections gates on creator_id (sometimes plus client_id /
+// clientUserId), so a `.set()` without those fields strands the doc as a
+// "creator can't touch this" zombie.
+//
+// These build the payload (instead of doing the write themselves) because
+// the call sites need to dispatch through tx/batch as well as direct
+// `.set()`. The required `ownership` parameter is what makes it impossible
+// for a future write path to omit the fields.
+//
+// The ownership types use `string | null` for the client side because the
+// same collections legitimately hold program-scoped templates (id starts
+// with "program_") that have no specific client. Pass `null` explicitly to
+// document the intent at every call site.
+
+type ClientPlanContentOwnership = {
+  creator_id: string;
+  client_id: string | null; // null only for program-scoped templates
+};
+
+function clientPlanContentPayload(
+  ownership: ClientPlanContentOwnership,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  if (!ownership.creator_id) throw new Error("clientPlanContentPayload: creator_id is required");
+  return {
+    ...fields,
+    creator_id: ownership.creator_id,
+    client_id: ownership.client_id,
+  };
+}
+
+type NutritionAssignmentOwnership = {
+  creator_id: string;
+  clientUserId: string | null; // null only for program-scoped templates
+};
+
+function nutritionAssignmentPayload(
+  ownership: NutritionAssignmentOwnership,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  if (!ownership.creator_id) throw new Error("nutritionAssignmentPayload: creator_id is required");
+  return {
+    ...fields,
+    creator_id: ownership.creator_id,
+    clientUserId: ownership.clientUserId,
+  };
+}
+
+type ClientNutritionPlanContentOwnership = {
+  creator_id: string;
+  client_id: string | null; // null only for program-scoped templates
+};
+
+function clientNutritionPlanContentPayload(
+  ownership: ClientNutritionPlanContentOwnership,
+  fields: Record<string, unknown>
+): Record<string, unknown> {
+  if (!ownership.creator_id) throw new Error("clientNutritionPlanContentPayload: creator_id is required");
+  return {
+    ...fields,
+    creator_id: ownership.creator_id,
+    client_id: ownership.client_id,
+  };
 }
 
 // Security (audit C-02 / H-12 / H-13): verify a client_session doc belongs
@@ -2268,22 +2584,28 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
     const userDoc = await tx.get(userRef);
 
     const assignmentRef = db.collection("nutrition_assignments").doc();
-    tx.set(assignmentRef, {
-      userId: req.params.clientId,
-      assignedBy: auth.userId,
-      planId: body.planId,
-      planName: planData.name ?? "",
-      plan: planData,
-      startDate: body.startDate ?? null,
-      endDate: body.endDate ?? null,
-      status: "active",
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    tx.set(assignmentRef, nutritionAssignmentPayload(
+      {creator_id: auth.userId, clientUserId: req.params.clientId},
+      {
+        userId: req.params.clientId,
+        assignedBy: auth.userId,
+        planId: body.planId,
+        planName: planData.name ?? "",
+        plan: planData,
+        startDate: body.startDate ?? null,
+        endDate: body.endDate ?? null,
+        status: "active",
+        createdAt: FieldValue.serverTimestamp(),
+      }
+    ));
 
     // Snapshot plan content
     tx.set(
       db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
-      buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+      clientNutritionPlanContentPayload(
+        {creator_id: auth.userId, client_id: req.params.clientId},
+        buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+      )
     );
 
     // Pin on user if no existing pinned assignment
@@ -2352,7 +2674,10 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
     });
     batch.set(
       db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
-      buildNutritionContentDoc(newPlanData, req.params.assignmentId, updates.planId as string, false)
+      clientNutritionPlanContentPayload(
+        {creator_id: auth.userId, client_id: req.params.clientId},
+        buildNutritionContentDoc(newPlanData, req.params.assignmentId, updates.planId as string, false)
+      )
     );
     await batch.commit();
   } else {
@@ -2427,15 +2752,21 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
   };
 
   const batch = db.batch();
-  batch.set(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId), {
-    source_plan_id: body.source_plan_id ?? null,
-    assignment_id: req.params.assignmentId,
-    name: body.name ?? "",
-    description: body.description ?? "",
-    ...macros,
-    categories: body.categories ?? [],
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  batch.set(
+    db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
+    clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: req.params.clientId},
+      {
+        source_plan_id: body.source_plan_id ?? null,
+        assignment_id: req.params.assignmentId,
+        name: body.name ?? "",
+        description: body.description ?? "",
+        ...macros,
+        categories: body.categories ?? [],
+        updated_at: FieldValue.serverTimestamp(),
+      }
+    )
+  );
   batch.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
     ...macros,
     "plan.daily_calories": macros.daily_calories,
@@ -2470,15 +2801,22 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
   };
 
   const batch2 = db.batch();
-  batch2.set(db.collection("client_nutrition_plan_content").doc(req.params.assignmentId), {
-    source_plan_id: body.source_plan_id ?? null,
-    assignment_id: req.params.assignmentId,
-    name: body.name ?? "",
-    description: body.description ?? "",
-    ...macros2,
-    categories: body.categories ?? [],
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped variant: no clientId in URL — pass client_id: null explicitly.
+  batch2.set(
+    db.collection("client_nutrition_plan_content").doc(req.params.assignmentId),
+    clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: null},
+      {
+        source_plan_id: body.source_plan_id ?? null,
+        assignment_id: req.params.assignmentId,
+        name: body.name ?? "",
+        description: body.description ?? "",
+        ...macros2,
+        categories: body.categories ?? [],
+        updated_at: FieldValue.serverTimestamp(),
+      }
+    )
+  );
   batch2.update(db.collection("nutrition_assignments").doc(req.params.assignmentId), {
     ...macros2,
     "plan.daily_calories": macros2.daily_calories,
@@ -2617,6 +2955,17 @@ router.post("/creator/feedback", async (req, res) => {
     },
     req.body
   );
+
+  // Audit M-13: type allowlist + text length cap.
+  const ALLOWED_FEEDBACK_TYPES = new Set(["bug", "suggestion", "praise", "other"]);
+  if (!ALLOWED_FEEDBACK_TYPES.has(body.type)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `type debe ser uno de: ${[...ALLOWED_FEEDBACK_TYPES].join(", ")}`,
+      "type"
+    );
+  }
+  assertTextLength(body.text, "text", TEXT_CAP_DESCRIPTION);
 
   const docRef = await db.collection("creator_feedback").add({
     creatorId: auth.userId,
@@ -2778,14 +3127,17 @@ async function ensureClientCopy(
   const assignment = planAssignments[weekKey];
   if (!assignment?.planId || !assignment?.moduleId) {
     // No plan assigned — create an empty client_plan_content doc so sessions can be added directly
-    await docRef.set({
-      title: weekKey,
-      order: 0,
-      source_plan_id: null,
-      source_module_id: null,
-      created_at: FieldValue.serverTimestamp(),
-      updated_at: FieldValue.serverTimestamp(),
-    });
+    await docRef.set(clientPlanContentPayload(
+      {creator_id: creatorId, client_id: clientId},
+      {
+        title: weekKey,
+        order: 0,
+        source_plan_id: null,
+        source_module_id: null,
+        created_at: FieldValue.serverTimestamp(),
+        updated_at: FieldValue.serverTimestamp(),
+      }
+    ));
     return {docId, alreadyExisted: false};
   }
 
@@ -2865,14 +3217,17 @@ async function ensureClientCopy(
   let batch = db.batch();
   let batchCount = 0;
 
-  batch.set(docRef, {
-    title: moduleTitle,
-    order: 0,
-    source_plan_id: assignment.planId,
-    source_module_id: assignment.moduleId,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  batch.set(docRef, clientPlanContentPayload(
+    {creator_id: creatorId, client_id: clientId},
+    {
+      title: moduleTitle,
+      order: 0,
+      source_plan_id: assignment.planId,
+      source_module_id: assignment.moduleId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
   batchCount++;
 
   for (const session of sessions) {
@@ -3075,14 +3430,17 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
   const sessions = Array.isArray(body.sessions) ? body.sessions : [];
   const deletions = Array.isArray(body.deletions) ? body.deletions as string[] : [];
 
-  await docRef.set({
-    title: body.title ?? req.params.weekKey,
-    order: body.order ?? 0,
-    source_plan_id: body.source_plan_id ?? null,
-    source_module_id: body.source_module_id ?? null,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  await docRef.set(clientPlanContentPayload(
+    {creator_id: auth.userId, client_id: req.params.clientId},
+    {
+      title: body.title ?? req.params.weekKey,
+      order: body.order ?? 0,
+      source_plan_id: body.source_plan_id ?? null,
+      source_module_id: body.source_module_id ?? null,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
 
   const batch = db.batch();
   let batchCount = 0;
@@ -3242,6 +3600,10 @@ router.put("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
 router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
+  // Audit M-33: align with sibling endpoints by gating on the creator/client
+  // relationship. The previous creator_id-only check fails open if a legacy
+  // doc lacks the field.
+  await verifyClientAccess(auth.userId, req.params.clientId);
 
   const doc = await db.collection("client_sessions").doc(req.params.clientSessionId).get();
   if (!doc.exists) {
@@ -3260,6 +3622,8 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId", async 
 router.patch("/creator/clients/:clientId/client-sessions/:clientSessionId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
+  // Audit M-33: see GET sibling above.
+  await verifyClientAccess(auth.userId, req.params.clientId);
 
   const docRef = db.collection("client_sessions").doc(req.params.clientSessionId);
   const doc = await docRef.get();
@@ -3484,13 +3848,26 @@ router.post("/creator/plans", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const {title, description, discipline} = req.body as {
-    title?: string;
+  // M-11: validateBody covers all written fields; stripUnknown drops anything
+  // else from req.body so Firestore writes are bounded to the declared shape.
+  const body = validateBody<{
+    title: string;
     description?: string;
     discipline?: string;
-  };
-  if (!title || typeof title !== "string") {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "title es requerido");
+  }>(
+    {
+      title: "string",
+      description: "optional_string",
+      discipline: "optional_string",
+    },
+    req.body
+  );
+  assertTextLength(body.title, "title", TEXT_CAP_TITLE);
+  if (body.description !== undefined) {
+    assertTextLength(body.description, "description", TEXT_CAP_DESCRIPTION, {allowEmpty: true});
+  }
+  if (body.discipline !== undefined) {
+    assertTextLength(body.discipline, "discipline", TEXT_CAP_TITLE, {allowEmpty: true});
   }
 
   // Look up creator's displayName
@@ -3498,14 +3875,14 @@ router.post("/creator/plans", async (req, res) => {
   const creatorName = creatorDoc.data()?.displayName ?? "";
 
   const planData: Record<string, unknown> = {
-    title,
-    description: description || "",
+    title: body.title,
+    description: body.description || "",
     creator_id: auth.userId,
     creatorName,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   };
-  if (discipline) planData.discipline = discipline;
+  if (body.discipline) planData.discipline = body.discipline;
 
   const planRef = await db.collection("plans").add(planData);
 
@@ -5630,32 +6007,135 @@ router.get("/creator/clients/:clientId/programs", async (req, res) => {
 router.post("/creator/clients/:clientId/programs/:programId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
-  await verifyClientAccess(auth.userId, req.params.clientId);
+
+  // C-10 v2: support the "creator assigns a program to a not-yet-accepted
+  // client" flow. Today verifyClientAccess fails closed on `pending`; instead,
+  // when the relationship is pending, attach the program to the row so it
+  // auto-grants on the user's accept. Active relationships keep the existing
+  // immediate-assignment behavior.
+  //
+  // A creator/user pair commonly has multiple historical rows (prior leaves
+  // → inactive, prior declines → declined, plus the new pending row). The
+  // lookup MUST prefer the row that's currently engageable: prioritize
+  // pending → active → newest fallback. Without this, .limit(1) without
+  // ordering returned an arbitrary row (often an old inactive one), so the
+  // pendingProgramAssignment was silently written to the wrong row — or
+  // the active path was skipped — leaving the new pending row without a
+  // program reference and the user's home screen empty after accept.
+  const relationshipSnap = await db
+    .collection("one_on_one_clients")
+    .where("creatorId", "==", auth.userId)
+    .where("clientUserId", "==", req.params.clientId)
+    .orderBy("createdAt", "desc")
+    .get();
+  if (relationshipSnap.empty) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este cliente");
+  }
+  const RELATIONSHIP_PRIORITY: Record<string, number> = {
+    pending: 0,
+    active: 1,
+    declined: 2,
+    inactive: 3,
+  };
+  const sortedRows = [...relationshipSnap.docs].sort((a, b) => {
+    const sa = (a.data().status as string | undefined) ?? "active";
+    const sb = (b.data().status as string | undefined) ?? "active";
+    return (RELATIONSHIP_PRIORITY[sa] ?? 9) - (RELATIONSHIP_PRIORITY[sb] ?? 9);
+  });
+  const relationshipDoc = sortedRows[0];
+  const relationshipStatus = (relationshipDoc.data().status as string | undefined) ?? "active";
 
   const courseDoc = await db.collection("courses").doc(req.params.programId).get();
   if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
+  // Audit M-09: validate creator-supplied accessDuration + expiresAt before
+  // writing into user.courses[programId] OR pendingProgramAssignment.
+  const ALLOWED_ACCESS_DURATIONS_LOCAL = new Set([
+    "one_on_one", "monthly", "3-month", "6-month", "yearly", "lifetime",
+  ]);
+  let accessDurationInput = "one_on_one";
+  if (req.body.accessDuration !== undefined) {
+    if (typeof req.body.accessDuration !== "string" ||
+        !ALLOWED_ACCESS_DURATIONS_LOCAL.has(req.body.accessDuration)) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `accessDuration debe ser uno de: ${[...ALLOWED_ACCESS_DURATIONS_LOCAL].join(", ")}`,
+        "accessDuration"
+      );
+    }
+    accessDurationInput = req.body.accessDuration;
+  }
+
+  let expiresAtInput: string | null = null;
+  if (req.body.expiresAt !== undefined && req.body.expiresAt !== null) {
+    if (typeof req.body.expiresAt !== "string") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt debe ser ISO string", "expiresAt"
+      );
+    }
+    const parsed = new Date(req.body.expiresAt);
+    if (isNaN(parsed.getTime())) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt debe ser una fecha válida", "expiresAt"
+      );
+    }
+    const fiveYears = Date.now() + 5 * 365 * 24 * 60 * 60 * 1000;
+    if (parsed.getTime() > fiveYears) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt no puede exceder 5 años", "expiresAt"
+      );
+    }
+    expiresAtInput = parsed.toISOString();
+  }
+
+  // Pending branch — stash the intent; user's accept will run the actual
+  // assignment. Idempotent on the same program; overwrites a different one.
+  if (relationshipStatus === "pending") {
+    await relationshipDoc.ref.update({
+      pendingProgramAssignment: {
+        programId: req.params.programId,
+        accessDuration: accessDurationInput,
+        expiresAt: expiresAtInput,
+        attachedAt: FieldValue.serverTimestamp(),
+      },
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    res.status(202).json({data: {
+      status: "pending",
+      pending: true,
+      message: "Invitación enviada. Se asignará el programa cuando el usuario acepte.",
+    }});
+    return;
+  }
+
   const userRef = db.collection("users").doc(req.params.clientId);
   const userDoc = await userRef.get();
   const courses = userDoc.data()?.courses ?? {};
 
-  // Idempotent: if already assigned, return success
-  if (courses[req.params.programId]) {
-    const existing = courses[req.params.programId];
-    res.status(200).json({data: {assignedAt: existing.assigned_at ?? existing.purchased_at ?? null}});
+  // Idempotent: if already actively assigned, return success. An expired
+  // entry from a prior leave (or any non-active state) is not "already
+  // assigned" — fall through so re-enrollment lands a fresh entry.
+  const existingEnrollment = courses[req.params.programId];
+  if (existingEnrollment && existingEnrollment.status === "active") {
+    res.status(200).json({data: {
+      status: "active",
+      assignedAt: existingEnrollment.assigned_at ?? existingEnrollment.purchased_at ?? null,
+    }});
     return;
   }
 
   const courseData = courseDoc.data()!;
   const now = new Date().toISOString();
 
+  // accessDuration / expiresAt were already validated above, before the
+  // pending branch — reuse them here.
   await userRef.update({
     [`courses.${req.params.programId}`]: {
       status: "active",
       deliveryType: "one_on_one",
-      access_duration: req.body.accessDuration ?? "one_on_one",
+      access_duration: accessDurationInput,
       title: courseData.title ?? "",
       image_url: courseData.image_url ?? null,
       discipline: courseData.discipline ?? "General",
@@ -5669,11 +6149,11 @@ router.post("/creator/clients/:clientId/programs/:programId", async (req, res) =
       assigned_by: auth.userId,
       assigned_at: now,
       purchased_at: now,
-      expires_at: req.body.expiresAt ?? null,
+      expires_at: expiresAtInput,
     },
   });
 
-  res.status(201).json({data: {assignedAt: now}});
+  res.status(201).json({data: {status: "active", assignedAt: now}});
 });
 
 // DELETE /creator/clients/:clientId/programs/:programId
@@ -5698,10 +6178,23 @@ router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) 
   const {expiresAt} = req.body;
   const update: Record<string, unknown> = {};
 
+  // Audit M-09: validate expiresAt before writing.
   if (expiresAt === null) {
     update[`courses.${req.params.programId}.expires_at`] = FieldValue.delete();
   } else if (typeof expiresAt === "string") {
-    update[`courses.${req.params.programId}.expires_at`] = expiresAt;
+    const parsed = new Date(expiresAt);
+    if (isNaN(parsed.getTime())) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt debe ser una fecha válida", "expiresAt"
+      );
+    }
+    const fiveYears = Date.now() + 5 * 365 * 24 * 60 * 60 * 1000;
+    if (parsed.getTime() > fiveYears) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "expiresAt no puede exceder 5 años", "expiresAt"
+      );
+    }
+    update[`courses.${req.params.programId}.expires_at`] = parsed.toISOString();
   }
 
   if (Object.keys(update).length === 0) {
@@ -8159,14 +8652,18 @@ async function ensureProgramCopy(
   const planAssignments = (courseDoc.data()?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
   const assignment = planAssignments[weekKey];
   if (!assignment?.planId || !assignment?.moduleId) {
-    // No plan assigned — create an empty personalized content doc so sessions can be added directly
-    await docRef.set({
-      courseId,
-      weekKey,
-      title: weekKey,
-      isPersonalized: true,
-      created_at: FieldValue.serverTimestamp(),
-    });
+    // No plan assigned — create an empty personalized content doc so sessions can be added directly.
+    // Program-scoped template (id is `program_…`): no client.
+    await docRef.set(clientPlanContentPayload(
+      {creator_id: creatorId, client_id: null},
+      {
+        courseId,
+        weekKey,
+        title: weekKey,
+        isPersonalized: true,
+        created_at: FieldValue.serverTimestamp(),
+      }
+    ));
     return {docId, alreadyExisted: false};
   }
 
@@ -8241,14 +8738,18 @@ async function ensureProgramCopy(
   let batch = db.batch();
   let batchCount = 0;
 
-  batch.set(docRef, {
-    title: moduleTitle,
-    order: 0,
-    source_plan_id: assignment.planId,
-    source_module_id: assignment.moduleId,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped template (id is `program_…`): no specific client.
+  batch.set(docRef, clientPlanContentPayload(
+    {creator_id: creatorId, client_id: null},
+    {
+      title: moduleTitle,
+      order: 0,
+      source_plan_id: assignment.planId,
+      source_module_id: assignment.moduleId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
   batchCount++;
 
   for (const session of sessions) {
@@ -8628,14 +9129,18 @@ router.put("/creator/programs/:programId/plan-content/:weekKey", async (req, res
   const sessions = Array.isArray(body.sessions) ? body.sessions : [];
   const deletions = Array.isArray(body.deletions) ? body.deletions as string[] : [];
 
-  await docRef.set({
-    title: body.title ?? weekKey,
-    order: body.order ?? 0,
-    source_plan_id: body.source_plan_id ?? null,
-    source_module_id: body.source_module_id ?? null,
-    created_at: FieldValue.serverTimestamp(),
-    updated_at: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped template (id is `program_…`): no specific client.
+  await docRef.set(clientPlanContentPayload(
+    {creator_id: auth.userId, client_id: null},
+    {
+      title: body.title ?? weekKey,
+      order: body.order ?? 0,
+      source_plan_id: body.source_plan_id ?? null,
+      source_module_id: body.source_module_id ?? null,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }
+  ));
 
   const batch = db.batch();
   let batchCount = 0;
@@ -8883,24 +9388,31 @@ router.post("/creator/programs/:programId/nutrition/assignments", async (req, re
   const assignmentRef = db.collection("nutrition_assignments").doc();
   const batch = db.batch();
 
-  batch.set(assignmentRef, {
-    userId: null,
-    programId: req.params.programId,
-    source: "program",
-    assignedBy: auth.userId,
-    planId: body.planId,
-    planName: planData.name ?? "",
-    plan: planData,
-    startDate: null,
-    endDate: null,
-    status: "active",
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // Program-scoped assignment template — no specific client.
+  batch.set(assignmentRef, nutritionAssignmentPayload(
+    {creator_id: auth.userId, clientUserId: null},
+    {
+      userId: null,
+      programId: req.params.programId,
+      source: "program",
+      assignedBy: auth.userId,
+      planId: body.planId,
+      planName: planData.name ?? "",
+      plan: planData,
+      startDate: null,
+      endDate: null,
+      status: "active",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    }
+  ));
 
   batch.set(
     db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
-    buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+    clientNutritionPlanContentPayload(
+      {creator_id: auth.userId, client_id: null},
+      buildNutritionContentDoc(planData, assignmentRef.id, body.planId, false)
+    )
   );
 
   await batch.commit();
@@ -8968,7 +9480,13 @@ router.post("/creator/request-api-access", async (req, res) => {
 });
 
 // GET /creator/check-username/:username — check username availability
+// L-27: any authenticated user can call this (intentional for the pre-creator
+// signup flow). Rate-limit to deter username enumeration. requireCreator is
+// not used because callers haven't been promoted yet.
 router.get("/creator/check-username/:username", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
   const username = req.params.username?.toLowerCase();
   if (!username || !/^[a-z0-9_-]+$/.test(username)) {
     res.json({data: {available: false}});
@@ -9100,6 +9618,18 @@ router.post("/creator/register", async (req, res) => {
     userAgent: req.header("user-agent") ?? null,
     at: FieldValue.serverTimestamp(),
   });
+
+  // L-05: stamp role onto the Firebase ID token via a custom claim so
+  // firestore.rules can read request.auth.token.role directly. The PWA forces
+  // a token refresh after this call so the new claim takes effect immediately.
+  try {
+    await admin.auth().setCustomUserClaims(auth.userId, {role: "creator"});
+  } catch (err) {
+    functions.logger.warn("creator-register: setCustomUserClaims failed", {
+      uid: auth.userId,
+      error: String(err),
+    });
+  }
 
   res.status(201).json({data: {userId: auth.userId, role: "creator"}});
 });

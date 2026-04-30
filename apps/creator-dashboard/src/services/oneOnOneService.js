@@ -30,11 +30,28 @@ class OneOnOneService {
     return res.data;
   }
 
+  // C-10 v2: returns { client, assignment } so the caller can differentiate
+  // pending (invite sent, program will apply on accept) vs active assignments.
   async addClientToProgram(_creatorId, clientUserId, programId) {
     const client = await this.addClient(_creatorId, clientUserId);
     const clientProgramService = (await import('./clientProgramService')).default;
-    await clientProgramService.assignProgramToClient(programId, clientUserId);
-    return client;
+    const assignment = await clientProgramService.assignProgramToClient(programId, clientUserId);
+    return { client, assignment };
+  }
+
+  // C-10 v2: re-send a declined invite. Server caps at 2 total resends.
+  // Returns { id, status: 'pending', resendCount, resendsRemaining }.
+  async resendInvite(clientId) {
+    const res = await apiClient.post(`/creator/clients/${clientId}/resend-invite`);
+    return res.data;
+  }
+
+  // List declined invites for the rejected-invitations section.
+  async getDeclinedInvites() {
+    const res = await apiClient.get('/creator/clients', {
+      params: { status: 'declined' },
+    });
+    return res.data || [];
   }
 
   async getClientById(clientId, { userId } = {}) {
