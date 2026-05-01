@@ -2963,7 +2963,7 @@ export const api = onRequest(
     memory: "512MiB",
     timeoutSeconds: 60,
     concurrency: 80,
-    minInstances: 1,
+    minInstances: process.env.GCLOUD_PROJECT === "wolf-20b8b" ? 1 : 0,
     secrets: [
       fatSecretClientIdV2,
       fatSecretClientSecretV2,

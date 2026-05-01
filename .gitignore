@@ -10,6 +10,7 @@ fig/
 # Firestore exports (production data — never commit)
 firestore-dump.json
 **/serviceAccountKey*.json
+wolf-20b8b-*.json
 
 # ============================================
 # Dependencies
