@@ -40,8 +40,14 @@ if (!firebaseConfig.apiKey) {
 const app = initializeApp(firebaseConfig);
 
 // App Check — must run immediately after initializeApp(), before any other service.
-// Key sourced from env; guard lets local dev / emulator run without crashing.
+// F-CFG-05: in production we refuse to start without a site key, so a missing
+// build-time variable can never silently downgrade the PWA to "no App Check"
+// (which would let any client without an App Check token call /api/v1/* once
+// F-MW-01 lands). The escape hatch only fires for staging or the emulator,
+// where test fixtures intentionally don't mint App Check tokens.
 const RECAPTCHA_SITE_KEY = process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY ?? '';
+const isStaging = firebaseEnv === 'staging';
+const isEmulator = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
 
 let appCheck = null;
 if (RECAPTCHA_SITE_KEY) {
@@ -49,6 +55,12 @@ if (RECAPTCHA_SITE_KEY) {
     provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
     isTokenAutoRefreshEnabled: true,
   });
+} else if (!isStaging && !isEmulator) {
+  throw new Error(
+    'EXPO_PUBLIC_RECAPTCHA_SITE_KEY is required in production. ' +
+    'Set it at build time, or run with EXPO_PUBLIC_FIREBASE_ENV=staging / ' +
+    'EXPO_PUBLIC_USE_EMULATOR=true to skip App Check.'
+  );
 }
 
 // Request persistent storage as early as possible (web). Reduces risk of IndexedDB
