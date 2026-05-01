@@ -360,34 +360,45 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && request.auth.uid == creatorId;
     }
 
+    // F-DATA-01 / F-DATA-06: canonical creator field is `creator_id` (snake).
+    // Legacy `assignedBy` is accepted alongside `creator_id` during the
+    // migration window. scripts/security/naming-drift-normalize.js
+    // normalizes data; once the legacy field is gone from prod, the
+    // assignedBy clauses can be removed in Round 2.
     match /nutrition_assignments/{assignmentId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
-        resource.data.assignedBy == request.auth.uid ||
+        resource.data.get('creator_id', '') == request.auth.uid ||
+        resource.data.get('assignedBy', '') == request.auth.uid ||
         isAdmin()
       );
-      allow create: if isSignedIn() && isCreator() && request.resource.data.assignedBy == request.auth.uid;
+      allow create: if isSignedIn() && isCreator()
+        && (request.resource.data.get('creator_id', '') == request.auth.uid
+            || request.resource.data.get('assignedBy', '') == request.auth.uid);
       allow update, delete: if isSignedIn() && (
-        resource.data.assignedBy == request.auth.uid || isAdmin()
+        resource.data.get('creator_id', '') == request.auth.uid ||
+        resource.data.get('assignedBy', '') == request.auth.uid ||
+        isAdmin()
       );
     }
 
-    // Client nutrition plan content: per-assignment copy (doc id = assignmentId).
-    // Client can read their copy; creator (assignedBy) can read/write.
-    // Requires userId + assignedBy fields on the document itself (avoids get() on nutrition_assignments).
     match /client_nutrition_plan_content/{assignmentId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
-        resource.data.assignedBy == request.auth.uid ||
+        resource.data.get('creator_id', '') == request.auth.uid ||
+        resource.data.get('assignedBy', '') == request.auth.uid ||
         isAdmin()
       );
       allow create: if isSignedIn() && (
-        (isCreator() && request.resource.data.assignedBy == request.auth.uid
-          && request.resource.data.keys().hasAll(['userId', 'assignedBy']))
+        (isCreator()
+          && (request.resource.data.get('creator_id', '') == request.auth.uid
+              || request.resource.data.get('assignedBy', '') == request.auth.uid)
+          && request.resource.data.keys().hasAny(['userId']))
         || isAdmin()
       );
       allow update, delete: if isSignedIn() && (
-        resource.data.assignedBy == request.auth.uid ||
+        resource.data.get('creator_id', '') == request.auth.uid ||
+        resource.data.get('assignedBy', '') == request.auth.uid ||
         isAdmin()
       );
     }
