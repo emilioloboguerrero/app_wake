@@ -2618,6 +2618,28 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // F-API1-14: caller must be an active 1:1 client of the program's creator
+  // before they can write a client_programs row. Without this gate, any
+  // authed user could prime the row and then chain into POST
+  // /users/me/courses/:programId/backfill (F-API1-05) for a free grant.
+  const courseDoc = await db.collection("courses").doc(req.params.programId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  const programCreatorId = courseDoc.data()?.creator_id as string | undefined;
+  if (!programCreatorId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Programa sin creador");
+  }
+  const relSnap = await db.collection("one_on_one_clients")
+    .where("creatorId", "==", programCreatorId)
+    .where("clientUserId", "==", auth.userId)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+  if (relSnap.empty) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
   const docId = `${auth.userId}_${req.params.programId}`;
   const docRef = db.collection("client_programs").doc(docId);
   const existing = await docRef.get();

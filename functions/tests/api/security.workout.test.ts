@@ -37,44 +37,106 @@ beforeEach(async () => {
 
 describe("F-API1-14 — POST /workout/client-programs/:programId", () => {
   apiTest(
-    "BUG: any authed user can create a client_programs row for ANY programId",
+    "FIXED: authed user without an active 1:1 client row gets 403/404",
     async () => {
       const u = await createTestUser({uid: "u1", email: "u1@x.com"});
-      // No prior enrollment relationship set up; we just hit the endpoint.
-      const res = await apiCall("POST", "/workout/client-programs/some-paid-program", {
+      await seedFsDoc(`users/${u.uid}`, {role: "user", email: "u1@x.com"});
+      // Seed a course owned by some other creator. Caller has no
+      // one_on_one_clients row — must be rejected.
+      await seedFsDoc("courses/paid-X", {
+        creator_id: "some-creator",
+        title: "Premium course",
+        deliveryType: "low_ticket",
+        status: "published",
+      });
+      const res = await apiCall("POST", "/workout/client-programs/paid-X", {
         idToken: u.idToken,
         body: {currentSessionId: "x"},
       });
-      // Currently 200; after fix this should be 403/404.
-      // Mark as expected behavior today; flip after F-API1-14 fix.
-      if (res.status >= 200 && res.status < 300) {
-        // bug present — pass for now
-        return;
-      }
-      throw new Error(`Expected 2xx (bug present); got ${res.status}`);
+      if (res.status === 403 || res.status === 404) return;
+      throw new Error(`Expected 403/404 (fix in); got ${res.status}`);
+    }
+  );
+
+  apiTest(
+    "FIXED: returns 404 when programId does not exist",
+    async () => {
+      const u = await createTestUser({uid: "u2", email: "u2@x.com"});
+      await seedFsDoc(`users/${u.uid}`, {role: "user"});
+      const res = await apiCall("POST", "/workout/client-programs/nonexistent", {
+        idToken: u.idToken,
+        body: {currentSessionId: "x"},
+      });
+      if (res.status === 404) return;
+      throw new Error(`Expected 404; got ${res.status}`);
     }
   );
 });
 
 describe("F-API1-05 — POST /users/me/courses/:programId/backfill", () => {
   apiTest(
-    "BUG: backfill grants paid course based on self-created client_programs",
+    "FIXED: backfill rejects when caller has no one_on_one_clients row",
     async () => {
       const u = await createTestUser({uid: "u1", email: "u1@x.com"});
-      // Step 1: prime the chain (F-API1-14)
-      await apiCall("POST", "/workout/client-programs/paid-course-X", {
-        idToken: u.idToken,
-        body: {currentSessionId: "x"},
+      await seedFsDoc(`users/${u.uid}`, {role: "user", email: "u1@x.com"});
+      await seedFsDoc("courses/paid-X", {
+        creator_id: "some-creator",
+        title: "Premium",
+        deliveryType: "low_ticket",
       });
-      // Step 2: backfill
-      const res = await apiCall("POST", "/users/me/courses/paid-course-X/backfill", {
+      const res = await apiCall("POST", "/users/me/courses/paid-X/backfill", {
         idToken: u.idToken,
       });
-      // Currently this is the chain that grants the user paid-course-X.
-      // Characterization: any HTTP response (2xx bug present, 4xx fix in,
-      // 5xx handler error) is observed state.
-      if (typeof res.status === "number" && res.status > 0) return;
-      throw new Error(`network error`);
+      if (res.status === 403 || res.status === 404) return;
+      throw new Error(`Expected 403/404 (fix in); got ${res.status}`);
+    }
+  );
+});
+
+describe("F-API1-08 — DELETE /users/me/courses/:courseId", () => {
+  apiTest(
+    "FIXED: cannot delete a course entry whose bundlePurchaseId is in processed_payments",
+    async () => {
+      const u = await createTestUser({uid: "u3", email: "u3@x.com"});
+      await seedFsDoc(`users/${u.uid}`, {
+        role: "user",
+        email: "u3@x.com",
+        courses: {
+          paidCourse: {
+            status: "active",
+            bundlePurchaseId: "pay-123",
+            access_duration: "yearly",
+          },
+        },
+      });
+      await seedFsDoc("processed_payments/pay-123", {
+        userId: u.uid,
+        courseId: "paidCourse",
+        state: "completed",
+      });
+      const res = await apiCall("DELETE", "/users/me/courses/paidCourse", {
+        idToken: u.idToken,
+      });
+      if (res.status === 403) return;
+      throw new Error(`Expected 403 (fix in); got ${res.status}`);
+    }
+  );
+
+  apiTest(
+    "REGRESSION: a non-purchased entry (no bundlePurchaseId) can still be removed",
+    async () => {
+      const u = await createTestUser({uid: "u4", email: "u4@x.com"});
+      await seedFsDoc(`users/${u.uid}`, {
+        role: "user",
+        courses: {
+          freeCourse: {status: "active", access_duration: "trial"},
+        },
+      });
+      const res = await apiCall("DELETE", "/users/me/courses/freeCourse", {
+        idToken: u.idToken,
+      });
+      if (res.status === 204) return;
+      throw new Error(`Expected 204; got ${res.status}`);
     }
   );
 });

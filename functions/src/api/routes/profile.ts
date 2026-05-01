@@ -497,31 +497,37 @@ router.post("/users/me/move-course", async (req, res) => {
 
 // POST /users/me/courses/:programId/backfill — backfill a course entry for orphaned client_programs
 //
-// Security (audit H-09): requires an existing client_programs/{userId}_{programId}
-// doc proving the user was enrolled by a creator. Title/image/etc are read from
-// the program doc, NOT from the request body.
+// F-API1-05: proof of legitimate enrollment is now an active
+// one_on_one_clients row joining the caller to the program's creator —
+// NOT the existence of a client_programs doc (which the caller can
+// self-create through F-API1-14, now also closed). Title/image/etc are
+// read from the program doc, NOT from the request body.
 router.post("/users/me/courses/:programId/backfill", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
   const programId = req.params.programId;
 
-  // Proof of legitimate enrollment: must have a client_programs entry
-  const clientProgramRef = db
-    .collection("client_programs")
-    .doc(`${auth.userId}_${programId}`);
-  const clientProgramDoc = await clientProgramRef.get();
-  if (!clientProgramDoc.exists) {
-    throw new WakeApiServerError(
-      "FORBIDDEN", 403, "No tienes una asignación activa para este programa"
-    );
-  }
-
-  // Read program metadata server-side
   const courseDoc = await db.collection("courses").doc(programId).get();
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
   const course = courseDoc.data()!;
+  const programCreatorId = course.creator_id as string | undefined;
+  if (!programCreatorId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Programa sin creador");
+  }
+
+  const relSnap = await db.collection("one_on_one_clients")
+    .where("creatorId", "==", programCreatorId)
+    .where("clientUserId", "==", auth.userId)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+  if (relSnap.empty) {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403, "No tienes una asignación activa para este programa"
+    );
+  }
 
   await db.collection("users").doc(auth.userId).update({
     [`courses.${programId}`]: {
@@ -931,6 +937,12 @@ router.post("/users/me/delete-feedback", async (req, res) => {
 });
 
 // DELETE /users/me/courses/:courseId — remove a course from user's courses map
+//
+// F-API1-08: an entry whose bundlePurchaseId is recorded in
+// processed_payments is webhook-granted and must not be self-deletable.
+// Allowing the delete enabled a "reset paid course" exploit where a buyer
+// could trim their courses map, retain access via post-payment ledger,
+// and mint a fresh entry by re-running the webhook handler.
 router.delete("/users/me/courses/:courseId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
@@ -939,9 +951,21 @@ router.delete("/users/me/courses/:courseId", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
-  const courses = (auth.userData.courses ?? {}) as Record<string, unknown>;
-  if (!courses[courseId]) {
+  const courses = (auth.userData.courses ?? {}) as Record<string, Record<string, unknown>>;
+  const entry = courses[courseId];
+  if (!entry) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Curso no encontrado en tu cuenta");
+  }
+
+  const bundlePurchaseId = entry.bundlePurchaseId as string | undefined;
+  if (bundlePurchaseId) {
+    const ledger = await db.collection("processed_payments").doc(bundlePurchaseId).get();
+    if (ledger.exists) {
+      throw new WakeApiServerError(
+        "FORBIDDEN", 403,
+        "Este curso fue comprado y no puede eliminarse manualmente"
+      );
+    }
   }
 
   await db.collection("users").doc(auth.userId).update({

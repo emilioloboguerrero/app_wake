@@ -82,6 +82,26 @@ export async function assignBundleToUser(
     await transaction.getAll(...courseRefs) :
     await db.getAll(...courseRefs);
 
+  // F-NEW-07 / F-SVC-01: defence-in-depth ownership check at grant time.
+  // Bundle creation already validates constituent ownership via
+  // validateBundleConstituents(), but the grant logic must not trust that
+  // gate alone — a creator who manages to publish a bundle with a foreign
+  // creator's courseId (legacy data, race window, future bug) would
+  // otherwise hand out paid content of every other creator named in the
+  // courseIds array. Refuse the entire grant on any mismatch.
+  const bundleCreatorId = bundleData.creatorId as string | undefined;
+  for (let i = 0; i < courseDocs.length; i++) {
+    const cd = courseDocs[i];
+    if (!cd.exists) continue;
+    const owner = cd.data()?.creator_id as string | undefined;
+    if (owner && bundleCreatorId && owner !== bundleCreatorId) {
+      throw new Error(
+        `Bundle ${bundleId} grant refused: course ${cd.id} owned by ${owner}, ` +
+        `bundle creator is ${bundleCreatorId}`
+      );
+    }
+  }
+
   const now = new Date();
   const courseIdsGranted: string[] = [];
   const courseIdsSkipped: string[] = [];
