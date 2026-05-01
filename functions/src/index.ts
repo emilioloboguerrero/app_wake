@@ -2972,6 +2972,11 @@ export const api = onRequest(
       mercadopagoWebhookSecretV2,
       vapidPublicKey,
       vapidPrivateKey,
+      // F-FUNCS-20: /email/unsubscribe lives in this Gen2 export and calls
+      // verifyUnsubscribeToken → emailHelpers.unsubscribeSecret(), which
+      // throws if process.env.UNSUBSCRIBE_SECRET is absent. Without this
+      // binding, every unsubscribe link returns "Enlace inválido" in prod.
+      unsubscribeSecret,
     ],
   },
   app
