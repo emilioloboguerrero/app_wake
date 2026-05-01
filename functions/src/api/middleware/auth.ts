@@ -217,9 +217,13 @@ export async function validateAuthAndRateLimit(
   ]);
 
   const userData = userDoc.exists ? userDoc.data()! : null;
-  const role = userData ?
-    ((userData.role as "user" | "creator" | "admin") || "user") :
-    "user";
+  // F-MW-08: role is sourced ONLY from the decoded ID-token claim. Token
+  // claims are issued by Admin SDK paths (onUserCreated for new users,
+  // /creator/register for promotion). Firestore users/{uid}.role is no
+  // longer authoritative — it cannot be trusted because rules let the
+  // owner write it (closed by F-RULES-01) and even the locked-down rule
+  // doesn't make Firestore the source of truth.
+  const role = roleFromClaim(decoded);
 
   const result: AuthResult = {
     userId: decoded.uid,
@@ -229,6 +233,12 @@ export async function validateAuthAndRateLimit(
   };
   req.auth = result;
   return result;
+}
+
+function roleFromClaim(decoded: admin.auth.DecodedIdToken): "user" | "creator" | "admin" {
+  const claim = (decoded as {role?: unknown}).role;
+  if (claim === "creator" || claim === "admin") return claim;
+  return "user";
 }
 
 async function validateApiKey(key: string): Promise<AuthResult> {
@@ -299,12 +309,12 @@ async function validateFirebaseToken(
   // Mirrors the gate in validateAuthAndRateLimit above.
   await enforceAppCheck(req, decoded.uid, isEmulator);
 
-  // Lookup user role from Firestore — keep full doc data for reuse by handlers
+  // F-MW-08: role from decoded claim only. We still read the user doc so
+  // route handlers that destructure userData (profile, courses map, etc.)
+  // continue to work — but role authority is the token, not Firestore.
   const userDoc = await db.collection("users").doc(decoded.uid).get();
   const userData = userDoc.exists ? userDoc.data()! : null;
-  const role = userData ?
-    ((userData.role as "user" | "creator" | "admin") || "user") :
-    "user";
+  const role = roleFromClaim(decoded);
 
   return {
     userId: decoded.uid,

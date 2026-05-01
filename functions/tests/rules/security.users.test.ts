@@ -60,7 +60,10 @@ describe("users/{uid} — own-doc reads (always permitted)", () => {
   it("admin can read any user doc", async () => {
     await seedUser(env, "u1");
     await seedAdmin(env, "admin1");
-    const ctx = env.authenticatedContext("admin1");
+    // F-RULES-02: role authority is the custom claim. Firestore role
+    // fallback was removed, so seedAdmin alone isn't enough — the auth
+    // ctx must also carry the role claim.
+    const ctx = env.authenticatedContext("admin1", {role: "admin"});
     await assertSucceeds(getDoc(doc(ctx.firestore(), "users/u1")));
   });
 });
@@ -78,7 +81,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
   // After the Phase 1 lockdown, every test below should `assertFails`.
   // Today they `assertSucceeds` because the rule has no field whitelist.
 
-  it.fails("BUG: user CAN promote themselves to admin (F-RULES-01)", async () => {
+  it("BUG: user CAN promote themselves to admin (F-RULES-01)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     // Currently allowed → assertFails throws → it.fails marks as expected-fail.
@@ -87,7 +90,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN promote themselves to creator (F-RULES-01)", async () => {
+  it("BUG: user CAN promote themselves to creator (F-RULES-01)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -95,7 +98,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN self-grant a paid course (F-RULES-01 + F-DRIFT-06)", async () => {
+  it("BUG: user CAN self-grant a paid course (F-RULES-01 + F-DRIFT-06)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -113,7 +116,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN write subscriptions field on own doc (F-RULES-01)", async () => {
+  it("BUG: user CAN write subscriptions field on own doc (F-RULES-01)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -123,7 +126,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN flip email_verified to true (F-RULES-01)", async () => {
+  it("BUG: user CAN flip email_verified to true (F-RULES-01)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -131,7 +134,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN overwrite users.email to victim address (F-NEW-06)", async () => {
+  it("BUG: user CAN overwrite users.email to victim address (F-NEW-06)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -139,7 +142,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN clear trial_used to re-use trials (F-NEW-01)", async () => {
+  it("BUG: user CAN clear trial_used to re-use trials (F-NEW-01)", async () => {
     await seedUser(env, "u1", {trial_used: {courseX: true}});
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -149,7 +152,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN squat another creator's username (F-NEW-05)", async () => {
+  it("BUG: user CAN squat another creator's username (F-NEW-05)", async () => {
     await seedCreator(env, "famousCreator", {username: "alex_h"});
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
@@ -158,7 +161,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN write arbitrary cards content (F-DRIFT-04 / F-CLIENT-01)", async () => {
+  it("BUG: user CAN write arbitrary cards content (F-DRIFT-04 / F-CLIENT-01)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(
@@ -170,7 +173,7 @@ describe("users/{uid} — owner update (currently broad — F-RULES-01)", () => 
     );
   });
 
-  it.fails("BUG: user CAN poison purchased_courses array (F-DRIFT-06)", async () => {
+  it("BUG: user CAN poison purchased_courses array (F-DRIFT-06)", async () => {
     await seedUser(env, "u1");
     const ctx = env.authenticatedContext("u1");
     await assertFails(

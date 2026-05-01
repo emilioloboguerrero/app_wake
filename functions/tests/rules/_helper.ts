@@ -127,3 +127,16 @@ export async function seedDoc(
 }
 
 export {assertFails, assertSucceeds};
+
+/**
+ * After F-RULES-02 (Tier 1), getUserRole() reads the role claim only —
+ * no Firestore fallback. Tests that seedCreator/seedAdmin must also stamp
+ * the role onto the auth context. Use these helpers everywhere instead of
+ * raw env.authenticatedContext(uid) for non-"user" roles.
+ */
+export function creatorCtx(env: RulesTestEnvironment, userId: string) {
+  return env.authenticatedContext(userId, {role: "creator"});
+}
+export function adminCtx(env: RulesTestEnvironment, userId: string) {
+  return env.authenticatedContext(userId, {role: "admin"});
+}

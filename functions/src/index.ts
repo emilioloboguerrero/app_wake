@@ -2112,20 +2112,22 @@ export const nutritionBarcodeLookup = functions
 // ─── onUserCreated ────────────────────────────────────────────────────────────
 // Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
 // Creates the Firestore user doc so all downstream reads have a document to work with.
+//
+// F-FUNCS-14: ALWAYS seed role: "user" and stamp claim {role: "user"}.
+// Privilege escalation prereq closed — even if an attacker pre-writes a role
+// onto a stub Firestore user doc (which F-RULES-01 also prevents), this
+// handler does not read that field. Promotion to creator/admin happens via a
+// separate, Admin-SDK-only path (e.g. /creator/register issuing claims after
+// gating checks), never inferred from existing Firestore state.
 export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
-  let resolvedRole: "user" | "creator" | "admin" = "user";
   try {
     const docRef = db.collection("users").doc(user.uid);
     const existing = await docRef.get();
 
-    // If the doc already exists (e.g. /creator/register ran first), only fill
-    // in missing fields — never overwrite role or other data set by registration.
     if (existing.exists) {
+      // Doc may exist if /creator/register or another bootstrap ran first.
+      // Patch only stub fields — never read or trust an existing role.
       const data = existing.data() || {};
-      const existingRole = data.role as "user" | "creator" | "admin" | undefined;
-      if (existingRole === "creator" || existingRole === "admin") {
-        resolvedRole = existingRole;
-      }
       const patch: Record<string, unknown> = {};
       if (!data.email) patch.email = user.email ?? null;
       if (!data.displayName) patch.displayName = user.displayName ?? null;
@@ -2135,7 +2137,6 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
       }
       functions.logger.info("onUserCreated: doc already existed, patched missing fields", {uid: user.uid});
     } else {
-      // No doc yet — bootstrap with role: "user"
       await docRef.set({
         role: "user",
         email: user.email ?? null,
@@ -2151,13 +2152,8 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
     });
   }
 
-  // L-05: stamp role onto the Firebase ID token via a custom claim so
-  // firestore.rules can read request.auth.token.role directly instead of
-  // falling back to a per-eval get(/users/{uid}). Existing sessions pick up
-  // the claim on the next token refresh (~1h). Best-effort — failure here
-  // does not block user creation.
   try {
-    await admin.auth().setCustomUserClaims(user.uid, {role: resolvedRole});
+    await admin.auth().setCustomUserClaims(user.uid, {role: "user"});
   } catch (err) {
     functions.logger.warn("onUserCreated: setCustomUserClaims failed", {
       uid: user.uid,

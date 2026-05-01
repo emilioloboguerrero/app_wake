@@ -16,14 +16,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
     
-    // Check user role — prefer custom claim (zero reads), fallback to Firestore lookup
+    // F-RULES-02: role authority is the custom claim, period. The Firestore
+    // fallback is removed so a user who self-writes role on their own users/
+    // {uid} doc (which F-RULES-01 lockdown also prevents) can no longer flip
+    // isAdmin() / isCreator() at evaluation time. phase1-claim-backfill.js
+    // stamps the claim for existing creator/admin users; missing claim or
+    // empty string defaults to 'user'.
     function getUserRole() {
-      let tokenRole = isSignedIn() ? request.auth.token.get('role', null) : null;
-      return tokenRole != null
-        ? tokenRole
-        : (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user')
-            : 'user');
+      return isSignedIn() ? request.auth.token.get('role', 'user') : 'user';
     }
     
     // Check if user is admin
@@ -45,7 +45,30 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isAdmin();
+      // F-RULES-01 / F-RULES-02 lockdown.
+      // Owner updates are restricted to a non-privileged allowlist of
+      // profile-shape fields. Privileged fields — role, courses,
+      // subscriptions, email, email_verified, trial_used, purchased_courses,
+      // username, created_at, cards — are Admin-SDK-only (the API mutates
+      // them server-side, bypassing rules). Admin retains full update access.
+      allow update: if (isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'profilePictureUrl',
+          'country', 'city', 'gender',
+          'height', 'weight', 'bodyweight', 'goalWeight', 'weightUnit',
+          'birthDate', 'phoneNumber',
+          'bio',
+          'onboardingData', 'creatorOnboardingData',
+          'webOnboardingCompleted', 'profileCompleted',
+          'onboardingCompleted', 'bibliotecaGuideCompleted',
+          'pinnedTrainingCourseId', 'pinnedNutritionAssignmentId',
+          'beholdFeedId',
+          'creatorDiscipline', 'creatorDeliveryType', 'creatorClientRange',
+          'creatorSpecializations', 'creatorExperience', 'creatorCertifications',
+          'creatorNavPreferences', 'socialLinks', 'websiteUrl',
+          'howTheyFoundUs',
+          'lastSessionDate', 'updated_at'
+        ])) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
       
       // Exercise history subcollections
