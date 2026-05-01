@@ -7,39 +7,22 @@ import {WakeApiServerError} from "../errors.js";
 // Without TTL, rate-limit documents accumulate indefinitely.
 // See: https://firebase.google.com/docs/firestore/ttl
 
-// ─── In-memory rate limit for first-party requests ────────────────────────
-// Avoids a Firestore transaction (1 read + 1 write) on every request from
-// the creator dashboard. API key requests still use Firestore for
+// F-MW-02: the in-memory first-party path is gone. Cloud Functions runs
+// many instances; the previous Map only saw the requests routed to the
+// same instance, so a coordinated burst across instances would never trip
+// the limit. Both `rate_limit_first_party` and `rate_limit_windows`
+// collections now use the Firestore-backed transactional path below for
 // cross-instance consistency.
-const memoryWindows = new Map<string, { count: number; expiresAt: number }>();
+//
+// Cost: 1 Firestore read + 1 write per request. On Wake's current scale
+// (~65 users) this is dominated by the 1MiB-billing cost of the doc, not
+// the request volume. Worth it for correctness.
 
 export async function checkRateLimit(
   id: string,
   limitRpm: number,
   collection: "rate_limit_windows" | "rate_limit_first_party" = "rate_limit_windows"
 ): Promise<void> {
-  if (collection === "rate_limit_first_party") {
-    const now = Date.now();
-    const windowMs = 60_000;
-    const key = `${id}_${Math.floor(now / windowMs)}`;
-    const entry = memoryWindows.get(key);
-    if (entry && now < entry.expiresAt) {
-      entry.count++;
-      if (entry.count > limitRpm) {
-        const secondsRemaining = 60 - Math.floor((now % windowMs) / 1000);
-        const err = new WakeApiServerError("RATE_LIMITED", 429, "Demasiadas solicitudes. Intenta en un momento.");
-        err.retryAfter = secondsRemaining;
-        throw err;
-      }
-    } else {
-      for (const [k, v] of memoryWindows) {
-        if (now > v.expiresAt) memoryWindows.delete(k);
-      }
-      memoryWindows.set(key, {count: 1, expiresAt: now + windowMs});
-    }
-    return;
-  }
-
   const now = Date.now();
   const windowMinute = Math.floor(now / 60_000);
   const docId = `${id}_${windowMinute}`;

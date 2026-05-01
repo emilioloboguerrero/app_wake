@@ -4,7 +4,7 @@ import swaggerUi from "swagger-ui-express";
 import {generateOpenApiSpec} from "../openapi.js";
 import {WakeApiServerError} from "./errors.js";
 import {validateAuth, enforceScope} from "./middleware/auth.js";
-import {checkDailyRateLimit} from "./middleware/rateLimit.js";
+import {checkDailyRateLimit, checkIpRateLimit} from "./middleware/rateLimit.js";
 
 import profileRouter from "./routes/profile.js";
 import nutritionRouter from "./routes/nutrition.js";
@@ -25,7 +25,11 @@ import bundlesRouter from "./routes/bundles.js";
 
 export const app = express();
 
-// ─── Cold start detection ─────────────────────────────────────────────────
+// F-MW-04: Firebase Hosting fronts the function via /api/* rewrites; the
+// real client IP is in the first hop of X-Forwarded-For. Without trust
+// proxy enabled, req.ip is always the load balancer's address and the IP
+// rate limiter (F-MW-03) coalesces every caller into one bucket.
+app.set("trust proxy", 1);
 
 // ─── Body parsing ──────────────────────────────────────────────────────────
 app.use(express.json({limit: "1mb"}));
@@ -76,6 +80,26 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     return;
   }
   next();
+});
+
+// ─── IP rate limit (F-MW-03) ─────────────────────────────────────────────
+// Runs BEFORE auth so a flood of unauthenticated requests with random API
+// keys can't burn Firestore reads on the api_keys lookup. Public endpoints
+// (health, /events/*, /app-resources, /email/unsubscribe, /bundles) still
+// pass through this gate. 600 req/min/IP — 10 rps — well above any real
+// client and well below an enumeration burst.
+const IP_RATE_LIMIT_RPM = 600;
+app.use(async (req: Request, _res: Response, next: NextFunction) => {
+  if (req.method === "OPTIONS") {
+    next();
+    return;
+  }
+  try {
+    await checkIpRateLimit(req, IP_RATE_LIMIT_RPM);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── Health ────────────────────────────────────────────────────────────────

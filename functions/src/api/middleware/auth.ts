@@ -8,30 +8,46 @@ import {checkRateLimit} from "./rateLimit.js";
 import {enforceAppCheck} from "./appCheck.js";
 
 // ─── In-memory token verification cache ───────────────────────────────────
-// Caches decoded ID tokens by a truncated SHA-256 hash of the raw token.
+// Caches decoded ID tokens by a SHA-256 hash of the raw token.
 // Avoids repeated verifyIdToken network calls for the same token across
 // concurrent requests (e.g. 8 dashboard queries firing simultaneously).
+//
+// F-MW-06:
+//   - Cache key uses the FULL 32-byte SHA-256 (was: truncated to 16 hex
+//     chars / 8 bytes). The truncation gave a 64-bit collision space —
+//     enough for an attacker to deliberately collide a token with another
+//     user's cached entry.
+//   - TTL is clamped to the actual token expiry. Previously a 5-min cache
+//     could serve a decoded token whose `exp` had already passed.
 const TOKEN_CACHE_MAX = 50;
 const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 const tokenCache = new Map<string, { decoded: admin.auth.DecodedIdToken; expiresAt: number }>();
 
+function tokenCacheKey(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 function getCachedToken(token: string): admin.auth.DecodedIdToken | null {
-  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
-  const entry = tokenCache.get(hash);
+  const entry = tokenCache.get(tokenCacheKey(token));
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
-    tokenCache.delete(hash); return null;
+    tokenCache.delete(tokenCacheKey(token)); return null;
   }
   return entry.decoded;
 }
 
 function setCachedToken(token: string, decoded: admin.auth.DecodedIdToken): void {
-  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
   if (tokenCache.size >= TOKEN_CACHE_MAX) {
     const firstKey = tokenCache.keys().next().value;
     if (firstKey) tokenCache.delete(firstKey);
   }
-  tokenCache.set(hash, {decoded, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS});
+  // Clamp to the smaller of (5 min, token's own remaining lifetime). exp is
+  // in seconds; convert to ms. If exp is missing or already past, fall back
+  // to a tiny TTL so the cache miss happens fast.
+  const tokenExpMs = (decoded.exp ?? 0) * 1000;
+  const remaining = tokenExpMs - Date.now();
+  const ttl = Math.min(TOKEN_CACHE_TTL_MS, Math.max(remaining, 1000));
+  tokenCache.set(tokenCacheKey(token), {decoded, expiresAt: Date.now() + ttl});
 }
 
 // Diagnostic logging for verifyIdToken failures. The Admin SDK error code
