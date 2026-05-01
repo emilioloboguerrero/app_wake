@@ -3309,6 +3309,7 @@ router.get("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
   if (!programId) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "programId es requerido", "programId");
   }
+  await verifyProgramOwnership(auth.userId, programId);
 
   let docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
   let doc = await db.collection("client_plan_content").doc(docId).get();
@@ -3423,6 +3424,7 @@ router.put("/creator/clients/:clientId/plan-content/:weekKey", async (req, res) 
   if (!programId) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "programId es requerido", "programId");
   }
+  await verifyProgramOwnership(auth.userId, programId);
 
   const docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
   const docRef = db.collection("client_plan_content").doc(docId);
@@ -3513,6 +3515,7 @@ router.patch("/creator/clients/:clientId/plan-content/:weekKey/sessions/:session
   if (!programId) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "programId es requerido", "programId");
   }
+  await verifyProgramOwnership(auth.userId, programId);
 
   const docId = planContentDocId(req.params.clientId, programId, req.params.weekKey);
   const sessionRef = db
@@ -6161,6 +6164,7 @@ router.delete("/creator/clients/:clientId/programs/:programId", async (req, res)
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyProgramOwnership(auth.userId, req.params.programId);
 
   await db.collection("users").doc(req.params.clientId).update({
     [`courses.${req.params.programId}`]: FieldValue.delete(),
@@ -6174,6 +6178,7 @@ router.patch("/creator/clients/:clientId/programs/:programId", async (req, res) 
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const {expiresAt} = req.body;
   const update: Record<string, unknown> = {};
@@ -6210,6 +6215,7 @@ router.put("/creator/clients/:clientId/programs/:programId/schedule/:weekKey", a
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyProgramOwnership(auth.userId, req.params.programId);
 
   const body = validateBody<{ planId: string; moduleId: string }>(
     {planId: "string", moduleId: "string"},
@@ -6233,6 +6239,7 @@ router.delete("/creator/clients/:clientId/programs/:programId/schedule/:weekKey"
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  await verifyProgramOwnership(auth.userId, req.params.programId);
 
   await db.collection("users").doc(req.params.clientId).update({
     [`courses.${req.params.programId}.planAssignments.${req.params.weekKey}`]: FieldValue.delete(),
@@ -8209,13 +8216,34 @@ function resolveLibraryExercise(libData: Record<string, unknown>, idOrName: stri
 }
 
 // POST /creator/exercises/libraries/:libraryId/exercises — add exercise to library.
-// Generates a stable exerciseId, dual-writes to exercises.{id} (new shape) and the
-// legacy top-level field (kept for forward compat until Phase 4 cleanup).
+//
+// F-API2-05: name is validated against an alphanumeric+space+dash+underscore
+// allowlist and rejected if it collides with a reserved Firestore field on
+// the library doc. The legacy dual-write at the top level is REMOVED — old
+// docs are normalized by scripts/security/exercises-library-cleanup.js.
+const EXERCISE_NAME_REGEX = /^[\w\s-]{1,80}$/;
+const RESERVED_LIBRARY_FIELDS = new Set([
+  "exercises", "creator_id", "creator_name",
+  "title", "created_at", "updated_at", "image_url",
+]);
 router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
   const body = validateBody<{ name: string }>({name: "string"}, req.body);
+  const name = body.name.trim();
+  if (!EXERCISE_NAME_REGEX.test(name)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "name solo puede contener letras, números, espacios, guiones y guiones bajos",
+      "name"
+    );
+  }
+  if (RESERVED_LIBRARY_FIELDS.has(name)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "name colisiona con un campo reservado", "name"
+    );
+  }
 
   const ref = db.collection("exercises_library").doc(req.params.libraryId);
   const doc = await ref.get();
@@ -8228,12 +8256,11 @@ router.post("/creator/exercises/libraries/:libraryId/exercises", async (req, res
   const baseEntry = {muscle_activation: {}, implements: [], created_at: now, updated_at: now};
 
   await ref.update({
-    [`exercises.${exerciseId}`]: {displayName: body.name, ...baseEntry},
-    [body.name]: baseEntry,
+    [`exercises.${exerciseId}`]: {displayName: name, ...baseEntry},
     updated_at: now,
   });
 
-  res.status(201).json({data: {id: exerciseId, name: body.name, displayName: body.name, created: true}});
+  res.status(201).json({data: {id: exerciseId, name, displayName: name, created: true}});
 });
 
 // DELETE /creator/exercises/libraries/:libraryId/exercises/:exerciseId — remove exercise.

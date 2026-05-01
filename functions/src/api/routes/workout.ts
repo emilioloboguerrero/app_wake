@@ -2668,6 +2668,14 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
 });
 
 // PATCH /workout/client-programs/:programId/overrides
+//
+// F-API1-15: path is now an allowlist regex of exactly the form
+// `overrides.<weekKey>.<exerciseId>` — two segments under `overrides`,
+// each [A-Za-z0-9_-]{1,64}. Anything else (including dotted-deeper paths,
+// reserved fields, prototype-pollution names, casing variants, RTL/zero-
+// width injections, length attacks) is rejected with VALIDATION_ERROR.
+// See docs/SECURITY_FIX_DECISIONS.md §3 for the pinned regex rationale.
+const OVERRIDE_PATH_REGEX = /^overrides\.[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{1,64}$/;
 router.patch("/workout/client-programs/:programId/overrides", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2676,20 +2684,14 @@ router.patch("/workout/client-programs/:programId/overrides", async (req, res) =
   const path = raw.path;
   const value = raw.value;
 
-  if (typeof path !== "string" || path.length === 0 || path.length > 500) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "path debe ser un string no vacío", "path");
+  if (typeof path !== "string" || !OVERRIDE_PATH_REGEX.test(path)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "path debe coincidir con overrides.<weekKey>.<exerciseId>", "path"
+    );
   }
   if (value === undefined) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "value es requerido", "value");
-  }
-
-  // Block dangerous keys
-  const dangerousKeys = ["__proto__", "constructor", "prototype"];
-  const pathParts = path.split(".");
-  for (const part of pathParts) {
-    if (dangerousKeys.includes(part)) {
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, "path contiene claves no permitidas", "path");
-    }
   }
 
   const docId = `${auth.userId}_${req.params.programId}`;
