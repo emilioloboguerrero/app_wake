@@ -487,7 +487,13 @@ export const PUBLIC_COURSE_FIELDS = [
   // Structure (consumed by workout execution + creator dashboard)
   "deliveryType", "visibility", "weekly", "discipline", "duration",
   "weight_suggestions", "availableLibraries", "tutorials",
-  "planAssignments", "content_plan_id",
+  // F-API1-16: planAssignments removed from the public shape. It maps
+  // weekKeys → planId on a per-client basis, which is creator IP — exposing
+  // it on the public course endpoint lets any authed user enumerate plan
+  // ids and pair with the F-API1-17 read to fetch full content. The creator
+  // dashboard reads planAssignments via /creator/clients/:cid/* routes
+  // (creator-scoped), and the PWA reads via users/{uid}.courses[*].
+  "content_plan_id",
   // Status / version
   "status", "version", "published_version",
   // Authorship (display only — never email or payout fields)

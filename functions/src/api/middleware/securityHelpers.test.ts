@@ -806,6 +806,17 @@ describe("pickPublicCourseFields", () => {
     expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("payout"))).toBeUndefined();
     expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("internal"))).toBeUndefined();
   });
+
+  // F-API1-16: planAssignments is creator IP (per-client weekKey→planId
+  // mapping) — must not ship in the public course shape.
+  it("F-API1-16: planAssignments is NOT in the public allowlist", () => {
+    expect(PUBLIC_COURSE_FIELDS).not.toContain("planAssignments");
+    const out = pickPublicCourseFields({
+      title: "X",
+      planAssignments: {"2026-W18": {planId: "secret-plan", moduleId: "m1"}},
+    });
+    expect(out.planAssignments).toBeUndefined();
+  });
 });
 
 // ─── Subscription state-machine guard (audit H-20) ───────────────────────────
