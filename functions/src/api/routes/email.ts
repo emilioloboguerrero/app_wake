@@ -9,7 +9,7 @@ import {WakeApiServerError} from "../errors.js";
 import * as functions from "firebase-functions";
 import {
   escapeHtml,
-  generateUnsubscribeToken,
+  verifyUnsubscribeToken,
   unsubscribeDocId,
   filterUnsubscribed,
 } from "../services/emailHelpers.js";
@@ -114,13 +114,12 @@ async function resolveEventRecipients(
 }
 
 function resolveRegistrationEmail(data: FirebaseFirestore.DocumentData): string | null {
+  // F-API2-09: ONLY the authoritative top-level `email` field is used.
+  // Previously a `responses[*email*]` fallback let attackers add a second
+  // email key (e.g. responses.company_email = victim@example) and have
+  // broadcast emails delivered to that secondary address. The top-level
+  // email is the one bound to the registrant by F-RULES-06 / F-FUNCS-17.
   if (typeof data.email === "string" && data.email.includes("@")) return data.email;
-  if (data.responses && typeof data.responses === "object") {
-    const entry = Object.entries(data.responses as Record<string, unknown>).find(
-      ([k, v]) => k.toLowerCase().includes("email") && typeof v === "string" && (v as string).includes("@")
-    );
-    if (entry) return entry[1] as string;
-  }
   return null;
 }
 
@@ -421,9 +420,11 @@ router.get("/email/unsubscribe", async (req, res) => {
     return;
   }
 
-  // Verify token matches
-  const expectedToken = generateUnsubscribeToken(email, creatorId);
-  if (token !== expectedToken) {
+  // F-FUNCS-20: HMAC verify in constant time. Rejects any mismatched token
+  // including the legacy unkeyed-SHA tokens (those still verify against
+  // generateUnsubscribeToken's old implementation today, but the new HMAC
+  // scheme means attackers can't forge tokens).
+  if (!verifyUnsubscribeToken(token, email, creatorId)) {
     res.status(400).send(unsubscribePageHtml("Enlace inválido", false));
     return;
   }

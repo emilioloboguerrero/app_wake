@@ -43,7 +43,11 @@ import {
   safeErrorPayload,
 } from "./api/middleware/securityHelpers.js";
 import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
-import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
+import {
+  escapeHtml as sharedEscapeHtml,
+  generateUnsubscribeToken,
+  reserveEmailBudget,
+} from "./api/services/emailHelpers.js";
 
 const db = admin.firestore();
 
@@ -62,6 +66,11 @@ const fatSecretClientSecret = functions.params.defineSecret(
   "FATSECRET_CLIENT_SECRET"
 );
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
+// F-FUNCS-20 + F-NEW-02: HMAC-signed unsubscribe tokens + system email
+// budget. Emitted/read by emailHelpers.ts; provisioned in Firebase Secret
+// Manager. Each function that mints / verifies the token (any sender +
+// the /api/email/unsubscribe route) declares this in its secrets[] list.
+const unsubscribeSecret = functions.params.defineSecret("UNSUBSCRIBE_SECRET");
 
 // ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
 // Accepted gap: in-memory rate limiting is ineffective in Cloud Functions
@@ -319,6 +328,27 @@ export const createSubscriptionCheckout = functions
         },
       });
       return;
+    }
+
+    // F-FUNCS-04: bind payer_email to the authed user's stored email so a
+    // client can't impersonate another user's mailbox in the MercadoPago
+    // checkout (which would have the receipt + subscription emails sent
+    // to the impersonated address). Treats the comparison
+    // case-insensitively and trims whitespace.
+    {
+      const userDoc = await db.collection("users").doc(userId).get();
+      const storedEmail = (userDoc.data()?.email as string | undefined)?.toLowerCase().trim();
+      const supplied = payerEmail.toLowerCase().trim();
+      if (!storedEmail || storedEmail !== supplied) {
+        response.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "El email de pago debe coincidir con el de tu cuenta",
+            field: "payer_email",
+          },
+        });
+        return;
+      }
     }
 
     try {
@@ -2301,6 +2331,11 @@ export const sendEventConfirmationEmail = functions
 </html>`;
 
     try {
+      // F-NEW-02: reserve 1 email from the system-wide daily budget. If the
+      // ceiling is hit, this throws and the catch below logs the failure
+      // without sending. Stops a single attacker / runaway loop from running
+      // up the Resend bill for the whole platform.
+      await reserveEmailBudget(1);
       const resend = new Resend(resendApiKey.value());
       const {error: resendError} = await resend.emails.send({
         from: fromAddress,
@@ -2661,7 +2696,7 @@ export const processEmailQueue = onSchedule(
   {
     schedule: "every 1 minutes",
     region: "us-central1",
-    secrets: [resendApiKey],
+    secrets: [resendApiKey, unsubscribeSecret],
     memory: "256MiB",
     timeoutSeconds: 120,
   },
@@ -2746,9 +2781,9 @@ export const processEmailQueue = onSchedule(
           const email = r.email as string;
           const name = (r.name as string) || "";
 
-          const unsubToken = crypto.createHash("sha256")
-            .update(`${email}:${creatorId}`)
-            .digest("hex");
+          // F-FUNCS-20: HMAC-signed token via the shared helper (reads
+          // UNSUBSCRIBE_SECRET from this function's secrets[] env).
+          const unsubToken = generateUnsubscribeToken(email, creatorId);
           const unsubUrl = `https://wakelab.co/api/v1/email/unsubscribe?token=${unsubToken}&email=${encodeURIComponent(email)}&creatorId=${creatorId}`;
 
           const firstName = name.split(" ")[0] || "";
@@ -2776,18 +2811,25 @@ export const processEmailQueue = onSchedule(
           };
         });
 
-        // Fire the batch. Resend SDK returns { data, error } on the single
-        // send path; batch.send follows the same convention. We also wrap in
-        // try/catch in case the SDK throws on network failure.
+        // F-NEW-02: reserve N emails from the daily budget before firing
+        // the batch. If exhausted, mark every doc in this batch as failed
+        // with a budget error so the queue can resume tomorrow.
         let batchErrorMsg: string | null = null;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const response: any = await resend.batch.send(batchPayload as any);
-          if (response && response.error) {
-            batchErrorMsg = response.error.message || "Resend batch error";
-          }
+          await reserveEmailBudget(batchPayload.length);
         } catch (err: unknown) {
-          batchErrorMsg = err instanceof Error ? err.message : "Unknown batch error";
+          batchErrorMsg = err instanceof Error ? err.message : "Email budget error";
+        }
+        if (!batchErrorMsg) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const response: any = await resend.batch.send(batchPayload as any);
+            if (response && response.error) {
+              batchErrorMsg = response.error.message || "Resend batch error";
+            }
+          } catch (err: unknown) {
+            batchErrorMsg = err instanceof Error ? err.message : "Unknown batch error";
+          }
         }
 
         // Apply results to all recipient docs in this batch atomically

@@ -110,7 +110,9 @@ describe("event_signups/registrations — F-RULES-06 / F-RULES-41", () => {
       access: "public",
     });
     await seedUser(env, "u1");
-    const ctx = env.authenticatedContext("u1");
+    // Post-Tier-6: rule binds resource.email to auth token email when email
+    // is supplied; pass it on the auth context so the bind matches.
+    const ctx = env.authenticatedContext("u1", {email: "u1@example.com"});
     await assertSucceeds(
       setDoc(doc(ctx.firestore(), "event_signups/e1/registrations/r1"), {
         userId: "u1",
@@ -122,8 +124,8 @@ describe("event_signups/registrations — F-RULES-06 / F-RULES-41", () => {
     );
   });
 
-  it.fails(
-    "BUG: authed user CAN spoof userId of another user on registration (F-RULES-41)",
+  it(
+    "FIXED: authed user CANNOT spoof userId of another user on registration (F-RULES-41)",
     async () => {
       await seedDoc(env, "events/e1", {
         creator_id: "creator1",

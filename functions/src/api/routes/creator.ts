@@ -9482,6 +9482,9 @@ router.post("/creator/request-api-access", async (req, res) => {
     throw new WakeApiServerError("INTERNAL_ERROR", 500, "Servicio de email no disponible");
   }
 
+  // F-NEW-02: daily budget gate.
+  const {reserveEmailBudget} = await import("../services/emailHelpers.js");
+  await reserveEmailBudget(1);
   const resend = new Resend(apiKey);
   await resend.emails.send({
     from: "Wake Platform <platform@wakelab.co>",

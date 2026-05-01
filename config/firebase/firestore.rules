@@ -409,10 +409,22 @@ service cloud.firestore {
     }
 
     match /event_signups/{eventId}/registrations/{regId} {
-      // wake_users_only events require auth; open events allow anyone
+      // F-RULES-06 / F-RULES-41 / F-FUNCS-17: bind email + userId to caller.
+      // - Authed registrant: userId must equal auth.uid; if an email field
+      //   is provided, it must match the auth-token email (prevents using
+      //   a victim's address as the recipient of the confirmation email).
+      // - Unauthed registrant on a non-`wake_users_only` event: the doc
+      //   must NOT carry a userId field (so the unauth path can't claim
+      //   identity). The Cloud Function rate-limits the unauth flow.
       allow create: if (
-        get(/databases/$(database)/documents/events/$(eventId)).data.get('wake_users_only', false) == false
-        || isSignedIn()
+        (isSignedIn()
+          && request.resource.data.get('userId', '') == request.auth.uid
+          && (!('email' in request.resource.data.keys())
+              || request.resource.data.email == request.auth.token.get('email', '')))
+        ||
+        (!isSignedIn()
+          && get(/databases/$(database)/documents/events/$(eventId)).data.get('wake_users_only', false) == false
+          && !('userId' in request.resource.data.keys()))
       );
       // Creator and admin can read all registrations; registrant can read their own (by doc id matching uid)
       allow read: if isSignedIn() && (
