@@ -139,12 +139,18 @@ service cloud.firestore {
         isAdmin()
       );
       allow create: if isSignedIn() && isCreator() && request.resource.data.creatorId == request.auth.uid;
+      // F-RULES-31 (Round 2): creatorId / clientUserId / createdAt are
+      // immutable on update — preventing the owner-creator from flipping
+      // clientUserId to attach a victim as their client.
       allow update: if isSignedIn() && (
-        resource.data.creatorId == request.auth.uid || 
-        isAdmin()
+        isAdmin() ||
+        (resource.data.creatorId == request.auth.uid &&
+         request.resource.data.creatorId == resource.data.creatorId &&
+         request.resource.data.get('clientUserId', '') == resource.data.get('clientUserId', '') &&
+         request.resource.data.get('createdAt', resource.data.get('createdAt', null)) == resource.data.get('createdAt', null))
       );
       allow delete: if isSignedIn() && (
-        resource.data.creatorId == request.auth.uid || 
+        resource.data.creatorId == request.auth.uid ||
         isAdmin()
       );
     }
@@ -281,14 +287,16 @@ service cloud.firestore {
     // PURCHASES
     // ============================================
     
-    // Purchases - users can create their own, admins can read all
+    // F-RULES-08 (Round 2): purchases are server-only — collection has 0
+    // docs in prod (verified shape-analysis 2026-05-01), and the canonical
+    // payment record lives in `processed_payments`. Locking writes to admin
+    // closes the forge-purchase-row paywall-bypass surface preemptively.
     match /purchases/{purchaseId} {
       allow read: if isSignedIn() && (
         isAdmin() ||
         resource.data.user_id == request.auth.uid
       );
-      allow create: if isSignedIn() && request.resource.data.user_id == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
     
     // ============================================
@@ -380,6 +388,10 @@ service cloud.firestore {
     // migration window. scripts/security/naming-drift-normalize.js
     // normalizes data; once the legacy field is gone from prod, the
     // assignedBy clauses can be removed in Round 2.
+    // F-RULES-09 (Round 2): writes locked to admin (Admin SDK API endpoints
+    // mediate creates/updates/deletes and validate the creator↔client
+    // relationship before writing — no client SDK call path exists, verified
+    // via grep of apps/pwa/src + apps/creator-dashboard/src).
     match /nutrition_assignments/{assignmentId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
@@ -387,27 +399,11 @@ service cloud.firestore {
         resource.data.get('assignedBy', '') == request.auth.uid ||
         isAdmin()
       );
-      allow create: if isSignedIn() && isCreator()
-        && (request.resource.data.get('creator_id', '') == request.auth.uid
-            || request.resource.data.get('assignedBy', '') == request.auth.uid);
-      // F-RULES-34 (Round 2): userId / creator_id / assignedBy are immutable
-      // — preventing a creator from flipping `userId` on an existing
-      // assignment to surface another user's plan content under it.
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        ((resource.data.get('creator_id', '') == request.auth.uid ||
-          resource.data.get('assignedBy', '') == request.auth.uid) &&
-         request.resource.data.userId == resource.data.userId &&
-         request.resource.data.get('creator_id', '') == resource.data.get('creator_id', '') &&
-         request.resource.data.get('assignedBy', '') == resource.data.get('assignedBy', ''))
-      );
-      allow delete: if isSignedIn() && (
-        resource.data.get('creator_id', '') == request.auth.uid ||
-        resource.data.get('assignedBy', '') == request.auth.uid ||
-        isAdmin()
-      );
+      allow write: if isAdmin();
     }
 
+    // F-RULES-10 (Round 2): writes locked to admin (same shape as
+    // nutrition_assignments — API mediates and validates relationship).
     match /client_nutrition_plan_content/{assignmentId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
@@ -415,18 +411,7 @@ service cloud.firestore {
         resource.data.get('assignedBy', '') == request.auth.uid ||
         isAdmin()
       );
-      allow create: if isSignedIn() && (
-        (isCreator()
-          && (request.resource.data.get('creator_id', '') == request.auth.uid
-              || request.resource.data.get('assignedBy', '') == request.auth.uid)
-          && request.resource.data.keys().hasAny(['userId']))
-        || isAdmin()
-      );
-      allow update, delete: if isSignedIn() && (
-        resource.data.get('creator_id', '') == request.auth.uid ||
-        resource.data.get('assignedBy', '') == request.auth.uid ||
-        isAdmin()
-      );
+      allow write: if isAdmin();
     }
 
     // ============================================
@@ -436,10 +421,19 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if true;
       allow create: if isCreator() && request.resource.data.creator_id == request.auth.uid;
+      // F-RULES-21 (Round 2): creator may update event metadata but NOT
+      // the server-managed registration_count counter (sendEventConfirmationEmail
+      // owns it). creator_id and created_at are also immutable. Admin retains
+      // full update.
       allow update: if isSignedIn() && (
-        resource.data.creator_id == request.auth.uid || isAdmin()
+        isAdmin() ||
+        (resource.data.creator_id == request.auth.uid &&
+         request.resource.data.creator_id == resource.data.creator_id &&
+         request.resource.data.get('created_at', resource.data.get('created_at', null)) ==
+           resource.data.get('created_at', null) &&
+         request.resource.data.get('registration_count', 0) ==
+           resource.data.get('registration_count', 0))
       );
-      // registration_count is managed by Cloud Functions (sendEventConfirmationEmail) — no client update
       allow delete: if isSignedIn() && (
         resource.data.creator_id == request.auth.uid || isAdmin()
       );
@@ -453,6 +447,10 @@ service cloud.firestore {
       // - Unauthed registrant on a non-`wake_users_only` event: the doc
       //   must NOT carry a userId field (so the unauth path can't claim
       //   identity). The Cloud Function rate-limits the unauth flow.
+      // F-RULES-06 (Round 2): cap doc shape to a known field allowlist so a
+      // registrant can't bloat the doc toward Firestore's 1MiB limit (this
+      // collection accepts unauth writes for public events, so the surface
+      // is broader than other create paths).
       allow create: if (
         (isSignedIn()
           && request.resource.data.get('userId', '') == request.auth.uid
@@ -462,7 +460,12 @@ service cloud.firestore {
         (!isSignedIn()
           && get(/databases/$(database)/documents/events/$(eventId)).data.get('wake_users_only', false) == false
           && !('userId' in request.resource.data.keys()))
-      );
+      ) && request.resource.data.keys().hasOnly([
+        'userId', 'email', 'nombre', 'displayName', 'phoneNumber',
+        'responses', 'fieldValues', 'created_at', 'createdAt',
+        'checked_in', 'checkedIn', 'checked_in_at', 'checkedInAt',
+        'check_in_token', 'source'
+      ]);
       // Creator and admin can read all registrations; registrant can read their own (by doc id matching uid)
       allow read: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
@@ -625,16 +628,15 @@ service cloud.firestore {
       );
     }
 
+    // F-RULES-14 (Round 2): writes locked to admin (Admin SDK API mediates
+    // and validates creator↔client relationship before writing).
     match /client_session_content/{docId} {
       allow read: if isSignedIn() && (
         resource.data.creator_id == request.auth.uid ||
         resource.data.client_id == request.auth.uid ||
         isAdmin()
       );
-      allow create: if isCreator() && request.resource.data.creator_id == request.auth.uid;
-      allow update, delete: if isSignedIn() && (
-        resource.data.creator_id == request.auth.uid || isAdmin()
-      );
+      allow write: if isAdmin();
     }
 
     match /client_plan_content/{docId} {
@@ -744,7 +746,17 @@ service cloud.firestore {
                     && isCreator()
                     && request.auth.uid == request.resource.data.creatorId
                     && request.resource.data.status == 'draft';
-      allow update: if isSignedIn() && request.auth.uid == resource.data.creatorId;
+      // F-RULES-03 / F-RULES-20 (Round 2): on update, creatorId is immutable
+      // (no transferring a bundle to another creator) and status transitions
+      // are restricted to draft↔published (no inventing new status values).
+      // Cross-creator courseIds in the bundle are still server-side enforced
+      // by F-NEW-07 / F-SVC-01 in bundleAssignment.ts; the rule layer caps
+      // the worst-case (publishing a bundle attributed to someone else).
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.creatorId
+        && request.resource.data.creatorId == resource.data.creatorId
+        && (request.resource.data.status == 'draft' ||
+            request.resource.data.status == 'published');
       allow delete: if false;
     }
 
