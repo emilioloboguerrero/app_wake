@@ -188,11 +188,18 @@ service cloud.firestore {
         (isCreator() && resource.data.get('creator_id', '') == request.auth.uid)
       );
 
-      allow create: if isCreator();
+      // F-RULES-19 (Round 2): bind creator_id at create-time so a creator
+      // cannot orphan a course attributed to another creator.
+      allow create: if isCreator()
+        && request.resource.data.get('creator_id', '') == request.auth.uid;
 
+      // F-RULES-19 (Round 2): creator_id is immutable on update — diff-guard
+      // forbids reassignment.
       allow update: if isSignedIn() && (
         isAdmin() ||
-        (isCreator() && resource.data.get('creator_id', '') == request.auth.uid)
+        (isCreator()
+         && resource.data.get('creator_id', '') == request.auth.uid
+         && request.resource.data.get('creator_id', '') == resource.data.get('creator_id', ''))
       );
       allow delete: if isAdmin();
       
@@ -229,11 +236,15 @@ service cloud.firestore {
     }
     
     // ============================================
-    // USER PROGRESS & DATA (LEGACY - TO BE REMOVED)
+    // USER PROGRESS & DATA (LEGACY — 0 docs in prod)
     // ============================================
-    
-    // User progress - supports userId_courseId pattern
-    // Allow if document ID starts with user's ID
+    // F-RULES-16 / F-RULES-17 (Round 2): the previous rules accepted
+    // `request.resource.data.userId == auth.uid` for create on doc IDs that
+    // could begin with another user's UID prefix — letting an attacker
+    // poison `user_progress/<victimUid>_courseX` with their own data, which
+    // the victim's docId-prefix read would then surface. Production has 0
+    // docs in either collection (verified shape-analysis 2026-05-01).
+    // Locked to docId-prefix only; the userId-field branch is gone.
     match /user_progress/{docId} {
       allow read: if isSignedIn() && (
         docId == request.auth.uid ||
@@ -241,25 +252,12 @@ service cloud.firestore {
       );
       allow write: if isSignedIn() && (
         docId == request.auth.uid ||
-        docId.matches('^' + request.auth.uid + '_.*') ||
-        request.resource.data.userId == request.auth.uid
+        docId.matches('^' + request.auth.uid + '_.*')
       );
     }
-    
-    // Completed sessions - supports userId_courseId_timestamp pattern
     match /completed_sessions/{docId} {
-      allow read: if isSignedIn() && (
-        docId.matches('^' + request.auth.uid + '_.*') ||
-        (resource != null && resource.data.userId == request.auth.uid)
-      );
-      allow create: if isSignedIn() && (
-        docId.matches('^' + request.auth.uid + '_.*') ||
-        request.resource.data.userId == request.auth.uid
-      );
-      allow update, delete: if isSignedIn() && (
-        docId.matches('^' + request.auth.uid + '_.*') ||
-        resource.data.userId == request.auth.uid
-      );
+      allow read, create, update, delete: if isSignedIn() &&
+        docId.matches('^' + request.auth.uid + '_.*');
     }
     
     // ============================================
@@ -298,8 +296,15 @@ service cloud.firestore {
     // ============================================
     
     // Account deletion feedback - users can create their own feedback, admins can read all
+    // F-RULES-40 (Round 2): cap doc shape so a single create can't bloat
+    // toward Firestore's 1MiB limit (matches subscription_cancellation_feedback pattern).
     match /account_deletion_feedback/{feedbackId} {
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'userId', 'reason', 'feedback', 'submittedAt', 'source',
+          'subscriptionStatus', 'hadActiveSubscription'
+        ]);
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
     }
@@ -322,7 +327,13 @@ service cloud.firestore {
     // direct Firestore read access. Closes BI leakage of competitor schedules.
     match /creator_availability/{creatorId} {
       allow read: if isOwner(creatorId) || isAdmin();
-      allow create, update: if isSignedIn() && request.auth.uid == creatorId;
+      // F-RULES-32 (Round 2): creator may only write their own availability;
+      // doc shape constrained to a known field allowlist so a creator can't
+      // pollute the doc with unrelated keys.
+      allow create, update: if isSignedIn() && request.auth.uid == creatorId
+        && request.resource.data.keys().hasOnly([
+          'slots', 'timezone', 'updatedAt', 'createdAt'
+        ]);
       allow delete: if isSignedIn() && request.auth.uid == creatorId;
     }
 
@@ -338,6 +349,8 @@ service cloud.firestore {
       // and admin retain full update. Server (Admin SDK) bypasses rules and
       // owns all other transitions. Without this, a client could overwrite
       // creator-owned fields (callLink, slotStartUtc, creatorId).
+      // F-RULES-12 (Round 2): client may only set status to `cancelled` —
+      // marking a booking `confirmed` or `completed` is creator/admin-only.
       allow update: if isSignedIn() && (
         resource.data.creatorId == request.auth.uid ||
         isAdmin() ||
@@ -345,7 +358,9 @@ service cloud.firestore {
          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
            'status', 'cancelled_by_client', 'cancellation_reason',
            'notes', 'updatedAt'
-         ]))
+         ]) &&
+         (!('status' in request.resource.data.diff(resource.data).affectedKeys())
+          || request.resource.data.status == 'cancelled'))
       );
       allow delete: if false;
     }
@@ -375,7 +390,18 @@ service cloud.firestore {
       allow create: if isSignedIn() && isCreator()
         && (request.resource.data.get('creator_id', '') == request.auth.uid
             || request.resource.data.get('assignedBy', '') == request.auth.uid);
-      allow update, delete: if isSignedIn() && (
+      // F-RULES-34 (Round 2): userId / creator_id / assignedBy are immutable
+      // — preventing a creator from flipping `userId` on an existing
+      // assignment to surface another user's plan content under it.
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        ((resource.data.get('creator_id', '') == request.auth.uid ||
+          resource.data.get('assignedBy', '') == request.auth.uid) &&
+         request.resource.data.userId == resource.data.userId &&
+         request.resource.data.get('creator_id', '') == resource.data.get('creator_id', '') &&
+         request.resource.data.get('assignedBy', '') == resource.data.get('assignedBy', ''))
+      );
+      allow delete: if isSignedIn() && (
         resource.data.get('creator_id', '') == request.auth.uid ||
         resource.data.get('assignedBy', '') == request.auth.uid ||
         isAdmin()
@@ -473,8 +499,14 @@ service cloud.firestore {
     // ============================================
     // CREATOR FEEDBACK (suggestions / bug reports)
     // ============================================
+    // F-RULES-39 (Round 2): cap doc shape (1MiB-bloat defense).
     match /creator_feedback/{feedbackId} {
-      allow create: if isSignedIn() && isCreator() && request.resource.data.creatorId == request.auth.uid;
+      allow create: if isSignedIn() && isCreator()
+        && request.resource.data.creatorId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'creatorId', 'category', 'message', 'submittedAt',
+          'source', 'attachmentPath', 'metadata'
+        ]);
       allow read, update, delete: if isAdmin();
     }
 
@@ -489,8 +521,15 @@ service cloud.firestore {
         resource.data.get('clientUserId', '') == request.auth.uid
       );
       allow create: if isCreator() && request.resource.data.creatorId == request.auth.uid;
+      // F-RULES-33 (Round 2): creatorId / clientUserId / createdAt are
+      // immutable on update — preventing a creator from flipping the
+      // assigned client to surface plan content under another user.
       allow update: if isSignedIn() && (
-        resource.data.creatorId == request.auth.uid || isAdmin()
+        isAdmin() ||
+        (resource.data.creatorId == request.auth.uid &&
+         request.resource.data.creatorId == resource.data.creatorId &&
+         request.resource.data.get('clientUserId', '') == resource.data.get('clientUserId', '') &&
+         request.resource.data.get('createdAt', resource.data.get('createdAt', null)) == resource.data.get('createdAt', null))
       );
       allow delete: if isSignedIn() && (
         resource.data.creatorId == request.auth.uid || isAdmin()
@@ -683,8 +722,14 @@ service cloud.firestore {
     // ============================================
     // WRITE ACCESS REQUESTS (developer portal)
     // ============================================
+    // F-RULES-40 (Round 2): cap doc shape (1MiB-bloat defense).
     match /write_access_requests/{requestId} {
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'userId', 'email', 'displayName', 'reason',
+          'requestedScopes', 'submittedAt', 'status'
+        ]);
       allow read, update, delete: if isAdmin();
     }
 
