@@ -48,8 +48,8 @@ beforeEach(async () => {
 // ─── nutrition_assignments — F-RULES-09 / F-RULES-34 / F-DATA-06 ─────────────
 
 describe("nutrition_assignments — phantom assignment vector", () => {
-  it.fails(
-    "BUG: any creator CAN plant a nutrition_assignment for any victim (F-RULES-09)",
+  it(
+    "FIXED: any creator can no longer plant a nutrition_assignment for any victim (F-RULES-09)",
     async () => {
       await seedCreator(env, "creatorMalicious");
       await seedUser(env, "victim");
@@ -70,8 +70,8 @@ describe("nutrition_assignments — phantom assignment vector", () => {
     }
   );
 
-  it.fails(
-    "BUG: creator CAN flip userId on an existing assignment to retarget a victim (F-RULES-34)",
+  it(
+    "FIXED: creator can no longer flip userId on an existing assignment to retarget a victim (F-RULES-34)",
     async () => {
       await seedCreator(env, "creator1");
       await seedDoc(env, "nutrition_assignments/a1", {
@@ -111,8 +111,8 @@ describe("nutrition_assignments — phantom assignment vector", () => {
 // ─── client_nutrition_plan_content — F-RULES-10 ──────────────────────────────
 
 describe("client_nutrition_plan_content — phantom content vector", () => {
-  it.fails(
-    "BUG: creator CAN plant content for a user they have no assignment with (F-RULES-10)",
+  it(
+    "FIXED: creator can no longer plant content for a user they have no assignment with (F-RULES-10)",
     async () => {
       await seedCreator(env, "creatorMalicious");
       await seedUser(env, "victim");
@@ -138,8 +138,8 @@ describe("client_nutrition_plan_content — phantom content vector", () => {
 // ─── client_session_content / client_plan_content — F-RULES-14 ──────────────
 
 describe("client_session_content / client_plan_content — phantom create", () => {
-  it.fails(
-    "BUG: creator CAN create client_session_content targeting an unrelated user (F-RULES-14)",
+  it(
+    "FIXED: creator can no longer create client_session_content targeting an unrelated user (F-RULES-14)",
     async () => {
       await seedCreator(env, "creatorMalicious");
       await seedUser(env, "victim");
@@ -203,8 +203,8 @@ describe("client_programs — F-RULES-13 / F-DATA-02 (rule vs production data sh
     );
   });
 
-  it.fails(
-    "BUG: client CAN rewrite identity fields when doc has matching clientId field (F-RULES-13)",
+  it(
+    "FIXED: client can no longer rewrite identity fields when doc has matching clientId field (F-RULES-13)",
     async () => {
       await seedUser(env, "u1");
       // Synthetic doc with clientId field present so the rule's update path
@@ -285,8 +285,8 @@ describe("one_on_one_clients", () => {
     await assertFails(getDoc(doc(ctx.firestore(), "one_on_one_clients/c1")));
   });
 
-  it.fails(
-    "BUG: creator CAN flip clientUserId on their own row to a victim (F-RULES-31)",
+  it(
+    "FIXED: creator can no longer flip clientUserId on their own row to a victim (F-RULES-31)",
     async () => {
       await seedCreator(env, "creator1");
       await seedDoc(env, "one_on_one_clients/c1", {
@@ -336,8 +336,8 @@ describe("call_bookings", () => {
     );
   });
 
-  it.fails(
-    "BUG: client CAN flip own booking status to 'confirmed' or 'completed' (F-RULES-12)",
+  it(
+    "FIXED: client can no longer flip own booking status to 'confirmed' or 'completed' (F-RULES-12)",
     async () => {
       await seedUser(env, "client1");
       await seedDoc(env, "call_bookings/b1", {
@@ -378,8 +378,8 @@ describe("call_bookings", () => {
 // ─── user_progress — F-RULES-16 ──────────────────────────────────────────────
 
 describe("user_progress — cross-namespace poisoning vector", () => {
-  it.fails(
-    "BUG: attacker CAN write user_progress/<victimUid_X> with own userId (F-RULES-16)",
+  it(
+    "FIXED: attacker can no longer write user_progress/<victimUid_X> with own userId (F-RULES-16)",
     async () => {
       await seedUser(env, "attacker");
       await seedUser(env, "victim");

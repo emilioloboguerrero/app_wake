@@ -49,8 +49,8 @@ describe("courses — create / update / delete (F-RULES-19)", () => {
     );
   });
 
-  it.fails(
-    "BUG: creator CAN create a course attributing it to a foreign creator (F-RULES-19)",
+  it(
+    "FIXED: creator can no longer create a course attributing it to a foreign creator (F-RULES-19)",
     async () => {
       await seedCreator(env, "creatorA");
       await seedCreator(env, "creatorB");
@@ -266,8 +266,8 @@ describe("plans — F-RULES-33 + F-DATA-02 (rule vs production data shape)", () 
     );
   });
 
-  it.fails(
-    "BUG: plan owner CAN flip clientUserId to a victim (F-RULES-33), reachable when doc has both fields",
+  it(
+    "FIXED: plan owner can no longer flip clientUserId to a victim (F-RULES-33), reachable when doc has both fields",
     async () => {
       await seedCreator(env, "creator1");
       await seedDoc(env, "plans/p2", {

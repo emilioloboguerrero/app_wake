@@ -64,8 +64,8 @@ describe("events — owner update (F-RULES-21)", () => {
     );
   });
 
-  it.fails(
-    "BUG: event creator CAN inflate registration_count manually (F-RULES-21)",
+  it(
+    "FIXED: event creator can no longer inflate registration_count manually (F-RULES-21)",
     async () => {
       await seedCreator(env, "creator1");
       await seedDoc(env, "events/e1", {
@@ -146,7 +146,7 @@ describe("event_signups/registrations — F-RULES-06 / F-RULES-41", () => {
     }
   );
 
-  it.fails(
+  it(
     "BUG: registration creates accept arbitrary unwhitelisted fields (F-RULES-06)",
     async () => {
       await seedDoc(env, "events/e1", {

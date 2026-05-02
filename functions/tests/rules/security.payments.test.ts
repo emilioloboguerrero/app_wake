@@ -34,8 +34,8 @@ beforeEach(async () => {
 });
 
 describe("purchases — F-RULES-08", () => {
-  it.fails(
-    "BUG: signed-in user CAN forge an approved purchase row (F-RULES-08)",
+  it(
+    "FIXED: signed-in user can no longer forge an approved purchase row (F-RULES-08)",
     async () => {
       await seedUser(env, "u1");
       const ctx = env.authenticatedContext("u1");

@@ -74,7 +74,7 @@
           },
           {
             "key": "Permissions-Policy",
-            "value": "interest-cohort=()"
+            "value": "interest-cohort=(), geolocation=(), microphone=(), camera=(), payment=(self), usb=(), magnetometer=(), accelerometer=(), gyroscope=()"
           }
         ]
       },

@@ -3,6 +3,7 @@
  */
 
 import * as crypto from "node:crypto";
+import * as admin from "firebase-admin";
 import {db} from "../firestore.js";
 
 export function escapeHtml(str: string): string {
@@ -123,11 +124,17 @@ export async function reserveEmailBudget(count: number): Promise<void> {
     if (snap.exists) {
       tx.update(ref, {sent_count: used + count, updated_at: new Date().toISOString()});
     } else {
+      // expires_at: 90 days from creation. Firestore TTL policy on this
+      // collection-group field auto-deletes the doc once now > expires_at.
+      // Budget docs are append-only one-per-day; nothing reads >24h history.
+      const expiresAt = new Date();
+      expiresAt.setUTCDate(expiresAt.getUTCDate() + 90);
       tx.set(ref, {
         sent_count: count,
         ceiling: EMAIL_DAILY_CEILING,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        expires_at: admin.firestore.Timestamp.fromDate(expiresAt),
       });
     }
   });

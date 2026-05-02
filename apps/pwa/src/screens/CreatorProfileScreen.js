@@ -21,6 +21,7 @@ import MuscleSilhouette from '../components/MuscleSilhouette';
 import { getMondayWeek, formatWeekDisplay, getWeekDates, getWeeksBetween } from '../utils/weekCalculation';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import logger from '../utils/logger';
+import { SecurityUtils } from '../utils/security';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgInfo from '../components/icons/SvgInfo';
@@ -1090,6 +1091,12 @@ const CreatorProfileScreen = ({ navigation, route }) => {
     if (!card?.value) return;
 
     if (card.type === 'link') {
+      // F-CLIENT-01: creator-controlled value; reject javascript:/data:/etc.
+      // before handing to native Linking.
+      if (!SecurityUtils.validateUrl(card.value)) {
+        logger.warn('CreatorProfileScreen: refused to open unsafe card URL');
+        return;
+      }
       Linking.openURL(card.value).catch((err) =>
         logger.error('Error opening link:', err)
       );

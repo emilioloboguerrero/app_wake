@@ -9,8 +9,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Wake" />
-  <!-- Content Security Policy to help prevent extension injection issues -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss: ws:; media-src 'self' blob: https:;">
+  <!-- F-CFG-03 (Round 2): permissive in-HTML CSP removed. The strict CSP
+       served as a Hosting header (firebase.json /app/** block) is the
+       authoritative policy. Adding a permissive meta-tag here did nothing
+       useful — browsers enforce the intersection of all CSP sources, so
+       the meta tag could only relax things it never relaxed in practice. -->
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
