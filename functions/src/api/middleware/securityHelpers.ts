@@ -121,6 +121,17 @@ export interface FreeGrantContext {
   };
 }
 
+// F-2026-05-01: explicit allowlist of statuses that may be self-granted by a
+// non-creator caller (preview / testing flow). Production data shape (shape-
+// analysis 2026-05-02 against wolf-20b8b) shows only "draft" and "published"
+// in courses.status; "archived" is retained as a future-safe entry that the
+// creator dashboard already exposes. Any other value — including a missing
+// status, the legacy Spanish "publicado" literal, or a typo — is treated as
+// published (no free grant). Previous predicate `status !== "published"` was
+// a blacklist that flipped one typo or one legacy doc into a monetization
+// bypass.
+const FREE_GRANTABLE_STATUSES: ReadonlySet<string> = new Set(["draft", "archived"]);
+
 export function isFreeGrantAllowed(ctx: FreeGrantContext): boolean {
   // Admins always allowed
   if (ctx.callerRole === "admin") return true;
@@ -129,10 +140,11 @@ export function isFreeGrantAllowed(ctx: FreeGrantContext): boolean {
   const courseCreatorId = ctx.course.creator_id ?? ctx.course.creatorId;
   if (courseCreatorId && courseCreatorId === ctx.callerUserId) return true;
 
-  // Draft programs — anyone can preview (legitimate testing flow)
-  // The actual "publish" gate is a creator action, not a security boundary.
+  // Allowlisted draft-shape statuses — anyone can preview.
+  // The actual "publish" gate is a creator action, not a security boundary,
+  // but the allowlist closes the F-2026-05-01 unknown-status bypass.
   const status = ctx.course.status;
-  if (status && status !== "published") return true;
+  if (typeof status === "string" && FREE_GRANTABLE_STATUSES.has(status)) return true;
 
   // Explicitly-free programs (price 0/null AND no subscription_price)
   const price = ctx.course.price;

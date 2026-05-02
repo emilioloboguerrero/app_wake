@@ -493,7 +493,7 @@ router.post("/users/me/move-course", async (req, res) => {
     courseId: body.courseId,
     reason: auth.role === "admin" ? "admin" :
       (course.creator_id === auth.userId || course.creatorId === auth.userId) ? "creator_owns" :
-        course.status !== "published" ? "draft" : "free",
+        (course.status === "draft" || course.status === "archived") ? "draft" : "free",
   });
 
   res.json({data: {success: true}});

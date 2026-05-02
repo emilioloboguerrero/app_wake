@@ -277,7 +277,7 @@ function filterProgramsByViewer(programs, viewerUid, viewerRole) {
   if (!programs || programs.length === 0) return programs;
   return programs.filter((course) => {
     const courseStatus = course.status || course.estado;
-    const isPublished = courseStatus === 'publicado' || courseStatus === 'published';
+    const isPublished = courseStatus === 'published';
     const visibility = course.visibility ?? 'both';
     const isBundleOnly = visibility === 'bundle-only';
     if (isAdmin(viewerRole)) return true;

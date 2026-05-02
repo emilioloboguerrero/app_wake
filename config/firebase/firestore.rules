@@ -182,12 +182,15 @@ service cloud.firestore {
     // ============================================
     
     // Courses
-    // - Published courses (status 'publicado' or 'published') are readable by all authenticated users
+    // - Published courses (status 'published') are readable by all authenticated users
     // - Draft/unpublished courses are only readable by their creator or admins
     // - Courses with no status field are treated as published for backward compatibility
+    // - F-2026-05-01: legacy Spanish 'publicado' branch removed. Production
+    //   shape-analysis 2026-05-02 confirmed zero docs use it; the parallel
+    //   blacklist in isFreeGrantAllowed (helper) was a monetization bypass
+    //   primitive and has been replaced by a strict allowlist.
     match /courses/{courseId} {
       allow read: if isSignedIn() && (
-        resource.data.get('status', '') == 'publicado' ||
         resource.data.get('status', '') == 'published' ||
         resource.data.get('status', '') == '' ||
         isAdmin() ||
@@ -428,6 +431,14 @@ service cloud.firestore {
       // the server-managed registration_count counter (sendEventConfirmationEmail
       // owns it). creator_id and created_at are also immutable. Admin retains
       // full update.
+      // F-2026-05-02 (Round 3): cap the doc shape to a known field allowlist
+      // so a creator using the JS SDK directly can't bypass the API's
+      // assertHttpsUrl(image_url) check by writing arbitrary fields. The
+      // allowlist mirrors PATCH /creator/events/:eventId's allowedFields
+      // (events.ts:424) plus the immutable bookkeeping fields the rule
+      // already enforces individually. og_image_url is server-managed by the
+      // generateOgImage helper but stays writable — Admin SDK bypasses rules
+      // and the field never carries a CSS-context render path today.
       allow update: if isSignedIn() && (
         isAdmin() ||
         (resource.data.creator_id == request.auth.uid &&
@@ -435,7 +446,16 @@ service cloud.firestore {
          request.resource.data.get('created_at', resource.data.get('created_at', null)) ==
            resource.data.get('created_at', null) &&
          request.resource.data.get('registration_count', 0) ==
-           resource.data.get('registration_count', 0))
+           resource.data.get('registration_count', 0) &&
+         request.resource.data.keys().hasOnly([
+           'title', 'description', 'date', 'location',
+           'max_registrations', 'maxRegistrations',
+           'fields', 'capacity', 'image_url', 'og_image_url',
+           'settings', 'access', 'status',
+           'creator_id', 'creatorId', 'created_at', 'createdAt',
+           'updated_at', 'updatedAt',
+           'registration_count'
+         ]))
       );
       allow delete: if isSignedIn() && (
         resource.data.creator_id == request.auth.uid || isAdmin()

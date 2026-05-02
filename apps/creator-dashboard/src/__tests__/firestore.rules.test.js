@@ -74,9 +74,12 @@ describe('courses — read rules', () => {
     await assertSucceeds(getDoc(doc(db, 'courses', 'pub-en')));
   });
 
-  it('authenticated user can read a publicado (Spanish) course', async () => {
+  // F-2026-05-01: legacy 'publicado' branch removed from rules (production
+  // shape-analysis 2026-05-02 confirmed zero docs use it). Regular users now
+  // cannot read it — it's treated as an unknown / draft-shaped status.
+  it('authenticated user cannot read a publicado (legacy Spanish) course', async () => {
     const db = authed('user-uid').firestore();
-    await assertSucceeds(getDoc(doc(db, 'courses', 'pub-es')));
+    await assertFails(getDoc(doc(db, 'courses', 'pub-es')));
   });
 
   it('regular user cannot read a draft course from another creator', async () => {

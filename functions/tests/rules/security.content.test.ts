@@ -97,20 +97,23 @@ describe("courses — create / update / delete (F-RULES-19)", () => {
   });
 
   it("any signed-in user can read a published course (English status)", async () => {
-    // Note: rule at L160-164 requires `isSignedIn()`. Public/anonymous read
-    // is NOT permitted — even for status:'published' or status:'publicado'.
-    // The published-course read is gated by ANY authenticated user.
+    // Rule requires `isSignedIn()` and `status == 'published'` (or empty).
+    // Public/anonymous read is NOT permitted.
     await seedCourse(env, "c1", "creator1", {status: "published"});
     await seedUser(env, "anyAuthedUser");
     const ctx = env.authenticatedContext("anyAuthedUser");
     await assertSucceeds(getDoc(doc(ctx.firestore(), "courses/c1")));
   });
 
-  it("any signed-in user can read a course with Spanish status:'publicado' (legacy)", async () => {
+  // F-2026-05-01: rule no longer accepts the legacy Spanish literal — prod
+  // shape-analysis 2026-05-02 confirmed zero docs use it. Treating it as
+  // published was a defense-in-depth weakness paired with the
+  // isFreeGrantAllowed blacklist that produced the C-01 monetization bypass.
+  it("non-owner signed-in user cannot read a Spanish status:'publicado' course (legacy literal removed)", async () => {
     await seedCourse(env, "c2", "creator1", {status: "publicado"});
     await seedUser(env, "anyAuthedUser2");
     const ctx = env.authenticatedContext("anyAuthedUser2");
-    await assertSucceeds(getDoc(doc(ctx.firestore(), "courses/c2")));
+    await assertFails(getDoc(doc(ctx.firestore(), "courses/c2")));
   });
 
   it("any signed-in user can read a course with no status field (back-compat)", async () => {

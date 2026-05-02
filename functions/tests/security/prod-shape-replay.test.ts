@@ -80,14 +80,14 @@ describe("Production-shape replay (loaded from /tmp/wake-shape.json)", () => {
         status,
       });
       const ctx = env.authenticatedContext("any-user");
-      // Rule allows read for: published / publicado / no-status / admin / owner.
-      // Draft courses must be denied for non-owner.
-      if (status === "draft") {
-        await assertFails(getDoc(doc(ctx.firestore(), `courses/${courseId}`)));
-      } else {
-        // For any other observed value (typically "published"), the rule
-        // must accept the read for any signed-in user.
+      // F-2026-05-01: rule allows read only for published / no-status / admin
+      // / owner. The legacy 'publicado' literal was removed (prod has 0 docs
+      // with it as of 2026-05-02). Anything else (draft / archived / unknown)
+      // is denied for non-owner.
+      if (status === "published" || status === "" || status === undefined) {
         await assertSucceeds(getDoc(doc(ctx.firestore(), `courses/${courseId}`)));
+      } else {
+        await assertFails(getDoc(doc(ctx.firestore(), `courses/${courseId}`)));
       }
     }
   });

@@ -272,7 +272,7 @@ export default function CreateBundleFlow({ isOpen, onClose, onCreated }) {
                       {filteredPrograms.map((p) => {
                         const checked = selectedIds.includes(p.id);
                         const bundleOnly = p.bundleOnly ?? (p.visibility === 'bundle-only');
-                        const isDraft = p.status !== 'published' && p.status !== 'publicado';
+                        const isDraft = p.status !== 'published';
                         return (
                           <button
                             key={p.id}

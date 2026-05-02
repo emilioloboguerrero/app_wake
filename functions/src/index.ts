@@ -37,6 +37,7 @@ import {
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
 import {
+  assertAllowedCallLinkUrl,
   assertAllowedSubscriptionTransition,
   clampPushSenderName,
   redactEmailForLog,
@@ -2263,7 +2264,36 @@ export const sendEventConfirmationEmail = functions
         "¡Tu lugar está confirmado! Nos vemos en el evento."
     );
     const checkInToken = reg.check_in_token as string | undefined;
-    const eventImageUrl = escapeHtml((event.image_url as string | undefined) ?? "");
+    // F-2026-05-02: events.image_url is interpolated into a CSS
+    // background-image url('...') context. escapeHtml-only made the email a
+    // CSS-injection sink — once the browser HTML-decodes the style attribute,
+    // a single quote turns back into a CSS string terminator.
+    //
+    // The PATCH /creator/events/:eventId path already enforces assertHttpsUrl
+    // (events.ts:444), but the events firestore rule has no shape constraint
+    // on image_url, so a creator with a Firebase ID token can write the
+    // malicious value directly via the JS SDK and bypass the API guard.
+    // Re-validate here at email-send time, drop the URL on any failure, and
+    // skip escaping (URL spec already forbids `'` and `)` in components a
+    // server emits, so the URL is safe to interpolate inside url('…') as-is).
+    const eventImageUrl = (() => {
+      const raw = event.image_url;
+      if (typeof raw !== "string" || !raw) return "";
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== "https:") return "";
+        if (u.username || u.password) return "";
+        const href = u.toString();
+        // Final paranoia stop: reject any character that would break out of
+        // the url('…') CSS string or the HTML attribute. Standards-compliant
+        // URLs never contain these unencoded.
+        if (/['")<>]/.test(href)) return "";
+        if (href.length > 2048) return "";
+        return href;
+      } catch {
+        return "";
+      }
+    })();
 
     // Resolve first name
     let firstName = "";
@@ -3355,6 +3385,23 @@ export const sendCallReminders = onSchedule(
       });
     }
 
+    // F-2026-05-03: callLink is creator-controlled and rendered as <a href>
+    // in the branded reminder email. POST /v1/creator/bookings/.../callLink
+    // already runs assertAllowedCallLinkUrl, but the call_bookings firestore
+    // rule lets the creator update arbitrary fields directly via the JS SDK
+    // — which would let a creator slip a phishing or javascript: URL past the
+    // API guard. Re-validate per booking here; on failure drop the URL so the
+    // CTA button is omitted but the rest of the reminder still goes out.
+    function safeCallLink(raw: unknown): string {
+      if (typeof raw !== "string" || !raw) return "";
+      try {
+        assertAllowedCallLinkUrl(raw, "callLink");
+        return raw;
+      } catch {
+        return "";
+      }
+    }
+
     for (const doc of snapshot.docs) {
       const booking = doc.data();
       const slotStart = new Date(booking.slotStartUtc).getTime();
@@ -3369,7 +3416,13 @@ export const sendCallReminders = onSchedule(
         const client = await getUser(booking.clientUserId);
         const creator = await getUser(booking.creatorId);
         const dateTimeStr = formatDateTime(booking.slotStartUtc);
-        const callLink = booking.callLink || "";
+        const callLink = safeCallLink(booking.callLink);
+        if (booking.callLink && !callLink) {
+          functions.logger.warn("sendCallReminders: dropped invalid callLink", {
+            bookingId: doc.id,
+            creatorId: booking.creatorId,
+          });
+        }
 
         if (client.email) {
           const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
@@ -3393,7 +3446,8 @@ export const sendCallReminders = onSchedule(
         const client = await getUser(booking.clientUserId);
         const creator = await getUser(booking.creatorId);
         const dateTimeStr = formatDateTime(booking.slotStartUtc);
-        const callLink = booking.callLink || "";
+        // F-2026-05-03: see safeCallLink note above the 24h block.
+        const callLink = safeCallLink(booking.callLink);
 
         if (client.email) {
           const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
