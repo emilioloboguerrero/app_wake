@@ -1,0 +1,306 @@
+.np-editor-root {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 24px 80px;
+  max-width: 1100px;
+  margin: 0 auto;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.np-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.np-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, border-color 0.18s;
+}
+.np-back-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.np-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.18s, background 0.18s;
+}
+.np-save-btn:disabled {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: default;
+}
+
+.np-editor-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px;
+}
+.np-name-input {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 18px;
+  font-weight: 600;
+  outline: none;
+  padding: 4px 0;
+}
+.np-name-input::placeholder { color: rgba(255, 255, 255, 0.32); }
+.np-desc-input {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  outline: none;
+  resize: vertical;
+  padding: 4px 0;
+  font-family: inherit;
+}
+.np-desc-input::placeholder { color: rgba(255, 255, 255, 0.28); }
+
+.np-weeks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.np-week-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 14px 14px 16px;
+}
+
+.np-week-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.np-week-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.np-week-actions {
+  display: flex;
+  gap: 6px;
+}
+.np-week-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.np-week-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+}
+.np-week-action--danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: rgba(248, 113, 113, 0.95);
+}
+.np-week-action:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.np-day-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.np-day-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.np-day-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.42);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+.np-day-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 64px;
+  border-radius: 8px;
+  font-size: 11px;
+  text-align: center;
+  padding: 6px;
+  cursor: pointer;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.4);
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.np-day-slot--empty:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.85);
+}
+.np-day-slot--filled {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: default;
+}
+.np-day-slot--missing {
+  background: rgba(248, 113, 113, 0.06);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  color: rgba(248, 113, 113, 0.85);
+  cursor: default;
+}
+.np-day-slot-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.2;
+  word-break: break-word;
+}
+.np-day-slot-clear {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.np-day-slot--filled:hover .np-day-slot-clear,
+.np-day-slot--missing:hover .np-day-slot-clear { opacity: 1; }
+
+.np-add-week-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+  align-self: stretch;
+}
+.np-add-week-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.np-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 420px;
+}
+.np-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+.np-picker-search-icon { color: rgba(255, 255, 255, 0.4); }
+.np-picker-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  outline: none;
+}
+.np-picker-search-input::placeholder { color: rgba(255, 255, 255, 0.32); }
+.np-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.np-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+.np-picker-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.np-picker-item-name {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+}
+.np-picker-item-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.np-picker-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+}

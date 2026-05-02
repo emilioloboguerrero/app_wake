@@ -864,8 +864,11 @@ const LabScreen = ({ navigation }) => {
   });
 
   // ─── React Query: nutrition plan
+  // Include today's date in the key so that cross-midnight transitions refetch.
+  // Required for program-mode assignments where the resolved day-of-eating
+  // changes daily; harmless no-op for single-day assignments.
   const { data: planData } = useQuery({
-    queryKey: ['nutrition', 'plan', uid],
+    queryKey: ['nutrition', 'plan', uid, new Date().toISOString().slice(0, 10)],
     queryFn: () => getEffectivePlanForUser(uid).then(r => r?.plan ?? null).catch(() => null),
     enabled: !!uid,
     staleTime: STALE_TIMES.nutritionDiary,

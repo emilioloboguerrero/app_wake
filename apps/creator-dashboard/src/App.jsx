@@ -19,6 +19,7 @@ import PlanDetailScreen from './screens/PlanDetailScreen';
 import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
 import MealEditorScreen from './screens/MealEditorScreen';
 import PlanEditorScreen from './screens/PlanEditorScreen';
+import NutritionProgramEditorScreen from './screens/NutritionProgramEditorScreen';
 import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
 import EventsScreen from './screens/EventsScreen';
 import EventResultsScreen from './screens/EventResultsScreen';
@@ -229,6 +230,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <DebugScreenTracker name="PlanEditorScreen"><PlanEditorScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/nutrition/programs/:programId"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="NutritionProgramEditorScreen"><NutritionProgramEditorScreen /></DebugScreenTracker>
                 </ProtectedRoute>
               }
             />

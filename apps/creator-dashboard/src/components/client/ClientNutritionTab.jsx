@@ -3,10 +3,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
 import { GlowingEffect, ShimmerSkeleton } from '../ui';
-import { Search, Pencil, Trash2, Plus, Apple, Target, AlertTriangle } from 'lucide-react';
+import { Search, Pencil, Trash2, Plus, Apple, Target, AlertTriangle, Calendar } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import DailyCalorieBars from './DailyCalorieBars';
 import './ClientNutritionTab.css';
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
 const PIE_COLORS = [
   'rgba(129,140,248,0.7)',
@@ -31,11 +33,23 @@ export default function ClientNutritionTab({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [assigningPlanId, setAssigningPlanId] = useState(null);
   const [rangeDays, setRangeDays] = useState(7);
+  const [assignMode, setAssignMode] = useState('single'); // 'single' | 'program'
+  const [programStartDate, setProgramStartDate] = useState(todayISO());
+  const [assigningProgramId, setAssigningProgramId] = useState(null);
 
-  // ── Creator's nutrition plans ────────────────────────────────
+  // ── Creator's nutrition plans (days of eating) ────────────────
   const { data: plans = [], isLoading: plansLoading } = useQuery({
     queryKey: ['nutrition', 'plans', creatorId],
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
+    enabled: !!creatorId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: true,
+  });
+
+  // ── Creator's nutrition programs (multi-week) ─────────────────
+  const { data: programs = [], isLoading: programsLoading } = useQuery({
+    queryKey: ['nutrition', 'programs', creatorId],
+    queryFn: () => nutritionDb.getProgramsByCreator(creatorId),
     enabled: !!creatorId,
     staleTime: 5 * 60 * 1000,
     refetchOnMount: true,
@@ -63,7 +77,7 @@ export default function ClientNutritionTab({
   }, [activeAssignment, plans]);
 
 
-  // ── Assign mutation ──────────────────────────────────────────
+  // ── Assign mutations (single-day vs program) ──────────────────
   const assignMutation = useMutation({
     mutationKey: ['nutrition', 'assign', clientUserId],
     mutationFn: (planId) => nutritionDb.createAssignment({
@@ -74,6 +88,19 @@ export default function ClientNutritionTab({
       queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', clientUserId] });
       queryClient.invalidateQueries({ queryKey: ['analytics', 'client-lab', clientUserId] });
       setAssigningPlanId(null);
+    },
+  });
+
+  const assignProgramMutation = useMutation({
+    mutationKey: ['nutrition', 'assign-program', clientUserId],
+    mutationFn: (programId) => nutritionDb.createProgramAssignment(clientUserId, {
+      programId,
+      startDate: programStartDate || todayISO(),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments', clientUserId] });
+      queryClient.invalidateQueries({ queryKey: ['analytics', 'client-lab', clientUserId] });
+      setAssigningProgramId(null);
     },
   });
 
@@ -180,11 +207,24 @@ export default function ClientNutritionTab({
     assignMutation.mutate(planId);
   }, [assignMutation]);
 
+  const handleAssignProgram = useCallback((programId) => {
+    setAssigningProgramId(programId);
+    assignProgramMutation.mutate(programId);
+  }, [assignProgramMutation]);
+
   const handleConfirmRemove = useCallback(() => {
     removeMutation.mutate();
   }, [removeMutation]);
 
-  const isLoading = plansLoading || assignmentsLoading;
+  const isProgramAssignment = activeAssignment?.mode === 'program' || !!activeAssignment?.programId;
+
+  const filteredPrograms = useMemo(() => {
+    if (!searchQuery.trim()) return programs;
+    const q = searchQuery.toLowerCase();
+    return programs.filter((p) => (p.name ?? '').toLowerCase().includes(q));
+  }, [programs, searchQuery]);
+
+  const isLoading = plansLoading || assignmentsLoading || programsLoading;
 
   if (isLoading) {
     return (
@@ -351,18 +391,23 @@ export default function ClientNutritionTab({
               <div className="cnt-plan-display">
                 <div className="cnt-plan-info">
                   <span className="cnt-plan-name">
-                    {activePlan?.name || activeAssignment.planName || 'Plan activo'}
+                    {isProgramAssignment ? (activeAssignment.programName || activeAssignment.planName || 'Plan activo') : (activePlan?.name || activeAssignment.planName || 'Plan activo')}
                   </span>
                   <div className="cnt-plan-dates">
+                    {isProgramAssignment && activeAssignment.weekCount && (
+                      <span><Calendar size={11} /> {activeAssignment.weekCount} {activeAssignment.weekCount === 1 ? 'semana' : 'semanas'}</span>
+                    )}
                     {activeAssignment.startDate && <span>Inicio: {activeAssignment.startDate}</span>}
                     {activeAssignment.endDate && <span>Fin: {activeAssignment.endDate}</span>}
                   </div>
-                  <div className="cnt-plan-cal">
-                    <span className="cnt-plan-cal-value">{dailyCalories}</span>
-                    <span className="cnt-plan-cal-unit">kcal/dia</span>
-                  </div>
+                  {!isProgramAssignment && (
+                    <div className="cnt-plan-cal">
+                      <span className="cnt-plan-cal-value">{dailyCalories}</span>
+                      <span className="cnt-plan-cal-unit">kcal/dia</span>
+                    </div>
+                  )}
                 </div>
-                {macroData.length > 0 && (
+                {!isProgramAssignment && macroData.length > 0 && (
                   <div className="cnt-plan-pie">
                     <ResponsiveContainer width={90} height={90}>
                       <PieChart>
@@ -386,10 +431,20 @@ export default function ClientNutritionTab({
 
               {/* Action buttons */}
               <div className="cnt-plan-actions">
-                <button className="cnt-btn cnt-btn--edit" onClick={handleEditPlan}>
-                  <Pencil size={13} />
-                  Editar plan
-                </button>
+                {isProgramAssignment ? (
+                  <button
+                    className="cnt-btn cnt-btn--edit"
+                    onClick={() => navigate(`/nutrition/programs/${activeAssignment.programId}`)}
+                  >
+                    <Pencil size={13} />
+                    Editar plan
+                  </button>
+                ) : (
+                  <button className="cnt-btn cnt-btn--edit" onClick={handleEditPlan}>
+                    <Pencil size={13} />
+                    Editar día
+                  </button>
+                )}
                 {confirmRemove ? (
                   <div className="cnt-confirm-row">
                     <span className="cnt-confirm-text">Quitar plan?</span>
@@ -413,21 +468,38 @@ export default function ClientNutritionTab({
               </div>
             </>
           ) : (
-            /* ── No plan assigned → show library to assign ──── */
+            /* ── No plan assigned → mode toggle + library to assign ── */
             <div className="cnt-assign-flow">
               <div className="cnt-assign-empty">
                 <Apple size={20} className="cnt-assign-empty-icon" />
                 <p>Sin plan nutricional asignado</p>
               </div>
 
-              {plans.length > 0 && (
+              <div className="cnt-mode-toggle">
+                <button
+                  className={`cnt-mode-btn ${assignMode === 'single' ? 'cnt-mode-btn--active' : ''}`}
+                  onClick={() => setAssignMode('single')}
+                  type="button"
+                >
+                  Día único
+                </button>
+                <button
+                  className={`cnt-mode-btn ${assignMode === 'program' ? 'cnt-mode-btn--active' : ''}`}
+                  onClick={() => setAssignMode('program')}
+                  type="button"
+                >
+                  Plan multi-semana
+                </button>
+              </div>
+
+              {assignMode === 'single' && plans.length > 0 && (
                 <>
                   <div className="cnt-library-search">
                     <Search size={13} className="cnt-search-icon" />
                     <input
                       type="text"
                       className="cnt-search-input"
-                      placeholder="Buscar plan..."
+                      placeholder="Buscar día..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -461,10 +533,67 @@ export default function ClientNutritionTab({
                 </>
               )}
 
-              {plans.length === 0 && (
+              {assignMode === 'single' && plans.length === 0 && (
                 <p className="cnt-library-empty">
-                  No tienes planes nutricionales. Crea uno en la biblioteca.
+                  No tienes días de alimentación. Crea uno en la biblioteca.
                 </p>
+              )}
+
+              {assignMode === 'program' && (
+                <>
+                  <div className="cnt-program-startdate">
+                    <label className="cnt-program-startdate-label">Fecha de inicio</label>
+                    <input
+                      type="date"
+                      className="cnt-program-startdate-input"
+                      value={programStartDate}
+                      onChange={(e) => setProgramStartDate(e.target.value)}
+                    />
+                  </div>
+
+                  {programs.length > 0 ? (
+                    <>
+                      <div className="cnt-library-search">
+                        <Search size={13} className="cnt-search-icon" />
+                        <input
+                          type="text"
+                          className="cnt-search-input"
+                          placeholder="Buscar plan..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                      </div>
+                      <div className="cnt-library-list">
+                        {filteredPrograms.map(program => (
+                          <div key={program.id} className="cnt-library-item">
+                            <div className="cnt-library-item-info">
+                              <span className="cnt-library-item-name">{program.name}</span>
+                              <span className="cnt-library-item-cal">
+                                {program.weekCount ?? 0} {program.weekCount === 1 ? 'semana' : 'semanas'}
+                                {program.description ? ` · ${program.description}` : ''}
+                              </span>
+                            </div>
+                            <button
+                              className="cnt-btn cnt-btn--assign"
+                              onClick={() => handleAssignProgram(program.id)}
+                              disabled={assignProgramMutation.isPending || !programStartDate || (program.weekCount ?? 0) === 0}
+                            >
+                              {assigningProgramId === program.id && assignProgramMutation.isPending ? (
+                                'Asignando...'
+                              ) : (
+                                <><Plus size={13} /> Asignar</>
+                              )}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="cnt-library-empty">
+                      No tienes planes nutricionales. Crea uno en la biblioteca.
+                    </p>
+                  )}
+                </>
               )}
             </div>
           )}

@@ -207,6 +207,8 @@ export const queryKeys = {
     meal: (creatorId, mealId) => ['nutrition', 'meal', creatorId, mealId],
     plans: (creatorId) => ['nutrition', 'plans', creatorId],
     plan: (creatorId, planId) => ['nutrition', 'plan', creatorId, planId],
+    programs: (creatorId) => ['nutrition', 'programs', creatorId],
+    program: (creatorId, programId) => ['nutrition', 'program', creatorId, programId],
     diary: (userId, date) => ['nutrition', 'diary', userId, date],
     foodSearch: (query) => ['nutrition', 'foodSearch', query],
   },

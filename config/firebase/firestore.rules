@@ -382,6 +382,9 @@ service cloud.firestore {
     match /creator_nutrition_library/{creatorId}/plans/{planId} {
       allow read, write: if isSignedIn() && request.auth.uid == creatorId;
     }
+    match /creator_nutrition_library/{creatorId}/programs/{programId} {
+      allow read, write: if isSignedIn() && request.auth.uid == creatorId;
+    }
 
     // F-DATA-01 / F-DATA-06: canonical creator field is `creator_id` (snake).
     // Legacy `assignedBy` is accepted alongside `creator_id` during the

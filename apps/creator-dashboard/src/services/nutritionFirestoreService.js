@@ -104,8 +104,12 @@ export async function getAssignmentsByUser(clientId) {
   const result = await apiClient.get(`/creator/clients/${clientId}/nutrition/assignments`);
   return (result?.data ?? []).map((a) => ({
     id: a.assignmentId,
+    mode: a.mode ?? (a.programId ? 'program' : 'single_day'),
     planId: a.planId ?? null,
     planName: a.planName ?? a.plan?.name ?? null,
+    programId: a.programId ?? null,
+    programName: a.programName ?? null,
+    weekCount: a.weekCount ?? null,
     daily_calories: a.plan?.daily_calories ?? a.daily_calories ?? null,
     daily_protein_g: a.plan?.daily_protein_g ?? a.daily_protein_g ?? null,
     daily_carbs_g: a.plan?.daily_carbs_g ?? a.daily_carbs_g ?? null,
@@ -242,6 +246,67 @@ export async function expandRecipeRefsInCategories(creatorId, categories) {
     });
   }
   return result;
+}
+
+// ─── Nutrition Programs (multi-week sequences of days-of-eating) ─────────
+
+function shapeProgram(p) {
+  if (!p) return null;
+  return {
+    id: p.programId ?? p.id ?? null,
+    name: p.name ?? '',
+    description: p.description ?? '',
+    weekCount: p.weekCount ?? (Array.isArray(p.weeks) ? p.weeks.length : 0),
+    weeks: Array.isArray(p.weeks) ? p.weeks : undefined,
+    created_at: p.created_at ?? null,
+    updated_at: p.updated_at ?? null,
+  };
+}
+
+export async function getProgramsByCreator(_creatorId) {
+  const result = await apiClient.get('/creator/nutrition/programs');
+  return (result?.data ?? []).map(shapeProgram);
+}
+
+export async function getProgramById(_creatorId, programId) {
+  if (!programId) return null;
+  const result = await apiClient.get(`/creator/nutrition/programs/${programId}`);
+  return result?.data ? shapeProgram(result.data) : null;
+}
+
+export async function createProgram(_creatorId, data) {
+  const result = await apiClient.post('/creator/nutrition/programs', {
+    name: data.name ?? '',
+    description: data.description ?? '',
+    weeks: Array.isArray(data.weeks) ? data.weeks : [{ days: [null, null, null, null, null, null, null] }],
+  });
+  return result?.data?.programId;
+}
+
+export async function updateProgram(_creatorId, programId, data) {
+  await apiClient.patch(`/creator/nutrition/programs/${programId}`, {
+    name: data.name ?? '',
+    description: data.description ?? '',
+    weeks: Array.isArray(data.weeks) ? data.weeks : [],
+  });
+}
+
+export async function deleteProgram(_creatorId, programId) {
+  await apiClient.delete(`/creator/nutrition/programs/${programId}`);
+}
+
+export async function createProgramAssignment(clientId, { programId, startDate, endDate }) {
+  const result = await apiClient.post(
+    `/creator/clients/${clientId}/nutrition/assignments`,
+    {
+      mode: 'program',
+      programId,
+      startDate,
+      ...(endDate ? { endDate } : {}),
+    },
+    { idempotent: false }
+  );
+  return result?.data?.assignmentId;
 }
 
 // ─── Program Nutrition Assignments ────────────────────────────────────────

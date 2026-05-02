@@ -7,7 +7,7 @@ import {db, FieldValue, FieldPath} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
-import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
+import {validateBody, pickFields, validateStoragePath, validateDateFormat} from "../middleware/validate.js";
 import {
   assertTextLength,
   loadCreatorOwnedCourseIds,
@@ -1998,6 +1998,86 @@ function buildNutritionContentDoc(
   return doc;
 }
 
+/**
+ * Snapshots a nutrition program: resolves every dayId in weeks[] to its full
+ * day-of-eating content, embedding it so the PWA reads from a single doc.
+ * Returns the snapshot doc plus the program's metadata.
+ */
+async function buildNutritionProgramContentDoc(
+  creatorId: string,
+  programData: Record<string, unknown>,
+  programId: string,
+  assignmentId: string,
+): Promise<Record<string, unknown>> {
+  const weeks = Array.isArray(programData.weeks) ? programData.weeks : [];
+
+  // Collect unique day ids to fetch in batch
+  const dayIds = new Set<string>();
+  for (const w of weeks) {
+    const days = (w as { days?: unknown[] }).days ?? [];
+    for (const d of days) {
+      if (typeof d === "string" && d) dayIds.add(d);
+    }
+  }
+
+  const dayDocsById = new Map<string, Record<string, unknown>>();
+  if (dayIds.size > 0) {
+    const refs = Array.from(dayIds).map((id) =>
+      db.collection("creator_nutrition_library").doc(creatorId).collection("plans").doc(id)
+    );
+    const docs = await db.getAll(...refs);
+    docs.forEach((doc) => {
+      if (doc.exists) {
+        dayDocsById.set(doc.id, doc.data()!);
+      }
+    });
+  }
+
+  const snapshotWeeks = weeks.map((w) => {
+    const days = (w as { days?: unknown[] }).days ?? [];
+    return {
+      days: days.map((d) => {
+        if (typeof d !== "string" || !d) return null;
+        const planData = dayDocsById.get(d);
+        if (!planData) return null;
+        return {
+          source_plan_id: d,
+          name: planData.name ?? "",
+          description: planData.description ?? "",
+          daily_calories: planData.daily_calories ?? null,
+          daily_protein_g: planData.daily_protein_g ?? null,
+          daily_carbs_g: planData.daily_carbs_g ?? null,
+          daily_fat_g: planData.daily_fat_g ?? null,
+          categories: planData.categories ?? [],
+        };
+      }),
+    };
+  });
+
+  // Guard against blowing past Firestore's 1MiB doc limit. Realistic budget:
+  // a 12-week program with rich days (recipes/photos) at ~12 KB per day reaches
+  // ~1 MB. Match the single-day validator's 800 KB cap for the categories
+  // payload (the largest field), measured here over the whole weeks array.
+  const weeksJsonSize = JSON.stringify(snapshotWeeks).length;
+  if (weeksJsonSize > 900_000) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "El plan nutricional es demasiado grande para asignar (excede 900 KB de contenido). Reduce el numero de semanas o simplifica los dias de alimentacion."
+    );
+  }
+
+  return {
+    type: "program",
+    source_program_id: programId,
+    assignment_id: assignmentId,
+    name: programData.name ?? "",
+    description: programData.description ?? "",
+    week_count: snapshotWeeks.length,
+    weeks: snapshotWeeks,
+    snapshot_at: FieldValue.serverTimestamp(),
+  };
+}
+
 /** Returns true if assignment status is active or missing (production compat). */
 function isActiveAssignment(data: Record<string, unknown>): boolean {
   const s = data.status;
@@ -2357,6 +2437,253 @@ router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
   res.json({data: {clientsAffected, skippedInactive}});
 });
 
+// ─── Creator Nutrition Programs (multi-week sequences of days-of-eating) ──
+//
+// A nutrition program is a multi-week template: each week is 7 day-slots,
+// each slot references a day-of-eating from the creator's `plans` library
+// (or null for "no plan that day"). Stored as a single document per program
+// because the content is references-only (no embedded heavy data).
+
+const NUTRITION_PROGRAM_NAME_MAX = 200;
+const NUTRITION_PROGRAM_DESC_MAX = 2000;
+const NUTRITION_PROGRAM_MAX_WEEKS = 104; // 2 years of weekly periodization
+
+interface NutritionProgramWeek {
+  days: Array<string | null>; // length 7, Monday=0
+}
+
+function validateNutritionProgramBody(body: unknown): {
+  name: string;
+  description: string;
+  weeks: NutritionProgramWeek[];
+} {
+  if (!body || typeof body !== "object") {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Cuerpo inválido");
+  }
+  const b = body as Record<string, unknown>;
+
+  // PATCH = full replacement. Require all three fields explicitly so a
+  // partial body never silently wipes weeks/description/name.
+  if (b.weeks === undefined) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "weeks es requerido", "weeks");
+  }
+  if (b.description === undefined) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "description es requerido (puede ser cadena vacía)", "description");
+  }
+
+  const name = typeof b.name === "string" ? b.name.trim() : "";
+  if (!name) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "name es requerido", "name");
+  }
+  if (name.length > NUTRITION_PROGRAM_NAME_MAX) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `name excede el máximo de ${NUTRITION_PROGRAM_NAME_MAX} caracteres`, "name"
+    );
+  }
+
+  if (typeof b.description !== "string") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "description debe ser cadena", "description"
+    );
+  }
+  const description = b.description;
+  if (description.length > NUTRITION_PROGRAM_DESC_MAX) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `description excede el máximo de ${NUTRITION_PROGRAM_DESC_MAX} caracteres`, "description"
+    );
+  }
+
+  if (!Array.isArray(b.weeks)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "weeks debe ser un array", "weeks");
+  }
+  const rawWeeks = b.weeks;
+  if (rawWeeks.length > NUTRITION_PROGRAM_MAX_WEEKS) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      `weeks excede el máximo de ${NUTRITION_PROGRAM_MAX_WEEKS}`, "weeks"
+    );
+  }
+
+  const weeks: NutritionProgramWeek[] = rawWeeks.map((w, wi) => {
+    if (!w || typeof w !== "object") {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, `weeks[${wi}] inválido`, "weeks");
+    }
+    const days = (w as { days?: unknown }).days;
+    if (!Array.isArray(days) || days.length !== 7) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `weeks[${wi}].days debe tener longitud 7`, "weeks"
+      );
+    }
+    return {
+      days: days.map((d) => {
+        if (d === null || d === undefined || d === "") return null;
+        if (typeof d !== "string") {
+          throw new WakeApiServerError(
+            "VALIDATION_ERROR", 400,
+            `weeks[${wi}].days[*] debe ser string|null`, "weeks"
+          );
+        }
+        return d;
+      }),
+    };
+  });
+
+  return {name, description, weeks};
+}
+
+// GET /creator/nutrition/programs
+router.get("/creator/nutrition/programs", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const snapshot = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .get();
+
+  const programs = snapshot.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      programId: d.id,
+      name: data.name ?? "",
+      description: data.description ?? "",
+      weekCount: Array.isArray(data.weeks) ? data.weeks.length : 0,
+      created_at: data.created_at ?? null,
+      updated_at: data.updated_at ?? null,
+    };
+  });
+  programs.sort((a, b) => {
+    const tA = a.created_at as { toMillis?: () => number } | null;
+    const tB = b.created_at as { toMillis?: () => number } | null;
+    const msA = tA && typeof tA.toMillis === "function" ? tA.toMillis() : 0;
+    const msB = tB && typeof tB.toMillis === "function" ? tB.toMillis() : 0;
+    return msB - msA;
+  });
+
+  res.json({data: programs});
+});
+
+// POST /creator/nutrition/programs
+router.post("/creator/nutrition/programs", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const body = validateNutritionProgramBody(req.body);
+
+  const docRef = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .add({
+      name: body.name,
+      description: body.description,
+      weeks: body.weeks,
+      creatorId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({data: {id: docRef.id, programId: docRef.id}});
+});
+
+// GET /creator/nutrition/programs/:programId
+router.get("/creator/nutrition/programs/:programId", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const doc = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .doc(req.params.programId)
+    .get();
+
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan nutricional no encontrado");
+  }
+
+  const data = doc.data()!;
+  res.json({data: {
+    id: doc.id,
+    programId: doc.id,
+    name: data.name ?? "",
+    description: data.description ?? "",
+    weeks: Array.isArray(data.weeks) ? data.weeks : [],
+    created_at: data.created_at ?? null,
+    updated_at: data.updated_at ?? null,
+  }});
+});
+
+// PATCH /creator/nutrition/programs/:programId
+router.patch("/creator/nutrition/programs/:programId", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const docRef = db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .doc(req.params.programId);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan nutricional no encontrado");
+  }
+
+  // Full validation: PATCH always accepts the full body (program is one doc)
+  const body = validateNutritionProgramBody(req.body);
+
+  await docRef.update({
+    name: body.name,
+    description: body.description,
+    weeks: body.weeks,
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  res.json({data: {updated: true}});
+});
+
+// DELETE /creator/nutrition/programs/:programId
+router.delete("/creator/nutrition/programs/:programId", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const docRef = db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .doc(req.params.programId);
+
+  const doc = await docRef.get();
+  if (!doc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan nutricional no encontrado");
+  }
+
+  // Block deletion if active assignments exist for this program
+  const assignSnap = await db
+    .collection("nutrition_assignments")
+    .where("programId", "==", req.params.programId)
+    .where("assignedBy", "==", auth.userId)
+    .limit(50)
+    .get();
+
+  const hasActive = assignSnap.docs.some((d) => isActiveAssignment(d.data()));
+  if (hasActive) {
+    throw new WakeApiServerError(
+      "CONFLICT", 409,
+      "No puedes eliminar un plan nutricional con asignaciones activas. Desasigna los clientes primero."
+    );
+  }
+
+  await docRef.delete();
+  res.status(204).send();
+});
+
 // ─── Client Nutrition Assignments ─────────────────────────────────────────
 
 // Helper to verify creator-client relationship.
@@ -2558,11 +2885,98 @@ router.get("/creator/clients/:clientId/nutrition/assignments", async (req, res) 
 });
 
 // POST /creator/clients/:clientId/nutrition/assignments
+//
+// Supports two modes:
+//   - single_day (default): assigns one day-of-eating that repeats indefinitely.
+//     Body: { planId, startDate?, endDate? }
+//   - program: assigns a multi-week nutrition program. Body: { mode: 'program',
+//     programId, startDate (required), endDate? }. The program structure is
+//     snapshotted into client_nutrition_plan_content so coach edits to source
+//     templates don't retroactively change past days.
 router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
 
+  const rawMode = (req.body as { mode?: unknown })?.mode;
+  const mode = rawMode === "program" ? "program" : "single_day";
+
+  if (mode === "program") {
+    const body = validateBody<{ programId: string; startDate: string; endDate?: string }>(
+      {programId: "string", startDate: "string", endDate: "optional_string"},
+      req.body
+    );
+    validateDateFormat(body.startDate, "startDate");
+    if (body.endDate) validateDateFormat(body.endDate, "endDate");
+
+    const programDoc = await db
+      .collection("creator_nutrition_library")
+      .doc(auth.userId)
+      .collection("programs")
+      .doc(body.programId)
+      .get();
+
+    if (!programDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Plan nutricional no encontrado");
+    }
+
+    const programData = programDoc.data()!;
+    const contentDoc = await buildNutritionProgramContentDoc(
+      auth.userId, programData, body.programId, "PENDING_ID"
+    );
+    const weekCount = (contentDoc.week_count as number) ?? 0;
+    if (weekCount === 0) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "El plan nutricional no tiene semanas. Agrega al menos una semana antes de asignar."
+      );
+    }
+
+    const assignmentId = await db.runTransaction(async (tx) => {
+      const userRef = db.collection("users").doc(req.params.clientId);
+      const userDoc = await tx.get(userRef);
+
+      const assignmentRef = db.collection("nutrition_assignments").doc();
+      // Patch the snapshot with the real assignment id
+      contentDoc.assignment_id = assignmentRef.id;
+
+      tx.set(assignmentRef, nutritionAssignmentPayload(
+        {creator_id: auth.userId, clientUserId: req.params.clientId},
+        {
+          userId: req.params.clientId,
+          assignedBy: auth.userId,
+          mode: "program",
+          programId: body.programId,
+          programName: programData.name ?? "",
+          planName: programData.name ?? "", // populate so existing UI shows program name
+          weekCount,
+          startDate: body.startDate,
+          endDate: body.endDate ?? null,
+          status: "active",
+          createdAt: FieldValue.serverTimestamp(),
+        }
+      ));
+
+      tx.set(
+        db.collection("client_nutrition_plan_content").doc(assignmentRef.id),
+        clientNutritionPlanContentPayload(
+          {creator_id: auth.userId, client_id: req.params.clientId},
+          contentDoc
+        )
+      );
+
+      if (!userDoc.data()?.pinnedNutritionAssignmentId) {
+        tx.update(userRef, {pinnedNutritionAssignmentId: assignmentRef.id});
+      }
+
+      return assignmentRef.id;
+    });
+
+    res.status(201).json({data: {assignmentId}});
+    return;
+  }
+
+  // single_day mode (existing behavior)
   const body = validateBody<{ planId: string; startDate?: string; endDate?: string }>(
     {planId: "string", startDate: "optional_string", endDate: "optional_string"},
     req.body
@@ -2593,6 +3007,7 @@ router.post("/creator/clients/:clientId/nutrition/assignments", async (req, res)
       {
         userId: req.params.clientId,
         assignedBy: auth.userId,
+        mode: "single_day",
         planId: body.planId,
         planName: planData.name ?? "",
         plan: planData,
@@ -2634,8 +3049,16 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
   if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
   }
+  const assignmentMode = assignDoc.data()?.mode === "program" ? "program" : "single_day";
 
-  const allowedFields = ["status", "startDate", "endDate", "planId", "planName"];
+  // Allowlist depends on mode. Program-mode assignments cannot change planId/
+  // planName via this endpoint — that would trigger the re-snapshot path below
+  // and overwrite the program snapshot with a single-day-shaped doc, leaving
+  // a corrupted hybrid (mode='program' + planId set + single-day snapshot).
+  // To switch to a different program, delete + reassign.
+  const allowedFields = assignmentMode === "program"
+    ? ["status", "startDate", "endDate"]
+    : ["status", "startDate", "endDate", "planId", "planName"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -2653,6 +3076,10 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
       );
     }
   }
+  // Validate date strings — bad values would crash the program-mode resolver
+  // (Date.parse → NaN), and silently corrupt date-range filters for single-day.
+  if (typeof updates.startDate === "string") validateDateFormat(updates.startDate, "startDate");
+  if (typeof updates.endDate === "string") validateDateFormat(updates.endDate, "endDate");
 
   // If planId is changing, re-snapshot the new plan into client_nutrition_plan_content
   const currentPlanId = assignDoc.data()?.planId;
@@ -2744,6 +3171,15 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
   if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignación no encontrada");
   }
+  // Guard: this endpoint accepts the single-day shape. Posting it for a
+  // program-mode assignment would clobber the program snapshot. Edits to
+  // program-mode assignments must go through the program editor instead.
+  if (assignDoc.data()?.mode === "program") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Las asignaciones de plan multi-semana se editan desde el editor del plan, no aquí."
+    );
+  }
 
   // Security (audit C-05): explicit schema with tight caps. Previously read
   // raw body with no validateBody, allowing 1MB blob writes per assignment.
@@ -2786,6 +3222,11 @@ router.put("/creator/clients/:clientId/nutrition/assignments/:assignmentId/conte
 });
 
 // PUT /creator/nutrition/assignments/:assignmentId/content — update without clientId (for program assignments)
+//
+// Note: "program assignments" in this endpoint's original comment refers to
+// workout-program-scoped nutrition templates (one nutrition plan attached to
+// a course/program), not the new multi-week nutrition program assignments.
+// The latter must NOT be edited via this endpoint either — guard below.
 router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
@@ -2793,6 +3234,12 @@ router.put("/creator/nutrition/assignments/:assignmentId/content", async (req, r
   const assignDoc = await db.collection("nutrition_assignments").doc(req.params.assignmentId).get();
   if (!assignDoc.exists || assignDoc.data()?.assignedBy !== auth.userId) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Asignacion no encontrada");
+  }
+  if (assignDoc.data()?.mode === "program") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Las asignaciones de plan multi-semana se editan desde el editor del plan, no aquí."
+    );
   }
 
   // Security (audit C-05): same schema enforcement as the clients-side variant.
