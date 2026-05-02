@@ -443,8 +443,6 @@
   flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
   padding-right: 4px;
 }
 
@@ -457,13 +455,19 @@
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 .bib-panel-right::-webkit-scrollbar { width: 4px; }
 .bib-panel-right::-webkit-scrollbar-track { background: transparent; }
 .bib-panel-right::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+
+@supports (scrollbar-width: thin) {
+  .bib-panel-left,
+  .bib-panel-right {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
+}
 
 /* ─── Detail empty state (right panel) ──────────────────── */
 .bib-detail-empty {

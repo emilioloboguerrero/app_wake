@@ -67,14 +67,16 @@ export default function NutritionProgramsPanel({ searchQuery = '', sortKey, onCr
           key={i}
           className="bib-card bib-nutri-plan-card"
           aria-hidden="true"
-          style={{ opacity: 1 - i * 0.15 }}
+          style={{ opacity: 1 - i * 0.15, cursor: 'default' }}
         >
           <div className="bib-nutri-plan-card__left">
-            <ShimmerSkeleton height="14px" width={`${50 + (i % 3) * 12}%`} borderRadius="4px" />
-            <ShimmerSkeleton height="11px" width={`${40 + (i % 2) * 20}%`} borderRadius="3px" />
+            <ShimmerSkeleton height="14px" width={`${48 + (i % 3) * 14}%`} borderRadius="4px" />
           </div>
           <div className="bib-nutri-plan-card__right">
-            <ShimmerSkeleton height="15px" width="80px" borderRadius="4px" />
+            <ShimmerSkeleton height="15px" width="70px" borderRadius="4px" />
+          </div>
+          <div className="bib-plan-menu">
+            <ShimmerSkeleton height="28px" width="28px" borderRadius="8px" />
           </div>
         </div>
       ))}

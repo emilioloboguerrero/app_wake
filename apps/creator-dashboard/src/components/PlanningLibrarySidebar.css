@@ -158,6 +158,7 @@
 /* Draggable items */
 .plan-structure-library-item {
   cursor: grab;
+  -webkit-user-select: none;
   user-select: none;
 }
 

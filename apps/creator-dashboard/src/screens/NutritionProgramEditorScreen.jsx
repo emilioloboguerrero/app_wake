@@ -1,152 +1,233 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useState, useMemo, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Copy, Trash2, Plus, X, Check, Search, ArrowLeft } from 'lucide-react';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
-import { GlowingEffect, FullScreenError } from '../components/ui';
+import { FullScreenError } from '../components/ui';
 import ShimmerSkeleton from '../components/ui/ShimmerSkeleton';
+import NutritionLibrarySidebar from '../components/nutrition/NutritionLibrarySidebar';
+import NutritionWeeksGrid from '../components/nutrition/NutritionWeeksGrid';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { cacheConfig, queryKeys } from '../config/queryClient';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import './NutritionProgramEditorScreen.css';
 
-const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const BACK_PATH = '/biblioteca?domain=nutricion&tab=programas_nutri';
 
 const emptyWeek = () => ({ days: [null, null, null, null, null, null, null] });
 
+const normalizeWeeks = (raw) => {
+  if (!Array.isArray(raw) || raw.length === 0) return [emptyWeek()];
+  return raw.map((w) => ({
+    days: Array.isArray(w?.days) && w.days.length === 7
+      ? w.days.map((d) => (typeof d === 'string' ? d : null))
+      : [null, null, null, null, null, null, null],
+  }));
+};
+
 export default function NutritionProgramEditorScreen() {
   const { programId } = useParams();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { showToast } = useToast();
   const creatorId = user?.uid ?? '';
 
+  const detailKey = queryKeys.nutrition.program(creatorId, programId);
+
   const programQuery = useQuery({
-    queryKey: queryKeys.nutrition.program(creatorId, programId),
+    queryKey: detailKey,
     queryFn: () => nutritionDb.getProgramById(creatorId, programId),
     enabled: !!creatorId && !!programId,
     ...cacheConfig.programStructure,
   });
 
-  const daysQuery = useQuery({
+  const plansQuery = useQuery({
     queryKey: queryKeys.nutrition.plans(creatorId),
     queryFn: () => nutritionDb.getPlansByCreator(creatorId),
     enabled: !!creatorId,
     ...cacheConfig.otherPrograms,
-    refetchOnMount: true,
   });
+
+  const program = programQuery.data;
+  const programName = program?.name ?? '';
+  const weeks = useMemo(() => normalizeWeeks(program?.weeks), [program?.weeks]);
 
   const daysById = useMemo(() => {
     const map = new Map();
-    (daysQuery.data ?? []).forEach((d) => map.set(d.id, d));
+    (plansQuery.data ?? []).forEach((d) => map.set(d.id, d));
     return map;
-  }, [daysQuery.data]);
+  }, [plansQuery.data]);
 
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [weeks, setWeeks] = useState([emptyWeek()]);
-  const [pickerSlot, setPickerSlot] = useState(null); // { weekIndex, dayIndex }
-  const [pickerSearch, setPickerSearch] = useState('');
-  const [dirty, setDirty] = useState(false);
-
-  // Hydrate local state when program loads
-  useEffect(() => {
-    if (!programQuery.data) return;
-    setName(programQuery.data.name ?? '');
-    setDescription(programQuery.data.description ?? '');
-    const ws = Array.isArray(programQuery.data.weeks) && programQuery.data.weeks.length > 0
-      ? programQuery.data.weeks.map((w) => ({
-          days: Array.isArray(w?.days) && w.days.length === 7
-            ? w.days.map((d) => (typeof d === 'string' ? d : null))
-            : [null, null, null, null, null, null, null],
-        }))
-      : [emptyWeek()];
-    setWeeks(ws);
-    setDirty(false);
-  }, [programQuery.data]);
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
 
   const saveMutation = useMutation({
-    mutationFn: () => nutritionDb.updateProgram(creatorId, programId, { name, description, weeks }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.program(creatorId, programId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.programs(creatorId) });
-      setDirty(false);
-      showToast('Plan guardado', 'success');
+    mutationFn: (updates) => nutritionDb.updateProgram(creatorId, programId, {
+      name: updates.name ?? program?.name ?? '',
+      description: program?.description ?? '',
+      weeks: updates.weeks ?? program?.weeks ?? [emptyWeek()],
+    }),
+    onMutate: async (updates) => {
+      await queryClient.cancelQueries({ queryKey: detailKey });
+      const previous = queryClient.getQueryData(detailKey);
+      queryClient.setQueryData(detailKey, (old) => ({ ...(old ?? {}), ...updates }));
+      return { previous };
     },
-    onError: (err) => showToast(err?.message || 'No pudimos guardar el plan.', 'error'),
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(detailKey, context.previous);
+      showToast('No pudimos guardar el cambio.', 'error');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: detailKey });
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.programs(creatorId) });
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'program-assignments', programId] });
+      queryClient.invalidateQueries({ queryKey: ['nutrition', 'assignments'] });
+    },
   });
 
-  const handleAddWeek = useCallback(() => {
-    setWeeks((ws) => [...ws, emptyWeek()]);
-    setDirty(true);
-  }, []);
+  const saveWeeks = useCallback((nextWeeks) => {
+    saveMutation.mutate({ weeks: nextWeeks });
+  }, [saveMutation]);
 
-  const handleDuplicateWeek = useCallback((weekIndex) => {
-    setWeeks((ws) => {
-      const copy = { days: [...ws[weekIndex].days] };
-      return [...ws.slice(0, weekIndex + 1), copy, ...ws.slice(weekIndex + 1)];
-    });
-    setDirty(true);
-  }, []);
+  const handleAddWeek = useCallback(() => {
+    saveWeeks([...weeks, emptyWeek()]);
+  }, [weeks, saveWeeks]);
 
   const handleDeleteWeek = useCallback((weekIndex) => {
-    setWeeks((ws) => {
-      if (ws.length <= 1) return [emptyWeek()];
-      return ws.filter((_, i) => i !== weekIndex);
-    });
-    setDirty(true);
-  }, []);
+    const next = weeks.length <= 1 ? [emptyWeek()] : weeks.filter((_, i) => i !== weekIndex);
+    saveWeeks(next);
+  }, [weeks, saveWeeks]);
+
+  const handleDuplicateWeek = useCallback((weekIndex) => {
+    const source = weeks[weekIndex];
+    if (!source) return;
+    const copy = { days: [...source.days] };
+    const next = [...weeks.slice(0, weekIndex + 1), copy, ...weeks.slice(weekIndex + 1)];
+    saveWeeks(next);
+  }, [weeks, saveWeeks]);
+
+  const handleAssignPlan = useCallback((weekIndex, dayIndex, planId) => {
+    const next = weeks.map((w, wi) => (
+      wi === weekIndex
+        ? { days: w.days.map((d, di) => (di === dayIndex ? planId : d)) }
+        : w
+    ));
+    saveWeeks(next);
+  }, [weeks, saveWeeks]);
 
   const handleClearSlot = useCallback((weekIndex, dayIndex) => {
-    setWeeks((ws) => ws.map((w, wi) => (
+    const next = weeks.map((w, wi) => (
       wi === weekIndex
         ? { days: w.days.map((d, di) => (di === dayIndex ? null : d)) }
         : w
-    )));
-    setDirty(true);
-  }, []);
+    ));
+    saveWeeks(next);
+  }, [weeks, saveWeeks]);
 
-  const handlePickDay = useCallback((dayId) => {
-    if (!pickerSlot) return;
-    const { weekIndex, dayIndex } = pickerSlot;
-    setWeeks((ws) => ws.map((w, wi) => (
-      wi === weekIndex
-        ? { days: w.days.map((d, di) => (di === dayIndex ? dayId : d)) }
+  const handleMoveDay = useCallback(({ fromWeekIndex, fromDayIndex, toWeekIndex, toDayIndex, planId }) => {
+    const next = weeks.map((w, wi) => {
+      if (wi !== fromWeekIndex && wi !== toWeekIndex) return w;
+      const days = [...w.days];
+      if (wi === fromWeekIndex) days[fromDayIndex] = null;
+      if (wi === toWeekIndex) days[toDayIndex] = planId;
+      return { days };
+    });
+    saveWeeks(next);
+  }, [weeks, saveWeeks]);
+
+  const handleDuplicateDay = useCallback(({ toWeekIndex, toDayIndex, planId }) => {
+    const next = weeks.map((w, wi) => (
+      wi === toWeekIndex
+        ? { days: w.days.map((d, di) => (di === toDayIndex ? planId : d)) }
         : w
-    )));
-    setDirty(true);
-    setPickerSlot(null);
-    setPickerSearch('');
-  }, [pickerSlot]);
+    ));
+    saveWeeks(next);
+  }, [weeks, saveWeeks]);
 
-  const handleNameChange = useCallback((e) => { setName(e.target.value); setDirty(true); }, []);
-  const handleDescChange = useCallback((e) => { setDescription(e.target.value); setDirty(true); }, []);
+  const openNameEditor = useCallback(() => {
+    setNameDraft(programName);
+    setIsEditingName(true);
+  }, [programName]);
 
-  const filteredDays = useMemo(() => {
-    const list = daysQuery.data ?? [];
-    const q = pickerSearch.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((d) => (d.name ?? '').toLowerCase().includes(q));
-  }, [daysQuery.data, pickerSearch]);
+  const commitName = useCallback(() => {
+    const trimmed = nameDraft.trim();
+    setIsEditingName(false);
+    if (!trimmed || trimmed === programName) return;
+    saveMutation.mutate({ name: trimmed });
+  }, [nameDraft, programName, saveMutation]);
 
   if (programQuery.isLoading) {
     return (
-      <DashboardLayout screenName="Plan nutricional">
-        <div className="np-editor-root">
-          <ShimmerSkeleton width={240} height={28} borderRadius={6} />
-          <div style={{ height: 16 }} />
-          <ShimmerSkeleton width="100%" height={120} borderRadius={10} />
+      <DashboardLayout
+        screenName="Plan nutricional"
+        showBackButton
+        backPath={BACK_PATH}
+      >
+        <div className="np-root">
+          <div className="plan-structure-layout" aria-hidden>
+            <div className="plan-structure-sidebars">
+              <div className="planning-library-sidebar">
+                <div className="plan-structure-search">
+                  <ShimmerSkeleton width="100%" height="36px" borderRadius="8px" />
+                </div>
+                <div className="planning-sidebar-content">
+                  <ShimmerSkeleton width="60%" height="11px" borderRadius="3px" />
+                  <div style={{ height: 12 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <ShimmerSkeleton key={i} width="100%" height="44px" borderRadius="10px" />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="plan-structure-main">
+              <div className="plan-weeks-grid">
+                <div className="plan-weeks-grid-header">
+                  <ShimmerSkeleton width="140px" height="36px" borderRadius="8px" />
+                </div>
+                <div className="plan-weeks-list-wrap">
+                  <div className="plan-weeks-days-header">
+                    {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                      <div key={d} className="plan-weeks-days-header-cell">
+                        <ShimmerSkeleton width="32px" height="14px" borderRadius="4px" />
+                      </div>
+                    ))}
+                  </div>
+                  {[0, 1].map((i) => (
+                    <div key={i} className="plan-weeks-week-block">
+                      <div className="plan-weeks-week-header">
+                        <ShimmerSkeleton width="90px" height="16px" borderRadius="4px" />
+                      </div>
+                      <div className="plan-weeks-week-days">
+                        {[0, 1, 2, 3, 4, 5, 6].map((j) => (
+                          <div key={j} className="plan-weeks-day-cell">
+                            {(i + j) % 2 === 0 && (
+                              <ShimmerSkeleton width="100%" height="44px" borderRadius="8px" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </DashboardLayout>
     );
   }
 
-  if (programQuery.isError || !programQuery.data) {
+  if (programQuery.isError || !program) {
     return (
-      <DashboardLayout screenName="Plan nutricional">
+      <DashboardLayout
+        screenName="Plan nutricional"
+        showBackButton
+        backPath={BACK_PATH}
+      >
         <FullScreenError
           message="No pudimos cargar este plan."
           onRetry={() => programQuery.refetch()}
@@ -156,148 +237,66 @@ export default function NutritionProgramEditorScreen() {
   }
 
   return (
-    <DashboardLayout screenName="Plan nutricional">
-      <div className="np-editor-root">
-        <div className="np-editor-header">
-          <button className="np-back-btn" onClick={() => navigate('/biblioteca?domain=nutricion&tab=programas_nutri')}>
-            <ArrowLeft size={14} /> Volver
-          </button>
-          <button
-            className="np-save-btn"
-            onClick={() => saveMutation.mutate()}
-            disabled={!dirty || saveMutation.isPending}
-          >
-            {saveMutation.isPending ? 'Guardando...' : (dirty ? 'Guardar' : <><Check size={14} /> Guardado</>)}
-          </button>
+    <DashboardLayout
+      screenName={programName || 'Plan nutricional'}
+      showBackButton
+      backPath={BACK_PATH}
+      onHeaderEditClick={openNameEditor}
+    >
+      <div className="np-root">
+        <div className="plan-structure-layout">
+          <div className="plan-structure-sidebars">
+            <NutritionLibrarySidebar
+              creatorId={creatorId}
+              searchQuery={sidebarSearch}
+              onSearchChange={setSidebarSearch}
+            />
+          </div>
+          <div className="plan-structure-main">
+            <NutritionWeeksGrid
+              weeks={weeks}
+              daysById={daysById}
+              plans={plansQuery.data ?? []}
+              isLoadingPlans={plansQuery.isLoading}
+              onAddWeek={handleAddWeek}
+              onDeleteWeek={handleDeleteWeek}
+              onDuplicateWeek={handleDuplicateWeek}
+              onAssignPlan={handleAssignPlan}
+              onClearSlot={handleClearSlot}
+              onMoveDay={handleMoveDay}
+              onDuplicateDay={handleDuplicateDay}
+              showToast={showToast}
+            />
+          </div>
         </div>
-
-        <div className="np-editor-meta">
-          <input
-            className="np-name-input"
-            value={name}
-            onChange={handleNameChange}
-            placeholder="Nombre del plan"
-            maxLength={200}
-          />
-          <textarea
-            className="np-desc-input"
-            value={description}
-            onChange={handleDescChange}
-            placeholder="Descripcion (opcional)"
-            rows={2}
-            maxLength={2000}
-          />
-        </div>
-
-        <div className="np-weeks-list">
-          {weeks.map((week, wi) => (
-            <div key={wi} className="np-week-card">
-              <GlowingEffect spread={20} borderWidth={1} />
-              <div className="np-week-header">
-                <span className="np-week-title">Semana {wi + 1}</span>
-                <div className="np-week-actions">
-                  <button
-                    className="np-week-action"
-                    onClick={() => handleDuplicateWeek(wi)}
-                    title="Duplicar semana"
-                  >
-                    <Copy size={13} /> Duplicar
-                  </button>
-                  <button
-                    className="np-week-action np-week-action--danger"
-                    onClick={() => handleDeleteWeek(wi)}
-                    title="Eliminar semana"
-                    disabled={weeks.length === 1}
-                  >
-                    <Trash2 size={13} /> Eliminar
-                  </button>
-                </div>
-              </div>
-              <div className="np-day-grid">
-                {week.days.map((dayId, di) => {
-                  const day = dayId ? daysById.get(dayId) : null;
-                  return (
-                    <div key={di} className="np-day-cell">
-                      <div className="np-day-label">{DAY_LABELS[di]}</div>
-                      {day ? (
-                        <div className="np-day-slot np-day-slot--filled">
-                          <span className="np-day-slot-name" title={day.name}>{day.name}</span>
-                          <button
-                            className="np-day-slot-clear"
-                            onClick={() => handleClearSlot(wi, di)}
-                            aria-label="Quitar"
-                          >
-                            <X size={11} />
-                          </button>
-                        </div>
-                      ) : dayId ? (
-                        <div className="np-day-slot np-day-slot--missing">
-                          <span className="np-day-slot-name">Día borrado</span>
-                          <button
-                            className="np-day-slot-clear"
-                            onClick={() => handleClearSlot(wi, di)}
-                            aria-label="Quitar"
-                          >
-                            <X size={11} />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          className="np-day-slot np-day-slot--empty"
-                          onClick={() => setPickerSlot({ weekIndex: wi, dayIndex: di })}
-                        >
-                          <Plus size={14} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <button className="np-add-week-btn" onClick={handleAddWeek}>
-          <Plus size={14} /> Agregar semana
-        </button>
       </div>
 
       <Modal
-        isOpen={!!pickerSlot}
-        onClose={() => { setPickerSlot(null); setPickerSearch(''); }}
-        title="Elegir día de alimentación"
+        isOpen={isEditingName}
+        onClose={() => setIsEditingName(false)}
+        title="Editar nombre"
       >
-        <div className="np-picker">
-          <div className="np-picker-search">
-            <Search size={13} className="np-picker-search-icon" />
-            <input
-              autoFocus
-              className="np-picker-search-input"
-              value={pickerSearch}
-              onChange={(e) => setPickerSearch(e.target.value)}
-              placeholder="Buscar día..."
-            />
-          </div>
-          <div className="np-picker-list">
-            {daysQuery.isLoading ? (
-              <div className="np-picker-empty">Cargando...</div>
-            ) : filteredDays.length === 0 ? (
-              <div className="np-picker-empty">
-                {(daysQuery.data ?? []).length === 0
-                  ? 'No tienes días de alimentación. Crea uno en la biblioteca primero.'
-                  : 'Sin resultados.'}
-              </div>
-            ) : (
-              filteredDays.map((d) => (
-                <button key={d.id} className="np-picker-item" onClick={() => handlePickDay(d.id)}>
-                  <span className="np-picker-item-name">{d.name || 'Sin nombre'}</span>
-                  <span className="np-picker-item-meta">
-                    {d.daily_calories ? `${Math.round(d.daily_calories)} kcal` : '—'}
-                    {d.daily_protein_g ? ` · ${Math.round(d.daily_protein_g)}P` : ''}
-                  </span>
-                </button>
-              ))
-            )}
+        <div className="np-name-modal">
+          <input
+            autoFocus
+            type="text"
+            className="np-name-modal-input"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); commitName(); }
+              if (e.key === 'Escape') setIsEditingName(false);
+            }}
+            placeholder="Nombre del plan"
+            maxLength={200}
+          />
+          <div className="np-name-modal-actions">
+            <button type="button" className="np-name-modal-btn np-name-modal-btn--secondary" onClick={() => setIsEditingName(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="np-name-modal-btn np-name-modal-btn--primary" onClick={commitName}>
+              Listo
+            </button>
           </div>
         </div>
       </Modal>

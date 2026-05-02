@@ -158,7 +158,7 @@ functions/src/
 | `users/{userId}/saved_foods/{id}` | User's saved foods |
 | `users/{userId}/readiness/{id}` | Daily readiness/wellbeing entries |
 | `users/{userId}/bodyLog/{id}` | Body weight/composition log |
-| `courses/{courseId}` | Program metadata (`deliveryType: low_ticket \| one_on_one`, `weekly`) |
+| `courses/{courseId}` | Program metadata (`deliveryType: low_ticket \| general \| one_on_one`, `weekly`) |
 | `courses/{courseId}/modules/{moduleId}/sessions/{sessionId}/exercises/{exerciseId}/sets/{setId}` | Full program tree |
 | `plans/{planId}/modules/…` | Plans used by one-on-one delivery |
 | `creator_libraries/{creatorId}/sessions/{sessionId}` | Reusable library sessions |
@@ -186,7 +186,7 @@ functions/src/
     "access_duration": "monthly | 3-month | 6-month | yearly",
     "expires_at": "ISO date string",
     "purchased_at": "ISO date string",
-    "deliveryType": "low_ticket | one_on_one",
+    "deliveryType": "low_ticket | general | one_on_one",
     "title": "...",
     "image_url": "..."
   }
@@ -244,7 +244,7 @@ No data fetching inside `useEffect`. No raw `useState + useEffect` for async dat
 All data fetching goes through React Query. No exceptions after migration.
 
 **Custom hooks:**
-- Live in `src/hooks/{domain}/` — e.g., `hooks/workout/`, `hooks/nutrition/`, `hooks/creator/`
+- Live in `src/hooks/{domain}/` — e.g., `hooks/workout/`, `hooks/nutrition/`, `hooks/creator/`, `hooks/hoy/`
 - Extract to a custom hook when a query is reused across 2+ screens
 - Inline `useQuery` inside a screen component is acceptable for single-use queries
 - Hook file naming: `useResourceName.js` — e.g., `useUserProfile.js`, `useDailyWorkout.js`
@@ -286,6 +286,29 @@ No `onSnapshot` listeners anywhere — all replaced by React Query with backgrou
   - Domain examples: `workout/`, `nutrition/`, `creator/`, `events/`, `ui/` (generic reusables)
 - **Existing flat components:** leave in place until touched; migrate to domain folder then
 - No forced migration — existing screens work, don't reorganize them just to reorganize
+
+---
+
+### Hoy (home) screen architecture
+
+**`apps/pwa/src/screens/HoyScreen.web.jsx`** — production `/`. Three-card carousel scoped to one selected coach: per-program workout cards → optional nutrition card → week/coach card.
+
+**By-coach environments.** Workouts and nutrition assignments are grouped by `creator_id`. Each coach is one environment; the WeekCoachCard switches between them. `useCoursesEnriched` (in `hooks/hoy/`) fetches each course's `creator_id` from `/workout/courses/:id` because `users/{userId}.courses` doesn't carry it.
+
+**Nutrition attachment.** `useNutritionToday` reads the assignment's `creator_id` directly via the Firestore SDK (the `/nutrition/assignment` API doesn't expose it). The card attaches to the matching coach env; falls back to the first env if no match. Security rule: assignee can read by `userId`.
+
+**Workout flow.** Card flip → "Empezar" → `/warmup` (skips DailyWorkoutScreen). Same `{ course, workout, sessionId }` params as the legacy flow, so warmup → execution → completion is preserved.
+
+**deliveryType — three values:** `low_ticket`, `general`, `one_on_one`. `low_ticket` and `general` use fixed program trees; `one_on_one` is week-by-week with a 7-day strip in WeekCoachCard.
+
+**Hoy hooks (`src/hooks/hoy/`):**
+- `useCoursesEnriched` — adds `creator_id` to each course
+- `useNutritionToday` — plan + today's diary totals + `assignmentCreatorId`
+- `useSessionRecovery` — surfaces an in-progress workout from localStorage
+- `useAccentFromImage` — extracts a CSS accent color from the active image
+- `useCourseDownloadStatus` — subscribes to `courseDownloadService` callbacks
+
+**Pinned program order.** `profile.pinnedTrainingCourseId` is honored: workouts within a coach are sorted pinned-first; coach envs are sorted so the env containing the pinned course is first.
 
 ---
 

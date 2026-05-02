@@ -987,7 +987,7 @@
       "image image"
       "users adherence"
       "demographics demographics";
-    min-height: auto;
+    min-height: 0;
   }
 
   .gp-config__grid {
@@ -1001,7 +1001,7 @@
   .gp-root .plan-structure-layout {
     flex-direction: column;
     gap: 16px;
-    min-height: auto;
+    min-height: 0;
   }
 
   .gp-root .plan-structure-sidebars {
@@ -1030,7 +1030,7 @@
       "users adherence"
       "demographics demographics";
     gap: 8px;
-    min-height: auto;
+    min-height: 0;
   }
 
   .gp-program-card,
