@@ -2393,62 +2393,108 @@ export const processRestTimerNotifications = onSchedule(
 
     webpush.setVapidDetails("mailto:soporte@wakelab.co", pub, priv);
 
+    // Per-timer try/catch + claim-first prevents two failure modes that drove
+    // the April 2026 17% 5xx rate on this cron:
+    //   1) A single bad timer (missing userId, doc deleted concurrently, sub
+    //      query failure) used to throw out of the for-loop and 5xx the whole
+    //      tick — every other valid timer in the batch was silently dropped
+    //      and Cloud Scheduler retried the run. Now each timer is isolated.
+    //   2) The 30s look-ahead window plus a slow tick let the next minute's
+    //      run pick up the same pending timer before the previous run flipped
+    //      `status: "sent"`. Claiming the timer before sending pushes
+    //      ("processing"→"sent") makes it single-shot regardless of timing.
+    let processed = 0;
+    let failed = 0;
     for (const timerDoc of pendingSnap.docs) {
-      const timer = timerDoc.data();
-      const userId = timer.userId as string;
-      const metadata = (timer.metadata || {}) as Record<string, unknown>;
-      const exerciseName = (metadata.exerciseName as string) || "tu ejercicio";
-
-      const subsSnap = await db
-        .collection("users")
-        .doc(userId)
-        .collection("web_push_subscriptions")
-        .where("isActive", "==", true)
-        .get();
-
-      const payload = JSON.stringify({
-        title: "Descanso terminado",
-        body: `Vuelve a ${exerciseName}`,
-      });
-
-      const deactivateIds: string[] = [];
-
-      await Promise.all(
-        subsSnap.docs.map(async (subDoc) => {
-          const sub = subDoc.data();
-          try {
-            await webpush.sendNotification(
-              {endpoint: sub.endpoint, keys: sub.keys},
-              payload
-            );
-          } catch (err: unknown) {
-            const status = (err as { statusCode?: number }).statusCode;
-            if (status === 410 || status === 404) {
-              deactivateIds.push(subDoc.id);
-            }
-          }
-        })
-      );
-
-      // Mark timer as sent
-      await timerDoc.ref.update({status: "sent"});
-
-      // Deactivate expired subscriptions
-      if (deactivateIds.length > 0) {
-        const batch = db.batch();
-        for (const id of deactivateIds) {
-          batch.update(
-            db.collection("users").doc(userId)
-              .collection("web_push_subscriptions").doc(id),
-            {isActive: false}
+      try {
+        const timer = timerDoc.data();
+        const userId = timer.userId as string | undefined;
+        if (!userId) {
+          // Malformed timer — flip to skipped so we don't see it again.
+          await timerDoc.ref.update({status: "skipped"});
+          functions.logger.warn(
+            "processRestTimerNotifications: timer missing userId",
+            {timerId: timerDoc.id}
           );
+          continue;
         }
-        await batch.commit();
+
+        // Claim the timer first. If two ticks race, only one will see
+        // status="pending" — the other's transactional read will treat it as
+        // already-claimed and skip it. Push send happens after the claim,
+        // so worst case is a missed notification (better than a duplicate
+        // "Descanso terminado" arriving 60s later).
+        const claimed = await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(timerDoc.ref);
+          if (!fresh.exists) return false;
+          if ((fresh.data()?.status as string) !== "pending") return false;
+          tx.update(timerDoc.ref, {status: "sent"});
+          return true;
+        });
+        if (!claimed) continue;
+
+        const metadata = (timer.metadata || {}) as Record<string, unknown>;
+        const exerciseName =
+          (metadata.exerciseName as string) || "tu ejercicio";
+
+        const subsSnap = await db
+          .collection("users")
+          .doc(userId)
+          .collection("web_push_subscriptions")
+          .where("isActive", "==", true)
+          .get();
+
+        const payload = JSON.stringify({
+          title: "Descanso terminado",
+          body: `Vuelve a ${exerciseName}`,
+        });
+
+        const deactivateIds: string[] = [];
+
+        await Promise.all(
+          subsSnap.docs.map(async (subDoc) => {
+            const sub = subDoc.data();
+            try {
+              await webpush.sendNotification(
+                {endpoint: sub.endpoint, keys: sub.keys},
+                payload
+              );
+            } catch (err: unknown) {
+              const status = (err as { statusCode?: number }).statusCode;
+              if (status === 410 || status === 404) {
+                deactivateIds.push(subDoc.id);
+              }
+            }
+          })
+        );
+
+        if (deactivateIds.length > 0) {
+          const batch = db.batch();
+          for (const id of deactivateIds) {
+            batch.update(
+              db.collection("users").doc(userId)
+                .collection("web_push_subscriptions").doc(id),
+              {isActive: false}
+            );
+          }
+          await batch.commit();
+        }
+        processed++;
+      } catch (err: unknown) {
+        // Don't let one bad timer 5xx the whole tick.
+        failed++;
+        functions.logger.error(
+          "processRestTimerNotifications: timer failed",
+          {
+            timerId: timerDoc.id,
+            err: err instanceof Error ? err.message : String(err),
+          }
+        );
       }
     }
 
     functions.logger.info(
-      `Processed ${pendingSnap.size} rest timer notification(s)`
+      `Processed ${processed} rest timer notification(s), ${failed} failed`
     );
   }
 );
@@ -2694,7 +2740,11 @@ function computeNextRetryAt(attemptCount: number): admin.firestore.Timestamp {
 
 export const processEmailQueue = onSchedule(
   {
-    schedule: "every 1 minutes",
+    // Was "every 1 minutes" — that produced ~28k invocations / month for
+    // creator broadcast email sends, which are not time-critical (recipients
+    // do not notice 5 minutes). 5-minute cadence cuts invocations 5× while
+    // batched retries + Resend's own backoff still drain queues promptly.
+    schedule: "every 5 minutes",
     region: "us-central1",
     secrets: [resendApiKey, unsubscribeSecret],
     memory: "256MiB",
@@ -2963,7 +3013,9 @@ export const api = onRequest(
     memory: "512MiB",
     timeoutSeconds: 60,
     concurrency: 80,
-    minInstances: process.env.GCLOUD_PROJECT === "wolf-20b8b" ? 1 : 0,
+    // Was minInstances=1 in prod (~$44–85/mo idle keep-warm for ~31 req/hr).
+    // Cold start on this Express app is ~1–2s; not worth the spend.
+    minInstances: 0,
     secrets: [
       fatSecretClientIdV2,
       fatSecretClientSecretV2,

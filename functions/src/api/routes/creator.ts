@@ -19,6 +19,7 @@ import {
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {escapeHtml} from "../services/emailHelpers.js";
+import {applyLongCacheControl} from "../services/storageMetadata.js";
 
 const router = Router();
 
@@ -1819,10 +1820,13 @@ router.post("/creator/programs/:programId/image/confirm", async (req, res) => {
   validateStoragePath(storagePath, `courses/${req.params.programId}/`);
 
   const bucket = admin.storage().bucket();
-  const [exists] = await bucket.file(storagePath).exists();
+  const file = bucket.file(storagePath);
+  const [exists] = await file.exists();
   if (!exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado");
   }
+
+  await applyLongCacheControl(file);
 
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
 
@@ -5175,8 +5179,11 @@ router.post("/creator/library/sessions/:sessionId/image/confirm", async (req, re
   validateStoragePath(storagePath, `creator_libraries/${auth.userId}/sessions/${req.params.sessionId}/`);
 
   const bucket = admin.storage().bucket();
-  const [exists] = await bucket.file(storagePath).exists();
+  const file = bucket.file(storagePath);
+  const [exists] = await file.exists();
   if (!exists) throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado");
+
+  await applyLongCacheControl(file);
 
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
 
@@ -6971,6 +6978,7 @@ router.post("/creator/media/upload-url/confirm", async (req, res) => {
   }
 
   await file.setMetadata({
+    cacheControl: "public, max-age=31536000, immutable",
     metadata: {firebaseStorageDownloadTokens: downloadToken},
   });
 
@@ -8448,10 +8456,13 @@ router.post("/creator/exercises/libraries/:libraryId/exercises/:exerciseId/uploa
   validateStoragePath(storagePath, `exercises_library/${req.params.libraryId}/${pathSegment}/`);
 
   const bucket = admin.storage().bucket();
-  const [exists] = await bucket.file(storagePath).exists();
+  const file = bucket.file(storagePath);
+  const [exists] = await file.exists();
   if (!exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado en Storage");
   }
+
+  await applyLongCacheControl(file);
 
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
   const now = FieldValue.serverTimestamp();
