@@ -2828,6 +2828,12 @@ this campaign.**
 | 10| 790dc23   | 8    | Tier 8 — F-DATA-01 / F-DATA-06 naming-drift sweep (rules) |
 | 11| e70b02c   | —    | fix(security): bind UNSUBSCRIBE_SECRET to api Gen2 export (review-caught: api Gen2 secrets[] omitted unsubscribeSecret, /email/unsubscribe would 400 every link in prod) |
 | 12| d6d9d1a   | —    | perf(cost): cut April $50→~$5 — api keep-warm dropped (minInstances 1→0), Cache-Control: immutable on user-uploaded assets, processRestTimerNotifications hardening, processEmailQueue cadence 1→5 min |
+| 13| 76fcf34   | R2   | Round 2 mini-sweep — `client_programs` rule lockdown, dual-verify legacy unsub tokens (30-day window), delete dead `apiService` methods, `npm run dev:full` emulator script |
+| 14| bcd59d1   | R2   | F-OPS-05 — remove Wake Ops LLM agent layer entirely (1,494 lines deleted; @anthropic-ai/sdk uninstalled; LLM prompt-injection attack surface gone) |
+| 15| 205a4c7   | R2   | F-RULES-12 / 16 / 17 / 19 / 32 / 33 / 34 / 39 / 40 — first rules sweep |
+| 16| 7411723   | R2   | F-RULES-03 / 06 / 08 / 09 / 10 / 14 / 20 / 21 / 31 — second rules sweep (lock API-mediated collections, diff guards, shape allowlists) |
+| 17| f60ed44   | R2   | F-NEW-03 — API key rejected when owner role demoted (per-request owner-role check) |
+| 18| (this doc)| R2   | §16 audit log update + Firestore TTL on rate_limit_first_party / rate_limit_windows / system_email_budget enabled in prod via gcloud |
 
 ## 16.2 Findings closed
 
@@ -2919,19 +2925,51 @@ Migration script at scripts/security/naming-drift-normalize.js.
 6. F-DATA-05 (state vs status duplicate fields): defer to Round 2.
 7. F-DATA-08 / `courses.deliveryType: "general"`: defer (treat as low_ticket).
 
-## 16.6 Out of scope (deferred to Round 2)
+## 16.6 Round 2 — closed in commits 13-18 (this branch)
 
-Everything in §13.5 + the prompt's "out of scope" list, plus:
-- F-RULES-07, F-RULES-12, F-RULES-13, F-RULES-16, F-RULES-17, F-RULES-19,
-  F-RULES-22, F-RULES-32, F-RULES-33, F-RULES-38, F-RULES-39, F-RULES-40
-  (the 21 remaining `it.fails` markers).
-- F-DRIFT-01 source-of-truth consolidation.
-- F-NEW-03 API key auto-revoke.
-- F-OPS-* findings except F-OPS-05.
-- Tier 7 cleanup (the in-scope items here are the F-MW hardening; the
-  TODO/cleanup column lives in Round 2).
-- Removal of the legacy `assignedBy` fallback once production data is
-  fully canonical.
+The original Round 2 deferral list landed inside this same campaign. State
+at end of branch (`f60ed44`):
+
+**Closed:**
+- F-RULES-03 / 06 / 08 / 09 / 10 / 12 / 13 / 14 / 16 / 17 / 19 / 20 / 21 /
+  31 / 32 / 33 / 34 / 39 / 40 (every rule finding the test suite carried
+  an `it.fails` for, plus several adjacent ones in the same files).
+- F-OPS-05 + every other F-OPS-* finding that depended on the LLM agent
+  surface (closed structurally — agent layer deleted, not patched).
+- F-NEW-03 — API key auto-revoke (per-request owner-role check in
+  `validateApiKey` instead of a separate trigger).
+- F-NEW-08 — race window (closed by F-FUNCS-14 in Tier 1).
+- F-NEW-09 — Object Versioning (done as Phase 0 §15.1).
+- F-NEW-10 — purchases/processed_payments drift (closed by F-RULES-08
+  lockdown — purchases is now admin-only).
+- F-DRIFT-01 — three sources of truth for "did this user pay" — all three
+  client-write paths are now admin-only (`purchases`, `client_programs`,
+  `users.courses` allowlist). Internal "which is canonical for reads" is
+  a code-architecture cleanup, not a security finding.
+- The 6 items from the independent review's Round 2 list:
+  client_programs rule fix, dual-verify legacy unsub tokens, Firestore
+  TTL on rate_limit_* and system_email_budget, dead apiService methods.
+  Storage role consolidation: kept Option A (both sources, with
+  `/creator/register` writing both at once — no other promotion path
+  exists, so divergence risk is bounded).
+
+**Accepted as-is (no rule change warranted per audit prose):**
+- F-RULES-07 — registrants can't update their own row (audit: "Acceptable").
+- F-RULES-22 — event creator can mutate any field on registrations
+  (audit: "Probably fine given it's their event").
+- F-RULES-38 — storage rule cross-service get is a perf concern, not
+  a security one (audit: "Informational").
+
+**Operator items (not code; you must do):**
+- §15.5 Resend reputation glance.
+- §15.6 MercadoPago `processed_payments` reconciliation.
+
+**Truly deferred (no actionable Wake-side code change):**
+- Removal of the legacy `assignedBy` fallback in nutrition_assignments
+  read predicates — wait until `naming-drift-normalize.js --apply` has
+  run on prod and one full quota cycle confirms no stragglers.
+- Tier 7 cleanup TODOs (Firestore TTL config done; `// TODO: configure
+  Firestore TTL` comments in code can be removed in any subsequent commit).
 
 ## 16.7 Deploy command (user runs, NOT this campaign)
 
