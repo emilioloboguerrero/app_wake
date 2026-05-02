@@ -213,3 +213,4 @@ eas-build-*.json
 
 # Security discovery output — may contain PII samples
 scripts/security/tier0-discovery-output.json
+.emulator-data

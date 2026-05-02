@@ -49,16 +49,31 @@ export function verifyUnsubscribeToken(
   creatorId: string
 ): boolean {
   if (typeof token !== "string" || token.length !== 64) return false;
-  let expected: string;
-  try {
-    expected = generateUnsubscribeToken(email, creatorId);
-  } catch {
-    return false;
-  }
   const a = Buffer.from(token, "hex");
-  const b = Buffer.from(expected, "hex");
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+
+  // Primary path: HMAC-SHA256 (F-FUNCS-20).
+  try {
+    const expected = generateUnsubscribeToken(email, creatorId);
+    const b = Buffer.from(expected, "hex");
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  } catch {
+    // secret missing in prod — fall through and try legacy path; if both
+    // fail, return false. The api Gen2 export now binds UNSUBSCRIBE_SECRET
+    // (functions/src/index.ts:secrets[]), so the throw should never happen
+    // outside the emulator.
+  }
+
+  // Transitional fallback: legacy unkeyed SHA-256(`email:creatorId`). Tokens
+  // minted before the F-FUNCS-20 deploy still sit in users' inboxes — without
+  // this, every pre-deploy unsubscribe link would 400 forever. Drop this
+  // branch ≥30 days after deploy (calendar reminder; Round 2).
+  const legacy = crypto.createHash("sha256")
+    .update(`${email}:${creatorId}`).digest();
+  if (a.length === legacy.length && crypto.timingSafeEqual(a, legacy)) {
+    return true;
+  }
+
+  return false;
 }
 
 export function unsubscribeDocId(email: string, creatorId: string): string {

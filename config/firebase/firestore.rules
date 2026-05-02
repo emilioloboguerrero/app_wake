@@ -553,21 +553,17 @@ service cloud.firestore {
     // ============================================
 
     // Client programs (doc id = userId_programId)
+    // F-DATA-02 (Round 2): the previous rule predicates checked
+    // `creatorId`/`clientId` fields that DON'T EXIST in any production doc
+    // (real shape is `user_id` + `program_id`, snake). All client reads /
+    // writes go through Admin-SDK API endpoints (verified: zero direct
+    // Firestore SDK callers in apps/pwa or apps/creator-dashboard). Locking
+    // this rule to deny-all closes the dead-rule risk surface; Admin SDK
+    // bypasses rules and remains the sole writer. If a future client surface
+    // needs direct read access, gate on `docId.matches('^' + auth.uid + '_.*')`
+    // (safe — doc id is owner-prefixed) or `resource.data.user_id == auth.uid`.
     match /client_programs/{docId} {
-      allow read: if isSignedIn() && (
-        resource.data.creatorId == request.auth.uid ||
-        resource.data.clientId == request.auth.uid ||
-        isAdmin()
-      );
-      allow create: if isCreator() && request.resource.data.creatorId == request.auth.uid;
-      allow update: if isSignedIn() && (
-        resource.data.creatorId == request.auth.uid ||
-        resource.data.clientId == request.auth.uid ||
-        isAdmin()
-      );
-      allow delete: if isSignedIn() && (
-        resource.data.creatorId == request.auth.uid || isAdmin()
-      );
+      allow read, write: if isAdmin();
     }
 
     // One-on-one sessions assigned to a client

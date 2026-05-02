@@ -61,8 +61,12 @@ const storage = getStorage(app);
 // Initialize Functions (us-central1 to match deployed functions)
 const functions = getFunctions(app, 'us-central1');
 
-// Connect to emulators in local dev — skip when pointing at a real project (staging/production)
-const useEmulators = import.meta.env.DEV && !firebaseEnv;
+// Connect to emulators when (a) DEV build with no firebase env (default
+// behavior preserved) OR (b) explicitly opted-in via VITE_USE_EMULATOR=true
+// even with a project env set. (b) is what `npm run dev:full` uses to get
+// rules eval against a project-flavored auth flow.
+const useEmulators = (import.meta.env.DEV && !firebaseEnv) ||
+  import.meta.env.VITE_USE_EMULATOR === 'true';
 if (useEmulators) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(firestore, '127.0.0.1', 8080);

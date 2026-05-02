@@ -4,8 +4,9 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, initializeAuth, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { connectAuthEmulator } from 'firebase/auth';
 import { isWeb } from '../utils/platform';
 
 // Production Firebase project: wolf-20b8b
@@ -102,6 +103,22 @@ try {
 
 const firestore = getFirestore(app);
 const storage = getStorage(app);
+
+// Local-emulator wiring. Activates only when EXPO_PUBLIC_USE_EMULATOR=true.
+// Used by `npm run dev:full` (full local stack — functions + firestore +
+// auth + storage + rules eval). dev:prod / staging builds skip this and
+// hit the real project's services.
+if (isEmulator && isWeb) {
+  try {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+    connectStorageEmulator(storage, '127.0.0.1', 9199);
+  } catch (err) {
+    // Idempotent — re-rendering in dev can re-run this; ignore the
+    // "already connected" throw.
+    if (!String(err?.message || '').includes('already')) throw err;
+  }
+}
 
 // Export Firebase services
 export { auth, firestore, storage, appCheck };
