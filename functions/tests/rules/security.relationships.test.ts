@@ -154,10 +154,17 @@ describe("client_session_content / client_plan_content — phantom create", () =
     }
   );
 
-  it("legitimate creator can create content for their own client (with one_on_one_clients link)", async () => {
-    // We can't model the full join in rules tests easily; this test pins the
-    // current shape rather than the future fix. Drop or replace once the
-    // gate-by-one_on_one_clients rule lands.
+  it("FIXED (F-RULES-14): even legitimate creator cannot write directly via JS SDK — API-only", async () => {
+    // F-RULES-14 (Round 2) locked all writes to `client_session_content` to
+    // admin-only. Production write path is /creator/clients/* via Admin SDK
+    // (creator-dashboard/.../ClientPlanSessionPanel.jsx — "Persist via the
+    // API"); PWA reads via /workout/client-session-content/:id. No client
+    // surface uses the Firestore SDK to write here, so denying every direct
+    // write at the rule layer is the correct posture.
+    //
+    // The previous test asserted the pre-Round-2 behavior (creator-with-
+    // one_on_one_clients-link can setDoc directly) and stayed in place after
+    // the fix landed; flipped here to assert the post-fix denial.
     await seedCreator(env, "creator1");
     await seedUser(env, "client1");
     await seedDoc(env, "one_on_one_clients/creator1_client1", {
@@ -166,7 +173,7 @@ describe("client_session_content / client_plan_content — phantom create", () =
       status: "active",
     });
     const ctx = env.authenticatedContext("creator1", {role: "creator"});
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(ctx.firestore(), "client_session_content/legit"), {
         creator_id: "creator1",
         client_id: "client1",

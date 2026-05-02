@@ -199,10 +199,32 @@ describe("creator_availability owner-only read (audit H-03 / Tier 5.1)", () => {
     await assertFails(getDoc(doc(anon.firestore(), "creator_availability/creatorA")));
   });
 
-  it("ACCEPTS owner writing their own availability", async () => {
+  it("ACCEPTS owner writing their own availability with allowlisted keys", async () => {
+    // F-RULES-32: write rule caps doc shape to a known allowlist
+    // (slots / timezone / updatedAt / createdAt). Production-side writes
+    // happen via Admin SDK through /v1/creator/availability/template
+    // (apps/creator-dashboard/src/services/availabilityService.js) and
+    // bypass rules entirely; this test asserts the rule's positive path
+    // for any client-direct write a future code path might add.
     const owner = testEnv.authenticatedContext("creatorA");
     await assertSucceeds(
-      setDoc(doc(owner.firestore(), "creator_availability/creatorA"), {weeklyTemplate: {}})
+      setDoc(doc(owner.firestore(), "creator_availability/creatorA"), {
+        slots: [],
+        timezone: "America/Bogota",
+      })
+    );
+  });
+
+  it("REJECTS direct-SDK write with weeklyTemplate (forces API-mediation)", async () => {
+    // F-RULES-32 in action: weeklyTemplate is computed and written by the
+    // server (Admin SDK / expandWeeklyAvailability cron). A creator
+    // attempting to write it via the JS SDK is denied at the rule layer,
+    // so the only remaining write path is the API.
+    const owner = testEnv.authenticatedContext("creatorA");
+    await assertFails(
+      setDoc(doc(owner.firestore(), "creator_availability/creatorA"), {
+        weeklyTemplate: {monday: []},
+      })
     );
   });
 
