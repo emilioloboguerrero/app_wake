@@ -385,7 +385,7 @@ service cloud.firestore {
 
     // F-DATA-01 / F-DATA-06: canonical creator field is `creator_id` (snake).
     // Legacy `assignedBy` is accepted alongside `creator_id` during the
-    // migration window. scripts/security/naming-drift-normalize.js
+    // migration window. scripts/archive/security-2026-05/naming-drift-normalize.js
     // normalizes data; once the legacy field is gone from prod, the
     // assignedBy clauses can be removed in Round 2.
     // F-RULES-09 (Round 2): writes locked to admin (Admin SDK API endpoints

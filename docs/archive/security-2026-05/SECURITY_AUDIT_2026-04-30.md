@@ -2978,23 +2978,23 @@ at end of branch (`f60ed44`):
 git checkout security-fix-campaign
 
 # 1. Dry-run all migrations against an emulator with prod snapshot imported
-node scripts/security/pre-deploy-check.js --project demo-wake
+node scripts/archive/security-2026-05/pre-deploy-check.js --project demo-wake
 
 # 2. Backfill custom claims FIRST (so creators/admins keep access on rule deploy)
-node scripts/security/phase1-claim-backfill.js \
+node scripts/archive/security-2026-05/phase1-claim-backfill.js \
     --project wolf-20b8b --confirm-prod --apply
 
 # 3. Run data migrations
 for s in exercises-library-cleanup naming-drift-normalize \
          one-on-one-clients-status-backfill registrations-schema-unify; do
-  node scripts/security/$s.js --project wolf-20b8b --confirm-prod --apply
+  node scripts/archive/security-2026-05/$s.js --project wolf-20b8b --confirm-prod --apply
 done
 
 # 4. Deploy functions + rules + hosting in one atomic firebase deploy
 firebase deploy --project wolf-20b8b
 
 # 5. Smoke
-node scripts/security/post-deploy-smoke.js \
+node scripts/archive/security-2026-05/post-deploy-smoke.js \
     --base https://us-central1-wolf-20b8b.cloudfunctions.net/api/v1 \
     --confirm-prod
 ```

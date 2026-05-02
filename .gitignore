@@ -212,5 +212,5 @@ eas-build-*.json
 # package.json - needed for dependencies
 
 # Security discovery output — may contain PII samples
-scripts/security/tier0-discovery-output.json
+scripts/archive/security-2026-05/tier0-discovery-output.json
 .emulator-data
