@@ -286,6 +286,25 @@ async function validateApiKey(key: string): Promise<AuthResult> {
     );
   }
 
+  // F-NEW-03 (Round 2): the key was issued under role:"creator" assumptions
+  // (scope, default rate caps, route allowlist). If the owner has been
+  // demoted from `creator` since issuance, reject the key — the operator
+  // can rotate manually rather than the key keeping access. Costs one extra
+  // Firestore read per API key request; Wake currently has 2 keys total so
+  // the cost is negligible, and any future per-key throughput growth would
+  // amortize via the existing token cache layer if added.
+  if (data.owner_id) {
+    const ownerSnap = await db.collection("users").doc(data.owner_id).get();
+    const ownerRole = ownerSnap.exists ? ownerSnap.data()?.role : null;
+    if (ownerRole !== "creator" && ownerRole !== "admin") {
+      throw new WakeApiServerError(
+        "UNAUTHENTICATED",
+        401,
+        "API key inválida o revocada"
+      );
+    }
+  }
+
   // Update last_used_at (fire-and-forget)
   // Audit M-29: stringify error so Firestore internals (request bodies, etc.)
   // don't end up in Cloud Logging.
