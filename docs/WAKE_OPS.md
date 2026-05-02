@@ -1,6 +1,18 @@
 # Wake Ops System
 
-A distributed observability and ops intelligence system for Wake. Built around a **dumb collectors + smart agent + executor** architecture so signals, reasoning, and code changes evolve independently, cost stays flat, and the pattern extends to future projects.
+> **2026-05-01 — LLM agent layer removed.** The "smart agent" (Claude-powered
+> synthesis, Q&A, auto-issue creation, `agent_pause`/`agent_resume` commands)
+> was deleted to close F-OPS-05 (LLM prompt-injection through ingested errors).
+> The dumb collectors + Telegram bus + GitHub issues / `@claude` manual loop
+> remain intact and continue running on cron. Anything below that references
+> `@agent_wake`, `agentSynthesis`, `agentDispatch`, `agentAssessment`,
+> `agent_pause`, `agent_resume`, `ops_agent_state`, or autonomous synthesis
+> is **historical** — that surface no longer exists in `functions/src/ops/`.
+> The `@anthropic-ai/sdk` dependency was uninstalled.
+
+A distributed observability and ops system for Wake. Built around a **dumb
+collectors + Telegram bus + manual triage** architecture: signals land in
+Telegram, humans triage, and `@claude` on GitHub executes any code work.
 
 ---
 
@@ -186,7 +198,7 @@ Lets you run any collector on demand via `/command` to `@signals_wake`.
 |---|---|
 | Type | Cloud Function Gen2 HTTPS |
 | Auth | `X-Telegram-Bot-Api-Secret-Token` + chat allowlist |
-| Commands | `/logs`, `/heartbeat`, `/payments`, `/quota`, `/pwa_errors`, `/creator_errors`, `/all`, `/help`, `/agent_pause`, `/agent_resume` |
+| Commands | `/logs`, `/heartbeat`, `/payments`, `/quota`, `/pwa_errors`, `/creator_errors`, `/all`, `/help` |
 | Registry | `functions/src/ops/commands.ts` — add collector = one entry, `/all` picks up automatically |
 
 One-time setup: `bash scripts/ops/register-signals-webhook.sh`.
