@@ -2826,6 +2826,8 @@ this campaign.**
 | 8 | 5306fe7   | 6    | Tier 6 — email abuse + per-system budget |
 | 9 | 2aaf4c2   | 7    | Tier 7 — middleware hardening (F-MW-01/02/03/04/06) |
 | 10| 790dc23   | 8    | Tier 8 — F-DATA-01 / F-DATA-06 naming-drift sweep (rules) |
+| 11| e70b02c   | —    | fix(security): bind UNSUBSCRIBE_SECRET to api Gen2 export (review-caught: api Gen2 secrets[] omitted unsubscribeSecret, /email/unsubscribe would 400 every link in prod) |
+| 12| d6d9d1a   | —    | perf(cost): cut April $50→~$5 — api keep-warm dropped (minInstances 1→0), Cache-Control: immutable on user-uploaded assets, processRestTimerNotifications hardening, processEmailQueue cadence 1→5 min |
 
 ## 16.2 Findings closed
 
