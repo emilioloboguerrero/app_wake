@@ -622,7 +622,8 @@ export const processPaymentWebhook = functions
             expectedSignatureBuffer
           );
         } catch (compareError) {
-          functions.logger.error("Error comparing Mercado Pago signatures", compareError);
+          // Audit L-41: scrub raw error so webhook payload bytes don't leak.
+          functions.logger.error("Error comparing Mercado Pago signatures", safeErrorPayload(compareError));
           return false;
         }
       };
@@ -1713,11 +1714,12 @@ export const lookupUserForCreatorInvite = functions.https.onCall(
       );
     }
 
-    // Check caller is creator or admin
-    const creatorDoc = await db.collection("users").doc(creatorId).get();
-    const role = creatorDoc.exists ?
-      (creatorDoc.data()?.role as string | undefined) :
-      undefined;
+    // Check caller is creator or admin. Role is sourced from the verified
+    // ID-token custom claim (F-MW-08), matching the rest of the codebase.
+    // The Firestore users/{uid}.role field is no longer authoritative, and
+    // reading it here would (a) cost an extra Firestore read and (b) diverge
+    // from the claim-based check used by the Gen2 API.
+    const role = (context.auth.token as { role?: string }).role;
     if (role !== "creator" && role !== "admin") {
       throw new functions.https.HttpsError(
         "permission-denied",

@@ -51,6 +51,9 @@ service cloud.firestore {
       // subscriptions, email, email_verified, trial_used, purchased_courses,
       // username, created_at, cards — are Admin-SDK-only (the API mutates
       // them server-side, bypassing rules). Admin retains full update access.
+      // Length caps on user-controlled string fields prevent a single self-
+      // update from bloating the user doc toward Firestore's 1MiB limit
+      // (the doc is read on every login).
       allow update: if (isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'photoURL', 'profilePictureUrl',
@@ -68,7 +71,15 @@ service cloud.firestore {
           'creatorNavPreferences', 'socialLinks', 'websiteUrl',
           'howTheyFoundUs',
           'lastSessionDate', 'updated_at'
-        ])) || isAdmin();
+        ]) &&
+        request.resource.data.get('displayName', '').size() < 100 &&
+        request.resource.data.get('bio', '').size() < 1000 &&
+        request.resource.data.get('websiteUrl', '').size() < 500 &&
+        request.resource.data.get('howTheyFoundUs', '').size() < 1000 &&
+        request.resource.data.get('city', '').size() < 100 &&
+        request.resource.data.get('country', '').size() < 100 &&
+        request.resource.data.get('phoneNumber', '').size() < 50
+      ) || isAdmin();
       allow delete: if isOwner(userId) || isAdmin();
       
       // Exercise history subcollections
@@ -508,10 +519,17 @@ service cloud.firestore {
       // `allow create: if true` allowed unauthenticated public writes with no
       // schema constraints — anyone could spam arbitrary docs into any event's
       // waitlist subcollection.
-      allow create: if isSignedIn() && (
-        request.resource.data.get('userId', '') == request.auth.uid
-        || waitId == request.auth.uid
-      );
+      // Field allowlist mirrors registrations to prevent doc-shape bloat.
+      allow create: if isSignedIn()
+        && (
+          request.resource.data.get('userId', '') == request.auth.uid
+          || waitId == request.auth.uid
+        )
+        && request.resource.data.keys().hasOnly([
+          'userId', 'email', 'nombre', 'displayName', 'phoneNumber',
+          'responses', 'fieldValues', 'created_at', 'createdAt',
+          'source'
+        ]);
       // Creator and admin can read all waitlist entries; waitlist user can read their own
       allow read: if isSignedIn() && (
         get(/databases/$(database)/documents/events/$(eventId)).data.creator_id == request.auth.uid
@@ -775,11 +793,16 @@ service cloud.firestore {
       // Cross-creator courseIds in the bundle are still server-side enforced
       // by F-NEW-07 / F-SVC-01 in bundleAssignment.ts; the rule layer caps
       // the worst-case (publishing a bundle attributed to someone else).
+      // Once published, a creator cannot revert to draft — prevents the
+      // publish/unpublish cycle that would let pricing change after a buyer
+      // sees the published listing. (No admin override exists at the rule
+      // layer; admin SDK bypasses rules and can force a transition if needed.)
       allow update: if isSignedIn()
         && request.auth.uid == resource.data.creatorId
         && request.resource.data.creatorId == resource.data.creatorId
         && (request.resource.data.status == 'draft' ||
-            request.resource.data.status == 'published');
+            request.resource.data.status == 'published')
+        && !(resource.data.status == 'published' && request.resource.data.status == 'draft');
       allow delete: if false;
     }
 
