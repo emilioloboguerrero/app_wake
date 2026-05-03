@@ -1,6 +1,7 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import * as crypto from "node:crypto";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth, validateAuthAndRateLimit} from "../middleware/auth.js";
@@ -308,9 +309,14 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
     );
   }
 
-  await applyLongCacheControl(file);
+  // Storage rules require request.auth.uid == userId for reads on
+  // profile_pictures/{userId}/, and browsers don't attach Firebase ID tokens
+  // to <img> requests. Issue a download token so the resulting URL bypasses
+  // rules — same pattern as /creator/media/upload-url/confirm.
+  const downloadToken = crypto.randomUUID();
+  await applyLongCacheControl(file, {firebaseStorageDownloadTokens: downloadToken});
 
-  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`;
 
   await db.collection("users").doc(auth.userId).update({
     profilePictureUrl: publicUrl,
