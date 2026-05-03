@@ -97,10 +97,8 @@ Potential future replacement of MercadoPago with Stripe for better subscription 
 
 **Prerequisites:** confirm Colombian user card acceptance on Stripe, decide parallel vs hard-cutover.
 
-**Supersedes the Gen1→Gen2 MercadoPago migration (security audit Tier 4.1).** The audit recommends moving MP webhook handling from the legacy Gen1 functions in [functions/src/index.ts:172-1498](functions/src/index.ts#L172-L1498) onto the Gen2 Express API at `/api/v1/payments/*` (which already has refund handling, transactional renewal grants, and replay protection that Gen1 lacks). That's a 1–2 week build plus a 30-day shadow window. **If Stripe replaces MP, all of that Gen2 MP work gets thrown away.** Decision rule: if the Stripe call is "yes, within ~6 months," skip Tier 4.1 and let Stripe be the migration. If Stripe is "no" or "much later," do Tier 4.1 first to close the refund-handling gap. Open security risk while deferred: Gen1 silently ignores refunds — a refunded customer keeps course access until manually revoked.
-
 **Checklist:**
-- [ ] Business decision made (this also resolves whether to do security-audit Tier 4.1)
+- [ ] Business decision made
 - [ ] Stripe account + Colombia configuration
 - [ ] Cloud Functions for Stripe checkout and webhook
 - [ ] Stripe Customer Portal integration
@@ -361,57 +359,6 @@ Navigation (all apps) — `screen.viewed { screen_name }` on every route change:
 7. Session replay — verify masking
 8. Workout abandonment detection (Cloud Function)
 9. Feature flags infrastructure
-
----
-
-### 7. Platform Security Audit `NOT STARTED`
-
-Full security review before scaling. Goal: identify and mitigate all exploitable surfaces before traffic grows.
-
-**Firestore rules:**
-- Verify all collections have explicit deny-by-default
-- Test cross-user isolation — creator A cannot access creator B's data
-- Subcollection rules don't inherit parent over-permissions
-- `api_keys` collection access controls
-- Emulator-based test suite for critical paths
-
-**API security:**
-- Auth bypass attempts on all protected routes
-- IDOR (Insecure Direct Object Reference) on all resource ID parameters
-- Input validation completeness — every body validated before use
-- Rate limiting coverage — all public/semi-public endpoints protected
-- Secrets never returned in API responses (API key plaintext, tokens)
-
-**Client security:**
-- Firebase config exposure (expected — confirm no secret keys)
-- XSS — any `dangerouslySetInnerHTML` usage
-- Sensitive data in localStorage / sessionStorage
-- Storage path enforcement — users can only write to their own paths
-
-**Auth:**
-- Token refresh behavior — expired token handling in both apps
-- Role claim validation — `creator` vs `user` enforcement on all creator routes
-- Admin action protection
-
-**Payments:**
-- HMAC-SHA256 webhook validation applied on all webhook paths
-- `external_reference` format validated before processing
-- Idempotency (`processed_payments`) working correctly
-- No payment amounts accepted from client — always calculated server-side
-
-**Output:** Security findings report by severity (Critical / High / Medium / Low) + applied fixes for Critical and High.
-
-**Checklist:**
-- [ ] Firestore rules test suite (Firebase emulator)
-- [ ] API IDOR audit on all resource endpoints
-- [ ] Input validation completeness review
-- [ ] Rate limiting coverage review
-- [ ] Auth bypass attempts on protected routes
-- [ ] Storage rules review
-- [ ] Payment webhook security review
-- [ ] Client-side sensitive data audit
-- [ ] Document findings
-- [ ] Fix all Critical and High severity issues
 
 ---
 
@@ -756,14 +703,12 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 
 | Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
 |---|---|---|---|---|---|
-| Creator Dashboard Rebuild | 5 | 5 | 5 | 1 | **4.40** |
 | Creator Public Buy Page (3e) | 5 | 4 | 5 | 2 | **4.30** |
 | PWA UI Redesign | 4 | 5 | 4 | 2 | **3.95** |
 | Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
 | PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
 | Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
 | Download Screen Refresh (5b) | 2 | 4 | 3 | 4 | **3.05** |
-| Security Audit | 3 | 1 | 4 | 3 | **2.75** |
 | App-wide Optimization | 3 | 3 | 2 | 3 | **2.75** |
 | Creator Email Platform | 3 | 3 | 2 | 2 | **2.60** | Phase 0 (event broadcasts) API done |
 | Stripe Migration (3c) | 3 | 4 | 1 | 1 | **2.40** |
@@ -778,24 +723,23 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  Security Audit                — close exposure before scaling traffic
-2.  PWA UI Redesign               — right time with small user base, no tech debt pressure
-3.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
-4.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #3)
-5.  PostHog Analytics             — before driving traffic you need visibility
-6.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-7.  App-wide Optimization         — before cardio ships, clean the foundation
-8.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 5–7
-9.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
-10. Creator Email Platform Ph.1   — unlocks creator marketing
-11. Stripe Migration (3c)         — decision-dependent, not urgent
-12. Feedback Board                — until user base warrants it
-13. Third-party API               — premature at current user count
+1.  PWA UI Redesign               — right time with small user base, no tech debt pressure
+2.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
+3.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #2)
+4.  PostHog Analytics             — before driving traffic you need visibility
+5.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
+6.  App-wide Optimization         — before cardio ships, clean the foundation
+7.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 4–6
+8.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
+9.  Creator Email Platform Ph.1   — unlocks creator marketing
+10. Stripe Migration (3c)         — decision-dependent, not urgent
+11. Feedback Board                — until user base warrants it
+12. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Creator Public Buy Page (#3)** and **Download Screen Refresh (#4)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
-- **Cardio V1 (#8)** is a long-track build. Start architecture and wearable OAuth research during items 5–7. GPS and provider flows take time to get right.
-- **Platform Mapping (#9)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
-- **Stripe Migration (#11)** is gated on a business decision — don't start until that decision is made.
-- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27.
+- **Creator Public Buy Page (#2)** and **Download Screen Refresh (#3)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
+- **Cardio V1 (#7)** is a long-track build. Start architecture and wearable OAuth research during items 4–6. GPS and provider flows take time to get right.
+- **Platform Mapping (#8)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
+- **Stripe Migration (#10)** is gated on a business decision — don't start until that decision is made.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27. Platform Security Audit — completed 2026-05-03.
