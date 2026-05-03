@@ -57,8 +57,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin;
 
   if (isEmulator) {
-    // In emulator, allow any origin for local development
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    // Emulator: only allow localhost origins so that an accidental
+    // FUNCTIONS_EMULATOR=true in a non-local deploy can't open the API to
+    // every origin on the internet.
+    if (origin && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
   } else if (origin && ALLOWED_ORIGINS.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }

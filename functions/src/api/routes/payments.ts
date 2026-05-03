@@ -21,6 +21,26 @@ import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmen
 
 const router = Router();
 
+// MercadoPago redirects the buyer back to one of these URLs after checkout.
+// We derive the host from the caller's Origin header when it's in the trusted
+// allowlist (so staging redirects to staging, custom-domain redirects to the
+// custom domain) and fall back to the canonical production host otherwise.
+const PAYMENT_REDIRECT_ALLOWED_ORIGINS = new Set([
+  "https://wakelab.co",
+  "https://www.wakelab.co",
+  "https://wolf-20b8b.web.app",
+  "https://wolf-20b8b.firebaseapp.com",
+  "https://wake-staging.web.app",
+  "https://wake-staging.firebaseapp.com",
+]);
+const PAYMENT_REDIRECT_DEFAULT = "https://wakelab.co";
+
+function resolveAppBaseUrl(req: Request): string {
+  const origin = req.get("origin");
+  if (origin && PAYMENT_REDIRECT_ALLOWED_ORIGINS.has(origin)) return origin;
+  return PAYMENT_REDIRECT_DEFAULT;
+}
+
 function getMPClient() {
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
   if (!token) {
@@ -138,11 +158,14 @@ router.post("/payments/preference", async (req, res) => {
         unit_price: course.price,
       }],
       external_reference: externalReference,
-      back_urls: {
-        success: `https://wolf-20b8b.web.app/app/payment/success?courseId=${courseId}`,
-        failure: `https://wolf-20b8b.web.app/app/payment/cancelled?courseId=${courseId}`,
-        pending: `https://wolf-20b8b.web.app/app/payment/cancelled?courseId=${courseId}`,
-      },
+      back_urls: (() => {
+        const base = resolveAppBaseUrl(req);
+        return {
+          success: `${base}/app/payment/success?courseId=${courseId}`,
+          failure: `${base}/app/payment/cancelled?courseId=${courseId}`,
+          pending: `${base}/app/payment/cancelled?courseId=${courseId}`,
+        };
+      })(),
       auto_return: "approved",
     },
   });
@@ -333,11 +356,14 @@ router.post("/payments/bundle-preference", async (req, res) => {
       }],
       external_reference: externalReference,
       metadata: {access_duration: "yearly"},
-      back_urls: {
-        success: `https://wolf-20b8b.web.app/app/payment/success?bundleId=${body.bundleId}`,
-        failure: `https://wolf-20b8b.web.app/app/payment/cancelled?bundleId=${body.bundleId}`,
-        pending: `https://wolf-20b8b.web.app/app/payment/cancelled?bundleId=${body.bundleId}`,
-      },
+      back_urls: (() => {
+        const base = resolveAppBaseUrl(req);
+        return {
+          success: `${base}/app/payment/success?bundleId=${body.bundleId}`,
+          failure: `${base}/app/payment/cancelled?bundleId=${body.bundleId}`,
+          pending: `${base}/app/payment/cancelled?bundleId=${body.bundleId}`,
+        };
+      })(),
       auto_return: "approved",
     },
   });

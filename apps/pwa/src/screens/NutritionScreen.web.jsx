@@ -5258,7 +5258,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
     backgroundColor: 'rgba(255,255,255,0.06)',
     color: '#fff',
-    fontSize: 15,
+    fontSize: 16,
   },
   misComidasPlusBtn: {
     width: 44,
@@ -5789,7 +5789,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
     backgroundColor: 'rgba(255,255,255,0.06)',
     color: '#fff',
-    fontSize: 15,
+    fontSize: 16,
   },
   buscarFilterToggle: {
     width: 44,

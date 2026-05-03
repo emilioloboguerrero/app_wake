@@ -2,15 +2,17 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Profile pictures (Tier 5.2 lockdown)
-    // Read: owner, any user looking at a creator/admin's photo, or an admin
-    // looking at any user. Wake isn't a social product; non-creator photos
-    // are private.
+    // Read: owner or admin only. The previous role-based read branch
+    // (allow if target user has role creator/admin) let an attacker enumerate
+    // the creator/admin roster by probing UIDs — read-success vs permission-
+    // denied was a side-channel. Legitimate display of creator photos in
+    // client surfaces uses Firebase Storage download tokens (getDownloadURL),
+    // which bypass rules, so this tightening doesn't break tokened access.
     // Write enforcement is at the API layer via signed URLs.
     match /profiles/{userId}/{fileName} {
       allow read: if request.auth != null
         && (
           request.auth.uid == userId
-          || firestore.get(/databases/(default)/documents/users/$(userId)).data.role in ['creator', 'admin']
           || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
         );
 
@@ -26,7 +28,6 @@ service firebase.storage {
       allow read: if request.auth != null
         && (
           request.auth.uid == userId
-          || firestore.get(/databases/(default)/documents/users/$(userId)).data.role in ['creator', 'admin']
           || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
         );
 
@@ -90,27 +91,29 @@ service firebase.storage {
     match /cards/{userId}/{fileName} {
       // Allow authenticated users to read cards
       allow read: if request.auth != null;
-      
+
       // Allow users to write only their own cards
-      allow write: if request.auth != null 
+      allow write: if request.auth != null
         && request.auth.uid == userId
         && (
           (request.resource.contentType.matches('image/.*') && request.resource.size < 10 * 1024 * 1024)  // Max 10MB for images
           ||
-          (request.resource.contentType.matches('video/.*'))  // No size limit for videos
+          (request.resource.contentType.matches('video/.*') && request.resource.size < 500 * 1024 * 1024)  // Max 500MB for videos
         );
     }
     
     // Creator media library (personal folder: images/videos for reuse across programs/sessions)
-    // Public read: these URLs are embedded in program/session data viewed by clients via <img> tags
+    // Read requires auth — embedded <img> tags use download tokens which bypass
+    // rules, so authed access doesn't break legitimate program/session display.
+    // Untokened path probing (the enumeration vector) is now blocked.
     match /creator_media/{creatorId}/{fileName} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow write: if request.auth != null
         && request.auth.uid == creatorId
         && (
           (request.resource.contentType.matches('image/.*') && request.resource.size < 10 * 1024 * 1024)
           ||
-          request.resource.contentType.matches('video/.*')
+          (request.resource.contentType.matches('video/.*') && request.resource.size < 500 * 1024 * 1024)
         );
     }
 

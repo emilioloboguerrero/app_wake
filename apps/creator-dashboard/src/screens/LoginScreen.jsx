@@ -143,9 +143,9 @@ const LoginScreen = () => {
     } catch (error) {
       setIsLoading(false);
       switch (error.code) {
+        // Single generic outcome for all credential failures — prevents
+        // email enumeration via the login form.
         case 'auth/user-not-found':
-          setEmailError('No hay cuenta con este correo');
-          break;
         case 'auth/wrong-password':
         case 'auth/invalid-credential':
           setPasswordError('Email o contraseña incorrectos.');
@@ -199,8 +199,17 @@ const LoginScreen = () => {
       setShowForgotPassword(false);
       setFormError(null);
     } catch (error) {
-      logger.error('[LoginScreen] Password Reset Error:', error);
-      setFormError('No pudimos enviar el correo. Intenta de nuevo');
+      // Show the same "sent" UI even when the email isn't registered, so the
+      // reset endpoint can't be used to enumerate accounts. Other failures
+      // surface a generic error.
+      if (error?.code === 'auth/user-not-found') {
+        setForgotSent(true);
+        setShowForgotPassword(false);
+        setFormError(null);
+      } else {
+        logger.error('[LoginScreen] Password Reset Error:', error);
+        setFormError('No pudimos enviar el correo. Intenta de nuevo');
+      }
     } finally {
       setIsLoading(false);
     }

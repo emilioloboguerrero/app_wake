@@ -156,17 +156,14 @@ const LoginScreen = ({ navigation }) => {
 
       if (code) {
         switch (code) {
+          // Generic message for all credential-mismatch outcomes prevents
+          // email enumeration via the login form (user-not-found vs
+          // wrong-password disclosed account existence).
           case 'auth/user-not-found':
-            errorMessage = 'No hay ninguna cuenta con este correo. Crea una cuenta o revisa el correo.';
-            setEmailError(errorMessage);
-            break;
           case 'auth/wrong-password':
-            errorMessage = 'Contraseña incorrecta. Revisa tu contraseña o usa "¿Olvidaste tu contraseña?".';
-            setPasswordError('Contraseña incorrecta');
-            setShowForgotPassword(true);
-            break;
           case 'auth/invalid-credential':
-            errorMessage = 'Correo o contraseña incorrectos. Revisa los datos o crea una cuenta si no tienes una.';
+            errorMessage = 'Correo o contraseña incorrectos.';
+            setPasswordError('Correo o contraseña incorrectos');
             setShowForgotPassword(true);
             break;
           case 'auth/invalid-email':
@@ -314,22 +311,28 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
+    // Show the same success message regardless of whether the email exists,
+    // so the password-reset endpoint can't be used to enumerate accounts.
+    // auth/user-not-found is silently treated as success.
+    const genericResetSuccess = 'Si existe una cuenta con ese correo, te enviaremos un enlace para restablecer tu contraseña. Revisa tu bandeja (y spam).';
     try {
       await authService.resetPassword(email);
       setAuthError(null);
-      Alert.alert('Éxito', 'Revisa tu correo (spam). Puede estar en la carpeta de spam.');
+      Alert.alert('Listo', genericResetSuccess);
     } catch (error) {
-      logger.error('Password Reset Error:', error);
       const code = error?.code;
-      let msg = 'No pudimos enviar el correo de recuperación. Intenta de nuevo.';
       if (code === 'auth/user-not-found') {
-        msg = 'No hay ninguna cuenta con este correo. Revisa el correo o crea una cuenta.';
-      } else if (code === 'auth/invalid-email') {
+        // Don't disclose existence — show the same success state.
+        setAuthError(null);
+        Alert.alert('Listo', genericResetSuccess);
+        return;
+      }
+      logger.error('Password Reset Error:', error);
+      let msg = 'No pudimos enviar el correo de recuperación. Intenta de nuevo.';
+      if (code === 'auth/invalid-email') {
         msg = 'Correo electrónico no válido.';
       } else if (code === 'auth/too-many-requests') {
         msg = 'Demasiados intentos. Espera un momento e intenta de nuevo.';
-      } else if (error?.message) {
-        msg = error.message;
       }
       setAuthError(msg);
     }
