@@ -45,6 +45,7 @@ import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
 import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
+import BookOpen from '../components/icons/vectors_fig/File/BookOpen';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
 
 import logger from '../utils/logger.js';
@@ -1506,28 +1507,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             </Animated.View>
           </View>
 
-        {/* Programs and Subscriptions Section */}
-        <View style={styles.programsSubscriptionsContainer}>
-          <TouchableOpacity 
-            className="profile-menu-row"
-            style={styles.programCard} 
-            onPress={() => navigation.navigate('AllPurchasedCourses')}
-            activeOpacity={0.7}
-          >
-            <SvgListChecklist width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.programCardIcon} />
-            <Text style={styles.programCardTitle}>Programas</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="profile-menu-row"
-            style={styles.subscriptionCard} 
-            onPress={() => navigation.navigate('Subscriptions')}
-            activeOpacity={0.7}
-          >
-            <SvgCreditCard width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.subscriptionCardIcon} />
-            <Text style={styles.subscriptionCardTitle}>Suscripciones</Text>
-          </TouchableOpacity>
-          </View>
-
         {/* Configuration and Legal Section */}
         <View style={styles.interestsProgramsContainer}>
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={showSettingsModal}>
@@ -1537,6 +1516,19 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
             <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
             <Text style={styles.smallCardTitle}>Legal</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Library Hero */}
+        <View style={styles.libraryHeroContainer}>
+          <TouchableOpacity
+            className="profile-menu-row"
+            style={styles.libraryHeroCard}
+            onPress={() => navigation.navigate('Library')}
+            activeOpacity={0.7}
+          >
+            <BookOpen width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.libraryHeroIcon} />
+            <Text style={styles.libraryHeroTitle}>Biblioteca</Text>
           </TouchableOpacity>
         </View>
 
@@ -1781,6 +1773,45 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   smallCardIcon: {
     marginBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.4)',
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+    marginBottom: 10,
+  },
+  libraryHeroContainer: {
+    marginBottom: Math.max(20, screenHeight * 0.028),
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  libraryHeroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(14, screenWidth * 0.045),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    paddingVertical: Math.max(22, screenWidth * 0.055),
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
+    width: '100%',
+    minHeight: Math.max(96, screenHeight * 0.12),
+  },
+  libraryHeroIcon: {
+    marginRight: 12,
+  },
+  libraryHeroTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   displayName: {
     fontSize: 24,
