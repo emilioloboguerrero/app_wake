@@ -26,9 +26,16 @@ const DEFAULT_APP_CHECK_VERIFIER: EnforceAppCheckOptions["verifier"] =
 const DEFAULT_LOGGER_WARN: EnforceAppCheckOptions["warn"] =
   (msg, data) => functions.logger.warn(msg, data);
 
+// F-MW-01: APP_CHECK_ENFORCE=false used to be a global escape hatch — set
+// the env var on a deployed function and every request without an App
+// Check token sailed through. After this fix the flag is honoured ONLY
+// when running in the Functions emulator (FUNCTIONS_EMULATOR=true), so a
+// production deploy with the flag flipped no longer downgrades enforcement.
 function appCheckOptionsFromEnv(): Pick<EnforceAppCheckOptions, "enforceMissing" | "enforceInEmulator"> {
+  const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
+  const flagAllowed = isEmulator && process.env.APP_CHECK_ENFORCE === "false";
   return {
-    enforceMissing: process.env.APP_CHECK_ENFORCE !== "false",
+    enforceMissing: !flagAllowed,
     enforceInEmulator: process.env.APP_CHECK_IN_EMULATOR === "true",
   };
 }

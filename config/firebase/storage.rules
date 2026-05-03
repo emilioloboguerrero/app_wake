@@ -36,55 +36,54 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
     
-    // Exercise library videos — shared asset library, readable by any authenticated user.
-    // Creator role is enforced at the API layer (signed-URL endpoint validates creator role
-    // before issuing a write URL). Storage rule is a backstop for authenticated users only.
+    // Exercise library videos — F-RULES-25: writes restricted to library
+    // owner (creator who owns exercises_library/{libraryId}.creator_id).
+    // Previously any authenticated user could write up to 500 MB into any
+    // creator's library, enabling cross-creator content insertion + storage
+    // billing abuse.
     match /exercises_library/{libraryId}/{exerciseName}/{fileName} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
         && request.resource.contentType.matches('video/.*')
-        && request.resource.size < 500 * 1024 * 1024;  // Max 500MB
+        && request.resource.size < 500 * 1024 * 1024  // Max 500MB
+        && firestore.exists(/databases/(default)/documents/exercises_library/$(libraryId))
+        && firestore.get(/databases/(default)/documents/exercises_library/$(libraryId)).data.get('creator_id', '') == request.auth.uid;
     }
-    
-    // Program images (e.g., courses/{programId}/image.jpg)
-    // Upload enforcement at API layer — see signed URL flow in CLAUDE.md
+
+    // Program images — F-RULES-26: writes bound to courses/{programId}.creator_id.
+    // Defacement of any creator's program assets was possible before.
     match /courses/{programId}/{fileName} {
-      // Allow authenticated users to read program images and intro videos
       allow read: if request.auth != null;
-      
-      // Allow write for program images (image.*) or intro videos (intro_video.*)
       allow write: if request.auth != null
+        && firestore.exists(/databases/(default)/documents/courses/$(programId))
+        && firestore.get(/databases/(default)/documents/courses/$(programId)).data.get('creator_id', '') == request.auth.uid
         && (
           (fileName.matches('image\\..*')
-            && request.resource.size < 10 * 1024 * 1024  // Max 10MB
-            && request.resource.contentType.matches('image/.*'))  // Only images
+            && request.resource.size < 10 * 1024 * 1024
+            && request.resource.contentType.matches('image/.*'))
           ||
           (fileName.matches('intro_video\\..*')
-            && request.resource.contentType.matches('video/.*'))  // Only video files (no size limit)
+            && request.resource.contentType.matches('video/.*'))
         );
     }
-    
-    // Program tutorial videos
-    // Creator role enforcement is at the API layer via signed URLs
+
+    // Program tutorial videos — F-RULES-27 (4-segment path per audit §13.3).
     match /courses/{programId}/tutorials/{screenName}/{fileName} {
-      // Allow authenticated users to read tutorial videos
       allow read: if request.auth != null;
-      
-      // Allow authenticated users to write tutorial videos (no size limit)
       allow write: if request.auth != null
-        && request.resource.contentType.matches('video/.*');  // Only video files
+        && request.resource.contentType.matches('video/.*')
+        && firestore.exists(/databases/(default)/documents/courses/$(programId))
+        && firestore.get(/databases/(default)/documents/courses/$(programId)).data.get('creator_id', '') == request.auth.uid;
     }
-    
-    // Session images
-    // Creator role enforcement is at the API layer via signed URLs
+
+    // Session images — F-RULES-27.
     match /courses/{programId}/modules/{moduleId}/sessions/{fileName} {
-      // Allow authenticated users to read session images
       allow read: if request.auth != null;
-      
-      // Allow authenticated users to write session images
       allow write: if request.auth != null
-        && request.resource.size < 10 * 1024 * 1024  // Max 10MB
-        && request.resource.contentType.matches('image/.*');  // Only images
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && firestore.exists(/databases/(default)/documents/courses/$(programId))
+        && firestore.get(/databases/(default)/documents/courses/$(programId)).data.get('creator_id', '') == request.auth.uid;
     }
     
     // Creator cards (images and videos)
@@ -156,13 +155,16 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Event cover images — publicly readable, authenticated write
-    // Creator role enforcement is at the API layer via signed URLs
+    // Event cover images — F-RULES-28: writes bound to event creator.
+    // Public read remains for landing/marketing surfaces. Previously any
+    // authed user could overwrite any event's cover image (defacement).
     match /events/{eventId}/{fileName} {
       allow read: if true;
       allow write: if request.auth != null
         && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/.*')
+        && firestore.exists(/databases/(default)/documents/events/$(eventId))
+        && firestore.get(/databases/(default)/documents/events/$(eventId)).data.get('creator_id', '') == request.auth.uid;
     }
 
     // Public landing assets (hero clips, marketing media) — readable by anyone.

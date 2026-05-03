@@ -4,6 +4,7 @@ import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {validateDateFormat} from "../middleware/validate.js";
 import {loadCreatorOwnedCourseIds} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
+import {isProgramSnapshot, resolveProgramDay, programHasAnyMacroTarget} from "../services/nutritionProgramResolver.js";
 
 const router = Router();
 const db = admin.firestore();
@@ -599,9 +600,31 @@ async function computeAdherence(
         if (!contentDoc.exists) return;
 
         const c = contentDoc.data()!;
-        const tCalories = (c.daily_calories ?? 0) as number;
-        const tProtein = (c.daily_protein_g ?? 0) as number;
-        if (tCalories <= 0 && tProtein <= 0) return;
+
+        // Per-date target lookup. For single-day, it's a constant from the
+        // snapshot's top-level macros. For program mode, it varies by date —
+        // resolve the day from the snapshot's weeks using the assignment's
+        // startDate and pull that day's macros.
+        const isProgram = isProgramSnapshot(c);
+        const startDateStr = assignDoc.data().startDate as string | null | undefined;
+        const flatTarget = !isProgram ? {
+          tCalories: (c.daily_calories ?? 0) as number,
+          tProtein: (c.daily_protein_g ?? 0) as number,
+        } : null;
+        const getTargetForDate = (dateStr: string): { tCalories: number; tProtein: number } => {
+          if (!isProgram) return flatTarget!;
+          const day = resolveProgramDay(c, startDateStr, dateStr);
+          if (!day) return {tCalories: 0, tProtein: 0};
+          return {
+            tCalories: (day.daily_calories ?? 0) as number,
+            tProtein: (day.daily_protein_g ?? 0) as number,
+          };
+        };
+
+        const hasAnyTarget = isProgram
+          ? programHasAnyMacroTarget(c)
+          : (flatTarget!.tCalories > 0 || flatTarget!.tProtein > 0);
+        if (!hasAnyTarget) return;
 
         hasAnyNutritionPlan = true;
 
@@ -616,7 +639,9 @@ async function computeAdherence(
           dailyTotals[d.date].protein += d.protein ?? 0;
         }
 
-        for (const n of Object.values(dailyTotals)) {
+        for (const [date, n] of Object.entries(dailyTotals)) {
+          const {tCalories, tProtein} = getTargetForDate(date);
+          if (tCalories <= 0 && tProtein <= 0) continue; // skip days with no target (e.g. rest day in a program)
           nutrDaysTotal++;
           const calOk = tCalories <= 0 || (n.calories / tCalories >= 0.8 && n.calories / tCalories <= 1.2);
           const proOk = tProtein <= 0 || (n.protein / tProtein >= 0.8 && n.protein / tProtein <= 1.2);
@@ -1456,6 +1481,10 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
   }
 
   let target = {calories: 0, protein: 0, carbs: 0, fat: 0};
+  // For program-mode assignments the target varies per date — capture the
+  // snapshot + startDate so trend builders below can resolve a per-date target.
+  let programContent: ReturnType<typeof Object> | null = null;
+  let programStartDate: string | null = null;
   const activeAssignment = assignmentsSnap.docs.find((d) => {
     const s = d.data().status;
     return !s || s === "active";
@@ -1467,49 +1496,96 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
       .get();
     if (contentDoc.exists) {
       const c = contentDoc.data()!;
-      target = {
-        calories: c.daily_calories ?? 0,
-        protein: c.daily_protein_g ?? 0,
-        carbs: c.daily_carbs_g ?? 0,
-        fat: c.daily_fat_g ?? 0,
-      };
+      if (isProgramSnapshot(c)) {
+        programContent = c;
+        programStartDate = (activeAssignment.data().startDate as string | null | undefined) ?? null;
+        // Display "target" for the static aggregate fields = average across
+        // populated days. Per-date trend points use resolveProgramDay below.
+        let cal = 0; let pro = 0; let car = 0; let fat = 0; let n = 0;
+        for (const w of (c.weeks as Array<{days?: Array<Record<string, unknown> | null>}> | undefined) ?? []) {
+          for (const d of (w?.days ?? [])) {
+            if (!d) continue;
+            cal += (d.daily_calories as number | undefined) ?? 0;
+            pro += (d.daily_protein_g as number | undefined) ?? 0;
+            car += (d.daily_carbs_g as number | undefined) ?? 0;
+            fat += (d.daily_fat_g as number | undefined) ?? 0;
+            n++;
+          }
+        }
+        if (n > 0) target = {
+          calories: Math.round(cal / n), protein: Math.round(pro / n),
+          carbs: Math.round(car / n), fat: Math.round(fat / n),
+        };
+      } else {
+        target = {
+          calories: c.daily_calories ?? 0,
+          protein: c.daily_protein_g ?? 0,
+          carbs: c.daily_carbs_g ?? 0,
+          fat: c.daily_fat_g ?? 0,
+        };
+      }
     }
   }
+
+  // Per-date target — for program mode, looks up the day; for single-day,
+  // returns the constant target above.
+  const targetForDate = (dateStr: string): { calories: number; protein: number; carbs: number; fat: number } => {
+    if (programContent) {
+      const day = resolveProgramDay(programContent as Parameters<typeof resolveProgramDay>[0], programStartDate, dateStr);
+      if (!day) return {calories: 0, protein: 0, carbs: 0, fat: 0};
+      return {
+        calories: (day.daily_calories ?? 0) as number,
+        protein: (day.daily_protein_g ?? 0) as number,
+        carbs: (day.daily_carbs_g ?? 0) as number,
+        fat: (day.daily_fat_g ?? 0) as number,
+      };
+    }
+    return target;
+  };
 
   // Calorie trend (daily actual vs target)
   const caloriesTrend = Object.entries(dailyNutrition)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, n]) => ({
-      date,
-      actual: Math.round(n.calories),
-      target: target.calories,
-    }));
+    .map(([date, n]) => {
+      const t = targetForDate(date);
+      return {
+        date,
+        actual: Math.round(n.calories),
+        target: t.calories,
+      };
+    });
 
   // Macro trends (daily)
   const macrosTrend = Object.entries(dailyNutrition)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, n]) => ({
-      date,
-      protein: Math.round(n.protein),
-      carbs: Math.round(n.carbs),
-      fat: Math.round(n.fat),
-      proteinTarget: target.protein,
-      carbsTarget: target.carbs,
-      fatTarget: target.fat,
-    }));
+    .map(([date, n]) => {
+      const t = targetForDate(date);
+      return {
+        date,
+        protein: Math.round(n.protein),
+        carbs: Math.round(n.carbs),
+        fat: Math.round(n.fat),
+        proteinTarget: t.protein,
+        carbsTarget: t.carbs,
+        fatTarget: t.fat,
+      };
+    });
 
-  // Nutrition adherence: days within ±20% of calorie AND protein targets
+  // Nutrition adherence: days within ±20% of calorie AND protein targets.
+  // For program mode, target is per-date; days outside the program window or
+  // on rest-day slots (target = 0) are skipped from the count.
   let daysWithinTarget = 0;
-  const hasNutritionTargets = target.calories > 0 || target.protein > 0;
-  if (hasNutritionTargets) {
-    for (const n of Object.values(dailyNutrition)) {
-      const calOk = target.calories <= 0 || (n.calories / target.calories >= 0.8 && n.calories / target.calories <= 1.2);
-      const proOk = target.protein <= 0 || (n.protein / target.protein >= 0.8 && n.protein / target.protein <= 1.2);
-      if (calOk && proOk) daysWithinTarget++;
-    }
+  let adherenceDaysCounted = 0;
+  for (const [date, n] of Object.entries(dailyNutrition)) {
+    const t = targetForDate(date);
+    if (t.calories <= 0 && t.protein <= 0) continue;
+    adherenceDaysCounted++;
+    const calOk = t.calories <= 0 || (n.calories / t.calories >= 0.8 && n.calories / t.calories <= 1.2);
+    const proOk = t.protein <= 0 || (n.protein / t.protein >= 0.8 && n.protein / t.protein <= 1.2);
+    if (calOk && proOk) daysWithinTarget++;
   }
-  const nutritionAdherence = hasNutritionTargets && diaryDayCount > 0 ?
-    Math.round((daysWithinTarget / diaryDayCount) * 100) :
+  const nutritionAdherence = adherenceDaysCounted > 0 ?
+    Math.round((daysWithinTarget / adherenceDaysCounted) * 100) :
     null;
 
   res.json({

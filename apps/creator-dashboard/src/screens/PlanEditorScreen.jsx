@@ -272,6 +272,7 @@ export default function PlanEditorScreen() {
     queryFn: () => nutritionDb.getMealsByCreator(creatorId),
     enabled: !!creatorId,
     ...cacheConfig.otherPrograms,
+    refetchOnMount: true,
   });
 
   const { data: planData, isLoading: planLoading, error: planError, refetch: refetchPlan } = useQuery({

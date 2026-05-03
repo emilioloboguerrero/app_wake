@@ -10,6 +10,7 @@ import ExercisesPanel from '../components/biblioteca/ExercisesPanel';
 import SessionsPanel from '../components/biblioteca/SessionsPanel';
 import PlansPanel from '../components/biblioteca/PlansPanel';
 import NutritionPlansPanel from '../components/biblioteca/NutritionPlansPanel';
+import NutritionProgramsPanel from '../components/biblioteca/NutritionProgramsPanel';
 import RecetasPanel from '../components/biblioteca/RecetasPanel';
 import CreatePlanOverlay from '../components/biblioteca/CreatePlanOverlay';
 import SimpleCreateOverlay from '../components/biblioteca/SimpleCreateOverlay';
@@ -34,7 +35,8 @@ const TRAINING_TABS = [
 ];
 
 const NUTRITION_TABS = [
-  { id: 'planes_nutri', label: 'Planes nutricionales' },
+  { id: 'planes_nutri', label: 'Días de alimentación' },
+  { id: 'programas_nutri', label: 'Planes nutricionales' },
   { id: 'recetas', label: 'Recetas' },
 ];
 
@@ -124,6 +126,7 @@ const BibliotecaScreen = () => {
   const [showCreateLibrary, setShowCreateLibrary] = useState(false);
   const [showCreateSession, setShowCreateSession] = useState(false);
   const [showCreateNutriPlan, setShowCreateNutriPlan] = useState(false);
+  const [showCreateNutriProgram, setShowCreateNutriProgram] = useState(false);
   const [showCreateMeal, setShowCreateMeal] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
@@ -187,6 +190,23 @@ const BibliotecaScreen = () => {
     },
   });
 
+  const createNutriProgramMutation = useMutation({
+    mutationKey: ['nutrition-programs', 'create'],
+    mutationFn: (name) => nutritionDb.createProgram(user.uid, { name, description: '' }),
+    onSuccess: (programId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.programs(user?.uid) });
+      setSuccessFor('nutriProgram');
+      setTimeout(() => {
+        setShowCreateNutriProgram(false);
+        setSuccessFor(null);
+        if (programId) navigate(`/nutrition/programs/${programId}`);
+      }, 1600);
+    },
+    onError: () => {
+      showToast('No pudimos crear el plan. Intenta de nuevo.', 'error');
+    },
+  });
+
   const createMealMutation = useMutation({
     mutationKey: ['nutrition-meals', 'create'],
     mutationFn: (name) => nutritionDb.createMeal(user.uid, { name, items: [] }),
@@ -238,7 +258,8 @@ const BibliotecaScreen = () => {
       sesiones: 'sesiones',
       planes: 'planes',
       recetas: 'recetas',
-      planes_nutri: 'planes nutricionales',
+      planes_nutri: 'días de alimentación',
+      programas_nutri: 'planes nutricionales',
     };
     return `Buscar ${labels[activeSubTab] || 'contenido'}...`;
   };
@@ -248,6 +269,7 @@ const BibliotecaScreen = () => {
   const openCreateLibrary = useCallback(() => setShowCreateLibrary(true), []);
   const openCreateSession = useCallback(() => setShowCreateSession(true), []);
   const openCreateNutriPlan = useCallback(() => setShowCreateNutriPlan(true), []);
+  const openCreateNutriProgram = useCallback(() => setShowCreateNutriProgram(true), []);
 
   const openCreateMeal = useCallback(() => setShowCreateMeal(true), []);
 
@@ -257,7 +279,8 @@ const BibliotecaScreen = () => {
     else if (activeSubTab === 'planes') setShowCreatePlan(true);
     else if (activeSubTab === 'recetas') openCreateMeal();
     else if (activeSubTab === 'planes_nutri') openCreateNutriPlan();
-  }, [activeSubTab, openCreateLibrary, openCreateSession, openCreateMeal, openCreateNutriPlan]);
+    else if (activeSubTab === 'programas_nutri') openCreateNutriProgram();
+  }, [activeSubTab, openCreateLibrary, openCreateSession, openCreateMeal, openCreateNutriPlan, openCreateNutriProgram]);
 
   const getPrimaryLabel = () => {
     const labels = {
@@ -265,7 +288,8 @@ const BibliotecaScreen = () => {
       sesiones: 'Nueva sesion',
       planes: 'Nuevo plan',
       recetas: 'Nueva receta',
-      planes_nutri: 'Crear plan',
+      planes_nutri: 'Crear día',
+      programas_nutri: 'Crear plan',
     };
     return labels[activeSubTab] || 'Crear';
   };
@@ -427,6 +451,11 @@ const BibliotecaScreen = () => {
                   <NutritionPlansPanel searchQuery={searchQuery} sortKey={filters.sort} onCreatePlan={openCreateNutriPlan} />
                 </KeepAlivePane>
               )}
+              {visitedTabs.has('programas_nutri') && (
+                <KeepAlivePane active={activeSubTab === 'programas_nutri'}>
+                  <NutritionProgramsPanel searchQuery={searchQuery} sortKey={filters.sort} onCreateProgram={openCreateNutriProgram} />
+                </KeepAlivePane>
+              )}
             </div>
           </Revealable>
         </div>
@@ -485,16 +514,31 @@ const BibliotecaScreen = () => {
         <SimpleCreateOverlay
           isOpen={showCreateNutriPlan}
           onClose={() => setShowCreateNutriPlan(false)}
-          title="Nuevo plan nutricional"
-          description="Dale un nombre a tu plan. Luego configuraras calorias, macros y comidas."
-          placeholder="Ej: Plan definicion, Volumen 3000 kcal..."
-          ctaLabel="Crear plan"
-          creatingText="Creando plan"
-          successTitle="Plan creado"
-          successDesc="Configura las calorias, macros y comidas de tu plan."
+          title="Nuevo día de alimentación"
+          description="Dale un nombre a tu día. Luego configuraras calorias, macros y comidas."
+          placeholder="Ej: Día de entrenamiento, Día de descanso..."
+          ctaLabel="Crear día"
+          creatingText="Creando día"
+          successTitle="Día creado"
+          successDesc="Configura las calorias, macros y comidas."
           onSubmit={(name) => createNutriPlanMutation.mutate(name)}
           isPending={createNutriPlanMutation.isPending}
           isSuccess={successFor === 'nutriPlan'}
+        />
+
+        <SimpleCreateOverlay
+          isOpen={showCreateNutriProgram}
+          onClose={() => setShowCreateNutriProgram(false)}
+          title="Nuevo plan nutricional"
+          description="Combina dias de alimentacion en una secuencia de varias semanas."
+          placeholder="Ej: Definicion 4 semanas, Volumen progresivo..."
+          ctaLabel="Crear plan"
+          creatingText="Creando plan"
+          successTitle="Plan creado"
+          successDesc="Agrega semanas y asigna días a cada día."
+          onSubmit={(name) => createNutriProgramMutation.mutate(name)}
+          isPending={createNutriProgramMutation.isPending}
+          isSuccess={successFor === 'nutriProgram'}
         />
 
         <RevealProgressBar />

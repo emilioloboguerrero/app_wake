@@ -446,8 +446,26 @@
   gap: 4px;
   max-height: 280px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+@supports (scrollbar-width: thin) {
+  .cnt-library-list {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+  }
+}
+
+.cnt-library-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.cnt-library-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cnt-library-list::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
 }
 
 .cnt-library-item {
@@ -494,6 +512,56 @@
   text-align: center;
   padding: 20px 0;
   margin: 0;
+}
+
+.cnt-mode-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.cnt-mode-btn {
+  flex: 1;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s;
+}
+.cnt-mode-btn:hover { color: rgba(255, 255, 255, 0.85); }
+.cnt-mode-btn--active {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.cnt-program-startdate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+.cnt-program-startdate-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.cnt-program-startdate-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  outline: none;
+  color-scheme: dark;
 }
 
 /* ═══════════════════════════════════════════════════════════════ */

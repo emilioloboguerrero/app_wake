@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-04-27. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-05-01. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -30,6 +30,57 @@ In-app screen for users to view and manage their active subscription. Currently 
 - [ ] Subscription screen UI in PWA
 - [ ] Cancel flow (modal + reason selector)
 - [ ] Firestore update on cancel
+
+---
+
+### 3e. Creator Public Buy Page `NOT STARTED`
+
+A public, no-login web page where prospects can purchase a creator's program directly — no PWA install, no signup wall in front of checkout. Today the only purchase path is inside the PWA after auth, which kills conversion from external traffic (IG bio links, ads, creator stories).
+
+**Surface:** new public route on the landing app — `/c/:creatorSlug` (creator storefront) and `/c/:creatorSlug/:programSlug` (program detail + buy). No auth required to view or initiate checkout.
+
+**Flow:**
+1. Visitor lands on program page (hero, description, what's included, price, creator credentials)
+2. Clicks "Comprar" → email + name capture (single short form, no password)
+3. `POST /payments/guest-checkout` creates a MercadoPago preference using the same `external_reference` format (`v1|{userId}|{courseId}|otp`), with `userId` resolved from the email — if no Firebase user exists, create one with a random password and flag `provisional: true`
+4. Redirect to MercadoPago
+5. Webhook completes purchase → grants course access on the provisional user, sends a "claim your account" email with a one-time magic link (Firebase `signInWithEmailLink`)
+6. User lands in PWA already authenticated, with the program already in their library
+
+**Open questions to resolve before build:**
+- Slug source: a new `slug` field on `users/{creatorId}` and `courses/{courseId}`, or use IDs? Slugs are better for SEO and shareability — recommend slugs with uniqueness validation
+- Existing-email collision: if email matches an existing user, skip provisional creation and send a "log in to complete" link instead
+- One-on-one programs: gated to logged-in flow only (creator needs to enroll manually)? Or also purchasable publicly with a follow-up onboarding step? Recommend low-ticket only for V1
+- MercadoPago `payer.email` is required — use the captured email
+
+**Data model changes:**
+- `users/{userId}` — add `slug` (creator only), `provisional: boolean` (true until magic link claimed)
+- `courses/{courseId}` — add `slug`, `publicListing: boolean` (default false; creator opts in per course)
+- New collection `magic_link_tokens/{token}` — `{ userId, expiresAt, used: boolean }` for first-claim flow
+
+**API:**
+- `GET /public/creators/:slug` — creator profile + listed programs (no auth)
+- `GET /public/creators/:slug/programs/:programSlug` — program detail (no auth)
+- `POST /payments/guest-checkout` — `{ email, name, programSlug, accessDuration }` → MercadoPago preference URL
+- `POST /auth/claim-account` — `{ token }` → returns Firebase custom token / sign-in link
+
+**Creator dashboard:**
+- New "Tienda" section: toggle `publicListing` per program, set slug, preview public URL, copy link
+- Storefront customization: hero image, bio, social links (reuse `users/{creatorId}` profile fields)
+
+**Checklist:**
+- [ ] Slug fields + uniqueness validation on creator + program
+- [ ] Public storefront route in landing app (`/c/:creatorSlug`)
+- [ ] Public program detail page with buy CTA
+- [ ] `POST /payments/guest-checkout` endpoint
+- [ ] Provisional user creation logic
+- [ ] Magic link claim flow + `magic_link_tokens` collection
+- [ ] Webhook handles provisional users (existing logic should already work — verify)
+- [ ] Claim-account email template (Resend)
+- [ ] Creator dashboard: storefront management screen
+- [ ] Creator dashboard: per-program publish toggle + URL preview
+- [ ] SEO: meta tags, OG image, sitemap entries for listed programs
+- [ ] Analytics events: `storefront.viewed`, `storefront.buy_clicked`, `guest_checkout.started`, `guest_checkout.completed`, `account.claimed`
 
 ---
 
@@ -99,6 +150,37 @@ Systematic review of the entire PWA to establish a consistent visual identity. C
 - [ ] Animation audit — all screens comply
 - [ ] Empty states
 - [ ] `docs/STANDARDS.md` updated if system expands
+
+---
+
+### 5b. Download Screen Refresh `NOT STARTED`
+
+The course download screen (driven by `courseDownloadService` in the PWA) is the first sustained moment of attention after purchase — currently a generic loading UI. Two changes:
+
+1. **Add a new explainer/intro video** that plays during the download. Sets expectations for the program, builds anticipation, makes the wait feel intentional.
+2. **Optimize the existing video asset** — re-encode for smaller size, modern codec (H.265/AV1 with H.264 fallback), poster frame, lazy load, and ensure no jank during the download progress updates.
+
+**Scope:**
+- Audit the current download screen UI and animation quality (entrances, progress feel)
+- Re-encode the existing video — target ~50% size reduction without visible quality loss; verify on slow connections
+- Source/produce the new intro video; coordinate with creators if it's per-program or global
+- Decide: one global intro video, or per-creator/per-program (latter implies a `introVideoUrl` field on `courses/{courseId}`)
+- Storage path: Firebase Storage with appropriate cache headers (long max-age, immutable)
+- Preload strategy: start video fetch in parallel with course assets, not after
+- Fallback if video fails: skip silently to existing UI, no error state shown to user
+
+**Checklist:**
+- [ ] Audit current download screen — measure time-to-first-frame, total download time on 3G/4G/wifi
+- [ ] Re-encode existing video — H.264 baseline + H.265/AV1, document final sizes
+- [ ] Decide global vs per-program intro video (recommend global for V1)
+- [ ] Source/produce the new intro video
+- [ ] Add `introVideoUrl` field if going per-program
+- [ ] Update download screen UI with video playback
+- [ ] Cache headers + Firebase Storage upload
+- [ ] Lazy/parallel preload alongside course asset download
+- [ ] Graceful fallback when video fails to load
+- [ ] Verify autoplay works on iOS Safari (muted, playsinline)
+- [ ] Test on slow connections — video must not block course download
 
 ---
 
@@ -521,6 +603,133 @@ feedback_board/{itemId}/votes/{userId}
 
 ## Platform
 
+### 12. Platform Mapping & Documentation Refresh `NOT STARTED`
+
+A complete, end-to-end audit and re-documentation of the entire Wake platform. Done **after** Cardio V1 ships, when the platform's surface area is at its largest and the cumulative drift between docs and reality is at its worst. Goal: a single coherent picture of the system that any future contributor (or future Claude session) can load and trust.
+
+**Why it goes last (not first):** the platform is still gaining major surfaces — public buy pages, cardio, wearable integrations, email phases. Mapping now means re-mapping after every shipment. Doing it once after Cardio V1 captures the platform in a relatively stable state.
+
+**What "everything" means — scope:**
+
+1. **Cloud Functions (every export)**
+   - For each function in `functions/src/index.ts`: signature, trigger, secrets used, inputs, outputs, side effects, error modes, callers
+   - For each Express route in `functions/src/api/routes/*`: method, path, auth requirements, validation schema, response shape, error codes
+   - Cron/scheduled functions: cadence, what they read, what they write
+   - Webhooks: source, validation method, idempotency strategy
+
+2. **Firestore (every collection)**
+   - Schema for every document type, including subcollections
+   - Read/write rules per collection (cross-reference `firestore.rules`)
+   - Composite indexes (cross-reference `firestore.indexes.json`)
+   - Lifecycle: who creates, who updates, who deletes, retention
+   - Hot vs cold collections (read frequency)
+
+3. **Storage (every path)**
+   - Path conventions per resource type (profile pics, progress photos, course assets, route GeoJSON, email assets, intro videos, etc.)
+   - Upload flow per type (signed URL? direct? size limit? compression?)
+   - Storage rules per path
+   - Cache headers and CDN behavior
+
+4. **PWA (every screen)**
+   - Screen inventory: route, file, purpose, primary user goal
+   - Data dependencies per screen (which queries, which services)
+   - Navigation graph — which screens link to which
+   - Web vs native divergence (`.web.jsx` files and why)
+   - Empty states, error states, loading states inventoried
+
+5. **Creator Dashboard (every screen)**
+   - Same inventory as PWA
+   - Permission requirements per screen (creator-only, admin-only)
+   - Data dependencies and write paths
+
+6. **Landing (every page)**
+   - Inventory: `/`, `/creadores`, `/c/:creatorSlug`, program pages, etc.
+   - SEO meta, OG images, sitemap coverage
+   - Public Firestore reads (`app_resources`, public storefronts)
+
+7. **End-to-end flows**
+   - Each major flow documented as a sequence diagram or numbered narrative — every screen, every API call, every Firestore write, every email/notification
+   - Critical flows to map:
+     - Signup → onboarding → first workout
+     - Public buy page → guest checkout → magic link claim → first workout
+     - In-app purchase → checkout → access grant
+     - Subscription renewal (auto + cancel + refund)
+     - One-on-one client enrollment (creator-initiated and lookup)
+     - Workout session: start → in-progress → checkpoint → complete (and abandoned recovery)
+     - Nutrition diary entry: search/barcode/saved → log → daily totals
+     - Body log + readiness + PR detection
+     - Cardio session: manual log, GPS-tracked, wearable-synced
+     - Event creation → registration → confirmation email → check-in
+     - Email broadcast: compose → queue → Resend → delivery webhooks → unsubscribe
+     - Creator program build: library → modules → sessions → publish → assign
+
+8. **Integrations**
+   - MercadoPago (or Stripe by then): full lifecycle, every state transition, every webhook event mapped
+   - FatSecret: proxy paths, auth, caching
+   - Resend: send paths, webhook events, suppression lists
+   - Each wearable provider (Garmin/Whoop/Oura/Fitbit): OAuth flow, token storage, sync cadence, normalization
+   - PostHog: every event with properties, super properties, identify behavior
+
+9. **Auth and authorization matrix**
+   - Every role (`user`, `creator`, `admin`, third-party API key, public)
+   - Every protected resource and which roles can read/write
+   - Token refresh and expiration behavior
+   - API key scopes
+
+10. **Build, deploy, environments**
+    - Production vs staging: differences, switching procedure
+    - EAS builds: profiles, channels, OTA update behavior
+    - Hosting deploy: assembly, rollback procedure
+    - Secrets inventory: where each secret is used
+
+**Output — what gets produced:**
+
+Re-write or fresh-write the docs that future sessions actually load:
+
+- `CLAUDE.md` — refreshed: current accurate engineering principles, structure, tech stack, locked decisions
+- `docs/STANDARDS.md` — refreshed: visual + animation system as it actually exists post-redesign
+- `docs/API_ENDPOINTS.md` — full regenerated reference (every route, every shape, every error)
+- `docs/FIRESTORE_SCHEMA.md` (new) — every collection, every doc shape, every rule, every index
+- `docs/STORAGE_PATHS.md` (new) — every path convention, every rule
+- `docs/SCREENS.md` (new, possibly split per-app) — screen inventory + navigation graph
+- `docs/FLOWS.md` (new) — every end-to-end flow diagrammed
+- `docs/INTEGRATIONS.md` (new) — every external service and how Wake talks to it
+- `docs/AUTHZ_MATRIX.md` (new) — role × resource × action grid
+- Existing pending docs reconciled — anything in `PENDING_WORK.md` that shipped during the audit gets moved out
+
+**Approach:**
+1. Inventory pass first — list every file, every export, every route, every screen, every collection. Pure enumeration, no prose
+2. Per-section deep audit — read source, document reality (not aspirations)
+3. Flow mapping — pick one flow, trace it end-to-end through code, write it down, repeat
+4. Reconcile against existing docs — flag every drift, every stale claim
+5. Rewrite the canonical docs from scratch where drift is severe
+
+**Discipline rules during the audit:**
+- Document what the code does, not what it should do — surface divergences as findings, don't silently "fix" them in docs
+- Every claim citable to a file path + line range
+- No "TODO" entries in the new docs — if something's incomplete, it goes in `PENDING_WORK.md`, not the schema doc
+- Use Explore subagents heavily — this is exactly the kind of broad enumeration they're built for
+
+**Checklist:**
+- [ ] Cloud Function inventory (Gen1 + Express routes)
+- [ ] Firestore collection inventory + schema docs
+- [ ] Storage path inventory
+- [ ] PWA screen inventory + navigation graph
+- [ ] Creator dashboard screen inventory + permission map
+- [ ] Landing page inventory
+- [ ] All major flows mapped end-to-end
+- [ ] Integration documentation (MP/Stripe, FatSecret, Resend, wearables, PostHog)
+- [ ] Auth × resource × action matrix
+- [ ] Build/deploy/environment runbook refresh
+- [ ] `CLAUDE.md` rewrite
+- [ ] `docs/STANDARDS.md` refresh
+- [ ] `docs/API_ENDPOINTS.md` regenerated
+- [ ] New canonical docs created (`FIRESTORE_SCHEMA`, `STORAGE_PATHS`, `SCREENS`, `FLOWS`, `INTEGRATIONS`, `AUTHZ_MATRIX`)
+- [ ] `PENDING_WORK.md` reconciled — shipped items removed, new gaps surfaced
+- [ ] All drift findings logged and resolved (either docs corrected or code fixed)
+
+---
+
 ### 11. Third-party API Integration `NOT STARTED`
 
 Developer portal for external integrations with the Wake API. Backend infrastructure already exists — `api_keys` Firestore collection, SHA-256 key hashing, and API key auth in `auth.ts`.
@@ -548,14 +757,17 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 | Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
 |---|---|---|---|---|---|
 | Creator Dashboard Rebuild | 5 | 5 | 5 | 1 | **4.40** |
+| Creator Public Buy Page (3e) | 5 | 4 | 5 | 2 | **4.30** |
 | PWA UI Redesign | 4 | 5 | 4 | 2 | **3.95** |
 | Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
 | PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
 | Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
+| Download Screen Refresh (5b) | 2 | 4 | 3 | 4 | **3.05** |
 | Security Audit | 3 | 1 | 4 | 3 | **2.75** |
 | App-wide Optimization | 3 | 3 | 2 | 3 | **2.75** |
 | Creator Email Platform | 3 | 3 | 2 | 2 | **2.60** | Phase 0 (event broadcasts) API done |
 | Stripe Migration (3c) | 3 | 4 | 1 | 1 | **2.40** |
+| Platform Mapping (12) | 4 | 1 | 1 | 1 | **2.10** |
 | Feedback Board | 2 | 2 | 1 | 4 | **2.05** |
 | Third-party API | 2 | 1 | 1 | 3 | **1.65** |
 
@@ -566,19 +778,24 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  PWA UI Redesign               — right time with small user base, no tech debt pressure
-2.  PostHog Analytics             — before driving traffic you need visibility
-3.  Security Audit                — before scaling, know your exposure
-4.  App-wide Optimization         — before cardio ships, clean the foundation
-5.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 2–4
+1.  Security Audit                — close exposure before scaling traffic
+2.  PWA UI Redesign               — right time with small user base, no tech debt pressure
+3.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
+4.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #3)
+5.  PostHog Analytics             — before driving traffic you need visibility
 6.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-7.  Creator Email Platform Ph.1   — unlocks creator marketing
-8.  Stripe Migration (3c)         — decision-dependent, not urgent
-9.  Feedback Board                — until user base warrants it
-10. Third-party API               — premature at current user count
+7.  App-wide Optimization         — before cardio ships, clean the foundation
+8.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 5–7
+9.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
+10. Creator Email Platform Ph.1   — unlocks creator marketing
+11. Stripe Migration (3c)         — decision-dependent, not urgent
+12. Feedback Board                — until user base warrants it
+13. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Cardio V1 (#5)** is a long-track build. Start architecture and wearable OAuth research during items 3–4. GPS and provider flows take time to get right.
-- **Stripe Migration (#8)** is gated on a business decision — don't start until that decision is made.
+- **Creator Public Buy Page (#3)** and **Download Screen Refresh (#4)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
+- **Cardio V1 (#8)** is a long-track build. Start architecture and wearable OAuth research during items 5–7. GPS and provider flows take time to get right.
+- **Platform Mapping (#9)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
+- **Stripe Migration (#11)** is gated on a business decision — don't start until that decision is made.
 - **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27.

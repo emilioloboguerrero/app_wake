@@ -8,30 +8,46 @@ import {checkRateLimit} from "./rateLimit.js";
 import {enforceAppCheck} from "./appCheck.js";
 
 // ─── In-memory token verification cache ───────────────────────────────────
-// Caches decoded ID tokens by a truncated SHA-256 hash of the raw token.
+// Caches decoded ID tokens by a SHA-256 hash of the raw token.
 // Avoids repeated verifyIdToken network calls for the same token across
 // concurrent requests (e.g. 8 dashboard queries firing simultaneously).
+//
+// F-MW-06:
+//   - Cache key uses the FULL 32-byte SHA-256 (was: truncated to 16 hex
+//     chars / 8 bytes). The truncation gave a 64-bit collision space —
+//     enough for an attacker to deliberately collide a token with another
+//     user's cached entry.
+//   - TTL is clamped to the actual token expiry. Previously a 5-min cache
+//     could serve a decoded token whose `exp` had already passed.
 const TOKEN_CACHE_MAX = 50;
 const TOKEN_CACHE_TTL_MS = 5 * 60 * 1000;
 const tokenCache = new Map<string, { decoded: admin.auth.DecodedIdToken; expiresAt: number }>();
 
+function tokenCacheKey(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 function getCachedToken(token: string): admin.auth.DecodedIdToken | null {
-  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
-  const entry = tokenCache.get(hash);
+  const entry = tokenCache.get(tokenCacheKey(token));
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
-    tokenCache.delete(hash); return null;
+    tokenCache.delete(tokenCacheKey(token)); return null;
   }
   return entry.decoded;
 }
 
 function setCachedToken(token: string, decoded: admin.auth.DecodedIdToken): void {
-  const hash = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
   if (tokenCache.size >= TOKEN_CACHE_MAX) {
     const firstKey = tokenCache.keys().next().value;
     if (firstKey) tokenCache.delete(firstKey);
   }
-  tokenCache.set(hash, {decoded, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS});
+  // Clamp to the smaller of (5 min, token's own remaining lifetime). exp is
+  // in seconds; convert to ms. If exp is missing or already past, fall back
+  // to a tiny TTL so the cache miss happens fast.
+  const tokenExpMs = (decoded.exp ?? 0) * 1000;
+  const remaining = tokenExpMs - Date.now();
+  const ttl = Math.min(TOKEN_CACHE_TTL_MS, Math.max(remaining, 1000));
+  tokenCache.set(tokenCacheKey(token), {decoded, expiresAt: Date.now() + ttl});
 }
 
 // Diagnostic logging for verifyIdToken failures. The Admin SDK error code
@@ -217,9 +233,13 @@ export async function validateAuthAndRateLimit(
   ]);
 
   const userData = userDoc.exists ? userDoc.data()! : null;
-  const role = userData ?
-    ((userData.role as "user" | "creator" | "admin") || "user") :
-    "user";
+  // F-MW-08: role is sourced ONLY from the decoded ID-token claim. Token
+  // claims are issued by Admin SDK paths (onUserCreated for new users,
+  // /creator/register for promotion). Firestore users/{uid}.role is no
+  // longer authoritative — it cannot be trusted because rules let the
+  // owner write it (closed by F-RULES-01) and even the locked-down rule
+  // doesn't make Firestore the source of truth.
+  const role = roleFromClaim(decoded);
 
   const result: AuthResult = {
     userId: decoded.uid,
@@ -229,6 +249,12 @@ export async function validateAuthAndRateLimit(
   };
   req.auth = result;
   return result;
+}
+
+function roleFromClaim(decoded: admin.auth.DecodedIdToken): "user" | "creator" | "admin" {
+  const claim = (decoded as {role?: unknown}).role;
+  if (claim === "creator" || claim === "admin") return claim;
+  return "user";
 }
 
 async function validateApiKey(key: string): Promise<AuthResult> {
@@ -258,6 +284,25 @@ async function validateApiKey(key: string): Promise<AuthResult> {
       401,
       "API key inválida o revocada"
     );
+  }
+
+  // F-NEW-03 (Round 2): the key was issued under role:"creator" assumptions
+  // (scope, default rate caps, route allowlist). If the owner has been
+  // demoted from `creator` since issuance, reject the key — the operator
+  // can rotate manually rather than the key keeping access. Costs one extra
+  // Firestore read per API key request; Wake currently has 2 keys total so
+  // the cost is negligible, and any future per-key throughput growth would
+  // amortize via the existing token cache layer if added.
+  if (data.owner_id) {
+    const ownerSnap = await db.collection("users").doc(data.owner_id).get();
+    const ownerRole = ownerSnap.exists ? ownerSnap.data()?.role : null;
+    if (ownerRole !== "creator" && ownerRole !== "admin") {
+      throw new WakeApiServerError(
+        "UNAUTHENTICATED",
+        401,
+        "API key inválida o revocada"
+      );
+    }
   }
 
   // Update last_used_at (fire-and-forget)
@@ -299,12 +344,12 @@ async function validateFirebaseToken(
   // Mirrors the gate in validateAuthAndRateLimit above.
   await enforceAppCheck(req, decoded.uid, isEmulator);
 
-  // Lookup user role from Firestore — keep full doc data for reuse by handlers
+  // F-MW-08: role from decoded claim only. We still read the user doc so
+  // route handlers that destructure userData (profile, courses map, etc.)
+  // continue to work — but role authority is the token, not Firestore.
   const userDoc = await db.collection("users").doc(decoded.uid).get();
   const userData = userDoc.exists ? userDoc.data()! : null;
-  const role = userData ?
-    ((userData.role as "user" | "creator" | "admin") || "user") :
-    "user";
+  const role = roleFromClaim(decoded);
 
   return {
     userId: decoded.uid,

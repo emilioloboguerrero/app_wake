@@ -20,6 +20,8 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import { getBookingById } from '../services/callBookingService';
 import firestoreService from '../services/apiService';
 import profilePictureService from '../services/profilePictureService';
+import { SecurityUtils } from '../utils/security';
+import logger from '../utils/logger';
 
 const GOLD_ACCENT = 'rgba(255, 255, 255, 1)';
 const GOLD_ACCENT_15 = 'rgba(255, 255, 255, 0.15)';
@@ -127,9 +129,14 @@ const UpcomingCallDetailScreen = ({ navigation, route }) => {
   }, [callLink]);
 
   const handleOpenCallLink = useCallback(() => {
-    if (callLink) {
-      Linking.openURL(callLink).catch(() => {});
+    if (!callLink) return;
+    // F-CLIENT-02: callLink comes from creator-controlled booking data;
+    // reject javascript:/data:/etc. before handing to native Linking.
+    if (!SecurityUtils.validateUrl(callLink)) {
+      logger.warn('UpcomingCallDetailScreen: refused to open unsafe call link');
+      return;
     }
+    Linking.openURL(callLink).catch(() => {});
   }, [callLink]);
 
   const displayCreator = creatorName || 'Tu entrenador';

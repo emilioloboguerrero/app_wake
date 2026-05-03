@@ -304,6 +304,31 @@ describe("isFreeGrantAllowed", () => {
       course: {creator_id: "c1", status: "published", price: 10_000, subscription_price: 0},
     })).toBe(false);
   });
+
+  // F-2026-05-01: legacy Spanish literal must not be treated as draft.
+  // Production has zero "publicado" courses (shape-analysis 2026-05-02), but
+  // the helper must still treat it as published-equivalent so any future
+  // import or migration doesn't reintroduce the C-01 monetization bypass.
+  it("REJECTS legacy 'publicado' status against a paid course (F-2026-05-01)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "publicado", price: 10_000, subscription_price: 5_000},
+    })).toBe(false);
+  });
+
+  it("REJECTS unknown / typo status against a paid course (F-2026-05-01)", () => {
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "publishe", price: 10_000, subscription_price: 5_000},
+    })).toBe(false);
+    expect(isFreeGrantAllowed({
+      callerUserId: "alice",
+      callerRole: "user",
+      course: {creator_id: "c1", status: "", price: 10_000, subscription_price: 5_000},
+    })).toBe(false);
+  });
 });
 
 // ─── HTTPS URL scheme (Tier 2 helper, used by Tier 0 hardening) ──────────────
@@ -805,6 +830,17 @@ describe("pickPublicCourseFields", () => {
     expect(PUBLIC_COURSE_FIELDS).not.toContain("creator_email");
     expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("payout"))).toBeUndefined();
     expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("internal"))).toBeUndefined();
+  });
+
+  // F-API1-16: planAssignments is creator IP (per-client weekKey→planId
+  // mapping) — must not ship in the public course shape.
+  it("F-API1-16: planAssignments is NOT in the public allowlist", () => {
+    expect(PUBLIC_COURSE_FIELDS).not.toContain("planAssignments");
+    const out = pickPublicCourseFields({
+      title: "X",
+      planAssignments: {"2026-W18": {planId: "secret-plan", moduleId: "m1"}},
+    });
+    expect(out.planAssignments).toBeUndefined();
   });
 });
 

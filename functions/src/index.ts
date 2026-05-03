@@ -37,13 +37,18 @@ import {
 } from "./api/services/paymentHelpers.js";
 import {assignCourseToUser} from "./api/services/courseAssignment.js";
 import {
+  assertAllowedCallLinkUrl,
   assertAllowedSubscriptionTransition,
   clampPushSenderName,
   redactEmailForLog,
   safeErrorPayload,
 } from "./api/middleware/securityHelpers.js";
 import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
-import {escapeHtml as sharedEscapeHtml} from "./api/services/emailHelpers.js";
+import {
+  escapeHtml as sharedEscapeHtml,
+  generateUnsubscribeToken,
+  reserveEmailBudget,
+} from "./api/services/emailHelpers.js";
 
 const db = admin.firestore();
 
@@ -62,6 +67,11 @@ const fatSecretClientSecret = functions.params.defineSecret(
   "FATSECRET_CLIENT_SECRET"
 );
 const resendApiKey = functions.params.defineSecret("RESEND_API_KEY");
+// F-FUNCS-20 + F-NEW-02: HMAC-signed unsubscribe tokens + system email
+// budget. Emitted/read by emailHelpers.ts; provisioned in Firebase Secret
+// Manager. Each function that mints / verifies the token (any sender +
+// the /api/email/unsubscribe route) declares this in its secrets[] list.
+const unsubscribeSecret = functions.params.defineSecret("UNSUBSCRIBE_SECRET");
 
 // ─── Rate limiting (in-memory, per-userId, sliding 60s window, max 10 req) ──
 // Accepted gap: in-memory rate limiting is ineffective in Cloud Functions
@@ -319,6 +329,27 @@ export const createSubscriptionCheckout = functions
         },
       });
       return;
+    }
+
+    // F-FUNCS-04: bind payer_email to the authed user's stored email so a
+    // client can't impersonate another user's mailbox in the MercadoPago
+    // checkout (which would have the receipt + subscription emails sent
+    // to the impersonated address). Treats the comparison
+    // case-insensitively and trims whitespace.
+    {
+      const userDoc = await db.collection("users").doc(userId).get();
+      const storedEmail = (userDoc.data()?.email as string | undefined)?.toLowerCase().trim();
+      const supplied = payerEmail.toLowerCase().trim();
+      if (!storedEmail || storedEmail !== supplied) {
+        response.status(400).json({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "El email de pago debe coincidir con el de tu cuenta",
+            field: "payer_email",
+          },
+        });
+        return;
+      }
     }
 
     try {
@@ -2112,20 +2143,22 @@ export const nutritionBarcodeLookup = functions
 // ─── onUserCreated ────────────────────────────────────────────────────────────
 // Fires whenever a Firebase Auth user is created (client SDK, Admin SDK, OAuth).
 // Creates the Firestore user doc so all downstream reads have a document to work with.
+//
+// F-FUNCS-14: ALWAYS seed role: "user" and stamp claim {role: "user"}.
+// Privilege escalation prereq closed — even if an attacker pre-writes a role
+// onto a stub Firestore user doc (which F-RULES-01 also prevents), this
+// handler does not read that field. Promotion to creator/admin happens via a
+// separate, Admin-SDK-only path (e.g. /creator/register issuing claims after
+// gating checks), never inferred from existing Firestore state.
 export const onUserCreated = functions.auth.user().onCreate(async (user: admin.auth.UserRecord) => {
-  let resolvedRole: "user" | "creator" | "admin" = "user";
   try {
     const docRef = db.collection("users").doc(user.uid);
     const existing = await docRef.get();
 
-    // If the doc already exists (e.g. /creator/register ran first), only fill
-    // in missing fields — never overwrite role or other data set by registration.
     if (existing.exists) {
+      // Doc may exist if /creator/register or another bootstrap ran first.
+      // Patch only stub fields — never read or trust an existing role.
       const data = existing.data() || {};
-      const existingRole = data.role as "user" | "creator" | "admin" | undefined;
-      if (existingRole === "creator" || existingRole === "admin") {
-        resolvedRole = existingRole;
-      }
       const patch: Record<string, unknown> = {};
       if (!data.email) patch.email = user.email ?? null;
       if (!data.displayName) patch.displayName = user.displayName ?? null;
@@ -2135,7 +2168,6 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
       }
       functions.logger.info("onUserCreated: doc already existed, patched missing fields", {uid: user.uid});
     } else {
-      // No doc yet — bootstrap with role: "user"
       await docRef.set({
         role: "user",
         email: user.email ?? null,
@@ -2151,13 +2183,8 @@ export const onUserCreated = functions.auth.user().onCreate(async (user: admin.a
     });
   }
 
-  // L-05: stamp role onto the Firebase ID token via a custom claim so
-  // firestore.rules can read request.auth.token.role directly instead of
-  // falling back to a per-eval get(/users/{uid}). Existing sessions pick up
-  // the claim on the next token refresh (~1h). Best-effort — failure here
-  // does not block user creation.
   try {
-    await admin.auth().setCustomUserClaims(user.uid, {role: resolvedRole});
+    await admin.auth().setCustomUserClaims(user.uid, {role: "user"});
   } catch (err) {
     functions.logger.warn("onUserCreated: setCustomUserClaims failed", {
       uid: user.uid,
@@ -2237,7 +2264,36 @@ export const sendEventConfirmationEmail = functions
         "¡Tu lugar está confirmado! Nos vemos en el evento."
     );
     const checkInToken = reg.check_in_token as string | undefined;
-    const eventImageUrl = escapeHtml((event.image_url as string | undefined) ?? "");
+    // F-2026-05-02: events.image_url is interpolated into a CSS
+    // background-image url('...') context. escapeHtml-only made the email a
+    // CSS-injection sink — once the browser HTML-decodes the style attribute,
+    // a single quote turns back into a CSS string terminator.
+    //
+    // The PATCH /creator/events/:eventId path already enforces assertHttpsUrl
+    // (events.ts:444), but the events firestore rule has no shape constraint
+    // on image_url, so a creator with a Firebase ID token can write the
+    // malicious value directly via the JS SDK and bypass the API guard.
+    // Re-validate here at email-send time, drop the URL on any failure, and
+    // skip escaping (URL spec already forbids `'` and `)` in components a
+    // server emits, so the URL is safe to interpolate inside url('…') as-is).
+    const eventImageUrl = (() => {
+      const raw = event.image_url;
+      if (typeof raw !== "string" || !raw) return "";
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== "https:") return "";
+        if (u.username || u.password) return "";
+        const href = u.toString();
+        // Final paranoia stop: reject any character that would break out of
+        // the url('…') CSS string or the HTML attribute. Standards-compliant
+        // URLs never contain these unencoded.
+        if (/['")<>]/.test(href)) return "";
+        if (href.length > 2048) return "";
+        return href;
+      } catch {
+        return "";
+      }
+    })();
 
     // Resolve first name
     let firstName = "";
@@ -2305,6 +2361,11 @@ export const sendEventConfirmationEmail = functions
 </html>`;
 
     try {
+      // F-NEW-02: reserve 1 email from the system-wide daily budget. If the
+      // ceiling is hit, this throws and the catch below logs the failure
+      // without sending. Stops a single attacker / runaway loop from running
+      // up the Resend bill for the whole platform.
+      await reserveEmailBudget(1);
       const resend = new Resend(resendApiKey.value());
       const {error: resendError} = await resend.emails.send({
         from: fromAddress,
@@ -2362,62 +2423,108 @@ export const processRestTimerNotifications = onSchedule(
 
     webpush.setVapidDetails("mailto:soporte@wakelab.co", pub, priv);
 
+    // Per-timer try/catch + claim-first prevents two failure modes that drove
+    // the April 2026 17% 5xx rate on this cron:
+    //   1) A single bad timer (missing userId, doc deleted concurrently, sub
+    //      query failure) used to throw out of the for-loop and 5xx the whole
+    //      tick — every other valid timer in the batch was silently dropped
+    //      and Cloud Scheduler retried the run. Now each timer is isolated.
+    //   2) The 30s look-ahead window plus a slow tick let the next minute's
+    //      run pick up the same pending timer before the previous run flipped
+    //      `status: "sent"`. Claiming the timer before sending pushes
+    //      ("processing"→"sent") makes it single-shot regardless of timing.
+    let processed = 0;
+    let failed = 0;
     for (const timerDoc of pendingSnap.docs) {
-      const timer = timerDoc.data();
-      const userId = timer.userId as string;
-      const metadata = (timer.metadata || {}) as Record<string, unknown>;
-      const exerciseName = (metadata.exerciseName as string) || "tu ejercicio";
-
-      const subsSnap = await db
-        .collection("users")
-        .doc(userId)
-        .collection("web_push_subscriptions")
-        .where("isActive", "==", true)
-        .get();
-
-      const payload = JSON.stringify({
-        title: "Descanso terminado",
-        body: `Vuelve a ${exerciseName}`,
-      });
-
-      const deactivateIds: string[] = [];
-
-      await Promise.all(
-        subsSnap.docs.map(async (subDoc) => {
-          const sub = subDoc.data();
-          try {
-            await webpush.sendNotification(
-              {endpoint: sub.endpoint, keys: sub.keys},
-              payload
-            );
-          } catch (err: unknown) {
-            const status = (err as { statusCode?: number }).statusCode;
-            if (status === 410 || status === 404) {
-              deactivateIds.push(subDoc.id);
-            }
-          }
-        })
-      );
-
-      // Mark timer as sent
-      await timerDoc.ref.update({status: "sent"});
-
-      // Deactivate expired subscriptions
-      if (deactivateIds.length > 0) {
-        const batch = db.batch();
-        for (const id of deactivateIds) {
-          batch.update(
-            db.collection("users").doc(userId)
-              .collection("web_push_subscriptions").doc(id),
-            {isActive: false}
+      try {
+        const timer = timerDoc.data();
+        const userId = timer.userId as string | undefined;
+        if (!userId) {
+          // Malformed timer — flip to skipped so we don't see it again.
+          await timerDoc.ref.update({status: "skipped"});
+          functions.logger.warn(
+            "processRestTimerNotifications: timer missing userId",
+            {timerId: timerDoc.id}
           );
+          continue;
         }
-        await batch.commit();
+
+        // Claim the timer first. If two ticks race, only one will see
+        // status="pending" — the other's transactional read will treat it as
+        // already-claimed and skip it. Push send happens after the claim,
+        // so worst case is a missed notification (better than a duplicate
+        // "Descanso terminado" arriving 60s later).
+        const claimed = await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(timerDoc.ref);
+          if (!fresh.exists) return false;
+          if ((fresh.data()?.status as string) !== "pending") return false;
+          tx.update(timerDoc.ref, {status: "sent"});
+          return true;
+        });
+        if (!claimed) continue;
+
+        const metadata = (timer.metadata || {}) as Record<string, unknown>;
+        const exerciseName =
+          (metadata.exerciseName as string) || "tu ejercicio";
+
+        const subsSnap = await db
+          .collection("users")
+          .doc(userId)
+          .collection("web_push_subscriptions")
+          .where("isActive", "==", true)
+          .get();
+
+        const payload = JSON.stringify({
+          title: "Descanso terminado",
+          body: `Vuelve a ${exerciseName}`,
+        });
+
+        const deactivateIds: string[] = [];
+
+        await Promise.all(
+          subsSnap.docs.map(async (subDoc) => {
+            const sub = subDoc.data();
+            try {
+              await webpush.sendNotification(
+                {endpoint: sub.endpoint, keys: sub.keys},
+                payload
+              );
+            } catch (err: unknown) {
+              const status = (err as { statusCode?: number }).statusCode;
+              if (status === 410 || status === 404) {
+                deactivateIds.push(subDoc.id);
+              }
+            }
+          })
+        );
+
+        if (deactivateIds.length > 0) {
+          const batch = db.batch();
+          for (const id of deactivateIds) {
+            batch.update(
+              db.collection("users").doc(userId)
+                .collection("web_push_subscriptions").doc(id),
+              {isActive: false}
+            );
+          }
+          await batch.commit();
+        }
+        processed++;
+      } catch (err: unknown) {
+        // Don't let one bad timer 5xx the whole tick.
+        failed++;
+        functions.logger.error(
+          "processRestTimerNotifications: timer failed",
+          {
+            timerId: timerDoc.id,
+            err: err instanceof Error ? err.message : String(err),
+          }
+        );
       }
     }
 
     functions.logger.info(
-      `Processed ${pendingSnap.size} rest timer notification(s)`
+      `Processed ${processed} rest timer notification(s), ${failed} failed`
     );
   }
 );
@@ -2663,9 +2770,13 @@ function computeNextRetryAt(attemptCount: number): admin.firestore.Timestamp {
 
 export const processEmailQueue = onSchedule(
   {
-    schedule: "every 1 minutes",
+    // Was "every 1 minutes" — that produced ~28k invocations / month for
+    // creator broadcast email sends, which are not time-critical (recipients
+    // do not notice 5 minutes). 5-minute cadence cuts invocations 5× while
+    // batched retries + Resend's own backoff still drain queues promptly.
+    schedule: "every 5 minutes",
     region: "us-central1",
-    secrets: [resendApiKey],
+    secrets: [resendApiKey, unsubscribeSecret],
     memory: "256MiB",
     timeoutSeconds: 120,
   },
@@ -2750,9 +2861,9 @@ export const processEmailQueue = onSchedule(
           const email = r.email as string;
           const name = (r.name as string) || "";
 
-          const unsubToken = crypto.createHash("sha256")
-            .update(`${email}:${creatorId}`)
-            .digest("hex");
+          // F-FUNCS-20: HMAC-signed token via the shared helper (reads
+          // UNSUBSCRIBE_SECRET from this function's secrets[] env).
+          const unsubToken = generateUnsubscribeToken(email, creatorId);
           const unsubUrl = `https://wakelab.co/api/v1/email/unsubscribe?token=${unsubToken}&email=${encodeURIComponent(email)}&creatorId=${creatorId}`;
 
           const firstName = name.split(" ")[0] || "";
@@ -2780,18 +2891,25 @@ export const processEmailQueue = onSchedule(
           };
         });
 
-        // Fire the batch. Resend SDK returns { data, error } on the single
-        // send path; batch.send follows the same convention. We also wrap in
-        // try/catch in case the SDK throws on network failure.
+        // F-NEW-02: reserve N emails from the daily budget before firing
+        // the batch. If exhausted, mark every doc in this batch as failed
+        // with a budget error so the queue can resume tomorrow.
         let batchErrorMsg: string | null = null;
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const response: any = await resend.batch.send(batchPayload as any);
-          if (response && response.error) {
-            batchErrorMsg = response.error.message || "Resend batch error";
-          }
+          await reserveEmailBudget(batchPayload.length);
         } catch (err: unknown) {
-          batchErrorMsg = err instanceof Error ? err.message : "Unknown batch error";
+          batchErrorMsg = err instanceof Error ? err.message : "Email budget error";
+        }
+        if (!batchErrorMsg) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const response: any = await resend.batch.send(batchPayload as any);
+            if (response && response.error) {
+              batchErrorMsg = response.error.message || "Resend batch error";
+            }
+          } catch (err: unknown) {
+            batchErrorMsg = err instanceof Error ? err.message : "Unknown batch error";
+          }
         }
 
         // Apply results to all recipient docs in this batch atomically
@@ -2925,7 +3043,9 @@ export const api = onRequest(
     memory: "512MiB",
     timeoutSeconds: 60,
     concurrency: 80,
-    minInstances: 1,
+    // Was minInstances=1 in prod (~$44–85/mo idle keep-warm for ~31 req/hr).
+    // Cold start on this Express app is ~1–2s; not worth the spend.
+    minInstances: 0,
     secrets: [
       fatSecretClientIdV2,
       fatSecretClientSecretV2,
@@ -2934,6 +3054,11 @@ export const api = onRequest(
       mercadopagoWebhookSecretV2,
       vapidPublicKey,
       vapidPrivateKey,
+      // F-FUNCS-20: /email/unsubscribe lives in this Gen2 export and calls
+      // verifyUnsubscribeToken → emailHelpers.unsubscribeSecret(), which
+      // throws if process.env.UNSUBSCRIBE_SECRET is absent. Without this
+      // binding, every unsubscribe link returns "Enlace inválido" in prod.
+      unsubscribeSecret,
     ],
   },
   app
@@ -3260,6 +3385,23 @@ export const sendCallReminders = onSchedule(
       });
     }
 
+    // F-2026-05-03: callLink is creator-controlled and rendered as <a href>
+    // in the branded reminder email. POST /v1/creator/bookings/.../callLink
+    // already runs assertAllowedCallLinkUrl, but the call_bookings firestore
+    // rule lets the creator update arbitrary fields directly via the JS SDK
+    // — which would let a creator slip a phishing or javascript: URL past the
+    // API guard. Re-validate per booking here; on failure drop the URL so the
+    // CTA button is omitted but the rest of the reminder still goes out.
+    function safeCallLink(raw: unknown): string {
+      if (typeof raw !== "string" || !raw) return "";
+      try {
+        assertAllowedCallLinkUrl(raw, "callLink");
+        return raw;
+      } catch {
+        return "";
+      }
+    }
+
     for (const doc of snapshot.docs) {
       const booking = doc.data();
       const slotStart = new Date(booking.slotStartUtc).getTime();
@@ -3274,7 +3416,13 @@ export const sendCallReminders = onSchedule(
         const client = await getUser(booking.clientUserId);
         const creator = await getUser(booking.creatorId);
         const dateTimeStr = formatDateTime(booking.slotStartUtc);
-        const callLink = booking.callLink || "";
+        const callLink = safeCallLink(booking.callLink);
+        if (booking.callLink && !callLink) {
+          functions.logger.warn("sendCallReminders: dropped invalid callLink", {
+            bookingId: doc.id,
+            creatorId: booking.creatorId,
+          });
+        }
 
         if (client.email) {
           const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);
@@ -3298,7 +3446,8 @@ export const sendCallReminders = onSchedule(
         const client = await getUser(booking.clientUserId);
         const creator = await getUser(booking.creatorId);
         const dateTimeStr = formatDateTime(booking.slotStartUtc);
-        const callLink = booking.callLink || "";
+        // F-2026-05-03: see safeCallLink note above the 24h block.
+        const callLink = safeCallLink(booking.callLink);
 
         if (client.email) {
           const html = buildReminderHtml(client.displayName, creator.displayName || "tu coach", callLink, dateTimeStr, false);

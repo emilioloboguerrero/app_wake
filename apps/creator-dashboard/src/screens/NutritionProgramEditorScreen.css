@@ -1,0 +1,189 @@
+.np-root {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 24px 80px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* ── Sidebar + weeks grid layout (mirrors GroupProgramView training tab) ── */
+.np-root .plan-structure-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+  min-height: calc(100vh - 220px);
+}
+
+.np-root .plan-structure-sidebars {
+  width: 300px;
+  min-width: 300px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.np-root .plan-structure-sidebars .planning-library-sidebar {
+  border-right: none;
+  box-sizing: border-box;
+  width: 100%;
+  overflow: hidden;
+}
+
+.np-root .planning-library-sidebar .plan-structure-search {
+  padding: 10px 16px;
+}
+
+.np-root .planning-library-sidebar .planning-sidebar-content {
+  padding: 16px;
+}
+
+.np-root .plan-structure-main {
+  flex: 1;
+  padding: 0 0 0 24px;
+  min-width: 0;
+}
+
+/* ── Plan picker modal (click "+" fallback) ─────────────── */
+.np-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 320px;
+  max-width: 420px;
+}
+.np-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+.np-picker-search-icon { color: rgba(255, 255, 255, 0.4); }
+.np-picker-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  outline: none;
+}
+.np-picker-search-input::placeholder { color: rgba(255, 255, 255, 0.32); }
+.np-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.np-picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s;
+}
+.np-picker-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.np-picker-item-name {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.92);
+}
+.np-picker-item-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.np-picker-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
+}
+
+/* ── Name-edit modal ───────────────────────────────────── */
+.np-name-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 320px;
+  max-width: 420px;
+}
+.np-name-modal-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.18s, background 0.18s;
+}
+.np-name-modal-input:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.np-name-modal-input::placeholder { color: rgba(255, 255, 255, 0.32); }
+.np-name-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.np-name-modal-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.np-name-modal-btn--secondary {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.np-name-modal-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.np-name-modal-btn--primary {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+}
+.np-name-modal-btn--primary:hover {
+  background: #fff;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .np-root .plan-structure-layout {
+    flex-direction: column;
+    gap: 16px;
+    min-height: 0;
+  }
+  .np-root .plan-structure-sidebars {
+    width: 100%;
+    min-width: 0;
+    max-height: 220px;
+  }
+  .np-root .plan-structure-main {
+    padding: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .np-root {
+    padding: 10px;
+    padding-bottom: 100px;
+  }
+}

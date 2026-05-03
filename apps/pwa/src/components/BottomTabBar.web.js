@@ -21,7 +21,6 @@ import sessionManager from '../services/sessionManager';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
 import { setPendingOpenBodyEntry } from '../navigation/openBodyEntryFlag';
 import { NoPlanModal } from './NoPlanModal.web';
-import { TrainingActionModal } from './TrainingActionModal.web';
 import { ProgramPickerModal } from './ProgramPickerModal.web';
 import WakeModalOverlay from './WakeModalOverlay.web';
 import { toYYYYMMDD } from '../components/WeekDateSelector.web';
@@ -38,7 +37,6 @@ const BottomTabBar = () => {
   const [menuActionLoading, setMenuActionLoading] = useState(false);
   const [noTrainingPlanModalVisible, setNoTrainingPlanModalVisible] = useState(false);
   const [noNutritionPlanModalVisible, setNoNutritionPlanModalVisible] = useState(false);
-  const [trainingActionModal, setTrainingActionModal] = useState({ visible: false, variant: 'no_session_today', courseId: null });
   const [programPickerTraining, setProgramPickerTraining] = useState({ visible: false, options: [] });
   const [programPickerNutrition, setProgramPickerNutrition] = useState({ visible: false, options: [] });
 
@@ -103,12 +101,16 @@ const BottomTabBar = () => {
     const today = toYYYYMMDD(new Date());
     try {
       const sessionState = await sessionService.getCurrentSession(userId, courseId, { targetDate: today });
-      if (sessionState.emptyReason === 'no_session_today' || sessionState.emptyReason === 'no_planning_this_week' || !sessionState.workout?.exercises?.length) {
-        setTrainingActionModal({ visible: true, variant: 'no_session_today', courseId });
-        return;
-      }
-      if (sessionState.todaySessionAlreadyCompleted) {
-        setTrainingActionModal({ visible: true, variant: 'already_completed', courseId });
+      // No session today / week not planned / already completed: hand off to DailyWorkoutScreen
+      // which renders the right empty/completed states (replaces the legacy TrainingActionModal).
+      if (
+        sessionState.emptyReason === 'no_session_today' ||
+        sessionState.emptyReason === 'no_planning_this_week' ||
+        !sessionState.workout?.exercises?.length ||
+        sessionState.todaySessionAlreadyCompleted
+      ) {
+        closeMenu();
+        navigate(`/course/${courseId}/workout`);
         return;
       }
       const workout = sessionState.workout;
@@ -118,7 +120,8 @@ const BottomTabBar = () => {
       navigate('/warmup', { state: { course: courseObj, workout, sessionId: session.sessionId } });
     } catch (err) {
       logger.error('[Entrenar] getCurrentSession or startSession failed', err?.message ?? err);
-      setTrainingActionModal({ visible: true, variant: 'no_session_today', courseId });
+      closeMenu();
+      navigate(`/course/${courseId}/workout`);
     } finally {
       setMenuActionLoading(false);
     }
@@ -215,11 +218,6 @@ const BottomTabBar = () => {
     }).catch((err) => {
       logger.error('[Entrenar] setPinnedTrainingCourseId failed', err?.message ?? err);
     });
-  };
-
-  const handleVerPrograma = (courseId) => {
-    setTrainingActionModal((prev) => ({ ...prev, visible: false }));
-    if (courseId) navigate(`/course/${courseId}/workout`);
   };
 
   const handleRegistrarComidaPress = () => {
@@ -446,13 +444,6 @@ const BottomTabBar = () => {
         onClose={() => setNoNutritionPlanModalVisible(false)}
         variant="nutrition"
         onGoToLibrary={handleGoToLibrary}
-      />
-      <TrainingActionModal
-        visible={trainingActionModal.visible}
-        onClose={() => setTrainingActionModal((p) => ({ ...p, visible: false }))}
-        variant={trainingActionModal.variant}
-        courseId={trainingActionModal.courseId}
-        onVerPrograma={handleVerPrograma}
       />
       <ProgramPickerModal
         visible={programPickerTraining.visible}

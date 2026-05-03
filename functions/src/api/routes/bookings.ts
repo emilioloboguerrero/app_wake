@@ -85,6 +85,9 @@ async function sendCallEmail(to: string, subject: string, html: string): Promise
     return;
   }
   try {
+    // F-NEW-02: daily budget gate.
+    const {reserveEmailBudget} = await import("../services/emailHelpers.js");
+    await reserveEmailBudget(1);
     const resend = new Resend(apiKey);
     const {error} = await resend.emails.send({
       from: "Wake Coaching <coaching@wakelab.co>",

@@ -10,12 +10,8 @@ import LoadingScreen from '../screens/LoadingScreen';
 // Use mobile components with web wrappers
 // These wrappers provide React Router navigation to the mobile components
 import LoginScreen from '../screens/LoginScreen.web';
-import MainScreen from '../screens/MainScreen.web';
-
-// Lazy load heavy screens - only load when route is accessed
-// Import ProfileScreen directly (not lazy) to avoid Metro bundler issues
-// Use web wrapper for ProfileScreen to provide React Router navigation
-import ProfileScreen from '../screens/ProfileScreen.web';
+import HoyScreen from '../screens/HoyScreen.web.jsx';
+import ProfileScreen from '../screens/ProfileScreen.web.jsx';
 // Import AllPurchasedCoursesScreen directly (not lazy) to avoid hook order issues with fonts.js
 import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web';
 // Import SubscriptionsScreen directly - using require in web wrapper causes Metro issues with lazy loading
@@ -48,7 +44,6 @@ import EventCheckinScreen from '../screens/EventCheckinScreen.web';
 import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 import PaymentSuccessScreen from '../screens/PaymentSuccessScreen.web';
 import PaymentCancelledScreen from '../screens/PaymentCancelledScreen.web';
-
 import apiService from '../services/apiService';
 import DebugScreenTracker from '../components/DebugScreenTracker.web';
 import { isAdmin, isCreator } from '../utils/roleHelper';
@@ -103,6 +98,24 @@ const getScreenEnterClass = (currentPath, prevPath) => {
   return 'wake-screen-enter';
 };
 
+// Read whatever onboarding status is in localStorage, regardless of age.
+// Used as a fallback when the live /users/me fetch times out or errors —
+// keeps already-onboarded users out of /onboarding when the network is slow.
+// Returns null if no cache exists (truly new users still get sent to onboarding).
+const readStaleOnboardingCache = (uid) => {
+  try {
+    const raw = localStorage.getItem(`onboarding_status_${uid}`);
+    if (!raw) return null;
+    const status = JSON.parse(raw);
+    return {
+      profileCompleted: status.profileCompleted ?? false,
+      onboardingCompleted: status.onboardingCompleted ?? false,
+    };
+  } catch (_) {
+    return null;
+  }
+};
+
 // Layout component for authenticated routes
 // Auth state comes exclusively from AuthContext (single source of truth).
 // No duplicate Firebase checks, no polling, no competing timeouts.
@@ -145,7 +158,8 @@ const AuthenticatedLayout = ({ children }) => {
 
         timeoutId = setTimeout(() => {
           if (mounted) {
-            setUserProfile({ profileCompleted: false, onboardingCompleted: false });
+            const stale = readStaleOnboardingCache(uid);
+            setUserProfile(stale || { profileCompleted: false, onboardingCompleted: false });
             setProfileLoading(false);
           }
         }, 10000);
@@ -192,12 +206,14 @@ const AuthenticatedLayout = ({ children }) => {
                 }));
               } catch (_) {}
             } else {
-              setUserProfile({ profileCompleted: false, onboardingCompleted: false });
+              const stale = readStaleOnboardingCache(uid);
+              setUserProfile(stale || { profileCompleted: false, onboardingCompleted: false });
             }
           }
         } catch (error) {
           if (mounted) {
-            setUserProfile({ profileCompleted: false, onboardingCompleted: false });
+            const stale = readStaleOnboardingCache(uid);
+            setUserProfile(stale || { profileCompleted: false, onboardingCompleted: false });
           }
         } finally {
           if (mounted) {
@@ -398,7 +414,7 @@ const WebAppNavigator = () => {
         path="/"
         element={
           <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(MainScreen, 'MainScreen'))}
+            {React.createElement(withErrorBoundary(HoyScreen, 'Hoy'))}
           </AuthenticatedLayout>
         }
       />

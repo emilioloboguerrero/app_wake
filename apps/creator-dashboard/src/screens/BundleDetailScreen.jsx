@@ -505,7 +505,7 @@ const BundleDetailScreen = () => {
                     ) : (
                       pickerFiltered.map((p) => {
                         const bundleOnly = p.bundleOnly ?? (p.visibility === 'bundle-only');
-                        const isDraft = p.status !== 'published' && p.status !== 'publicado';
+                        const isDraft = p.status !== 'published';
                         return (
                           <button
                             key={p.id}

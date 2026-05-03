@@ -10,6 +10,7 @@ fig/
 # Firestore exports (production data — never commit)
 firestore-dump.json
 **/serviceAccountKey*.json
+wolf-20b8b-*.json
 
 # ============================================
 # Dependencies
@@ -211,4 +212,5 @@ eas-build-*.json
 # package.json - needed for dependencies
 
 # Security discovery output — may contain PII samples
-scripts/security/tier0-discovery-output.json
+scripts/archive/security-2026-05/tier0-discovery-output.json
+.emulator-data

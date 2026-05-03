@@ -2460,8 +2460,10 @@ router.get(
     const userDoc = await db.collection("users").doc(auth.userId).get();
     const courseAccess = userDoc.data()?.courses?.[req.params.courseId];
 
-    if (!courseAccess) {
-      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    // F-API1-19: require status:'active' rather than truthy. Expired /
+    // cancelled / paused entries must not return overrides.
+    if (!courseAccess || courseAccess.status !== "active") {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso activo a este programa");
     }
 
     // For one-on-one delivery, look for plan overrides
@@ -2495,8 +2497,10 @@ router.get(
     const userDoc = await db.collection("users").doc(auth.userId).get();
     const courseAccess = userDoc.data()?.courses?.[req.params.courseId];
 
-    if (!courseAccess) {
-      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    // F-API1-19: require status:'active' rather than truthy. Expired /
+    // cancelled / paused entries must not return overrides.
+    if (!courseAccess || courseAccess.status !== "active") {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso activo a este programa");
     }
 
     if (courseAccess.deliveryType === "one_on_one" && courseAccess.content_plan_id) {
@@ -2531,8 +2535,10 @@ router.get(
     const userDoc = await db.collection("users").doc(auth.userId).get();
     const courseAccess = userDoc.data()?.courses?.[req.params.courseId];
 
-    if (!courseAccess) {
-      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    // F-API1-19: require status:'active' rather than truthy. Expired /
+    // cancelled / paused entries must not return overrides.
+    if (!courseAccess || courseAccess.status !== "active") {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso activo a este programa");
     }
 
     if (courseAccess.deliveryType === "one_on_one" && courseAccess.content_plan_id) {
@@ -2618,6 +2624,28 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
+  // F-API1-14: caller must be an active 1:1 client of the program's creator
+  // before they can write a client_programs row. Without this gate, any
+  // authed user could prime the row and then chain into POST
+  // /users/me/courses/:programId/backfill (F-API1-05) for a free grant.
+  const courseDoc = await db.collection("courses").doc(req.params.programId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  const programCreatorId = courseDoc.data()?.creator_id as string | undefined;
+  if (!programCreatorId) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Programa sin creador");
+  }
+  const relSnap = await db.collection("one_on_one_clients")
+    .where("creatorId", "==", programCreatorId)
+    .where("clientUserId", "==", auth.userId)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+  if (relSnap.empty) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
   const docId = `${auth.userId}_${req.params.programId}`;
   const docRef = db.collection("client_programs").doc(docId);
   const existing = await docRef.get();
@@ -2646,6 +2674,14 @@ router.post("/workout/client-programs/:programId", async (req, res) => {
 });
 
 // PATCH /workout/client-programs/:programId/overrides
+//
+// F-API1-15: path is now an allowlist regex of exactly the form
+// `overrides.<weekKey>.<exerciseId>` — two segments under `overrides`,
+// each [A-Za-z0-9_-]{1,64}. Anything else (including dotted-deeper paths,
+// reserved fields, prototype-pollution names, casing variants, RTL/zero-
+// width injections, length attacks) is rejected with VALIDATION_ERROR.
+// See docs/SECURITY_FIX_DECISIONS.md §3 for the pinned regex rationale.
+const OVERRIDE_PATH_REGEX = /^overrides\.[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{1,64}$/;
 router.patch("/workout/client-programs/:programId/overrides", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
@@ -2654,20 +2690,14 @@ router.patch("/workout/client-programs/:programId/overrides", async (req, res) =
   const path = raw.path;
   const value = raw.value;
 
-  if (typeof path !== "string" || path.length === 0 || path.length > 500) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "path debe ser un string no vacío", "path");
+  if (typeof path !== "string" || !OVERRIDE_PATH_REGEX.test(path)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "path debe coincidir con overrides.<weekKey>.<exerciseId>", "path"
+    );
   }
   if (value === undefined) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "value es requerido", "value");
-  }
-
-  // Block dangerous keys
-  const dangerousKeys = ["__proto__", "constructor", "prototype"];
-  const pathParts = path.split(".");
-  for (const part of pathParts) {
-    if (dangerousKeys.includes(part)) {
-      throw new WakeApiServerError("VALIDATION_ERROR", 400, "path contiene claves no permitidas", "path");
-    }
   }
 
   const docId = `${auth.userId}_${req.params.programId}`;
@@ -3026,9 +3056,21 @@ router.get("/workout/client-session-content/:clientSessionId", async (req, res) 
 });
 
 // GET /workout/client-plan-content/:userId/:programId/:weekKey
+//
+// F-API1-18: assert the caller has an ACTIVE enrollment for this programId
+// before returning content. Previously the doc-id was scoped to
+// auth.userId (closing the trivial substitution attack), but a user with
+// expired/cancelled access could still read prior weeks. The status:'active'
+// gate aligns content-read access with billing state.
 router.get("/workout/client-plan-content/:userId/:programId/:weekKey", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const courses = (auth.userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+  const entry = courses[req.params.programId];
+  if (!entry || entry.status !== "active") {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso activo a este programa");
+  }
 
   // Use auth.userId for security regardless of URL param
   const docId = `${auth.userId}_${req.params.programId}_${req.params.weekKey}`;
@@ -3055,9 +3097,39 @@ router.get("/workout/client-plan-content/:userId/:programId/:weekKey", async (re
 });
 
 // GET /workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full
+//
+// F-API1-17: ownership check. Caller must be (a) the plan creator, (b) an
+// admin, or (c) a user whose users/{uid}.courses[*].planAssignments
+// references this planId in any active enrollment. Without the gate, any
+// authed user could enumerate plan ids and fetch every paid plan's full
+// session tree (creator IP exfiltration).
 router.get("/workout/plans/:planId/modules/:moduleId/sessions/:sessionId/full", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const planDoc = await db.collection("plans").doc(req.params.planId).get();
+  if (!planDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+  const planCreatorId = planDoc.data()?.creator_id ?? planDoc.data()?.creatorId;
+
+  let allowed = auth.role === "admin" || planCreatorId === auth.userId;
+  if (!allowed) {
+    const courses = (auth.userData?.courses ?? {}) as Record<string, Record<string, unknown>>;
+    for (const entry of Object.values(courses)) {
+      if (entry.status !== "active") continue;
+      const assigns = (entry.planAssignments ?? {}) as Record<string, {planId?: string}>;
+      if (Object.values(assigns).some((a) => a?.planId === req.params.planId)) {
+        allowed = true; break;
+      }
+      if (entry.content_plan_id === req.params.planId) {
+        allowed = true; break;
+      }
+    }
+  }
+  if (!allowed) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este plan");
+  }
 
   const sessionRef = db
     .collection("plans")

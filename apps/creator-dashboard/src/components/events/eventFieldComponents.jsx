@@ -51,6 +51,14 @@ export function extractAccentFromImage(imageUrl, onAccent) {
   let cancelled = false;
   const img = new Image();
   img.crossOrigin = 'anonymous';
+  // Chrome shares its image cache across CORS modes: if the same URL was
+  // loaded earlier by a plain <img> tag (no crossorigin), the cached
+  // response lacks ACAO and this CORS-mode fetch reuses it, failing the
+  // origin check. A stable cache-buster makes the CORS variant a separate
+  // cache key so the browser fetches fresh and stores the response WITH
+  // ACAO. Bucket-side, ?_cors=1 is an unrecognized query param and is
+  // ignored — Firebase Storage keys on path + alt + token only.
+  const corsUrl = imageUrl + (imageUrl.includes('?') ? '&' : '?') + '_cors=1';
   img.onload = () => {
     if (cancelled) return;
     try {
@@ -82,7 +90,7 @@ export function extractAccentFromImage(imageUrl, onAccent) {
     if (cancelled) return;
     onAccent(null);
   };
-  img.src = imageUrl;
+  img.src = corsUrl;
   return () => { cancelled = true; };
 }
 

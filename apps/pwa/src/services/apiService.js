@@ -325,26 +325,6 @@ class FirestoreService {
   }
 
   /**
-   * Create or update client program
-   * @param {string} userId - User ID
-   * @param {string} programId - Program ID
-   * @param {Object} clientProgramData - Client program data
-   * @returns {Promise<string>} Client program document ID
-   */
-  async setClientProgram(userId, programId, clientProgramData) {
-    const result = await apiClient.post(`/workout/client-programs/${programId}`, clientProgramData);
-    return result?.data?.id;
-  }
-
-  async updateClientProgramOverride(userId, programId, path, value) {
-    await apiClient.patch(`/workout/client-programs/${programId}/overrides`, { path, value });
-  }
-
-  async deleteClientProgram(userId, programId) {
-    await apiClient.delete(`/workout/client-programs/${programId}`);
-  }
-
-  /**
    * Start a free trial for a course by assigning it locally to the user
    * @param {string} userId - User ID
    * @param {string} courseId - Course ID

@@ -4,8 +4,9 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, initializeAuth, browserLocalPersistence, browserPopupRedirectResolver } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { connectAuthEmulator } from 'firebase/auth';
 import { isWeb } from '../utils/platform';
 
 // Production Firebase project: wolf-20b8b
@@ -40,8 +41,14 @@ if (!firebaseConfig.apiKey) {
 const app = initializeApp(firebaseConfig);
 
 // App Check — must run immediately after initializeApp(), before any other service.
-// Key sourced from env; guard lets local dev / emulator run without crashing.
+// F-CFG-05: in production we refuse to start without a site key, so a missing
+// build-time variable can never silently downgrade the PWA to "no App Check"
+// (which would let any client without an App Check token call /api/v1/* once
+// F-MW-01 lands). The escape hatch only fires for staging or the emulator,
+// where test fixtures intentionally don't mint App Check tokens.
 const RECAPTCHA_SITE_KEY = process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY ?? '';
+const isStaging = firebaseEnv === 'staging';
+const isEmulator = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
 
 let appCheck = null;
 if (RECAPTCHA_SITE_KEY) {
@@ -49,6 +56,12 @@ if (RECAPTCHA_SITE_KEY) {
     provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
     isTokenAutoRefreshEnabled: true,
   });
+} else if (!isStaging && !isEmulator) {
+  throw new Error(
+    'EXPO_PUBLIC_RECAPTCHA_SITE_KEY is required in production. ' +
+    'Set it at build time, or run with EXPO_PUBLIC_FIREBASE_ENV=staging / ' +
+    'EXPO_PUBLIC_USE_EMULATOR=true to skip App Check.'
+  );
 }
 
 // Request persistent storage as early as possible (web). Reduces risk of IndexedDB
@@ -90,6 +103,22 @@ try {
 
 const firestore = getFirestore(app);
 const storage = getStorage(app);
+
+// Local-emulator wiring. Activates only when EXPO_PUBLIC_USE_EMULATOR=true.
+// Used by `npm run dev:full` (full local stack — functions + firestore +
+// auth + storage + rules eval). dev:prod / staging builds skip this and
+// hit the real project's services.
+if (isEmulator && isWeb) {
+  try {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+    connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+    connectStorageEmulator(storage, '127.0.0.1', 9199);
+  } catch (err) {
+    // Idempotent — re-rendering in dev can re-run this; ignore the
+    // "already connected" throw.
+    if (!String(err?.message || '').includes('already')) throw err;
+  }
+}
 
 // Export Firebase services
 export { auth, firestore, storage, appCheck };

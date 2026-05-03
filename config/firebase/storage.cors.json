@@ -7,8 +7,11 @@
       "https://wolf-20b8b.firebaseapp.com",
       "https://wake-staging.web.app",
       "https://wake-staging.firebaseapp.com",
+      "http://localhost:3000",
       "http://localhost:5001",
+      "http://localhost:5173",
       "http://localhost:8080",
+      "http://localhost:8081",
       "http://localhost:19006"
     ],
     "method": ["GET", "PUT", "HEAD", "OPTIONS"],

@@ -7,6 +7,7 @@ import {validateBody, pickFields, validateDateFormat} from "../middleware/valida
 import {checkRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
+import {isProgramSnapshot, resolveProgramDay} from "../services/nutritionProgramResolver.js";
 
 const router = Router();
 
@@ -629,7 +630,14 @@ router.get("/nutrition/assignment", async (req, res) => {
     .doc(assignment.id)
     .get();
 
-  const planContent = contentDoc.exists ? contentDoc.data() : assignmentData.planSnapshot ?? assignmentData.plan ?? null;
+  let planContent = contentDoc.exists ? contentDoc.data() : assignmentData.planSnapshot ?? assignmentData.plan ?? null;
+
+  // Program mode: resolve today's day-of-eating from the snapshotted weeks
+  // and substitute the result so the response builder below treats it as a
+  // single-day plan. PWA contract unchanged — same flat shape comes back.
+  if (isProgramSnapshot(planContent)) {
+    planContent = resolveProgramDay(planContent, assignmentData.startDate, date);
+  }
 
   // Build categories array from plan content
   const categories: unknown[] = [];
