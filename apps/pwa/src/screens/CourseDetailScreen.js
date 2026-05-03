@@ -74,8 +74,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [failedImages, setFailedImages] = useState(new Set());
   const scrollX = useRef(new Animated.Value(0)).current;
   const [showTopGradient, setShowTopGradient] = useState(false);
-  const [showModulesTopGradient, setShowModulesTopGradient] = useState(false); // Modules top gradient visibility
-  const [expandedModules, setExpandedModules] = useState(new Set());
   const [processingPurchase, setProcessingPurchase] = useState(false); // Processing purchase flag
   const processingPurchaseRef = useRef(false); // Fix #8: Use ref for timeout
   const postPurchaseFlowTriggeredRef = useRef(false); // Prevent duplicate post-purchase flow
@@ -1533,79 +1531,6 @@ useEffect(() => {
                     </Text>
                   </View>
                 </View>
-
-                {/* Modules Card */}
-                <View style={styles.modulesCard}>
-                  {/* Top gradient - only show when scrolled */}
-                  {showModulesTopGradient && <View style={styles.topGradient} />}
-                  
-                  {/* Fixed Title */}
-                  <Text style={styles.modulesTitle}>Módulos</Text>
-                  
-                  <ScrollView 
-                    style={styles.modulesScrollView}
-                    showsVerticalScrollIndicator={true}
-                    nestedScrollEnabled={true}
-                    onScroll={(event) => {
-                      const scrollY = event.nativeEvent.contentOffset.y;
-                      setShowModulesTopGradient(scrollY > 10);
-                    }}
-                    scrollEventThrottle={16}
-                  >
-                    {modules.length > 0 ? (
-                      modules.map((module, index) => {
-                        const moduleKey = module.id || String(index);
-                        const isExpanded = expandedModules.has(moduleKey);
-                        const hasSessions = Array.isArray(module.sessions) && module.sessions.length > 0;
-                        return (
-                          <View key={moduleKey} style={styles.simpleModuleItem}>
-                            <TouchableOpacity
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                              onPress={() => {
-                                setExpandedModules(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(moduleKey)) next.delete(moduleKey);
-                                  else next.add(moduleKey);
-                                  return next;
-                                });
-                              }}
-                              activeOpacity={hasSessions ? 0.7 : 1}
-                            >
-                              <Text style={[styles.simpleModuleText, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
-                                {module.title || `Módulo ${index + 1}`}{module.description ? `: ${module.description}` : ''}
-                              </Text>
-                              {hasSessions && Platform.OS === 'web' && (
-                                <div className={`wake-module-chevron${isExpanded ? ' rotated' : ''}`}>›</div>
-                              )}
-                            </TouchableOpacity>
-                            {hasSessions && Platform.OS === 'web' && (
-                              <div className={`wake-module-sessions${isExpanded ? ' expanded' : ''}`}>
-                                {module.sessions.map((session, sIdx) => (
-                                  <div key={session.id || sIdx} style={{ paddingVertical: 6, paddingLeft: 8, borderLeft: '2px solid rgba(255,255,255,0.15)', marginTop: 6, marginLeft: 4 }}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
-                                      {session.title || session.name || `Sesión ${sIdx + 1}`}
-                                    </Text>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </View>
-                        );
-                      })
-                    ) : (
-                      <View style={styles.simpleModuleItem}>
-                        <Text style={styles.simpleModuleText}>
-                          No hay módulos disponibles para este programa
-                        </Text>
-                      </View>
-                    )}
-                  </ScrollView>
-                  
-                  {/* Scroll indicator */}
-                  <View style={styles.scrollIndicator}>
-                    <Text style={styles.scrollIndicatorText}>Desliza</Text>
-                  </View>
-                </View>
               </View>
             </ScrollView>
             
@@ -1988,7 +1913,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   infoCardsStackContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(550, screenHeight * 0.70), // Match taller image card height
+    height: Math.max(500, screenHeight * 0.63), // Match image card height exactly
     gap: Math.max(15, screenHeight * 0.02),
     overflow: 'visible', // Ensure shadows are not clipped
   },
@@ -2035,21 +1960,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'center',
-  },
-  modulesCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    flex: 1,
-    overflow: 'visible', // Changed from 'hidden' to match other cards
-    padding: Math.max(20, screenWidth * 0.05),
-    position: 'relative',
   },
   descriptionScrollView: {
     flex: 1,
@@ -2098,32 +2008,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '500',
     color: '#ffffff',
     textAlign: 'center',
-  },
-  modulesScrollView: {
-    flex: 1,
-    paddingBottom: 20, // Add padding to prevent text from being covered by overlay
-  },
-  noModulesText: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginTop: 50,
-  },
-  modulesTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 20,
-  },
-  simpleModuleItem: {
-    marginBottom: 12,
-  },
-  simpleModuleText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#ffffff',
-    lineHeight: 22,
   },
   courseInfoSection: {
     backgroundColor: '#2a2a2a',
