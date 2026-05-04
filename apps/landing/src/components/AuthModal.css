@@ -1,12 +1,12 @@
 /* AuthModal — storefront sign-in / sign-up
-   Bottom-sheet on mobile, centered card on desktop. Dark cinematic. */
+   Centered card on every screen. Dark cinematic. */
 
 .am-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 9000;
   opacity: 0;
   transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -19,46 +19,39 @@
 .am-modal {
   position: fixed;
   z-index: 9001;
+  top: 50%;
+  left: 50%;
+  width: 420px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   background: #1a1a1a;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
   color: rgba(255, 255, 255, 0.95);
   padding: 28px 24px 24px;
   display: flex;
   flex-direction: column;
   opacity: 0;
-  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1), transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translate(-50%, calc(-50% + 6px)) scale(0.98);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 -12px 32px rgba(255, 255, 255, 0.02);
+  transition:
+    opacity 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Desktop: centered card */
-@media (min-width: 641px) {
-  .am-modal {
-    top: 50%;
-    left: 50%;
-    width: 400px;
-    max-width: calc(100vw - 32px);
-    border-radius: 18px;
-    transform: translate(-50%, -50%) scale(0.96);
-  }
-  .am-modal.is-open {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
+.am-modal.is-open {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
-/* Mobile: bottom sheet */
-@media (max-width: 640px) {
+@media (max-width: 480px) {
   .am-modal {
-    bottom: 0;
-    left: 0;
-    right: 0;
-    border-radius: 18px 18px 0 0;
-    transform: translateY(16px);
-    /* Reserve room for the iPhone home indicator. */
-    padding: 24px 20px max(32px, env(safe-area-inset-bottom));
-  }
-  .am-modal.is-open {
-    opacity: 1;
-    transform: translateY(0);
+    width: calc(100vw - 20px);
+    padding: 24px 20px 22px;
+    border-radius: 16px;
   }
 }
 
@@ -102,8 +95,63 @@
 .am-subtitle {
   font-size: 14px;
   color: rgba(255, 255, 255, 0.55);
-  margin: 0 0 24px;
+  margin: 0 0 20px;
   line-height: 1.5;
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────────────── */
+.am-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 4px;
+  margin: 0 0 16px;
+}
+
+.am-tab {
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.am-tab.is-active {
+  background: rgba(255, 255, 255, 0.95);
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.am-tab:not(.is-active):hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.am-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ── Signup explainer ──────────────────────────────────────────────────── */
+.am-explainer {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 16px;
+  line-height: 1.5;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
 }
 
 /* ── Provider buttons ──────────────────────────────────────────────────── */
@@ -111,7 +159,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 8px;
 }
 
 .am-provider-btn {
@@ -127,6 +174,7 @@
   font-weight: 500;
   cursor: pointer;
   text-align: left;
+  font-family: inherit;
   transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -155,51 +203,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 4px;
-}
-
-/* Heading inside the email form announces signup vs signin mode. */
-.am-mode-heading {
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
-  text-align: center;
-}
-
-/* Footer link to switch modes. Sentence + inline button. */
-.am-mode-toggle {
-  margin: 4px 0 0;
-  text-align: center;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.55);
-}
-
-.am-mode-toggle-link {
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  text-decoration-color: rgba(255, 255, 255, 0.25);
-  transition: color 180ms cubic-bezier(0.22, 1, 0.36, 1), text-decoration-color 180ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.am-mode-toggle-link:hover:not(:disabled) {
-  color: #fff;
-  text-decoration-color: rgba(255, 255, 255, 0.6);
-}
-
-.am-mode-toggle-link:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .am-input {
@@ -237,6 +240,7 @@
   border: none;
   cursor: pointer;
   margin-top: 4px;
+  font-family: inherit;
   transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -256,8 +260,9 @@
   font-size: 13px;
   cursor: pointer;
   padding: 8px;
-  margin-top: 4px;
+  margin-top: 2px;
   text-align: center;
+  font-family: inherit;
   transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 

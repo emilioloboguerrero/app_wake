@@ -233,6 +233,36 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
         <h2 id="am-title" className="am-title">{title || 'Continúa para comprar'}</h2>
         {subtitle ? <p className="am-subtitle">{subtitle}</p> : null}
 
+        <div className="am-tabs" role="tablist" aria-label="Cuenta">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'signup'}
+            className={`am-tab ${tab === 'signup' ? 'is-active' : ''}`}
+            onClick={() => { setTab('signup'); setError(null); }}
+            disabled={busy}
+          >
+            Crear cuenta
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'signin'}
+            className={`am-tab ${tab === 'signin' ? 'is-active' : ''}`}
+            onClick={() => { setTab('signin'); setError(null); }}
+            disabled={busy}
+          >
+            Iniciar sesión
+          </button>
+        </div>
+
+        {tab === 'signup' ? (
+          <p className="am-explainer">
+            Te creamos una cuenta de Wake para guardar tu compra y darte
+            acceso al programa desde la app.
+          </p>
+        ) : null}
+
         {!emailMode ? (
           <div className="am-providers">
             <button
@@ -245,7 +275,7 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
               <span className="am-provider-icon" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 11v3.4h4.7c-.2 1.3-1.5 3.7-4.7 3.7-2.8 0-5.1-2.3-5.1-5.1S9.2 7.9 12 7.9c1.6 0 2.7.7 3.3 1.3l2.3-2.2C16.1 5.6 14.2 4.8 12 4.8c-4 0-7.2 3.2-7.2 7.2s3.2 7.2 7.2 7.2c4.2 0 6.9-2.9 6.9-7 0-.5 0-.8-.1-1.2H12z"/></svg>
               </span>
-              Continuar con Google
+              {tab === 'signup' ? 'Crear cuenta con Google' : 'Continuar con Google'}
             </button>
 
             <button
@@ -257,17 +287,13 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
               <span className="am-provider-icon" aria-hidden="true">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>
               </span>
-              Continuar con correo
+              {tab === 'signup' ? 'Crear cuenta con correo' : 'Continuar con correo'}
             </button>
 
             {error ? <p className="am-error" role="alert">{error}</p> : null}
           </div>
         ) : (
           <form className="am-email-form" onSubmit={submitEmail}>
-            <p className="am-mode-heading">
-              {tab === 'signup' ? 'Crea tu cuenta' : 'Inicia sesión'}
-            </p>
-
             {tab === 'signup' ? (
               <input
                 ref={firstFocusRef}
@@ -298,7 +324,7 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
             <input
               type="password"
               className="am-input"
-              placeholder="Contraseña"
+              placeholder={tab === 'signup' ? 'Crea una contraseña' : 'Contraseña'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete={tab === 'signup' ? 'new-password' : 'current-password'}
@@ -311,23 +337,10 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
             {error ? <p className="am-error" role="alert">{error}</p> : null}
 
             <button type="submit" className="am-submit" disabled={busy}>
-              {busy ? 'Procesando…' : tab === 'signup' ? 'Crear cuenta' : 'Iniciar sesión'}
+              {busy
+                ? 'Procesando…'
+                : tab === 'signup' ? 'Crear mi cuenta' : 'Iniciar sesión'}
             </button>
-
-            <p className="am-mode-toggle">
-              {tab === 'signup' ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?'}{' '}
-              <button
-                type="button"
-                className="am-mode-toggle-link"
-                onClick={() => {
-                  setTab((t) => (t === 'signup' ? 'signin' : 'signup'));
-                  setError(null);
-                }}
-                disabled={busy}
-              >
-                {tab === 'signup' ? 'Inicia sesión' : 'Crea una'}
-              </button>
-            </p>
 
             <button
               type="button"
