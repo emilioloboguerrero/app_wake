@@ -1,18 +1,38 @@
-// Nutrition card — front: rings for kcal/macros over a faint image backdrop.
-// Back: macro detail (P/C/F numbers + progress bars) + "Registrar comida" CTA.
+// Nutrition card.
 //
-// Phase 2 wires real values from the user's nutrition plan + today's diary entries.
-import React, { useState } from 'react';
+// Front — modeled after the creator app's right-panel macros block:
+//   • big centered calorie value with "kcal" suffix and a faint "de TARGET" line
+//   • three macro rings (protein/carbs/fat) stacked, each with grams
+//   • the session/coach image sits behind everything at low opacity, and the card's
+//     accent color (extracted from that image) drives ring fills.
+//
+// Back — "Hace 7 días" review:
+//   • one prominent adherence chart (overall %) tinted with the accent
+//   • compact line graphs for calories and each macro vs. target
+//   • "Registrar comida" CTA at the bottom
+//
+// 3D flip on tap (not on the CTA). Both faces share the accent CSS vars.
 
-const TRACK = 'rgba(255,255,255,0.08)';
-const FILL = 'rgba(255,255,255,0.85)';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../contexts/AuthContext';
+import { getDiaryEntriesInRange } from '../services/nutritionFirestoreService';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+const TRACK = 'rgba(255,255,255,0.08)';
+
+const PROTEIN_COLOR = 'rgba(100,200,150,0.85)';
+const CARBS_COLOR = 'rgba(100,160,240,0.85)';
+const FAT_COLOR = 'rgba(240,160,80,0.85)';
+
+const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 
 const styles = {
   outer: {
     width: '100%',
     height: '100%',
-    perspective: 1200,
+    perspective: 2400,
     cursor: 'pointer',
   },
   inner: {
@@ -37,6 +57,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
   },
+
+  // Backdrop image (front only)
   image: {
     position: 'absolute',
     inset: 0,
@@ -47,17 +69,23 @@ const styles = {
     pointerEvents: 'none',
     transition: `opacity 600ms ${SPRING}`,
   },
-  imageLoaded: {
-    opacity: 0.3,
+  imageLoaded: { opacity: 0.22 },
+  imageOverlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(180deg, rgba(26,26,26,0.55) 0%, rgba(26,26,26,0.85) 100%)',
+    pointerEvents: 'none',
   },
-  body: {
+
+  // Front layout
+  frontBody: {
     position: 'absolute',
     inset: 0,
     display: 'flex',
     flexDirection: 'column',
     padding: 28,
     color: '#fff',
-    pointerEvents: 'none',
+    gap: 24,
   },
   kicker: {
     fontSize: 11,
@@ -66,71 +94,78 @@ const styles = {
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.55)',
   },
-  ringWrap: {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringContainer: {
-    position: 'relative',
-    width: 200,
-    height: 200,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringCenter: {
-    position: 'absolute',
-    inset: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-  },
-  ringValue: {
-    fontSize: 42,
-    fontWeight: 600,
-    letterSpacing: -1,
-    lineHeight: 1,
-  },
-  ringUnit: {
-    fontSize: 10,
-    letterSpacing: 1.8,
-    textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.45)',
-    marginTop: 6,
-  },
-  ringTarget: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 2,
-  },
-  macroRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingTop: 12,
-  },
-  macroCell: {
-    flex: 1,
+
+  caloriesBlock: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 6,
+    paddingTop: 8,
   },
-  macroValue: {
-    fontSize: 14,
+  caloriesRow: {
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  caloriesValue: {
+    fontSize: 56,
+    fontWeight: 800,
+    letterSpacing: -1.5,
+    lineHeight: 1,
+    color: '#fff',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  caloriesUnit: {
+    fontSize: 13,
     fontWeight: 600,
-    color: 'rgba(255,255,255,0.9)',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 0.4,
   },
-  macroLabel: {
+  caloriesTarget: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: 0.2,
+    fontVariantNumeric: 'tabular-nums',
+  },
+
+  ringsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  ringRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 14,
+  },
+  ringInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    flex: 1,
+    minWidth: 0,
+  },
+  ringLabel: {
     fontSize: 10,
-    letterSpacing: 1.2,
+    fontWeight: 700,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.5)',
   },
+  ringGrams: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: '#fff',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  ringTarget: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.4)',
+    fontVariantNumeric: 'tabular-nums',
+  },
+
   expiredBadge: {
     position: 'absolute',
     top: 16,
@@ -148,14 +183,15 @@ const styles = {
     zIndex: 2,
   },
 
-  // Back face
+  // Back layout
   backBody: {
     padding: 24,
     display: 'flex',
     flexDirection: 'column',
     flex: 1,
     color: '#fff',
-    gap: 24,
+    gap: 18,
+    minHeight: 0,
   },
   backHeader: {
     display: 'flex',
@@ -168,53 +204,63 @@ const styles = {
     letterSpacing: -0.3,
     color: '#fff',
   },
-  detailList: {
+  chartsBlock: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 18,
+    gap: 14,
     flex: 1,
+    minHeight: 0,
   },
-  detailRow: {
+  chart: {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
   },
-  detailHead: {
+  chartHeader: {
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'baseline',
+    justifyContent: 'space-between',
   },
-  detailLabel: {
-    fontSize: 12,
+  chartLabel: {
+    fontSize: 11,
     fontWeight: 600,
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.3,
   },
-  detailValue: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  detailValueStrong: {
+  chartScore: {
+    fontSize: 16,
+    fontWeight: 700,
     color: '#fff',
+    fontVariantNumeric: 'tabular-nums',
+    letterSpacing: -0.2,
+  },
+  chartScoreEmpty: {
+    color: 'rgba(255,255,255,0.35)',
     fontWeight: 600,
+    fontSize: 12,
   },
-  bar: {
-    height: 3,
+  chartPlot: {
     width: '100%',
-    backgroundColor: TRACK,
-    borderRadius: 2,
-    overflow: 'hidden',
+    display: 'block',
   },
-  barFill: {
-    height: '100%',
-    backgroundColor: FILL,
-    borderRadius: 2,
-    transition: `width 600ms ${SPRING}`,
+  miniRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: 10,
   },
-  beginRow: {
+  miniChart: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    gap: 4,
   },
+  miniLabel: {
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.5)',
+  },
+
   beginButton: {
     height: 56,
     width: '100%',
@@ -227,44 +273,25 @@ const styles = {
     border: 'none',
     cursor: 'pointer',
   },
-  flipHint: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    textAlign: 'center',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
 };
 
 const formatNumber = (n) => Math.round(Number(n || 0)).toLocaleString('es-CO');
 const clampPct = (n, t) => (t > 0 ? Math.min(1, Math.max(0, n / t)) : 0);
 
-const polarToCartesian = (cx, cy, r, angleDeg) => {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-};
-
-const arcPath = (cx, cy, r, startAngle, sweepAngle) => {
-  const end = startAngle + sweepAngle;
-  const start = polarToCartesian(cx, cy, r, startAngle);
-  const endPt = polarToCartesian(cx, cy, r, end);
-  const largeArc = sweepAngle > 180 ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${endPt.x} ${endPt.y}`;
-};
-
-const FullRing = ({ size, stroke, value, target }) => {
+// ── Macro ring ────────────────────────────────────────────────────────────
+const MacroRing = ({ size = 60, stroke = 5, value, target, color }) => {
   const center = size / 2;
   const r = center - stroke / 2;
   const c = 2 * Math.PI * r;
   const pct = clampPct(value, target);
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
       <circle cx={center} cy={center} r={r} stroke={TRACK} strokeWidth={stroke} fill="none" />
       <circle
         cx={center}
         cy={center}
         r={r}
-        stroke={FILL}
+        stroke={color}
         strokeWidth={stroke}
         fill="none"
         strokeDasharray={c}
@@ -277,54 +304,162 @@ const FullRing = ({ size, stroke, value, target }) => {
   );
 };
 
-const HalfRing = ({ size, stroke, value, target }) => {
-  const center = size / 2;
-  const r = center - stroke / 2;
-  const pct = clampPct(value, target);
-  const trackPath = arcPath(center, center, r, -90, 180);
-  const halfCircumference = Math.PI * r;
+const MacroRow = ({ label, value, target, color }) => (
+  <div style={styles.ringRow}>
+    <MacroRing size={60} stroke={5} value={value} target={target} color={color} />
+    <div style={styles.ringInfo}>
+      <span style={styles.ringLabel}>{label}</span>
+      <span style={styles.ringGrams}>{formatNumber(value)} g</span>
+      <span style={styles.ringTarget}>de {formatNumber(target)} g</span>
+    </div>
+  </div>
+);
+
+// ── Line graph (matches WeekCoachCard's visual language) ─────────────────
+const LineGraph = ({ points, height = 40, accent = true }) => {
+  const W = 100;
+  const H = height;
+  const PAD_X = 3;
+  const PAD_Y = 4;
+  const n = points.length;
+  if (n === 0) return null;
+  const xFor = (i) => (n <= 1 ? W / 2 : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X));
+  const yFor = (v) => PAD_Y + (1 - v) * (H - 2 * PAD_Y);
+
+  const segments = [];
+  let current = [];
+  points.forEach((p, i) => {
+    if (p.value == null) {
+      if (current.length > 0) segments.push(current);
+      current = [];
+      return;
+    }
+    current.push({ x: xFor(i), y: yFor(p.value), i });
+  });
+  if (current.length > 0) segments.push(current);
+
+  const stroke = accent ? 'var(--accent, rgba(255,255,255,0.9))' : 'rgba(255,255,255,0.85)';
+  const areaFill = accent ? 'var(--accent, rgba(255,255,255,0.85))' : 'rgba(255,255,255,0.85)';
+
   return (
-    <svg width={size} height={size / 2 + stroke / 2} viewBox={`0 0 ${size} ${size / 2 + stroke / 2}`}>
-      <path d={trackPath} stroke={TRACK} strokeWidth={stroke} fill="none" strokeLinecap="round" />
-      <path
-        d={trackPath}
-        stroke={FILL}
-        strokeWidth={stroke}
-        fill="none"
-        strokeLinecap="round"
-        strokeDasharray={halfCircumference}
-        strokeDashoffset={halfCircumference * (1 - pct)}
-        style={{ transition: `stroke-dashoffset 700ms ${SPRING}` }}
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ ...styles.chartPlot, height }} aria-hidden>
+      <line
+        x1={0}
+        y1={H - PAD_Y}
+        x2={W}
+        y2={H - PAD_Y}
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth={0.4}
+        vectorEffect="non-scaling-stroke"
       />
+      {segments.map((seg, idx) => {
+        if (seg.length < 2) return null;
+        const first = seg[0];
+        const last = seg[seg.length - 1];
+        const areaPath =
+          `M ${first.x},${H - PAD_Y} ` +
+          `L ${seg.map((p) => `${p.x},${p.y}`).join(' L ')} ` +
+          `L ${last.x},${H - PAD_Y} Z`;
+        return <path key={`a-${idx}`} d={areaPath} fill={areaFill} fillOpacity={0.18} />;
+      })}
+      {segments.map((seg, idx) => {
+        if (seg.length < 2) return null;
+        const linePath = `M ${seg.map((p) => `${p.x},${p.y}`).join(' L ')}`;
+        return (
+          <path
+            key={`l-${idx}`}
+            d={linePath}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={1.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
+      {points.map((p, i) => {
+        if (p.value == null) return null;
+        const x = xFor(i);
+        const y = yFor(p.value);
+        const r = p.isToday ? 1.8 : 1.1;
+        return (
+          <g key={`pt-${i}`}>
+            {p.isToday ? <circle cx={x} cy={y} r={3.2} fill={stroke} fillOpacity={0.18} /> : null}
+            <circle cx={x} cy={y} r={r} fill={p.isToday ? stroke : '#fff'} />
+          </g>
+        );
+      })}
     </svg>
   );
 };
 
-const MacroCell = ({ label, value, target }) => (
-  <div style={styles.macroCell}>
-    <HalfRing size={64} stroke={3} value={value} target={target} />
-    <span style={styles.macroValue}>{formatNumber(value)}g</span>
-    <span style={styles.macroLabel}>{label}</span>
-  </div>
-);
-
-const DetailRow = ({ label, value, target, unit = 'g' }) => {
-  const pct = clampPct(value, target) * 100;
+const AdherenceLineChart = ({ label, score, points, height = 56 }) => {
+  const hasScore = typeof score === 'number' && Number.isFinite(score);
   return (
-    <div style={styles.detailRow}>
-      <div style={styles.detailHead}>
-        <span style={styles.detailLabel}>{label}</span>
-        <span style={styles.detailValue}>
-          <span style={styles.detailValueStrong}>{formatNumber(value)}{unit}</span> de {formatNumber(target)}{unit}
-        </span>
+    <div style={styles.chart}>
+      <div style={styles.chartHeader}>
+        <span style={styles.chartLabel}>{label}</span>
+        {hasScore ? (
+          <span style={styles.chartScore}>{Math.max(0, Math.min(100, score))}%</span>
+        ) : (
+          <span style={styles.chartScoreEmpty}>—</span>
+        )}
       </div>
-      <div style={styles.bar}>
-        <div style={{ ...styles.barFill, width: `${pct}%` }} />
-      </div>
+      <LineGraph points={points} height={height} accent />
     </div>
   );
 };
 
+const MiniLineChart = ({ label, points, color }) => (
+  <div style={styles.miniChart}>
+    <span style={styles.miniLabel}>{label}</span>
+    <svg viewBox="0 0 100 24" preserveAspectRatio="none" style={{ width: '100%', height: 24 }} aria-hidden>
+      {(() => {
+        const pts = points.map((p, i) => ({
+          x: 3 + (i / Math.max(1, points.length - 1)) * 94,
+          y: p.value == null ? null : 4 + (1 - p.value) * 16,
+          isToday: p.isToday,
+        }));
+        const segments = [];
+        let cur = [];
+        pts.forEach((p) => {
+          if (p.y == null) { if (cur.length) segments.push(cur); cur = []; }
+          else cur.push(p);
+        });
+        if (cur.length) segments.push(cur);
+        return (
+          <>
+            {segments.map((seg, i) => {
+              if (seg.length < 2) return null;
+              const d = `M ${seg.map((p) => `${p.x},${p.y}`).join(' L ')}`;
+              return (
+                <path
+                  key={i}
+                  d={d}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={1.4}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })}
+          </>
+        );
+      })()}
+    </svg>
+  </div>
+);
+
+// ── Date helpers ──────────────────────────────────────────────────────────
+const toYYYYMMDD = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isSameDay = (a, b) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+// ── Component ─────────────────────────────────────────────────────────────
 const TodayNutritionCard = ({
   imageUrl,
   nutritionPlanName,
@@ -339,19 +474,106 @@ const TodayNutritionCard = ({
   isExpired = false,
   onLogMeal,
 }) => {
+  const { user } = useAuth();
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const handleFlip = (e) => {
-    e?.stopPropagation?.();
-    setFlipped((f) => !f);
-  };
-  const handleLogMeal = (e) => {
-    e?.stopPropagation?.();
-    onLogMeal?.();
-  };
+  const accent = useAccentFromImage(imageUrl);
+  const accentVarsStyle = accent
+    ? {
+        '--accent': accent.accent,
+        '--accent-r': accent.accentR,
+        '--accent-g': accent.accentG,
+        '--accent-b': accent.accentB,
+        '--accent-text': accent.accentText,
+      }
+    : {};
+
+  const handleFlip = (e) => { e?.stopPropagation?.(); setFlipped((f) => !f); };
+  const handleLogMeal = (e) => { e?.stopPropagation?.(); onLogMeal?.(); };
+
+  // Last 7 days ending today.
+  const { weekDays, startYmd, endYmd, todayIndex } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(today.getDate() - 6 + i);
+      return d;
+    });
+    return {
+      weekDays: days,
+      startYmd: toYYYYMMDD(days[0]),
+      endYmd: toYYYYMMDD(days[6]),
+      todayIndex: 6,
+    };
+  }, []);
+
+  const enabledForWeek = !!user?.uid && flipped; // only fetch when the back face is shown
+  const { data: weekEntries } = useQuery({
+    queryKey: ['hoy', 'nutritionWeek', user?.uid, startYmd, endYmd],
+    queryFn: () => getDiaryEntriesInRange(user.uid, startYmd, endYmd),
+    enabled: enabledForWeek,
+    staleTime: 60 * 1000,
+  });
+
+  const { adherencePoints, caloriesPoints, proteinPoints, carbsPoints, fatPoints, adherenceScore } = useMemo(() => {
+    const byDay = new Map();
+    (weekEntries || []).forEach((e) => {
+      const ymd = String(e.date || '').slice(0, 10);
+      if (!ymd) return;
+      const acc = byDay.get(ymd) || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      acc.calories += Number(e.calories) || 0;
+      acc.protein += Number(e.protein) || 0;
+      acc.carbs += Number(e.carbs) || 0;
+      acc.fat += Number(e.fat) || 0;
+      byDay.set(ymd, acc);
+    });
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const ad = [];
+    const cal = [];
+    const prot = [];
+    const carb = [];
+    const fat = [];
+
+    weekDays.forEach((d, i) => {
+      const ymd = toYYYYMMDD(d);
+      const totals = byDay.get(ymd) || { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      const isToday = isSameDay(d, today);
+      const label = DAY_LABELS[(d.getDay() + 6) % 7];
+      // Per-day adherence is the avg of capped ratios across the four targets we have.
+      const ratios = [];
+      if (caloriesTarget > 0) ratios.push(clampPct(totals.calories, caloriesTarget));
+      if (proteinTarget > 0) ratios.push(clampPct(totals.protein, proteinTarget));
+      if (carbsTarget > 0) ratios.push(clampPct(totals.carbs, carbsTarget));
+      if (fatTarget > 0) ratios.push(clampPct(totals.fat, fatTarget));
+      const adherence = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null;
+      ad.push({ label, value: adherence, isToday });
+      cal.push({ label, value: caloriesTarget > 0 ? clampPct(totals.calories, caloriesTarget) : null, isToday });
+      prot.push({ label, value: proteinTarget > 0 ? clampPct(totals.protein, proteinTarget) : null, isToday });
+      carb.push({ label, value: carbsTarget > 0 ? clampPct(totals.carbs, carbsTarget) : null, isToday });
+      fat.push({ label, value: fatTarget > 0 ? clampPct(totals.fat, fatTarget) : null, isToday });
+    });
+
+    const validAdherence = ad.slice(0, todayIndex + 1).filter((p) => p.value != null);
+    const score = validAdherence.length
+      ? Math.round((validAdherence.reduce((a, b) => a + b.value, 0) / validAdherence.length) * 100)
+      : null;
+
+    return {
+      adherencePoints: ad,
+      caloriesPoints: cal,
+      proteinPoints: prot,
+      carbsPoints: carb,
+      fatPoints: fat,
+      adherenceScore: score,
+    };
+  }, [weekEntries, weekDays, caloriesTarget, proteinTarget, carbsTarget, fatTarget, todayIndex]);
 
   return (
-    <div style={styles.outer} role="button" tabIndex={0}>
+    <div style={{ ...styles.outer, ...accentVarsStyle }} role="button" tabIndex={0}>
       <div style={{ ...styles.inner, transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
         {/* FRONT */}
         <div style={styles.face} onClick={handleFlip}>
@@ -363,22 +585,22 @@ const TodayNutritionCard = ({
               onLoad={() => setImageLoaded(true)}
             />
           ) : null}
-          <div style={styles.body}>
+          <div style={styles.imageOverlay} />
+          <div style={styles.frontBody}>
             {nutritionPlanName ? <span style={styles.kicker}>{nutritionPlanName}</span> : null}
-            <div style={styles.ringWrap}>
-              <div style={styles.ringContainer}>
-                <FullRing size={200} stroke={4} value={caloriesConsumed} target={caloriesTarget} />
-                <div style={styles.ringCenter}>
-                  <span style={styles.ringValue}>{formatNumber(caloriesConsumed)}</span>
-                  <span style={styles.ringUnit}>kcal</span>
-                  <span style={styles.ringTarget}>de {formatNumber(caloriesTarget)}</span>
-                </div>
+
+            <div style={styles.caloriesBlock}>
+              <div style={styles.caloriesRow}>
+                <span style={styles.caloriesValue}>{formatNumber(caloriesConsumed)}</span>
+                <span style={styles.caloriesUnit}>kcal</span>
               </div>
+              <span style={styles.caloriesTarget}>de {formatNumber(caloriesTarget)} kcal</span>
             </div>
-            <div style={styles.macroRow}>
-              <MacroCell label="Proteína" value={proteinConsumed} target={proteinTarget} />
-              <MacroCell label="Carbs" value={carbsConsumed} target={carbsTarget} />
-              <MacroCell label="Grasas" value={fatConsumed} target={fatTarget} />
+
+            <div style={styles.ringsList}>
+              <MacroRow label="Proteína" value={proteinConsumed} target={proteinTarget} color={PROTEIN_COLOR} />
+              <MacroRow label="Carbohidratos" value={carbsConsumed} target={carbsTarget} color={CARBS_COLOR} />
+              <MacroRow label="Grasa" value={fatConsumed} target={fatTarget} color={FAT_COLOR} />
             </div>
           </div>
           {isExpired ? <div style={styles.expiredBadge}>Expirado</div> : null}
@@ -389,22 +611,37 @@ const TodayNutritionCard = ({
           <div style={styles.backBody}>
             <div style={styles.backHeader}>
               {nutritionPlanName ? <span style={styles.kicker}>{nutritionPlanName}</span> : null}
-              <span style={styles.backTitle}>Detalle de hoy</span>
+              <span style={styles.backTitle}>Hace 7 días</span>
             </div>
 
-            <div style={styles.detailList}>
-              <DetailRow label="Calorías" value={caloriesConsumed} target={caloriesTarget} unit=" kcal" />
-              <DetailRow label="Proteína" value={proteinConsumed} target={proteinTarget} />
-              <DetailRow label="Carbs" value={carbsConsumed} target={carbsTarget} />
-              <DetailRow label="Grasas" value={fatConsumed} target={fatTarget} />
+            <div style={styles.chartsBlock}>
+              <AdherenceLineChart label="Adherencia" score={adherenceScore} points={adherencePoints} height={56} />
+              <AdherenceLineChart
+                label="Calorías"
+                score={
+                  caloriesTarget > 0 && caloriesPoints.length
+                    ? Math.round(
+                        (caloriesPoints.slice(0, todayIndex + 1)
+                          .filter((p) => p.value != null)
+                          .reduce((a, b) => a + b.value, 0) /
+                          Math.max(1, caloriesPoints.slice(0, todayIndex + 1).filter((p) => p.value != null).length)) *
+                          100,
+                      )
+                    : null
+                }
+                points={caloriesPoints}
+                height={48}
+              />
+              <div style={styles.miniRow}>
+                <MiniLineChart label="Proteína" points={proteinPoints} color={PROTEIN_COLOR} />
+                <MiniLineChart label="Carbs" points={carbsPoints} color={CARBS_COLOR} />
+                <MiniLineChart label="Grasa" points={fatPoints} color={FAT_COLOR} />
+              </div>
             </div>
 
-            <div style={styles.beginRow}>
-              <button style={styles.beginButton} onClick={handleLogMeal}>
-                Registrar comida
-              </button>
-              <span style={styles.flipHint}>Toca la tarjeta para volver</span>
-            </div>
+            <button style={styles.beginButton} onClick={handleLogMeal}>
+              Registrar comida
+            </button>
           </div>
         </div>
       </div>

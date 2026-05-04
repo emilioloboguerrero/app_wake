@@ -1,0 +1,766 @@
+// Public, unauthenticated storefront endpoints.
+//
+// `wakelab.co/{username}` and `wakelab.co/{username}/{programId}` consume
+// these. CDN-cached aggressively so high traffic from IG bio links does not
+// translate to Firestore reads.
+//
+// Strict response shaping — never spread the raw doc. Drafts and unpublished
+// programs MUST be filtered out before they leave the function.
+
+import {Router} from "express";
+import type {Request, Response} from "express";
+import * as functions from "firebase-functions";
+import {Preference, PreApproval} from "mercadopago";
+import {db, FieldValue} from "../firestore.js";
+import {validateAuth} from "../middleware/auth.js";
+import {checkRateLimit} from "../middleware/rateLimit.js";
+import {validateBody} from "../middleware/validate.js";
+import {safeErrorPayload, redactEmailForLog} from "../middleware/securityHelpers.js";
+import {WakeApiServerError} from "../errors.js";
+import {
+  EMAIL_RE,
+  buildExternalReference,
+  getClient,
+  type MercadoPagoPreapproval,
+} from "../services/paymentHelpers.js";
+
+const router = Router();
+
+const USERNAME_RE = /^[a-z0-9_-]{1,50}$/;
+const COURSE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// MP preapproval IDs are short alphanumerics; assert the shape before using as a
+// Firestore doc ID so a malformed value can't traverse subcollection paths.
+const MP_RESULT_ID_RE = /^[A-Za-z0-9_-]{6,128}$/;
+// Single 404 message for every storefront miss — no creator vs no-published-
+// programs vs program-not-owned must be indistinguishable to defeat
+// enumeration oracles.
+const STOREFRONT_NOT_FOUND = "No encontramos esta página";
+
+const STOREFRONT_CACHE_HEADER =
+  "public, max-age=60, s-maxage=300, stale-while-revalidate=86400";
+
+function setStorefrontCache(res: Response): void {
+  res.setHeader("Cache-Control", STOREFRONT_CACHE_HEADER);
+  // Vary on Origin so CORS responses cache per origin. Don't vary on Accept —
+  // the response is JSON regardless of the request's Accept header, and adding
+  // it shreds the CDN hit rate.
+  res.setHeader("Vary", "Origin");
+}
+
+interface PublicCreator {
+  username: string;
+  displayName: string;
+  bio: string | null;
+  profilePictureUrl: string | null;
+  websiteUrl: string | null;
+  socialLinks: Record<string, string> | null;
+  city: string | null;
+  country: string | null;
+}
+
+function shapePublicCreator(
+  data: Record<string, unknown>,
+  username: string
+): PublicCreator | null {
+  const displayName = (data.displayName as string) ??
+    (data.name as string) ?? null;
+  if (!displayName) return null;
+  const social = data.socialLinks;
+  const cityRaw = typeof data.city === "string" ? data.city.trim() : "";
+  const countryRaw = typeof data.country === "string" ? data.country.trim() : "";
+  return {
+    username,
+    displayName,
+    bio: (data.bio as string) ?? null,
+    profilePictureUrl:
+      (data.profilePictureUrl as string) ??
+      (data.profile_picture_url as string) ??
+      null,
+    websiteUrl: (data.websiteUrl as string) ?? null,
+    socialLinks:
+      social && typeof social === "object" && !Array.isArray(social) ?
+        (social as Record<string, string>) :
+        null,
+    city: cityRaw || null,
+    country: countryRaw || null,
+  };
+}
+
+interface PublicProgramCard {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  deliveryType: string;
+  discipline: string | null;
+  durationWeeks: number | null;
+  price: number | null;
+  subscriptionPrice: number | null;
+  currency: string | null;
+  freeTrial: boolean;
+  // What the program includes — drives the storefront card pills.
+  // hasTraining: every general/low-ticket program ships with a workout
+  //   structure, so this is true by default. Carved out as a flag so a future
+  //   "nutrition-only" deliveryType can opt out without reshaping the card.
+  // hasNutrition: a non-empty `content_plan_id` means a nutrition plan is
+  //   bundled with the program.
+  hasTraining: boolean;
+  hasNutrition: boolean;
+}
+
+function shapePublicProgramCard(
+  id: string,
+  data: Record<string, unknown>
+): PublicProgramCard {
+  const contentPlanId = data.content_plan_id;
+  const hasNutrition =
+    typeof contentPlanId === "string" && contentPlanId.trim().length > 0;
+  return {
+    id,
+    title: (data.title as string) ?? "Programa",
+    imageUrl: (data.image_url as string) ?? null,
+    deliveryType: (data.deliveryType as string) ?? "general",
+    discipline: (data.discipline as string) ?? null,
+    durationWeeks:
+      typeof data.duration_weeks === "number" ?
+        (data.duration_weeks as number) :
+        null,
+    price: typeof data.price === "number" ? (data.price as number) : null,
+    subscriptionPrice:
+      typeof data.subscription_price === "number" ?
+        (data.subscription_price as number) :
+        null,
+    currency: (data.currency as string) ?? null,
+    freeTrial: data.free_trial === true,
+    hasTraining: true,
+    hasNutrition,
+  };
+}
+
+interface PublicProgramDetail extends PublicProgramCard {
+  description: string | null;
+  videoIntroUrl: string | null;
+  duration: string | null;
+  tags: string[] | null;
+}
+
+function shapePublicProgramDetail(
+  id: string,
+  data: Record<string, unknown>
+): PublicProgramDetail {
+  return {
+    ...shapePublicProgramCard(id, data),
+    description: (data.description as string) ?? null,
+    videoIntroUrl: (data.video_intro_url as string) ?? null,
+    duration: (data.duration as string) ?? null,
+    tags: Array.isArray(data.tags) ? (data.tags as string[]) : null,
+  };
+}
+
+async function lookupCreatorByUsername(
+  rawUsername: string
+): Promise<{userId: string; data: Record<string, unknown>} | null> {
+  const normalized = rawUsername.toLowerCase().trim();
+  if (!USERNAME_RE.test(normalized)) return null;
+
+  const snapshot = await db
+    .collection("users")
+    .where("username", "==", normalized)
+    .limit(1)
+    .get();
+
+  if (snapshot.empty) return null;
+
+  const doc = snapshot.docs[0];
+  const data = doc.data();
+  if (data.role !== "creator" && data.role !== "admin") return null;
+
+  return {userId: doc.id, data};
+}
+
+// GET /public/creators/:username
+//
+// Returns the creator profile + grouped published programs. 404 if username
+// not found, not a creator, or has zero published programs (no storefront
+// without published content).
+router.get(
+  "/public/creators/:username",
+  async (req: Request, res: Response) => {
+    const usernameParam = req.params.username || "";
+    const lookup = await lookupCreatorByUsername(usernameParam);
+    if (!lookup) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+
+    const creator = shapePublicCreator(lookup.data, usernameParam.toLowerCase().trim());
+    if (!creator) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+
+    const programsSnap = await db
+      .collection("courses")
+      .where("creator_id", "==", lookup.userId)
+      .where("status", "==", "published")
+      .limit(100)
+      .get();
+
+    const general: PublicProgramCard[] = [];
+    const oneOnOne: PublicProgramCard[] = [];
+
+    for (const doc of programsSnap.docs) {
+      const card = shapePublicProgramCard(doc.id, doc.data());
+      if (card.deliveryType === "one_on_one") {
+        oneOnOne.push(card);
+      } else {
+        general.push(card);
+      }
+    }
+
+    if (general.length === 0 && oneOnOne.length === 0) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+
+    setStorefrontCache(res);
+    res.json({
+      data: {
+        creator,
+        programs: {general, oneOnOne},
+      },
+    });
+  }
+);
+
+// GET /public/creators/:username/programs/:programId
+//
+// Returns the creator + a single published program. Validates the program
+// belongs to the creator AND is published — never returns drafts even if the
+// caller knows the ID.
+router.get(
+  "/public/creators/:username/programs/:programId",
+  async (req: Request, res: Response) => {
+    const usernameParam = req.params.username || "";
+    const programId = req.params.programId || "";
+
+    if (!COURSE_ID_RE.test(programId)) {
+      // Use the same 404 message as a missing program — never reveal that the
+      // ID was malformed vs nonexistent.
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+
+    const lookup = await lookupCreatorByUsername(usernameParam);
+    if (!lookup) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+    const creator = shapePublicCreator(lookup.data, usernameParam.toLowerCase().trim());
+    if (!creator) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+
+    const programDoc = await db.collection("courses").doc(programId).get();
+    if (!programDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+    const programData = programDoc.data() ?? {};
+
+    if (programData.creator_id !== lookup.userId) {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+    if (programData.status !== "published") {
+      throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+    }
+
+    setStorefrontCache(res);
+    res.json({
+      data: {
+        creator,
+        program: shapePublicProgramDetail(programDoc.id, programData),
+      },
+    });
+  }
+);
+
+// GET /public/storefront/creators
+//
+// Public directory of every creator with at least one published program.
+// Powers the wakelab.co/tienda landing page; each card links into the
+// existing per-creator storefront at wakelab.co/{username}.
+//
+// Strategy: query published courses once, group by creator_id, then batch
+// `db.getAll` the corresponding user docs in a single round-trip. Filtering
+// upward from "has published programs" matches the per-creator endpoint's
+// invariant — a creator with zero published content never appears.
+router.get(
+  "/public/storefront/creators",
+  async (_req: Request, res: Response) => {
+    const programsSnap = await db
+      .collection("courses")
+      .where("status", "==", "published")
+      .select("creator_id")
+      .limit(500)
+      .get();
+
+    const counts = new Map<string, number>();
+    for (const doc of programsSnap.docs) {
+      const creatorId = doc.get("creator_id");
+      if (typeof creatorId !== "string" || !creatorId) continue;
+      counts.set(creatorId, (counts.get(creatorId) ?? 0) + 1);
+    }
+
+    if (counts.size === 0) {
+      setStorefrontCache(res);
+      res.json({data: {creators: []}});
+      return;
+    }
+
+    const refs = Array.from(counts.keys()).map((id) =>
+      db.collection("users").doc(id)
+    );
+    const userDocs = await db.getAll(...refs);
+
+    const creators: Array<PublicCreator & {programCount: number}> = [];
+    for (const doc of userDocs) {
+      if (!doc.exists) continue;
+      const data = doc.data() ?? {};
+      if (data.role !== "creator" && data.role !== "admin") continue;
+      const username = data.username;
+      if (typeof username !== "string" || !USERNAME_RE.test(username)) continue;
+      const shaped = shapePublicCreator(data, username);
+      if (!shaped) continue;
+      creators.push({...shaped, programCount: counts.get(doc.id) ?? 0});
+    }
+
+    creators.sort((a, b) =>
+      a.displayName.localeCompare(b.displayName, "es", {sensitivity: "base"})
+    );
+
+    setStorefrontCache(res);
+    res.json({data: {creators}});
+  }
+);
+
+// ─── Storefront checkout ───────────────────────────────────────────────────
+//
+// POST /public/checkout/start
+//
+// Auth required (Firebase ID token). The visitor just signed in / signed up
+// in the landing app's auth modal; this endpoint:
+//   1. Validates the program is published AND owned by the named creator.
+//   2. Bootstraps the user doc with storefront-acquisition flags so the PWA
+//      can defer onboarding on first entry.
+//   3. Initiates MercadoPago checkout (one-time or subscription) and returns
+//      the init_point URL.
+
+const STOREFRONT_REDIRECT_ALLOWED_ORIGINS = new Set([
+  "https://wakelab.co",
+  "https://www.wakelab.co",
+  "https://wolf-20b8b.web.app",
+  "https://wolf-20b8b.firebaseapp.com",
+  "https://wake-staging.web.app",
+  "https://wake-staging.firebaseapp.com",
+]);
+const STOREFRONT_REDIRECT_DEFAULT = "https://wakelab.co";
+
+// Programs sold via the storefront. `one_on_one` is intentionally excluded —
+// those go through booking, not direct checkout. Anything else (future
+// `bundle`, `event`, etc.) must be opted in here explicitly.
+const STOREFRONT_SELLABLE_DELIVERY_TYPES = new Set(["low_ticket", "general"]);
+
+// Pending subscriptions younger than this window short-circuit to the existing
+// init_point on retry instead of minting a new MP preapproval — defends
+// against double-click double-charges.
+const SUBSCRIPTION_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+
+function resolveStorefrontBase(req: Request): string {
+  const origin = req.get("origin");
+  if (origin && STOREFRONT_REDIRECT_ALLOWED_ORIGINS.has(origin)) return origin;
+  // Fall back to the request's host when the origin is missing/unknown
+  // (mobile WebViews strip origin on same-origin POST). Only use the host if it
+  // is itself one of our allowed origins; otherwise default to production.
+  const host = req.get("host");
+  if (host) {
+    const candidate = `https://${host}`;
+    if (STOREFRONT_REDIRECT_ALLOWED_ORIGINS.has(candidate)) return candidate;
+  }
+  return STOREFRONT_REDIRECT_DEFAULT;
+}
+
+function getMpClient() {
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!token) {
+    throw new WakeApiServerError(
+      "SERVICE_UNAVAILABLE", 503, "Servicio de pagos no configurado"
+    );
+  }
+  return getClient(token);
+}
+
+// MP rejects titles longer than ~256 chars with an opaque error; pre-truncate
+// so we either succeed cleanly or surface a precise validation message.
+function truncateMpTitle(raw: string | undefined, fallback: string): string {
+  const value = (raw && raw.trim()) || fallback;
+  return value.length > 200 ? value.slice(0, 197) + "…" : value;
+}
+
+router.post("/public/checkout/start", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
+
+  const body = validateBody<{
+    username: string;
+    courseId: string;
+    mode: "one_time" | "subscription";
+    payerEmail?: string;
+  }>(
+    {
+      username: "string",
+      courseId: "string",
+      mode: "string",
+      // CR-5: must be declared in the schema or validateBody strips it,
+      // breaking the alternate-email retry flow.
+      payerEmail: "optional_string",
+    },
+    req.body
+  );
+
+  const username = (body.username || "").toLowerCase().trim();
+  if (!USERNAME_RE.test(username)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "username inválido", "username");
+  }
+  if (!COURSE_ID_RE.test(body.courseId)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
+  }
+  if (body.mode !== "one_time" && body.mode !== "subscription") {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "mode debe ser one_time o subscription", "mode");
+  }
+
+  // Resolve creator
+  const creatorLookup = await lookupCreatorByUsername(username);
+  if (!creatorLookup) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+
+  // Resolve course; must be published AND owned by the named creator
+  const courseDoc = await db.collection("courses").doc(body.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const course = courseDoc.data() ?? {};
+  if (course.creator_id !== creatorLookup.userId || course.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  // Allowlist of delivery types the storefront sells. `!== one_on_one` was
+  // wrong: any future delivery type would silently fall through to checkout.
+  // Match the listing endpoint's default ("general") so a program missing the
+  // field — which still appears on the storefront card — doesn't fail checkout.
+  const courseDeliveryType =
+    typeof course.deliveryType === "string" && course.deliveryType.trim() ?
+      course.deliveryType :
+      "general";
+  if (!STOREFRONT_SELLABLE_DELIVERY_TYPES.has(courseDeliveryType)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Este programa no se vende por la tienda"
+    );
+  }
+  // Fail fast if the course is misconfigured: without access_duration the
+  // payment webhook can't compute expires_at and silently records
+  // error_type:"missing_access_duration" — the user pays but never gets
+  // access. Better to refuse the checkout than surface support tickets.
+  if (typeof course.access_duration !== "string" || !course.access_duration.trim()) {
+    functions.logger.error("storefront.checkout.course_missing_access_duration", {
+      courseId: body.courseId,
+      creatorId: creatorLookup.userId,
+    });
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Este programa no está disponible para compra ahora"
+    );
+  }
+
+  // Resolve buyer email from the verified ID-token claims. Avoids a separate
+  // admin.auth().getUser() round-trip — the token already carries email/name,
+  // and the lookup also breaks local dev (functions emulator + auth emulator
+  // can't see users created against production Firebase Auth).
+  const buyerEmail = (auth.email || "").trim().toLowerCase();
+  if (!buyerEmail || !EMAIL_RE.test(buyerEmail)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Tu cuenta debe tener un correo válido", "email"
+    );
+  }
+
+  // Already-purchased guard: if this buyer already has an active enrollment in
+  // the course, short-circuit with 409 and a redirect-to-PWA URL. Avoids the
+  // common "I forgot I bought this" double-charge support ticket.
+  const existingUserDoc = await db.collection("users").doc(auth.userId).get();
+  const existingCourses = (
+    existingUserDoc.data()?.courses ?? {}
+  ) as Record<string, {status?: string; expires_at?: string | null}>;
+  const existingEntry = existingCourses[body.courseId];
+  if (existingEntry?.status === "active") {
+    const expiresAt = existingEntry.expires_at;
+    const stillValid =
+      !expiresAt || (typeof expiresAt === "string" && Date.parse(expiresAt) > Date.now());
+    if (stillValid) {
+      res.status(409).json({
+        error: {
+          code: "CONFLICT",
+          message: "Ya tienes acceso a este programa",
+        },
+        alreadyPurchased: true,
+        appUrl: "/app/",
+      });
+      return;
+    }
+  }
+
+  // Bootstrap user doc with storefront-acquisition flags. Include displayName
+  // from the ID-token claims so a race with onUserCreated doesn't leave the
+  // doc with no display name during the window between writes.
+  const bootstrapDisplayName = auth.displayName ?? null;
+  const userDocSeed: Record<string, unknown> = {
+    email: buyerEmail,
+    acquiredVia: "creator_storefront",
+    acquisitionCreator: creatorLookup.userId,
+    acquisitionCourse: body.courseId,
+    onboardingDeferred: true,
+    updated_at: FieldValue.serverTimestamp(),
+  };
+  // Only seed displayName/role/created_at if the user doc didn't exist before
+  // — never overwrite an existing displayName the user may have edited.
+  if (!existingUserDoc.exists) {
+    userDocSeed.displayName = bootstrapDisplayName;
+    userDocSeed.role = "user";
+    userDocSeed.created_at = FieldValue.serverTimestamp();
+  }
+  await db.collection("users").doc(auth.userId).set(userDocSeed, {merge: true});
+
+  const base = resolveStorefrontBase(req);
+  const successUrl = `${base}/${encodeURIComponent(username)}/comprado?course=${encodeURIComponent(body.courseId)}`;
+  // Subscription back URL signals the post-payment screen to render the
+  // "subscription authorized — first charge pending" variant. MP does not
+  // append `?status` for subscription preapproval back_url, so this is the
+  // only signal the SPA gets.
+  const subscriptionSuccessUrl = `${successUrl}&mode=subscription`;
+
+  if (body.mode === "one_time") {
+    const price = course.price;
+    if (typeof price !== "number" || !Number.isInteger(price) || price <= 0) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, "Este programa no ofrece pago único"
+      );
+    }
+
+    const externalReference = buildExternalReference(auth.userId, body.courseId, "otp");
+    const client = getMpClient();
+    const preference = new Preference(client);
+
+    let result;
+    try {
+      result = await preference.create({
+        body: {
+          binary_mode: true,
+          items: [{
+            id: body.courseId,
+            title: truncateMpTitle(course.title as string | undefined, "Programa"),
+            quantity: 1,
+            unit_price: price,
+          }],
+          external_reference: externalReference,
+          back_urls: {
+            // binary_mode:true makes MP only return approved/rejected — pending
+            // never fires, so omit the pending URL entirely.
+            success: successUrl,
+            failure: successUrl,
+          },
+          auto_return: "approved",
+        },
+      });
+    } catch (err) {
+      functions.logger.error("storefront one_time preference failed", {
+        userId: auth.userId,
+        courseId: body.courseId,
+        ...safeErrorPayload(err),
+      });
+      throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el pago");
+    }
+
+    if (!result.init_point) {
+      throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el pago");
+    }
+
+    res.json({data: {initPoint: result.init_point, mode: "one_time"}});
+    return;
+  }
+
+  // ─── Subscription mode ───────────────────────────────────────────────────
+  const monthlyPrice =
+    typeof course.subscription_price === "number" &&
+    Number.isInteger(course.subscription_price) &&
+    course.subscription_price > 0 ?
+      course.subscription_price :
+      null;
+  if (monthlyPrice === null) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Este programa no ofrece suscripción"
+    );
+  }
+
+  // MP requires payer_email match the buyer's MP account. Default to the
+  // Firebase Auth email; allow override (some users have a different MP email)
+  // via body.payerEmail when the first attempt errors.
+  const payerEmailRaw = (body.payerEmail || buyerEmail).trim().toLowerCase();
+  if (!EMAIL_RE.test(payerEmailRaw)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email de pago inválido", "payerEmail");
+  }
+  if (payerEmailRaw !== buyerEmail) {
+    // H-11: log alt-email overrides for fraud review without exposing the
+    // address itself.
+    functions.logger.info("storefront.payer_email.override", {
+      userId: auth.userId,
+      courseId: body.courseId,
+      payerEmail: redactEmailForLog(payerEmailRaw),
+      buyerEmail: redactEmailForLog(buyerEmail),
+    });
+  }
+
+  // CR-6: subscription idempotency. If a recent pending row exists for the
+  // same user+course, return its existing init_point instead of creating a
+  // second MP preapproval. Authorized rows hit the already-purchased guard
+  // above, so we only need to dedupe pending here.
+  const subsCol = db
+    .collection("users")
+    .doc(auth.userId)
+    .collection("subscriptions");
+  const recentPendingSnap = await subsCol
+    .where("course_id", "==", body.courseId)
+    .where("status", "==", "pending")
+    .limit(5)
+    .get();
+  const cutoff = Date.now() - SUBSCRIPTION_DEDUPE_WINDOW_MS;
+  for (const d of recentPendingSnap.docs) {
+    const sd = d.data();
+    const initPoint = sd.init_point as string | undefined;
+    const createdAt = sd.created_at as FirebaseFirestore.Timestamp | undefined;
+    if (!initPoint) continue;
+    const createdMs = createdAt ? createdAt.toMillis() : 0;
+    if (createdMs >= cutoff) {
+      res.json({
+        data: {
+          initPoint,
+          subscriptionId: sd.subscription_id ?? d.id,
+          mode: "subscription",
+          deduped: true,
+        },
+      });
+      return;
+    }
+  }
+
+  const externalRef = buildExternalReference(auth.userId, body.courseId, "sub");
+  const client = getMpClient();
+  const preapproval = new PreApproval(client);
+  const startDate = new Date(Date.now() + 5 * 60 * 1000);
+
+  let result;
+  try {
+    result = await preapproval.create({
+      body: {
+        payer_email: payerEmailRaw,
+        reason: truncateMpTitle(course.title as string | undefined, "Suscripción"),
+        external_reference: externalRef,
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: "months",
+          transaction_amount: monthlyPrice,
+          currency_id: "COP",
+          start_date: startDate.toISOString(),
+        },
+        status: "pending",
+        back_url: subscriptionSuccessUrl,
+      },
+    });
+  } catch (error: unknown) {
+    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    const needsAltEmail =
+      msg.includes("cannot operate between different") ||
+      msg.includes("payer_email") ||
+      msg.includes("belongs to another user") ||
+      msg.includes("must belong to this site");
+
+    if (needsAltEmail) {
+      res.status(409).json({
+        error: {code: "CONFLICT", message: "Por favor ingresa tu correo de Mercado Pago"},
+        requireAlternateEmail: true,
+      });
+      return;
+    }
+    functions.logger.error("storefront subscription failed", {
+      userId: auth.userId,
+      courseId: body.courseId,
+      ...safeErrorPayload(error),
+    });
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear la suscripción");
+  }
+
+  if (!result.init_point || !result.id) {
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear la suscripción");
+  }
+
+  // M-9: never trust an upstream value as a Firestore doc ID without
+  // shape-asserting it first — a malformed value could traverse subcollections.
+  if (!MP_RESULT_ID_RE.test(result.id)) {
+    functions.logger.error("storefront.subscription.malformed_result_id", {
+      userId: auth.userId,
+      courseId: body.courseId,
+    });
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear la suscripción");
+  }
+
+  // Capture next_billing_date upfront so the PWA's subscription UI shows the
+  // first-charge date without waiting for the subscription_preapproval webhook
+  // to round-trip. Mirrors Gen1 createSubscriptionCheckout. Failure to read
+  // here is non-fatal — start_date is the safe fallback.
+  let nextBillingDate: string | null = null;
+  try {
+    const preapprovalDetails =
+      await preapproval.get({id: result.id}) as MercadoPagoPreapproval;
+    nextBillingDate =
+      preapprovalDetails?.next_payment_date ||
+      preapprovalDetails?.auto_recurring?.next_payment_date ||
+      preapprovalDetails?.auto_recurring?.start_date ||
+      null;
+  } catch (detailsErr) {
+    functions.logger.warn("storefront.subscription.next_billing_date_fetch_failed", {
+      preapprovalId: result.id,
+      ...safeErrorPayload(detailsErr),
+    });
+  }
+  if (!nextBillingDate) nextBillingDate = startDate.toISOString();
+
+  await subsCol
+    .doc(result.id)
+    .set({
+      subscription_id: result.id,
+      user_id: auth.userId,
+      course_id: body.courseId,
+      course_title: course.title || "Suscripción",
+      status: "pending",
+      payer_email: payerEmailRaw,
+      transaction_amount: monthlyPrice,
+      access_duration: "monthly",
+      currency_id: "COP",
+      // Persist init_point so retries can short-circuit (CR-6).
+      init_point: result.init_point,
+      management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${result.id}`,
+      next_billing_date: nextBillingDate,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }, {merge: true});
+
+  res.json({
+    data: {
+      initPoint: result.init_point,
+      subscriptionId: result.id,
+      mode: "subscription",
+    },
+  });
+});
+
+export default router;

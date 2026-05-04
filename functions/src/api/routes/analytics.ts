@@ -621,9 +621,9 @@ async function computeAdherence(
           };
         };
 
-        const hasAnyTarget = isProgram
-          ? programHasAnyMacroTarget(c)
-          : (flatTarget!.tCalories > 0 || flatTarget!.tProtein > 0);
+        const hasAnyTarget = isProgram ?
+          programHasAnyMacroTarget(c) :
+          (flatTarget!.tCalories > 0 || flatTarget!.tProtein > 0);
         if (!hasAnyTarget) return;
 
         hasAnyNutritionPlan = true;
@@ -1112,7 +1112,7 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
     100,
     Math.round((avgDaysPerWeek / TARGET_DAYS_PER_WEEK) * 100)
   );
-  const adherenceMode: "frequency" = "frequency";
+  const adherenceMode = "frequency" as const;
 
   // ── Volume by muscle group (sorted) ──────────────────────────
   const volumeByMuscle = Object.entries(muscleVolume)
@@ -1512,10 +1512,12 @@ router.get("/analytics/client/:clientId/lab", async (req, res) => {
             n++;
           }
         }
-        if (n > 0) target = {
-          calories: Math.round(cal / n), protein: Math.round(pro / n),
-          carbs: Math.round(car / n), fat: Math.round(fat / n),
-        };
+        if (n > 0) {
+          target = {
+            calories: Math.round(cal / n), protein: Math.round(pro / n),
+            carbs: Math.round(car / n), fat: Math.round(fat / n),
+          };
+        }
       } else {
         target = {
           calories: c.daily_calories ?? 0,

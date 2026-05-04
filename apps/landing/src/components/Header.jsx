@@ -50,9 +50,12 @@ export default function Header() {
   return (
     <header className="wk-header">
       <nav className={`wk-pill ${scrolled ? 'is-scrolled' : ''}`}>
-        <Link to="/" className="wk-pill-logo" aria-label="Wake">
-          <img src={wakeLogotype} alt="Wake" />
-        </Link>
+        <div className="wk-pill-brand">
+          <Link to="/" className="wk-pill-logo" aria-label="Wake">
+            <img src={wakeLogotype} alt="Wake" />
+          </Link>
+          <Link to="/lab" className="wk-pill-lab">Lab</Link>
+        </div>
 
         <div className="wk-pill-links">
           {NAV_LINKS.map(({ to, label, reloadDocument }) => (

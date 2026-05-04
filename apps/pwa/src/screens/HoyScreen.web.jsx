@@ -31,8 +31,8 @@ import {
 import { useNutritionToday } from '../hooks/hoy/useNutritionToday';
 import { useSessionRecovery } from '../hooks/hoy/useSessionRecovery';
 import { useCoursesEnriched } from '../hooks/hoy/useCoursesEnriched';
-import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 import { useCourseDownloadStatus } from '../hooks/hoy/useCourseDownloadStatus';
+import { useCoachProfileImages } from '../hooks/hoy/useCoachProfileImages';
 import { getUpcomingBookingsForUser } from '../services/callBookingService';
 import sessionService from '../services/sessionService';
 import purchaseEventManager from '../services/purchaseEventManager';
@@ -227,6 +227,10 @@ const HoyScreen = () => {
     return arr;
   }, [enrichedCourses, nutrition.hasNutrition, nutrition.assignmentCreatorId, pinnedTrainingCourseId]);
 
+  // Profile pictures for every coach environment — used by WeekCoachCard for both
+  // the selector avatars and the card's accent (derived from the active coach's image).
+  const coachProfileImagesByCoachId = useCoachProfileImages(coachEnvironments);
+
   const selectedCoach = useMemo(() => {
     if (!coachEnvironments.length) return null;
     if (selectedCoachId) {
@@ -349,18 +353,8 @@ const HoyScreen = () => {
     if (index !== currentIndex) setCurrentIndex(index);
   };
 
-  // Accent color extracted from the selected coach's primary image — applied as CSS vars.
-  const accentSourceImage = selectedCoach?.workouts?.[0]?.image_url || null;
-  const accent = useAccentFromImage(accentSourceImage);
-  const accentVarsStyle = accent
-    ? {
-        '--accent': accent.accent,
-        '--accent-r': accent.accentR,
-        '--accent-g': accent.accentG,
-        '--accent-b': accent.accentB,
-        '--accent-text': accent.accentText,
-      }
-    : {};
+  // Accent is intentionally scoped per-card — each card extracts its own color
+  // from the image it's displaying, so the screen wrapper carries no global accent.
 
   const renderSlide = ({ item, index }) => {
     const inputRange = [
@@ -405,6 +399,9 @@ const HoyScreen = () => {
         <WeekCoachCard
           coachEnvironments={coachEnvironments}
           selectedCoachId={selectedCoach?.coachId}
+          profileImagesByCoachId={coachProfileImagesByCoachId}
+          hasNutrition={!!selectedCoach?.hasNutrition}
+          nutritionCaloriesTarget={nutrition.caloriesTarget || 0}
           onSelectCoach={(coachId) => setSelectedCoachId(coachId)}
           onTapDate={(ymd, course) => {
             const id = course?.courseId || course?.id;
@@ -462,7 +459,7 @@ const HoyScreen = () => {
 
   if (isLoading) {
     return (
-      <div style={accentVarsStyle}>
+      <div>
         <SafeAreaView
           style={containerStyle}
           edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -495,7 +492,7 @@ const HoyScreen = () => {
 
   if (isEmpty) {
     return (
-      <div style={accentVarsStyle}>
+      <div>
         <SafeAreaView
           style={containerStyle}
           edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -532,7 +529,7 @@ const HoyScreen = () => {
   }
 
   return (
-    <div style={accentVarsStyle}>
+    <div>
       <Animated.View style={{ flex: 1, opacity: screenAnim }}>
         <SafeAreaView
           style={containerStyle}
@@ -609,6 +606,7 @@ const HoyScreen = () => {
                       decelerationRate="fast"
                       contentContainerStyle={{
                         paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
+                        paddingVertical: 24,
                         alignItems: 'center',
                       }}
                       onScroll={Animated.event(
@@ -618,12 +616,12 @@ const HoyScreen = () => {
                       onScrollEndDrag={handleScroll}
                       onMomentumScrollEnd={handleScroll}
                       scrollEventThrottle={16}
-                      style={{ height: CARD_HEIGHT, width: '100%' }}
+                      style={{ height: CARD_HEIGHT + 48, width: '100%' }}
                       getItemLayout={(_d, i) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * i, index: i })}
                       initialNumToRender={2}
                       maxToRenderPerBatch={3}
                       windowSize={5}
-                      removeClippedSubviews
+                      removeClippedSubviews={false}
                       updateCellsBatchingPeriod={50}
                     />
                     <View style={{ width: '100%', minHeight: 40, justifyContent: 'center', alignItems: 'center', marginTop: 10, paddingTop: 10, paddingBottom: 24 }}>

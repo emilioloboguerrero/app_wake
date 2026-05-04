@@ -2,13 +2,14 @@ import React, { memo } from 'react';
 import { Svg, G, Path } from 'react-native-svg';
 import { getMuscleColor, getMuscleColorEnhanced, getMuscleColorWorkoutExecution, getMuscleSelectionColor } from '../utils/muscleColorUtils';
 
-const MuscleSilhouetteSVG = memo(({ 
-  muscleVolumes = {}, 
-  enhanced = false, 
-  useWorkoutExecutionColors = false, 
+const MuscleSilhouetteSVG = memo(({
+  muscleVolumes = {},
+  enhanced = false,
+  useWorkoutExecutionColors = false,
   height = 330,
   selectedMuscles = null, // Set of selected muscles for filtering mode
-  onMuscleClick = null // Callback for when muscle is clicked
+  onMuscleClick = null, // Callback for when muscle is clicked
+  accentRgb = null, // [r,g,b] — when provided, active muscles render in accent color
 }) => {
   const componentStartTime = performance.now();
   
@@ -54,8 +55,11 @@ const MuscleSilhouetteSVG = memo(({
         ? getMuscleColorEnhanced(volume)
         : getMuscleColor(volume);
     }
-    const { color: fillColor, opacity } = colorResult;
-    
+    const { color: baseColor, opacity } = colorResult;
+    const fillColor = accentRgb && volume > 0
+      ? `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})`
+      : baseColor;
+
     return (
       <G key={muscleId} id={muscleId}>
         {paths.map((pathData, index) => (
@@ -374,8 +378,20 @@ const MuscleSilhouetteSVG = memo(({
     prevProps.selectedMuscles !== nextProps.selectedMuscles ||
     prevProps.onMuscleClick !== nextProps.onMuscleClick
   ) {
-    const comparisonDuration = performance.now() - comparisonStartTime;
-    return false; // Props changed, re-render
+    return false;
+  }
+
+  const prevAccent = prevProps.accentRgb;
+  const nextAccent = nextProps.accentRgb;
+  if (!prevAccent !== !nextAccent) return false;
+  if (prevAccent && nextAccent) {
+    if (
+      prevAccent[0] !== nextAccent[0] ||
+      prevAccent[1] !== nextAccent[1] ||
+      prevAccent[2] !== nextAccent[2]
+    ) {
+      return false;
+    }
   }
   
   // Efficiently compare muscleVolumes objects

@@ -42,10 +42,10 @@ export type ProgramSnapshotContent = {
 };
 
 export function isProgramSnapshot(content: unknown): content is ProgramSnapshotContent & { type: "program" } {
-  return !!content
-    && typeof content === "object"
-    && (content as { type?: unknown }).type === "program"
-    && Array.isArray((content as { weeks?: unknown }).weeks);
+  return !!content &&
+    typeof content === "object" &&
+    (content as { type?: unknown }).type === "program" &&
+    Array.isArray((content as { weeks?: unknown }).weeks);
 }
 
 export function resolveProgramDay(

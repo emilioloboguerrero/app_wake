@@ -1,15 +1,15 @@
-// Third card — single face. No flip.
-// Layout (top to bottom):
-//   - Coach picker (only when count >= 2)
-//   - Esta semana sessions list (compact)
-//   - Full month grid (calendar at the bottom of the card)
-//   - "Ver programa completo" CTA (low-ticket only)
-//
-// Body scrolls internally if content overflows the fixed card height.
+// Third card — two faces with a 3D flip.
+//   Front: coach picker (with avatar), two adherence line graphs (workouts + nutrition),
+//          flip-to-calendar button.
+//   Back:  month label + nav, full month grid, flip-back button.
+// Neither face overflows the card; no internal scrolling. Accent CSS vars are
+// scoped to this card (derived from the active coach's profile picture).
 import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
+import { getDiaryEntriesInRange } from '../services/nutritionFirestoreService';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 
 const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MONTH_LABELS = [
@@ -34,38 +34,44 @@ const isSameDay = (a, b) => {
 const toYYYYMMDD = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// Parse a YYYY-MM-DD-prefixed string as a LOCAL date (not UTC).
-// new Date("2026-05-02") parses as UTC midnight, which off-shifts to the previous
-// day in negative-UTC timezones (Colombia is UTC-5). We need the same calendar day
-// the user's coach scheduled, in the user's local timezone.
-const parseLocalDate = (ymdLike) => {
-  if (!ymdLike) return null;
-  const [y, m, d] = String(ymdLike).slice(0, 10).split('-').map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d);
-};
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 const styles = {
   card: {
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    overflow: 'hidden',
+    position: 'relative',
+    perspective: '1600px',
+    color: '#fff',
+  },
+  flipper: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    transition: `transform 720ms ${EASE}`,
+    transformStyle: 'preserve-3d',
+    willChange: 'transform',
+  },
+  face: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(255,255,255,0.07)',
-    color: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  body: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: 'auto',
+    overflow: 'hidden',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
     display: 'flex',
     flexDirection: 'column',
     padding: 20,
     gap: 18,
   },
+  faceBack: {
+    transform: 'rotateY(180deg)',
+  },
+
+  // Coach picker
   coachWrap: {
     position: 'relative',
   },
@@ -95,7 +101,7 @@ const styles = {
   coachChevron: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.5)',
-    transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+    transition: `transform 200ms ${EASE}`,
   },
   dropdown: {
     position: 'absolute',
@@ -136,6 +142,8 @@ const styles = {
     inset: 0,
     zIndex: 40,
   },
+
+  // Section
   section: {
     display: 'flex',
     flexDirection: 'column',
@@ -149,117 +157,164 @@ const styles = {
     color: 'rgba(255,255,255,0.5)',
   },
 
-  // 7-day strip (one-on-one): compact, fits the card width, never scrolls laterally.
-  dayStrip: {
-    display: 'flex',
-    gap: 4,
-  },
-  dayStripCell: {
-    flex: 1,
-    minWidth: 0,
-    height: 52,
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+  // Adherence bar charts
+  adherenceList: {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    padding: '4px 2px',
+    gap: 14,
   },
-  dayStripCellToday: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    border: '1px solid rgba(255,255,255,0.25)',
-  },
-  dayStripLabel: {
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: 'rgba(255,255,255,0.45)',
-    textTransform: 'uppercase',
-    fontWeight: 700,
-  },
-  dayStripDate: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: 'rgba(255,255,255,0.85)',
-  },
-  // Equal-flex session cells (general / low_ticket): compact, distributed equally, no scroll.
-  sessionFitRow: {
-    display: 'flex',
-    gap: 4,
-  },
-  sessionFitCell: {
-    flex: 1,
-    minWidth: 0,
-    height: 52,
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
+  chart: {
     display: 'flex',
     flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    padding: '4px 2px',
+    gap: 8,
   },
-  sessionFitCellToday: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    border: '1px solid rgba(255,255,255,0.25)',
-  },
-  sessionFitNum: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: 'rgba(255,255,255,0.85)',
-  },
-  // Status dots — green (completed) / gray (planned, not completed).
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusDotCompleted: {
-    backgroundColor: 'rgba(91, 200, 130, 0.9)',
-  },
-  statusDotPlanned: {
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
-  },
-  statusDotPlaceholder: {
-    width: 6,
-    height: 6,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.4)',
-    paddingTop: 4,
-  },
-
-  // Month grid
-  monthHeader: {
+  chartHeader: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
   },
-  monthLabel: {
-    fontSize: 14,
+  chartLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.65)',
+    letterSpacing: 0.2,
+  },
+  chartScore: {
+    fontSize: 18,
     fontWeight: 700,
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
+    color: '#fff',
+    fontVariantNumeric: 'tabular-nums',
   },
-  monthNav: {
+  chartScoreEmpty: {
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: 600,
+    fontSize: 13,
+  },
+  chartPlot: {
+    width: '100%',
+    height: 48,
+    display: 'block',
+  },
+  chartLabelsRow: {
     display: 'flex',
-    gap: 6,
+    gap: 4,
   },
-  monthChevron: {
+  chartDayLabel: {
+    flex: 1,
+    minWidth: 0,
+    textAlign: 'center',
+    fontSize: 9,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  chartDayLabelToday: {
+    color: '#fff',
+  },
+
+  // Coach avatar
+  coachAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  coachAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  coachAvatarFallback: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.3,
+  },
+  coachAvatarSm: {
     width: 28,
     height: 28,
     borderRadius: 14,
+  },
+  coachInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
+    flex: 1,
+  },
+
+  // Footer (front)
+  footer: {
+    marginTop: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  programLink: {
+    background: 'transparent',
+    border: 'none',
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: 0.4,
+    cursor: 'pointer',
+    padding: '4px 0',
+    textAlign: 'center',
+  },
+  flipButton: {
+    height: 44,
+    borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: 0.3,
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    border: 'none',
+    gap: 8,
+  },
+
+  // Back face — month grid
+  backHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  backTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    letterSpacing: -0.2,
+    color: '#fff',
+    textTransform: 'capitalize',
+  },
+  backNav: {
+    display: 'flex',
+    gap: 6,
+  },
+  navButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
     cursor: 'pointer',
     fontWeight: 600,
   },
@@ -312,18 +367,6 @@ const styles = {
     backgroundColor: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  programButton: {
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 600,
-    letterSpacing: 0.3,
-    cursor: 'pointer',
-    marginTop: 4,
-  },
 };
 
 const buildMonthGrid = (year, month) => {
@@ -336,9 +379,162 @@ const buildMonthGrid = (year, month) => {
   });
 };
 
+const initialsFor = (name) => {
+  if (!name) return '·';
+  const parts = String(name).trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p.charAt(0).toUpperCase()).join('') || '·';
+};
+
+const CoachAvatar = ({ imageUrl, name, small = false }) => (
+  <div style={small ? { ...styles.coachAvatar, ...styles.coachAvatarSm } : styles.coachAvatar}>
+    {imageUrl ? (
+      <img src={imageUrl} alt="" style={styles.coachAvatarImg} loading="lazy" />
+    ) : (
+      <span style={styles.coachAvatarFallback}>{initialsFor(name)}</span>
+    )}
+  </div>
+);
+
+// Line graph rendered in SVG (viewBox-based, scales with the container).
+// Breaks the line wherever a point's value is null — for workouts that means rest
+// days, for nutrition it means future days.
+const LineGraph = ({ points }) => {
+  const W = 100;
+  const H = 40;
+  const PAD_X = 3;
+  const PAD_Y = 4;
+  const n = points.length;
+  if (n === 0) return null;
+  const xFor = (i) => (n <= 1 ? W / 2 : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X));
+  const yFor = (v) => PAD_Y + (1 - v) * (H - 2 * PAD_Y);
+
+  const segments = [];
+  let current = [];
+  points.forEach((p, i) => {
+    if (p.value == null) {
+      if (current.length > 0) segments.push(current);
+      current = [];
+      return;
+    }
+    current.push({ x: xFor(i), y: yFor(p.value), i });
+  });
+  if (current.length > 0) segments.push(current);
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      style={styles.chartPlot}
+      aria-hidden
+    >
+      <line
+        x1={0}
+        y1={H - PAD_Y}
+        x2={W}
+        y2={H - PAD_Y}
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth={0.4}
+        vectorEffect="non-scaling-stroke"
+      />
+      {segments.map((seg, idx) => {
+        if (seg.length < 2) return null;
+        const first = seg[0];
+        const last = seg[seg.length - 1];
+        const areaPath =
+          `M ${first.x},${H - PAD_Y} ` +
+          `L ${seg.map((p) => `${p.x},${p.y}`).join(' L ')} ` +
+          `L ${last.x},${H - PAD_Y} Z`;
+        return (
+          <path
+            key={`area-${idx}`}
+            d={areaPath}
+            fill="var(--accent, rgba(255,255,255,0.85))"
+            fillOpacity={0.18}
+          />
+        );
+      })}
+      {segments.map((seg, idx) => {
+        if (seg.length < 2) return null;
+        const linePath = `M ${seg.map((p) => `${p.x},${p.y}`).join(' L ')}`;
+        return (
+          <path
+            key={`line-${idx}`}
+            d={linePath}
+            fill="none"
+            stroke="var(--accent, rgba(255,255,255,0.9))"
+            strokeWidth={1.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        );
+      })}
+      {points.map((p, i) => {
+        if (p.value == null) return null;
+        const x = xFor(i);
+        const y = yFor(p.value);
+        const r = p.isToday ? 1.8 : 1.1;
+        return (
+          <g key={`pt-${i}`}>
+            {p.isToday ? (
+              <circle
+                cx={x}
+                cy={y}
+                r={3.2}
+                fill="var(--accent, #fff)"
+                fillOpacity={0.18}
+              />
+            ) : null}
+            <circle
+              cx={x}
+              cy={y}
+              r={r}
+              fill={p.isToday ? 'var(--accent, #fff)' : '#fff'}
+            />
+          </g>
+        );
+      })}
+    </svg>
+  );
+};
+
+const AdherenceChart = ({ label, score, points }) => {
+  const hasScore = typeof score === 'number' && Number.isFinite(score);
+  const pct = hasScore ? Math.max(0, Math.min(100, score)) : 0;
+  const visiblePoints = (points && points.length > 0) ? points : Array.from({ length: 7 }, () => ({
+    label: '·', value: null, isToday: false,
+  }));
+  return (
+    <div style={styles.chart}>
+      <div style={styles.chartHeader}>
+        <span style={styles.chartLabel}>{label}</span>
+        {hasScore ? (
+          <span style={styles.chartScore}>{pct}%</span>
+        ) : (
+          <span style={styles.chartScoreEmpty}>—</span>
+        )}
+      </div>
+      <LineGraph points={visiblePoints} />
+      <div style={styles.chartLabelsRow}>
+        {visiblePoints.map((p, i) => (
+          <span
+            key={i}
+            style={p.isToday ? { ...styles.chartDayLabel, ...styles.chartDayLabelToday } : styles.chartDayLabel}
+          >
+            {p.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const WeekCoachCard = ({
   coachEnvironments = [],
   selectedCoachId,
+  profileImagesByCoachId = {},
+  hasNutrition = false,
+  nutritionCaloriesTarget = 0,
   onSelectCoach,
   onTapDate,
   onSeeProgram,
@@ -354,12 +550,22 @@ const WeekCoachCard = ({
     month: today.getMonth(),
   });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [flipped, setFlipped] = useState(false);
 
   const selected = coachEnvironments.find((c) => c.coachId === selectedCoachId) || coachEnvironments[0];
+  const selectedProfileImageUrl = selected ? (profileImagesByCoachId?.[selected.coachId] || null) : null;
+  const accent = useAccentFromImage(selectedProfileImageUrl);
+  const accentVarsStyle = accent
+    ? {
+        '--accent': accent.accent,
+        '--accent-r': accent.accentR,
+        '--accent-g': accent.accentG,
+        '--accent-b': accent.accentB,
+        '--accent-text': accent.accentText,
+      }
+    : {};
   const primaryCourse = selected?.workouts?.[0];
   const courseId = primaryCourse?.courseId || primaryCourse?.id;
-  // 'general' and 'low_ticket' both have fixed program trees (sessions in modules).
-  // 'one_on_one' is week-by-week assigned. The "Ver programa completo" CTA is for fixed-tree types.
   const hasFixedProgram = primaryCourse?.deliveryType === 'low_ticket' || primaryCourse?.deliveryType === 'general';
   const isOneOnOne = primaryCourse?.deliveryType === 'one_on_one';
   const showCoachPicker = (coachEnvironments?.length || 0) >= 2;
@@ -395,14 +601,11 @@ const WeekCoachCard = ({
     return map;
   }, [sessionState?.allSessions]);
 
-  // Set of sessionIds the user has completed — used to color status dots.
   const completedSessionIds = useMemo(() => {
     const arr = sessionState?.progress?.allSessionsCompleted;
     return new Set(Array.isArray(arr) ? arr : []);
   }, [sessionState?.progress?.allSessionsCompleted]);
 
-  // Filter via YYYY-MM-DD string comparison to avoid the UTC-midnight shift bug
-  // that hides today's sessions in negative-UTC timezones.
   const weekSessions = useMemo(() => {
     if (!sessionState?.allSessions) return [];
     return sessionState.allSessions
@@ -415,12 +618,85 @@ const WeekCoachCard = ({
   }, [sessionState?.allSessions, mondayYmd, sundayYmd]);
 
   // For non-date-scheduled programs (low_ticket, general) sessions have plannedDate: null.
-  // The current module's sessions == this week's sessions. Cap at 7 so equal-flex cells stay legible.
   const moduleWeekSessions = useMemo(() => {
     const all = sessionState?.allSessions || [];
     if (!all.length) return [];
     return all.slice(0, 7);
   }, [sessionState?.allSessions]);
+
+  const weekItems = isOneOnOne ? weekSessions : moduleWeekSessions;
+  const weekTotal = weekItems.length;
+  const weekDone = useMemo(
+    () => weekItems.filter((s) => completedSessionIds.has(s.sessionId)).length,
+    [weekItems, completedSessionIds],
+  );
+  // Workout adherence: % of this week's planned sessions completed.
+  const workoutAdherence = weekTotal > 0 ? Math.min(100, Math.round((weekDone / weekTotal) * 100)) : null;
+
+  // Workout per-day points for the line graph. For one_on_one we map by date,
+  // skipping rest days (value: null) so the line breaks across them. For fixed
+  // programs each session in the cycle is its own point on the X axis.
+  const workoutPoints = useMemo(() => {
+    if (isOneOnOne) {
+      return weekDates.map((d, i) => {
+        const ymd = toYYYYMMDD(d);
+        const sessions = sessionsByDate.get(ymd) || [];
+        const hasSession = sessions.length > 0;
+        const anyCompleted = sessions.some((s) => completedSessionIds.has(s.sessionId));
+        let value = null;
+        if (hasSession) value = anyCompleted ? 1 : 0;
+        return { label: DAY_LABELS[i], value, isToday: isSameDay(d, today) };
+      });
+    }
+    return moduleWeekSessions.map((s, i) => {
+      const isCompleted = completedSessionIds.has(s.sessionId);
+      const order = s.order != null ? s.order + 1 : i + 1;
+      return {
+        label: String(order).padStart(2, '0'),
+        value: isCompleted ? 1 : 0,
+        isToday: false,
+      };
+    });
+  }, [isOneOnOne, weekDates, sessionsByDate, completedSessionIds, today, moduleWeekSessions]);
+
+  // Weekly diary entries — used to score nutrition adherence Mon → today.
+  const todayYmd = useMemo(() => toYYYYMMDD(today), [today]);
+  const nutritionEnabled = hasNutrition && nutritionCaloriesTarget > 0;
+  const { data: weekDiaryEntries } = useQuery({
+    queryKey: ['hoy', 'weekDiary', user?.uid, mondayYmd, todayYmd],
+    queryFn: () => getDiaryEntriesInRange(user.uid, mondayYmd, todayYmd),
+    enabled: !!user?.uid && nutritionEnabled,
+    staleTime: 60 * 1000,
+  });
+
+  // Per-day calorie adherence Mon → Sun for the line graph. Each day's value is
+  // capped at 100% of target so a one-day overshoot can't inflate the curve.
+  // Future days are null so the line stops at today. The aggregate score averages
+  // only past + today.
+  const { nutritionPoints, nutritionAdherence } = useMemo(() => {
+    if (!nutritionEnabled) return { nutritionPoints: [], nutritionAdherence: null };
+    const todayIndex = weekDates.findIndex((d) => isSameDay(d, today));
+    const caloriesByDate = new Map();
+    (weekDiaryEntries || []).forEach((e) => {
+      const ymd = String(e.date || '').slice(0, 10);
+      if (!ymd) return;
+      caloriesByDate.set(ymd, (caloriesByDate.get(ymd) || 0) + (Number(e.calories) || 0));
+    });
+    const points = weekDates.map((d, i) => {
+      const ymd = toYYYYMMDD(d);
+      const consumed = caloriesByDate.get(ymd) || 0;
+      const isFuture = todayIndex >= 0 && i > todayIndex;
+      const value = isFuture ? null : Math.min(1, consumed / nutritionCaloriesTarget);
+      return { label: DAY_LABELS[i], value, isToday: i === todayIndex };
+    });
+    const dayCount = todayIndex >= 0 ? todayIndex + 1 : 0;
+    const adherence = dayCount > 0
+      ? Math.round(
+          (points.slice(0, dayCount).reduce((acc, p) => acc + (p.value || 0), 0) / dayCount) * 100,
+        )
+      : null;
+    return { nutritionPoints: points, nutritionAdherence: adherence };
+  }, [nutritionEnabled, nutritionCaloriesTarget, weekDiaryEntries, weekDates, today]);
 
   const monthLabel = `${MONTH_LABELS[visibleMonth.month]} ${visibleMonth.year}`;
   const monthGrid = useMemo(() => buildMonthGrid(visibleMonth.year, visibleMonth.month), [visibleMonth]);
@@ -452,113 +728,101 @@ const WeekCoachCard = ({
     onSelectCoach?.(coachId);
     setPickerOpen(false);
   };
+  const handleFlip = (e) => {
+    e?.stopPropagation?.();
+    setPickerOpen(false);
+    setFlipped((f) => !f);
+  };
 
   return (
-    <div style={styles.card}>
-      <div style={styles.body}>
-        {showCoachPicker ? (
-          <div style={styles.coachWrap}>
-            <div style={styles.coachRow} onClick={togglePicker} role="button" tabIndex={0}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={styles.coachKicker}>Coach</span>
-                <span style={styles.coachName}>{selected?.coachName}</span>
-              </div>
-              <span style={{ ...styles.coachChevron, transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
-            </div>
-            {pickerOpen ? (
-              <>
-                <div style={styles.dropdownBackdrop} onClick={togglePicker} />
-                <div style={styles.dropdown}>
-                  {coachEnvironments.map((c) => {
-                    const active = c.coachId === selected?.coachId;
-                    return (
-                      <div
-                        key={c.coachId}
-                        style={active ? { ...styles.dropdownItem, ...styles.dropdownItemActive } : styles.dropdownItem}
-                        onClick={handlePickCoach(c.coachId)}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <span>{c.coachName}</span>
-                        {active ? <span style={styles.dropdownCheck}>✓</span> : null}
-                      </div>
-                    );
-                  })}
+    <div style={{ ...styles.card, ...accentVarsStyle }}>
+      <div
+        style={{
+          ...styles.flipper,
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        {/* FRONT */}
+        <div style={styles.face}>
+          {showCoachPicker ? (
+            <div style={styles.coachWrap}>
+              <div style={styles.coachRow} onClick={togglePicker} role="button" tabIndex={0}>
+                <div style={styles.coachInfo}>
+                  <CoachAvatar imageUrl={selectedProfileImageUrl} name={selected?.coachName} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={styles.coachKicker}>Coach</span>
+                    <span style={styles.coachName}>{selected?.coachName}</span>
+                  </div>
                 </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div style={styles.section}>
-          <span style={styles.sectionLabel}>Esta semana</span>
-          {isOneOnOne ? (
-            // 7-day strip: every day Mon→Sun. Green dot = a session that day is completed,
-            // gray dot = a session that day is planned but not completed, no dot = no session.
-            <div style={styles.dayStrip}>
-              {weekDates.map((d, i) => {
-                const ymd = toYYYYMMDD(d);
-                const sessions = sessionsByDate.get(ymd) || [];
-                const hasSession = sessions.length > 0;
-                const anyCompleted = sessions.some((s) => completedSessionIds.has(s.sessionId));
-                const isTodayCell = isSameDay(d, today);
-                const cellStyle = {
-                  ...styles.dayStripCell,
-                  ...(isTodayCell ? styles.dayStripCellToday : {}),
-                  cursor: hasSession ? 'pointer' : 'default',
-                };
-                let dotStyle;
-                if (!hasSession) dotStyle = styles.statusDotPlaceholder;
-                else if (anyCompleted) dotStyle = { ...styles.statusDot, ...styles.statusDotCompleted };
-                else dotStyle = { ...styles.statusDot, ...styles.statusDotPlanned };
-                return (
-                  <div
-                    key={i}
-                    style={cellStyle}
-                    onClick={hasSession ? () => onTapDate?.(ymd, primaryCourse) : undefined}
-                  >
-                    <span style={styles.dayStripLabel}>{DAY_LABELS[i]}</span>
-                    <span style={styles.dayStripDate}>{d.getDate()}</span>
-                    <span style={dotStyle} />
+                <span style={{ ...styles.coachChevron, transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+              </div>
+              {pickerOpen ? (
+                <>
+                  <div style={styles.dropdownBackdrop} onClick={togglePicker} />
+                  <div style={styles.dropdown}>
+                    {coachEnvironments.map((c) => {
+                      const active = c.coachId === selected?.coachId;
+                      const itemImage = profileImagesByCoachId?.[c.coachId] || null;
+                      return (
+                        <div
+                          key={c.coachId}
+                          style={active ? { ...styles.dropdownItem, ...styles.dropdownItemActive } : styles.dropdownItem}
+                          onClick={handlePickCoach(c.coachId)}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                            <CoachAvatar imageUrl={itemImage} name={c.coachName} small />
+                            <span>{c.coachName}</span>
+                          </div>
+                          {active ? <span style={styles.dropdownCheck}>✓</span> : null}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </>
+              ) : null}
             </div>
-          ) : moduleWeekSessions.length === 0 ? (
-            <span style={styles.emptyText}>Sin sesiones programadas</span>
           ) : (
-            // General / low_ticket: compact session cells, equal flex, no horizontal scroll.
-            // Green dot = completed, gray dot = planned (not yet completed).
-            <div style={styles.sessionFitRow}>
-              {moduleWeekSessions.map((s, i) => {
-                const d = parseLocalDate(s.plannedDate);
-                const isTodaySession = d && isSameDay(d, today);
-                const isCompleted = completedSessionIds.has(s.sessionId);
-                const cellStyle = isTodaySession
-                  ? { ...styles.sessionFitCell, ...styles.sessionFitCellToday }
-                  : styles.sessionFitCell;
-                const dotStyle = isCompleted
-                  ? { ...styles.statusDot, ...styles.statusDotCompleted }
-                  : { ...styles.statusDot, ...styles.statusDotPlanned };
-                return (
-                  <div key={s.sessionId} style={cellStyle}>
-                    <span style={styles.sessionFitNum}>
-                      {String(s.order != null ? s.order + 1 : i + 1).padStart(2, '0')}
-                    </span>
-                    <span style={dotStyle} />
-                  </div>
-                );
-              })}
+            <div style={styles.coachInfo}>
+              <CoachAvatar imageUrl={selectedProfileImageUrl} name={selected?.coachName} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={styles.coachKicker}>Coach</span>
+                <span style={styles.coachName}>{selected?.coachName || '—'}</span>
+              </div>
             </div>
           )}
+
+          <div style={styles.section}>
+            <span style={styles.sectionLabel}>Esta semana</span>
+            <div style={styles.adherenceList}>
+              <AdherenceChart label="Entrenamientos" score={workoutAdherence} points={workoutPoints} />
+              {nutritionEnabled ? (
+                <AdherenceChart label="Nutrición" score={nutritionAdherence} points={nutritionPoints} />
+              ) : null}
+            </div>
+          </div>
+
+          <div style={styles.footer}>
+            {hasFixedProgram ? (
+              <button style={styles.programLink} onClick={handleSeeProgram}>
+                Ver programa completo
+              </button>
+            ) : null}
+            <button style={styles.flipButton} onClick={handleFlip} aria-label="Ver calendario del mes">
+              <span>Calendario del mes</span>
+              <span aria-hidden>↻</span>
+            </button>
+          </div>
         </div>
 
-        <div style={styles.section}>
-          <div style={styles.monthHeader}>
-            <span style={styles.monthLabel}>{monthLabel}</span>
-            <div style={styles.monthNav}>
-              <button style={styles.monthChevron} onClick={handlePrevMonth} aria-label="Mes anterior">{'‹'}</button>
-              <button style={styles.monthChevron} onClick={handleNextMonth} aria-label="Mes siguiente">{'›'}</button>
+        {/* BACK */}
+        <div style={{ ...styles.face, ...styles.faceBack }}>
+          <div style={styles.backHeader}>
+            <span style={styles.backTitle}>{monthLabel}</span>
+            <div style={styles.backNav}>
+              <button style={styles.navButton} onClick={handlePrevMonth} aria-label="Mes anterior">{'‹'}</button>
+              <button style={styles.navButton} onClick={handleNextMonth} aria-label="Mes siguiente">{'›'}</button>
             </div>
           </div>
 
@@ -593,11 +857,10 @@ const WeekCoachCard = ({
             })}
           </div>
 
-          {hasFixedProgram ? (
-            <button style={styles.programButton} onClick={handleSeeProgram}>
-              Ver programa completo
-            </button>
-          ) : null}
+          <button style={{ ...styles.flipButton, marginTop: 'auto' }} onClick={handleFlip} aria-label="Volver">
+            <span aria-hidden>←</span>
+            <span>Volver</span>
+          </button>
         </div>
       </div>
     </div>

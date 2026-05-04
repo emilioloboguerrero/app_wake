@@ -19,6 +19,7 @@ import {calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
+import {isReservedUsername} from "../utils/reservedUsernames.js";
 
 const router = Router();
 
@@ -83,6 +84,8 @@ router.get("/users/me", async (req, res) => {
       webOnboardingCompleted: data.webOnboardingCompleted ?? false,
       profileCompleted: data.profileCompleted ?? false,
       onboardingCompleted: data.onboardingCompleted ?? false,
+      onboardingDeferred: data.onboardingDeferred ?? false,
+      acquiredVia: data.acquiredVia ?? null,
       bibliotecaGuideCompleted: data.bibliotecaGuideCompleted ?? false,
       courses: data.courses ?? {},
       bio: data.bio ?? null,
@@ -238,6 +241,11 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   if (updates.username) {
     const normalized = (updates.username as string).toLowerCase().trim();
     updates.username = normalized;
+    if (isReservedUsername(normalized)) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409, "Este username está reservado", "username"
+      );
+    }
     const existing = await db.collection("users")
       .where("username", "==", normalized)
       .limit(1)
@@ -247,6 +255,13 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
         "CONFLICT", 409, "Este username ya esta en uso", "username"
       );
     }
+  }
+
+  // H-5: when the user voluntarily finishes onboarding, clear the storefront
+  // deferral flag so it doesn't stay sticky forever and corrupt the
+  // PWA gate / analytics.
+  if (updates.onboardingCompleted === true) {
+    updates.onboardingDeferred = false;
   }
 
   updates.updated_at = FieldValue.serverTimestamp();
@@ -875,6 +890,11 @@ router.get("/users/me/username-check", async (req, res) => {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400, "username es requerido", "username"
     );
+  }
+
+  if (isReservedUsername(normalized)) {
+    res.json({data: {available: false, reason: "reserved"}});
+    return;
   }
 
   const snapshot = await db

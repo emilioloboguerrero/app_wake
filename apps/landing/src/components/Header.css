@@ -39,6 +39,13 @@
     0 -8px 24px rgba(255, 255, 255, 0.04);
 }
 
+.wk-pill-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+
 .wk-pill-logo {
   display: flex;
   align-items: center;
@@ -54,6 +61,36 @@
   width: auto;
   display: block;
 }
+
+/* Lab — sub-link sitting next to the logotype. Reads as part of the brand
+   lockup ("Wake / Lab"), not as a peer of the right-side nav. */
+.wk-pill-lab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  padding-left: 14px;
+  white-space: nowrap;
+  transition: color 0.4s cubic-bezier(0.44, 0, 0.56, 1);
+}
+
+.wk-pill-lab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.wk-pill-lab:hover { color: #fff; }
 
 .wk-pill-links {
   display: flex;

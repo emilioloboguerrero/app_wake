@@ -110,9 +110,22 @@ const readStaleOnboardingCache = (uid) => {
     return {
       profileCompleted: status.profileCompleted ?? false,
       onboardingCompleted: status.onboardingCompleted ?? false,
+      onboardingDeferred: status.onboardingDeferred ?? false,
     };
   } catch (_) {
     return null;
+  }
+};
+
+// `?intent=storefront` is appended by the landing's PostPaymentScreen redirect
+// path. When present, force a fresh /users/me read instead of trusting the
+// cached `onboardingDeferred:false` from before the storefront purchase.
+const isStorefrontIntent = () => {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get('intent') === 'storefront';
+  } catch (_) {
+    return false;
   }
 };
 
@@ -165,8 +178,11 @@ const AuthenticatedLayout = ({ children }) => {
         }, 10000);
 
         try {
-          const skipCache = skipCacheNextRef.current;
-          if (skipCache) skipCacheNextRef.current = false;
+          // Storefront-purchase redirects must always re-read /users/me so the
+          // PWA picks up `onboardingDeferred:true` written seconds ago. Skips
+          // the 60s cache below.
+          const skipCache = skipCacheNextRef.current || isStorefrontIntent();
+          if (skipCacheNextRef.current) skipCacheNextRef.current = false;
 
           if (!skipCache) {
             let cached = null;
@@ -174,11 +190,15 @@ const AuthenticatedLayout = ({ children }) => {
             if (cached) {
               const status = JSON.parse(cached);
               const cacheAge = Date.now() - (status.cachedAt || 0);
-              if (cacheAge < 5 * 60 * 1000) {
+              // 60s TTL — short enough that a storefront purchase in another
+              // tab propagates fast, long enough to absorb the typical
+              // tab-restore burst.
+              if (cacheAge < 60 * 1000) {
                 if (mounted) {
                   setUserProfile({
                     profileCompleted: status.profileCompleted ?? false,
-                    onboardingCompleted: status.onboardingCompleted ?? false
+                    onboardingCompleted: status.onboardingCompleted ?? false,
+                    onboardingDeferred: status.onboardingDeferred ?? false,
                   });
                   setProfileLoading(false);
                 }
@@ -202,6 +222,7 @@ const AuthenticatedLayout = ({ children }) => {
                 localStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
                   onboardingCompleted: profile.onboardingCompleted ?? false,
                   profileCompleted: profile.profileCompleted ?? false,
+                  onboardingDeferred: profile.onboardingDeferred ?? false,
                   cachedAt: Date.now(),
                 }));
               } catch (_) {}
@@ -249,10 +270,20 @@ const AuthenticatedLayout = ({ children }) => {
     setShowReadiness(true);
   }, []);
   const readinessCheckedRef = React.useRef(false);
+  // Reset the per-mount readiness debounce when uid changes — otherwise
+  // signing out and back in within the same SPA session never re-shows the
+  // readiness modal for the new account.
+  const readinessUidRef = React.useRef(null);
+  React.useEffect(() => {
+    if (readinessUidRef.current !== uid) {
+      readinessCheckedRef.current = false;
+      readinessUidRef.current = uid ?? null;
+    }
+  }, [uid]);
   React.useEffect(() => {
     if (readinessCheckedRef.current) return;
     if (!user || profileLoading || userProfile === null) return;
-    const needsOnboardingCheck = userProfile && (
+    const needsOnboardingCheck = userProfile && !userProfile.onboardingDeferred && (
       userProfile.onboardingCompleted === false ||
       (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
     );
@@ -293,8 +324,12 @@ const AuthenticatedLayout = ({ children }) => {
     return <LoadingScreen />;
   }
 
-  // Onboarding routing
-  const needsOnboarding = userProfile && (
+  // Onboarding routing.
+  // Storefront-acquired users have `onboardingDeferred: true` set on the
+  // server when they complete checkout. We let them straight into the app on
+  // first entry; HoyScreen surfaces a soft prompt later. They can still
+  // complete onboarding voluntarily from settings.
+  const needsOnboarding = userProfile && !userProfile.onboardingDeferred && (
     userProfile.onboardingCompleted === false ||
     (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
   );

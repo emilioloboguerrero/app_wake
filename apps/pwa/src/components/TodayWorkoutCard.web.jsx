@@ -1,5 +1,7 @@
 // Workout card — front: full-bleed image with text overlay (program kicker + session title).
-// Back: muscle activation silhouette + Begin button + video history (one-on-one only).
+// Back: muscle activation silhouette (tinted with the image accent) + Begin button. For
+// one-on-one programs, a camera button sits at the top-right of the back face and opens
+// the video-exchange history.
 //
 // Tap front -> flip to back. Tap back (not on action) -> flip to front.
 // Tap Begin -> /warmup. Tap on an expired card -> renew flow (onRenew handler).
@@ -9,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
 import VideoExchangeOverlay from './videoExchange/VideoExchangeOverlay.web';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
@@ -16,7 +19,7 @@ const styles = {
   outer: {
     width: '100%',
     height: '100%',
-    perspective: 1200,
+    perspective: 2400,
     cursor: 'pointer',
   },
   inner: {
@@ -158,6 +161,7 @@ const styles = {
     flexDirection: 'column',
     gap: 4,
     color: '#fff',
+    paddingRight: 72, // leave room for the floating camera button
   },
   backKicker: {
     fontSize: 11,
@@ -187,12 +191,8 @@ const styles = {
     flexDirection: 'column',
     gap: 8,
   },
-  buttonRow: {
-    display: 'flex',
-    gap: 8,
-  },
   beginButton: {
-    flex: 1,
+    width: '100%',
     height: 56,
     borderRadius: 14,
     backgroundColor: '#ffffff',
@@ -209,25 +209,34 @@ const styles = {
     color: 'rgba(255,255,255,0.4)',
     cursor: 'not-allowed',
   },
-  videoButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 22,
+  cameraButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.14)',
+    color: '#fff',
     cursor: 'pointer',
-    flexShrink: 0,
-  },
-  flipHint: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    textAlign: 'center',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    zIndex: 3,
+    transition: `background-color 200ms ${SPRING}`,
   },
 };
+
+const CameraIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
 
 const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, onBegin, onRenew }) => {
   const { user } = useAuth();
@@ -250,8 +259,19 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
   });
 
   const sessionImageUrl = sessionState?.session?.image_url;
-  const fallbackImageUrl = course?.image_url;
-  const imageUrl = sessionImageUrl || fallbackImageUrl;
+  const programImageUrl = course?.image_url;
+  const imageUrl = sessionImageUrl || programImageUrl;
+  const accent = useAccentFromImage(imageUrl);
+  const accentVarsStyle = accent
+    ? {
+        '--accent': accent.accent,
+        '--accent-r': accent.accentR,
+        '--accent-g': accent.accentG,
+        '--accent-b': accent.accentB,
+        '--accent-text': accent.accentText,
+      }
+    : {};
+  const accentRgb = accent ? [accent.accentR, accent.accentG, accent.accentB] : null;
 
   const sessionTitle = sessionState?.session?.title;
   const isCompleted = !!sessionState?.todaySessionAlreadyCompleted;
@@ -324,7 +344,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
 
   return (
     <>
-      <div style={styles.outer} role="button" tabIndex={0}>
+      <div style={{ ...styles.outer, ...accentVarsStyle }} role="button" tabIndex={0}>
         <div style={{ ...styles.inner, transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
           {/* FRONT */}
           <div style={styles.face} onClick={handleFlip}>
@@ -363,7 +383,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
               {hasMuscleData ? (
                 <MuscleSilhouetteSVG
                   muscleVolumes={muscleVolumes}
-                  useWorkoutExecutionColors={true}
+                  accentRgb={accentRgb}
                   height={300}
                 />
               ) : (
@@ -374,27 +394,25 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
             </div>
 
             <div style={styles.beginRow}>
-              <div style={styles.buttonRow}>
-                <button
-                  style={canBegin || isExpired ? styles.beginButton : beginStyle}
-                  onClick={handleBegin}
-                  disabled={!canBegin && !isExpired}
-                >
-                  {beginLabel}
-                </button>
-                {canAccessVideoHistory ? (
-                  <button
-                    style={styles.videoButton}
-                    onClick={handleVideoHistory}
-                    aria-label="Historial de videos"
-                    title="Historial de videos"
-                  >
-                    {'▶'}
-                  </button>
-                ) : null}
-              </div>
-              <span style={styles.flipHint}>Toca la tarjeta para volver</span>
+              <button
+                style={canBegin || isExpired ? styles.beginButton : beginStyle}
+                onClick={handleBegin}
+                disabled={!canBegin && !isExpired}
+              >
+                {beginLabel}
+              </button>
             </div>
+
+            {canAccessVideoHistory ? (
+              <button
+                style={styles.cameraButton}
+                onClick={handleVideoHistory}
+                aria-label="Historial de videos"
+                title="Historial de videos"
+              >
+                <CameraIcon />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

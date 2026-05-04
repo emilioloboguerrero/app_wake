@@ -3066,37 +3066,105 @@ export const api = onRequest(
   app
 );
 
-// ─── Event page with dynamic OG tags ────────────────────────────────────────
+// ─── Event / creator page shared HTML loader ────────────────────────────────
+
+// 5-minute TTL — long enough to absorb most cold-start savings, short enough
+// that a hosting deploy propagates to long-lived function instances quickly.
+const INDEX_HTML_TTL_MS = 5 * 60 * 1000;
+// Hard timeout on the upstream fetch so a stuck hosting deploy can't pin a
+// 256MiB function instance for the platform default (~30s) and exceed our
+// configured timeoutSeconds.
+const INDEX_HTML_FETCH_TIMEOUT_MS = 3000;
 
 let cachedIndexHtml: string | null = null;
+let cachedIndexHtmlAt = 0;
 
-async function getIndexHtml(): Promise<string> {
-  if (cachedIndexHtml) return cachedIndexHtml;
+async function getIndexHtml(): Promise<string | null> {
+  if (cachedIndexHtml && Date.now() - cachedIndexHtmlAt < INDEX_HTML_TTL_MS) {
+    return cachedIndexHtml;
+  }
 
   // Fetch live from hosting — always in sync with deployed assets
   try {
-    const resp = await fetch("https://wakelab.co/index.html");
+    const resp = await fetch("https://wakelab.co/index.html", {
+      signal: AbortSignal.timeout(INDEX_HTML_FETCH_TIMEOUT_MS),
+    });
     if (resp.ok) {
       cachedIndexHtml = await resp.text();
+      cachedIndexHtmlAt = Date.now();
       return cachedIndexHtml;
     }
   } catch {
-    // fall through to redirect fallback
+    // fall through; null signals "serve a 503"
   }
 
-  // Fallback: redirect to homepage if fetch fails
-  cachedIndexHtml = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Wake</title>
-</head>
-<body>
-  <script>window.location.replace("https://wakelab.co");</script>
-</body>
-</html>`;
-  return cachedIndexHtml;
+  // If we have a previously-cached copy, serve it stale rather than 503ing.
+  if (cachedIndexHtml) return cachedIndexHtml;
+  return null;
+}
+
+// CR-7: function-rewritten responses bypass the Firebase Hosting `headers`
+// rules (those apply only to static content), so every function that returns
+// SPA HTML must emit the same security headers itself. Mirrors the `/app/**`
+// CSP in firebase.json since the served bundle IS the SPA and runs the same
+// Firebase Auth, App Check, and reCAPTCHA code paths.
+const STOREFRONT_HTML_CSP =
+  "default-src 'self'; " +
+  "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.googleapis.com https://apis.google.com https://www.google.com https://www.recaptcha.net; " +
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://firebasestorage.googleapis.com wss://*.firebaseio.com; " +
+  "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com https://*.googleusercontent.com; " +
+  "style-src 'self' 'unsafe-inline'; " +
+  "font-src 'self' data: https://fonts.gstatic.com; " +
+  "frame-src 'self' https://www.google.com https://www.recaptcha.net https://wakelab.firebaseapp.com https://wolf-20b8b.firebaseapp.com https://accounts.google.com; " +
+  "frame-ancestors 'none'; base-uri 'self'; form-action 'self';";
+
+function setStorefrontHtmlSecurityHeaders(res: {set(k: string, v: string): unknown}): void {
+  res.set("Content-Security-Policy", STOREFRONT_HTML_CSP);
+  res.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.set("X-Frame-Options", "DENY");
+  res.set(
+    "Permissions-Policy",
+    "interest-cohort=(), geolocation=(), microphone=(), camera=(), payment=(self), usb=()"
+  );
+}
+
+// H-1: lightweight per-IP throttle on the OG-rewriting functions. They sit
+// outside the Express api function (no checkIpRateLimit), so without this an
+// attacker can grind /aaaa, /aaab, ... at near-zero cost while burning
+// Firestore reads. 60 req/min/IP per function is generous for legit traffic
+// (one IP-bound IG bot scraping previews) and catches enumeration loops.
+const PAGE_FN_IP_RATE_WINDOW_MS = 60_000;
+const PAGE_FN_IP_RATE_LIMIT = 60;
+const pageFnIpHits = new Map<string, {count: number; reset: number}>();
+
+function clientIpFromReq(req: {ip?: string; ips?: string[]; get(k: string): string | undefined}): string {
+  if (req.ips && req.ips.length > 0) return req.ips[0];
+  if (req.ip) return req.ip;
+  const fwd = req.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return "unknown";
+}
+
+function pageFnRateLimited(
+  req: {ip?: string; ips?: string[]; get(k: string): string | undefined}
+): boolean {
+  const ip = clientIpFromReq(req);
+  const now = Date.now();
+  const entry = pageFnIpHits.get(ip);
+  if (!entry || now > entry.reset) {
+    pageFnIpHits.set(ip, {count: 1, reset: now + PAGE_FN_IP_RATE_WINDOW_MS});
+    // Opportunistic GC so the Map doesn't grow unbounded across cold instances.
+    if (pageFnIpHits.size > 5000) {
+      for (const [k, v] of pageFnIpHits) {
+        if (now > v.reset) pageFnIpHits.delete(k);
+      }
+    }
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > PAGE_FN_IP_RATE_LIMIT;
 }
 
 function formatEventDate(value: unknown): string {
@@ -3128,9 +3196,20 @@ export const eventPage = onRequest(
       res.status(404).send("Not found");
       return;
     }
+    if (pageFnRateLimited(req)) {
+      res.set("Retry-After", "60");
+      res.status(429).send("Too many requests");
+      return;
+    }
     const eventId = match[1];
 
     let html = await getIndexHtml();
+    if (!html) {
+      // Hosting unreachable AND no stale cache. Tell the caller to retry.
+      res.set("Retry-After", "5");
+      res.status(503).send("Service temporarily unavailable");
+      return;
+    }
 
     try {
       const eventDoc = await db.collection("events").doc(eventId).get();
@@ -3159,6 +3238,7 @@ export const eventPage = onRequest(
       // Serve fallback HTML without dynamic tags
     }
 
+    setStorefrontHtmlSecurityHeaders(res);
     res.set("Cache-Control", "public, max-age=300, s-maxage=600");
     res.status(200).send(html);
   }
@@ -3168,13 +3248,200 @@ function escapeOgAttr(s: string): string {
   // L-34: cover the full HTML special-char set so the helper stays safe if
   // a future change moves any of these meta values into a single-quoted attr
   // or inline JSON-LD where >, ' would otherwise turn into XSS sinks.
+  // Also strip ASCII control chars / null bytes which can prematurely
+  // terminate attribute parsing in some HTML parsers.
   return s
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+
+// Reject non-https URLs in places that would be rendered as <img src> or
+// crawled by social bots. A creator-controlled `image_url` set to e.g.
+// "javascript:..." would otherwise render as `<meta property="og:image"
+// content="javascript:..." />` and some crawlers do dereference it.
+function safeImageUrl(raw: unknown, fallback: string): string {
+  if (typeof raw !== "string") return fallback;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("https://")) return fallback;
+  return trimmed;
+}
+
+// ─── Creator storefront page with dynamic OG tags ───────────────────────────
+//
+// Serves wakelab.co/{username} and wakelab.co/{username}/{programId}.
+// Looks up the creator (and optionally a program), rewrites OG meta tags so
+// shared links render rich previews on WhatsApp / IG / Twitter, then returns
+// the SPA HTML for the landing app to hydrate.
+
+import {isReservedUsername} from "./api/utils/reservedUsernames.js";
+
+const CREATOR_USERNAME_RE = /^[a-z0-9_-]{1,50}$/;
+const CREATOR_PROGRAM_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+function applyOgTags(
+  html: string,
+  opts: {
+    title: string;
+    description: string;
+    image: string;
+    url: string;
+  }
+): string {
+  return html
+    .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(opts.title)}" />`)
+    .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeOgAttr(opts.description)}" />`)
+    .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeOgAttr(opts.image)}" />`)
+    .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${escapeOgAttr(opts.url)}" />`)
+    .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeOgAttr(opts.title)}" />`)
+    .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeOgAttr(opts.description)}" />`)
+    .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeOgAttr(opts.image)}" />`)
+    .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(opts.title)} — Wake</title>`);
+}
+
+export const creatorPage = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 10,
+    concurrency: 80,
+  },
+  async (req, res) => {
+    if (pageFnRateLimited(req)) {
+      res.set("Retry-After", "60");
+      res.status(429).send("Too many requests");
+      return;
+    }
+
+    // Match /{username} OR /{username}/{programId}.
+    // Reject any deeper path so reserved sub-routes (/comprado etc.) handled
+    // by the SPA don't accidentally trigger this function — Hosting only
+    // rewrites two-segment paths to us anyway, but defense in depth.
+    const match = req.path.match(/^\/([^/]+)(?:\/([^/]+))?\/?$/);
+
+    // H-12: hosting rewrites accept upper- and lowercase, but usernames are
+    // canonicalized to lowercase. 301-redirect any path that contains capital
+    // letters in the username segment so OG bots see one canonical URL.
+    if (match) {
+      const rawUser = match[1] || "";
+      if (rawUser !== rawUser.toLowerCase()) {
+        const canonicalPath = "/" + rawUser.toLowerCase() +
+          (match[2] ? "/" + match[2] : "");
+        res.set("Cache-Control", "public, max-age=86400");
+        res.redirect(301, canonicalPath);
+        return;
+      }
+    }
+
+    let html = await getIndexHtml();
+    if (!html) {
+      res.set("Retry-After", "5");
+      res.status(503).send("Service temporarily unavailable");
+      return;
+    }
+
+    const fallbackImage = "https://wakelab.co/app_icon.png";
+    const send = (status = 200) => {
+      setStorefrontHtmlSecurityHeaders(res);
+      // No `Vary: User-Agent` — the response body is identical for all UAs and
+      // varying on it would shred the CDN hit rate.
+      res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
+      res.status(status).send(html);
+    };
+
+    if (!match) {
+      send();
+      return;
+    }
+
+    // H-12: hosting accepts only [a-z0-9_-] but defense-in-depth lowercase
+    // here lets us still match if a future hosting rewrite admits uppercase.
+    const usernameRaw = (match[1] || "").toLowerCase();
+    const programId = match[2] || null;
+
+    if (!CREATOR_USERNAME_RE.test(usernameRaw) || isReservedUsername(usernameRaw)) {
+      send();
+      return;
+    }
+    if (programId && !CREATOR_PROGRAM_ID_RE.test(programId)) {
+      send();
+      return;
+    }
+
+    try {
+      const userSnap = await db
+        .collection("users")
+        .where("username", "==", usernameRaw)
+        .limit(1)
+        .get();
+      if (userSnap.empty) {
+        send();
+        return;
+      }
+      const userDoc = userSnap.docs[0];
+      const userData = userDoc.data();
+      if (userData.role !== "creator" && userData.role !== "admin") {
+        send();
+        return;
+      }
+
+      const displayName = (userData.displayName as string) ||
+        (userData.name as string) || usernameRaw;
+      const profileImage = safeImageUrl(
+        userData.profilePictureUrl ?? userData.profile_picture_url,
+        fallbackImage
+      );
+      const bio = (userData.bio as string) || "";
+
+      if (!programId) {
+        // Profile page
+        html = applyOgTags(html, {
+          title: `${displayName} — Wake`,
+          description: bio.slice(0, 160) || `Programas de ${displayName} en Wake`,
+          image: profileImage,
+          url: `https://wakelab.co/${usernameRaw}`,
+        });
+        send();
+        return;
+      }
+
+      // Program detail page
+      const programDoc = await db.collection("courses").doc(programId).get();
+      if (!programDoc.exists) {
+        send();
+        return;
+      }
+      const programData = programDoc.data() ?? {};
+      if (
+        programData.creator_id !== userDoc.id ||
+        programData.status !== "published"
+      ) {
+        send();
+        return;
+      }
+
+      const programTitle = (programData.title as string) || "Programa";
+      const programDescription = (programData.description as string) || "";
+      const programImage = safeImageUrl(programData.image_url, profileImage);
+
+      html = applyOgTags(html, {
+        title: `${programTitle} — ${displayName}`,
+        description: programDescription.slice(0, 160) ||
+          `${programTitle} en Wake con ${displayName}`,
+        image: programImage,
+        url: `https://wakelab.co/${usernameRaw}/${programId}`,
+      });
+      send();
+    } catch (err) {
+      functions.logger.error("creatorPage failed:", err);
+      send();
+    }
+  }
+);
 
 // ─── Scheduled: expand weekly availability templates into concrete slots ───
 export const expandWeeklyAvailability = onSchedule(

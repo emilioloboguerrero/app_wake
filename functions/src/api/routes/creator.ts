@@ -20,6 +20,7 @@ import {
 import {WakeApiServerError} from "../errors.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
+import {isReservedUsername} from "../utils/reservedUsernames.js";
 
 const router = Router();
 
@@ -3056,9 +3057,9 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
   // and overwrite the program snapshot with a single-day-shaped doc, leaving
   // a corrupted hybrid (mode='program' + planId set + single-day snapshot).
   // To switch to a different program, delete + reassign.
-  const allowedFields = assignmentMode === "program"
-    ? ["status", "startDate", "endDate"]
-    : ["status", "startDate", "endDate", "planId", "planName"];
+  const allowedFields = assignmentMode === "program" ?
+    ["status", "startDate", "endDate"] :
+    ["status", "startDate", "endDate", "planId", "planName"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -7314,6 +7315,11 @@ router.get("/creator/username-check", async (req, res) => {
   }
   const normalized = raw.toLowerCase().trim();
 
+  if (isReservedUsername(normalized)) {
+    res.json({data: {available: false, reason: "reserved"}});
+    return;
+  }
+
   const snapshot = await db
     .collection("users")
     .where("username", "==", normalized)
@@ -9981,6 +9987,11 @@ router.get("/creator/check-username/:username", async (req, res) => {
     return;
   }
 
+  if (isReservedUsername(username)) {
+    res.json({data: {available: false, reason: "reserved"}});
+    return;
+  }
+
   const existing = await db.collection("users")
     .where("username", "==", username)
     .limit(1)
@@ -10059,6 +10070,9 @@ router.post("/creator/register", async (req, res) => {
   }
   if (!/^[a-z0-9_-]+$/.test(body.username)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Username solo puede contener letras, numeros, guiones y guiones bajos", "username");
+  }
+  if (isReservedUsername(body.username)) {
+    throw new WakeApiServerError("CONFLICT", 409, "Este username está reservado", "username");
   }
   if (!body.birthDate) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Fecha de nacimiento es requerida", "birthDate");

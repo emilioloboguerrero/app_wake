@@ -165,6 +165,14 @@
       ]
     },
     {
+      "collectionGroup": "courses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creator_id", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
+      ]
+    },
+    {
       "collectionGroup": "client_sessions",
       "queryScope": "COLLECTION",
       "fields": [
@@ -336,6 +344,24 @@
     {
       "collectionGroup": "ops_client_errors",
       "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rate_limit_first_party",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rate_limit_windows",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "system_email_budget",
+      "fieldPath": "expires_at",
       "ttl": true,
       "indexes": []
     },

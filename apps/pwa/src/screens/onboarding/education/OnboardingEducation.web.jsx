@@ -500,8 +500,16 @@ export default function OnboardingEducation({ onComplete }) {
 
       queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(uid) });
 
-      // Update localStorage cache
-      const statusCache = JSON.stringify({ onboardingCompleted: true, profileCompleted: true, cachedAt: Date.now() });
+      // Update localStorage cache. Mirror the WebAppNavigator cache shape
+      // exactly — including `onboardingDeferred:false` — so stale storefront
+      // deferral state from a prior session never lingers after onboarding
+      // completes.
+      const statusCache = JSON.stringify({
+        onboardingCompleted: true,
+        profileCompleted: true,
+        onboardingDeferred: false,
+        cachedAt: Date.now(),
+      });
       try { localStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
     } catch (err) {
       logger.error('[ONBOARDING_EDU] saveProfile error:', err);
