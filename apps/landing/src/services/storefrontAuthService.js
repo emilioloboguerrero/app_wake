@@ -1,5 +1,5 @@
-// Auth flows for the storefront. Wraps Firebase Auth with the three options
-// the AuthModal exposes: Google, Apple, email/password.
+// Auth flows for the storefront. Wraps Firebase Auth with the options the
+// AuthModal exposes: Google and email/password.
 
 import {
   GoogleAuthProvider,
@@ -8,6 +8,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   onAuthStateChanged,
+  signOut,
 } from 'firebase/auth';
 import { getToken } from 'firebase/app-check';
 import { auth, appCheck } from '../config/firebase';
@@ -38,6 +39,10 @@ export async function signUpWithEmail(email, password, displayName) {
 
 export function getCurrentUser() {
   return auth.currentUser;
+}
+
+export function signOutStorefront() {
+  return signOut(auth);
 }
 
 // Subscribe to auth state. Returns the unsubscribe fn. Use in screens that

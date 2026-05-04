@@ -143,3 +143,33 @@ export async function startStorefrontCheckout({
 
   return respBody?.data ?? null;
 }
+
+// Polled by /comprado to confirm the webhook has granted access before
+// sending the user into the PWA. Returns { active, expiresAt } or null on a
+// transient error (caller treats null as "not yet" and keeps polling).
+export async function getCheckoutStatus({ courseId }) {
+  const token = await getCurrentIdToken();
+  if (!token) return null;
+  const appCheckToken = await getAppCheckTokenForRequest();
+
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+    'X-Wake-Client': 'landing/1.0',
+  };
+  if (appCheckToken) headers['X-Firebase-AppCheck'] = appCheckToken;
+
+  let res;
+  try {
+    res = await fetch(
+      `/api/v1/public/checkout/status?course=${encodeURIComponent(courseId)}`,
+      { method: 'GET', headers }
+    );
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let body = null;
+  try { body = await res.json(); } catch { return null; }
+  return body?.data ?? null;
+}

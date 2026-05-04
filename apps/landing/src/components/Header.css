@@ -264,3 +264,144 @@
 }
 
 .wk-drawer-link:hover { color: #fff; }
+
+/* ── Account widget ── */
+.wk-account {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.wk-account-trigger {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background-color 0.3s cubic-bezier(0.44, 0, 0.56, 1), border-color 0.3s cubic-bezier(0.44, 0, 0.56, 1);
+}
+
+.wk-account-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.wk-account-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  min-width: 240px;
+  padding: 14px 16px;
+  background: rgba(26, 26, 26, 0.96);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  z-index: 1001;
+  animation: wk-account-menu-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes wk-account-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wk-account-menu-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 0 4px;
+}
+
+.wk-account-menu-email {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  margin: 0 0 12px;
+  word-break: break-all;
+}
+
+.wk-account-menu-signout {
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background-color 0.3s cubic-bezier(0.44, 0, 0.56, 1);
+}
+
+.wk-account-menu-signout:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+@media (max-width: 768px) {
+  /* Avatar lives in pill-links (hidden on mobile). The drawer renders a
+     dedicated account block instead. */
+  .wk-account { display: none; }
+}
+
+.wk-drawer-account {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wk-drawer-account-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 0 4px;
+}
+
+.wk-drawer-account-email {
+  font-family: 'Inter', sans-serif;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  margin: 0 0 14px;
+  word-break: break-all;
+}
+
+.wk-drawer-account-signout {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: background-color 0.3s cubic-bezier(0.44, 0, 0.56, 1);
+}
+
+.wk-drawer-account-signout:hover {
+  background: rgba(255, 255, 255, 0.18);
+}

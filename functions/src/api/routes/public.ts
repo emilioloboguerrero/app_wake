@@ -281,8 +281,8 @@ router.get(
 // GET /public/storefront/creators
 //
 // Public directory of every creator with at least one published program.
-// Powers the wakelab.co/tienda landing page; each card links into the
-// existing per-creator storefront at wakelab.co/{username}.
+// Powers the wakelab.co/lab (and /tienda alias) landing page; each card links
+// into the existing per-creator storefront at wakelab.co/{username}.
 //
 // Strategy: query published courses once, group by creator_id, then batch
 // `db.getAll` the corresponding user docs in a single round-trip. Filtering
@@ -569,7 +569,10 @@ router.post("/public/checkout/start", async (req, res) => {
             success: successUrl,
             failure: successUrl,
           },
-          auto_return: "approved",
+          // auto_return:"all" so a rejected payment also redirects back to
+          // /comprado (with status=rejected) instead of stranding the user on
+          // MP's failure page. binary_mode:true already ensures no pending.
+          auto_return: "all",
         },
       });
     } catch (err) {
@@ -761,6 +764,35 @@ router.post("/public/checkout/start", async (req, res) => {
       mode: "subscription",
     },
   });
+});
+
+// GET /public/checkout/status?course={courseId}
+//
+// Auth required (Firebase ID token). Returns whether the buyer has active
+// access to a given program. /comprado polls this until the webhook lands so
+// the UI can confirm "your program is ready" before sending the user into the
+// PWA — closes the race window between MP redirect and webhook processing.
+router.get("/public/checkout/status", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 60, "rate_limit_first_party");
+
+  const courseId = String(req.query.course || "");
+  if (!COURSE_ID_RE.test(courseId)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "course");
+  }
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = (userDoc.data()?.courses ?? {}) as Record<
+    string,
+    {status?: string; expires_at?: string | null}
+  >;
+  const entry = courses[courseId];
+  const expiresAt = entry?.expires_at ?? null;
+  const stillValid =
+    !expiresAt || (typeof expiresAt === "string" && Date.parse(expiresAt) > Date.now());
+  const active = entry?.status === "active" && stillValid;
+
+  res.json({data: {active, expiresAt}});
 });
 
 export default router;

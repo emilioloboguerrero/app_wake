@@ -66,6 +66,22 @@
   margin: 0 0 32px;
 }
 
+.pp-poll-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: pp-spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+
+@keyframes pp-spin {
+  to { transform: rotate(360deg); }
+}
+
 .pp-actions {
   display: flex;
   flex-direction: column;

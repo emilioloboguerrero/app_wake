@@ -166,7 +166,11 @@ router.post("/payments/preference", async (req, res) => {
           pending: `${base}/app/payment/cancelled?courseId=${courseId}`,
         };
       })(),
-      auto_return: "approved",
+      // auto_return:"all" so a rejected/abandoned checkout also auto-redirects
+      // back to /payment/cancelled instead of stranding the user on MP. With
+      // binary_mode:true above, MP only returns approved or rejected — never
+      // pending — so the pending back_url is just a defensive fallback.
+      auto_return: "all",
     },
   });
 
@@ -364,7 +368,9 @@ router.post("/payments/bundle-preference", async (req, res) => {
           pending: `${base}/app/payment/cancelled?bundleId=${body.bundleId}`,
         };
       })(),
-      auto_return: "approved",
+      // See /payments/preference above: "all" so abandoned checkouts redirect
+      // to /payment/cancelled instead of stranding the user on MP.
+      auto_return: "all",
     },
   });
 

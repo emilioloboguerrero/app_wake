@@ -88,12 +88,13 @@ function AppContent() {
     );
   }
 
-  if (location.pathname === '/lab') {
+  if (location.pathname === '/lab' || location.pathname === '/tienda') {
     return (
       <>
         <Header />
         <Routes>
           <Route path="/lab" element={<StorefrontScreen />} />
+          <Route path="/tienda" element={<StorefrontScreen />} />
         </Routes>
       </>
     );
