@@ -12,6 +12,7 @@ import sessionService from '../services/sessionService';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
 import VideoExchangeOverlay from './videoExchange/VideoExchangeOverlay.web';
 import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import WakeLoader from './WakeLoader.web.jsx';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
@@ -251,12 +252,16 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
   const [imageLoaded, setImageLoaded] = useState(false);
   const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
 
-  const { data: sessionState } = useQuery({
+  const { data: sessionState, isLoading: sessionQueryLoading } = useQuery({
     queryKey: ['preview', 'todaySession', user?.uid, courseId],
     queryFn: () => sessionService.getCurrentSession(user.uid, courseId),
     enabled: !!user?.uid && !!courseId && !isExpired,
-    staleTime: 0,
+    // 60s window covers carousel swipes and quick re-mounts without a round-trip.
+    // Explicit invalidation on completion (sessionService.completeSession) and
+    // program updates (HoyScreen.handleApplyProgramUpdate) keeps the card fresh.
+    staleTime: 60 * 1000,
   });
+  const sessionLoading = sessionQueryLoading || (!sessionState && !!user?.uid && !!courseId && !isExpired);
 
   const sessionImageUrl = sessionState?.session?.image_url;
   const programImageUrl = course?.image_url;
@@ -280,6 +285,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
 
   let headlineTitle;
   if (isExpired) headlineTitle = 'Acceso expirado';
+  else if (sessionLoading) headlineTitle = programTitle;
   else if (isCompleted) headlineTitle = 'Sesión completada';
   else if (isRestDay) headlineTitle = 'Día de descanso';
   else if (noPlanningThisWeek) headlineTitle = 'Sin sesiones esta semana';
@@ -303,13 +309,15 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
   const canBegin = !!sessionState?.workout && !isExpired && !isCompleted;
   const beginLabel = isExpired
     ? 'Renovar acceso'
-    : isCompleted
-      ? 'Completada'
-      : isRestDay
-        ? 'Día de descanso'
-        : noPlanningThisWeek
-          ? 'Sin sesión'
-          : 'Empezar';
+    : sessionLoading
+      ? 'Cargando…'
+      : isCompleted
+        ? 'Completada'
+        : isRestDay
+          ? 'Día de descanso'
+          : noPlanningThisWeek
+            ? 'Sin sesión'
+            : 'Empezar';
   const hasMuscleData = Object.keys(muscleVolumes).length > 0;
 
   const handleFlip = (e) => {
@@ -340,7 +348,12 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
     setVideoHistoryOpen(true);
   };
 
-  const beginStyle = canBegin ? styles.beginButton : { ...styles.beginButton, ...styles.beginDisabled };
+  const beginAccentStyle = accent && (canBegin || isExpired)
+    ? { backgroundColor: accent.accent, color: accent.accentText }
+    : null;
+  const beginStyle = canBegin
+    ? { ...styles.beginButton, ...(beginAccentStyle || {}) }
+    : { ...styles.beginButton, ...styles.beginDisabled };
 
   return (
     <>
@@ -380,7 +393,9 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
             </div>
 
             <div style={styles.muscleWrap}>
-              {hasMuscleData ? (
+              {sessionLoading ? (
+                <WakeLoader size={64} />
+              ) : hasMuscleData ? (
                 <MuscleSilhouetteSVG
                   muscleVolumes={muscleVolumes}
                   accentRgb={accentRgb}
@@ -395,9 +410,11 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
 
             <div style={styles.beginRow}>
               <button
-                style={canBegin || isExpired ? styles.beginButton : beginStyle}
+                style={canBegin || isExpired
+                  ? { ...styles.beginButton, ...(beginAccentStyle || {}) }
+                  : beginStyle}
                 onClick={handleBegin}
-                disabled={!canBegin && !isExpired}
+                disabled={(!canBegin && !isExpired) || sessionLoading}
               >
                 {beginLabel}
               </button>

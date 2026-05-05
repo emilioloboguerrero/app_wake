@@ -3,8 +3,9 @@ import React from 'react';
 import { View } from 'react-native';
 import './styles/global.css'; // Load Inter + global styles for all screens (including InstallScreen when !isPWA)
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { queryClient } from './config/queryClient';
+import { persistOptions } from './config/queryPersistence.web';
 import LoginScreen from './screens/LoginScreen.web';
 import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
@@ -457,12 +458,10 @@ export default function App() {
       }
 
       try {
-        // Initialize React Query IndexedDB persistence (non-blocking)
-        try {
-          const { initQueryPersistence } = require('./config/queryPersistence.web');
-          initQueryPersistence(queryClient);
-        } catch (persistError) {
-        }
+        // React Query IndexedDB persistence is now wired via PersistQueryClientProvider
+        // at the root, which gates rendering until the cache is restored. The legacy
+        // initQueryPersistence call here was non-blocking and let queries fire before
+        // restoration completed — we removed it to avoid double-initializing.
 
         // Request persistent storage for better quota (non-blocking with timeout)
         if (navigator.storage && navigator.storage.persist) {
@@ -731,7 +730,7 @@ export default function App() {
         v7_relativeSplatPath: true,
       }}
     >
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <SafeAreaProvider initialMetrics={initialMetrics}>
           <AuthProvider>
             <ActivityStreakProvider>
@@ -745,7 +744,7 @@ export default function App() {
             </ActivityStreakProvider>
           </AuthProvider>
         </SafeAreaProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </BrowserRouter>
   );
 }

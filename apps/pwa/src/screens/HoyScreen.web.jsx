@@ -31,6 +31,7 @@ import {
 import { useNutritionToday } from '../hooks/hoy/useNutritionToday';
 import { useSessionRecovery } from '../hooks/hoy/useSessionRecovery';
 import { useCoursesEnriched } from '../hooks/hoy/useCoursesEnriched';
+import { useDailyWorkoutPrefetch } from '../hooks/hoy/useDailyWorkoutPrefetch';
 import { useCourseDownloadStatus } from '../hooks/hoy/useCourseDownloadStatus';
 import { useCoachProfileImages } from '../hooks/hoy/useCoachProfileImages';
 import { getUpcomingBookingsForUser } from '../services/callBookingService';
@@ -75,10 +76,14 @@ const HoyScreen = () => {
 
   const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid);
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
-  // We block the carousel on enrichment so coach grouping never flickers between
-  // creator_id and creatorName as queries resolve at different times.
-  const { courses: enrichedCourses, isLoading: enrichmentLoading } = useCoursesEnriched(courses);
-  const isLoading = coursesLoading || (courses.length > 0 && enrichmentLoading);
+  // Non-blocking: carousel renders as soon as useUserCourses resolves; coach grouping
+  // reflows when creator_id lands. Courses without resolved creator_id share a fallback
+  // bucket keyed by creatorName so cards still appear instantly.
+  const { courses: enrichedCourses } = useCoursesEnriched(courses);
+  const isLoading = coursesLoading;
+  // Prefetch /workout/daily for every course in parallel, sharing the per-card query key
+  // so by the time TodayWorkoutCard mounts the data is already cached.
+  useDailyWorkoutPrefetch(user?.uid, courses);
   const [selectedCoachId, setSelectedCoachId] = useState(null);
 
   // Hydrate persisted coach selection once we know who's logged in. Stored per-user so
@@ -151,6 +156,10 @@ const HoyScreen = () => {
   const refreshCourses = useCallback(() => {
     if (!user?.uid) return;
     queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+    // The per-card daily-session cache (TodayWorkoutCard) lives under its own
+    // key — invalidate it too so a coach update or new purchase flips the card
+    // without waiting on the 60s staleTime window.
+    queryClient.invalidateQueries({ queryKey: ['preview', 'todaySession', user.uid] });
   }, [queryClient, user?.uid]);
 
   useEffect(() => {
@@ -203,9 +212,10 @@ const HoyScreen = () => {
   const coachEnvironments = useMemo(() => {
     const byCoach = new Map();
     (enrichedCourses || []).forEach((c) => {
-      // Group strictly by creator_id. Falling back to creatorName here causes groups to
-      // split/merge as enrichment lands at different times for different courses.
-      const coachKey = c.creator_id || '__unknown__';
+      // Prefer creator_id when available; otherwise group by creatorName so the carousel
+      // still renders before enrichment lands. Once creator_id resolves, the memo
+      // recomputes and groups merge under the canonical key.
+      const coachKey = c.creator_id || (c.creatorName ? `name:${c.creatorName}` : '__unknown__');
       if (!byCoach.has(coachKey)) {
         byCoach.set(coachKey, {
           coachId: coachKey,

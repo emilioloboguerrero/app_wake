@@ -1372,23 +1372,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Video preloading function
-  const preloadNextVideo = useCallback(async () => {
+  // Kick off byte-level preload for upcoming exercises. On web this attaches a
+  // hidden <video preload="auto"> per URL inside videoCacheService so the
+  // browser HTTP cache is warm before the real player mounts. We preload the
+  // current exercise too because users can land here without going through
+  // Warmup (skip-warmup, session recovery, deep link).
+  const preloadNextVideo = useCallback(() => {
     if (!workout?.exercises) return;
-    
-    const nextExerciseIndex = currentExerciseIndex + 1;
-    if (nextExerciseIndex < workout.exercises.length) {
-      const nextExercise = workout.exercises[nextExerciseIndex];
-      const videoUrl = nextExercise?.video_url;
-      
-      if (videoUrl && !videoPreloadCache.current.has(videoUrl)) {
-        try {
-          await videoCacheService.preloadVideo(videoUrl);
-          videoPreloadCache.current.add(videoUrl);
-        } catch (error) {
-          logger.error('❌ Error preloading video:', error);
-        }
-      }
+    const candidates = [
+      workout.exercises[currentExerciseIndex],
+      workout.exercises[currentExerciseIndex + 1],
+    ];
+    for (const ex of candidates) {
+      const videoUrl = ex?.video_url;
+      if (!videoUrl || videoPreloadCache.current.has(videoUrl)) continue;
+      videoCacheService.preloadVideo(videoUrl);
+      videoPreloadCache.current.add(videoUrl);
     }
   }, [workout, currentExerciseIndex]);
 
@@ -1746,6 +1745,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       };
     }
 
+    // Fire the preload synchronously: it's just attaching a hidden <video> on
+    // web (cheap, non-blocking). Deferring it via setTimeout cost real load
+    // time on the next exercise's first byte.
+    preloadNextVideo();
+
     // Defer state update to avoid blocking commit phase
     const timeoutId1 = setTimeout(() => {
       if (!isMounted) return;
@@ -1757,7 +1761,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       currentExercise.primary,
       currentExercise.video_url
       ) || null;
-      
+
       // Use startTransition to mark as non-urgent
       if (isMounted) {
         const resolvedUrl = localPath || currentExercise.video_url || null;
@@ -1766,16 +1770,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setVideoUri(resolvedUrl);
           setVideoSourceType(sourceType);
         });
-      }
-    
-      // Preload next video for better UX (also defer)
-      if (isMounted) {
-        const timeoutId2 = setTimeout(() => {
-          if (isMounted) {
-    preloadNextVideo();
-          }
-        }, 0);
-        timeoutIds.push(timeoutId2);
       }
     }, 0);
     timeoutIds.push(timeoutId1);
@@ -1994,7 +1988,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     ]).start();
   }, [sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, sheetHeight, EXPANDED_HORIZONTAL_MARGIN]);
 
+  // Bridge refs: closeSheet is defined here but handleSaveEditMode lives lower in
+  // the file. Using refs lets closeSheet commit pending edits without a forward ref.
+  const isEditModeRef = useRef(isEditMode);
+  useEffect(() => { isEditModeRef.current = isEditMode; }, [isEditMode]);
+  const handleSaveEditModeRef = useRef(null);
+
   const closeSheet = useCallback(() => {
+    if (isEditModeRef.current && handleSaveEditModeRef.current) {
+      handleSaveEditModeRef.current();
+    }
     setIsSheetOpen(false);
     setCurrentView(0);
     Animated.parallel([
@@ -3445,6 +3448,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setLoadingAvailableExercises(false);
     }
   }, [editingExercises, dragAnimatedValues]);
+
+  // Bridge: closeSheet (defined earlier) calls this when the user dismisses the
+  // sheet while in edit mode, so unsaved reorders/adds are committed instead of lost.
+  useEffect(() => { handleSaveEditModeRef.current = handleSaveEditMode; }, [handleSaveEditMode]);
 
   const handleCancelEditMode = useCallback(() => {
     // Simply exit edit mode without applying changes
@@ -5668,8 +5675,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     return null;
                   })()}
                   <WakeHeaderSpacer />
-                  {/* Spacer so content sits below the closed top sheet (lid + 12px gap) */}
-                  <View style={{ height: CLOSED_LID_HEIGHT + 12 }} />
+                  {/* Spacer so content sits below the closed top sheet (lid + 4px gap) */}
+                  <View style={{ height: CLOSED_LID_HEIGHT + 4 }} />
 
               {/* Swipeable Top Cards */}
               <ScrollView

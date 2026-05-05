@@ -18,6 +18,13 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Warm DNS + TLS for Firebase Storage so the first exercise video request
+       skips ~100-300ms of handshake. Both default and bucket-scoped hosts are
+       hit because signed/download URLs use either form. -->
+  <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://storage.googleapis.com" crossorigin />
+  <link rel="dns-prefetch" href="https://firebasestorage.googleapis.com" />
+  <link rel="dns-prefetch" href="https://storage.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <!-- EXPO_CSS_LINKS: replaced by build script with Expo bundle CSS (global, InstallScreen, etc.) -->
   <link rel="icon" href="/app_icon.png" />

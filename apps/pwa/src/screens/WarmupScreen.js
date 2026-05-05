@@ -21,6 +21,7 @@ import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import warmupData from '../../assets/data/warmup_data.json';
 import assetBundleService from '../services/assetBundleService';
+import videoCacheService from '../services/videoCacheService';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
 const WarmupScreen = ({ navigation, route }) => {
@@ -241,6 +242,19 @@ const WarmupScreen = ({ navigation, route }) => {
   useEffect(() => {
     Animated.timing(screenAnim, { toValue: 1, duration: 480, useNativeDriver: true }).start();
   }, []);
+
+  // Warmup videos are bundled local assets, so the network is idle for the
+  // 30-90s the user is here. Use that window to start pulling the first two
+  // execution exercise videos into the HTTP cache so playback starts instantly
+  // when the user advances to WorkoutExecutionScreen.
+  useEffect(() => {
+    const exercises = workout?.exercises;
+    if (!Array.isArray(exercises)) return;
+    for (let i = 0; i < Math.min(2, exercises.length); i++) {
+      const url = exercises[i]?.video_url;
+      if (url) videoCacheService.preloadVideo(url);
+    }
+  }, [workout]);
 
   // Timer ref to avoid recreation
   const timerRef = useRef(null);

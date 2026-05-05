@@ -455,6 +455,10 @@ class SessionService {
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
       queryClient.invalidateQueries({ queryKey: ['programs', courseId] });
       queryClient.invalidateQueries({ queryKey: ['workout', 'calendar'] });
+      // Hoy's TodayWorkoutCard caches the daily session under this key with a
+      // 60s staleTime — invalidate so "Empezar" flips to "Sesión completada"
+      // immediately after completion.
+      queryClient.invalidateQueries({ queryKey: ['preview', 'todaySession', userId] });
 
 
       return {

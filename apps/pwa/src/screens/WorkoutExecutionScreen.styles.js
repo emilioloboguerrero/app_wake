@@ -63,7 +63,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(400, screenHeight * 0.52),
+        height: Math.max(395, screenHeight * 0.51),
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
         overflow: 'visible',
         position: 'relative', // Match videoCard position
@@ -1764,7 +1764,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(400, screenHeight * 0.52),
+    height: Math.max(395, screenHeight * 0.51),
     overflow: 'visible',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),
