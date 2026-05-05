@@ -69,7 +69,7 @@ const styles = {
     pointerEvents: 'none',
     transition: `opacity 600ms ${SPRING}`,
   },
-  imageLoaded: { opacity: 0.22 },
+  imageLoaded: { opacity: 0.32 },
   imageOverlay: {
     position: 'absolute',
     inset: 0,
@@ -315,6 +315,46 @@ const MacroRow = ({ label, value, target, color }) => (
   </div>
 );
 
+// Fritsch–Carlson monotone cubic interpolation → smooth SVG path through points,
+// matching the creator dashboard's recharts `type="monotone"` curve.
+const buildMonotonePath = (pts) => {
+  const n = pts.length;
+  if (n < 2) return '';
+  if (n === 2) return `M ${pts[0].x},${pts[0].y} L ${pts[1].x},${pts[1].y}`;
+  const dx = new Array(n - 1);
+  const m = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x;
+    m[i] = (pts[i + 1].y - pts[i].y) / (dx[i] || 1);
+  }
+  const t = new Array(n);
+  t[0] = m[0];
+  t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  }
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i];
+    const b = t[i + 1] / m[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      t[i] = tau * a * m[i];
+      t[i + 1] = tau * b * m[i];
+    }
+  }
+  let d = `M ${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = pts[i].x + dx[i] / 3;
+    const c1y = pts[i].y + (t[i] * dx[i]) / 3;
+    const c2x = pts[i + 1].x - dx[i] / 3;
+    const c2y = pts[i + 1].y - (t[i + 1] * dx[i]) / 3;
+    d += ` C ${c1x},${c1y} ${c2x},${c2y} ${pts[i + 1].x},${pts[i + 1].y}`;
+  }
+  return d;
+};
+
 // ── Line graph (matches WeekCoachCard's visual language) ─────────────────
 const LineGraph = ({ points, height = 40, accent = true }) => {
   const W = 100;
@@ -354,21 +394,18 @@ const LineGraph = ({ points, height = 40, accent = true }) => {
       />
       {segments.map((seg, idx) => {
         if (seg.length < 2) return null;
+        const linePath = buildMonotonePath(seg);
         const first = seg[0];
         const last = seg[seg.length - 1];
-        const areaPath =
-          `M ${first.x},${H - PAD_Y} ` +
-          `L ${seg.map((p) => `${p.x},${p.y}`).join(' L ')} ` +
-          `L ${last.x},${H - PAD_Y} Z`;
+        const areaPath = `${linePath} L ${last.x},${H - PAD_Y} L ${first.x},${H - PAD_Y} Z`;
         return <path key={`a-${idx}`} d={areaPath} fill={areaFill} fillOpacity={0.18} />;
       })}
       {segments.map((seg, idx) => {
         if (seg.length < 2) return null;
-        const linePath = `M ${seg.map((p) => `${p.x},${p.y}`).join(' L ')}`;
         return (
           <path
             key={`l-${idx}`}
-            d={linePath}
+            d={buildMonotonePath(seg)}
             fill="none"
             stroke={stroke}
             strokeWidth={1.4}
@@ -376,18 +413,6 @@ const LineGraph = ({ points, height = 40, accent = true }) => {
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
-        );
-      })}
-      {points.map((p, i) => {
-        if (p.value == null) return null;
-        const x = xFor(i);
-        const y = yFor(p.value);
-        const r = p.isToday ? 1.8 : 1.1;
-        return (
-          <g key={`pt-${i}`}>
-            {p.isToday ? <circle cx={x} cy={y} r={3.2} fill={stroke} fillOpacity={0.18} /> : null}
-            <circle cx={x} cy={y} r={r} fill={p.isToday ? stroke : '#fff'} />
-          </g>
         );
       })}
     </svg>
@@ -419,7 +444,6 @@ const MiniLineChart = ({ label, points, color }) => (
         const pts = points.map((p, i) => ({
           x: 3 + (i / Math.max(1, points.length - 1)) * 94,
           y: p.value == null ? null : 4 + (1 - p.value) * 16,
-          isToday: p.isToday,
         }));
         const segments = [];
         let cur = [];
@@ -432,11 +456,10 @@ const MiniLineChart = ({ label, points, color }) => (
           <>
             {segments.map((seg, i) => {
               if (seg.length < 2) return null;
-              const d = `M ${seg.map((p) => `${p.x},${p.y}`).join(' L ')}`;
               return (
                 <path
                   key={i}
-                  d={d}
+                  d={buildMonotonePath(seg)}
                   fill="none"
                   stroke={color}
                   strokeWidth={1.4}

@@ -26,10 +26,10 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   scrollView: {
     flex: 1,
   },
-  // Reserve bottom space so content is never covered by the closed bottom-sheet handle bar
+  // Reserve just enough bottom space to clear the closed bottom-sheet handle bar (36px tall).
   scrollContentContainer: {
     flexGrow: 1,
-    paddingBottom: 64 + (insets?.bottom || 0),
+    paddingBottom: 36,
     overflow: 'visible',
   },
   content: {
@@ -63,7 +63,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(400, screenHeight * 0.525), // 400px min, 50% of screen
+        height: Math.max(420, screenHeight * 0.56), // grow toward the closed sheet lid
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
         overflow: 'visible',
         position: 'relative', // Match videoCard position
@@ -300,30 +300,23 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
       },
     }),
   },
+  // Closed lid: total ~36px tall. Pressable fills the entire area so any tap on the lid registers.
   bottomSheetHandleArea: {
-    paddingTop: 8,
-    paddingBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 36,
   },
+  // Pill sits near the top; the rest of the area is empty but still part of the tap target.
   bottomSheetHandlePressable: {
+    flex: 1,
+    width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 4,
+    justifyContent: 'flex-start',
+    paddingTop: 8,
   },
   bottomSheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.28)',
-    marginBottom: 8,
-  },
-  bottomSheetLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    letterSpacing: 0.4,
-    color: 'rgba(255, 255, 255, 0.55)',
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
   },
   bottomSheetContent: {
     flex: 1,
@@ -482,7 +475,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   },
   exerciseListContent: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: Math.max(10, screenHeight * 0.012), // Match main content padding
+    paddingTop: 4, // tight: handle area already provides breathing room
     paddingBottom: 24,
   },
   exerciseListTitleSection: {
@@ -1234,24 +1227,28 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     pointerEvents: 'none',
   },
   setNumberSpace: {
-    width: Math.max(20, screenWidth * 0.05),
-    marginRight: Math.max(20, screenWidth * 0.05),
-    marginLeft: Math.max(26, screenWidth * 0.065),
+    width: 32,
+    marginRight: Math.max(12, screenWidth * 0.03),
+    marginLeft: 4,
   },
   setNumber: {
-    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
     color: '#ffffff',
-    marginRight: Math.max(20, screenWidth * 0.05),
-    minWidth: Math.max(20, screenWidth * 0.05),
-    textAlign: 'left',
+    textAlign: 'center',
   },
+  // Circular chip — visual cue that the set number is a tap target
   setNumberContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    paddingHorizontal: Math.max(4, screenWidth * 0.01),
-    marginLeft: Math.max(26, screenWidth * 0.065),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    marginLeft: 4,
+    marginRight: Math.max(12, screenWidth * 0.03),
   },
   setInputsContainer: {
     flexDirection: 'row',
@@ -1743,7 +1740,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(400, screenHeight * 0.525), // 400px min, 50% of screen (matches muscles card)
+    height: Math.max(420, screenHeight * 0.56), // grow toward the closed sheet lid (matches muscles card)
     overflow: 'visible',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),

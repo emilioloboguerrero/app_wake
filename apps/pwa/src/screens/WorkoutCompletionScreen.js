@@ -30,6 +30,7 @@ import SvgChampion from '../components/icons/SvgChampion';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { auth } from '../config/firebase';
@@ -48,6 +49,13 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
   const userId = (user || auth.currentUser)?.uid;
+
+  // Accent color from session/program image — drives muscle silhouette tint and Finalizar button.
+  const accentImageUrl = workout?.image_url || workout?.imageUrl || course?.image_url || course?.imageUrl || null;
+  const accent = useAccentFromImage(accentImageUrl);
+  const accentColor = accent?.accent || null;
+  const accentTextColor = accent?.accentText || '#1a1a1a';
+  const accentRgb = accent ? [accent.accentR, accent.accentG, accent.accentB] : null;
 
   const { data: userData } = useQuery({
     queryKey: ['user', userId],
@@ -1306,8 +1314,11 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         <FixedWakeHeader />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>No se pudieron calcular las estadísticas</Text>
-          <TouchableOpacity style={styles.finishButton} onPress={handleFinishWorkout}>
-            <Text style={styles.finishButtonText}>Finalizar Entrenamiento</Text>
+          <TouchableOpacity
+            style={[styles.finishButton, accentColor && { backgroundColor: accentColor }]}
+            onPress={handleFinishWorkout}
+          >
+            <Text style={[styles.finishButtonText, accentColor && { color: accentTextColor }]}>Finalizar Entrenamiento</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -1522,8 +1533,11 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
           {/* Finish Button */}
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.finishButton} onPress={handleFinishWorkout}>
-              <Text style={styles.finishButtonText}>Finalizar Entrenamiento</Text>
+            <TouchableOpacity
+              style={[styles.finishButton, accentColor && { backgroundColor: accentColor }]}
+              onPress={handleFinishWorkout}
+            >
+              <Text style={[styles.finishButtonText, accentColor && { color: accentTextColor }]}>Finalizar Entrenamiento</Text>
             </TouchableOpacity>
           </View>
 
@@ -1732,7 +1746,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                           {sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0 ? (
                             <View style={styles.shareCardMuscleBackground}>
                               <View style={{ width: '100%', height: 330 }}>
-                                <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} />
+                                <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} accentRgb={accentRgb} />
                               </View>
                             </View>
                           ) : (
@@ -1966,7 +1980,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   {sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0 ? (
                     <View style={styles.fullscreenMuscleBackground}>
                       <View style={{ width: '100%', height: 330 }}>
-                        <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} />
+                        <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} accentRgb={accentRgb} />
                       </View>
                     </View>
                   ) : (

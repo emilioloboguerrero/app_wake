@@ -401,6 +401,46 @@ const CoachAvatar = ({ imageUrl, name, small = false }) => {
   );
 };
 
+// Fritsch–Carlson monotone cubic interpolation → smooth SVG path through points,
+// matching the creator dashboard's recharts `type="monotone"` curve.
+const buildMonotonePath = (pts) => {
+  const n = pts.length;
+  if (n < 2) return '';
+  if (n === 2) return `M ${pts[0].x},${pts[0].y} L ${pts[1].x},${pts[1].y}`;
+  const dx = new Array(n - 1);
+  const m = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = pts[i + 1].x - pts[i].x;
+    m[i] = (pts[i + 1].y - pts[i].y) / (dx[i] || 1);
+  }
+  const t = new Array(n);
+  t[0] = m[0];
+  t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+  }
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i] / m[i];
+    const b = t[i + 1] / m[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      t[i] = tau * a * m[i];
+      t[i + 1] = tau * b * m[i];
+    }
+  }
+  let d = `M ${pts[0].x},${pts[0].y}`;
+  for (let i = 0; i < n - 1; i++) {
+    const c1x = pts[i].x + dx[i] / 3;
+    const c1y = pts[i].y + (t[i] * dx[i]) / 3;
+    const c2x = pts[i + 1].x - dx[i] / 3;
+    const c2y = pts[i + 1].y - (t[i + 1] * dx[i]) / 3;
+    d += ` C ${c1x},${c1y} ${c2x},${c2y} ${pts[i + 1].x},${pts[i + 1].y}`;
+  }
+  return d;
+};
+
 // Line graph rendered in SVG (viewBox-based, scales with the container).
 // Breaks the line wherever a point's value is null — for workouts that means rest
 // days, for nutrition it means future days.
@@ -444,12 +484,10 @@ const LineGraph = ({ points }) => {
       />
       {segments.map((seg, idx) => {
         if (seg.length < 2) return null;
+        const linePath = buildMonotonePath(seg);
         const first = seg[0];
         const last = seg[seg.length - 1];
-        const areaPath =
-          `M ${first.x},${H - PAD_Y} ` +
-          `L ${seg.map((p) => `${p.x},${p.y}`).join(' L ')} ` +
-          `L ${last.x},${H - PAD_Y} Z`;
+        const areaPath = `${linePath} L ${last.x},${H - PAD_Y} L ${first.x},${H - PAD_Y} Z`;
         return (
           <path
             key={`area-${idx}`}
@@ -461,11 +499,10 @@ const LineGraph = ({ points }) => {
       })}
       {segments.map((seg, idx) => {
         if (seg.length < 2) return null;
-        const linePath = `M ${seg.map((p) => `${p.x},${p.y}`).join(' L ')}`;
         return (
           <path
             key={`line-${idx}`}
-            d={linePath}
+            d={buildMonotonePath(seg)}
             fill="none"
             stroke="var(--accent, rgba(255,255,255,0.9))"
             strokeWidth={1.4}
@@ -473,31 +510,6 @@ const LineGraph = ({ points }) => {
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
-        );
-      })}
-      {points.map((p, i) => {
-        if (p.value == null) return null;
-        const x = xFor(i);
-        const y = yFor(p.value);
-        const r = p.isToday ? 1.8 : 1.1;
-        return (
-          <g key={`pt-${i}`}>
-            {p.isToday ? (
-              <circle
-                cx={x}
-                cy={y}
-                r={3.2}
-                fill="var(--accent, #fff)"
-                fillOpacity={0.18}
-              />
-            ) : null}
-            <circle
-              cx={x}
-              cy={y}
-              r={r}
-              fill={p.isToday ? 'var(--accent, #fff)' : '#fff'}
-            />
-          </g>
         );
       })}
     </svg>

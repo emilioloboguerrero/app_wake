@@ -41,6 +41,7 @@ import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 
 // Gesture handler and video - expo-video (VideoView + useVideoPlayer) with custom overlay UI on all platforms
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
@@ -361,7 +362,7 @@ const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue
 // List view exercise card: at module level so re-renders (e.g. from useWindowDimensions when keyboard opens) do not remount rows and dismiss the focused input.
 const SKIP_SET_FIELDS = ['id','order','notes','description','title','name','created_at','updated_at','createdAt','updatedAt','type','status','category','tags','metadata'];
 
-const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, lastSavedKey, renderSetHeaders, renderSetInputFields, styles }) => {
+const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, lastSavedKey, renderSetHeaders, renderSetInputFields, styles, accentColor }) => {
   const expandAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
   const chevronAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
 
@@ -387,9 +388,18 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
         style={styles.exerciseCard}
         onPress={() => onToggleExpansion(exerciseIndex)}
       >
-        <Text style={styles.exerciseNumber}>{exerciseIndex + 1}</Text>
+        <Text style={[
+          styles.exerciseNumber,
+          exerciseIndex === currentExerciseIndex && accentColor && { color: accentColor },
+        ]}>{exerciseIndex + 1}</Text>
         <View style={styles.exerciseContent}>
-          <Text className="exercise-title" style={styles.exerciseItemTitle}>
+          <Text
+            className="exercise-title"
+            style={[
+              styles.exerciseItemTitle,
+              exerciseIndex === currentExerciseIndex && accentColor && { color: accentColor },
+            ]}
+          >
             {exercise.name}
           </Text>
         </View>
@@ -400,7 +410,11 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
           <SvgChevronLeft
             width={20}
             height={20}
-            stroke="#007AFF"
+            stroke={
+              exerciseIndex === currentExerciseIndex && accentColor
+                ? accentColor
+                : 'rgba(255, 255, 255, 0.6)'
+            }
           />
         </Animated.View>
       </TouchableOpacity>
@@ -455,15 +469,20 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
                 className={justSaved ? 'set-row wake-set-saved' : 'set-row'}
                 style={styles.setTrackingRow}
               >
-                {isCurrentSet && <View style={styles.currentSetOverlay} />}
-                {isCurrentSet && (
-                  <View style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 3, backgroundColor: '#FFFFFF', borderRadius: 2 }} />
-                )}
                 <TouchableOpacity
-                  style={styles.setNumberContainer}
+                  style={[
+                    styles.setNumberContainer,
+                    isCurrentSet && accentColor && {
+                      borderColor: accentColor,
+                      backgroundColor: accentColor,
+                    },
+                  ]}
                   onPress={() => onSelectSet(exerciseIndex, setIndex)}
                 >
-                  <Text style={styles.setNumber}>{setIndex + 1}</Text>
+                  <Text style={[
+                    styles.setNumber,
+                    isCurrentSet && accentColor && { color: '#1a1a1a' },
+                  ]}>{setIndex + 1}</Text>
                 </TouchableOpacity>
                 <View style={styles.setInputsContainer}>
                   {renderSetInputFields(exerciseIndex, setIndex, set, currentSetData)}
@@ -870,6 +889,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [sessionNotes, setSessionNotes] = useState('');
   const [isNotesModalVisible, setIsNotesModalVisible] = useState(false);
 
+  // Accent color extracted from session/program image — drives current-exercise/set highlight
+  // and primary action buttons (Registrar + timer). Falls back to default white styling on native
+  // or when extraction fails.
+  const accentImageUrl = workout?.image_url || workout?.imageUrl || course?.image_url || course?.imageUrl || null;
+  const accent = useAccentFromImage(accentImageUrl);
+  const accentColor = accent?.accent || null;
+  const accentTextColor = accent?.accentText || '#1a1a1a';
+
   // Video-exchange submission + history overlay (one-on-one only, web only)
   const [videoSubmitTarget, setVideoSubmitTarget] = useState(null); // { exerciseKey, exerciseName } | null
   const isOneOnOneCourse = course?.deliveryType === 'one_on_one';
@@ -1167,19 +1194,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const swapModalTranslateY = useRef(new Animated.Value(800)).current;
 
   // Bottom sheet (exercise list drawer) — replaces the old horizontal pager.
-  // Closed: only the handle bar pokes above the bottom edge. Open: covers most of the screen.
-  const SHEET_HANDLE_VISIBLE = 64; // px of sheet visible when closed (handle + label)
-  const sheetHeight = Math.round(screenHeight * 0.85);
+  // Closed: only the handle bar pokes above the bottom edge. Open: covers most of the screen
+  // but stops well below the fixed app header so the pill stays visible.
+  const SHEET_HANDLE_VISIBLE = 36; // px of sheet visible when closed (just the handle pill)
+  const sheetHeight = Math.round(screenHeight * 0.88);
   const sheetClosedY = sheetHeight - SHEET_HANDLE_VISIBLE;
   const sheetTranslateY = useRef(new Animated.Value(sheetClosedY)).current;
   const sheetBackdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetDragStartYRef = useRef(sheetClosedY);
-  // Keep translateY in sync if viewport height changes while closed.
-  useEffect(() => {
-    if (!isSheetOpen) {
-      sheetTranslateY.setValue(sheetClosedY);
-    }
-  }, [sheetClosedY, isSheetOpen, sheetTranslateY]);
   
   // Simple scroll position tracking for pagination
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -1945,12 +1967,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   // Bottom sheet open/close (animated together with backdrop fade).
+  // Backdrop opacity uses useNativeDriver:false because we also drive it with .setValue()
+  // during drag — mixing native driver with JS-side setValue is unreliable on react-native-web.
   const openSheet = useCallback(() => {
     setIsSheetOpen(true);
     setCurrentView(1);
     Animated.parallel([
       Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 16 }),
-      Animated.timing(sheetBackdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(sheetBackdropOpacity, { toValue: 1, duration: 200, useNativeDriver: false }),
     ]).start();
   }, [sheetTranslateY, sheetBackdropOpacity]);
 
@@ -1959,13 +1983,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setCurrentView(0);
     Animated.parallel([
       Animated.spring(sheetTranslateY, { toValue: sheetClosedY, useNativeDriver: true, bounciness: 0, speed: 16 }),
-      Animated.timing(sheetBackdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(sheetBackdropOpacity, { toValue: 0, duration: 180, useNativeDriver: false }),
     ]).start();
   }, [sheetTranslateY, sheetBackdropOpacity, sheetClosedY]);
 
   const sheetPanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+    // Don't capture the start — let nested Pressable receive taps. Only take over on clear vertical movement.
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
     onPanResponderGrant: () => {
       sheetTranslateY.stopAnimation((v) => { sheetDragStartYRef.current = v; });
     },
@@ -2187,11 +2212,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const selectExercise = useCallback((exerciseIndex) => {
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(0);
-    // Switch back to exercise detail view (index 0)
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ x: 0, animated: true });
-    }
-  }, []);
+    // Selecting from the list closes the bottom sheet so the user lands on detail view.
+    closeSheet();
+  }, [closeSheet]);
 
   const toggleExerciseExpansion = useCallback((exerciseIndex) => {
     setExpandedExercises(prev => ({
@@ -2203,11 +2226,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const handleSelectSet = useCallback((exerciseIndex, setIndex) => {
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(setIndex);
-    // Switch back to exercise detail view
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ x: 0, animated: true });
-    }
-  }, []);
+    closeSheet();
+  }, [closeSheet]);
 
   // Restore horizontal scroll to list view (page 1). Only scroll; never call setCurrentView(1) here so we avoid re-renders that unmount the focused input (fixes keyboard closing on mobile PWA).
   // No-op: legacy hook from when the list lived in a horizontal pager.
@@ -2255,12 +2275,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const fieldName = getFieldDisplayName(field);
       const fieldValue = set[field]?.toString() || '';
       const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : 'NO DATA';
-      const titleWidth = fieldName.length * 8;
-      const contentWidth = placeholderText.length * 8;
+      const titleWidth = fieldName.length * 6.5;
+      const contentWidth = placeholderText.length * 6.5;
       const maxWidth = Math.max(titleWidth, contentWidth);
-      const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
-      const minWidth = fieldsToShow.length === 2 ? 80 : 60; // Higher minimum for 2 metrics
-      const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+      const extraWidth = fieldsToShow.length === 2 ? 12 : 0;
+      const minWidth = fieldsToShow.length === 2 ? 68 : 50;
+      const boxWidth = Math.max(maxWidth + 10 + extraWidth, minWidth);
       totalBoxWidth += boxWidth;
     });
     
@@ -2272,7 +2292,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     // Calculate even gaps with minimum 8px
     const numberOfGaps = fieldsToShow.length + 1; // Gaps between boxes + gaps at borders
     const totalGapSpace = availableSpace - totalBoxWidth;
-    const evenGap = Math.max(totalGapSpace / numberOfGaps, 8); // Minimum 8px gap
+    const evenGap = Math.max(totalGapSpace / numberOfGaps, 4);
     
     return { evenGap, totalBoxWidth };
   }, [getFieldDisplayName]);
@@ -4241,15 +4261,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const fieldName = getFieldDisplayName(field, exerciseForLabel);
       const fieldValue = set[field]?.toString() || '';
       const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : '--';
-      const titleWidth = fieldName.length * 8;
-      const contentWidth = placeholderText.length * 8;
+      const titleWidth = fieldName.length * 6.5;
+      const contentWidth = placeholderText.length * 6.5;
       const maxWidth = Math.max(titleWidth, contentWidth);
-      const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
-      const minWidth = fieldsToShow.length === 2 ? 80 : 60; // Higher minimum for 2 metrics
-      const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
-      
+      const extraWidth = fieldsToShow.length === 2 ? 12 : 0;
+      const minWidth = fieldsToShow.length === 2 ? 68 : 50;
+      const boxWidth = Math.max(maxWidth + 10 + extraWidth, minWidth);
+
       return (
-        <View key={field} style={[styles.inputGroup, { 
+        <View key={field} style={[styles.inputGroup, {
           width: boxWidth, 
           marginLeft: fieldIndex === 0 ? evenGap : 0,
           marginRight: fieldIndex < fieldsToShow.length - 1 ? evenGap : 0 
@@ -4292,12 +4312,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const fieldName = getFieldDisplayName(field, exercise);
       const objectiveValue = set[field];
       const placeholderText = objectiveValue?.toString() || '--';
-      const titleWidth = fieldName.length * 8;
-      const contentWidth = placeholderText.length * 8;
+      const titleWidth = fieldName.length * 6.5;
+      const contentWidth = placeholderText.length * 6.5;
       const maxWidth = Math.max(titleWidth, contentWidth);
-      const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
-      const minWidth = fieldsToShow.length === 2 ? 80 : 60;
-      const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+      const extraWidth = fieldsToShow.length === 2 ? 12 : 0;
+      const minWidth = fieldsToShow.length === 2 ? 68 : 50;
+      const boxWidth = Math.max(maxWidth + 10 + extraWidth, minWidth);
       const savedValue = currentSetData[field] || '';
       
       return (
@@ -4347,6 +4367,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         renderSetHeaders={renderSetHeaders}
         renderSetInputFields={renderSetInputFields}
         styles={styles}
+        accentColor={accentColor}
       />
     );
   }, [
@@ -4363,6 +4384,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     renderSetHeaders,
     renderSetInputFields,
     styles,
+    accentColor,
   ]);
 
   // Key extractor for FlatList
@@ -4370,10 +4392,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     return `exercise-${index}-${item.id || item.name || index}`;
   }, []);
 
-  // List header component
+  // List header component (rendered inside the bottom-sheet drawer — no fixed-header spacer needed)
   const ListHeaderComponent = useMemo(() => (
-    <WakeHeaderContent>
-      <WakeHeaderSpacer />
+    <>
       <View style={styles.exerciseListTitleSection}>
         <Text style={styles.exerciseListTitle}>
           {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
@@ -4411,7 +4432,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </View>
         )}
       </View>
-    </WakeHeaderContent>
+    </>
   ), [
     workout?.title,
     workout?.name,
@@ -4463,8 +4484,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       return (
         <ScrollView style={styles.exerciseListView} showsVerticalScrollIndicator={false}>
           <View style={styles.exerciseListContent}>
-            <WakeHeaderContent>
-              <WakeHeaderSpacer />
             <View style={styles.exerciseListTitleSection}>
               <Text style={styles.exerciseListTitle}>
                 {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
@@ -4569,7 +4588,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 Terminar y guardar
               </Text>
             </TouchableOpacity>
-            </WakeHeaderContent>
           </View>
         </ScrollView>
       );
@@ -5307,21 +5325,28 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               </ScrollView>
               
               <View style={styles.setInputModalFooter}>
-                <TouchableOpacity
-                  style={[
-                    styles.saveSetButton,
-                    !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val))) && styles.saveSetButtonDisabled
-                  ]}
-                  onPress={handleSaveSetData}
-                  disabled={!Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val)))}
-                >
-                  <Text style={[
-                    styles.saveSetButtonText,
-                    !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val))) && styles.saveSetButtonTextDisabled
-                  ]}>
-                    Registrar: serie {currentSetIndex + 1} de {getCurrentExercise()?.sets?.length || 0}
-                  </Text>
-                </TouchableOpacity>
+                {(() => {
+                  const isSaveDisabled = !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val)));
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.saveSetButton,
+                        accentColor && !isSaveDisabled && { backgroundColor: accentColor },
+                        isSaveDisabled && styles.saveSetButtonDisabled
+                      ]}
+                      onPress={handleSaveSetData}
+                      disabled={isSaveDisabled}
+                    >
+                      <Text style={[
+                        styles.saveSetButtonText,
+                        accentColor && !isSaveDisabled && { color: accentTextColor },
+                        isSaveDisabled && styles.saveSetButtonTextDisabled
+                      ]}>
+                        Registrar: serie {currentSetIndex + 1} de {getCurrentExercise()?.sets?.length || 0}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
             </KeyboardAvoidingView>
               </Animated.View>
@@ -5632,12 +5657,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   onPress={openSheet}
                   activeOpacity={0.7}
                 >
-                  <Text 
+                  <Text
                     style={styles.exerciseTitle}
                     numberOfLines={1}
                     ellipsizeMode="tail"
                   >
-                    {workout?.exercises?.[currentExerciseIndex]?.name || 
+                    {workout?.exercises?.[currentExerciseIndex]?.name ||
                      'Ejercicio'}
                   </Text>
                 </TouchableOpacity>
@@ -5775,6 +5800,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         <MuscleSilhouetteSVG
                           muscleVolumes={muscleVolumesForCurrentExercise}
                           useWorkoutExecutionColors={true}
+                          accentRgb={accent ? [accent.accentR, accent.accentG, accent.accentB] : null}
                           height={
                             currentExercise?.implements && currentExercise.implements.length > 0
                               ? Math.max(260, screenHeight * 0.32)
@@ -5973,6 +5999,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     <TouchableOpacity
                       style={[
                         styles.inputSetButton,
+                        accentColor && !isEditMode && { backgroundColor: accentColor },
                         isEditMode && styles.inputSetButtonDisabled
                       ]}
                       onPress={handleOpenSetInput}
@@ -5981,19 +6008,23 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           >
                       <Text style={[
                         styles.inputSetButtonText,
+                        accentColor && !isEditMode && { color: accentTextColor },
                         isEditMode && styles.inputSetButtonTextDisabled
                       ]}>
                         Registrar: serie {currentSetIndex + 1} de {workout?.exercises?.[currentExerciseIndex]?.sets?.length || 0}
                       </Text>
                     </TouchableOpacity>
-                    
+
                     {/* Timer Button - opens timer modal */}
                     <TouchableOpacity
-                      style={styles.timerButton}
+                      style={[
+                        styles.timerButton,
+                        accentColor && { backgroundColor: accentColor },
+                      ]}
                       onPress={handleOpenTimerModal}
                       accessibilityLabel="Abrir cronómetro de descanso"
                     >
-                      <SvgTimer width={24} height={24} color="#1a1a1a" />
+                      <SvgTimer width={24} height={24} color={accentColor ? accentTextColor : '#1a1a1a'} />
                     </TouchableOpacity>
                   </View>
                 </WakeHeaderContent>
@@ -6027,7 +6058,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             accessibilityLabel={isSheetOpen ? 'Cerrar lista de ejercicios' : 'Abrir lista de ejercicios'}
           >
             <View style={styles.bottomSheetHandle} />
-            <Text style={styles.bottomSheetLabel}>Ejercicios</Text>
           </Pressable>
         </View>
         <View style={styles.bottomSheetContent}>
