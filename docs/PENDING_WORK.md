@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-05-01. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-05-05. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -108,48 +108,6 @@ Potential future replacement of MercadoPago with Stripe for better subscription 
 ---
 
 ## Product Quality
-
-### 5. PWA UI Redesign `NOT STARTED`
-
-Systematic review of the entire PWA to establish a consistent visual identity. Current state is functional but bland — no accent color system, inconsistent animations, generic component feel.
-
-**Goals:**
-- Universal runtime accent color (extracted from active course image — already used in some screens, needs to be the standard everywhere)
-- Animation consistency: all entrances use fade + translateY, spring easing `cubic-bezier(0.22,1,0.36,1)` — audit every screen
-- Spacing, typography hierarchy, component patterns normalized
-- Not a full rewrite — surface-level visual changes only, starting with highest-traffic screens
-
-**Scope (screen order):**
-1. Home / daily overview
-2. Workout execution
-3. Nutrition diary
-4. Progress / Lab
-5. Profile
-6. Onboarding (already mostly solid — light review only)
-
-**Components to normalize:**
-- Cards (course cards, session cards, exercise cards)
-- Buttons (primary, secondary, ghost)
-- Input fields
-- Modals and bottom sheets
-- Empty states
-- Loading skeletons
-
-**Checklist:**
-- [ ] Audit accent color usage — finalize universal context/hook
-- [ ] Home screen
-- [ ] Workout execution screen
-- [ ] Nutrition diary screen
-- [ ] Progress / Lab screens
-- [ ] Profile screen
-- [ ] Button variants normalized
-- [ ] Card variants normalized
-- [ ] Modal and bottom sheet patterns
-- [ ] Animation audit — all screens comply
-- [ ] Empty states
-- [ ] `docs/STANDARDS.md` updated if system expands
-
----
 
 ### 5b. Download Screen Refresh `NOT STARTED`
 
@@ -704,7 +662,6 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 | Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
 |---|---|---|---|---|---|
 | Creator Public Buy Page (3e) | 5 | 4 | 5 | 2 | **4.30** |
-| PWA UI Redesign | 4 | 5 | 4 | 2 | **3.95** |
 | Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
 | PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
 | Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
@@ -723,23 +680,22 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  PWA UI Redesign               — right time with small user base, no tech debt pressure
-2.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
-3.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #2)
-4.  PostHog Analytics             — before driving traffic you need visibility
-5.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-6.  App-wide Optimization         — before cardio ships, clean the foundation
-7.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 4–6
-8.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
-9.  Creator Email Platform Ph.1   — unlocks creator marketing
-10. Stripe Migration (3c)         — decision-dependent, not urgent
-11. Feedback Board                — until user base warrants it
-12. Third-party API               — premature at current user count
+1.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
+2.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #1)
+3.  PostHog Analytics             — before driving traffic you need visibility
+4.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
+5.  App-wide Optimization         — before cardio ships, clean the foundation
+6.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 3–5
+7.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
+8.  Creator Email Platform Ph.1   — unlocks creator marketing
+9.  Stripe Migration (3c)         — decision-dependent, not urgent
+10. Feedback Board                — until user base warrants it
+11. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Creator Public Buy Page (#2)** and **Download Screen Refresh (#3)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
-- **Cardio V1 (#7)** is a long-track build. Start architecture and wearable OAuth research during items 4–6. GPS and provider flows take time to get right.
-- **Platform Mapping (#8)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
-- **Stripe Migration (#10)** is gated on a business decision — don't start until that decision is made.
-- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27. Platform Security Audit — completed 2026-05-03.
+- **Creator Public Buy Page (#1)** and **Download Screen Refresh (#2)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
+- **Cardio V1 (#6)** is a long-track build. Start architecture and wearable OAuth research during items 3–5. GPS and provider flows take time to get right.
+- **Platform Mapping (#7)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
+- **Stripe Migration (#9)** is gated on a business decision — don't start until that decision is made.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27. Platform Security Audit — completed 2026-05-03. PWA UI Redesign — completed 2026-05-05.
