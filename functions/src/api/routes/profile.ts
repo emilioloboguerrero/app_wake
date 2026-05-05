@@ -42,25 +42,44 @@ router.get("/users/me", async (req, res) => {
     data = {...bootstrap, created_at: new Date()};
   }
 
-  // Auto-heal: if no pinned nutrition assignment, check for active ones
-  let pinnedNutritionAssignmentId = data.pinnedNutritionAssignmentId ?? null;
+  // Auto-heal pinnedNutritionAssignmentId. Two failure modes to cover:
+  //   (1) No pin set — find an active assignment.
+  //   (2) Pin points to a missing/inactive doc — same heal path. (The deactivation
+  //       flow doesn't currently re-pin, so stale pins do occur in prod.)
+  const originalPinned = (data.pinnedNutritionAssignmentId as string | null) ?? null;
+  let pinnedNutritionAssignmentId: string | null = originalPinned;
+
+  if (pinnedNutritionAssignmentId) {
+    const pinDoc = await db.collection("nutrition_assignments").doc(pinnedNutritionAssignmentId).get();
+    const pinStatus = pinDoc.exists ? (pinDoc.data()?.status as string | undefined) : undefined;
+    // Treat any non-active status (e.g. "inactive") as a stale pin.
+    if (!pinDoc.exists || (pinStatus && pinStatus !== "active")) {
+      pinnedNutritionAssignmentId = null;
+    }
+  }
+
   if (!pinnedNutritionAssignmentId) {
+    // limit:10 instead of 1 — covers the case where the most recently created
+    // assignment is inactive (creator unenrolled and re-enrolled the client),
+    // without requiring a new composite index on (userId, status, createdAt).
     const assignSnap = await db
       .collection("nutrition_assignments")
       .where("userId", "==", auth.userId)
       .orderBy("createdAt", "desc")
-      .limit(1)
+      .limit(10)
       .get();
     const activeDoc = assignSnap.docs.find((d) => {
       const s = d.data().status;
       return !s || s === "active";
     });
-    if (activeDoc) {
-      pinnedNutritionAssignmentId = activeDoc.id;
-      // Persist so future calls skip the extra query
-      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true})
-        .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
-    }
+    if (activeDoc) pinnedNutritionAssignmentId = activeDoc.id;
+  }
+
+  if (pinnedNutritionAssignmentId !== originalPinned) {
+    // Fire-and-forget — don't delay the response, but persist so future calls skip the heal.
+    db.collection("users").doc(auth.userId)
+      .set({pinnedNutritionAssignmentId}, {merge: true})
+      .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
   }
 
   res.json({

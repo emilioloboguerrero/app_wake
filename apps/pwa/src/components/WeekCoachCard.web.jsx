@@ -4,7 +4,7 @@
 //   Back:  month label + nav, full month grid, flip-back button.
 // Neither face overflows the card; no internal scrolling. Accent CSS vars are
 // scoped to this card (derived from the active coach's profile picture).
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
@@ -385,15 +385,21 @@ const initialsFor = (name) => {
   return parts.map((p) => p.charAt(0).toUpperCase()).join('') || '·';
 };
 
-const CoachAvatar = ({ imageUrl, name, small = false }) => (
-  <div style={small ? { ...styles.coachAvatar, ...styles.coachAvatarSm } : styles.coachAvatar}>
-    {imageUrl ? (
-      <img src={imageUrl} alt="" style={styles.coachAvatarImg} loading="lazy" />
-    ) : (
-      <span style={styles.coachAvatarFallback}>{initialsFor(name)}</span>
-    )}
-  </div>
-);
+const CoachAvatar = ({ imageUrl, name, small = false }) => {
+  const [errored, setErrored] = useState(false);
+  // Reset error state when imageUrl changes — different coach, different URL.
+  useEffect(() => { setErrored(false); }, [imageUrl]);
+  const showImage = imageUrl && !errored;
+  return (
+    <div style={small ? { ...styles.coachAvatar, ...styles.coachAvatarSm } : styles.coachAvatar}>
+      {showImage ? (
+        <img src={imageUrl} alt="" style={styles.coachAvatarImg} loading="lazy" onError={() => setErrored(true)} />
+      ) : (
+        <span style={styles.coachAvatarFallback}>{initialsFor(name)}</span>
+      )}
+    </div>
+  );
+};
 
 // Line graph rendered in SVG (viewBox-based, scales with the container).
 // Breaks the line wherever a point's value is null — for workouts that means rest

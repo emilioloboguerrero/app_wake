@@ -238,17 +238,15 @@ const HoyScreen = () => {
       });
     }
 
-    if (nutrition.hasNutrition) {
-      // Single coach: no ambiguity, attach there.
-      // Multi coach: attach only when assignmentCreatorId resolves to one of the envs.
-      // Never fall back to arr[0] in the multi-coach case — that's how nutrition ends up
-      // under the wrong coach during the enrichment loading window.
-      if (arr.length === 1) {
-        arr[0].hasNutrition = true;
-      } else if (nutrition.assignmentCreatorId) {
-        const matching = arr.find((c) => c.creatorId === nutrition.assignmentCreatorId);
-        if (matching) matching.hasNutrition = true;
-      }
+    if (nutrition.hasNutrition && arr.length > 0) {
+      // Prefer the env whose creatorId matches the assignment's creator. If the assignment
+      // doc has no creator_id (legacy assignments) or matches no current env, fall back to
+      // the first env. This fallback is safe here because enrichment is already complete
+      // (the screen is gated on enrichmentLoading) — creatorId values are final, not in-flight.
+      const target = (nutrition.assignmentCreatorId
+        ? arr.find((c) => c.creatorId === nutrition.assignmentCreatorId)
+        : null) || arr[0];
+      target.hasNutrition = true;
     }
 
     return arr;
@@ -264,7 +262,11 @@ const HoyScreen = () => {
       const found = coachEnvironments.find((c) => c.coachId === selectedCoachId);
       if (found) return found;
     }
-    return coachEnvironments[0];
+    // No persisted selection — prefer the env that has today's nutrition card so the
+    // user sees both workouts and nutrition at a glance instead of having to swipe.
+    // Falls back to the existing pinned-first ordering when no env owns the nutrition.
+    const withNutrition = coachEnvironments.find((c) => c.hasNutrition);
+    return withNutrition || coachEnvironments[0];
   }, [coachEnvironments, selectedCoachId]);
 
   const upcomingCalls = useMemo(() => {
