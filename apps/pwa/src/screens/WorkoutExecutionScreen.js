@@ -27,6 +27,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Vibration,
+  PanResponder,
 } from 'react-native';
 
 // Essential hooks and utilities - keep as direct imports (lightweight)
@@ -850,7 +851,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [currentSetIndex, setCurrentSetIndex] = useState(routeCheckpoint?.currentSetIndex || 0);
   const [loading, setLoading] = useState(false);
   const [sessionData, setSessionData] = useState(null);
-  const [currentView, setCurrentView] = useState(0); // 0 = exercise detail, 1 = exercise list
+  const [currentView, setCurrentView] = useState(0); // 0 = sheet closed, 1 = sheet open (exercise list)
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [expandedExercises, setExpandedExercises] = useState({}); // Track which exercises are expanded
   const [isMenuVisible, setIsMenuVisible] = useState(false); // Menu visibility state
   const [isSetInputVisible, setIsSetInputVisible] = useState(false); // Set input popup visibility
@@ -1163,6 +1165,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Animation values for swap modal
   const swapModalOpacity = useRef(new Animated.Value(0)).current;
   const swapModalTranslateY = useRef(new Animated.Value(800)).current;
+
+  // Bottom sheet (exercise list drawer) — replaces the old horizontal pager.
+  // Closed: only the handle bar pokes above the bottom edge. Open: covers most of the screen.
+  const SHEET_HANDLE_VISIBLE = 64; // px of sheet visible when closed (handle + label)
+  const sheetHeight = Math.round(screenHeight * 0.85);
+  const sheetClosedY = sheetHeight - SHEET_HANDLE_VISIBLE;
+  const sheetTranslateY = useRef(new Animated.Value(sheetClosedY)).current;
+  const sheetBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetDragStartYRef = useRef(sheetClosedY);
+  // Keep translateY in sync if viewport height changes while closed.
+  useEffect(() => {
+    if (!isSheetOpen) {
+      sheetTranslateY.setValue(sheetClosedY);
+    }
+  }, [sheetClosedY, isSheetOpen, sheetTranslateY]);
   
   // Simple scroll position tracking for pagination
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -1927,6 +1944,48 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setCurrentView(newView);
   };
 
+  // Bottom sheet open/close (animated together with backdrop fade).
+  const openSheet = useCallback(() => {
+    setIsSheetOpen(true);
+    setCurrentView(1);
+    Animated.parallel([
+      Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 16 }),
+      Animated.timing(sheetBackdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [sheetTranslateY, sheetBackdropOpacity]);
+
+  const closeSheet = useCallback(() => {
+    setIsSheetOpen(false);
+    setCurrentView(0);
+    Animated.parallel([
+      Animated.spring(sheetTranslateY, { toValue: sheetClosedY, useNativeDriver: true, bounciness: 0, speed: 16 }),
+      Animated.timing(sheetBackdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start();
+  }, [sheetTranslateY, sheetBackdropOpacity, sheetClosedY]);
+
+  const sheetPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+    onPanResponderGrant: () => {
+      sheetTranslateY.stopAnimation((v) => { sheetDragStartYRef.current = v; });
+    },
+    onPanResponderMove: (_, g) => {
+      const next = Math.max(0, Math.min(sheetClosedY, sheetDragStartYRef.current + g.dy));
+      sheetTranslateY.setValue(next);
+      // Live-update backdrop opacity so the dim tracks the drag.
+      const t = 1 - next / sheetClosedY; // 0 = closed, 1 = open
+      sheetBackdropOpacity.setValue(Math.max(0, Math.min(1, t)));
+    },
+    onPanResponderRelease: (_, g) => {
+      const projected = sheetDragStartYRef.current + g.dy;
+      const fastOpen = g.vy < -0.4;
+      const fastClose = g.vy > 0.4;
+      const shouldOpen = fastOpen || (!fastClose && projected < sheetClosedY / 2);
+      if (shouldOpen) openSheet(); else closeSheet();
+    },
+    onPanResponderTerminate: () => closeSheet(),
+  }), [sheetTranslateY, sheetBackdropOpacity, sheetClosedY, openSheet, closeSheet]);
+
   // Render pagination indicators - exact copy from MainScreen
   // Render pagination indicators for top cards - MainScreen style
   const renderTopCardPaginationIndicators = () => {
@@ -2151,25 +2210,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, []);
 
   // Restore horizontal scroll to list view (page 1). Only scroll; never call setCurrentView(1) here so we avoid re-renders that unmount the focused input (fixes keyboard closing on mobile PWA).
-  const restoreListViewModelScroll = useCallback(() => {
-    const ref = scrollViewRef.current;
-    if (!ref) return;
-    if (isWeb && typeof ref.getScrollableNode === 'function') {
-      const node = ref.getScrollableNode?.();
-      if (node && typeof node.scrollLeft !== 'undefined') {
-        const before = node.scrollLeft;
-        const scrollWasWrong = Math.abs(before - screenWidth) > 20;
-        if (scrollWasWrong) {
-          ref.scrollTo({ x: screenWidth, animated: false });
-          node.scrollLeft = screenWidth;
-        }
-      } else {
-        ref.scrollTo({ x: screenWidth, animated: false });
-      }
-    } else {
-      ref.scrollTo({ x: screenWidth, animated: false });
-    }
-  }, [screenWidth]);
+  // No-op: legacy hook from when the list lived in a horizontal pager.
+  // The list now renders inside a bottom-sheet drawer, so there is no
+  // horizontal scroll position to restore on input focus.
+  const restoreListViewModelScroll = useCallback(() => {}, []);
 
   const getFieldDisplayName = useCallback((field, exercise = null) => {
     if (exercise?.customMeasureLabels?.[field]) return exercise.customMeasureLabels[field];
@@ -5560,28 +5604,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         </TouchableWithoutFeedback>
       </Modal>
       
-      {/* Swipeable Content */}
+      {/* Detail content (no longer a horizontal pager — list lives in a bottom sheet) */}
       <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={onScroll}
-          onMomentumScrollEnd={onMomentumScrollEnd}
-          onLayout={() => {
-            if (listViewInputJustFocusedRef.current && !isPWA()) {
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  restoreListViewModelScroll();
-                });
-              });
-            }
-          }}
-          scrollEventThrottle={16}
-          style={styles.scrollContainer}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={styles.scrollContainer}>
             {/* Exercise Detail View */}
         <View style={styles.viewContainer}>
               {(() => {
@@ -5604,12 +5629,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               {/* Exercise Title Section */}
               <View style={styles.exerciseTitleSection}>
                 <TouchableOpacity
-                  onPress={() => {
-                    // Navigate to list view (index 1)
-                    if (scrollViewRef.current) {
-                      scrollViewRef.current.scrollTo({ x: screenWidth, animated: true });
-                    }
-                  }}
+                  onPress={openSheet}
                   activeOpacity={0.7}
                 >
                   <Text 
@@ -5980,18 +6000,40 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                   <BottomSpacer />
               </ScrollView>
         </View>
-            
-            {/* Exercise List View */}
-        <View style={styles.viewContainer}>
-              {renderExerciseListView()}
         </View>
-      </ScrollView>
       </KeyboardAvoidingView>
-      
-      {/* Animated Pagination Indicators */}
-      <View style={styles.screenIndicator}>
-        {renderPaginationIndicators()}
-      </View>
+
+      {/* Bottom-sheet drawer: exercise list. Closed = handle bar visible; open = full-height sheet. */}
+      <Animated.View
+        pointerEvents={isSheetOpen ? 'auto' : 'none'}
+        style={[styles.bottomSheetBackdrop, { opacity: sheetBackdropOpacity }]}
+      >
+        <Pressable style={{ flex: 1 }} onPress={closeSheet} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.bottomSheet,
+          { height: sheetHeight, transform: [{ translateY: sheetTranslateY }] },
+        ]}
+      >
+        <View
+          style={styles.bottomSheetHandleArea}
+          {...sheetPanResponder.panHandlers}
+        >
+          <Pressable
+            onPress={() => (isSheetOpen ? closeSheet() : openSheet())}
+            style={styles.bottomSheetHandlePressable}
+            accessibilityRole="button"
+            accessibilityLabel={isSheetOpen ? 'Cerrar lista de ejercicios' : 'Abrir lista de ejercicios'}
+          >
+            <View style={styles.bottomSheetHandle} />
+            <Text style={styles.bottomSheetLabel}>Ejercicios</Text>
+          </Pressable>
+        </View>
+        <View style={styles.bottomSheetContent}>
+          {renderExerciseListView()}
+        </View>
+      </Animated.View>
 
       {/* Swap Exercise Modal */}
       <Modal
