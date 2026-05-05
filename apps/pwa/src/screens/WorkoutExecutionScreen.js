@@ -5908,7 +5908,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                               const rpe = prevSet?.intensity ? parseFloat(prevSet.intensity) : null;
                               if (!rpe || rpe < 1 || rpe > 10) return null;
                               return (
-                                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>
+                                <Text style={{ position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
                                   RPE: {rpe}
                                 </Text>
                               );
