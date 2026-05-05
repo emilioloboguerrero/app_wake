@@ -17,8 +17,12 @@ export function useCoursesEnriched(courses) {
       staleTime: 10 * 60 * 1000,
     })),
   });
-  return list.map((c, i) => ({
-    ...c,
-    creator_id: queries[i]?.data?.creator_id || c.creator_id || null,
-  }));
+  const isLoading = queries.some((q) => q.isLoading);
+  return {
+    courses: list.map((c, i) => ({
+      ...c,
+      creator_id: queries[i]?.data?.creator_id || c.creator_id || null,
+    })),
+    isLoading,
+  };
 }

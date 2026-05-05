@@ -48,6 +48,7 @@ import WeekCoachCard from '../components/WeekCoachCard.web.jsx';
 import HoyBanners from '../components/HoyBanners.web.jsx';
 
 const LIBRARY_MOVED_FLAG = 'wake:preview_library_moved_seen';
+const SELECTED_COACH_KEY = (uid) => `wake:hoy:selectedCoachId:${uid}`;
 
 const isCourseExpired = (course) => {
   if (course?.is_trial) return false;
@@ -72,10 +73,29 @@ const HoyScreen = () => {
   const CARD_WIDTH = useMemo(() => screenWidth - CARD_MARGIN * 2, [screenWidth, CARD_MARGIN]);
   const CARD_HEIGHT = useMemo(() => Math.max(500, screenHeight * 0.62), [screenHeight]);
 
-  const { courses, isLoading } = useUserCourses(user?.uid);
+  const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid);
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
-  const enrichedCourses = useCoursesEnriched(courses);
+  // We block the carousel on enrichment so coach grouping never flickers between
+  // creator_id and creatorName as queries resolve at different times.
+  const { courses: enrichedCourses, isLoading: enrichmentLoading } = useCoursesEnriched(courses);
+  const isLoading = coursesLoading || (courses.length > 0 && enrichmentLoading);
   const [selectedCoachId, setSelectedCoachId] = useState(null);
+
+  // Hydrate persisted coach selection once we know who's logged in. Stored per-user so
+  // switching accounts on the same device doesn't carry the previous user's selection.
+  useEffect(() => {
+    if (!user?.uid) return;
+    try {
+      const v = localStorage.getItem(SELECTED_COACH_KEY(user.uid));
+      if (v) setSelectedCoachId(v);
+    } catch {}
+  }, [user?.uid]);
+
+  const handleSelectCoach = useCallback((coachId) => {
+    setSelectedCoachId(coachId);
+    if (!user?.uid || !coachId) return;
+    try { localStorage.setItem(SELECTED_COACH_KEY(user.uid), coachId); } catch {}
+  }, [user?.uid]);
 
   // Profile — needed for pinnedTrainingCourseId so we can honor user's preferred order.
   const { data: profile } = useQuery({
@@ -183,7 +203,9 @@ const HoyScreen = () => {
   const coachEnvironments = useMemo(() => {
     const byCoach = new Map();
     (enrichedCourses || []).forEach((c) => {
-      const coachKey = c.creator_id || c.creatorName || 'unknown';
+      // Group strictly by creator_id. Falling back to creatorName here causes groups to
+      // split/merge as enrichment lands at different times for different courses.
+      const coachKey = c.creator_id || '__unknown__';
       if (!byCoach.has(coachKey)) {
         byCoach.set(coachKey, {
           coachId: coachKey,
@@ -217,11 +239,16 @@ const HoyScreen = () => {
     }
 
     if (nutrition.hasNutrition) {
-      const matching = nutrition.assignmentCreatorId
-        ? arr.find((c) => c.creatorId === nutrition.assignmentCreatorId)
-        : null;
-      const target = matching || arr[0];
-      if (target) target.hasNutrition = true;
+      // Single coach: no ambiguity, attach there.
+      // Multi coach: attach only when assignmentCreatorId resolves to one of the envs.
+      // Never fall back to arr[0] in the multi-coach case — that's how nutrition ends up
+      // under the wrong coach during the enrichment loading window.
+      if (arr.length === 1) {
+        arr[0].hasNutrition = true;
+      } else if (nutrition.assignmentCreatorId) {
+        const matching = arr.find((c) => c.creatorId === nutrition.assignmentCreatorId);
+        if (matching) matching.hasNutrition = true;
+      }
     }
 
     return arr;
@@ -402,7 +429,7 @@ const HoyScreen = () => {
           profileImagesByCoachId={coachProfileImagesByCoachId}
           hasNutrition={!!selectedCoach?.hasNutrition}
           nutritionCaloriesTarget={nutrition.caloriesTarget || 0}
-          onSelectCoach={(coachId) => setSelectedCoachId(coachId)}
+          onSelectCoach={handleSelectCoach}
           onTapDate={(ymd, course) => {
             const id = course?.courseId || course?.id;
             if (id) navigate(`/course/${id}/workout`, { state: { selectedDate: ymd } });
