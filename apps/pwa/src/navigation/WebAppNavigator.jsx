@@ -45,15 +45,18 @@ import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 import PaymentSuccessScreen from '../screens/PaymentSuccessScreen.web';
 import PaymentCancelledScreen from '../screens/PaymentCancelledScreen.web';
 import apiService from '../services/apiService';
+import apiClient from '../utils/apiClient';
 import DebugScreenTracker from '../components/DebugScreenTracker.web';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import BottomTabBar from '../components/BottomTabBar.web';
 import ReadinessCheckModal from '../components/ReadinessCheckModal.web';
+import ReadinessOptInPrompt from '../components/ReadinessOptInPrompt.web';
 import { getTodayReadiness } from '../services/readinessService';
 import UserRoleContext, { useUserRole } from '../contexts/UserRoleContext';
 
 export const RefreshProfileContext = createContext(null);
 export const OpenReadinessModalContext = createContext(null);
+export const ReadinessOptInPromptContext = createContext(null);
 
 // Role-based guard for creator-only routes
 const CreatorRouteGuard = ({ children }) => {
@@ -264,10 +267,12 @@ const AuthenticatedLayout = ({ children }) => {
   }, [uid, refreshKey]);
 
   const [showReadiness, setShowReadiness] = React.useState(false);
-  const [readinessMandatory, setReadinessMandatory] = React.useState(false);
+  const [showOptInPrompt, setShowOptInPrompt] = React.useState(false);
   const openReadinessModal = React.useCallback(() => {
-    setReadinessMandatory(false);
     setShowReadiness(true);
+  }, []);
+  const requestReadinessOptInPrompt = React.useCallback(() => {
+    setShowOptInPrompt(true);
   }, []);
   const readinessCheckedRef = React.useRef(false);
   // Reset the per-mount readiness debounce when uid changes — otherwise
@@ -288,6 +293,8 @@ const AuthenticatedLayout = ({ children }) => {
       (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
     );
     if (needsOnboardingCheck) return;
+    // Only auto-show the daily readiness check if the user has opted in.
+    if (userProfile.readinessOptIn !== true) return;
     readinessCheckedRef.current = true;
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -303,11 +310,21 @@ const AuthenticatedLayout = ({ children }) => {
       if (existing) {
         try { localStorage.setItem(lsKey, 'done'); } catch (_) {}
       } else {
-        setReadinessMandatory(true);
         setTimeout(() => setShowReadiness(true), 800);
       }
     }).catch(() => {});
   }, [user?.uid, profileLoading, userProfile]);
+
+  const handleOptInChoice = React.useCallback(async (optIn) => {
+    setShowOptInPrompt(false);
+    try {
+      await apiClient.patch('/users/me', { readinessOptIn: !!optIn });
+    } catch (_) {}
+    refreshUserProfile();
+    if (optIn) {
+      setTimeout(() => setShowReadiness(true), 250);
+    }
+  }, [refreshUserProfile]);
 
   // Auth loading — wait for AuthContext to resolve
   if (loading) {
@@ -363,24 +380,34 @@ const AuthenticatedLayout = ({ children }) => {
   return (
     <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
       <OpenReadinessModalContext.Provider value={{ openReadinessModal }}>
-        <UserRoleContext.Provider value={{ role: userRole }}>
-          <div
-            key={location.key}
-            className={screenClass}
-            style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
-          >
-            {children}
-          </div>
-          {tabBarEl}
-          {showReadiness && typeof document !== 'undefined' && document.body
-            ? createPortal(
-                <ReadinessCheckModal mandatory={readinessMandatory} onClose={() => setShowReadiness(false)} />,
-                document.body
-              )
-            : showReadiness
-              ? <ReadinessCheckModal mandatory={readinessMandatory} onClose={() => setShowReadiness(false)} />
-              : null}
-        </UserRoleContext.Provider>
+        <ReadinessOptInPromptContext.Provider value={{ requestReadinessOptInPrompt }}>
+          <UserRoleContext.Provider value={{ role: userRole }}>
+            <div
+              key={location.key}
+              className={screenClass}
+              style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+            >
+              {children}
+            </div>
+            {tabBarEl}
+            {showReadiness && typeof document !== 'undefined' && document.body
+              ? createPortal(
+                  <ReadinessCheckModal onClose={() => setShowReadiness(false)} />,
+                  document.body
+                )
+              : showReadiness
+                ? <ReadinessCheckModal onClose={() => setShowReadiness(false)} />
+                : null}
+            {showOptInPrompt && typeof document !== 'undefined' && document.body
+              ? createPortal(
+                  <ReadinessOptInPrompt onChoose={handleOptInChoice} />,
+                  document.body
+                )
+              : showOptInPrompt
+                ? <ReadinessOptInPrompt onChoose={handleOptInChoice} />
+                : null}
+          </UserRoleContext.Provider>
+        </ReadinessOptInPromptContext.Provider>
       </OpenReadinessModalContext.Provider>
     </RefreshProfileContext.Provider>
   );

@@ -502,6 +502,18 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     }
   };
 
+  const readinessOptIn = profileQueryData?.readinessOptIn === true;
+  const toggleReadinessOptIn = async () => {
+    const next = !readinessOptIn;
+    try {
+      await apiClient.patch('/users/me', { readinessOptIn: next });
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
+    } catch (e) {
+      logger.error('[Profile] readinessOptIn update failed', e);
+      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+    }
+  };
+
   // Save profile
   const saveProfile = async () => {
     // Validate inputs before saving
@@ -1077,6 +1089,24 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                     <SvgChevronRight width={16} height={16} stroke="#ffffff" style={styles.dropdownChevron} />
                   </TouchableOpacity>
                 </View>
+
+                <View style={styles.inputGroup}>
+                  <TouchableOpacity
+                    style={styles.toggleRow}
+                    onPress={toggleReadinessOptIn}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.toggleRowText}>
+                      <Text style={styles.toggleRowTitle}>Registro de bienestar</Text>
+                      <Text style={styles.toggleRowSubtitle}>
+                        Pregunta diaria sobre energía, sueño y cuerpo.
+                      </Text>
+                    </View>
+                    <View style={[styles.toggleTrack, readinessOptIn && styles.toggleTrackActive]}>
+                      <View style={[styles.toggleThumb, readinessOptIn && styles.toggleThumbActive]} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
               </View>
               
                   {/* Sign Out Button */}
@@ -1462,7 +1492,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
           {/* User Profile Card */}
           <View style={styles.userProfileCard}>
-            {onOpenReadinessModal ? (
+            {onOpenReadinessModal && readinessOptIn ? (
               <TouchableOpacity
                 style={styles.readinessIconButton}
                 onPress={onOpenReadinessModal}
@@ -1689,6 +1719,53 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 8,
     zIndex: 1,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  toggleRowText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  toggleRowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 2,
+  },
+  toggleRowSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 16,
+  },
+  toggleTrack: {
+    width: 40,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleTrackActive: {
+    backgroundColor: '#ffffff',
+  },
+  toggleThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ffffff',
+    transform: [{ translateX: 0 }],
+  },
+  toggleThumbActive: {
+    backgroundColor: '#1a1a1a',
+    transform: [{ translateX: 18 }],
   },
   programsSubscriptionsContainer: {
     flexDirection: 'row',

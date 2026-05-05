@@ -1215,16 +1215,16 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     paddingVertical: Math.max(4, screenHeight * 0.005),
     position: 'relative',
   },
-  currentSetOverlay: {
+  setTrackingRowActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  activeSetIndicator: {
     position: 'absolute',
-    top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
-    zIndex: 1,
-    pointerEvents: 'none',
+    top: 8,
+    bottom: 8,
+    width: 2,
+    borderRadius: 2,
   },
   setNumberSpace: {
     width: 32,
@@ -1237,16 +1237,14 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     color: '#ffffff',
     textAlign: 'center',
   },
-  // Circular chip — visual cue that the set number is a tap target
+  setNumberInactive: {
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
   setNumberContainer: {
     width: 32,
     height: 32,
-    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.22)',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     marginLeft: 4,
     marginRight: Math.max(12, screenWidth * 0.03),
   },

@@ -7,10 +7,10 @@ import { formatWeekDisplay } from '../utils/weekCalculation';
 import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 import logger from '../utils/logger';
 
-const MuscleSilhouette = ({ 
-  muscleVolumes, 
+const MuscleSilhouette = ({
+  muscleVolumes,
   numberOfWeeks = 1,
-  weekDisplayName, 
+  weekDisplayName,
   showCurrentWeekLabel = false,
   availableWeeks = [],
   selectedWeek,
@@ -18,8 +18,10 @@ const MuscleSilhouette = ({
   onWeekChange,
   isReadOnly = false,
   onInfoPress,
-  showWeeklyAverageNote = false
+  showWeeklyAverageNote = false,
+  accentRgb = null
 }) => {
+  const accentCss = accentRgb ? `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})` : null;
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [isWeekSelectorVisible, setIsWeekSelectorVisible] = useState(false);
   
@@ -104,7 +106,7 @@ const MuscleSilhouette = ({
       {/* Muscle Silhouette - All Views */}
       <View style={styles.silhouetteContainer}>
         {hasData ? (
-          <MuscleSilhouetteSVG muscleVolumes={normalizedVolumes} />
+          <MuscleSilhouetteSVG muscleVolumes={normalizedVolumes} accentRgb={accentRgb} />
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>
@@ -121,15 +123,15 @@ const MuscleSilhouette = ({
           <Text style={styles.legendText}>0 sets</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#FFFFFF', opacity: 0.5 }]} />
+          <View style={[styles.legendColor, { backgroundColor: accentCss || '#FFFFFF', opacity: 0.5 }]} />
           <Text style={styles.legendText}>1-6 sets</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#FFFFFF', opacity: 0.6 }]} />
+          <View style={[styles.legendColor, { backgroundColor: accentCss || '#FFFFFF', opacity: 0.6 }]} />
           <Text style={styles.legendText}>6-18 sets</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendColor, { backgroundColor: '#8B0000', opacity: 0.8 }]} />
+          <View style={[styles.legendColor, { backgroundColor: accentCss || '#8B0000', opacity: 0.8 }]} />
           <Text style={styles.legendText}>18+ sets</Text>
         </View>
       </View>

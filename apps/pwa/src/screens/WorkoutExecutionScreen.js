@@ -464,30 +464,32 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             const isCurrentSet = exerciseIndex === currentExerciseIndex && setIndex === currentSetIndex;
             const justSaved = Platform.OS === 'web' && lastSavedKey === key;
             return (
-              <View
+              <TouchableOpacity
                 key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`}
                 className={justSaved ? 'set-row wake-set-saved' : 'set-row'}
-                style={styles.setTrackingRow}
+                style={[styles.setTrackingRow, isCurrentSet && styles.setTrackingRowActive]}
+                onPress={() => onSelectSet(exerciseIndex, setIndex)}
+                activeOpacity={1}
               >
-                <TouchableOpacity
-                  style={[
-                    styles.setNumberContainer,
-                    isCurrentSet && accentColor && {
-                      borderColor: accentColor,
-                      backgroundColor: accentColor,
-                    },
-                  ]}
-                  onPress={() => onSelectSet(exerciseIndex, setIndex)}
-                >
+                {isCurrentSet && (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.activeSetIndicator,
+                      { backgroundColor: accentColor || 'rgba(255, 255, 255, 0.9)' },
+                    ]}
+                  />
+                )}
+                <View style={styles.setNumberContainer}>
                   <Text style={[
                     styles.setNumber,
-                    isCurrentSet && accentColor && { color: '#1a1a1a' },
+                    !isCurrentSet && styles.setNumberInactive,
                   ]}>{setIndex + 1}</Text>
-                </TouchableOpacity>
+                </View>
                 <View style={styles.setInputsContainer}>
                   {renderSetInputFields(exerciseIndex, setIndex, set, currentSetData)}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -2226,8 +2228,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const handleSelectSet = useCallback((exerciseIndex, setIndex) => {
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(setIndex);
-    closeSheet();
-  }, [closeSheet]);
+  }, []);
 
   // Restore horizontal scroll to list view (page 1). Only scroll; never call setCurrentView(1) here so we avoid re-renders that unmount the focused input (fixes keyboard closing on mobile PWA).
   // No-op: legacy hook from when the list lived in a horizontal pager.

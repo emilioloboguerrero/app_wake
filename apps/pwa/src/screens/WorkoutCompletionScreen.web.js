@@ -1,8 +1,9 @@
 // Web wrapper for WorkoutCompletionScreen - provides React Router navigation
-import React from 'react';
+import React, { useContext } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LoadingScreen from './LoadingScreen';
+import { ReadinessOptInPromptContext } from '../navigation/WebAppNavigator';
 
 // Import the base component
 const WorkoutCompletionScreenModule = require('./WorkoutCompletionScreen.js');
@@ -13,6 +14,8 @@ const WorkoutCompletionScreen = () => {
   const location = useLocation();
   const { courseId } = useParams();
   const { user } = useAuth(); // Get user from AuthContext
+  const optInCtx = useContext(ReadinessOptInPromptContext);
+  const onRequestReadinessOptIn = optInCtx?.requestReadinessOptInPrompt ?? null;
   
   // Get params from location state
   const course = location.state?.course;
@@ -52,7 +55,7 @@ const WorkoutCompletionScreen = () => {
     }
   };
   
-  return <WorkoutCompletionScreenBase navigation={navigation} route={route} />;
+  return <WorkoutCompletionScreenBase navigation={navigation} route={route} onRequestReadinessOptIn={onRequestReadinessOptIn} />;
 };
 
 export default WorkoutCompletionScreen;

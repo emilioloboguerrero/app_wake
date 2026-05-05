@@ -116,6 +116,7 @@ router.get("/users/me", async (req, res) => {
       goalWeight: data.goalWeight ?? null,
       weightUnit: data.weightUnit ?? null,
       activityStreak: data.activityStreak ?? null,
+      readinessOptIn: typeof data.readinessOptIn === "boolean" ? data.readinessOptIn : null,
     },
   });
 });
@@ -170,6 +171,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
     "bio", "creatorNavPreferences",
     "creatorSpecializations", "creatorExperience", "creatorCertifications",
     "websiteUrl", "socialLinks", "profilePictureUrl",
+    "readinessOptIn",
   ];
 
   const stringFields = new Set([
@@ -182,7 +184,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   ]);
   const urlFields = new Set(["websiteUrl", "profilePictureUrl"]);
   const numberFields = new Set(["height", "weight", "goalWeight"]);
-  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted"]);
+  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted", "readinessOptIn"]);
   const objectFields = new Set(["creatorOnboardingData", "onboardingData", "creatorNavPreferences", "socialLinks"]);
   const arrayFields = new Set(["creatorSpecializations"]);
 

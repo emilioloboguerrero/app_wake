@@ -44,7 +44,7 @@ import exerciseHistoryService from '../services/exerciseHistoryService';
 import apiClient from '../utils/apiClient';
 import WakeLoader from '../components/WakeLoader';
 
-const WorkoutCompletionScreen = ({ navigation, route }) => {
+const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
@@ -569,7 +569,14 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   };
 
   const handleFinishWorkout = () => {
-    // Simply navigate to main screen - session completion is handled by workout screen
+    // If the user hasn't decided about readiness tracking yet, ask now.
+    // userData.readinessOptIn comes from /users/me; null/undefined means undecided.
+    const optIn = userData?.readinessOptIn;
+    if (onRequestReadinessOptIn && (optIn === null || optIn === undefined)) {
+      onRequestReadinessOptIn();
+    }
+    // Navigate immediately — the prompt is rendered at app layout level via portal,
+    // so it overlays whatever screen we land on next.
     navigation.navigate('MainScreen');
   };
 
@@ -1429,6 +1436,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                         onWeekChange={() => {}}
                         isReadOnly={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
+                        accentRgb={accentRgb}
                       />
                     </View>
                   )}
@@ -1441,6 +1449,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                         sessionMuscleVolumes={sessionMuscleVolumes}
                         showCurrentWeekLabel={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
+                        accentRgb={accentRgb}
                       />
                     </View>
                   )}
