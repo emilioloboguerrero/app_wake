@@ -26,10 +26,10 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   scrollView: {
     flex: 1,
   },
-  // Reserve bottom space inside scroll (like DailyWorkoutScreen) so content is never covered; extra padding for screenIndicator overlay
+  // Reserve bottom space so content is never covered by the closed bottom-sheet handle bar
   scrollContentContainer: {
     flexGrow: 1,
-    paddingBottom: 0,
+    paddingBottom: 64 + (insets?.bottom || 0),
     overflow: 'visible',
   },
   content: {
