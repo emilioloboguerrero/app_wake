@@ -63,7 +63,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(420, screenHeight * 0.56), // grow toward the closed sheet lid
+        height: Math.max(400, screenHeight * 0.52),
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
         overflow: 'visible',
         position: 'relative', // Match videoCard position
@@ -276,51 +276,77 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
+  // Single rounded card anchored below the FixedWakeHeader. Closed = grabber + exercise
+  // name visible; opens by growing DOWNWARD into a full sheet with the list.
+  // `left`/`right` are driven inline by an animated margin (videoCard width when closed,
+  // near full-width when expanded).
   bottomSheet: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
+    borderRadius: 20,
+    borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     overflow: 'hidden',
     ...Platform.select({
-      web: { boxShadow: '0px -8px 24px rgba(0, 0, 0, 0.45)' },
+      web: { boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.45)' },
       default: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -8 },
+        shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.45,
         shadowRadius: 24,
         elevation: 16,
       },
     }),
   },
-  // Closed lid: total ~36px tall. Pressable fills the entire area so any tap on the lid registers.
+  // Closed lid: exercise name at top (left-aligned), drag grabber pinned to the bottom edge.
   bottomSheetHandleArea: {
-    height: 36,
+    height: 76,
+    width: '100%',
   },
-  // Pill sits near the top; the rest of the area is empty but still part of the tap target.
   bottomSheetHandlePressable: {
     flex: 1,
     width: '100%',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 8,
   },
-  bottomSheetHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+  bottomSheetGrabber: {
+    position: 'absolute',
+    bottom: 8,
+    left: '50%',
+    marginLeft: -20,
+    width: 40,
+    height: 4.5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.30)',
+  },
+  bottomSheetTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: -0.5,
+    paddingHorizontal: 22,
+    marginTop: 14,
   },
   bottomSheetContent: {
     flex: 1,
     overflow: 'hidden',
+    paddingTop: 28,
+  },
+  // Footer area shown when the sheet is expanded — grabber to swipe up / tap to close.
+  bottomSheetFooter: {
+    height: 32,
+    width: '100%',
+    flexShrink: 0,
+  },
+  bottomSheetFooterPressable: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomSheetFooterGrabber: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.30)',
   },
   loadingContainer: {
     flex: 1,
@@ -1738,7 +1764,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(420, screenHeight * 0.56), // grow toward the closed sheet lid (matches muscles card)
+    height: Math.max(400, screenHeight * 0.52),
     overflow: 'visible',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),

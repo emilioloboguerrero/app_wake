@@ -1,40 +1,92 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, useWindowDimensions } from 'react-native';
 
-function MiniGraph() {
+// Colors mirror ReadinessCheckModal accent colors per metric.
+const ENERGY_RGB = '245,200,66';   // #F5C842
+const MUSCLE_RGB = '248,113,113';  // #f87171
+const SLEEP_RGB = '147,197,253';   // #93C5FD
+
+function EnergyIcon() {
   return (
-    <svg width="220" height="80" viewBox="0 0 220 80" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block' }}>
-      <defs>
-        <linearGradient id="rGraphFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.18)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-        </linearGradient>
-      </defs>
-      {[16, 32, 48, 64].map((y) => (
-        <line
-          key={y}
-          x1="0" x2="220" y1={y} y2={y}
-          stroke="rgba(255,255,255,0.05)" strokeWidth="1"
-        />
-      ))}
-      <path
-        d="M0 60 L36 50 L72 56 L108 38 L144 44 L180 22 L220 28 L220 80 L0 80 Z"
-        fill="url(#rGraphFill)"
-      />
-      <path
-        d="M0 60 L36 50 L72 56 L108 38 L144 44 L180 22 L220 28"
-        stroke="rgba(255,255,255,0.85)"
-        strokeWidth="1.75"
-        strokeLinecap="round"
+    <svg width="32" height="32" viewBox="0 0 80 80" fill="none">
+      <circle cx="40" cy="40" r="36" fill={`rgba(${ENERGY_RGB},0.17)`} />
+      <circle cx="40" cy="40" r="24" fill={`rgba(${ENERGY_RGB},0.13)`} />
+      <polygon
+        points="45,5 21,42 36,42 35,75 59,38 44,38"
+        fill={`rgba(${ENERGY_RGB},0.9)`}
+        stroke={`rgba(${ENERGY_RGB},0.9)`}
+        strokeWidth="1.5"
         strokeLinejoin="round"
-        fill="none"
       />
-      {[
-        [0, 60], [36, 50], [72, 56], [108, 38], [144, 44], [180, 22], [220, 28],
-      ].map(([cx, cy]) => (
-        <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="2" fill="#ffffff" />
-      ))}
     </svg>
+  );
+}
+
+function MuscleIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 80 80" fill="none">
+      <circle cx="40" cy="40" r="36" stroke={`rgba(${MUSCLE_RGB},0.45)`} strokeWidth="2.5" />
+      <circle cx="40" cy="40" r="26" stroke={`rgba(${MUSCLE_RGB},0.6)`} strokeWidth="2.5" />
+      <circle cx="40" cy="40" r="16" stroke={`rgba(${MUSCLE_RGB},0.75)`} strokeWidth="2.5" />
+      <circle cx="40" cy="40" r="5" fill={`rgba(${MUSCLE_RGB},0.9)`} />
+      <line x1="40" y1="2" x2="40" y2="12" stroke={`rgba(${MUSCLE_RGB},0.6)`} strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="78" y1="40" x2="68" y2="40" stroke={`rgba(${MUSCLE_RGB},0.6)`} strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="40" y1="78" x2="40" y2="68" stroke={`rgba(${MUSCLE_RGB},0.6)`} strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="2" y1="40" x2="12" y2="40" stroke={`rgba(${MUSCLE_RGB},0.6)`} strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SleepIcon() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 80 80" fill="none">
+      <circle cx="36" cy="44" r="30" fill={`rgba(${SLEEP_RGB},0.12)`} />
+      <circle cx="63" cy="14" r="2.5" fill={`rgba(${SLEEP_RGB},0.7)`} />
+      <circle cx="71" cy="28" r="1.5" fill={`rgba(${SLEEP_RGB},0.55)`} />
+      <circle cx="57" cy="8" r="1.5" fill={`rgba(${SLEEP_RGB},0.45)`} />
+      <circle cx="69" cy="20" r="1" fill={`rgba(${SLEEP_RGB},0.4)`} />
+      <circle cx="75" cy="36" r="1" fill={`rgba(${SLEEP_RGB},0.3)`} />
+      <circle cx="35" cy="44" r="22" fill={`rgba(${SLEEP_RGB},0.85)`} />
+      <circle cx="46" cy="38" r="18" fill="#222222" />
+    </svg>
+  );
+}
+
+function MetricRing({ progress, label, IconComponent, ringColor }) {
+  const size = 84;
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - progress);
+  const center = size / 2;
+
+  return (
+    <View style={styles.ringWrap}>
+      <View style={{ width: size, height: size, position: 'relative' }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
+          <circle
+            cx={center} cy={center} r={r}
+            stroke="rgba(255,255,255,0.10)"
+            strokeWidth={stroke}
+            fill="none"
+          />
+          <circle
+            cx={center} cy={center} r={r}
+            stroke={ringColor}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={c}
+            strokeDashoffset={offset}
+            transform={`rotate(-90 ${center} ${center})`}
+          />
+        </svg>
+        <View style={styles.iconCenter} pointerEvents="none">
+          <IconComponent />
+        </View>
+      </View>
+      <Text style={styles.ringLabel}>{label}</Text>
+    </View>
   );
 }
 
@@ -70,8 +122,25 @@ export default function ReadinessOptInPrompt({ onChoose }) {
           ¿Quieres rastrear cómo tus hábitos o bienestar afectan tu rendimiento?
         </Text>
 
-        <View style={styles.graphArea}>
-          <MiniGraph />
+        <View style={styles.ringsRow}>
+          <MetricRing
+            progress={0.78}
+            label="Músculos"
+            IconComponent={MuscleIcon}
+            ringColor={`rgba(${MUSCLE_RGB},0.9)`}
+          />
+          <MetricRing
+            progress={0.62}
+            label="Sueño"
+            IconComponent={SleepIcon}
+            ringColor={`rgba(${SLEEP_RGB},0.9)`}
+          />
+          <MetricRing
+            progress={0.88}
+            label="Energía"
+            IconComponent={EnergyIcon}
+            ringColor={`rgba(${ENERGY_RGB},0.9)`}
+          />
         </View>
 
         <TouchableOpacity
@@ -121,9 +190,29 @@ const styles = StyleSheet.create({
     textAlign: 'center', lineHeight: 25,
     marginBottom: 22,
   },
-  graphArea: {
-    alignItems: 'center',
+  ringsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
     marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  ringWrap: {
+    alignItems: 'center',
+  },
+  iconCenter: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ringLabel: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   primaryBtn: {
     backgroundColor: '#ffffff', borderRadius: 14,

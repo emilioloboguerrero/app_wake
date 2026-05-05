@@ -1195,15 +1195,29 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const swapModalOpacity = useRef(new Animated.Value(0)).current;
   const swapModalTranslateY = useRef(new Animated.Value(800)).current;
 
-  // Bottom sheet (exercise list drawer) — replaces the old horizontal pager.
-  // Closed: only the handle bar pokes above the bottom edge. Open: covers most of the screen
-  // but stops well below the fixed app header so the pill stays visible.
-  const SHEET_HANDLE_VISIBLE = 36; // px of sheet visible when closed (just the handle pill)
-  const sheetHeight = Math.round(screenHeight * 0.88);
-  const sheetClosedY = sheetHeight - SHEET_HANDLE_VISIBLE;
-  const sheetTranslateY = useRef(new Animated.Value(sheetClosedY)).current;
+  // Top-anchored sheet (exercise list drawer). The card sits below the FixedWakeHeader
+  // with all four corners rounded; height + horizontal margin animate together so the
+  // closed lid matches the videoCard width and the expanded sheet goes near full-width
+  // and tall. Closed = compact lid (exercise name + bottom grabber).
+  const CLOSED_LID_HEIGHT = 76;
+  const CLOSED_HORIZONTAL_MARGIN = Math.max(48, screenWidth * 0.12) / 2;
+  const EXPANDED_HORIZONTAL_MARGIN = 8;
+  const sheetTopOffset = useMemo(() => {
+    const isIOSDevice = isWeb && typeof navigator !== 'undefined'
+      ? /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+      : Platform.OS === 'ios';
+    const baseExtra = isIOSDevice ? 0 : 24;
+    const browserExtra = isWeb && !isPWA() ? 34 : 0;
+    return (insets?.top || 0) + 32 + baseExtra + browserExtra + 12;
+  }, [insets?.top]);
+  const sheetHeight = Math.max(
+    CLOSED_LID_HEIGHT + 200,
+    Math.round(screenHeight - sheetTopOffset - 32)
+  );
+  const sheetHeightAnim = useRef(new Animated.Value(CLOSED_LID_HEIGHT)).current;
+  const sheetMarginAnim = useRef(new Animated.Value(CLOSED_HORIZONTAL_MARGIN)).current;
   const sheetBackdropOpacity = useRef(new Animated.Value(0)).current;
-  const sheetDragStartYRef = useRef(sheetClosedY);
+  const sheetDragStartHeightRef = useRef(CLOSED_LID_HEIGHT);
   
   // Simple scroll position tracking for pagination
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -1968,50 +1982,53 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     setCurrentView(newView);
   };
 
-  // Bottom sheet open/close (animated together with backdrop fade).
-  // Backdrop opacity uses useNativeDriver:false because we also drive it with .setValue()
-  // during drag — mixing native driver with JS-side setValue is unreliable on react-native-web.
+  // Bottom sheet open/close — height animation (non-native driver so the card stays
+  // bottom-anchored with all four corners rounded throughout the transition).
   const openSheet = useCallback(() => {
     setIsSheetOpen(true);
     setCurrentView(1);
     Animated.parallel([
-      Animated.spring(sheetTranslateY, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 16 }),
+      Animated.spring(sheetHeightAnim, { toValue: sheetHeight, useNativeDriver: false, bounciness: 0, speed: 16 }),
+      Animated.spring(sheetMarginAnim, { toValue: EXPANDED_HORIZONTAL_MARGIN, useNativeDriver: false, bounciness: 0, speed: 16 }),
       Animated.timing(sheetBackdropOpacity, { toValue: 1, duration: 200, useNativeDriver: false }),
     ]).start();
-  }, [sheetTranslateY, sheetBackdropOpacity]);
+  }, [sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, sheetHeight, EXPANDED_HORIZONTAL_MARGIN]);
 
   const closeSheet = useCallback(() => {
     setIsSheetOpen(false);
     setCurrentView(0);
     Animated.parallel([
-      Animated.spring(sheetTranslateY, { toValue: sheetClosedY, useNativeDriver: true, bounciness: 0, speed: 16 }),
+      Animated.spring(sheetHeightAnim, { toValue: CLOSED_LID_HEIGHT, useNativeDriver: false, bounciness: 0, speed: 16 }),
+      Animated.spring(sheetMarginAnim, { toValue: CLOSED_HORIZONTAL_MARGIN, useNativeDriver: false, bounciness: 0, speed: 16 }),
       Animated.timing(sheetBackdropOpacity, { toValue: 0, duration: 180, useNativeDriver: false }),
     ]).start();
-  }, [sheetTranslateY, sheetBackdropOpacity, sheetClosedY]);
+  }, [sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, CLOSED_HORIZONTAL_MARGIN]);
 
   const sheetPanResponder = useMemo(() => PanResponder.create({
     // Don't capture the start — let nested Pressable receive taps. Only take over on clear vertical movement.
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
     onPanResponderGrant: () => {
-      sheetTranslateY.stopAnimation((v) => { sheetDragStartYRef.current = v; });
+      sheetHeightAnim.stopAnimation((v) => { sheetDragStartHeightRef.current = v; });
     },
     onPanResponderMove: (_, g) => {
-      const next = Math.max(0, Math.min(sheetClosedY, sheetDragStartYRef.current + g.dy));
-      sheetTranslateY.setValue(next);
-      // Live-update backdrop opacity so the dim tracks the drag.
-      const t = 1 - next / sheetClosedY; // 0 = closed, 1 = open
+      // Card is top-anchored and grows downward. Drag down (g.dy > 0) → grow (open).
+      // Drag up (g.dy < 0) → shrink (close).
+      const next = Math.max(CLOSED_LID_HEIGHT, Math.min(sheetHeight, sheetDragStartHeightRef.current + g.dy));
+      sheetHeightAnim.setValue(next);
+      const t = (next - CLOSED_LID_HEIGHT) / (sheetHeight - CLOSED_LID_HEIGHT);
       sheetBackdropOpacity.setValue(Math.max(0, Math.min(1, t)));
     },
     onPanResponderRelease: (_, g) => {
-      const projected = sheetDragStartYRef.current + g.dy;
-      const fastOpen = g.vy < -0.4;
-      const fastClose = g.vy > 0.4;
-      const shouldOpen = fastOpen || (!fastClose && projected < sheetClosedY / 2);
+      const projected = sheetDragStartHeightRef.current + g.dy;
+      const midpoint = (CLOSED_LID_HEIGHT + sheetHeight) / 2;
+      const fastOpen = g.vy > 0.4;
+      const fastClose = g.vy < -0.4;
+      const shouldOpen = fastOpen || (!fastClose && projected > midpoint);
       if (shouldOpen) openSheet(); else closeSheet();
     },
     onPanResponderTerminate: () => closeSheet(),
-  }), [sheetTranslateY, sheetBackdropOpacity, sheetClosedY, openSheet, closeSheet]);
+  }), [sheetHeightAnim, sheetBackdropOpacity, sheetHeight, openSheet, closeSheet]);
 
   // Render pagination indicators - exact copy from MainScreen
   // Render pagination indicators for top cards - MainScreen style
@@ -5651,24 +5668,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     return null;
                   })()}
                   <WakeHeaderSpacer />
-                  
-              {/* Exercise Title Section */}
-              <View style={styles.exerciseTitleSection}>
-                <TouchableOpacity
-                  onPress={openSheet}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={styles.exerciseTitle}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {workout?.exercises?.[currentExerciseIndex]?.name ||
-                     'Ejercicio'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              
+                  {/* Spacer so content sits below the closed top sheet (lid + 12px gap) */}
+                  <View style={{ height: CLOSED_LID_HEIGHT + 12 }} />
+
               {/* Swipeable Top Cards */}
               <ScrollView
                 horizontal
@@ -6045,25 +6047,55 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       <Animated.View
         style={[
           styles.bottomSheet,
-          { height: sheetHeight, transform: [{ translateY: sheetTranslateY }] },
+          {
+            top: sheetTopOffset,
+            height: sheetHeightAnim,
+            left: sheetMarginAnim,
+            right: sheetMarginAnim,
+          },
         ]}
       >
-        <View
-          style={styles.bottomSheetHandleArea}
-          {...sheetPanResponder.panHandlers}
-        >
-          <Pressable
-            onPress={() => (isSheetOpen ? closeSheet() : openSheet())}
-            style={styles.bottomSheetHandlePressable}
-            accessibilityRole="button"
-            accessibilityLabel={isSheetOpen ? 'Cerrar lista de ejercicios' : 'Abrir lista de ejercicios'}
+        {isSheetOpen ? (
+          <>
+            <View style={styles.bottomSheetContent}>
+              {renderExerciseListView()}
+            </View>
+            <View
+              style={styles.bottomSheetFooter}
+              {...sheetPanResponder.panHandlers}
+            >
+              <Pressable
+                onPress={closeSheet}
+                style={styles.bottomSheetFooterPressable}
+                accessibilityRole="button"
+                accessibilityLabel="Cerrar lista de ejercicios"
+              >
+                <View style={styles.bottomSheetFooterGrabber} />
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <View
+            style={styles.bottomSheetHandleArea}
+            {...sheetPanResponder.panHandlers}
           >
-            <View style={styles.bottomSheetHandle} />
-          </Pressable>
-        </View>
-        <View style={styles.bottomSheetContent}>
-          {renderExerciseListView()}
-        </View>
+            <Pressable
+              onPress={openSheet}
+              style={styles.bottomSheetHandlePressable}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir lista de ejercicios"
+            >
+              <Text
+                style={styles.bottomSheetTitle}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {workout?.exercises?.[currentExerciseIndex]?.name || 'Ejercicio'}
+              </Text>
+              <View style={styles.bottomSheetGrabber} />
+            </Pressable>
+          </View>
+        )}
       </Animated.View>
 
       {/* Swap Exercise Modal */}
