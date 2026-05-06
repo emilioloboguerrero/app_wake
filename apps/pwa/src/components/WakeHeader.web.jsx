@@ -29,7 +29,8 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
   );
 }
 
-const HEADER_CONTENT_HEIGHT = 32;
+const HEADER_CONTENT_HEIGHT_IOS = 32;
+const HEADER_CONTENT_HEIGHT_NON_IOS = 16;
 const MIN_TOP_INSET_NON_IOS = 0;
 // iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
 const IOS_STANDALONE_TOP_FALLBACK = 59;
@@ -44,12 +45,11 @@ const useHeaderMetrics = () => {
     ? (rawTop > 0 ? rawTop : IOS_STANDALONE_TOP_FALLBACK)
     : Math.max(MIN_TOP_INSET_NON_IOS, rawTop);
 
-  const headerBarHeight = HEADER_CONTENT_HEIGHT + safeTop;
-
-  // No extra breathing room — content sits right below the bar like iPhone.
+  const headerContentHeight = isIOS ? HEADER_CONTENT_HEIGHT_IOS : HEADER_CONTENT_HEIGHT_NON_IOS;
+  const headerBarHeight = headerContentHeight + safeTop;
   const breathingRoom = 0;
 
-  return { headerBarHeight, safeTop, breathingRoom };
+  return { headerBarHeight, safeTop, breathingRoom, headerContentHeight };
 };
 
 // Simple SVG icons for web
@@ -75,8 +75,8 @@ export const FixedWakeHeader = ({
   const navigate = useNavigate();
   const location = useLocation();
   const { width: screenWidth } = useAppViewportSize();
-  const { headerBarHeight, safeTop } = useHeaderMetrics();
-  const headerHeight = HEADER_CONTENT_HEIGHT;
+  const { headerBarHeight, safeTop, headerContentHeight } = useHeaderMetrics();
+  const headerHeight = headerContentHeight;
   const logoWidth = Math.min(screenWidth * 0.35, 120);
   const logoHeight = logoWidth * 0.57;
   const iconSize = 20;
