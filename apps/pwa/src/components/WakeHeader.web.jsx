@@ -30,8 +30,8 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
 }
 
 const HEADER_CONTENT_HEIGHT_IOS = 32;
-const HEADER_CONTENT_HEIGHT_NON_IOS = 16;
-const MIN_TOP_INSET_NON_IOS = 0;
+const HEADER_CONTENT_HEIGHT_NON_IOS = 32;
+const MIN_TOP_INSET_NON_IOS = 24;
 // iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
 const IOS_STANDALONE_TOP_FALLBACK = 59;
 
@@ -390,14 +390,11 @@ export const WakeHeaderSpacer = () => {
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
 };
 
-// iOS pulls content up under the translucent glass header (matches pre-rewrite
-// look). Other platforms use a flat layout — content sits right below the bar.
-export const GAP_AFTER_HEADER = 0;
+// All platforms pull content up under the translucent glass header so the
+// layout matches the iPhone PWA look across web/Android.
+export const GAP_AFTER_HEADER = -32;
 export const GAP_AFTER_HEADER_PWA = -32;
-export const getGapAfterHeader = () => {
-  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
-  return /iPhone|iPad|iPod/.test(ua) ? GAP_AFTER_HEADER_PWA : GAP_AFTER_HEADER;
-};
+export const getGapAfterHeader = () => GAP_AFTER_HEADER;
 
 export const WakeHeaderContent = ({ style, gapAfterHeader, ...rest }) => {
   const effectiveGap = gapAfterHeader ?? getGapAfterHeader();
