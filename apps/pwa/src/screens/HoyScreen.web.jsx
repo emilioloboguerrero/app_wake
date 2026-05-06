@@ -677,7 +677,7 @@ const HoyScreen = () => {
                       removeClippedSubviews={false}
                       updateCellsBatchingPeriod={50}
                     />
-                    <View style={{ width: '100%', minHeight: 24, justifyContent: 'center', alignItems: 'center', paddingBottom: 12 }}>
+                    <View style={{ width: '100%', minHeight: 24, justifyContent: 'center', alignItems: 'center', marginTop: 16, paddingBottom: 12 }}>
                       {renderPaginationIndicators()}
                     </View>
                   </View>
