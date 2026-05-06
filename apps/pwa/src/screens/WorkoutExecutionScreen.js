@@ -226,7 +226,7 @@ const getMonitoringService = () => {
 // Components are imported directly since they no longer block (Dimensions.get moved inside)
 import TutorialOverlay from '../components/TutorialOverlay';
 import ExerciseDetailModal from '../components/ExerciseDetailModal';
-import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 
@@ -5669,14 +5669,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 showsVerticalScrollIndicator={false}
               >
                 <WakeHeaderContent style={styles.content}>
-                  {/* Spacer for fixed header */}
-                  {(() => {
-                    const spacerStartTime = performance.now();
-                    return null;
-                  })()}
-                  <WakeHeaderSpacer />
-                  {/* Spacer so content sits below the closed top sheet (lid + 4px gap) */}
-                  <View style={{ height: CLOSED_LID_HEIGHT + 4 }} />
+                  {/* Single in-flow spacer derived from the live lid position so the
+                      gap below the lid stays consistent across devices/safe-area timing. */}
+                  <View style={{ height: sheetTopOffset + CLOSED_LID_HEIGHT + 4 }} />
 
               {/* Swipeable Top Cards */}
               <ScrollView
