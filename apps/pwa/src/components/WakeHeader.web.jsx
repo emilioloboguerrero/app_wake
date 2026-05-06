@@ -390,14 +390,18 @@ export const WakeHeaderSpacer = () => {
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
 };
 
-// Kept for backward compatibility with screens that import these. The spacer
-// now contains the full gap (bar + breathing room), so no margin pull-up.
+// iOS pulls content up under the translucent glass header (matches pre-rewrite
+// look). Other platforms use a flat layout — content sits right below the bar.
 export const GAP_AFTER_HEADER = 0;
-export const GAP_AFTER_HEADER_PWA = 0;
-export const getGapAfterHeader = () => 0;
+export const GAP_AFTER_HEADER_PWA = -32;
+export const getGapAfterHeader = () => {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  return /iPhone|iPad|iPod/.test(ua) ? GAP_AFTER_HEADER_PWA : GAP_AFTER_HEADER;
+};
 
-export const WakeHeaderContent = ({ style, gapAfterHeader: _gap, ...rest }) => {
-  return <View style={style} {...rest} />;
+export const WakeHeaderContent = ({ style, gapAfterHeader, ...rest }) => {
+  const effectiveGap = gapAfterHeader ?? getGapAfterHeader();
+  return <View style={[{ marginTop: effectiveGap }, style]} {...rest} />;
 };
 
 export default FixedWakeHeader;
