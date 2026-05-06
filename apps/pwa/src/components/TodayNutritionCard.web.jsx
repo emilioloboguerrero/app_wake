@@ -18,6 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { getDiaryEntriesInRange } from '../services/nutritionFirestoreService';
 import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import WakeLoader from './WakeLoader.web.jsx';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const TRACK = 'rgba(255,255,255,0.08)';
@@ -180,6 +181,36 @@ const styles = {
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     border: '1px solid rgba(255,255,255,0.15)',
+    zIndex: 2,
+  },
+  loaderOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(10,10,10,0.45)',
+    backdropFilter: 'blur(2px)',
+    WebkitBackdropFilter: 'blur(2px)',
+    zIndex: 4,
+    pointerEvents: 'none',
+    borderRadius: 24,
+  },
+  dateChip: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: '6px 12px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontWeight: 700,
+    border: '1px solid rgba(255,255,255,0.18)',
     zIndex: 2,
   },
 
@@ -483,9 +514,20 @@ const isSameDay = (a, b) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
 // ── Component ─────────────────────────────────────────────────────────────
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+const formatDateChip = (ymd) => {
+  if (!ymd) return '';
+  const d = new Date(`${ymd}T12:00:00`);
+  return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+};
+
 const TodayNutritionCard = ({
   imageUrl,
   nutritionPlanName,
+  selectedDate,
+  isLoading = false,
   caloriesConsumed = 0,
   caloriesTarget = 2100,
   proteinConsumed = 0,
@@ -497,6 +539,12 @@ const TodayNutritionCard = ({
   isExpired = false,
   onLogMeal,
 }) => {
+  const todayYmd = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const isToday = !selectedDate || selectedDate === todayYmd;
+  const dateLabel = !isToday ? formatDateChip(selectedDate) : '';
   const { user } = useAuth();
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -627,6 +675,12 @@ const TodayNutritionCard = ({
             </div>
           </div>
           {isExpired ? <div style={styles.expiredBadge}>Expirado</div> : null}
+          {!isToday ? <div style={styles.dateChip}>{dateLabel}</div> : null}
+          {isLoading ? (
+            <div style={styles.loaderOverlay}>
+              <WakeLoader size={56} />
+            </div>
+          ) : null}
         </div>
 
         {/* BACK */}

@@ -272,6 +272,11 @@ router.post("/payments/subscription", async (req, res) => {
     throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
   }
 
+  functions.logger.info("WAKE_PAYMENT_AUDIT preapproval.create response", {
+    preapproval_id: result.id,
+    full_response: result,
+  });
+
   interface PreapprovalDetails {
     next_payment_date?: string | null;
     auto_recurring?: { next_payment_date?: string | null; start_date?: string | null };
@@ -279,6 +284,10 @@ router.post("/payments/subscription", async (req, res) => {
   let nextBillingDate: string | null = null;
   try {
     const details = await preapproval.get({id: result.id}) as PreapprovalDetails;
+    functions.logger.info("WAKE_PAYMENT_AUDIT preapproval.get response", {
+      preapproval_id: result.id,
+      full_response: details,
+    });
     nextBillingDate =
       details?.next_payment_date ||
       details?.auto_recurring?.next_payment_date ||
@@ -469,6 +478,11 @@ router.post("/payments/bundle-subscription", async (req, res) => {
     throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
   }
 
+  functions.logger.info("WAKE_PAYMENT_AUDIT preapproval.create response", {
+    preapproval_id: result.id,
+    full_response: result,
+  });
+
   interface PreapprovalDetails {
     next_payment_date?: string | null;
     auto_recurring?: { next_payment_date?: string | null; start_date?: string | null };
@@ -476,6 +490,10 @@ router.post("/payments/bundle-subscription", async (req, res) => {
   let nextBillingDate: string | null = null;
   try {
     const details = await preapproval.get({id: result.id}) as PreapprovalDetails;
+    functions.logger.info("WAKE_PAYMENT_AUDIT preapproval.get response", {
+      preapproval_id: result.id,
+      full_response: details,
+    });
     nextBillingDate =
       details?.next_payment_date ||
       details?.auto_recurring?.next_payment_date ||
@@ -593,6 +611,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
   // ── subscription_preapproval (status updates only) ──
   if (webhookType === "subscription_preapproval") {
     const preapprovalId = req.body?.data?.id;
+    functions.logger.info("WAKE_PAYMENT_AUDIT webhook subscription_preapproval raw", {
+      headers: {
+        "x-signature": req.get("x-signature"),
+        "x-request-id": req.get("x-request-id"),
+        "user-agent": req.get("user-agent"),
+      },
+      body: req.body,
+    });
     if (!preapprovalId) {
       res.status(200).send("OK");
       return;
@@ -601,6 +627,10 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const client = getMPClient();
       const preapproval = new PreApproval(client);
       const preapprovalData = await preapproval.get({id: preapprovalId}) as unknown as MercadoPagoPreapproval;
+      functions.logger.info("WAKE_PAYMENT_AUDIT webhook preapproval.get response", {
+        preapproval_id: preapprovalId,
+        full_response: preapprovalData,
+      });
       const externalReference = preapprovalData?.external_reference;
       if (!externalReference) {
         res.status(200).send("OK");
@@ -756,6 +786,13 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const payment = new Payment(client);
       paymentData = (await payment.get({id: paymentId}) as MercadoPagoPaymentData) || {};
     }
+    functions.logger.info("WAKE_PAYMENT_AUDIT webhook payment data fetched", {
+      webhook_type: webhookType,
+      webhook_action: webhookAction,
+      payment_id: paymentId,
+      raw_webhook_body: req.body,
+      full_payment_data: paymentData,
+    });
   } catch (apiError: unknown) {
     const errType = classifyError(apiError);
     if (errType === "RETRYABLE") {

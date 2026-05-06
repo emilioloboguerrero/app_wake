@@ -290,6 +290,19 @@ body {
   box-sizing: border-box;
 }
 
+/* Desktop: constrain tab bar to the same 430px phone column as .app-viewport
+   so it visually aligns with the centered content instead of spanning the
+   whole window. */
+@media (min-width: 481px) {
+  .wake-tab-bar-root {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 430px;
+  }
+}
+
 /* Tab bar center "+" button: wrapper clips to circle from first paint (avoids square flash).
    Critical copy in web/index.html inline <style>. Solid background + inline SVG plus (no mask). */
 .wake-tab-bar-add-button-wrap {

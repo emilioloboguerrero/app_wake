@@ -10,11 +10,24 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
-import VideoExchangeOverlay from './videoExchange/VideoExchangeOverlay.web';
 import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 import WakeLoader from './WakeLoader.web.jsx';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatDateChip = (ymd) => {
+  if (!ymd) return '';
+  const d = new Date(`${ymd}T12:00:00`);
+  return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+};
 
 const styles = {
   outer: {
@@ -133,6 +146,23 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.28)',
     zIndex: 2,
   },
+  dateChip: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: '6px 12px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontWeight: 700,
+    border: '1px solid rgba(255,255,255,0.18)',
+    zIndex: 2,
+  },
   statusPill: {
     position: 'absolute',
     bottom: 16,
@@ -210,51 +240,41 @@ const styles = {
     color: 'rgba(255,255,255,0.4)',
     cursor: 'not-allowed',
   },
-  cameraButton: {
+  loaderOverlay: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.14)',
-    color: '#fff',
-    cursor: 'pointer',
+    inset: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 0,
-    backdropFilter: 'blur(8px)',
-    WebkitBackdropFilter: 'blur(8px)',
-    zIndex: 3,
-    transition: `background-color 200ms ${SPRING}`,
+    backgroundColor: 'rgba(10,10,10,0.45)',
+    backdropFilter: 'blur(2px)',
+    WebkitBackdropFilter: 'blur(2px)',
+    zIndex: 4,
+    pointerEvents: 'none',
+    borderRadius: 24,
   },
 };
 
-const CameraIcon = ({ size = 18 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-    <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
-    <circle cx="12" cy="13" r="3.5" />
-  </svg>
-);
-
-const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, onBegin, onRenew }) => {
+const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, selectedDate, onBegin, onRenew }) => {
   const { user } = useAuth();
   const courseId = course?.courseId || course?.id;
   const programTitle = course?.title || '';
-  const courseCreatorId = course?.creator_id || null;
-  const isOneOnOne = course?.deliveryType === 'one_on_one';
-  const canAccessVideoHistory = !!(isOneOnOne && courseCreatorId && user?.uid);
   const isTrial = course?.is_trial === true;
 
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
+
+  // selectedDate drives which session the card resolves. Today shares the cache key
+  // ['preview','todaySession',uid,courseId] with HoyScreen and the prefetch hook;
+  // other dates use a date-suffixed key so today's data isn't clobbered.
+  const isToday = !selectedDate || selectedDate === todayYmd();
+  const dateLabel = !isToday ? formatDateChip(selectedDate) : '';
+  const todaySessionKey = ['preview', 'todaySession', user?.uid, courseId];
+  const dateSessionKey = ['preview', 'todaySession', user?.uid, courseId, selectedDate];
 
   const { data: sessionState, isLoading: sessionQueryLoading } = useQuery({
-    queryKey: ['preview', 'todaySession', user?.uid, courseId],
-    queryFn: () => sessionService.getCurrentSession(user.uid, courseId),
+    queryKey: isToday ? todaySessionKey : dateSessionKey,
+    queryFn: () => sessionService.getCurrentSession(user.uid, courseId, isToday ? {} : { targetDate: selectedDate }),
     enabled: !!user?.uid && !!courseId && !isExpired,
     // 60s window covers carousel swipes and quick re-mounts without a round-trip.
     // Explicit invalidation on completion (sessionService.completeSession) and
@@ -317,7 +337,9 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
           ? 'Día de descanso'
           : noPlanningThisWeek
             ? 'Sin sesión'
-            : 'Empezar';
+            : isToday
+              ? 'Empezar'
+              : `Empezar el ${dateLabel}`;
   const hasMuscleData = Object.keys(muscleVolumes).length > 0;
 
   const handleFlip = (e) => {
@@ -341,11 +363,6 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
       workout: sessionState?.workout,
       sessionId: sessionState?.session?.sessionId,
     });
-  };
-
-  const handleVideoHistory = (e) => {
-    e?.stopPropagation?.();
-    setVideoHistoryOpen(true);
   };
 
   const beginAccentStyle = accent && (canBegin || isExpired)
@@ -377,18 +394,29 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
               <span style={styles.title}>{headlineTitle}</span>
             </div>
             {isExpired ? <div style={styles.expiredBadge}>Expirado</div> : null}
-            {isTrial ? <div style={styles.trialBadge}>Prueba</div> : null}
+            {!isToday ? <div style={styles.dateChip}>{dateLabel}</div> : isTrial ? <div style={styles.trialBadge}>Prueba</div> : null}
             {downloadStatus === 'updating' ? (
               <div style={styles.statusPill}>Actualizando</div>
             ) : downloadStatus === 'failed' ? (
               <div style={{ ...styles.statusPill, ...styles.statusPillFailed }}>Error</div>
+            ) : null}
+            {sessionLoading && !isExpired ? (
+              <div style={styles.loaderOverlay}>
+                <WakeLoader size={56} />
+              </div>
             ) : null}
           </div>
 
           {/* BACK */}
           <div style={{ ...styles.face, ...styles.back }} onClick={handleFlip}>
             <div style={styles.backHeader}>
-              {programTitle ? <span style={styles.backKicker}>{programTitle}</span> : null}
+              {programTitle ? (
+                <span style={styles.backKicker}>
+                  {programTitle}{!isToday && dateLabel ? ` · ${dateLabel}` : ''}
+                </span>
+              ) : !isToday && dateLabel ? (
+                <span style={styles.backKicker}>{dateLabel}</span>
+              ) : null}
               <span style={styles.backTitle}>{headlineTitle}</span>
             </div>
 
@@ -420,29 +448,9 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
               </button>
             </div>
 
-            {canAccessVideoHistory ? (
-              <button
-                style={styles.cameraButton}
-                onClick={handleVideoHistory}
-                aria-label="Historial de videos"
-                title="Historial de videos"
-              >
-                <CameraIcon />
-              </button>
-            ) : null}
           </div>
         </div>
       </div>
-
-      {canAccessVideoHistory && VideoExchangeOverlay ? (
-        <VideoExchangeOverlay
-          open={videoHistoryOpen}
-          mode="history"
-          userId={user?.uid}
-          creatorId={courseCreatorId}
-          onClose={() => setVideoHistoryOpen(false)}
-        />
-      ) : null}
     </>
   );
 };

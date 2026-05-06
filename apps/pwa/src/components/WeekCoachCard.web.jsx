@@ -1,17 +1,24 @@
 // Third card — two faces with a 3D flip.
-//   Front: coach picker (with avatar), two adherence line graphs (workouts + nutrition),
+//   Front: coach picker, Lun→Dom day strip (date + status dot), nutrition adherence,
 //          flip-to-calendar button.
-//   Back:  month label + nav, full month grid, flip-back button.
+//   Back:  month label + nav, full month grid with the same dot system, flip-back button.
+// Dot system: green = a session was completed that date; grey = (one_on_one only) a
+// session is planned but not completed. Module/general programs are not date-scheduled
+// so they only get green dots from sessionHistory.
 // Neither face overflows the card; no internal scrolling. Accent CSS vars are
 // scoped to this card (derived from the active coach's profile picture).
 import React, { useMemo, useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
-import { getDiaryEntriesInRange } from '../services/nutritionFirestoreService';
+import exerciseHistoryService from '../services/exerciseHistoryService';
 import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import VideoExchangeOverlay from './videoExchange/VideoExchangeOverlay.web';
 
 const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const ENTRY_GREEN = 'rgba(34, 140, 70, 0.95)';
+const PLANNED_GREY = 'rgba(255,255,255,0.55)';
 const MONTH_LABELS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -67,6 +74,9 @@ const styles = {
     padding: 20,
     gap: 18,
   },
+  faceFront: {
+    paddingTop: 96,
+  },
   faceBack: {
     transform: 'rotateY(180deg)',
   },
@@ -105,17 +115,17 @@ const styles = {
   },
   dropdown: {
     position: 'absolute',
-    top: 'calc(100% + 6px)',
+    bottom: 'calc(100% + 6px)',
     left: 0,
     right: 0,
     borderRadius: 12,
     backgroundColor: '#222',
     border: '1px solid rgba(255,255,255,0.12)',
-    boxShadow: '0 10px 40px rgba(0,0,0,0.45)',
+    boxShadow: '0 -10px 40px rgba(0,0,0,0.45)',
     zIndex: 50,
     padding: 6,
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'column-reverse',
     gap: 2,
   },
   dropdownItem: {
@@ -156,62 +166,29 @@ const styles = {
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.5)',
   },
-
-  // Adherence bar charts
-  adherenceList: {
+  sectionHeader: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
-  },
-  chart: {
-    display: 'flex',
-    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
   },
-  chartHeader: {
+  sectionActions: {
     display: 'flex',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 6,
   },
-  chartLabel: {
-    fontSize: 12,
-    fontWeight: 500,
-    color: 'rgba(255,255,255,0.65)',
-    letterSpacing: 0.2,
-  },
-  chartScore: {
-    fontSize: 18,
-    fontWeight: 700,
-    letterSpacing: -0.3,
-    color: '#fff',
-    fontVariantNumeric: 'tabular-nums',
-  },
-  chartScoreEmpty: {
-    color: 'rgba(255,255,255,0.35)',
-    fontWeight: 600,
-    fontSize: 13,
-  },
-  chartPlot: {
-    width: '100%',
-    height: 48,
-    display: 'block',
-  },
-  chartLabelsRow: {
+  sectionFlipButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.85)',
+    cursor: 'pointer',
     display: 'flex',
-    gap: 4,
-  },
-  chartDayLabel: {
-    flex: 1,
-    minWidth: 0,
-    textAlign: 'center',
-    fontSize: 9,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    fontWeight: 700,
-    color: 'rgba(255,255,255,0.4)',
-  },
-  chartDayLabelToday: {
-    color: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
   },
 
   // Coach avatar
@@ -271,19 +248,18 @@ const styles = {
     textAlign: 'center',
   },
   flipButton: {
-    height: 44,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.06)',
     border: '1px solid rgba(255,255,255,0.1)',
     color: '#fff',
-    fontSize: 13,
-    fontWeight: 600,
-    letterSpacing: 0.3,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    padding: 0,
+    alignSelf: 'center',
   },
 
   // Back face — month grid
@@ -364,8 +340,66 @@ const styles = {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.7)',
     marginTop: 2,
+  },
+
+  // Front-face week strip
+  weekStrip: {
+    display: 'flex',
+    gap: 5,
+    width: '100%',
+  },
+  weekDay: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingLeft: 2,
+    paddingRight: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
+  },
+  weekDayToday: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.18)',
+  },
+  weekDaySelected: {
+    backgroundColor: 'var(--accent, #fff)',
+    border: '1px solid var(--accent, #fff)',
+  },
+  weekDayLabel: {
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  weekDayLabelToday: {
+    color: '#fff',
+  },
+  weekDayLabelSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+    opacity: 0.85,
+  },
+  weekDayNumber: {
+    fontSize: 16,
+    fontWeight: 600,
+    color: '#fff',
+    fontVariantNumeric: 'tabular-nums',
+    lineHeight: 1.1,
+  },
+  weekDayNumberSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+  },
+  weekDayDotSlot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
   },
 };
 
@@ -385,6 +419,28 @@ const initialsFor = (name) => {
   return parts.map((p) => p.charAt(0).toUpperCase()).join('') || '·';
 };
 
+const CalendarIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18" />
+    <path d="M8 3v4" />
+    <path d="M16 3v4" />
+  </svg>
+);
+
+const ArrowLeftIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+);
+
+const CameraIcon = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
+
 const CoachAvatar = ({ imageUrl, name, small = false }) => {
   const [errored, setErrored] = useState(false);
   // Reset error state when imageUrl changes — different coach, different URL.
@@ -401,160 +457,13 @@ const CoachAvatar = ({ imageUrl, name, small = false }) => {
   );
 };
 
-// Fritsch–Carlson monotone cubic interpolation → smooth SVG path through points,
-// matching the creator dashboard's recharts `type="monotone"` curve.
-const buildMonotonePath = (pts) => {
-  const n = pts.length;
-  if (n < 2) return '';
-  if (n === 2) return `M ${pts[0].x},${pts[0].y} L ${pts[1].x},${pts[1].y}`;
-  const dx = new Array(n - 1);
-  const m = new Array(n - 1);
-  for (let i = 0; i < n - 1; i++) {
-    dx[i] = pts[i + 1].x - pts[i].x;
-    m[i] = (pts[i + 1].y - pts[i].y) / (dx[i] || 1);
-  }
-  const t = new Array(n);
-  t[0] = m[0];
-  t[n - 1] = m[n - 2];
-  for (let i = 1; i < n - 1; i++) {
-    t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
-  }
-  for (let i = 0; i < n - 1; i++) {
-    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
-    const a = t[i] / m[i];
-    const b = t[i + 1] / m[i];
-    const s = a * a + b * b;
-    if (s > 9) {
-      const tau = 3 / Math.sqrt(s);
-      t[i] = tau * a * m[i];
-      t[i + 1] = tau * b * m[i];
-    }
-  }
-  let d = `M ${pts[0].x},${pts[0].y}`;
-  for (let i = 0; i < n - 1; i++) {
-    const c1x = pts[i].x + dx[i] / 3;
-    const c1y = pts[i].y + (t[i] * dx[i]) / 3;
-    const c2x = pts[i + 1].x - dx[i] / 3;
-    const c2y = pts[i + 1].y - (t[i + 1] * dx[i]) / 3;
-    d += ` C ${c1x},${c1y} ${c2x},${c2y} ${pts[i + 1].x},${pts[i + 1].y}`;
-  }
-  return d;
-};
-
-// Line graph rendered in SVG (viewBox-based, scales with the container).
-// Breaks the line wherever a point's value is null — for workouts that means rest
-// days, for nutrition it means future days.
-const LineGraph = ({ points }) => {
-  const W = 100;
-  const H = 40;
-  const PAD_X = 3;
-  const PAD_Y = 4;
-  const n = points.length;
-  if (n === 0) return null;
-  const xFor = (i) => (n <= 1 ? W / 2 : PAD_X + (i / (n - 1)) * (W - 2 * PAD_X));
-  const yFor = (v) => PAD_Y + (1 - v) * (H - 2 * PAD_Y);
-
-  const segments = [];
-  let current = [];
-  points.forEach((p, i) => {
-    if (p.value == null) {
-      if (current.length > 0) segments.push(current);
-      current = [];
-      return;
-    }
-    current.push({ x: xFor(i), y: yFor(p.value), i });
-  });
-  if (current.length > 0) segments.push(current);
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      style={styles.chartPlot}
-      aria-hidden
-    >
-      <line
-        x1={0}
-        y1={H - PAD_Y}
-        x2={W}
-        y2={H - PAD_Y}
-        stroke="rgba(255,255,255,0.08)"
-        strokeWidth={0.4}
-        vectorEffect="non-scaling-stroke"
-      />
-      {segments.map((seg, idx) => {
-        if (seg.length < 2) return null;
-        const linePath = buildMonotonePath(seg);
-        const first = seg[0];
-        const last = seg[seg.length - 1];
-        const areaPath = `${linePath} L ${last.x},${H - PAD_Y} L ${first.x},${H - PAD_Y} Z`;
-        return (
-          <path
-            key={`area-${idx}`}
-            d={areaPath}
-            fill="var(--accent, rgba(255,255,255,0.85))"
-            fillOpacity={0.18}
-          />
-        );
-      })}
-      {segments.map((seg, idx) => {
-        if (seg.length < 2) return null;
-        return (
-          <path
-            key={`line-${idx}`}
-            d={buildMonotonePath(seg)}
-            fill="none"
-            stroke="var(--accent, rgba(255,255,255,0.9))"
-            strokeWidth={1.4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        );
-      })}
-    </svg>
-  );
-};
-
-const AdherenceChart = ({ label, score, points }) => {
-  const hasScore = typeof score === 'number' && Number.isFinite(score);
-  const pct = hasScore ? Math.max(0, Math.min(100, score)) : 0;
-  const visiblePoints = (points && points.length > 0) ? points : Array.from({ length: 7 }, () => ({
-    label: '·', value: null, isToday: false,
-  }));
-  return (
-    <div style={styles.chart}>
-      <div style={styles.chartHeader}>
-        <span style={styles.chartLabel}>{label}</span>
-        {hasScore ? (
-          <span style={styles.chartScore}>{pct}%</span>
-        ) : (
-          <span style={styles.chartScoreEmpty}>—</span>
-        )}
-      </div>
-      <LineGraph points={visiblePoints} />
-      <div style={styles.chartLabelsRow}>
-        {visiblePoints.map((p, i) => (
-          <span
-            key={i}
-            style={p.isToday ? { ...styles.chartDayLabel, ...styles.chartDayLabelToday } : styles.chartDayLabel}
-          >
-            {p.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 const WeekCoachCard = ({
   coachEnvironments = [],
   selectedCoachId,
   profileImagesByCoachId = {},
-  hasNutrition = false,
-  nutritionCaloriesTarget = 0,
+  selectedDate,
   onSelectCoach,
-  onTapDate,
+  onSelectDate,
   onSeeProgram,
 }) => {
   const { user } = useAuth();
@@ -582,142 +491,121 @@ const WeekCoachCard = ({
         '--accent-text': accent.accentText,
       }
     : {};
-  const primaryCourse = selected?.workouts?.[0];
-  const courseId = primaryCourse?.courseId || primaryCourse?.id;
-  const hasFixedProgram = primaryCourse?.deliveryType === 'low_ticket' || primaryCourse?.deliveryType === 'general';
-  const isOneOnOne = primaryCourse?.deliveryType === 'one_on_one';
+  // All courses in the selected coach env contribute to the calendar — multiple
+  // programs from the same coach merge their planned/completed dots into one view.
+  const envCourses = useMemo(() => selected?.workouts || [], [selected]);
+  const primaryCourse = envCourses[0];
+  // Programs whose structure can be browsed — one_on_one is week-by-week, no
+  // single "complete program" surface. We render one row per fixed program so
+  // it's never ambiguous which one the link refers to.
+  const fixedCourses = useMemo(
+    () => envCourses.filter((c) => c.deliveryType === 'low_ticket' || c.deliveryType === 'general'),
+    [envCourses],
+  );
+  const hasOneOnOne = envCourses.some((c) => c.deliveryType === 'one_on_one');
   const showCoachPicker = (coachEnvironments?.length || 0) >= 2;
+  const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
 
-  const { data: sessionState } = useQuery({
-    queryKey: ['preview', 'todaySession', user?.uid, courseId],
-    queryFn: () => sessionService.getCurrentSession(user.uid, courseId),
-    enabled: !!user?.uid && !!courseId,
-    staleTime: 0,
+  const sessionStateQueries = useQueries({
+    queries: envCourses.map((c) => {
+      const cId = c.courseId || c.id;
+      return {
+        queryKey: ['preview', 'todaySession', user?.uid, cId],
+        queryFn: () => sessionService.getCurrentSession(user.uid, cId),
+        enabled: !!user?.uid && !!cId,
+        staleTime: 0,
+      };
+    }),
   });
 
   const monday = useMemo(() => getMonday(today), [today]);
   const mondayYmd = useMemo(() => toYYYYMMDD(monday), [monday]);
-  const sundayYmd = useMemo(() => {
-    const s = new Date(monday);
-    s.setDate(monday.getDate() + 6);
-    return toYYYYMMDD(s);
-  }, [monday]);
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     return d;
   }), [monday]);
 
-  const sessionsByDate = useMemo(() => {
-    const map = new Map();
-    (sessionState?.allSessions || []).forEach((s) => {
-      if (!s.plannedDate) return;
-      const key = String(s.plannedDate).slice(0, 10);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(s);
-    });
-    return map;
-  }, [sessionState?.allSessions]);
-
-  const completedSessionIds = useMemo(() => {
-    const arr = sessionState?.progress?.allSessionsCompleted;
-    return new Set(Array.isArray(arr) ? arr : []);
-  }, [sessionState?.progress?.allSessionsCompleted]);
-
-  const weekSessions = useMemo(() => {
-    if (!sessionState?.allSessions) return [];
-    return sessionState.allSessions
-      .filter((s) => {
-        if (!s.plannedDate) return false;
-        const ymd = String(s.plannedDate).slice(0, 10);
-        return ymd >= mondayYmd && ymd <= sundayYmd;
-      })
-      .sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)));
-  }, [sessionState?.allSessions, mondayYmd, sundayYmd]);
-
-  // For non-date-scheduled programs (low_ticket, general) sessions have plannedDate: null.
-  const moduleWeekSessions = useMemo(() => {
-    const all = sessionState?.allSessions || [];
-    if (!all.length) return [];
-    return all.slice(0, 7);
-  }, [sessionState?.allSessions]);
-
-  const weekItems = isOneOnOne ? weekSessions : moduleWeekSessions;
-  const weekTotal = weekItems.length;
-  const weekDone = useMemo(
-    () => weekItems.filter((s) => completedSessionIds.has(s.sessionId)).length,
-    [weekItems, completedSessionIds],
-  );
-  // Workout adherence: % of this week's planned sessions completed.
-  const workoutAdherence = weekTotal > 0 ? Math.min(100, Math.round((weekDone / weekTotal) * 100)) : null;
-
-  // Workout per-day points for the line graph. For one_on_one we map by date,
-  // skipping rest days (value: null) so the line breaks across them. For fixed
-  // programs each session in the cycle is its own point on the X axis.
-  const workoutPoints = useMemo(() => {
-    if (isOneOnOne) {
-      return weekDates.map((d, i) => {
-        const ymd = toYYYYMMDD(d);
-        const sessions = sessionsByDate.get(ymd) || [];
-        const hasSession = sessions.length > 0;
-        const anyCompleted = sessions.some((s) => completedSessionIds.has(s.sessionId));
-        let value = null;
-        if (hasSession) value = anyCompleted ? 1 : 0;
-        return { label: DAY_LABELS[i], value, isToday: isSameDay(d, today) };
-      });
-    }
-    return moduleWeekSessions.map((s, i) => {
-      const isCompleted = completedSessionIds.has(s.sessionId);
-      const order = s.order != null ? s.order + 1 : i + 1;
-      return {
-        label: String(order).padStart(2, '0'),
-        value: isCompleted ? 1 : 0,
-        isToday: false,
-      };
-    });
-  }, [isOneOnOne, weekDates, sessionsByDate, completedSessionIds, today, moduleWeekSessions]);
-
-  // Weekly diary entries — used to score nutrition adherence Mon → today.
-  const todayYmd = useMemo(() => toYYYYMMDD(today), [today]);
-  const nutritionEnabled = hasNutrition && nutritionCaloriesTarget > 0;
-  const { data: weekDiaryEntries } = useQuery({
-    queryKey: ['hoy', 'weekDiary', user?.uid, mondayYmd, todayYmd],
-    queryFn: () => getDiaryEntriesInRange(user.uid, mondayYmd, todayYmd),
-    enabled: !!user?.uid && nutritionEnabled,
-    staleTime: 60 * 1000,
-  });
-
-  // Per-day calorie adherence Mon → Sun for the line graph. Each day's value is
-  // capped at 100% of target so a one-day overshoot can't inflate the curve.
-  // Future days are null so the line stops at today. The aggregate score averages
-  // only past + today.
-  const { nutritionPoints, nutritionAdherence } = useMemo(() => {
-    if (!nutritionEnabled) return { nutritionPoints: [], nutritionAdherence: null };
-    const todayIndex = weekDates.findIndex((d) => isSameDay(d, today));
-    const caloriesByDate = new Map();
-    (weekDiaryEntries || []).forEach((e) => {
-      const ymd = String(e.date || '').slice(0, 10);
-      if (!ymd) return;
-      caloriesByDate.set(ymd, (caloriesByDate.get(ymd) || 0) + (Number(e.calories) || 0));
-    });
-    const points = weekDates.map((d, i) => {
-      const ymd = toYYYYMMDD(d);
-      const consumed = caloriesByDate.get(ymd) || 0;
-      const isFuture = todayIndex >= 0 && i > todayIndex;
-      const value = isFuture ? null : Math.min(1, consumed / nutritionCaloriesTarget);
-      return { label: DAY_LABELS[i], value, isToday: i === todayIndex };
-    });
-    const dayCount = todayIndex >= 0 ? todayIndex + 1 : 0;
-    const adherence = dayCount > 0
-      ? Math.round(
-          (points.slice(0, dayCount).reduce((acc, p) => acc + (p.value || 0), 0) / dayCount) * 100,
-        )
-      : null;
-    return { nutritionPoints: points, nutritionAdherence: adherence };
-  }, [nutritionEnabled, nutritionCaloriesTarget, weekDiaryEntries, weekDates, today]);
-
   const monthLabel = `${MONTH_LABELS[visibleMonth.month]} ${visibleMonth.year}`;
   const monthGrid = useMemo(() => buildMonthGrid(visibleMonth.year, visibleMonth.month), [visibleMonth]);
+
+  // Date range covering both the visible month grid and this week's strip — single
+  // source-of-truth for completed-date lookups across both faces.
+  const calendarRange = useMemo(() => {
+    const monthStart = monthGrid[0];
+    const monthEnd = monthGrid[monthGrid.length - 1];
+    const start = monthStart < monday ? monthStart : monday;
+    const weekEnd = weekDates[6];
+    const end = monthEnd > weekEnd ? monthEnd : weekEnd;
+    return { startYmd: toYYYYMMDD(start), endYmd: toYYYYMMDD(end) };
+  }, [monthGrid, monday, weekDates]);
+
+  // Module/general programs aren't date-scheduled, so completed dates come from
+  // sessionHistory (via /workout/calendar). One_on_one derives them from
+  // sessionState.allSessions + completedSessionIds, no extra fetch.
+  const moduleCalendarQueries = useQueries({
+    queries: envCourses.map((c) => {
+      const cId = c.courseId || c.id;
+      const isOO = c.deliveryType === 'one_on_one';
+      return {
+        queryKey: ['hoy', 'completedCalendar', user?.uid, cId, calendarRange.startYmd, calendarRange.endYmd],
+        queryFn: () => exerciseHistoryService.getDatesWithCompletedSessionsForCourse(
+          user.uid, cId, calendarRange.startYmd, calendarRange.endYmd,
+        ),
+        enabled: !!user?.uid && !!cId && !isOO,
+        staleTime: 5 * 60 * 1000,
+      };
+    }),
+  });
+
+  // Per-date course attribution: which course owns the completed/planned session for
+  // a given date. First match wins (envCourses already honors pinned-first ordering),
+  // so click navigation goes to the most relevant program.
+  const { completedDateMap, plannedDateMap } = useMemo(() => {
+    const completed = new Map();
+    const planned = new Map();
+    envCourses.forEach((course, idx) => {
+      const isOO = course.deliveryType === 'one_on_one';
+      const sessionState = sessionStateQueries[idx]?.data;
+      if (isOO) {
+        const completedIds = new Set(
+          Array.isArray(sessionState?.progress?.allSessionsCompleted)
+            ? sessionState.progress.allSessionsCompleted
+            : [],
+        );
+        (sessionState?.allSessions || []).forEach((s) => {
+          if (!s.plannedDate) return;
+          const ymd = String(s.plannedDate).slice(0, 10);
+          if (completedIds.has(s.sessionId)) {
+            if (!completed.has(ymd)) completed.set(ymd, course);
+          } else if (!planned.has(ymd)) {
+            planned.set(ymd, course);
+          }
+        });
+      } else {
+        const dates = moduleCalendarQueries[idx]?.data;
+        (Array.isArray(dates) ? dates : []).forEach((ymd) => {
+          if (!completed.has(ymd)) completed.set(ymd, course);
+        });
+      }
+    });
+    return { completedDateMap: completed, plannedDateMap: planned };
+  }, [envCourses, sessionStateQueries, moduleCalendarQueries]);
+
+  const statusForDate = (ymd) => {
+    if (completedDateMap.has(ymd)) return 'completed';
+    if (plannedDateMap.has(ymd)) return 'planned';
+    return 'none';
+  };
+
+  // Calendar/strip cutoff — users can access training for the current week AND
+  // next week. Anything past next Sunday is treated as out-of-range.
+  const nextWeekSunday = useMemo(() => {
+    const s = new Date(monday);
+    s.setDate(monday.getDate() + 13);
+    s.setHours(0, 0, 0, 0);
+    return s;
+  }, [monday]);
 
   const handlePrevMonth = (e) => {
     e?.stopPropagation?.();
@@ -733,9 +621,9 @@ const WeekCoachCard = ({
       return nm > 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: nm };
     });
   };
-  const handleSeeProgram = (e) => {
+  const handleSeeProgram = (course) => (e) => {
     e?.stopPropagation?.();
-    if (onSeeProgram && primaryCourse) onSeeProgram(primaryCourse);
+    if (onSeeProgram && course) onSeeProgram(course);
   };
   const togglePicker = (e) => {
     e?.stopPropagation?.();
@@ -761,9 +649,88 @@ const WeekCoachCard = ({
         }}
       >
         {/* FRONT */}
-        <div style={styles.face}>
+        <div style={{ ...styles.face, ...styles.faceFront }}>
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <span style={styles.sectionLabel}>Esta semana</span>
+              <div style={styles.sectionActions}>
+                {hasOneOnOne ? (
+                  <button
+                    style={styles.sectionFlipButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVideoHistoryOpen(true);
+                    }}
+                    aria-label="Historial de videos"
+                    title="Historial de videos"
+                  >
+                    <CameraIcon size={15} />
+                  </button>
+                ) : null}
+                <button
+                  style={styles.sectionFlipButton}
+                  onClick={handleFlip}
+                  aria-label="Ver calendario del mes"
+                >
+                  <CalendarIcon size={15} />
+                </button>
+              </div>
+            </div>
+            <div style={styles.weekStrip}>
+              {weekDates.map((d, i) => {
+                const ymd = toYYYYMMDD(d);
+                const status = statusForDate(ymd);
+                const isTodayCell = isSameDay(d, today);
+                const isSelected = selectedDate === ymd;
+                // Every day in the visible week is reachable — users can train
+                // ahead within the current/next week window.
+                const clickable = true;
+                const cellStyle = {
+                  ...styles.weekDay,
+                  ...(isTodayCell && !isSelected ? styles.weekDayToday : {}),
+                  ...(isSelected ? styles.weekDaySelected : {}),
+                  cursor: 'pointer',
+                };
+                const dotColor =
+                  status === 'completed' ? ENTRY_GREEN
+                  : status === 'planned' ? PLANNED_GREY
+                  : 'transparent';
+                return (
+                  <div
+                    key={ymd}
+                    style={cellStyle}
+                    onClick={clickable ? (e) => {
+                      e.stopPropagation();
+                      onSelectDate?.(ymd);
+                    } : undefined}
+                    role={clickable ? 'button' : undefined}
+                    tabIndex={clickable ? 0 : undefined}
+                  >
+                    <span
+                      style={isSelected
+                        ? { ...styles.weekDayLabel, ...styles.weekDayLabelSelected }
+                        : isTodayCell
+                          ? { ...styles.weekDayLabel, ...styles.weekDayLabelToday }
+                          : styles.weekDayLabel}
+                    >
+                      {DAY_LABELS_SHORT[i]}
+                    </span>
+                    <span
+                      style={isSelected
+                        ? { ...styles.weekDayNumber, ...styles.weekDayNumberSelected }
+                        : styles.weekDayNumber}
+                    >
+                      {d.getDate()}
+                    </span>
+                    <span style={{ ...styles.weekDayDotSlot, backgroundColor: dotColor }} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {showCoachPicker ? (
-            <div style={styles.coachWrap}>
+            <div style={{ ...styles.coachWrap, marginTop: 'auto' }}>
               <div style={styles.coachRow} onClick={togglePicker} role="button" tabIndex={0}>
                 <div style={styles.coachInfo}>
                   <CoachAvatar imageUrl={selectedProfileImageUrl} name={selected?.coachName} />
@@ -772,7 +739,7 @@ const WeekCoachCard = ({
                     <span style={styles.coachName}>{selected?.coachName}</span>
                   </div>
                 </div>
-                <span style={{ ...styles.coachChevron, transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+                <span style={{ ...styles.coachChevron, transform: pickerOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}>▾</span>
               </div>
               {pickerOpen ? (
                 <>
@@ -802,7 +769,7 @@ const WeekCoachCard = ({
               ) : null}
             </div>
           ) : (
-            <div style={styles.coachInfo}>
+            <div style={{ ...styles.coachInfo, marginTop: 'auto' }}>
               <CoachAvatar imageUrl={selectedProfileImageUrl} name={selected?.coachName} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                 <span style={styles.coachKicker}>Coach</span>
@@ -810,28 +777,6 @@ const WeekCoachCard = ({
               </div>
             </div>
           )}
-
-          <div style={styles.section}>
-            <span style={styles.sectionLabel}>Esta semana</span>
-            <div style={styles.adherenceList}>
-              <AdherenceChart label="Entrenamientos" score={workoutAdherence} points={workoutPoints} />
-              {nutritionEnabled ? (
-                <AdherenceChart label="Nutrición" score={nutritionAdherence} points={nutritionPoints} />
-              ) : null}
-            </div>
-          </div>
-
-          <div style={styles.footer}>
-            {hasFixedProgram ? (
-              <button style={styles.programLink} onClick={handleSeeProgram}>
-                Ver programa completo
-              </button>
-            ) : null}
-            <button style={styles.flipButton} onClick={handleFlip} aria-label="Ver calendario del mes">
-              <span>Calendario del mes</span>
-              <span aria-hidden>↻</span>
-            </button>
-          </div>
         </div>
 
         {/* BACK */}
@@ -855,32 +800,82 @@ const WeekCoachCard = ({
               const otherMonth = d.getMonth() !== visibleMonth.month;
               const isTodayCell = isSameDay(d, today);
               const ymd = toYYYYMMDD(d);
-              const hasSession = sessionsByDate.has(ymd);
+              const status = statusForDate(ymd);
+              const isSelected = selectedDate === ymd;
+              const isOutOfRange = d > nextWeekSunday;
+              const clickable = !isOutOfRange;
               const cellStyle = {
                 ...styles.gridCell,
                 ...(otherMonth ? styles.gridCellOtherMonth : {}),
-                ...(isTodayCell ? styles.gridCellToday : {}),
-                cursor: hasSession ? 'pointer' : 'default',
+                ...(isTodayCell && !isSelected ? styles.gridCellToday : {}),
+                ...(isSelected ? {
+                  backgroundColor: 'var(--accent, #fff)',
+                  border: '1px solid var(--accent, #fff)',
+                  color: 'var(--accent-text, #1a1a1a)',
+                } : {}),
+                ...(isOutOfRange ? { opacity: 0.4 } : {}),
+                cursor: clickable ? 'pointer' : 'default',
               };
+              const dotColor =
+                status === 'completed' ? ENTRY_GREEN
+                : status === 'planned' ? PLANNED_GREY
+                : null;
               return (
                 <div
                   key={i}
                   style={cellStyle}
-                  onClick={hasSession ? () => onTapDate?.(ymd, primaryCourse) : undefined}
+                  onClick={clickable ? () => {
+                    onSelectDate?.(ymd);
+                    setFlipped(false);
+                  } : undefined}
                 >
                   <span>{d.getDate()}</span>
-                  {hasSession ? <span style={styles.sessionDot} /> : null}
+                  {dotColor ? (
+                    <span style={{ ...styles.sessionDot, backgroundColor: dotColor }} />
+                  ) : null}
                 </div>
               );
             })}
           </div>
 
-          <button style={{ ...styles.flipButton, marginTop: 'auto' }} onClick={handleFlip} aria-label="Volver">
-            <span aria-hidden>←</span>
-            <span>Volver</span>
+          {fixedCourses.length > 0 ? (
+            <div style={{ ...styles.footer, marginTop: 'auto' }}>
+              {fixedCourses.length === 1 ? (
+                <button style={styles.programLink} onClick={handleSeeProgram(fixedCourses[0])}>
+                  Ver programa completo
+                </button>
+              ) : (
+                fixedCourses.map((c) => (
+                  <button
+                    key={c.courseId || c.id}
+                    style={styles.programLink}
+                    onClick={handleSeeProgram(c)}
+                  >
+                    Ver {c.title || 'programa'}
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
+
+          <button
+            style={fixedCourses.length > 0 ? styles.flipButton : { ...styles.flipButton, marginTop: 'auto' }}
+            onClick={handleFlip}
+            aria-label="Volver"
+          >
+            <ArrowLeftIcon />
           </button>
         </div>
       </div>
+
+      {hasOneOnOne ? (
+        <VideoExchangeOverlay
+          open={videoHistoryOpen}
+          mode="history"
+          userId={user?.uid}
+          onClose={() => setVideoHistoryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 };

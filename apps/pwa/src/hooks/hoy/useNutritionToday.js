@@ -49,8 +49,8 @@ const pickPlanName = (plan, assignment) => (
   null
 );
 
-export function useNutritionToday(userId) {
-  const today = todayYYYYMMDD();
+export function useNutritionToday(userId, dateYmd) {
+  const today = dateYmd || todayYYYYMMDD();
 
   // Subscribe to the user profile (same key useUserCourses uses — shared cache, no double fetch).
   // pinnedNutritionAssignmentId is auto-healed server-side in /users/me, so for any user with an

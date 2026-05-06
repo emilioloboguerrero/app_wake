@@ -11,12 +11,12 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Platform,
-  useWindowDimensions,
   Animated,
   View,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import useAppViewportSize from '../hooks/useAppViewportSize.web';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../components/Text';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,6 +51,11 @@ import HoyBanners from '../components/HoyBanners.web.jsx';
 const LIBRARY_MOVED_FLAG = 'wake:preview_library_moved_seen';
 const SELECTED_COACH_KEY = (uid) => `wake:hoy:selectedCoachId:${uid}`;
 
+const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const isCourseExpired = (course) => {
   if (course?.is_trial) return false;
   if (!course?.expires_at) return false;
@@ -63,16 +68,17 @@ const HoyScreen = () => {
   const queryClient = useQueryClient();
 
   // Carousel sizing — mirrors MainScreen.js so spacing/proportions match the
-  // production look. CARD_MARGIN keeps a 10% gutter on each side; CARD_HEIGHT
-  // is responsive but never collapses below 500.
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const stableHeightRef = useRef(null);
-  if (Platform.OS === 'web' && stableHeightRef.current === null) {
-    stableHeightRef.current = screenHeight;
-  }
+  // production look. CARD_MARGIN keeps a 10% gutter on each side. Measures
+  // the .app-viewport container (not the window) so the math matches the
+  // centered desktop column. CARD_HEIGHT is capped by CARD_WIDTH * 1.5 so a
+  // narrow column on a tall window doesn't produce ultra-stretched cards.
+  const { width: screenWidth, height: screenHeight } = useAppViewportSize();
   const CARD_MARGIN = useMemo(() => screenWidth * 0.1, [screenWidth]);
   const CARD_WIDTH = useMemo(() => screenWidth - CARD_MARGIN * 2, [screenWidth, CARD_MARGIN]);
-  const CARD_HEIGHT = useMemo(() => Math.max(500, screenHeight * 0.62), [screenHeight]);
+  const CARD_HEIGHT = useMemo(
+    () => Math.min(Math.max(500, screenHeight * 0.62), CARD_WIDTH * 1.5),
+    [screenHeight, CARD_WIDTH],
+  );
 
   const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid);
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
@@ -85,6 +91,9 @@ const HoyScreen = () => {
   // so by the time TodayWorkoutCard mounts the data is already cached.
   useDailyWorkoutPrefetch(user?.uid, courses);
   const [selectedCoachId, setSelectedCoachId] = useState(null);
+  // The Hoy carousel is anchored to a date — defaults to today, advanced via the
+  // WeekCoachCard day strip / calendar. Workout + nutrition cards reflect this date.
+  const [selectedDate, setSelectedDate] = useState(() => todayYmd());
 
   // Hydrate persisted coach selection once we know who's logged in. Stored per-user so
   // switching accounts on the same device doesn't carry the previous user's selection.
@@ -98,9 +107,15 @@ const HoyScreen = () => {
 
   const handleSelectCoach = useCallback((coachId) => {
     setSelectedCoachId(coachId);
+    setSelectedDate(todayYmd());
     if (!user?.uid || !coachId) return;
     try { localStorage.setItem(SELECTED_COACH_KEY(user.uid), coachId); } catch {}
   }, [user?.uid]);
+
+  const handleSelectDate = useCallback((ymd) => {
+    if (!ymd) return;
+    setSelectedDate(ymd);
+  }, []);
 
   // Profile — needed for pinnedTrainingCourseId so we can honor user's preferred order.
   const { data: profile } = useQuery({
@@ -117,8 +132,8 @@ const HoyScreen = () => {
     return user?.email?.split('@')[0] || 'Usuario';
   }, [profile?.displayName, user?.displayName, user?.email]);
 
-  // Real nutrition data (plan + today's diary entries summed).
-  const nutrition = useNutritionToday(user?.uid);
+  // Real nutrition data (plan + diary entries summed) for the selected date.
+  const nutrition = useNutritionToday(user?.uid, selectedDate);
 
   // Pending one-on-one invites surface as banners above the carousel.
   const { data: pendingInvites = [] } = useClientRelationships(user?.uid, { status: 'pending' });
@@ -413,6 +428,7 @@ const HoyScreen = () => {
           course={item.course}
           isExpired={isCourseExpired(item.course)}
           downloadStatus={downloadStatusByCourseId[item.course.courseId || item.course.id] || null}
+          selectedDate={selectedDate}
           onBegin={handleBeginWorkout}
           onRenew={handleRenewCourse}
         />
@@ -422,6 +438,8 @@ const HoyScreen = () => {
         <TodayNutritionCard
           imageUrl={selectedCoach?.workouts?.[0]?.image_url}
           nutritionPlanName={nutrition.nutritionPlanName}
+          selectedDate={selectedDate}
+          isLoading={nutrition.isLoading}
           caloriesConsumed={nutrition.caloriesConsumed}
           caloriesTarget={nutrition.caloriesTarget || 2100}
           proteinConsumed={nutrition.proteinConsumed}
@@ -439,13 +457,9 @@ const HoyScreen = () => {
           coachEnvironments={coachEnvironments}
           selectedCoachId={selectedCoach?.coachId}
           profileImagesByCoachId={coachProfileImagesByCoachId}
-          hasNutrition={!!selectedCoach?.hasNutrition}
-          nutritionCaloriesTarget={nutrition.caloriesTarget || 0}
+          selectedDate={selectedDate}
           onSelectCoach={handleSelectCoach}
-          onTapDate={(ymd, course) => {
-            const id = course?.courseId || course?.id;
-            if (id) navigate(`/course/${id}/workout`, { state: { selectedDate: ymd } });
-          }}
+          onSelectDate={handleSelectDate}
           onSeeProgram={(course) => {
             const id = course?.courseId || course?.id;
             if (id) navigate(`/course/${id}/structure`);
