@@ -30,13 +30,12 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
 }
 
 const HEADER_CONTENT_HEIGHT = 32;
-const MIN_TOP_INSET_NON_IOS = 12;
+const MIN_TOP_INSET_NON_IOS = 8;
 // iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
 const IOS_STANDALONE_TOP_FALLBACK = 59;
 
 const useHeaderMetrics = () => {
   const insets = useSafeAreaInsets();
-  const { height: viewportHeight } = useAppViewportSize();
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   const isIOS = /iPhone|iPad|iPod/.test(ua);
   const rawTop = Math.max(0, Number(insets?.top) || 0);
@@ -47,9 +46,8 @@ const useHeaderMetrics = () => {
 
   const headerBarHeight = HEADER_CONTENT_HEIGHT + safeTop;
 
-  const breathingRoom = isIOS
-    ? 0
-    : Math.min(32, Math.max(8, Math.round(viewportHeight * 0.025)));
+  // No extra breathing room — content sits right below the bar like iPhone.
+  const breathingRoom = 0;
 
   return { headerBarHeight, safeTop, breathingRoom };
 };
