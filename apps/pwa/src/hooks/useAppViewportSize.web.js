@@ -8,7 +8,7 @@
  * Falls back to useWindowDimensions on the first render before the effect runs,
  * or on routes that render outside `.app-viewport` (e.g. /login).
  */
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 
 const VIEWPORT_SELECTOR = '.app-viewport';
@@ -17,7 +17,12 @@ export default function useAppViewportSize() {
   const win = useWindowDimensions();
   const [size, setSize] = useState(null);
 
-  useEffect(() => {
+  // useLayoutEffect: measure the column synchronously before the browser paints
+  // the first frame. With useEffect, the first paint uses window dimensions
+  // (much wider than the 430px column on desktop), causing CARD_HEIGHT and
+  // header padding to flash from window-sized to column-sized on the second
+  // render.
+  useLayoutEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
     const el = document.querySelector(VIEWPORT_SELECTOR);
     if (!el) return undefined;

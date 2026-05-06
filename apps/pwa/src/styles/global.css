@@ -1725,6 +1725,19 @@ video::-webkit-media-controls-enclosure {
   backdrop-filter: blur(16px);
   transition: background 0.3s ease;
 }
+
+/* Desktop: constrain the portaled header horizontally to the same 430px phone
+   column as .app-viewport. Vertical logic (top, height) is left untouched —
+   only the left/right/width are overridden so the header sits over the column. */
+@media (min-width: 481px) {
+  .wake-header-glass {
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 430px;
+  }
+}
 .header-back-btn:active { transform: scale(0.88); transition: transform 0.1s; }
 .header-profile-image   { animation: wScaleIn 0.5s var(--ease-spring) both; }
 

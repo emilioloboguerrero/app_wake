@@ -70,16 +70,15 @@ const HoyScreen = () => {
   // Carousel sizing — mirrors MainScreen.js so spacing/proportions match the
   // production look. CARD_MARGIN keeps a 10% gutter on each side. Measures
   // the .app-viewport container (not the window) so the math matches the
-  // centered desktop column. CARD_HEIGHT is capped by CARD_WIDTH * 1.5 so a
-  // narrow column on a tall window doesn't produce ultra-stretched cards.
+  // centered desktop column. CARD_HEIGHT is capped by CARD_WIDTH * 1.7 so a
+  // narrow column on a tall window doesn't stretch cards into thin billboards.
   const { width: screenWidth, height: screenHeight } = useAppViewportSize();
   const CARD_MARGIN = useMemo(() => screenWidth * 0.1, [screenWidth]);
   const CARD_WIDTH = useMemo(() => screenWidth - CARD_MARGIN * 2, [screenWidth, CARD_MARGIN]);
   const CARD_HEIGHT = useMemo(
-    () => Math.min(Math.max(500, screenHeight * 0.62), CARD_WIDTH * 1.5),
+    () => Math.min(Math.max(500, screenHeight * 0.62), CARD_WIDTH * 1.7),
     [screenHeight, CARD_WIDTH],
   );
-
   const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid);
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
   // Non-blocking: carousel renders as soon as useUserCourses resolves; coach grouping
