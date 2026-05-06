@@ -601,7 +601,7 @@ const HoyScreen = () => {
 
               <Animated.View
                 style={{
-                  marginBottom: 12,
+                  marginBottom: 4,
                   opacity: greetAnim,
                   transform: [{ translateY: greetAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
                 }}
@@ -645,7 +645,7 @@ const HoyScreen = () => {
                     transform: [{ translateY: cardEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
                   }}
                 >
-                  <View style={{ width: '100%', alignItems: 'center', overflow: 'visible', marginTop: 8 }}>
+                  <View style={{ width: '100%', alignItems: 'center', overflow: 'visible' }}>
                     <Animated.FlatList
                       ref={flatListRef}
                       data={slides}
@@ -658,7 +658,8 @@ const HoyScreen = () => {
                       decelerationRate="fast"
                       contentContainerStyle={{
                         paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
-                        paddingVertical: 24,
+                        paddingTop: 8,
+                        paddingBottom: 24,
                         alignItems: 'center',
                       }}
                       onScroll={Animated.event(
