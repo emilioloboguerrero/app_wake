@@ -30,7 +30,7 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
 }
 
 const HEADER_CONTENT_HEIGHT = 32;
-const MIN_TOP_INSET_NON_IOS = 8;
+const MIN_TOP_INSET_NON_IOS = 0;
 // iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
 const IOS_STANDALONE_TOP_FALLBACK = 59;
 
