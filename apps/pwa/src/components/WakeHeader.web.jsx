@@ -29,19 +29,11 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
   );
 }
 
-// Header content row height (logo + streak + profile sit in this band).
 const HEADER_CONTENT_HEIGHT = 32;
-// Minimum top inset on platforms where env(safe-area-inset-top) is 0
-// (Mac/desktop browser, Android). Keeps the bar from sitting flush against
-// the top edge of the viewport.
-const MIN_TOP_INSET_NON_IOS = 24;
+const MIN_TOP_INSET_NON_IOS = 12;
 // iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
 const IOS_STANDALONE_TOP_FALLBACK = 59;
 
-// Single source of truth for header layout. Reactive — no frozen refs.
-// Returns the bar height (paddingTop + content) and the breathing room below
-// the bar before the page content starts. Breathing room scales with viewport
-// height so short laptops don't waste space and tall windows feel balanced.
 const useHeaderMetrics = () => {
   const insets = useSafeAreaInsets();
   const { height: viewportHeight } = useAppViewportSize();
@@ -55,12 +47,9 @@ const useHeaderMetrics = () => {
 
   const headerBarHeight = HEADER_CONTENT_HEIGHT + safeTop;
 
-  // iOS uses the safe-area itself as the gap to the Dynamic Island/notch.
-  // Other platforms need an explicit gap; clamp so it stays sensible across
-  // a 360px Android phone and a 1400×1200 desktop window.
   const breathingRoom = isIOS
     ? 0
-    : Math.min(80, Math.max(20, Math.round(viewportHeight * 0.06)));
+    : Math.min(32, Math.max(8, Math.round(viewportHeight * 0.025)));
 
   return { headerBarHeight, safeTop, breathingRoom };
 };
