@@ -382,18 +382,29 @@ export const FixedWakeHeader = ({
 const CONTENT_TOP_PADDING_NON_IOS = 100;
 
 // Header spacer: matches FixedWakeHeader (32px + safe area top). On non-iOS adds extra height so content has top padding.
-// Fallback fires whenever rawTop is 0 — covers iOS PWA (env() resolves late) AND no-notch devices / desktop browsers where env(safe-area-inset-top) is always 0, so content doesn't feel cramped.
+// Fallback fires when rawTop is 0 on iOS or desktop — covers iOS PWA (env() resolves late) AND desktop browsers where env(safe-area-inset-top) is always 0.
+// On Android the system status bar lives outside the viewport (env() correctly returns 0), so we use rawTop directly and mirror the header's own offsets instead of the desktop breathing-room constant.
 export const WakeHeaderSpacer = () => {
   const insets = useSafeAreaInsets();
   const ref = React.useRef(null);
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  const isAndroid = /Android/.test(ua);
   const rawTop = Math.max(0, Number(insets?.top) || 0);
   const effectiveTop =
-    rawTop === 0 ? STANDALONE_SAFE_AREA_TOP_FALLBACK : rawTop;
+    rawTop === 0 && !isAndroid ? STANDALONE_SAFE_AREA_TOP_FALLBACK : rawTop;
   if (ref.current === null) {
-    const headerHeight = 32 + effectiveTop;
-    const extra = isIOS ? 0 : CONTENT_TOP_PADDING_NON_IOS;
-    ref.current = headerHeight + extra;
+    let extra;
+    if (isIOS) {
+      extra = 0;
+    } else if (isAndroid) {
+      // Mirror FixedWakeHeader's own offsets so the spacer ends exactly where the header bar ends.
+      const browserExtra = isPWA() ? 0 : HEADER_TOP_OFFSET_BROWSER_EXTRA;
+      extra = HEADER_TOP_OFFSET_NON_IOS + browserExtra;
+    } else {
+      extra = CONTENT_TOP_PADDING_NON_IOS;
+    }
+    ref.current = 32 + effectiveTop + extra;
   }
   const totalHeight = ref.current;
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
