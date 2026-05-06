@@ -30,13 +30,17 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
 }
 
 const HEADER_CONTENT_HEIGHT_IOS = 32;
-const HEADER_CONTENT_HEIGHT_NON_IOS = 32;
 const MIN_TOP_INSET_NON_IOS = 24;
 // iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
 const IOS_STANDALONE_TOP_FALLBACK = 59;
+// Breathing room above + below the logo inside the non-iOS bar. The non-iOS
+// bar must contain the logo (no notch to hide overflow), so the bar's content
+// area is sized to logoHeight + this constant.
+const NON_IOS_LOGO_BREATHING = 16;
 
 const useHeaderMetrics = () => {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useAppViewportSize();
   const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
   const isIOS = /iPhone|iPad|iPod/.test(ua);
   const rawTop = Math.max(0, Number(insets?.top) || 0);
@@ -45,9 +49,21 @@ const useHeaderMetrics = () => {
     ? (rawTop > 0 ? rawTop : IOS_STANDALONE_TOP_FALLBACK)
     : Math.max(MIN_TOP_INSET_NON_IOS, rawTop);
 
-  const headerContentHeight = isIOS ? HEADER_CONTENT_HEIGHT_IOS : HEADER_CONTENT_HEIGHT_NON_IOS;
+  // On iOS the logo overflows the 32-tall content area but is hidden inside the
+  // notch/Dynamic Island safe-area band, so the visual stays clean. On web and
+  // Android there's no notch — the bar must be tall enough to contain the
+  // 120 × 68.4 logo box, otherwise the logo dangles past the bar background
+  // and crashes into screen content.
+  const logoWidth = Math.min(screenWidth * 0.35, 120);
+  const logoHeight = logoWidth * 0.57;
+  const headerContentHeight = isIOS
+    ? HEADER_CONTENT_HEIGHT_IOS
+    : Math.ceil(logoHeight) + NON_IOS_LOGO_BREATHING;
   const headerBarHeight = headerContentHeight + safeTop;
-  const breathingRoom = 0;
+  // Extra space below the bar before content starts. iOS keeps 0 to preserve
+  // the existing tuned look; web/Android get a clear gap so content isn't
+  // crammed right against the bar background.
+  const breathingRoom = isIOS ? 0 : 24;
 
   return { headerBarHeight, safeTop, breathingRoom, headerContentHeight };
 };
@@ -390,11 +406,18 @@ export const WakeHeaderSpacer = () => {
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
 };
 
-// All platforms pull content up under the translucent glass header so the
-// layout matches the iPhone PWA look across web/Android.
+// On iOS the bar is taller than its content area (notch/Dynamic Island padding),
+// so we pull content up under the translucent glass to maximize usable real
+// estate — the logo lives in the notch zone, not in the way. On web/Android the
+// bar is sized to fully contain the logo, so any negative pull would slide
+// content underneath the logo. Keep the gap at 0 there.
 export const GAP_AFTER_HEADER = -32;
 export const GAP_AFTER_HEADER_PWA = -32;
-export const getGapAfterHeader = () => GAP_AFTER_HEADER;
+export const getGapAfterHeader = () => {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  return isIOS ? GAP_AFTER_HEADER : 0;
+};
 
 export const WakeHeaderContent = ({ style, gapAfterHeader, ...rest }) => {
   const effectiveGap = gapAfterHeader ?? getGapAfterHeader();
