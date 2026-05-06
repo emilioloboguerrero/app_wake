@@ -659,7 +659,7 @@ const HoyScreen = () => {
                       contentContainerStyle={{
                         paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
                         paddingTop: 8,
-                        paddingBottom: 24,
+                        paddingBottom: 0,
                         alignItems: 'center',
                       }}
                       onScroll={Animated.event(
@@ -669,7 +669,7 @@ const HoyScreen = () => {
                       onScrollEndDrag={handleScroll}
                       onMomentumScrollEnd={handleScroll}
                       scrollEventThrottle={16}
-                      style={{ height: CARD_HEIGHT + 48, width: '100%' }}
+                      style={{ height: CARD_HEIGHT + 16, width: '100%' }}
                       getItemLayout={(_d, i) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * i, index: i })}
                       initialNumToRender={2}
                       maxToRenderPerBatch={3}
@@ -677,7 +677,7 @@ const HoyScreen = () => {
                       removeClippedSubviews={false}
                       updateCellsBatchingPeriod={50}
                     />
-                    <View style={{ width: '100%', minHeight: 40, justifyContent: 'center', alignItems: 'center', marginTop: 10, paddingTop: 10, paddingBottom: 24 }}>
+                    <View style={{ width: '100%', minHeight: 24, justifyContent: 'center', alignItems: 'center', paddingBottom: 12 }}>
                       {renderPaginationIndicators()}
                     </View>
                   </View>
