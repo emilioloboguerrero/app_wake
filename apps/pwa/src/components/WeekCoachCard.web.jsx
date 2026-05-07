@@ -509,10 +509,16 @@ const WeekCoachCard = ({
   const sessionStateQueries = useQueries({
     queries: envCourses.map((c) => {
       const cId = c.courseId || c.id;
+      // Expired courses still render in the carousel (with the "Expirado" tag)
+      // but we skip the API call — it would 403 and just create noise.
+      const expired =
+        !c?.is_trial &&
+        (c?.hasAccess === false ||
+          (c?.expires_at && new Date(c.expires_at) <= new Date()));
       return {
         queryKey: ['preview', 'todaySession', user?.uid, cId],
         queryFn: () => sessionService.getCurrentSession(user.uid, cId),
-        enabled: !!user?.uid && !!cId,
+        enabled: !!user?.uid && !!cId && !expired,
         staleTime: 0,
       };
     }),

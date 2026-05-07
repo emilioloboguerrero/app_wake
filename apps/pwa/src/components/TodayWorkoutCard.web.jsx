@@ -263,6 +263,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
 
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageBroken, setImageBroken] = useState(false);
 
   // selectedDate drives which session the card resolves. Today shares the cache key
   // ['preview','todaySession',uid,courseId] with HoyScreen and the prefetch hook;
@@ -379,12 +380,13 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
           {/* FRONT */}
           <div style={styles.face} onClick={handleFlip}>
             <div style={styles.imageBackdrop} />
-            {imageUrl ? (
+            {imageUrl && !imageBroken ? (
               <img
                 src={imageUrl}
                 alt={programTitle}
                 style={imageLoaded ? { ...styles.image, ...styles.imageLoaded } : styles.image}
                 onLoad={() => setImageLoaded(true)}
+                onError={() => setImageBroken(true)}
               />
             ) : (
               <div style={styles.imagePlaceholder}>imagen del programa</div>
