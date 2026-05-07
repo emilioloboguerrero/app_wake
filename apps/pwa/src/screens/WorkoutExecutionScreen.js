@@ -1162,16 +1162,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [isMuted]);
   
-  // Video player for workout videos.
-  // Pass '' as the source so expo-video creates a single player instance and
-  // we update its source via player.replace() on URI change. Passing the URI
-  // directly causes expo-video to dispose and recreate the player on every
-  // exercise change, which on iOS standalone PWA discards the in-flight buffer
-  // and forces a full reload. Same pattern used by swap/add/intensity players.
+  // Main exercise video.
+  // On web (PWA): plain <video> element bound to the URL via src — browser
+  // handles buffering, range requests, decoder lifecycle. No orchestration.
+  // On native: expo-video useVideoPlayer + VideoView (unchanged).
   const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
   const nativeVideoUri = isExternalVideo ? null : videoUri;
   const memoizedVideoUri = useDeferredValue(nativeVideoUri);
   const videoPlayer = useVideoPlayer('', videoPlayerCallback);
+  const mainVideoRef = useRef(null);
   const scrollViewRef = useRef(null); // Main ScrollView reference for view switching
   const lastScrollXRef = useRef(0); // [LIST-INPUT-DEBUG] track horizontal scroll to detect reset on re-render
   const listViewInputJustFocusedRef = useRef(false); // [LIST-INPUT-DEBUG] set when input in list view focuses (to restore scroll after re-render)
@@ -1511,24 +1510,19 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           if (!isMounted) return;
           const deferredStartTime = performance.now();
           try {
-            if (videoPlayer) {
-              // Only pause if video is actually playing to avoid unnecessary operations
-              try {
-                videoPlayer.pause();
-              } catch (error) {
-                // Ignore pause errors - video might already be paused
-              }
-              videoPlayer.muted = true; // Mute as extra safety
-              // Defer state update to avoid blocking
-              const timeoutId2 = setTimeout(() => {
-                if (isMounted && isMountedRef.current) {
-                  startTransition(() => {
-                    setIsVideoPaused(true); // Update local state
-                  });
-                }
-              }, 0);
-              focusTimeoutIdsRef.current.push(timeoutId2);
+            // Pause the plain <video> element (web main player).
+            if (mainVideoRef.current) {
+              try { mainVideoRef.current.pause(); } catch (_) {}
+              try { mainVideoRef.current.muted = true; } catch (_) {}
             }
+            const timeoutId2 = setTimeout(() => {
+              if (isMounted && isMountedRef.current) {
+                startTransition(() => {
+                  setIsVideoPaused(true);
+                });
+              }
+            }, 0);
+            focusTimeoutIdsRef.current.push(timeoutId2);
           } catch (error) {
           }
           
@@ -1788,9 +1782,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     };
   }, [currentExerciseIndex, workout, preloadNextVideo, course]);
 
-  // Push the deferred URI into the persistent player via replace() so the
-  // player instance survives across exercise changes (preserves buffer on iOS).
+  // Native only: push URI into the persistent player via replace() on change.
+  // On web the plain <video> element binds src directly, so this is skipped.
   useEffect(() => {
+    if (Platform.OS === 'web') return;
     if (!videoPlayer) return;
     let isMounted = true;
     const timeoutId = setTimeout(() => {
@@ -1807,34 +1802,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     };
   }, [memoizedVideoUri, videoPlayer]);
 
-  // Sync video mute state
+  // Sync video mute state.
+  // Web: HTML <video> element (mainVideoRef) — direct property set.
+  // Native: expo-video player.
   useEffect(() => {
-    const effectStartTime = performance.now();
-    // CRITICAL: Defer video operations to avoid blocking React commit phase
+    if (Platform.OS === 'web') {
+      if (mainVideoRef.current) {
+        try { mainVideoRef.current.muted = isMuted; } catch (_) {}
+      }
+      return;
+    }
+    if (!videoPlayer) return;
     let isMounted = true;
-    let timeoutId = null;
-    
-    if (videoPlayer) {
-      timeoutId = setTimeout(() => {
-        if (isMounted) {
-          const deferredStartTime = performance.now();
-          try {
-      videoPlayer.muted = isMuted;
-          } catch (error) {
-          }
-          const deferredDuration = performance.now() - deferredStartTime;
-          if (deferredDuration > 50) {
-          }
-        }
-      }, 0);
-    }
-    const effectDuration = performance.now() - effectStartTime;
-    if (effectDuration > 50) {
-    }
-    
+    const timeoutId = setTimeout(() => {
+      if (!isMounted) return;
+      try { videoPlayer.muted = isMuted; } catch (_) {}
+    }, 0);
     return () => {
       isMounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
     };
   }, [isMuted, videoPlayer]);
 
@@ -1880,27 +1866,34 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     };
   }, [selectedIntensity, intensityVideoUri, intensityVideoPlayer, isIntensityVideoPaused]);
 
-  // TEST VERSION 11: Re-enable useEffect(videoSync)
-  // Sync video with pause state - only if tutorial is complete
-  // CRITICAL: Defer entire effect to avoid blocking commit phase
+  // Sync video with pause state.
+  // Web: drive the HTML <video> element directly via mainVideoRef.
+  // Native: expo-video player with deferred play/pause to avoid commit-phase blocking.
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      const el = mainVideoRef.current;
+      if (!el || !videoUri || !canStartVideo) return;
+      if (isVideoPaused) {
+        try { el.pause(); } catch (_) {}
+      } else {
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(error => {
+            if (error?.name !== 'AbortError') {
+              logger.error('❌ Error playing video:', error.message);
+            }
+          });
+        }
+      }
+      return;
+    }
+
     let syncTimeoutId = null;
     let videoTimeoutId = null;
-    
-    // Defer all video sync logic to avoid blocking React commit phase
     syncTimeoutId = setTimeout(() => {
       const effectStartTime = performance.now();
-      // Skip if video URI is not set yet (video is still loading)
-      if (!videoUri) {
-        const effectDuration = performance.now() - effectStartTime;
-        return;
-      }
-
-      // Skip if video player is not ready
-      if (!videoPlayer) {
-        const effectDuration = performance.now() - effectStartTime;
-        return;
-      }
+      if (!videoUri) return;
+      if (!videoPlayer) return;
 
       if (canStartVideo) {
         // Use a small delay to avoid race conditions with video loading
@@ -5029,24 +5022,38 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Video restart handler
   const handleVideoRestart = useCallback(() => {
-    if (videoPlayer) {
-      // Defer video operations to avoid blocking
-      const timeoutId = setTimeout(() => {
-        if (isMountedRef.current) {
-      videoPlayer.currentTime = 0;
-        const playPromise = videoPlayer.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            if (error.name === 'AbortError') {
-            } else {
+    if (Platform.OS === 'web') {
+      const el = mainVideoRef.current;
+      if (!el) return;
+      try {
+        el.currentTime = 0;
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(error => {
+            if (error?.name !== 'AbortError') {
               logger.error('❌ Error playing video on restart:', error.message);
             }
           });
         }
-        // Defer state update to avoid blocking
-        startTransition(() => {
+      } catch (_) {}
       setIsVideoPaused(false);
-        });
+      return;
+    }
+    if (videoPlayer) {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          videoPlayer.currentTime = 0;
+          const playPromise = videoPlayer.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(error => {
+              if (error.name !== 'AbortError') {
+                logger.error('❌ Error playing video on restart:', error.message);
+              }
+            });
+          }
+          startTransition(() => {
+            setIsVideoPaused(false);
+          });
         }
       }, 0);
       allTimeoutIdsRef.current.push(timeoutId);
@@ -5763,6 +5770,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       onPress={handleVideoTap}
                       activeOpacity={1}
                     >
+                      {Platform.OS === 'web' ? (
+                        <video
+                          ref={mainVideoRef}
+                          src={videoUri}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, backgroundColor: '#000' }}
+                          autoPlay
+                          loop
+                          muted={isMuted}
+                          playsInline
+                          preload="auto"
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            logger.error('[VIDEO] [ERROR] <video> error:', e?.nativeEvent || e);
+                          }}
+                        />
+                      ) : (
                       <VideoView
                         player={videoPlayer}
                         style={styles.video}
@@ -5772,17 +5795,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         nativeControls={false}
                         showsTimecodes={false}
                         playsInline
-                        onLoadStart={() => {
-                          const loadStartTime = performance.now();
-                        }}
-                        onLoad={() => {
-                          const loadTime = performance.now();
-                        }}
-                        onError={(error) => {
-                          const errorTime = performance.now();
-                          logger.error(`[VIDEO] [ERROR] VideoView onError at ${errorTime.toFixed(2)}ms:`, error);
-                        }}
                       />
+                      )}
                       {isVideoPaused && (
                         <VideoOverlayWebWrapper pointerEvents="none">
                           <View style={styles.videoDimmingLayer} pointerEvents="none" />
