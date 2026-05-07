@@ -1162,12 +1162,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [isMuted]);
   
-  // Video player for workout videos - memoized URI to prevent unnecessary re-initialization
-  // Skip passing external URLs (YouTube/Vimeo) to expo-video — they use iframe instead
+  // Video player for workout videos.
+  // Pass '' as the source so expo-video creates a single player instance and
+  // we update its source via player.replace() on URI change. Passing the URI
+  // directly causes expo-video to dispose and recreate the player on every
+  // exercise change, which on iOS standalone PWA discards the in-flight buffer
+  // and forces a full reload. Same pattern used by swap/add/intensity players.
   const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
   const nativeVideoUri = isExternalVideo ? null : videoUri;
   const memoizedVideoUri = useDeferredValue(nativeVideoUri);
-  const videoPlayer = useVideoPlayer(memoizedVideoUri, videoPlayerCallback);
+  const videoPlayer = useVideoPlayer('', videoPlayerCallback);
   const scrollViewRef = useRef(null); // Main ScrollView reference for view switching
   const lastScrollXRef = useRef(0); // [LIST-INPUT-DEBUG] track horizontal scroll to detect reset on re-render
   const listViewInputJustFocusedRef = useRef(false); // [LIST-INPUT-DEBUG] set when input in list view focuses (to restore scroll after re-render)
@@ -1783,6 +1787,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       timeoutIds.forEach(id => clearTimeout(id));
     };
   }, [currentExerciseIndex, workout, preloadNextVideo, course]);
+
+  // Push the deferred URI into the persistent player via replace() so the
+  // player instance survives across exercise changes (preserves buffer on iOS).
+  useEffect(() => {
+    if (!videoPlayer) return;
+    let isMounted = true;
+    const timeoutId = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        videoPlayer.replace(memoizedVideoUri || '');
+      } catch (error) {
+        logger.error('❌ Error replacing video source:', error);
+      }
+    }, 0);
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [memoizedVideoUri, videoPlayer]);
 
   // Sync video mute state
   useEffect(() => {
@@ -2950,8 +2973,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setSwapModalVideoUri('');
       setIsSwapModalVideoPaused(false);
       setExpandedCardIndex(null);
+      // Release the player's source so it stops holding the video buffer
+      // (frees the iOS decoder slot for the main player).
+      try { swapModalVideoPlayer?.replace(''); } catch (_) {}
     });
-  }, [swapModalOpacity, swapModalTranslateY]);
+  }, [swapModalOpacity, swapModalTranslateY, swapModalVideoPlayer]);
 
   // Swap modal video tap handler
   const handleSwapModalVideoTap = useCallback(() => {
@@ -2997,6 +3023,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setAddExerciseModalVideoUri('');
     }
   }, [expandedAddExerciseIndex, addExerciseModalVideoPlayer]);
+
+  // Release the add-exercise modal player's source when the modal closes so
+  // it stops holding the video buffer and frees the iOS decoder slot for the
+  // main exercise player.
+  useEffect(() => {
+    if (isAddExerciseModalVisible) return;
+    if (!addExerciseModalVideoPlayer) return;
+    try { addExerciseModalVideoPlayer.replace(''); } catch (_) {}
+  }, [isAddExerciseModalVisible, addExerciseModalVideoPlayer]);
 
   // Add exercise modal video tap handler
   const handleAddExerciseModalVideoTap = useCallback(() => {
@@ -6798,22 +6833,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               />
             </View>
           </View>
-
-          {/* Warm-up VideoView when no card expanded: keeps player attached on web so video works when user expands a card */}
-          {expandedAddExerciseIndex === null && (
-            <View style={[styles.addExerciseVideoContainer, { height: 1, marginBottom: 0, overflow: 'hidden', opacity: 0 }]}>
-              <VideoView
-                player={addExerciseModalVideoPlayer}
-                style={styles.addExerciseVideo}
-                contentFit="cover"
-                fullscreenOptions={{ allowed: false }}
-                allowsPictureInPicture={false}
-                nativeControls={false}
-                showsTimecodes={false}
-                playsInline
-              />
-            </View>
-          )}
 
           <ScrollView style={styles.addExerciseModalContent}>
             {loadingAvailableExercises ? (

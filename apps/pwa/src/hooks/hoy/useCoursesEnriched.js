@@ -6,6 +6,11 @@
 //   - weight_suggestions → 1RM-based suggestion card in WorkoutExecutionScreen
 //   - availableLibraries → "swap exercise" picker in WorkoutExecutionScreen
 //   - discipline        → muscle-volume tracking gate in WorkoutCompletionScreen
+//   - image_url, title, creatorName, image_path, video_intro_url → display
+//     metadata that creators can update post-purchase. The user.courses snapshot
+//     is taken at purchase time and never refreshes; reading from the API means
+//     a renamed program / re-uploaded image / rotated download token is reflected
+//     immediately for everyone.
 //
 // This hook does NOT block consumers on enrichment. It returns courses immediately
 // with whatever enriched fields are currently cached; missing fields fill in as the
@@ -36,6 +41,12 @@ export function useCoursesEnriched(courses) {
         weight_suggestions: apiData?.weight_suggestions ?? c.weight_suggestions,
         availableLibraries: apiData?.availableLibraries ?? c.availableLibraries,
         discipline: apiData?.discipline ?? c.discipline,
+        // Display metadata — fresh value wins over the user.courses snapshot
+        image_url: apiData?.image_url ?? c.image_url ?? null,
+        image_path: apiData?.image_path ?? c.image_path ?? null,
+        title: apiData?.title ?? c.title ?? '',
+        creatorName: apiData?.creatorName ?? c.creatorName ?? null,
+        video_intro_url: apiData?.video_intro_url ?? c.video_intro_url ?? null,
       };
     }),
   };

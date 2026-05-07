@@ -47,10 +47,14 @@ import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import LeaveProgramModal from '../components/program/LeaveProgramModal';
 import { queryKeys } from '../config/queryClient';
+import { useCourseMeta } from '../hooks/workout/useCourseMeta';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { course } = route.params;
+  // Read display fields (image_url, title, creatorName, …) from the live course
+  // doc instead of the snapshot stored on users.courses — so image/title edits
+  // by the creator surface immediately and stale storage tokens self-heal.
+  const course = useCourseMeta(route.params.course);
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { isMuted, toggleMute } = useVideo();
@@ -168,15 +172,28 @@ const CourseDetailScreen = ({ navigation, route }) => {
     [course?.deliveryType, course?.delivery_type]
   );
   
-  // Initialize video player — skip external URLs (YouTube/Vimeo use iframe)
+  // Initialize video player — skip external URLs (YouTube/Vimeo use iframe).
+  // Pass '' as the source so the player instance survives URI changes and we
+  // update via player.replace(). Passing the URI directly causes expo-video
+  // to dispose and recreate the player, killing any in-flight buffer.
   const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
-  const videoPlayer = useVideoPlayer(isExternalVideo ? null : videoUri, (player) => {
+  const videoPlayer = useVideoPlayer('', (player) => {
     if (player) {
       player.loop = false;
       player.muted = isMuted;
       player.volume = 1.0;
     }
   });
+
+  useEffect(() => {
+    if (!videoPlayer) return;
+    const nextSource = isExternalVideo ? '' : (videoUri || '');
+    try {
+      videoPlayer.replace(nextSource);
+    } catch (error) {
+      logger.error('❌ Error replacing course video source:', error);
+    }
+  }, [videoUri, isExternalVideo, videoPlayer]);
 
   // Define functions with useCallback before using them in effects
   // Note: handlePostPurchaseFlow needs to be defined first as it's used by checkCourseOwnership

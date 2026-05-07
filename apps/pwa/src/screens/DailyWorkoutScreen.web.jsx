@@ -94,18 +94,13 @@ const DailyWorkoutScreen = () => {
 
   const courseFromState = location.state?.course;
 
+  // Always fetch from the API so display fields (image_url, title, creatorName)
+  // reflect the live program doc, not the snapshot persisted to user.courses at
+  // purchase time. courseFromState seeds initialData so the screen renders
+  // instantly while the fresh fetch resolves in the background.
   const { data: course, isLoading: loading } = useQuery({
     queryKey: ['programs', courseId],
     queryFn: async () => {
-      if (courseFromState) {
-        const rawCourse = courseFromState;
-        return {
-          ...rawCourse,
-          id: rawCourse.id || rawCourse.courseId || courseId,
-          courseId: rawCourse.courseId || rawCourse.id || courseId,
-          title: rawCourse.title || 'Programa sin título',
-        };
-      }
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) return null;
       return {
@@ -115,6 +110,14 @@ const DailyWorkoutScreen = () => {
         title: courseData.title || 'Programa sin título',
       };
     },
+    initialData: courseFromState
+      ? {
+          ...courseFromState,
+          id: courseFromState.id || courseFromState.courseId || courseId,
+          courseId: courseFromState.courseId || courseFromState.id || courseId,
+          title: courseFromState.title || 'Programa sin título',
+        }
+      : undefined,
     staleTime: STALE_TIMES.programStructure,
     enabled: !!courseId,
   });

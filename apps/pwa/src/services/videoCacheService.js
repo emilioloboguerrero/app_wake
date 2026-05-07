@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import logger from '../utils/logger.js';
-import { isWeb } from '../utils/platform';
+import { isPWA, isWeb } from '../utils/platform';
 
 const MAX_ACTIVE_PRELOADERS = 3;
 
@@ -152,6 +152,10 @@ class VideoCacheService {
       this.markVideoAsCached(videoUrl).catch(() => {});
 
       if (!isWeb || typeof document === 'undefined') return;
+      // iOS standalone PWA only has a single active video decoder slot.
+      // Hidden preloader <video> elements compete with the visible player
+      // for that slot, starving playback. Skip preloading entirely on PWA.
+      if (isPWA()) return;
       // Skip non-direct sources — YouTube/Vimeo embeds don't benefit and
       // can't be preloaded with a <video> tag anyway.
       if (/youtu\.?be|vimeo\.com/i.test(videoUrl)) return;
