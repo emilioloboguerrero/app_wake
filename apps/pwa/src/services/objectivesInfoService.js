@@ -47,6 +47,10 @@ const OBJECTIVES_INFO = {
       'Consulta nuestros términos y condiciones'
     ]
   },
+  'notes': {
+    title: 'Nota del coach',
+    description: 'Indicación específica que tu coach dejó para esta serie o ejercicio. Tócala para leerla completa.',
+  },
   // Add more objectives here as needed...
 };
 

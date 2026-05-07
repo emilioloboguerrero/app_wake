@@ -8,7 +8,7 @@ const fast = { duration: 0.25, ease: [0.22, 1, 0.36, 1] };
 
 const STRENGTH_PRESET = {
   measures: ['reps', 'weight', 'intensity'],
-  objectives: ['reps', 'intensity', 'previous'],
+  objectives: ['reps', 'intensity', 'previous', 'notes'],
 };
 
 const SessionDataCard = ({
@@ -27,12 +27,12 @@ const SessionDataCard = ({
   const getLabel = (key) => {
     if (customMeasureLabels[key]) return customMeasureLabels[key];
     if (customObjectiveLabels[key]) return customObjectiveLabels[key];
-    const map = { reps: 'Repeticiones', weight: 'Peso', intensity: 'RPE' };
+    const map = { reps: 'Repeticiones', weight: 'Peso', intensity: 'RPE', notes: 'Notas' };
     return map[key] || key;
   };
 
   const getExample = (key) => {
-    const map = { reps: '12', weight: '60kg', intensity: '8' };
+    const map = { reps: '12', weight: '60kg', intensity: '8', notes: '"Pausa 2s"' };
     return map[key] || '--';
   };
 

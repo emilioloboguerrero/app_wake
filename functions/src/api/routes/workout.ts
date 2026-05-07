@@ -710,6 +710,7 @@ router.get("/workout/daily", async (req, res) => {
         customObjectiveLabels: exData.customObjectiveLabels ?? {},
         order: exData.order ?? 0,
         primaryMuscles: exData.primaryMuscles ?? [],
+        notes: exData.notes ?? null,
         sets: setsSnap.docs.map((setDoc) => {
           const setData = setDoc.data();
           return {
@@ -722,6 +723,7 @@ router.get("/workout/daily", async (req, res) => {
             order: setData.order ?? 0,
             duration: setData.duration ?? null,
             rep_sequence: setData.rep_sequence ?? null,
+            notes: setData.notes ?? null,
           };
         }),
         // Always use libraryExerciseId for the history key (post-migration shape).
@@ -1044,6 +1046,7 @@ router.get("/workout/session-exercises", async (req, res) => {
         customObjectiveLabels: exData.customObjectiveLabels ?? {},
         order: exData.order ?? 0,
         primaryMuscles: exData.primaryMuscles ?? [],
+        notes: exData.notes ?? null,
         sets: setsSnap.docs.map((setDoc) => {
           const setData = setDoc.data();
           return {
@@ -1056,6 +1059,7 @@ router.get("/workout/session-exercises", async (req, res) => {
             order: setData.order ?? 0,
             duration: setData.duration ?? null,
             rep_sequence: setData.rep_sequence ?? null,
+            notes: setData.notes ?? null,
           };
         }),
         // Always use libraryExerciseId for the history key (post-migration shape).

@@ -27,6 +27,7 @@ const getObjectiveDisplayNameDefault = (objective, customObjectiveLabels = {}) =
   if (objective === 'reps') return 'Repeticiones';
   if (objective === 'intensity') return 'RPE';
   if (objective === 'previous') return 'Anterior';
+  if (objective === 'notes') return 'Notas';
   return objective;
 };
 
@@ -37,6 +38,7 @@ const BUILTIN_MEASURES = [{ id: 'reps', label: 'Repeticiones' }, { id: 'weight',
 const BUILTIN_OBJECTIVES = [
   { id: 'reps', label: 'Repeticiones' },
   { id: 'intensity', label: 'RPE' },
+  { id: 'notes', label: 'Notas' },
 ];
 const OBJECTIVE_PREVIOUS = 'previous';
 

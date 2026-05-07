@@ -665,6 +665,19 @@
   text-align: center;
 }
 
+/* Notes textarea — wider, left-aligned, autosizing */
+.exc-card-notes-input {
+  width: 100%;
+  min-width: 160px;
+  height: auto;
+  min-height: 28px;
+  padding: 6px 8px;
+  text-align: left;
+  resize: vertical;
+  line-height: 1.35;
+  font-family: inherit;
+}
+
 /* Row actions — hidden by default */
 .exc-card-td-actions {
   opacity: 0;

@@ -5101,6 +5101,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     type?: string;
     duration?: number;
     rep_sequence?: number[];
+    notes?: string;
   }>(
     {
       order: "number",
@@ -5113,6 +5114,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
       type: "optional_string",
       duration: "optional_number",
       rep_sequence: "optional_array",
+      notes: "optional_string",
     },
     req.body
   );
@@ -5120,6 +5122,10 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
   // rep_sequence: enforce number[] at route level (validateBody only checks top-level array type)
   if (body.rep_sequence && !body.rep_sequence.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+  }
+
+  if (typeof body.notes === "string" && body.notes.length > 500) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes no puede exceder 500 caracteres", "notes");
   }
 
   // Allow custom_* fields from body on creation
@@ -5158,7 +5164,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     .collection("sets").doc(req.params.setId);
 
   // Allowlist set fields
-  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence"];
+  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence", "notes"];
   const updates = pickFields(req.body, allowedFields);
 
   // rep_sequence: enforce number[] if present
@@ -5167,6 +5173,10 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
     }
+  }
+
+  if (updates.notes !== undefined && updates.notes !== null && (typeof updates.notes !== "string" || updates.notes.length > 500)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes debe ser un string de máximo 500 caracteres", "notes");
   }
 
   // Allow custom objective/measure fields (custom_*)
@@ -5460,7 +5470,7 @@ router.post("/creator/library/sessions", async (req, res) => {
   // Auto-seed defaultDataTemplate from creator's first objective preset (or sensible default)
   const DEFAULT_TEMPLATE = {
     measures: ["reps", "weight", "intensity"],
-    objectives: ["reps", "intensity", "previous"],
+    objectives: ["reps", "intensity", "previous", "notes"],
     customMeasureLabels: {},
     customObjectiveLabels: {},
   };
@@ -5751,6 +5761,7 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
     weight?: number; intensity?: string; rir?: number;
     restSeconds?: number; type?: string;
     duration?: number; rep_sequence?: number[];
+    notes?: string;
   }>(
     {
       order: "number",
@@ -5763,12 +5774,17 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
       type: "optional_string",
       duration: "optional_number",
       rep_sequence: "optional_array",
+      notes: "optional_string",
     },
     req.body
   );
 
   if (body.rep_sequence && !body.rep_sequence.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+  }
+
+  if (typeof body.notes === "string" && body.notes.length > 500) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes no puede exceder 500 caracteres", "notes");
   }
 
   const ref = await db
@@ -5791,7 +5807,7 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets").doc(req.params.setId);
 
-  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence"];
+  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence", "notes"];
   const updates = pickFields(req.body, allowedFields);
 
   if (updates.rep_sequence !== undefined) {
@@ -5799,6 +5815,10 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
     }
+  }
+
+  if (updates.notes !== undefined && updates.notes !== null && (typeof updates.notes !== "string" || updates.notes.length > 500)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes debe ser un string de máximo 500 caracteres", "notes");
   }
 
   // Allow custom objective/measure fields (custom_*)

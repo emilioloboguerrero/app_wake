@@ -5445,6 +5445,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                               items.push({ label: 'Peso Sugerido', value: `${suggestion}kg` });
                             }
                             sortedObjectives.forEach((objective) => {
+                              if (objective === 'notes') {
+                                const setNote = currentExercise?.sets?.[currentSetIndex]?.notes;
+                                const exerciseNote = currentExercise?.notes;
+                                const noteText = (typeof setNote === 'string' && setNote.trim()) || (typeof exerciseNote === 'string' && exerciseNote.trim()) || '';
+                                if (!noteText) return;
+                                items.push({ label: 'NOTA', value: noteText, onPress: () => {
+                                  setSelectedObjectiveInfo({ title: 'Nota del coach', description: noteText });
+                                  setIsObjectiveInfoModalVisible(true);
+                                } });
+                                return;
+                              }
                               const baseLabel = translateMetric(objective, currentExercise) || 'Objetivo';
                               items.push({
                                 label: baseLabel.toUpperCase(),
@@ -5454,11 +5465,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             const isOddCount = items.length % 2 === 1;
                             return items.map((item, index) => {
                               const isLastAndOdd = isOddCount && index === items.length - 1;
+                              const Cell = item.onPress ? TouchableOpacity : View;
                               return (
-                                <View key={`obj-card-${index}`} style={[styles.timerObjectiveCard, isLastAndOdd && styles.timerObjectiveCardFullWidth]}>
+                                <Cell
+                                  key={`obj-card-${index}`}
+                                  style={[styles.timerObjectiveCard, isLastAndOdd && styles.timerObjectiveCardFullWidth]}
+                                  {...(item.onPress ? { onPress: item.onPress, activeOpacity: 0.7 } : {})}
+                                >
                                   <Text style={styles.timerObjectiveCardLabel} numberOfLines={1}>{item.label}</Text>
-                                  <Text style={styles.timerObjectiveCardValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{item.value}</Text>
-                                </View>
+                                  <Text style={styles.timerObjectiveCardValue} numberOfLines={item.onPress ? 2 : 1} adjustsFontSizeToFit minimumFontScale={item.onPress ? 0.6 : 0.75}>{item.value}</Text>
+                                </Cell>
                               );
                             });
                           })()}
@@ -5935,8 +5951,36 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       
                       {/* Objectives Cards (sorted: reps, previous, then rest) */}
                       {sortedObjectives.map((objective, index) => {
-                        const hasInfo = objectivesInfoService.hasInfo(objective);
                         const currentExercise = workout?.exercises?.[currentExerciseIndex];
+                        // Notes objective: render only when content exists; tap opens modal with the note text
+                        if (objective === 'notes') {
+                          const setNote = currentExercise?.sets?.[currentSetIndex]?.notes;
+                          const exerciseNote = currentExercise?.notes;
+                          const noteText = (typeof setNote === 'string' && setNote.trim()) || (typeof exerciseNote === 'string' && exerciseNote.trim()) || '';
+                          if (!noteText) return null;
+                          const _idx = _cardIdx++;
+                          return (
+                            <TouchableOpacity
+                              key={`objective-${currentExerciseIndex}-${index}-notes`}
+                              style={styles.horizontalCard}
+                              onPress={() => {
+                                setSelectedObjectiveInfo({ title: 'Nota del coach', description: noteText });
+                                setIsObjectiveInfoModalVisible(true);
+                              }}
+                              activeOpacity={0.7}
+                              {...(isWeb && showPostSave ? { className: `wake-obj-cascade wake-obj-i${_idx}` } : {})}
+                            >
+                              <Text style={styles.metricTitle}>NOTA</Text>
+                              <Text style={styles.metricValue} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6}>
+                                {noteText}
+                              </Text>
+                              <View style={styles.infoIconContainer}>
+                                <SvgInfo width={14} height={14} color="rgba(255, 255, 255, 0.6)" />
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        }
+                        const hasInfo = objectivesInfoService.hasInfo(objective);
                         const _idx = _cardIdx++;
                         return (
                           <TouchableOpacity
