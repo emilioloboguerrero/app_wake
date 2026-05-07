@@ -604,7 +604,9 @@
 }
 
 .exc-card-sets-table {
-  width: 100%;
+  /* min-width (not width) so a wide notes column can push the table past the
+     wrapper's width and trigger horizontal scroll instead of squeezing inputs. */
+  min-width: 100%;
   border-collapse: collapse;
 }
 

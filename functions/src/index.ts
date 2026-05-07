@@ -1326,7 +1326,8 @@ export const processPaymentWebhook = functions
       // For subscriptions, MP's next_payment_date is the source of truth for
       // when access ends. The subscription_preapproval webhook stores it as
       // next_billing_date on the local subscription doc. Read it here and fall
-      // back to calculateExpirationDate for one-time payments.
+      // back to calculateExpirationDate for one-time payments, missing dates,
+      // or dates that fail sanity checks (must be future, within ~13 months).
       let subscriptionNextBilling: string | null = null;
       if (isSubscription && subscriptionId) {
         const subDoc = await db
@@ -1334,7 +1335,18 @@ export const processPaymentWebhook = functions
           .collection("subscriptions").doc(subscriptionId)
           .get();
         const v = subDoc.data()?.next_billing_date;
-        if (typeof v === "string" && v) subscriptionNextBilling = v;
+        if (typeof v === "string" && v) {
+          const parsed = new Date(v);
+          const now = Date.now();
+          const maxFuture = now + 400 * 24 * 60 * 60 * 1000; // ~13 months
+          if (!isNaN(parsed.getTime()) && parsed.getTime() > now && parsed.getTime() < maxFuture) {
+            subscriptionNextBilling = v;
+          } else {
+            functions.logger.warn("Invalid next_billing_date — falling back to calculateExpirationDate", {
+              userId, courseId, subscriptionId, value: v,
+            });
+          }
+        }
       }
 
       // ── Renewal ──

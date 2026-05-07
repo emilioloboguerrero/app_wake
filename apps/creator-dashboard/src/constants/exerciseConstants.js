@@ -18,6 +18,9 @@ export const MUSCLE_DISPLAY_NAMES = {
   obliques: 'Oblicuos',
   lower_back: 'Lumbar',
   neck: 'Cuello',
+  adductors: 'Aductores',
+  abductors: 'Abductores',
+  brachialis: 'Braquial',
 };
 
 export const IMPLEMENTS_LIST = [

@@ -58,6 +58,11 @@ const todayYmd = () => {
 
 const isCourseExpired = (course) => {
   if (course?.is_trial) return false;
+  // includeInactive surfaces cancelled/inactive subscriptions in the carousel
+  // so the user can renew. hasAccess is the source of truth — gate on it so
+  // a cancelled course (status !== 'active') reads as expired even if its
+  // expires_at is in the future.
+  if (course && course.hasAccess === false) return true;
   if (!course?.expires_at) return false;
   return new Date(course.expires_at) <= new Date();
 };

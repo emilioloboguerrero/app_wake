@@ -1443,6 +1443,17 @@ router.post("/workout/complete", async (req, res) => {
       .collection("exerciseHistory")
       .doc(exerciseKey);
 
+    // `notes` is the coach's prescriptive instruction for the upcoming set —
+    // not a record of what the user did. Strip it before persisting into
+    // exerciseHistory/lastPerformance so historical records don't bloat with
+    // up-to-500-char strings the user never authored.
+    const stripNotes = (s: Record<string, unknown>): Record<string, unknown> => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const {notes: _n, ...rest} = s;
+      return rest;
+    };
+    const historySets = (exercise.sets ?? []).map(stripNotes);
+
     batch.set(
       historyRef,
       {
@@ -1452,7 +1463,7 @@ router.post("/workout/complete", async (req, res) => {
         sessions: FieldValue.arrayUnion({
           date: completionDate,
           sessionId: completionId,
-          sets: exercise.sets ?? [],
+          sets: historySets,
         }),
         updated_at: FieldValue.serverTimestamp(),
       },
@@ -1466,7 +1477,7 @@ router.post("/workout/complete", async (req, res) => {
       .doc(exerciseKey);
 
     // Production format: exerciseId, exerciseName, libraryId, lastSessionId, lastPerformedAt, totalSets, bestSet
-    const exerciseSets = exercise.sets ?? [];
+    const exerciseSets = historySets;
     const prodBestSet = exerciseSets.length > 0 ?
       exerciseSets.reduce((best: Record<string, unknown>, s: Record<string, unknown>) => {
         const bw = parseFloat(String(best.weight ?? 0));

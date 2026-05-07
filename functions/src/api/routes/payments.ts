@@ -234,8 +234,12 @@ router.post("/payments/subscription", async (req, res) => {
   const externalRef = buildExternalReference(auth.userId, body.courseId, "sub");
 
   const courseFreeTrial = (course.free_trial ?? {}) as { active?: boolean; duration_days?: number };
-  const trialDays = courseFreeTrial.active === true && typeof courseFreeTrial.duration_days === "number" ?
-    clampTrialDurationDays(courseFreeTrial.duration_days, courseFreeTrial.duration_days) :
+  // clampTrialDurationDays caps at MAX_TRIAL_DURATION_DAYS (14). Skip the call
+  // for invalid configs (active but missing/zero/negative duration) — those
+  // would throw and fail the whole subscription request; treat as no trial.
+  const rawTrialDays = courseFreeTrial.active === true ? courseFreeTrial.duration_days : undefined;
+  const trialDays = typeof rawTrialDays === "number" && rawTrialDays >= 1 ?
+    clampTrialDurationDays(rawTrialDays) :
     0;
 
   const notificationUrlOverride = process.env.WAKE_NOTIFICATION_URL_OVERRIDE;
@@ -549,12 +553,6 @@ router.post("/payments/webhook", async (req: Request, res) => {
     throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Webhook secret no configurado");
   }
 
-  // Emulator-only HMAC bypass for local sandbox testing. Gated on FUNCTIONS_EMULATOR
-  // so it cannot be enabled in production by setting an env var alone.
-  const skipHmacInDev =
-    process.env.FUNCTIONS_EMULATOR === "true" &&
-    process.env.WAKE_DEV_SKIP_WEBHOOK_HMAC === "1";
-
   // ── Validate signature ──
   const signatureHeaderNew = req.get("x-signature");
   const signatureHeaderLegacy =
@@ -615,11 +613,6 @@ router.post("/payments/webhook", async (req: Request, res) => {
         );
       } catch {/* length mismatch */}
     }
-  }
-
-  if (!signatureIsValid && skipHmacInDev) {
-    functions.logger.warn("WAKE_PAYMENT_AUDIT webhook HMAC bypassed (emulator dev mode)");
-    signatureIsValid = true;
   }
 
   if (!signatureIsValid) {
@@ -1058,8 +1051,9 @@ router.post("/payments/webhook", async (req: Request, res) => {
   // For subscriptions, MP's next_payment_date is the source of truth for when
   // access ends (= when the next charge happens). The subscription_preapproval
   // webhook stores it as next_billing_date on the local subscription doc. Read
-  // it here and fall back to calculateExpirationDate for one-time payments or
-  // when MP didn't return a date.
+  // it here and fall back to calculateExpirationDate for one-time payments,
+  // when MP didn't return a date, or when the date fails sanity checks (must
+  // be in the future, within ~13 months — guards against stale/garbled values).
   let subscriptionNextBilling: string | null = null;
   if (isSubscription && subscriptionId) {
     const subDoc = await db
@@ -1067,7 +1061,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
       .collection("subscriptions").doc(subscriptionId)
       .get();
     const v = subDoc.data()?.next_billing_date;
-    if (typeof v === "string" && v) subscriptionNextBilling = v;
+    if (typeof v === "string" && v) {
+      const parsed = new Date(v);
+      const now = Date.now();
+      const maxFuture = now + 400 * 24 * 60 * 60 * 1000; // ~13 months
+      if (!isNaN(parsed.getTime()) && parsed.getTime() > now && parsed.getTime() < maxFuture) {
+        subscriptionNextBilling = v;
+      } else {
+        functions.logger.warn("WAKE_PAYMENT_AUDIT next_billing_date failed sanity check", {
+          userId, courseId, subscriptionId, value: v,
+        });
+      }
+    }
   }
 
   // ── Renewal ─��

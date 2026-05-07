@@ -532,12 +532,19 @@ async function writeLibrarySessions(libId, { write }) {
 
   for (let i = 0; i < SESSIONS.length; i++) {
     const s = SESSIONS[i];
-    // Idempotency by title within Simon's library
+    // Idempotency by title within Simon's library, gated on `seed_complete`
+    // so a session that died mid-write isn't silently skipped on retry.
     const existing = await sessionsCol.where('title', '==', s.title).limit(1).get();
     if (!existing.empty) {
-      console.log(`  SKIP (exists): [${i}] ${s.title} (${existing.docs[0].id})`);
-      sessionIdByTitle[s.title] = existing.docs[0].id;
-      continue;
+      const existingDoc = existing.docs[0];
+      if (existingDoc.data()?.seed_complete === true) {
+        console.log(`  SKIP (complete): [${i}] ${s.title} (${existingDoc.id})`);
+        sessionIdByTitle[s.title] = existingDoc.id;
+        continue;
+      }
+      console.log(`  ⚠ PARTIAL (no seed_complete): [${i}] ${s.title} (${existingDoc.id})`);
+      console.log('    Delete this session manually before re-running, or pass --force to overwrite');
+      throw new Error(`partial session "${s.title}" — refusing to silently skip`);
     }
 
     console.log(`  SESSION [${i}] ${s.title}  dayIndex=${s.dayIndex}  ex=${s.exercises.length}`);
@@ -594,6 +601,9 @@ async function writeLibrarySessions(libId, { write }) {
         await exRef.collection('sets').add(setData);
       }
     }
+    // Mark complete so retries can distinguish a finished session from a
+    // partial one. Without this, the title-based dedup would skip damaged docs.
+    await sesRef.update({ seed_complete: true, seed_completed_at: FieldValue.serverTimestamp() });
     console.log(`    ✓ session written (${sesRef.id})`);
   }
   return sessionIdByTitle;
@@ -608,8 +618,14 @@ async function writePlan(sessionIdByTitle, { write }) {
     .limit(1).get();
 
   if (!existing.empty) {
-    console.log(`  SKIP (plan exists): ${existing.docs[0].id} "${PLAN_TITLE}"`);
-    return existing.docs[0].id;
+    const existingDoc = existing.docs[0];
+    if (existingDoc.data()?.seed_complete === true) {
+      console.log(`  SKIP (plan complete): ${existingDoc.id} "${PLAN_TITLE}"`);
+      return existingDoc.id;
+    }
+    console.log(`  ⚠ PARTIAL plan (no seed_complete): ${existingDoc.id} "${PLAN_TITLE}"`);
+    console.log('    Delete this plan manually before re-running');
+    throw new Error(`partial plan "${PLAN_TITLE}" — refusing to silently skip`);
   }
 
   console.log(`  plan: "${PLAN_TITLE}" (${TOTAL_WEEKS} modules × ${SESSIONS.length} sessions)`);
@@ -652,6 +668,7 @@ async function writePlan(sessionIdByTitle, { write }) {
     }
     if ((week + 1) % 3 === 0) console.log(`    ✓ Semana ${week + 1} written`);
   }
+  await planRef.update({ seed_complete: true, seed_completed_at: FieldValue.serverTimestamp() });
   console.log(`  ✓ plan + ${TOTAL_WEEKS} modules + ${TOTAL_WEEKS * SESSIONS.length} sessions written`);
   return planRef.id;
 }
@@ -667,7 +684,6 @@ async function deepCopyLibrarySessionIntoPlan({ planRef, moduleRef, sourceSessio
     order,
     dayIndex,
     source_library_session_id: sourceSessionId,
-    librarySessionRef: sourceSessionId,
     defaultDataTemplate: libData.defaultDataTemplate || DEFAULT_TEMPLATE,
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
