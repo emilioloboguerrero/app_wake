@@ -831,6 +831,7 @@ router.get("/workout/daily", async (req, res) => {
       customObjectiveLabels: ex.customObjectiveLabels,
       order: ex.order,
       primaryMuscles: ex.primaryMuscles,
+      notes: ex.notes,
       sets: ex.sets,
       lastPerformance,
     };
@@ -1124,7 +1125,7 @@ router.get("/workout/session-exercises", async (req, res) => {
       implements: (ex.implements?.length ? ex.implements : (libEx.implements as string[])) ?? [],
       primary: ex.primary, alternatives: ex.alternatives, objectives: ex.objectives, measures: ex.measures,
       customMeasureLabels: ex.customMeasureLabels, customObjectiveLabels: ex.customObjectiveLabels,
-      order: ex.order, primaryMuscles: ex.primaryMuscles, sets: ex.sets, lastPerformance,
+      order: ex.order, primaryMuscles: ex.primaryMuscles, notes: ex.notes, sets: ex.sets, lastPerformance,
     };
   });
 
