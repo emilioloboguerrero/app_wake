@@ -553,6 +553,25 @@ const HoyScreen = () => {
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <WakeHeaderContent>
               <WakeHeaderSpacer />
+              {/* Banners must render before the empty state so a one-on-one
+                  invitee — who has no programs until they accept — can still
+                  see and act on the pending invite. */}
+              <HoyBanners
+                recoveryCheckpoint={recoveryCheckpoint}
+                onResumeRecovery={handleResumeRecovery}
+                onDiscardRecovery={dismissRecovery}
+                pendingInvites={pendingInvites}
+                onAcceptInvite={handleAcceptInvite}
+                onDeclineInvite={handleDeclineInvite}
+                inviteActionId={inviteActionId}
+                upcomingCalls={upcomingCalls}
+                onOpenCall={handleOpenCall}
+                showLibraryMoved={showLibraryMoved}
+                onDismissLibraryMoved={handleDismissLibraryMoved}
+                onOpenLibrary={() => navigate('/profile')}
+                showProgramUpdate={hasPendingUpdates}
+                onApplyProgramUpdate={handleApplyProgramUpdate}
+              />
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, minHeight: 400 }}>
                 <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff', marginBottom: 8, textAlign: 'center' }}>
                   Aún no tienes un programa

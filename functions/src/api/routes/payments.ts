@@ -18,6 +18,7 @@ import {
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
+import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
 
 const router = Router();
 
@@ -232,6 +233,13 @@ router.post("/payments/subscription", async (req, res) => {
   const startDate = new Date(Date.now() + 5 * 60 * 1000);
   const externalRef = buildExternalReference(auth.userId, body.courseId, "sub");
 
+  const courseFreeTrial = (course.free_trial ?? {}) as { active?: boolean; duration_days?: number };
+  const trialDays = courseFreeTrial.active === true && typeof courseFreeTrial.duration_days === "number" ?
+    clampTrialDurationDays(courseFreeTrial.duration_days, courseFreeTrial.duration_days) :
+    0;
+
+  const notificationUrlOverride = process.env.WAKE_NOTIFICATION_URL_OVERRIDE;
+
   let result;
   try {
     result = await preapproval.create({
@@ -245,9 +253,13 @@ router.post("/payments/subscription", async (req, res) => {
           transaction_amount: monthlyPrice,
           currency_id: "COP",
           start_date: startDate.toISOString(),
+          ...(trialDays > 0 ? {
+            free_trial: {frequency: trialDays, frequency_type: "days"},
+          } : {}),
         },
         status: "pending",
         back_url: "https://www.mercadopago.com.co/subscriptions",
+        ...(notificationUrlOverride ? {notification_url: notificationUrlOverride} : {}),
       },
     });
   } catch (error: unknown) {
@@ -314,11 +326,12 @@ router.post("/payments/subscription", async (req, res) => {
       currency_id: "COP",
       management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${result.id}`,
       next_billing_date: nextBillingDate,
+      free_trial_days: trialDays,
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     }, {merge: true});
 
-  res.json({data: {init_point: result.init_point, subscription_id: result.id}});
+  res.json({data: {init_point: result.init_point, subscription_id: result.id, free_trial_days: trialDays}});
 });
 
 // ─── POST /payments/bundle-preference ─────────────────────────────────────
@@ -536,6 +549,12 @@ router.post("/payments/webhook", async (req: Request, res) => {
     throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Webhook secret no configurado");
   }
 
+  // Emulator-only HMAC bypass for local sandbox testing. Gated on FUNCTIONS_EMULATOR
+  // so it cannot be enabled in production by setting an env var alone.
+  const skipHmacInDev =
+    process.env.FUNCTIONS_EMULATOR === "true" &&
+    process.env.WAKE_DEV_SKIP_WEBHOOK_HMAC === "1";
+
   // ── Validate signature ──
   const signatureHeaderNew = req.get("x-signature");
   const signatureHeaderLegacy =
@@ -596,6 +615,11 @@ router.post("/payments/webhook", async (req: Request, res) => {
         );
       } catch {/* length mismatch */}
     }
+  }
+
+  if (!signatureIsValid && skipHmacInDev) {
+    functions.logger.warn("WAKE_PAYMENT_AUDIT webhook HMAC bypassed (emulator dev mode)");
+    signatureIsValid = true;
   }
 
   if (!signatureIsValid) {
