@@ -79,7 +79,7 @@ const HoyScreen = () => {
     () => Math.min(Math.max(500, screenHeight * 0.62), CARD_WIDTH * 1.7),
     [screenHeight, CARD_WIDTH],
   );
-  const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid);
+  const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid, { includeInactive: true });
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
   // Non-blocking: carousel renders as soon as useUserCourses resolves; coach grouping
   // reflows when creator_id lands. Courses without resolved creator_id share a fallback

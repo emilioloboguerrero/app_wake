@@ -1055,10 +1055,26 @@ router.post("/payments/webhook", async (req: Request, res) => {
     new Date(existingCourseData.expires_at) > new Date();
   const isRenewal = existingPurchase && isSubscription;
 
+  // For subscriptions, MP's next_payment_date is the source of truth for when
+  // access ends (= when the next charge happens). The subscription_preapproval
+  // webhook stores it as next_billing_date on the local subscription doc. Read
+  // it here and fall back to calculateExpirationDate for one-time payments or
+  // when MP didn't return a date.
+  let subscriptionNextBilling: string | null = null;
+  if (isSubscription && subscriptionId) {
+    const subDoc = await db
+      .collection("users").doc(userId)
+      .collection("subscriptions").doc(subscriptionId)
+      .get();
+    const v = subDoc.data()?.next_billing_date;
+    if (typeof v === "string" && v) subscriptionNextBilling = v;
+  }
+
   // ── Renewal ─��
   if (isRenewal) {
     const currentExpiration = existingCourseData?.expires_at ?? undefined;
-    const expirationDate = calculateExpirationDate(courseAccessDuration, currentExpiration);
+    const expirationDate = subscriptionNextBilling ??
+      calculateExpirationDate(courseAccessDuration, currentExpiration);
 
     // Security (audit H-15 / H-16): wrap renewal grant + subscription update +
     // processed_payments finalization in a single transaction. The on-disk
@@ -1105,7 +1121,8 @@ router.post("/payments/webhook", async (req: Request, res) => {
   }
 
   // ── New purchase ──
-  const expirationDate = calculateExpirationDate(courseAccessDuration);
+  const expirationDate = subscriptionNextBilling ??
+    calculateExpirationDate(courseAccessDuration);
 
   await db.runTransaction(async (tx) => {
     await assignCourseToUser(userId, courseId, courseDetails, expirationDate, {

@@ -1323,21 +1323,39 @@ export const processPaymentWebhook = functions
       const subscriptionId =
         paymentData?.subscription_id || paymentData?.preapproval_id || null;
 
+      // For subscriptions, MP's next_payment_date is the source of truth for
+      // when access ends. The subscription_preapproval webhook stores it as
+      // next_billing_date on the local subscription doc. Read it here and fall
+      // back to calculateExpirationDate for one-time payments.
+      let subscriptionNextBilling: string | null = null;
+      if (isSubscription && subscriptionId) {
+        const subDoc = await db
+          .collection("users").doc(userId)
+          .collection("subscriptions").doc(subscriptionId)
+          .get();
+        const v = subDoc.data()?.next_billing_date;
+        if (typeof v === "string" && v) subscriptionNextBilling = v;
+      }
+
       // ── Renewal ──
       if (isRenewal) {
         functions.logger.info("Subscription renewal detected:", userId, courseId);
 
         const currentExpiration = existingCourseData?.expires_at ?? undefined;
         let expirationDate: string;
-        try {
-          expirationDate = calculateExpirationDate(courseAccessDuration, {
-            from: currentExpiration,
-          });
-        } catch {
-          functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
-            userId, courseId, currentExpiration,
-          });
-          expirationDate = calculateExpirationDate(courseAccessDuration);
+        if (subscriptionNextBilling) {
+          expirationDate = subscriptionNextBilling;
+        } else {
+          try {
+            expirationDate = calculateExpirationDate(courseAccessDuration, {
+              from: currentExpiration,
+            });
+          } catch {
+            functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
+              userId, courseId, currentExpiration,
+            });
+            expirationDate = calculateExpirationDate(courseAccessDuration);
+          }
         }
 
         // Security (audit H-15 / H-16): wrap renewal grant + subscription
@@ -1406,7 +1424,8 @@ export const processPaymentWebhook = functions
         return;
       }
 
-      const expirationDate = calculateExpirationDate(courseAccessDuration);
+      const expirationDate = subscriptionNextBilling ??
+        calculateExpirationDate(courseAccessDuration);
 
       await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
         await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
