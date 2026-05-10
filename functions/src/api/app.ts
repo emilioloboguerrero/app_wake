@@ -207,12 +207,22 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     return;
   }
 
-  const message = err instanceof Error ? err.message : String(err);
+  let message = err instanceof Error ? err.message : String(err);
+  if (message === "[object Object]") {
+    try { message = JSON.stringify(err); } catch { /* ignore */ }
+  }
   const stack = err instanceof Error ? err.stack : undefined;
   const userId = req.auth?.userId ?? "anon";
+  const detail: Record<string, unknown> = {};
+  if (err && typeof err === "object") {
+    for (const k of ["status", "cause", "error", "name", "code"] as const) {
+      const v = (err as Record<string, unknown>)[k];
+      if (v !== undefined) detail[k] = v;
+    }
+  }
   console.error(
     `[api] ${req.method} ${req.path} — ${message} (user=${userId})`,
-    stack ? {stack} : undefined
+    {...(stack ? {stack} : {}), ...(Object.keys(detail).length ? {detail} : {})}
   );
   res.status(500).json({
     error: {code: "INTERNAL_ERROR", message: "Error interno del servidor"},

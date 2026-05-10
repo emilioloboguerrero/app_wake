@@ -267,7 +267,17 @@ router.post("/payments/subscription", async (req, res) => {
       },
     });
   } catch (error: unknown) {
-    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    // MP SDK throws plain objects ({message, status}), not Error instances —
+    // pull .message off the object directly so the alt-email patterns still match.
+    let rawMsg: string;
+    if (error instanceof Error) {
+      rawMsg = error.message;
+    } else if (error && typeof error === "object" && typeof (error as {message?: unknown}).message === "string") {
+      rawMsg = (error as {message: string}).message;
+    } else {
+      rawMsg = String(error);
+    }
+    const msg = rawMsg.toLowerCase();
     const needsAltEmail =
       msg.includes("cannot operate between different") ||
       msg.includes("payer_email") ||
@@ -474,7 +484,17 @@ router.post("/payments/bundle-subscription", async (req, res) => {
       },
     });
   } catch (error: unknown) {
-    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    // MP SDK throws plain objects ({message, status}), not Error instances —
+    // pull .message off the object directly so the alt-email patterns still match.
+    let rawMsg: string;
+    if (error instanceof Error) {
+      rawMsg = error.message;
+    } else if (error && typeof error === "object" && typeof (error as {message?: unknown}).message === "string") {
+      rawMsg = (error as {message: string}).message;
+    } else {
+      rawMsg = String(error);
+    }
+    const msg = rawMsg.toLowerCase();
     const needsAltEmail =
       msg.includes("cannot operate between different") ||
       msg.includes("payer_email") ||
