@@ -810,9 +810,14 @@ useEffect(() => {
         return;
       }
 
-      // On web: redirect directly — more reliable than going through EpaycoWebView's useEffect
+      // On web: redirect to MercadoPago. Use window.open for installed PWA
+      // compatibility — iOS standalone mode silently drops location.href to
+      // external origins. Fall back to location.href if popup is blocked.
       if (isWeb) {
-        window.location.href = purchaseResult.checkoutURL;
+        const opened = window.open(purchaseResult.checkoutURL, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          window.location.href = purchaseResult.checkoutURL;
+        }
         return;
       }
 
@@ -889,9 +894,12 @@ useEffect(() => {
         return;
       }
 
-      // On web: redirect directly
+      // On web: open MP in a new tab so installed PWAs (iOS standalone) work.
       if (isWeb) {
-        window.location.href = subscriptionResult.checkoutURL;
+        const opened = window.open(subscriptionResult.checkoutURL, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          window.location.href = subscriptionResult.checkoutURL;
+        }
         return;
       }
 
