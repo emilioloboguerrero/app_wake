@@ -1061,14 +1061,47 @@ useEffect(() => {
     const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
     const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
     const discountPercent = hasCompareAt ? Math.round((1 - course.price / course.compare_at_price) * 100) : 0;
-    // When a subscription course offers a free trial, MP collects the card at
-    // checkout but charges nothing until the trial ends — reflect that in copy.
+
+    // Trial CTA — only for subscription courses (MP free_trial requires a
+    // recurring preapproval). Card collected at MP checkout, no charge until
+    // the trial ends, then MP starts the monthly billing automatically.
     const isSubscription = course.access_duration === 'monthly';
-    const purchaseButtonText = isTrialFeatureEnabled && isSubscription
-      ? `Empezar prueba de ${trialDurationDays} días`
-      : course.price
-        ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
-        : 'Comprar';
+    const showTrialCta = isTrialFeatureEnabled && isSubscription && !simulateUserRole;
+    if (showTrialCta) {
+      const monthlyPrice = (typeof course.subscription_price === 'number' && course.subscription_price > 0)
+        ? course.subscription_price
+        : course.price;
+      return (
+        <View>
+          <TouchableOpacity
+            className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
+            style={[styles.primaryButton, purchasing && styles.disabledButton]}
+            onPress={handlePurchaseCourse}
+            disabled={purchasing}
+          >
+            {purchasing ? (
+              <>
+                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryButtonText}>Procesando...</Text>
+              </>
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {`Empezar prueba de ${trialDurationDays} días`}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {monthlyPrice > 0 && (
+            <Text style={styles.trialPriceText}>
+              {`Luego ${formatPrice(monthlyPrice)} ${currencyCode}/mes`}
+            </Text>
+          )}
+        </View>
+      );
+    }
+
+    const purchaseButtonText = course.price
+      ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
+      : 'Comprar';
 
     if (hasCompareAt && !purchasing) {
       return (
@@ -2158,6 +2191,13 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,
+  },
+  trialPriceText: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 6,
   },
   disabledButton: {
     backgroundColor: '#666666',
