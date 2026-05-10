@@ -94,7 +94,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [creatorProfileImage, setCreatorProfileImage] = useState(null);
   const [creatorDisplayName, setCreatorDisplayName] = useState('');
   const [userCourseEntry, setUserCourseEntry] = useState(null);
-  const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [checkoutURL, setCheckoutURL] = useState(null);
@@ -120,44 +119,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const trialDurationDays = trialConfig?.duration_days || 0;
   const isTrialFeatureEnabled = Boolean(trialConfig?.active && trialDurationDays > 0);
 
-  const trialStatus = useMemo(() => {
-    const hasConsumed = Boolean(
-      userTrialHistory?.consumed ||
-      userCourseEntry?.trial_consumed
-    );
 
-    const isTrialCourse = userCourseEntry?.is_trial === true;
-    const expiresAt = userCourseEntry?.trial_expires_at ||
-      userCourseEntry?.expires_at ||
-      null;
-
-    let isActive = false;
-    let isExpired = false;
-
-    if (isTrialCourse && expiresAt) {
-      try {
-        const expirationTime = new Date(expiresAt).getTime();
-        const now = Date.now();
-        isActive = expirationTime > now;
-        isExpired = expirationTime <= now;
-      } catch (error) {
-      }
-    }
-
-    return {
-      hasConsumed,
-      isTrialCourse,
-      expiresAt,
-      isActive,
-      isExpired,
-    };
-  }, [userCourseEntry, userTrialHistory]);
-
-  const canShowTrialCta = isTrialFeatureEnabled &&
-    !trialStatus.hasConsumed &&
-    !trialStatus.isTrialCourse &&
-    !userOwnsCourse;
-  
   const creatorId = useMemo(() => {
     return (
       course?.creator_id ||
@@ -385,7 +347,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
       }
 
       setUserCourseEntry(courseState.courseData);
-      setUserTrialHistory(courseState.trialHistory);
       setUserOwnsCourse(courseState.ownsCourse);
       
       // Set ownershipReady to true if user owns course and not processing purchase
@@ -948,81 +909,6 @@ useEffect(() => {
     }
   };
 
-  const handleStartTrial = async () => {
-    if (!user?.uid) {
-      Alert.alert('Error', 'Debes iniciar sesión para iniciar la prueba gratuita');
-      return;
-    }
-
-    if (!isTrialFeatureEnabled || !canShowTrialCta) {
-      return;
-    }
-
-    try {
-      if (postPurchaseTimeoutRef.current) {
-        clearTimeout(postPurchaseTimeoutRef.current);
-        postPurchaseTimeoutRef.current = null;
-      }
-      if (postPurchaseTimeoutSecondRef.current) {
-        clearTimeout(postPurchaseTimeoutSecondRef.current);
-        postPurchaseTimeoutSecondRef.current = null;
-      }
-      pendingPostPurchaseRef.current = false;
-      processingPurchaseRef.current = false;
-      readyNotificationSentRef.current = false;
-      setProcessingPurchase(false);
-
-      setPurchasing(true);
-
-      const result = await purchaseService.startLocalTrial(
-        user.uid,
-        course.id,
-        trialDurationDays
-      );
-
-      if (!result.success) {
-        Alert.alert('No se pudo iniciar la prueba', result.error || 'Intenta de nuevo más tarde.');
-        return;
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ['programs'] });
-      await queryClient.invalidateQueries({ queryKey: ['user', user.uid] });
-      purchaseEventManager.notifyPurchaseComplete(course.id);
-
-      try {
-        await courseDownloadService.downloadCourse(course.id, user?.uid, {
-          cachedCourseData: course,
-          cachedModules: modules,
-          isOneOnOne,
-        });
-      } catch (downloadError) {
-        logger.error('Error downloading course after starting trial:', downloadError);
-      }
-
-      await checkCourseOwnership();
-
-      Alert.alert(
-        'Prueba iniciada',
-        `Tienes ${trialDurationDays} días para explorar este programa.`,
-        [
-          {
-            text: 'Ir a Página Principal',
-            onPress: () => navigation.navigate('MainScreen')
-          },
-          {
-            text: 'Aceptar',
-            style: 'cancel'
-          }
-        ]
-      );
-    } catch (error) {
-      logger.error('❌ Error starting trial:', error);
-      Alert.alert('Error', 'No pudimos iniciar la prueba gratuita. Intenta de nuevo.');
-    } finally {
-      setPurchasing(false);
-    }
-  };
-
   const schedulePostPurchaseFlow = React.useCallback(() => {
     if (!pendingPostPurchaseRef.current) {
       return;
@@ -1158,36 +1044,6 @@ useEffect(() => {
       );
     }
 
-    if (canShowTrialCta && !simulateUserRole) {
-      const currencyCode = course.currency || course.currency_id || 'COP';
-      const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
-      return (
-        <View>
-          <TouchableOpacity
-            style={[styles.primaryButton, purchasing && styles.disabledButton]}
-            onPress={handleStartTrial}
-            disabled={purchasing}
-          >
-            {purchasing ? (
-              <>
-                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
-                <Text style={styles.primaryButtonText}>Activando prueba...</Text>
-              </>
-            ) : (
-              <Text style={styles.primaryButtonText}>
-                {`Prueba gratis - ${trialDurationDays} dias`}
-              </Text>
-            )}
-          </TouchableOpacity>
-          {course.price > 0 && (
-            <Text style={styles.trialPriceText}>
-              {`Luego ${formatPrice(course.price)} ${currencyCode}`}
-            </Text>
-          )}
-        </View>
-      );
-    }
-
     if (isOneOnOne) {
       const hasUpcomingBooking = userCallBooking && new Date(userCallBooking.slotEndUtc) > new Date();
       return (
@@ -1205,9 +1061,14 @@ useEffect(() => {
     const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
     const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
     const discountPercent = hasCompareAt ? Math.round((1 - course.price / course.compare_at_price) * 100) : 0;
-    const purchaseButtonText = course.price
-      ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
-      : 'Comprar';
+    // When a subscription course offers a free trial, MP collects the card at
+    // checkout but charges nothing until the trial ends — reflect that in copy.
+    const isSubscription = course.access_duration === 'monthly';
+    const purchaseButtonText = isTrialFeatureEnabled && isSubscription
+      ? `Empezar prueba de ${trialDurationDays} días`
+      : course.price
+        ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
+        : 'Comprar';
 
     if (hasCompareAt && !purchasing) {
       return (
@@ -2297,14 +2158,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,
-  },
-  trialPriceText: {
-    color: 'rgba(255, 255, 255, 1)',
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 4,
-    opacity: 0.9,
   },
   disabledButton: {
     backgroundColor: '#666666',

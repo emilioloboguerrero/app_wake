@@ -324,34 +324,6 @@ class FirestoreService {
     }
   }
 
-  /**
-   * Start a free trial for a course by assigning it locally to the user
-   * @param {string} userId - User ID
-   * @param {string} courseId - Course ID
-   * @param {Object} courseDetails - Course metadata
-   * @param {number} durationInDays - Trial duration in days
-   * @returns {Promise<Object>} Result of the assignment
-   */
-  async startTrialForCourse(userId, courseId, courseDetails, durationInDays) {
-    try {
-      if (!durationInDays || durationInDays <= 0) {
-        return {
-          success: false,
-          error: 'Duración de prueba inválida',
-          code: 'INVALID_TRIAL_DURATION',
-        };
-      }
-      const result = await apiClient.post(`/users/me/courses/${courseId}/trial`, { courseDetails, durationInDays });
-      return result?.data ?? { success: false, error: 'Error al iniciar la prueba gratuita', code: 'TRIAL_ERROR' };
-    } catch (error) {
-      logger.error('❌ Error starting trial for course:', error);
-      return {
-        success: false,
-        error: error.message || 'Error al iniciar la prueba gratuita',
-        code: 'TRIAL_ERROR',
-      };
-    }
-  }
 
   /**
    * Get orphaned one-on-one programs (client_programs without users.courses entry)

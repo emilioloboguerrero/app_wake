@@ -11,7 +11,6 @@ import {
   assertAllowedDownloadPath,
   assertAllowedUserCourseStatus,
   assertHttpsUrl,
-  clampTrialDurationDays,
   isFreeGrantAllowed,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
@@ -392,84 +391,6 @@ router.get("/users/:userId/public-profile", async (req, res) => {
       cards: data.cards ?? null,
     },
   });
-});
-
-// POST /users/me/courses/:courseId/trial — start a trial for a course
-//
-// Security (audit C-06, H-07):
-//   - durationInDays clamped server-side via course config + 14d hard cap
-//   - title/image_url/deliveryType read from course doc, NOT request body
-//   - trial_used flag persisted to prevent delete+recreate trial farming
-//   - course must declare free_trial.active === true
-router.post("/users/me/courses/:courseId/trial", async (req, res) => {
-  const auth = await validateAuthAndRateLimit(req);
-
-  const body = validateBody<{
-    durationInDays?: number;
-  }>(
-    {
-      durationInDays: "optional_number",
-    },
-    req.body
-  );
-
-  const courseId = req.params.courseId;
-
-  // Verify course exists AND has trial enabled
-  const courseDoc = await db.collection("courses").doc(courseId).get();
-  if (!courseDoc.exists) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
-  }
-  const course = courseDoc.data()!;
-  const freeTrial = (course.free_trial ?? {}) as { active?: boolean; duration_days?: number };
-  if (freeTrial.active !== true) {
-    throw new WakeApiServerError(
-      "FORBIDDEN", 403, "Este programa no ofrece prueba gratuita"
-    );
-  }
-
-  // Block if user has ever started a trial for this course (survives delete)
-  const userData = auth.userData ?? {};
-  const trialUsed = (userData.trial_used ?? {}) as Record<string, unknown>;
-  if (trialUsed[courseId]) {
-    throw new WakeApiServerError(
-      "CONFLICT", 409, "Ya usaste la prueba gratuita para este programa"
-    );
-  }
-
-  // Block concurrent active trial
-  const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
-  if (courses[courseId]?.status === "trial") {
-    throw new WakeApiServerError(
-      "CONFLICT", 409, "Ya tienes un trial activo para este programa"
-    );
-  }
-
-  // Clamp duration: max(course.free_trial.duration_days, 14d)
-  const requested = body.durationInDays ?? freeTrial.duration_days ?? 7;
-  const durationDays = clampTrialDurationDays(requested, freeTrial.duration_days);
-
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
-  await db.collection("users").doc(auth.userId).update({
-    [`courses.${courseId}`]: {
-      status: "trial",
-      title: course.title ?? "",
-      image_url: course.image_url ?? "",
-      deliveryType: course.deliveryType ?? "low_ticket",
-      purchased_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
-      access_duration: "trial",
-    },
-    [`trial_used.${courseId}`]: {
-      started_at: now.toISOString(),
-      duration_days: durationDays,
-    },
-    updated_at: FieldValue.serverTimestamp(),
-  });
-
-  res.json({data: {success: true, expirationDate: expiresAt.toISOString()}});
 });
 
 // POST /users/me/move-course — add a course to the user's courses map
