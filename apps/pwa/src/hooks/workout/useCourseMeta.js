@@ -8,6 +8,7 @@
 // Returns the enriched course object: snapshot fields fall through, fresh API
 // fields override. While the API call is in flight, snapshot values render so
 // the screen never goes blank.
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../utils/apiClient';
 
@@ -27,20 +28,24 @@ export function useCourseMeta(courseSnapshot, courseIdOverride) {
     staleTime: 10 * 60 * 1000,
   });
 
-  const c = courseSnapshot || {};
-  return {
-    ...c,
-    id: courseId,
-    courseId,
-    creator_id: apiData?.creator_id || c.creator_id || null,
-    creatorName: apiData?.creatorName ?? c.creatorName ?? null,
-    title: apiData?.title ?? c.title ?? '',
-    image_url: apiData?.image_url ?? c.image_url ?? null,
-    image_path: apiData?.image_path ?? c.image_path ?? null,
-    video_intro_url: apiData?.video_intro_url ?? c.video_intro_url ?? null,
-    discipline: apiData?.discipline ?? c.discipline ?? null,
-    deliveryType: apiData?.deliveryType ?? c.deliveryType ?? null,
-    weight_suggestions: apiData?.weight_suggestions ?? c.weight_suggestions,
-    availableLibraries: apiData?.availableLibraries ?? c.availableLibraries,
-  };
+  // Memoize: callers commonly list this object in useEffect/useCallback deps,
+  // so a new reference every render would trigger infinite render loops.
+  return useMemo(() => {
+    const c = courseSnapshot || {};
+    return {
+      ...c,
+      id: courseId,
+      courseId,
+      creator_id: apiData?.creator_id || c.creator_id || null,
+      creatorName: apiData?.creatorName ?? c.creatorName ?? null,
+      title: apiData?.title ?? c.title ?? '',
+      image_url: apiData?.image_url ?? c.image_url ?? null,
+      image_path: apiData?.image_path ?? c.image_path ?? null,
+      video_intro_url: apiData?.video_intro_url ?? c.video_intro_url ?? null,
+      discipline: apiData?.discipline ?? c.discipline ?? null,
+      deliveryType: apiData?.deliveryType ?? c.deliveryType ?? null,
+      weight_suggestions: apiData?.weight_suggestions ?? c.weight_suggestions,
+      availableLibraries: apiData?.availableLibraries ?? c.availableLibraries,
+    };
+  }, [courseSnapshot, apiData, courseId]);
 }
