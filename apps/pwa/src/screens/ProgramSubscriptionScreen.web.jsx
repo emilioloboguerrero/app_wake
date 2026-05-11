@@ -183,22 +183,12 @@ export default function ProgramSubscriptionScreen() {
 
           <div style={styles.section}>
             <div style={styles.sectionLabel}>Método de pago</div>
-            <div style={styles.paymentRow}>
-              <div>
-                <div style={styles.paymentText}>
-                  Tarjeta guardada en Mercado Pago
-                </div>
-                <div style={styles.paymentSub}>
-                  La gestionás desde el botón de cambiar tarjeta.
-                </div>
-              </div>
-              <button
-                style={{ ...styles.secondaryButton, opacity: 0.4, cursor: 'not-allowed' }}
-                disabled
-                title="Disponible próximamente"
-              >
-                Cambiar tarjeta
-              </button>
+            <div style={styles.paymentText}>
+              Tarjeta guardada en Mercado Pago.
+            </div>
+            <div style={styles.paymentSub}>
+              Para cambiar la tarjeta, cancelá esta suscripción y suscribite de nuevo
+              con la tarjeta nueva. No vas a perder acceso durante el período pago.
             </div>
           </div>
 
@@ -408,21 +398,16 @@ const styles = {
     marginBottom: 12,
     fontWeight: 600,
   },
-  paymentRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
   paymentText: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: 500,
+    marginBottom: 6,
   },
   paymentSub: {
-    fontSize: 12,
+    fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
-    marginTop: 2,
+    lineHeight: 1.5,
   },
   cancelSection: {
     borderTop: '1px solid rgba(255,255,255,0.07)',
