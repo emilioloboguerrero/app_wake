@@ -5,6 +5,7 @@ import {generateOpenApiSpec} from "../openapi.js";
 import {WakeApiServerError} from "./errors.js";
 import {validateAuth, enforceScope} from "./middleware/auth.js";
 import {checkDailyRateLimit, checkIpRateLimit} from "./middleware/rateLimit.js";
+import {analyticsMiddleware} from "./middleware/analytics.js";
 
 import profileRouter from "./routes/profile.js";
 import nutritionRouter from "./routes/nutrition.js";
@@ -168,6 +169,7 @@ const authMiddleware = async (req: Request, _res: Response, next: NextFunction) 
 
 // Mount under both /v1 (direct Cloud Run) and /api/v1 (Firebase Hosting rewrite)
 for (const prefix of ["/v1", "/api/v1"]) {
+  app.use(prefix, analyticsMiddleware);
   app.use(prefix, authMiddleware);
   app.use(prefix, profileRouter);
   app.use(prefix, nutritionRouter);

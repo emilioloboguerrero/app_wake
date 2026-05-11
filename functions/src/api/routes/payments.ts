@@ -563,6 +563,10 @@ router.post("/payments/webhook", async (req: Request, res) => {
     req.get("x-hmac-signature-256");
 
   let signatureIsValid = false;
+  // Diagnostic state surfaced on rejection so we can tell signature-mismatch
+  // apart from missing-header / stale-timestamp / wrong-secret without leaking
+  // the actual signature or secret to logs.
+  let signatureFailReason: string | null = null;
 
   if (signatureHeaderNew) {
     const parsed: Record<string, string> = {};
@@ -573,26 +577,51 @@ router.post("/payments/webhook", async (req: Request, res) => {
     const ts = parsed["ts"];
     const sig = parsed["v1"];
     const requestId = req.get("x-request-id") ?? "";
-    const dataId = req.body?.data?.id;
+    // MP's signature template uses data.id from the URL query string, not the
+    // body. Both usually hold the same value, but the dashboard test webhook
+    // and some integration variants only set the query parameter. Try query
+    // first to match what MP actually signs, with body as fallback.
+    const queryDataId =
+      (req.query?.["data.id"] as string | undefined) ??
+      (req.query?.id as string | undefined);
+    const bodyDataId = req.body?.data?.id;
+    const dataId = queryDataId ?? bodyDataId;
 
-    if (ts && sig && requestId && dataId) {
+    if (!ts || !sig || !requestId || !dataId) {
+      signatureFailReason = "v2_missing_components";
+    } else {
       const tsMs = Number(ts) * 1000;
       if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
+        functions.logger.warn("Webhook signature: timestamp out of range", {
+          tsMs, nowMs: Date.now(), skewMs: Date.now() - tsMs,
+        });
         res.status(403).json({
           error: {code: "FORBIDDEN", message: "Webhook timestamp expirado"},
         });
         return;
       }
 
-      const template = `id:${dataId};request-id:${requestId};ts:${ts};`;
-      const expected = crypto.createHmac("sha256", webhookSecret).update(template).digest("hex");
-      if (sig.length === expected.length) {
-        try {
-          signatureIsValid = crypto.timingSafeEqual(
-            Buffer.from(sig, "utf8"),
-            Buffer.from(expected, "utf8")
-          );
-        } catch {/* length mismatch */}
+      // Compute against both candidates so we tolerate either MP convention.
+      const candidates = bodyDataId && bodyDataId !== queryDataId ?
+        [dataId, bodyDataId] :
+        [dataId];
+      for (const candidate of candidates) {
+        const template = `id:${candidate};request-id:${requestId};ts:${ts};`;
+        const expected = crypto.createHmac("sha256", webhookSecret).update(template).digest("hex");
+        if (sig.length === expected.length) {
+          try {
+            if (crypto.timingSafeEqual(
+              Buffer.from(sig, "utf8"),
+              Buffer.from(expected, "utf8")
+            )) {
+              signatureIsValid = true;
+              break;
+            }
+          } catch {/* length mismatch */}
+        }
+      }
+      if (!signatureIsValid) {
+        signatureFailReason = "v2_hmac_mismatch";
       }
     }
   } else if (signatureHeaderLegacy) {
@@ -615,9 +644,29 @@ router.post("/payments/webhook", async (req: Request, res) => {
         );
       } catch {/* length mismatch */}
     }
+    if (!signatureIsValid) {
+      signatureFailReason = "legacy_hmac_mismatch";
+    }
+  } else {
+    signatureFailReason = "no_signature_header";
   }
 
   if (!signatureIsValid) {
+    // Diagnostic: log header presence + reason but NOT the secret or the
+    // signature bytes. Lets us distinguish "MP didn't sign" from "secret
+    // mismatch" from "stale timestamp" without leaking sensitive material.
+    functions.logger.warn("Webhook signature rejected", {
+      reason: signatureFailReason,
+      hasXSignature: Boolean(signatureHeaderNew),
+      hasLegacy: Boolean(signatureHeaderLegacy),
+      hasRequestId: Boolean(req.get("x-request-id")),
+      queryKeys: Object.keys(req.query ?? {}),
+      bodyType: typeof req.body,
+      bodyHasDataId: Boolean(req.body?.data?.id),
+      contentType: req.get("content-type") ?? null,
+      userAgent: req.get("user-agent") ?? null,
+      secretLen: webhookSecret.length,
+    });
     res.status(403).json({
       error: {code: "FORBIDDEN", message: "Firma de webhook inválida"},
     });

@@ -1,4 +1,5 @@
 import apiClient from '../utils/apiClient';
+import analyticsService from './analyticsService';
 
 class EventService {
   makeDateTimestamp(dateStr) {
@@ -25,6 +26,11 @@ class EventService {
 
   async createEvent(_clientGeneratedId, eventData) {
     const result = await apiClient.post('/creator/events', eventData);
+    try {
+      analyticsService.track('creator.event_created', {
+        capacity: Number(eventData?.capacity) || null,
+      });
+    } catch {}
     return result?.data;
   }
 

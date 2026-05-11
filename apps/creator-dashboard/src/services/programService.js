@@ -1,4 +1,5 @@
 import apiClient from '../utils/apiClient';
+import analyticsService from './analyticsService';
 
 class ProgramService {
   async getProgramsByCreator() {
@@ -19,6 +20,11 @@ class ProgramService {
       discipline: programData.discipline || null,
       deliveryType: programData.deliveryType || 'low_ticket',
     });
+    try {
+      analyticsService.track('creator.program_created', {
+        delivery_type: programData.deliveryType || 'low_ticket',
+      });
+    } catch {}
     return res.data;
   }
 
@@ -29,6 +35,7 @@ class ProgramService {
 
   async releaseProgram(programId) {
     const res = await apiClient.patch(`/creator/programs/${programId}/status`, { status: 'published' });
+    try { analyticsService.track('creator.program_published'); } catch {}
     return res.data;
   }
 

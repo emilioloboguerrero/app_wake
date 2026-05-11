@@ -38,6 +38,7 @@ import {
   generateUnsubscribeToken,
   reserveEmailBudget,
 } from "./api/services/emailHelpers.js";
+import {capture as analyticsCapture, flushAnalytics} from "./lib/analytics.js";
 
 const db = admin.firestore();
 
@@ -1477,6 +1478,7 @@ const fatSecretClientSecretV2 = defineSecret("FATSECRET_CLIENT_SECRET");
 const resendApiKeyV2 = defineSecret("RESEND_API_KEY");
 const mercadopagoAccessTokenV2 = defineSecret("MERCADOPAGO_ACCESS_TOKEN");
 const mercadopagoWebhookSecretV2 = defineSecret("MERCADOPAGO_WEBHOOK_SECRET");
+const posthogApiKeyV2 = defineSecret("POSTHOG_API_KEY");
 
 export const api = onRequest(
   {
@@ -1503,6 +1505,9 @@ export const api = onRequest(
       // throws if process.env.UNSUBSCRIBE_SECRET is absent. Without this
       // binding, every unsubscribe link returns "Enlace inválido" in prod.
       unsubscribeSecret,
+      // Cost/behavior telemetry — server-side PostHog. Optional: when the
+      // secret is unset the analytics module silently no-ops.
+      posthogApiKeyV2,
     ],
   },
   app
@@ -2186,6 +2191,7 @@ export const detectAbandonedSessions = onSchedule(
     region: "us-central1",
     timeoutSeconds: 300,
     memory: "256MiB",
+    secrets: [posthogApiKeyV2],
   },
   async () => {
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
@@ -2231,6 +2237,19 @@ export const detectAbandonedSessions = onSchedule(
         {merge: true}
       );
 
+      try {
+        analyticsCapture({
+          distinctId: userId,
+          event: "workout.session_abandoned",
+          properties: {
+            course_id: (data.courseId as string) || null,
+            elapsed_seconds: (data.elapsedSeconds as number) || 0,
+            completed_sets: completedSetsCount,
+            detected_by: "scheduled_scan",
+          },
+        });
+      } catch { /* ignore */ }
+
       batch.delete(doc.ref);
       count++;
       if (count >= 400) break;
@@ -2240,6 +2259,7 @@ export const detectAbandonedSessions = onSchedule(
       await batch.commit();
       functions.logger.info(`detectAbandonedSessions: recorded ${count} abandoned sessions`);
     }
+    await flushAnalytics();
   }
 );
 

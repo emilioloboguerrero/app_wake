@@ -1,4 +1,5 @@
 import apiClient from '../utils/apiClient';
+import analyticsService from './analyticsService';
 
 class PlansService {
   async getPlansByCreator(_creatorId) {
@@ -30,6 +31,7 @@ class PlansService {
       description: planData.description ?? null,
       discipline: planData.discipline ?? null,
     });
+    try { analyticsService.track('creator.nutrition_plan_created'); } catch {}
     return result?.data;
   }
 

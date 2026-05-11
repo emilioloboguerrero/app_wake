@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
+import analyticsService from './services/analyticsService';
 import Footer from './components/Footer';
 import Header from './components/Header';
 import SupportScreen from './screens/SupportScreen';
@@ -39,6 +40,12 @@ function StorefrontFallback() {
 
 function AppContent() {
   const location = useLocation();
+  const lastPath = React.useRef(null);
+  React.useEffect(() => {
+    if (location.pathname === lastPath.current) return;
+    lastPath.current = location.pathname;
+    analyticsService.screenViewed(location.pathname);
+  }, [location.pathname]);
 
   if (location.pathname === '/design') {
     return (
