@@ -31,8 +31,9 @@ const COURSE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 // Second-segment keywords the landing app routes to dedicated screens. A
 // course whose ID collides with one of these would be unreachable via the
 // public storefront URL (`/:username/:programId`), so refuse to serve or
-// sell them rather than 404-ing post-checkout.
-const RESERVED_COURSE_IDS = new Set(["comprado", "checkout", "auth"]);
+// sell them rather than 404-ing post-checkout. Keep this list minimal — only
+// real route collisions. Mirror apps/landing/src/App.jsx Route paths.
+const RESERVED_COURSE_IDS = new Set(["comprado"]);
 // MP preapproval IDs are short alphanumerics; assert the shape before using as a
 // Firestore doc ID so a malformed value can't traverse subcollection paths.
 const MP_RESULT_ID_RE = /^[A-Za-z0-9_-]{6,128}$/;

@@ -15,6 +15,10 @@ import { reportError as reportClientError } from './utils/errorReporter';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
+import analyticsService from './services/analyticsService';
+
+// Initialize analytics as early as possible (no-op when key missing or opted out).
+analyticsService.init();
 
 // Extra top padding for non-iOS so Mac/Android browser layout matches iOS (safe area is 0 there).
 const CONTENT_TOP_PADDING_NON_IOS = 0;
@@ -32,9 +36,32 @@ const getIsLoginPath = (basePath) => {
   return window.location.pathname === loginPath;
 };
 
+// /email-link consumes a Firebase email-link oobCode and signs the user in.
+// MUST bypass the install gate (shouldShowAppFlow) — the link is clicked from
+// the buyer's email client which opens in a regular browser, not the
+// installed PWA. If we let InstallScreen intercept, sign-in never happens.
+const getIsEmailLinkPath = (basePath) => {
+  if (typeof window === 'undefined') return false;
+  const emailLinkPath = basePath ? (basePath.replace(/\/$/, '') + '/email-link') : '/email-link';
+  return window.location.pathname === emailLinkPath;
+};
+
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
 const BrowserRouter = require('react-router-dom').BrowserRouter;
+const useLocation = require('react-router-dom').useLocation;
 const AuthProvider = require('./contexts/AuthContext').AuthProvider;
+
+// Session-level screen.viewed tracking. One event per route change.
+function AnalyticsScreenTracker() {
+  const location = useLocation();
+  const lastPath = React.useRef(null);
+  React.useEffect(() => {
+    if (location.pathname === lastPath.current) return;
+    lastPath.current = location.pathname;
+    analyticsService.screenViewed(location.pathname);
+  }, [location.pathname]);
+  return null;
+}
 const ActivityStreakProvider = require('./contexts/ActivityStreakContext').ActivityStreakProvider;
 const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
@@ -223,6 +250,7 @@ export default function App() {
   const fontsLoadedFromHook = useInterFontsWeb();
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
+  const isEmailLinkPath = getIsEmailLinkPath(webBasePath);
 
   // Determine final fonts loaded state (after hooks are called)
   // CRITICAL: Always use fontsLoadedFromHook to maintain consistent hook order
@@ -663,7 +691,17 @@ export default function App() {
   // Single AuthProvider for entire app so auth state persists when navigating from /login to /
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
-  if (!shouldShowAppFlow()) {
+  if (isEmailLinkPath) {
+    // Render through WebAppNavigator so the route-level handler picks up
+    // /email-link. Skips InstallScreen entirely (the user must be able to
+    // complete sign-in in their email-client's browser, not the PWA shell).
+    // WebAppNavigator is lazy-loaded by loadHeavyComponents; show the
+    // loading frame until it's ready rather than rendering undefined.
+    // The sync-load block above tries to require WebAppNavigator on every
+    // render, so on first paint it's usually defined; fall back to the
+    // loading frame only if both async and sync loads haven't finished.
+    content = WebAppNavigator ? <WebAppNavigator /> : loadingMarkup;
+  } else if (!shouldShowAppFlow()) {
     content = <InstallScreen />;
   } else if (isLoginPath) {
     content = <LoginScreen />;
@@ -736,6 +774,7 @@ export default function App() {
         <SafeAreaProvider initialMetrics={initialMetrics}>
           <AuthProvider>
             <ActivityStreakProvider>
+              <AnalyticsScreenTracker />
               <OfflineBanner />
               <FrozenBottomWrapper>
                 <View style={contentWrapperStyle}>
