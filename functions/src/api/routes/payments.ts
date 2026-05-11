@@ -702,6 +702,49 @@ router.post("/payments/webhook", async (req: Request, res) => {
       }
 
       await subRef.set(updateData, {merge: true});
+
+      // Trial-grant: when a free-trial preapproval becomes authorized, grant
+      // course access immediately so the user has the program during the
+      // trial window. The first real charge fires only after the trial,
+      // so without this the user has paid but sees no course. Idempotent —
+      // re-firing of the same webhook is a no-op once access exists.
+      const trialDays = Number(existingSubData.free_trial_days);
+      const courseIdForGrant =
+        typeof existingSubData.course_id === "string" ? existingSubData.course_id : "";
+      if (
+        preapprovalData?.status === "authorized" &&
+        trialDays > 0 &&
+        nextPaymentDate &&
+        courseIdForGrant
+      ) {
+        const userRef = db.collection("users").doc(parsed.userId);
+        const userDoc = await userRef.get();
+        const existing = (userDoc.data()?.courses?.[courseIdForGrant] ?? null) as
+          Record<string, unknown> | null;
+        const alreadyActive = existing?.status === "active" &&
+          typeof existing?.expires_at === "string" &&
+          new Date(existing.expires_at as string) > new Date();
+        if (!alreadyActive) {
+          const courseDoc = await db.collection("courses").doc(courseIdForGrant).get();
+          const course = (courseDoc.exists ? courseDoc.data() : {}) as Record<string, unknown>;
+          await userRef.update({
+            [`courses.${courseIdForGrant}`]: {
+              access_duration: course.access_duration ?? "monthly",
+              expires_at: nextPaymentDate,
+              status: "active",
+              is_trial: true,
+              purchased_at: new Date().toISOString(),
+              deliveryType: course.deliveryType ?? "low_ticket",
+              title: course.title ?? "Untitled Course",
+              image_url: course.image_url ?? null,
+              discipline: course.discipline ?? "General",
+              creatorName: course.creatorName ?? course.creator_name ?? null,
+              creator_id: course.creator_id ?? null,
+            },
+            updated_at: FieldValue.serverTimestamp(),
+          });
+        }
+      }
     } catch (err) {
       functions.logger.error("Error processing subscription_preapproval webhook", err);
     }
