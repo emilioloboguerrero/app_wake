@@ -1,5 +1,6 @@
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
+import analyticsService from './analyticsService';
 
 /**
  * Get today's readiness doc. Returns null if none logged yet.
@@ -24,7 +25,13 @@ export async function saveReadiness(userId, dateStr, { energy, soreness, sleep }
     soreness: Number(soreness),
     sleep: Number(sleep),
   };
-  return apiClient.put(`/progress/readiness/${dateStr}`, body);
+  const res = await apiClient.put(`/progress/readiness/${dateStr}`, body);
+  try {
+    analyticsService.track('progress.readiness_added', {
+      score: Math.round(((Number(energy) || 0) + (Number(sleep) || 0)) / 2),
+    });
+  } catch {}
+  return res;
 }
 
 /**

@@ -134,6 +134,12 @@ const PUBLIC_PATHS = [
   /^\/public\/creators\/[^/]+\/programs\/[^/]+$/, // GET /public/creators/:username/programs/:programId
   /^\/public\/storefront\/creators$/, // GET /public/storefront/creators
   /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
+  // MP webhook authenticates via HMAC signature, not Firebase token (the
+  // handler verifies x-signature / x-hmac-signature before doing any work).
+  // Without this entry, the auth middleware 401s the webhook before it ever
+  // reaches the signature check — MP does not retry 4xx, so every recurring
+  // charge would silently fail to grant access.
+  /^\/payments\/webhook$/,
 ];
 
 const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {

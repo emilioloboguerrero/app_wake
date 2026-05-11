@@ -978,6 +978,32 @@ router.post("/payments/webhook", async (req: Request, res) => {
     // Simplified model: subscriptions renew monthly, OTP grants 1 year.
     const accessDuration: string = isSubscription ? "monthly" : "yearly";
 
+    // Refresh preapproval's next_payment_date on each recurring charge so the
+    // local sub doc tracks MP truth (see matching block in the course renewal
+    // branch below for the full rationale).
+    let bundleRefreshedNextBilling: string | null = null;
+    let bundleRefreshedAmount: number | null = null;
+    let bundleRefreshedCurrency: string | null = null;
+    if (isSubscription && subscriptionId) {
+      try {
+        const client = getMPClient();
+        const preapproval = new PreApproval(client);
+        const pre = (await preapproval.get({id: subscriptionId})) as unknown as MercadoPagoPreapproval;
+        bundleRefreshedNextBilling =
+          pre?.next_payment_date ||
+          pre?.auto_recurring?.next_payment_date ||
+          null;
+        bundleRefreshedAmount = typeof pre?.auto_recurring?.transaction_amount === "number" ?
+          pre.auto_recurring.transaction_amount : null;
+        bundleRefreshedCurrency = typeof pre?.auto_recurring?.currency_id === "string" ?
+          pre.auto_recurring.currency_id : null;
+      } catch (err) {
+        functions.logger.warn("Failed to refresh preapproval on bundle renewal", {
+          subscriptionId, error: String(err),
+        });
+      }
+    }
+
     try {
       // Security (audit H-17): bundle grant + processed_payments finalization
       // run in a single runTransaction. Without this, a crash between the
@@ -996,20 +1022,24 @@ router.post("/payments/webhook", async (req: Request, res) => {
         });
 
         if (isSubscription && subscriptionId) {
+          const subUpdate: Record<string, unknown> = {
+            status: "authorized",
+            last_payment_id: paymentId,
+            last_payment_date:
+              paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+            transaction_amount: bundleRefreshedAmount ?? paymentData.transaction_amount ?? null,
+            currency_id: bundleRefreshedCurrency ?? paymentData.currency_id ?? null,
+            management_url:
+              `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
+            updated_at: FieldValue.serverTimestamp(),
+          };
+          if (bundleRefreshedNextBilling) {
+            subUpdate.next_billing_date = bundleRefreshedNextBilling;
+          }
           tx.set(
             db.collection("users").doc(userId)
               .collection("subscriptions").doc(subscriptionId),
-            {
-              status: "authorized",
-              last_payment_id: paymentId,
-              last_payment_date:
-                paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-              transaction_amount: paymentData.transaction_amount || null,
-              currency_id: paymentData.currency_id || null,
-              management_url:
-                `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
-              updated_at: FieldValue.serverTimestamp(),
-            },
+            subUpdate,
             {merge: true}
           );
         }
@@ -1103,8 +1133,40 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   // ── Renewal ─��
   if (isRenewal) {
+    // On a recurring charge, MP advances the preapproval's next_payment_date.
+    // Refetch it now so (a) local next_billing_date reflects MP truth and
+    // (b) expires_at extends to the actual next charge date rather than a
+    // stale value. Without this refresh, subscriptionNextBilling (read from
+    // the local doc above) is one cycle behind; the sanity check at L-1094
+    // either falls back to calculateExpirationDate (best case) or, if MP's
+    // old next_payment_date is still narrowly in the future, sets expires_at
+    // to a date that lapses within hours — locking the user out despite paying.
+    let refreshedNextBilling: string | null = null;
+    let refreshedAmount: number | null = null;
+    let refreshedCurrency: string | null = null;
+    if (isSubscription && subscriptionId) {
+      try {
+        const client = getMPClient();
+        const preapproval = new PreApproval(client);
+        const pre = (await preapproval.get({id: subscriptionId})) as unknown as MercadoPagoPreapproval;
+        refreshedNextBilling =
+          pre?.next_payment_date ||
+          pre?.auto_recurring?.next_payment_date ||
+          null;
+        refreshedAmount = typeof pre?.auto_recurring?.transaction_amount === "number" ?
+          pre.auto_recurring.transaction_amount : null;
+        refreshedCurrency = typeof pre?.auto_recurring?.currency_id === "string" ?
+          pre.auto_recurring.currency_id : null;
+      } catch (err) {
+        functions.logger.warn("Failed to refresh preapproval on renewal", {
+          subscriptionId, error: String(err),
+        });
+      }
+    }
+
     const currentExpiration = existingCourseData?.expires_at ?? undefined;
-    const expirationDate = subscriptionNextBilling ??
+    const expirationDate = refreshedNextBilling ??
+      subscriptionNextBilling ??
       calculateExpirationDate(courseAccessDuration, currentExpiration);
 
     // Security (audit H-15 / H-16): wrap renewal grant + subscription update +
@@ -1118,14 +1180,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
       });
 
       if (isSubscription && subscriptionId) {
+        const subUpdate: Record<string, unknown> = {
+          status: "authorized",
+          last_payment_id: paymentId,
+          last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+          updated_at: FieldValue.serverTimestamp(),
+        };
+        if (refreshedNextBilling) subUpdate.next_billing_date = refreshedNextBilling;
+        if (refreshedAmount !== null) subUpdate.transaction_amount = refreshedAmount;
+        if (refreshedCurrency !== null) subUpdate.currency_id = refreshedCurrency;
         tx.set(
           db.collection("users").doc(userId).collection("subscriptions").doc(subscriptionId),
-          {
-            status: "authorized",
-            last_payment_id: paymentId,
-            last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-            updated_at: FieldValue.serverTimestamp(),
-          },
+          subUpdate,
           {merge: true}
         );
       }
@@ -1214,6 +1280,12 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
       "SERVICE_UNAVAILABLE", 503,
       "No pudimos cancelar la suscripción en este momento. Inténtalo de nuevo."
     );
+  }
+  // "already_cancelled": return success silently — desired end state holds.
+  // Don't write a survey row for a redundant cancel.
+  if (cancelResult === "already_cancelled") {
+    res.json({data: {status: "cancelled"}});
+    return;
   }
 
   if (survey?.answers) {

@@ -2,6 +2,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
+import analyticsService from './analyticsService';
 
 const CHECKPOINT_DEBOUNCE_MS = 1500;
 const CHECKPOINT_MAX_WAIT_MS = 5000;
@@ -94,6 +95,14 @@ class SessionManager {
 
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
       this.#scheduleCheckpoint(sessionData);
+
+      try {
+        analyticsService.track('workout.session_started', {
+          course_id: courseId || null,
+          session_id: sessionId || null,
+        });
+      } catch {}
+
       return sessionData;
     } catch (error) {
       logger.error('❌ Error starting session:', error);

@@ -30,6 +30,7 @@
     "lodash": "^4.17.21",
     "lucide-react": "^0.577.0",
     "motion": "^12.38.0",
+    "posthog-js": "^1.205.0",
     "react": "^18.2.0",
     "react-country-state-city": "^1.1.12",
     "react-dom": "^18.2.0",

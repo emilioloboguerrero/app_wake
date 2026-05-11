@@ -1,6 +1,7 @@
 import apiClient from '../utils/apiClient';
 import apiService from './apiService';
 import logger from '../utils/logger';
+import analyticsService from './analyticsService';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
@@ -154,6 +155,14 @@ class PurchaseService {
    */
   async preparePurchase(userId, courseId, { accessDuration, payerEmail } = {}) {
     try {
+      try {
+        analyticsService.track('program.purchase_started', {
+          course_id: courseId || null,
+          access_duration: accessDuration || 'otp',
+          kind: 'course',
+        });
+      } catch {}
+
       if (accessDuration === "monthly") {
         return await this.prepareSubscription(userId, courseId, payerEmail || null);
       }
@@ -184,6 +193,13 @@ class PurchaseService {
    */
   async prepareBundlePurchase(bundleId) {
     try {
+      try {
+        analyticsService.track('program.purchase_started', {
+          bundle_id: bundleId || null,
+          access_duration: 'otp',
+          kind: 'bundle',
+        });
+      } catch {}
       const result = await apiClient.post('/payments/bundle-preference', { bundleId });
       const initPoint = result?.data?.init_point;
       if (!initPoint) throw new Error('Error creating bundle payment');
@@ -198,6 +214,13 @@ class PurchaseService {
    */
   async prepareBundleSubscription(bundleId, payerEmail) {
     try {
+      try {
+        analyticsService.track('program.purchase_started', {
+          bundle_id: bundleId || null,
+          access_duration: 'monthly',
+          kind: 'bundle',
+        });
+      } catch {}
       if (!payerEmail) {
         return {
           success: false,

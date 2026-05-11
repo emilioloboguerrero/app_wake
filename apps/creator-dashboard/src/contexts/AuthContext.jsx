@@ -5,6 +5,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import apiClient from '../utils/apiClient';
 import { queryKeys } from '../config/queryClient';
 import { ASSET_BASE } from '../config/assets';
+import analyticsService from '../services/analyticsService';
 import './AuthContext.css';
 
 const SHIMMER_DURATION = 2700;
@@ -84,6 +85,13 @@ export const AuthProvider = ({ children }) => {
           // Seed React Query cache so DashboardLayout and other consumers don't re-fetch
           queryClient.setQueryData(queryKeys.user.detail(firebaseUser.uid), data);
           setUserRole(data.role || 'user');
+          try {
+            analyticsService.identify(firebaseUser.uid, {
+              role: data.role || 'user',
+              onboarding_completed: !!data.onboardingCompleted,
+              profile_completed: !!data.profileCompleted,
+            });
+          } catch {}
           setWebOnboardingCompleted(data.webOnboardingCompleted ?? false);
           setProfileCompleted(data.profileCompleted ?? false);
           setOnboardingCompleted(data.onboardingCompleted ?? false);

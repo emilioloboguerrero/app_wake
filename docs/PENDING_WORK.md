@@ -1,109 +1,12 @@
 # Wake — Pending Work
 
-Last updated: 2026-05-05. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-05-10. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
 ## Status Key
 
 `NOT STARTED` · `IN PROGRESS` · `IMPLEMENTED — NOT TESTED` · `COMPLETED`
-
----
-
-## Conversion & Growth
-
-### 3b. Subscription Management Screen `NOT STARTED`
-
-In-app screen for users to view and manage their active subscription. Currently there is no visibility into subscription state inside the app.
-
-**Screen (`/app/subscription`, accessible from profile):**
-- Plan name, status (activo / cancelado / vencido), next billing date, amount
-- Cancelar button → confirmation modal → reason selector → API call → Firestore update
-
-**API needed:**
-- `GET /payments/subscription` — current subscription status
-- `POST /payments/subscription/cancel` — cancel with reason
-
-**Checklist:**
-- [ ] `GET /payments/subscription` endpoint
-- [ ] `POST /payments/subscription/cancel` endpoint
-- [ ] Subscription screen UI in PWA
-- [ ] Cancel flow (modal + reason selector)
-- [ ] Firestore update on cancel
-
----
-
-### 3e. Creator Public Buy Page `NOT STARTED`
-
-A public, no-login web page where prospects can purchase a creator's program directly — no PWA install, no signup wall in front of checkout. Today the only purchase path is inside the PWA after auth, which kills conversion from external traffic (IG bio links, ads, creator stories).
-
-**Surface:** new public route on the landing app — `/c/:creatorSlug` (creator storefront) and `/c/:creatorSlug/:programSlug` (program detail + buy). No auth required to view or initiate checkout.
-
-**Flow:**
-1. Visitor lands on program page (hero, description, what's included, price, creator credentials)
-2. Clicks "Comprar" → email + name capture (single short form, no password)
-3. `POST /payments/guest-checkout` creates a MercadoPago preference using the same `external_reference` format (`v1|{userId}|{courseId}|otp`), with `userId` resolved from the email — if no Firebase user exists, create one with a random password and flag `provisional: true`
-4. Redirect to MercadoPago
-5. Webhook completes purchase → grants course access on the provisional user, sends a "claim your account" email with a one-time magic link (Firebase `signInWithEmailLink`)
-6. User lands in PWA already authenticated, with the program already in their library
-
-**Open questions to resolve before build:**
-- Slug source: a new `slug` field on `users/{creatorId}` and `courses/{courseId}`, or use IDs? Slugs are better for SEO and shareability — recommend slugs with uniqueness validation
-- Existing-email collision: if email matches an existing user, skip provisional creation and send a "log in to complete" link instead
-- One-on-one programs: gated to logged-in flow only (creator needs to enroll manually)? Or also purchasable publicly with a follow-up onboarding step? Recommend low-ticket only for V1
-- MercadoPago `payer.email` is required — use the captured email
-
-**Data model changes:**
-- `users/{userId}` — add `slug` (creator only), `provisional: boolean` (true until magic link claimed)
-- `courses/{courseId}` — add `slug`, `publicListing: boolean` (default false; creator opts in per course)
-- New collection `magic_link_tokens/{token}` — `{ userId, expiresAt, used: boolean }` for first-claim flow
-
-**API:**
-- `GET /public/creators/:slug` — creator profile + listed programs (no auth)
-- `GET /public/creators/:slug/programs/:programSlug` — program detail (no auth)
-- `POST /payments/guest-checkout` — `{ email, name, programSlug, accessDuration }` → MercadoPago preference URL
-- `POST /auth/claim-account` — `{ token }` → returns Firebase custom token / sign-in link
-
-**Creator dashboard:**
-- New "Tienda" section: toggle `publicListing` per program, set slug, preview public URL, copy link
-- Storefront customization: hero image, bio, social links (reuse `users/{creatorId}` profile fields)
-
-**Checklist:**
-- [ ] Slug fields + uniqueness validation on creator + program
-- [ ] Public storefront route in landing app (`/c/:creatorSlug`)
-- [ ] Public program detail page with buy CTA
-- [ ] `POST /payments/guest-checkout` endpoint
-- [ ] Provisional user creation logic
-- [ ] Magic link claim flow + `magic_link_tokens` collection
-- [ ] Webhook handles provisional users (existing logic should already work — verify)
-- [ ] Claim-account email template (Resend)
-- [ ] Creator dashboard: storefront management screen
-- [ ] Creator dashboard: per-program publish toggle + URL preview
-- [ ] SEO: meta tags, OG image, sitemap entries for listed programs
-- [ ] Analytics events: `storefront.viewed`, `storefront.buy_clicked`, `guest_checkout.started`, `guest_checkout.completed`, `account.claimed`
-
----
-
-### 3c. Stripe Migration `DECISION PENDING`
-
-Potential future replacement of MercadoPago with Stripe for better subscription UX (Customer Portal, upgrade/downgrade, dunning). Not urgent — current MP flow works. Requires a business decision before any code.
-
-| Factor | MercadoPago | Stripe |
-|---|---|---|
-| Colombia coverage | Native, preferred by local banks | Available, less familiar |
-| Subscription management | All custom-built | Customer Portal out of the box |
-| Developer experience | Moderate | Excellent |
-| Migration effort | — | 2–3 weeks (new functions, webhook, keys) |
-
-**Prerequisites:** confirm Colombian user card acceptance on Stripe, decide parallel vs hard-cutover.
-
-**Checklist:**
-- [ ] Business decision made
-- [ ] Stripe account + Colombia configuration
-- [ ] Cloud Functions for Stripe checkout and webhook
-- [ ] Stripe Customer Portal integration
-- [ ] Migrate existing subscribers
-- [ ] Deprecate MercadoPago subscription functions (Gen1 + the dormant Gen2 routes both)
 
 ---
 
@@ -661,14 +564,11 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 
 | Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
 |---|---|---|---|---|---|
-| Creator Public Buy Page (3e) | 5 | 4 | 5 | 2 | **4.30** |
 | Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
 | PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
-| Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
 | Download Screen Refresh (5b) | 2 | 4 | 3 | 4 | **3.05** |
 | App-wide Optimization | 3 | 3 | 2 | 3 | **2.75** |
 | Creator Email Platform | 3 | 3 | 2 | 2 | **2.60** | Phase 0 (event broadcasts) API done |
-| Stripe Migration (3c) | 3 | 4 | 1 | 1 | **2.40** |
 | Platform Mapping (12) | 4 | 1 | 1 | 1 | **2.10** |
 | Feedback Board | 2 | 2 | 1 | 4 | **2.05** |
 | Third-party API | 2 | 1 | 1 | 3 | **1.65** |
@@ -680,22 +580,18 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
-2.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #1)
-3.  PostHog Analytics             — before driving traffic you need visibility
-4.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-5.  App-wide Optimization         — before cardio ships, clean the foundation
-6.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 3–5
-7.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
-8.  Creator Email Platform Ph.1   — unlocks creator marketing
-9.  Stripe Migration (3c)         — decision-dependent, not urgent
-10. Feedback Board                — until user base warrants it
-11. Third-party API               — premature at current user count
+1. Download Screen Refresh (5b)  — new intro video + optimize existing asset
+2. PostHog Analytics             — before driving traffic you need visibility
+3. App-wide Optimization         — before cardio ships, clean the foundation
+4. Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 2–3
+5. Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
+6. Creator Email Platform Ph.1   — unlocks creator marketing
+7. Feedback Board                — until user base warrants it
+8. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Creator Public Buy Page (#1)** and **Download Screen Refresh (#2)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
-- **Cardio V1 (#6)** is a long-track build. Start architecture and wearable OAuth research during items 3–5. GPS and provider flows take time to get right.
-- **Platform Mapping (#7)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
-- **Stripe Migration (#9)** is gated on a business decision — don't start until that decision is made.
-- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27. Platform Security Audit — completed 2026-05-03. PWA UI Redesign — completed 2026-05-05.
+- **Cardio V1 (#4)** is a long-track build. Start architecture and wearable OAuth research during items 2–3. GPS and provider flows take time to get right.
+- **Platform Mapping (#5)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27. Platform Security Audit — completed 2026-05-03. PWA UI Redesign — completed 2026-05-05. Subscription Management Screen (3b) — completed 2026-05-10. Creator Public Buy Page (3e) — completed 2026-05-10.
+- **Stripe Migration (3c):** removed from roadmap 2026-05-10 — staying on MercadoPago for the foreseeable future.

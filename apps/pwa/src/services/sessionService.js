@@ -5,6 +5,7 @@ import exerciseHistoryService from './exerciseHistoryService';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 import { queryClient } from '../config/queryClient';
+import analyticsService from './analyticsService';
 
 class SessionService {
   constructor() {
@@ -460,6 +461,15 @@ class SessionService {
       // immediately after completion.
       queryClient.invalidateQueries({ queryKey: ['preview', 'todaySession', userId] });
 
+      try {
+        analyticsService.track('workout.session_completed', {
+          course_id: actualSessionData.courseId || null,
+          duration_seconds: Math.round(Number(actualSessionData.duration) || 0),
+          sets_completed: stats?.totalSets || 0,
+          exercises_completed: stats?.exercisesCompleted ?? (actualSessionData.exercises?.length || 0),
+          had_pr: Array.isArray(personalRecords) && personalRecords.length > 0,
+        });
+      } catch {}
 
       return {
         sessionData: actualSessionData,

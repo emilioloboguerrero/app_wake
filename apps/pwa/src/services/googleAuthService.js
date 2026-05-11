@@ -7,6 +7,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
+import analyticsService from './analyticsService';
 
 // Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -67,10 +68,20 @@ class GoogleAuthService {
         const firebaseUser = userCredential.user;
         
         // Create or update user document (allows new users — no account required)
-        await this.createOrUpdateUserDocument(firebaseUser);
-        
-        return { 
-          success: true, 
+        const docResult = await this.createOrUpdateUserDocument(firebaseUser);
+
+        try {
+          if (firebaseUser?.uid) {
+            analyticsService.identify(firebaseUser.uid, {
+              email_domain: firebaseUser.email ? String(firebaseUser.email).split('@')[1] || null : null,
+            });
+          }
+          const isNew = docResult?.isNewUser === true;
+          analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', { method: 'google' });
+        } catch {}
+
+        return {
+          success: true,
           user: firebaseUser
         };
       } catch (error) {
@@ -134,13 +145,23 @@ class GoogleAuthService {
       const firebaseUser = userCredential.user;
       
       // Create or update user document (allows new users — no account required)
-      await this.createOrUpdateUserDocument(firebaseUser);
+      const docResult = await this.createOrUpdateUserDocument(firebaseUser);
 
-      return { 
-        success: true, 
+      try {
+        if (firebaseUser?.uid) {
+          analyticsService.identify(firebaseUser.uid, {
+            email_domain: firebaseUser.email ? String(firebaseUser.email).split('@')[1] || null : null,
+          });
+        }
+        const isNew = docResult?.isNewUser === true;
+        analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', { method: 'google' });
+      } catch {}
+
+      return {
+        success: true,
         user: firebaseUser
       };
-      
+
     } catch (error) {
       logger.error('Google Sign-In error:', error);
       
