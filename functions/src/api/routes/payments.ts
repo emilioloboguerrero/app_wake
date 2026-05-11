@@ -19,6 +19,7 @@ import {assignCourseToUser} from "../services/courseAssignment.js";
 import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
+import {capture as analyticsCapture} from "../../lib/analytics.js";
 
 const router = Router();
 
@@ -590,10 +591,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
     if (!ts || !sig || !requestId || !dataId) {
       signatureFailReason = "v2_missing_components";
     } else {
-      const tsMs = Number(ts) * 1000;
+      // MP sends ts in milliseconds since epoch (~13 digits at current dates).
+      // Older docs/examples show ts in seconds (10 digits); handle both so we
+      // don't blow the window if MP ever changes formats again.
+      const tsNum = Number(ts);
+      const tsMs = isNaN(tsNum) ? NaN : tsNum > 1e12 ? tsNum : tsNum * 1000;
       if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
         functions.logger.warn("Webhook signature: timestamp out of range", {
-          tsMs, nowMs: Date.now(), skewMs: Date.now() - tsMs,
+          tsRaw: ts, tsMs, nowMs: Date.now(), skewMs: Date.now() - tsMs,
         });
         res.status(403).json({
           error: {code: "FORBIDDEN", message: "Webhook timestamp expirado"},
@@ -1297,6 +1302,25 @@ router.post("/payments/webhook", async (req: Request, res) => {
       payment_type: paymentType, courseTitle, state: "completed",
     }, {merge: true});
   });
+
+  try {
+    analyticsCapture({
+      distinctId: userId,
+      event: "program.purchase_completed",
+      properties: {
+        course_id: courseId,
+        is_subscription: isSubscription,
+        is_renewal: false,
+        access_duration: courseAccessDuration,
+        delivery_type: courseDetails?.deliveryType || null,
+        amount: paymentData.transaction_amount || null,
+        currency: paymentData.currency_id || null,
+        payment_type: paymentType,
+      },
+    });
+  } catch {
+    // ignore — analytics is best-effort
+  }
 
   res.status(200).send("OK");
 });

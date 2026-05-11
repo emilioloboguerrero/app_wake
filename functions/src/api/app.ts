@@ -220,7 +220,11 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 
   let message = err instanceof Error ? err.message : String(err);
   if (message === "[object Object]") {
-    try { message = JSON.stringify(err); } catch { /* ignore */ }
+    try {
+      message = JSON.stringify(err);
+    } catch {
+      // ignore
+    }
   }
   const stack = err instanceof Error ? err.stack : undefined;
   const userId = req.auth?.userId ?? "anon";

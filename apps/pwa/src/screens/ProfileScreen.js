@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import analyticsService from '../services/analyticsService';
 import apiService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
@@ -511,6 +512,17 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     } catch (e) {
       logger.error('[Profile] readinessOptIn update failed', e);
       Alert.alert('Error', 'No se pudo guardar la preferencia.');
+    }
+  };
+
+  const [analyticsOptedOut, setAnalyticsOptedOut] = useState(() => analyticsService.isOptedOut());
+  const toggleAnalyticsOptOut = () => {
+    if (analyticsOptedOut) {
+      analyticsService.optIn();
+      setAnalyticsOptedOut(false);
+    } else {
+      analyticsService.optOut();
+      setAnalyticsOptedOut(true);
     }
   };
 
@@ -1104,6 +1116,24 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                     </View>
                     <View style={[styles.toggleTrack, readinessOptIn && styles.toggleTrackActive]}>
                       <View style={[styles.toggleThumb, readinessOptIn && styles.toggleThumbActive]} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <TouchableOpacity
+                    style={styles.toggleRow}
+                    onPress={toggleAnalyticsOptOut}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.toggleRowText}>
+                      <Text style={styles.toggleRowTitle}>Compartir uso anónimo</Text>
+                      <Text style={styles.toggleRowSubtitle}>
+                        Nos ayuda a mejorar Wake. Sin datos personales.
+                      </Text>
+                    </View>
+                    <View style={[styles.toggleTrack, !analyticsOptedOut && styles.toggleTrackActive]}>
+                      <View style={[styles.toggleThumb, !analyticsOptedOut && styles.toggleThumbActive]} />
                     </View>
                   </TouchableOpacity>
                 </View>

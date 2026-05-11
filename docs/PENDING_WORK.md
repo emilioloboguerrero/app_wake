@@ -84,9 +84,54 @@ Reduce Firestore read costs, bundle sizes, and initial load times across all app
 
 ## Analytics & Intelligence
 
-### 6. PostHog Analytics `NOT STARTED`
+### 6. PostHog Analytics `IMPLEMENTED — NOT TESTED`
 
-Full-scale product analytics. Goal: understand user behavior, feature usage, funnels, and retention to inform all future product decisions.
+All 5 layers shipped 2026-05-10 in one pass. Goal: behavior, usage, **cost per user/coach**, and optimization opportunities. Free-tier safe: session-level events only, server cost events sampled at 10% (5xx always captured).
+
+**What shipped:**
+
+| Layer | Where |
+|---|---|
+| 1 — Behavioral analytics | `apps/{pwa,creator-dashboard,landing}/src/services/analyticsService.js` |
+| 2 — Cost telemetry (server) | `functions/src/lib/analytics.ts` + `functions/src/api/middleware/analytics.ts` |
+| 3 — Performance (web vitals) | `capture_performance: { web_vitals: true }` in all 3 client services |
+| 4 — Multi-coach attribution | `functions/src/api/services/coachAttribution.ts` (10-min in-memory cache) |
+| 5 — Quota / sampling | Session-level events only, 10% API request sample, all cost events 100% |
+
+**Server emits (cost-attribution stamped with `primary_coach_id` + `coach_ids[]`):**
+- `api.request_completed` — sampled 10%, all 5xx — includes `route`, `method`, `status`, `duration_ms`, `fatsecret_calls`, `emails_sent`
+- `program.purchase_completed` — MercadoPago webhook (`functions/src/api/routes/payments.ts`)
+- `email.batch_sent` — `processEmailQueue` in `functions/src/index.ts`
+- `workout.session_abandoned` — `detectAbandonedSessions` cron
+
+**Client emits (PWA web, creator dashboard, landing):**
+- `screen.viewed` — one per route change via `useLocation` listener
+- `auth.login`, `auth.signup_completed`, `auth.logout` — email + google + apple in PWA; email in creator dashboard
+- `workout.session_started`, `workout.session_completed { sets_completed, exercises_completed, had_pr, duration_seconds }`
+- `program.purchase_started`
+- `onboarding.completed { primary_goal, training_experience, training_days_per_week, equipment }`
+- `progress.body_log_added`, `progress.readiness_added`
+- Creator: `creator.client_added`, `creator.program_created`, `creator.program_published`, `creator.nutrition_plan_created`, `creator.event_created`
+- `$web_vitals` — automatic per page
+
+**Multi-coach handling:** server resolves `coachIds[]` from `one_on_one_clients where clientId=userId` (for users) or trivially `[userId]` (for creators). PostHog person properties hydrated on identify (deduped 10 min per function instance) so client events inherit attribution via PostHog cohort filters.
+
+**Quota math:** at 1k DAU → ~10 screen.viewed + 2 workout + 1 progress + 1 auth + sampled api.request_completed ≈ 15–20 events/user/day → ~500k events/month. Free tier 1M comfortably accommodates 2× growth before hitting paid.
+
+**Secrets:** add `POSTHOG_API_KEY` to Firebase Secret Manager before deploy. Already bound in `api`, `processEmailQueue`, `detectAbandonedSessions` secret arrays. Client env vars: `EXPO_PUBLIC_POSTHOG_KEY` (PWA), `VITE_POSTHOG_KEY` (creator + landing). Service silently no-ops when key missing.
+
+**Privacy:** opt-out toggle in PWA `apps/pwa/src/screens/ProfileScreen.js` ("Compartir uso anónimo"). `localStorage.wake_analytics_opt_out=1` persists across sessions. `maskAllInputs: true` + `data-ph-no-capture` selector applied site-wide. Privacy policy update (Ley 1581 disclosure) still pending — coordinate with legal before flipping on production.
+
+**Pre-deploy checklist:**
+- [ ] Create PostHog project, copy project API key (client) and server API key
+- [ ] Bind `POSTHOG_API_KEY` secret in Firebase Secret Manager (production + staging)
+- [ ] Set `EXPO_PUBLIC_POSTHOG_KEY` in `apps/pwa/.env`
+- [ ] Set `VITE_POSTHOG_KEY` in `apps/creator-dashboard/.env` and `apps/landing/.env`
+- [ ] Update privacy policy with PostHog disclosure
+- [ ] Verify in PostHog live view: signup → onboarding → workout funnel
+- [ ] Build acquisition funnel + cost-per-coach cohort dashboards
+
+**Original spec retained below for reference:**
 
 **Locked decisions:**
 - `posthog-js` in all three apps (PWA, creator-dashboard, landing)

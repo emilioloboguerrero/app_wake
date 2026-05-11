@@ -46,6 +46,12 @@ const mercadopagoAccessToken = functions.params.defineSecret(
   "MERCADOPAGO_ACCESS_TOKEN"
 );
 
+// PostHog server-side analytics secret is pending creation in Firebase Secret
+// Manager. analytics.ts no-ops when POSTHOG_API_KEY is absent from the runtime
+// env, so leaving the secret unbound is safe. Re-add `posthogApiKeyV2` to the
+// affected functions' secrets[] arrays (api, processEmailQueue,
+// detectAbandonedSessions) after `firebase functions:secrets:set POSTHOG_API_KEY`.
+
 const fatSecretClientId = functions.params.defineSecret(
   "FATSECRET_CLIENT_ID"
 );
@@ -1433,6 +1439,23 @@ export const processEmailQueue = onSchedule(
         });
       }
 
+      if (sentThisTick > 0 && creatorId) {
+        try {
+          analyticsCapture({
+            distinctId: creatorId,
+            event: "email.batch_sent",
+            properties: {
+              send_id: sendDoc.id,
+              type: sendType,
+              count: sentThisTick,
+              failed: failedThisTick,
+            },
+          });
+        } catch {
+          // ignore — analytics is best-effort
+        }
+      }
+
       functions.logger.info("processEmailQueue: tick processed", {
         sendId: sendDoc.id,
         batches: batchesThisTick,
@@ -1441,6 +1464,7 @@ export const processEmailQueue = onSchedule(
         retried: retriedThisTick,
       });
     }
+    await flushAnalytics();
   }
 );
 
@@ -1478,7 +1502,6 @@ const fatSecretClientSecretV2 = defineSecret("FATSECRET_CLIENT_SECRET");
 const resendApiKeyV2 = defineSecret("RESEND_API_KEY");
 const mercadopagoAccessTokenV2 = defineSecret("MERCADOPAGO_ACCESS_TOKEN");
 const mercadopagoWebhookSecretV2 = defineSecret("MERCADOPAGO_WEBHOOK_SECRET");
-const posthogApiKeyV2 = defineSecret("POSTHOG_API_KEY");
 
 export const api = onRequest(
   {
@@ -1505,9 +1528,6 @@ export const api = onRequest(
       // throws if process.env.UNSUBSCRIBE_SECRET is absent. Without this
       // binding, every unsubscribe link returns "Enlace inválido" in prod.
       unsubscribeSecret,
-      // Cost/behavior telemetry — server-side PostHog. Optional: when the
-      // secret is unset the analytics module silently no-ops.
-      posthogApiKeyV2,
     ],
   },
   app
@@ -2191,7 +2211,6 @@ export const detectAbandonedSessions = onSchedule(
     region: "us-central1",
     timeoutSeconds: 300,
     memory: "256MiB",
-    secrets: [posthogApiKeyV2],
   },
   async () => {
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
@@ -2248,7 +2267,9 @@ export const detectAbandonedSessions = onSchedule(
             detected_by: "scheduled_scan",
           },
         });
-      } catch { /* ignore */ }
+      } catch {
+        // ignore — analytics is best-effort
+      }
 
       batch.delete(doc.ref);
       count++;
