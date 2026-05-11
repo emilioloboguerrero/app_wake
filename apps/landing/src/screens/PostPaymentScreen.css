@@ -121,10 +121,52 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+.pp-email-block {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  text-align: left;
+}
+
 .pp-email-note {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.65);
   margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.pp-email-block .pp-email-note:last-child {
+  margin-bottom: 0;
+}
+
+.pp-email-note strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+.pp-spam-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.pp-spam-note strong {
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 600;
+}
+
+.pp-inline-link {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+
+.pp-inline-link:hover {
+  color: #ffffff;
+  text-decoration-color: rgba(255, 255, 255, 0.6);
 }
 
 .pp-help {

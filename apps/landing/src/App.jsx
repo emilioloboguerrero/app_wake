@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from '
 import Footer from './components/Footer';
 import Header from './components/Header';
 import SupportScreen from './screens/SupportScreen';
+import AccessRecoveryScreen from './screens/AccessRecoveryScreen';
 import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
 import CreadoresLandingScreen from './screens/CreadoresLandingScreen';
 import StorefrontScreen from './screens/StorefrontScreen';
@@ -29,7 +30,7 @@ const RESERVED_TOP_LEVEL_PATHS = new Set([
   // Brand / future routes that the SPA must never treat as a username.
   'wake', 'wakelab', 'about', 'precios', 'pricing',
   'tienda', 'store', 'shop', 'athletes', 'atletas', 'biblioteca', 'library',
-  'lab', 'comprar', 'gracias', 'cancelar',
+  'lab', 'comprar', 'gracias', 'cancelar', 'acceso',
 ]);
 
 function StorefrontFallback() {
@@ -133,6 +134,7 @@ function AppContent() {
       <main className="main-content">
         <Routes>
           <Route path="/support" element={<SupportScreen />} />
+          <Route path="/acceso" element={<AccessRecoveryScreen />} />
           <Route path="/legal" element={<LegalDocumentsScreen />} />
           <Route path="/landing" element={<Navigate to="/" replace />} />
           <Route path="/landing/*" element={<LandingPathRedirect />} />

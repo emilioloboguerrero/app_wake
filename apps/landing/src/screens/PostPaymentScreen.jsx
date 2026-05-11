@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { LandingFooter } from './ShowcaseLandingScreen';
 import { subscribeAuthState } from '../services/storefrontAuthService';
 import { getCreatorProgram } from '../services/creatorStorefrontService';
 import { getCheckoutStatus } from '../services/storefrontCheckoutService';
+import { requestMagicLink } from '../services/magicLinkService';
 import { getDownloadUrl, getDownloadLabel } from '../utils/smartDownload';
 import './PostPaymentScreen.css';
 
@@ -52,6 +53,11 @@ export default function PostPaymentScreen() {
   // grant access until the first charge webhook lands, which can take hours,
   // so we keep the existing "primer cobro pendiente" copy for that path.
   const [accessState, setAccessState] = useState('idle');
+  // Magic-link email send state — fires once when we know who the buyer is
+  // and either access is confirmed or this is a subscription (subs grant
+  // access async; we don't wait).
+  const [magicLinkState, setMagicLinkState] = useState('idle'); // idle | sending | sent | failed
+  const magicLinkFiredRef = useRef(false);
 
   // Subscribe to auth state — `auth.currentUser` is null until Firebase
   // restores the session asynchronously after a hard reload.
@@ -120,6 +126,26 @@ export default function PostPaymentScreen() {
       if (timer) clearTimeout(timer);
     };
   }, [user, courseId, isSubscription, isRejected]);
+
+  // Send the buyer a magic-link email so they can always get back to their
+  // account from anywhere. Fires exactly once per page load, only when we
+  // have a confirmed buyer email AND either access has been confirmed
+  // (one-time approved) or this is an authorized subscription. Failure here
+  // is non-blocking — the user can always request a new link at /acceso.
+  useEffect(() => {
+    if (magicLinkFiredRef.current) return;
+    if (!userEmail) return;
+    const shouldSend =
+      (accessState === 'active') ||
+      (isSubscription && !isRejected) ||
+      (isApprovedParam && !isRejected);
+    if (!shouldSend) return;
+    magicLinkFiredRef.current = true;
+    setMagicLinkState('sending');
+    requestMagicLink(userEmail).then((r) => {
+      setMagicLinkState(r.success ? 'sent' : 'failed');
+    });
+  }, [userEmail, accessState, isSubscription, isRejected, isApprovedParam]);
 
   const downloadUrl = getDownloadUrl();
   const downloadLabel = getDownloadLabel();
@@ -242,7 +268,22 @@ export default function PostPaymentScreen() {
         )}
 
         {!isRejected && !isIncompleteFinal && userEmail ? (
-          <p className="pp-email-note">Te enviamos los detalles a {userEmail}.</p>
+          <div className="pp-email-block">
+            <p className="pp-email-note">
+              Te enviamos un enlace de acceso a <strong>{userEmail}</strong>.
+              {' '}Guardálo — tu correo es tu llave a la cuenta.
+            </p>
+            <p className="pp-spam-note">
+              ¿No lo ves en unos minutos? Revisá <strong>spam</strong> o{' '}
+              <strong>promociones</strong>. Si lo perdés, podés pedir uno nuevo en{' '}
+              <Link to="/acceso" className="pp-inline-link">wakelab.co/acceso</Link>.
+            </p>
+          </div>
+        ) : !isRejected && !isIncompleteFinal ? (
+          <p className="pp-email-note">
+            Si perdés acceso, podés recuperarlo con tu correo en{' '}
+            <Link to="/acceso" className="pp-inline-link">wakelab.co/acceso</Link>.
+          </p>
         ) : null}
 
         <p className="pp-help">

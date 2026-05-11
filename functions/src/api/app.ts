@@ -23,6 +23,7 @@ import emailRouter from "./routes/email.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 import bundlesRouter from "./routes/bundles.js";
 import publicRouter from "./routes/public.js";
+import authRouter from "./routes/auth.js";
 
 export const app = express();
 
@@ -132,6 +133,7 @@ const PUBLIC_PATHS = [
   /^\/public\/creators\/[^/]+$/, // GET /public/creators/:username
   /^\/public\/creators\/[^/]+\/programs\/[^/]+$/, // GET /public/creators/:username/programs/:programId
   /^\/public\/storefront\/creators$/, // GET /public/storefront/creators
+  /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
 ];
 
 const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
@@ -178,6 +180,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, enrollmentsRouter);
   app.use(prefix, bundlesRouter);
   app.use(prefix, publicRouter);
+  app.use(prefix, authRouter);
 }
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────

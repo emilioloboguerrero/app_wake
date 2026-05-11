@@ -1,0 +1,159 @@
+.access-recovery-screen {
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.ar-card {
+  width: 100%;
+  max-width: 440px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 40px 32px;
+}
+
+.ar-icon {
+  width: 64px;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 auto 24px;
+}
+
+.ar-title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  text-align: center;
+  margin: 0 0 14px;
+  color: #ffffff;
+}
+
+.ar-message {
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+  margin: 0 0 24px;
+}
+
+.ar-spam-note {
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+  margin: 0 0 24px;
+}
+
+.ar-spam-note strong {
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+}
+
+.ar-link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.ar-link-button:hover {
+  color: #ffffff;
+}
+
+.ar-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ar-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.2px;
+}
+
+.ar-input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #ffffff;
+  font-size: 15px;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 200ms ease, background-color 200ms ease;
+}
+
+.ar-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.ar-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ar-submit {
+  width: 100%;
+  background: #ffffff;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.ar-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.ar-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ar-error {
+  font-size: 13px;
+  color: #ff6b6b;
+  margin: 4px 0 0;
+}
+
+.ar-help {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  margin: 0;
+}
+
+.ar-help a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+}
+
+.ar-help a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}
