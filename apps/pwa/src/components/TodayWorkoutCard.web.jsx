@@ -6,6 +6,7 @@
 // Tap front -> flip to back. Tap back (not on action) -> flip to front.
 // Tap Begin -> /warmup. Tap on an expired card -> renew flow (onRenew handler).
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
@@ -146,6 +147,23 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.28)',
     zIndex: 2,
   },
+  manageLink: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    padding: '8px 14px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 12,
+    fontWeight: 500,
+    border: '1px solid rgba(255,255,255,0.18)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    zIndex: 3,
+  },
   dateChip: {
     position: 'absolute',
     top: 16,
@@ -257,9 +275,16 @@ const styles = {
 
 const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, selectedDate, onBegin, onRenew }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const courseId = course?.courseId || course?.id;
   const programTitle = course?.title || '';
   const isTrial = course?.is_trial === true;
+  const trialDaysLeft = useMemo(() => {
+    if (!isTrial || !course?.expires_at) return null;
+    const t = new Date(course.expires_at).getTime();
+    if (!Number.isFinite(t)) return null;
+    return Math.max(0, Math.ceil((t - Date.now()) / (24 * 60 * 60 * 1000)));
+  }, [isTrial, course?.expires_at]);
 
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -396,7 +421,27 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
               <span style={styles.title}>{headlineTitle}</span>
             </div>
             {isExpired ? <div style={styles.expiredBadge}>Expirado</div> : null}
-            {!isToday ? <div style={styles.dateChip}>{dateLabel}</div> : isTrial ? <div style={styles.trialBadge}>Prueba</div> : null}
+            {!isToday ? (
+              <div style={styles.dateChip}>{dateLabel}</div>
+            ) : isTrial ? (
+              <div style={styles.trialBadge}>
+                {trialDaysLeft != null
+                  ? `Prueba · ${trialDaysLeft} ${trialDaysLeft === 1 ? 'día' : 'días'}`
+                  : 'Prueba'}
+              </div>
+            ) : null}
+            {isTrial && !isExpired && courseId ? (
+              <button
+                type="button"
+                style={styles.manageLink}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/library/manage/${courseId}`);
+                }}
+              >
+                Gestionar suscripción
+              </button>
+            ) : null}
             {downloadStatus === 'updating' ? (
               <div style={styles.statusPill}>Actualizando</div>
             ) : downloadStatus === 'failed' ? (

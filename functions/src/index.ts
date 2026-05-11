@@ -45,6 +45,13 @@ import {
 } from "./api/middleware/securityHelpers.js";
 import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
 import {
+  sendTrialActivatedEmail,
+  sendSubscriptionStartedEmail,
+  sendChargeReceiptEmail,
+  sendCancellationEmail,
+  sendOneTimePurchaseEmail,
+} from "./api/services/purchaseEmails.js";
+import {
   escapeHtml as sharedEscapeHtml,
   generateUnsubscribeToken,
   reserveEmailBudget,
@@ -803,6 +810,34 @@ export const processPaymentWebhook = functions
             updateData.status
           );
 
+          // ── Transactional email: cancellation confirmation ──
+          // Sent exactly once when the preapproval transitions to cancelled
+          // (either user-initiated or MP-initiated). Idempotent via the
+          // cancellation_email_sent_at flag on the subscription doc.
+          if (
+            preapprovalData?.status === "cancelled" &&
+            !existingSubData.cancellation_email_sent_at &&
+            existingSubData.payer_email &&
+            existingSubData.course_id &&
+            typeof existingSubData.course_id === "string"
+          ) {
+            const existingCourse = (await db
+              .collection("users").doc(parsedReference.userId).get()).data()?.courses?.[existingSubData.course_id];
+            const accessUntil = (existingCourse?.expires_at as string | undefined) ||
+              nextPaymentDate || new Date().toISOString();
+            const sent = await sendCancellationEmail({
+              to: existingSubData.payer_email as string,
+              programTitle: (existingSubData.course_title as string) || "tu programa",
+              courseId: existingSubData.course_id,
+              accessUntil,
+            });
+            if (sent) {
+              await subscriptionRef.set({
+                cancellation_email_sent_at: admin.firestore.FieldValue.serverTimestamp(),
+              }, {merge: true});
+            }
+          }
+
           // Trial-grant: when a free-trial preapproval becomes authorized,
           // grant course access immediately so the user has the program
           // during the trial window. The first real charge fires only
@@ -847,6 +882,49 @@ export const processPaymentWebhook = functions
                 "Trial course access granted:",
                 {userId: parsedReference.userId, courseId: courseIdForGrant, expires_at: nextPaymentDate}
               );
+            }
+          }
+
+          // ── Transactional email: welcome (trial or paid subscription) ──
+          // Sent exactly once when the preapproval transitions to authorized.
+          // Idempotent via the welcome_email_sent_at flag.
+          if (
+            preapprovalData?.status === "authorized" &&
+            !existingSubData.welcome_email_sent_at &&
+            existingSubData.payer_email &&
+            existingSubData.course_id &&
+            typeof existingSubData.course_id === "string" &&
+            nextPaymentDate
+          ) {
+            const txAmount = Number(
+              preapprovalData?.auto_recurring?.transaction_amount ||
+              existingSubData.transaction_amount
+            );
+            const currency = (preapprovalData?.auto_recurring?.currency_id as string) ||
+              (existingSubData.currency_id as string) || "COP";
+            const programTitle = (existingSubData.course_title as string) || "tu programa";
+            const sent = trialDays > 0
+              ? await sendTrialActivatedEmail({
+                to: existingSubData.payer_email as string,
+                programTitle,
+                courseId: existingSubData.course_id,
+                trialDays,
+                trialEndDate: nextPaymentDate,
+                transactionAmount: txAmount,
+                currencyId: currency,
+              })
+              : await sendSubscriptionStartedEmail({
+                to: existingSubData.payer_email as string,
+                programTitle,
+                courseId: existingSubData.course_id,
+                nextBillingDate: nextPaymentDate,
+                transactionAmount: txAmount,
+                currencyId: currency,
+              });
+            if (sent) {
+              await subscriptionRef.set({
+                welcome_email_sent_at: admin.firestore.FieldValue.serverTimestamp(),
+              }, {merge: true});
             }
           }
         } catch (preapprovalError) {
@@ -1453,6 +1531,20 @@ export const processPaymentWebhook = functions
           });
         });
 
+        // Transactional email: charge receipt (fired once per renewal,
+        // protected by the runTransaction idempotency on processedPaymentsRef).
+        if (userEmail) {
+          await sendChargeReceiptEmail({
+            to: userEmail,
+            programTitle: courseTitle,
+            courseId,
+            amount: Number(paymentData.transaction_amount) || 0,
+            currencyId: (paymentData.currency_id as string) || "COP",
+            chargeDate: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+            nextBillingDate: subscriptionNextBilling,
+          });
+        }
+
         response.status(200).send("OK");
         return;
       }
@@ -1519,6 +1611,21 @@ export const processPaymentWebhook = functions
           {merge: true}
         );
       });
+
+      // Transactional email after the new-purchase write. For subscriptions
+      // the welcome email already fires from the subscription_preapproval
+      // handler when status transitions to authorized — we don't re-send here
+      // to avoid duplicates. One-time purchases get their own receipt.
+      if (!isSubscription && userEmail) {
+        await sendOneTimePurchaseEmail({
+          to: userEmail,
+          programTitle: courseTitle,
+          courseId,
+          amount: Number(paymentData.transaction_amount) || 0,
+          currencyId: (paymentData.currency_id as string) || "COP",
+          accessUntil: expirationDate,
+        });
+      }
 
       response.status(200).send("OK");
     } catch (error: unknown) {

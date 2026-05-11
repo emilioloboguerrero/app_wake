@@ -18,6 +18,8 @@ import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web'
 import SubscriptionsScreen from '../screens/SubscriptionsScreen.web';
 // Import ProgramLibraryScreen directly (not lazy) - using web wrapper for React Router navigation
 import ProgramLibraryScreen from '../screens/ProgramLibraryScreen.web';
+// Per-program subscription management
+import ProgramSubscriptionScreen from '../screens/ProgramSubscriptionScreen.web.jsx';
 // Import workout-related screens directly to avoid Metro "unknown module" errors with lazy chunks on web
 import DailyWorkoutScreen from '../screens/DailyWorkoutScreen.web';
 import WorkoutExecutionScreen from '../screens/WorkoutExecutionScreen.web';
@@ -504,6 +506,15 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             {React.createElement(withErrorBoundary(ProgramLibraryScreen, 'ProgramLibrary'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/library/manage/:courseId"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(ProgramSubscriptionScreen, 'ProgramSubscription'))}
           </AuthenticatedLayout>
         }
       />
