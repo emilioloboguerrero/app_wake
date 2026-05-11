@@ -46,11 +46,10 @@ const mercadopagoAccessToken = functions.params.defineSecret(
   "MERCADOPAGO_ACCESS_TOKEN"
 );
 
-// PostHog server-side analytics secret is pending creation in Firebase Secret
-// Manager. analytics.ts no-ops when POSTHOG_API_KEY is absent from the runtime
-// env, so leaving the secret unbound is safe. Re-add `posthogApiKeyV2` to the
-// affected functions' secrets[] arrays (api, processEmailQueue,
-// detectAbandonedSessions) after `firebase functions:secrets:set POSTHOG_API_KEY`.
+// PostHog server-side analytics. Declared near the top because
+// processEmailQueue references it before the other *V2 secret declarations
+// further down. `const` is not hoisted; declaration order matters.
+const posthogApiKeyV2 = defineSecret("POSTHOG_API_KEY");
 
 const fatSecretClientId = functions.params.defineSecret(
   "FATSECRET_CLIENT_ID"
@@ -1227,7 +1226,7 @@ export const processEmailQueue = onSchedule(
     // batched retries + Resend's own backoff still drain queues promptly.
     schedule: "every 5 minutes",
     region: "us-central1",
-    secrets: [resendApiKey, unsubscribeSecret],
+    secrets: [resendApiKey, unsubscribeSecret, posthogApiKeyV2],
     memory: "256MiB",
     timeoutSeconds: 120,
   },
@@ -1528,6 +1527,9 @@ export const api = onRequest(
       // throws if process.env.UNSUBSCRIBE_SECRET is absent. Without this
       // binding, every unsubscribe link returns "Enlace inválido" in prod.
       unsubscribeSecret,
+      // Cost/behavior telemetry — server-side PostHog. Optional: when the
+      // secret is unset the analytics module silently no-ops.
+      posthogApiKeyV2,
     ],
   },
   app
@@ -2211,6 +2213,7 @@ export const detectAbandonedSessions = onSchedule(
     region: "us-central1",
     timeoutSeconds: 300,
     memory: "256MiB",
+    secrets: [posthogApiKeyV2],
   },
   async () => {
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
