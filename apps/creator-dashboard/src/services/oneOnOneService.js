@@ -1,4 +1,5 @@
 import apiClient from '../utils/apiClient';
+import analyticsService from './analyticsService';
 
 class OneOnOneService {
   async lookupUserByEmailOrUsername(emailOrUsername) {
@@ -22,11 +23,13 @@ class OneOnOneService {
     const res = await apiClient.post('/creator/clients', {
       userId: clientUserId,
     });
+    try { analyticsService.track('creator.client_added', { method: 'direct' }); } catch {}
     return res.data;
   }
 
   async addClientByEmail(email) {
     const res = await apiClient.post('/creator/clients/invite', { email });
+    try { analyticsService.track('creator.client_added', { method: 'invite' }); } catch {}
     return res.data;
   }
 
