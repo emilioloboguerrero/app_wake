@@ -427,7 +427,12 @@ export default function CreatorProgramDetailScreen() {
             >
               <span className="cpd-cta-label">Reservar llamada</span>
             </button>
-          ) : (
+          ) : needsAltEmail ? null : (
+            // Hide the primary CTAs while the alt-email form is showing. Both
+            // buttons remained visible and clickable, so a user could re-fire
+            // a subscription attempt with the wrong email and loop the same
+            // MP rejection. The alt-email form below is the only valid next
+            // step until it succeeds or the user resets the flow.
             <div className="cpd-ctas">
               {hasSubscription ? (
                 <button
@@ -501,6 +506,19 @@ export default function CreatorProgramDetailScreen() {
                 <span className="cpd-cta-label">
                   {busyMode !== null ? 'Procesando…' : 'Continuar'}
                 </span>
+              </button>
+              <button
+                type="button"
+                className="cpd-alt-email-cancel"
+                onClick={() => {
+                  setNeedsAltEmail(false);
+                  setAltEmail('');
+                  setCheckoutError(null);
+                  setPendingMode(null);
+                }}
+                disabled={busyMode !== null}
+              >
+                Cancelar
               </button>
             </form>
           ) : null}

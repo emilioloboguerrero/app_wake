@@ -105,6 +105,9 @@ function buildCourseEntry(
       image_url: existing.image_url ?? courseData.image_url ?? null,
       discipline: existing.discipline ?? courseData.discipline ?? "General",
       creatorName: existing.creatorName ?? courseData.creatorName ?? courseData.creator_name ?? null,
+      // Persist creator_id so the PWA's Hoy screen doesn't have to re-fetch
+      // it per-course at every load (useCoursesEnriched workaround).
+      creator_id: existing.creator_id ?? courseData.creator_id ?? null,
       completedTutorials: existing.completedTutorials ?? {
         dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [],
       },
@@ -121,6 +124,7 @@ function buildCourseEntry(
     image_url: courseData.image_url ?? null,
     discipline: courseData.discipline ?? "General",
     creatorName: courseData.creatorName ?? courseData.creator_name ?? null,
+    creator_id: courseData.creator_id ?? null,
     completedTutorials: {
       dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [],
     },

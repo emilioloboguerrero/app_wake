@@ -4,6 +4,13 @@
 // you'll receive a link" message regardless of outcome.
 
 const REQUEST_TIMEOUT_MS = 15_000;
+// Firebase's signInWithEmailLink REQUIRES the email be passed back in to
+// match the address the oobCode was generated for. We stash it here so the
+// /email-link handler in the PWA can read it without re-prompting the user
+// (or losing them to a "we don't know who you are" detour). Key is shared
+// with apps/pwa/src/screens/EmailLinkSignInScreen.web.jsx — do not rename
+// without updating both sides.
+const STORAGE_KEY = 'wake_email_for_sign_in';
 
 export async function requestMagicLink(email) {
   const trimmed = (email || '').trim().toLowerCase();
@@ -29,6 +36,12 @@ export async function requestMagicLink(email) {
         return { success: false, error: 'Esperá un momento antes de pedir otro enlace.' };
       }
       return { success: false, error: 'No pudimos enviar el enlace. Intentalo de nuevo.' };
+    }
+    try {
+      window.localStorage.setItem(STORAGE_KEY, trimmed);
+    } catch {
+      // Private mode or quota issues — the /email-link screen will prompt
+      // for the email instead. Not worth surfacing to the user here.
     }
     return { success: true };
   } catch (err) {

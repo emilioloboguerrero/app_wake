@@ -158,6 +158,34 @@
   font-weight: 600;
 }
 
+.pp-fallback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pp-fallback-input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.pp-fallback-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.pp-fallback-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  margin: 0;
+}
+
 .pp-inline-link {
   color: rgba(255, 255, 255, 0.85);
   text-decoration: underline;

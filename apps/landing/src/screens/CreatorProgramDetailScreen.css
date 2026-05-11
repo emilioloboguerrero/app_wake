@@ -386,6 +386,27 @@
   border-color: var(--cpd-accent-line);
 }
 
+.cpd-alt-email-cancel {
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px;
+  transition: color 150ms ease;
+}
+
+.cpd-alt-email-cancel:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cpd-alt-email-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Creator row ───────────────────────────────────────────────────────── */
 .cpd-creator-row {
   padding-top: 20px;

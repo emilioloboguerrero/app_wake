@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import {Resend} from "resend";
 import {validateBody} from "../middleware/validate.js";
-import {checkRateLimit} from "../middleware/rateLimit.js";
+import {checkRateLimit, checkIpRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 
 const router = Router();
@@ -16,6 +16,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // user in (creating the auth user if none exists for this email) and redirects
 // to /app/library. Always returns success to prevent email enumeration.
 router.post("/auth/request-magic-link", async (req, res) => {
+  // IP rate limit comes BEFORE body parse so an attacker iterating emails
+  // can't bypass it by varying the body. 20 req/min/IP is generous for
+  // honest users (a person retrying through "Pedir otro" couldn't realistically
+  // exceed it) but kneecaps a script trying to enumerate or spam-create
+  // Firebase Auth users via this endpoint. Per-email cap below still applies.
+  await checkIpRateLimit(req, 20);
+
   const {email} = validateBody<{ email: string }>(
     {email: "string"},
     req.body
@@ -60,7 +67,14 @@ router.post("/auth/request-magic-link", async (req, res) => {
   let link: string;
   try {
     link = await admin.auth().generateSignInWithEmailLink(trimmed, {
-      url: "https://wakelab.co/app/library",
+      // The destination page MUST call signInWithEmailLink to actually
+      // consume the oobCode — Firebase's default action handler only covers
+      // password reset / email verification, not passwordless sign-in.
+      // handleCodeInApp:true tells Firebase to redirect straight to this URL
+      // with the oobCode embedded; the PWA's /email-link screen finishes
+      // the sign-in. Without this, the email-link silently does nothing.
+      url: "https://wakelab.co/app/email-link",
+      handleCodeInApp: true,
     });
   } catch (err) {
     functions.logger.error("generateSignInWithEmailLink failed", err);

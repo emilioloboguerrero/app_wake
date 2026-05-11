@@ -10,6 +10,7 @@ import LoadingScreen from '../screens/LoadingScreen';
 // Use mobile components with web wrappers
 // These wrappers provide React Router navigation to the mobile components
 import LoginScreen from '../screens/LoginScreen.web';
+import EmailLinkSignInScreen from '../screens/EmailLinkSignInScreen.web.jsx';
 import HoyScreen from '../screens/HoyScreen.web.jsx';
 import ProfileScreen from '../screens/ProfileScreen.web.jsx';
 // Import AllPurchasedCoursesScreen directly (not lazy) to avoid hook order issues with fonts.js
@@ -433,7 +434,20 @@ const NutritionRouteWrapper = () => {
 const WebAppNavigator = () => {
   const location = useLocation();
   const isLoginRoute = location.pathname === '/login';
+  // /email-link consumes a one-shot oobCode in the URL — must run outside
+  // the auth-required layout (the user is signed out at the moment they land
+  // here, by definition) and must not redirect even if a different session
+  // is already active (the link could be intended to switch accounts).
+  const isEmailLinkRoute = location.pathname === '/email-link';
   const { user, loading } = useAuth();
+
+  if (isEmailLinkRoute) {
+    return (
+      <Routes>
+        <Route path="/email-link" element={<EmailLinkSignInScreen />} />
+      </Routes>
+    );
+  }
 
   if (isLoginRoute) {
     if (!loading && user) {

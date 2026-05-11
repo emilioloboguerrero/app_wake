@@ -28,6 +28,11 @@ const router = Router();
 
 const USERNAME_RE = /^[a-z0-9_-]{1,50}$/;
 const COURSE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// Second-segment keywords the landing app routes to dedicated screens. A
+// course whose ID collides with one of these would be unreachable via the
+// public storefront URL (`/:username/:programId`), so refuse to serve or
+// sell them rather than 404-ing post-checkout.
+const RESERVED_COURSE_IDS = new Set(["comprado", "checkout", "auth"]);
 // MP preapproval IDs are short alphanumerics; assert the shape before using as a
 // Firestore doc ID so a malformed value can't traverse subcollection paths.
 const MP_RESULT_ID_RE = /^[A-Za-z0-9_-]{6,128}$/;
@@ -240,9 +245,9 @@ router.get(
     const usernameParam = req.params.username || "";
     const programId = req.params.programId || "";
 
-    if (!COURSE_ID_RE.test(programId)) {
+    if (!COURSE_ID_RE.test(programId) || RESERVED_COURSE_IDS.has(programId)) {
       // Use the same 404 message as a missing program — never reveal that the
-      // ID was malformed vs nonexistent.
+      // ID was malformed vs nonexistent vs reserved.
       throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
     }
 
@@ -425,7 +430,7 @@ router.post("/public/checkout/start", async (req, res) => {
   if (!USERNAME_RE.test(username)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "username inválido", "username");
   }
-  if (!COURSE_ID_RE.test(body.courseId)) {
+  if (!COURSE_ID_RE.test(body.courseId) || RESERVED_COURSE_IDS.has(body.courseId)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
   }
   if (body.mode !== "one_time" && body.mode !== "subscription") {
@@ -516,12 +521,18 @@ router.post("/public/checkout/start", async (req, res) => {
   const bootstrapDisplayName = auth.displayName ?? null;
   const userDocSeed: Record<string, unknown> = {
     email: buyerEmail,
-    acquiredVia: "creator_storefront",
-    acquisitionCreator: creatorLookup.userId,
-    acquisitionCourse: body.courseId,
-    onboardingDeferred: true,
     updated_at: FieldValue.serverTimestamp(),
   };
+  // Acquisition attribution is first-touch only — retries (or buying a
+  // second program later) must not overwrite where the user originally came
+  // from. Set on first attempt, then never again.
+  const existingUserData = existingUserDoc.data() ?? {};
+  if (!existingUserData.acquiredVia) {
+    userDocSeed.acquiredVia = "creator_storefront";
+    userDocSeed.acquisitionCreator = creatorLookup.userId;
+    userDocSeed.acquisitionCourse = body.courseId;
+    userDocSeed.onboardingDeferred = true;
+  }
   // Only seed displayName/role/created_at if the user doc didn't exist before
   // — never overwrite an existing displayName the user may have edited.
   if (!existingUserDoc.exists) {

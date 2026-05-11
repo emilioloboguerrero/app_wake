@@ -58,11 +58,25 @@ export default function PostPaymentScreen() {
   // access async; we don't wait).
   const [magicLinkState, setMagicLinkState] = useState('idle'); // idle | sending | sent | failed
   const magicLinkFiredRef = useRef(false);
+  // Firebase restores persisted auth asynchronously; until the first
+  // onAuthStateChanged fires we don't know whether the user is signed in
+  // or signed out. Without this, a slow auth restore looks identical to a
+  // signed-out user and we'd render the wrong fallback.
+  const [authResolved, setAuthResolved] = useState(false);
+  // Signed-out fallback: lets the buyer request a magic link from here when
+  // their session didn't restore after the MP redirect (cross-origin cookie
+  // loss, new browser profile, etc.). Reuses /acceso's flow inline.
+  const [fallbackEmail, setFallbackEmail] = useState('');
+  const [fallbackState, setFallbackState] = useState('idle'); // idle | sending | sent | error
+  const [fallbackError, setFallbackError] = useState('');
 
   // Subscribe to auth state — `auth.currentUser` is null until Firebase
   // restores the session asynchronously after a hard reload.
   useEffect(() => {
-    const unsubscribe = subscribeAuthState((u) => setUser(u || null));
+    const unsubscribe = subscribeAuthState((u) => {
+      setUser(u || null);
+      setAuthResolved(true);
+    });
     return () => unsubscribe?.();
   }, []);
 
@@ -215,8 +229,8 @@ export default function PostPaymentScreen() {
         ) : showWaitingForFirstCharge ? (
           <p className="pp-message">
             Autorizamos tu suscripción. Mercado Pago hará el primer cobro en
-            las próximas horas y te notificaremos por correo. Mientras tanto,
-            puedes empezar a usar tu programa.
+            las próximas horas. En cuanto se confirme te avisamos por correo
+            y vas a poder abrir tu programa en Wake.
           </p>
         ) : isIncompleteFinal ? (
           <p className="pp-message">
@@ -247,11 +261,22 @@ export default function PostPaymentScreen() {
           </p>
         )}
 
-        {!isRejected && !isIncompleteFinal ? (
+        {!isRejected && !isIncompleteFinal && !showWaitingForFirstCharge ? (
           <div className="pp-actions">
             <a href={downloadUrl} className="pp-cta pp-cta-primary">
               {downloadLabel}
             </a>
+          </div>
+        ) : showWaitingForFirstCharge ? (
+          // The subscription is authorized but course access is granted only
+          // when the first charge webhook lands (can take hours). Pointing
+          // users to /app right now drops them in an empty library — show
+          // the recovery path instead so they can come back via email when
+          // the program is ready.
+          <div className="pp-actions">
+            <Link to="/acceso" className="pp-cta pp-cta-primary">
+              Entrar con mi correo
+            </Link>
           </div>
         ) : (
           <div className="pp-actions">
@@ -278,6 +303,70 @@ export default function PostPaymentScreen() {
               <strong>promociones</strong>. Si lo perdés, podés pedir uno nuevo en{' '}
               <Link to="/acceso" className="pp-inline-link">wakelab.co/acceso</Link>.
             </p>
+          </div>
+        ) : !isRejected && !isIncompleteFinal && authResolved && !user ? (
+          // Session didn't restore after the MP redirect (cross-origin cookie
+          // loss is the usual culprit). We can't poll for access without a
+          // user, so give them a way to get a magic link without bouncing
+          // out to /acceso — the success page should always end with the
+          // buyer holding the key to their account.
+          <div className="pp-email-block">
+            {fallbackState === 'sent' ? (
+              <p className="pp-email-note">
+                Te enviamos un enlace a <strong>{fallbackEmail}</strong>. Revisá
+                tu correo (mirá <strong>spam</strong> también) para entrar.
+              </p>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const trimmed = fallbackEmail.trim().toLowerCase();
+                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+                    setFallbackError('Ingresa un correo válido.');
+                    setFallbackState('error');
+                    return;
+                  }
+                  setFallbackState('sending');
+                  setFallbackError('');
+                  const r = await requestMagicLink(trimmed);
+                  if (r.success) {
+                    setFallbackState('sent');
+                  } else {
+                    setFallbackError(r.error || 'No pudimos enviar el enlace.');
+                    setFallbackState('error');
+                  }
+                }}
+                className="pp-fallback-form"
+              >
+                <p className="pp-email-note">
+                  Para entrar a tu cuenta, ingresá el correo que usaste al comprar.
+                  Te enviamos un enlace de acceso.
+                </p>
+                <input
+                  type="email"
+                  className="pp-fallback-input"
+                  value={fallbackEmail}
+                  onChange={(e) => {
+                    setFallbackEmail(e.target.value);
+                    if (fallbackState === 'error') setFallbackState('idle');
+                  }}
+                  placeholder="tu@correo.com"
+                  autoComplete="email"
+                  required
+                  disabled={fallbackState === 'sending'}
+                />
+                {fallbackState === 'error' && fallbackError ? (
+                  <p className="pp-fallback-error">{fallbackError}</p>
+                ) : null}
+                <button
+                  type="submit"
+                  className="pp-cta pp-cta-primary"
+                  disabled={fallbackState === 'sending' || !fallbackEmail}
+                >
+                  {fallbackState === 'sending' ? 'Enviando…' : 'Enviarme el enlace'}
+                </button>
+              </form>
+            )}
           </div>
         ) : !isRejected && !isIncompleteFinal ? (
           <p className="pp-email-note">
