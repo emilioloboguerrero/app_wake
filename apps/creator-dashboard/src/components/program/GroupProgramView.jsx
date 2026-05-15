@@ -178,6 +178,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     await editor.saveField({ free_trial: { active, duration_days: days } });
   }, [freeTrialDays, editor]);
 
+  // ── Monthly drops (memory/project_monthly_drops.md) ──────────
+  // Cohort-synced calendar-anchored content. Cron flips the live block on the
+  // first Monday of every month. Felipe opts a program in here; per-module
+  // block_index/published_at are set elsewhere (sortable module card / detail).
+  const cadenceActive = program?.block_cadence === 'monthly_first_monday';
+
+  const handleCadenceToggle = useCallback(async (active) => {
+    await editor.saveField({ block_cadence: active ? 'monthly_first_monday' : null });
+  }, [editor]);
+
   // ── Image handler wrapper (handles mediaPickerContext) ────────
   const handleMediaPickerSelect = useCallback(async (item) => {
     if (mediaPickerContext === 'program') {
@@ -470,6 +480,31 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                       </>
                     )}
                   </div>
+                </BentoCard>
+
+                {/* Bloques mensuales (monthly drops) */}
+                <BentoCard className="gp-config__card">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <h3>Bloques mensuales</h3>
+                  <div className="gp-trial">
+                    <button
+                      type="button"
+                      className={`gp-trial__toggle ${cadenceActive ? 'gp-trial__toggle--active' : ''}`}
+                      onClick={() => handleCadenceToggle(!cadenceActive)}
+                    >
+                      <span className="gp-trial__toggle-dot" />
+                      <span>{cadenceActive ? 'Activos' : 'Inactivos'}</span>
+                    </button>
+                  </div>
+                  {cadenceActive ? (
+                    <p className="gp-config__hint">
+                      Se desbloquea un nuevo bloque el primer lunes de cada mes para todos tus suscriptores.
+                    </p>
+                  ) : (
+                    <p className="gp-config__hint">
+                      Programas mensuales que se renuevan solos. Activa para que tus suscriptores reciban un bloque nuevo cada primer lunes.
+                    </p>
+                  )}
                 </BentoCard>
 
                 {/* Weight suggestions */}

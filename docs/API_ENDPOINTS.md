@@ -1191,6 +1191,7 @@ Read the currently-unlocked block (module) for a `block_cadence: 'monthly_first_
 - `locked: true` is returned when `users/{uid}.courses[courseId].expires_at` is in the past or absent (creator/admin always unlocked).
 - When `locked: true`, `block` is null but `expires_at` is still surfaced so the PWA can show the resubscribe CTA with context.
 - `next_block_index` lets the client show "block 4 of …" UI hints; sourced from `program_state/{courseId}.next_block_index`.
+- `block_index` mirrors `module.order` — there is no separate `block_index` field on modules. The endpoint exposes it under the `block_index` name for the client's stability.
 
 **Errors:** `NOT_FOUND` (course missing)
 

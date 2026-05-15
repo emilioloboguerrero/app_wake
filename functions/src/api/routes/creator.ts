@@ -7893,26 +7893,16 @@ router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) 
     throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
   }
 
-  // block_index / unlocks_at / published_at are monthly-drop fields
-  // (memory/project_monthly_drops.md). They're set per module by the
-  // creator and read by the monthlyDropAdvance cron and the PWA gate.
+  // unlocks_at + published_at are monthly-drop fields
+  // (memory/project_monthly_drops.md). published_at is the gate the cron
+  // filters by — unset means the cron skips that module. order is the
+  // existing module ordinal and doubles as the block index.
   const updates = pickFields(req.body, [
     "title", "order",
-    "block_index", "unlocks_at", "published_at",
+    "unlocks_at", "published_at",
   ]);
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
-  }
-
-  if (updates.block_index !== undefined && updates.block_index !== null) {
-    const bi = updates.block_index;
-    if (typeof bi !== "number" || !Number.isInteger(bi) || bi < 1) {
-      throw new WakeApiServerError(
-        "VALIDATION_ERROR", 400,
-        "block_index debe ser un entero mayor o igual a 1",
-        "block_index"
-      );
-    }
   }
 
   // unlocks_at / published_at accepted as ISO strings (converted to

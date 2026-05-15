@@ -504,7 +504,7 @@ router.get("/workout/daily", async (req, res) => {
         .get();
 
       // For `block_cadence: 'monthly_first_monday'` courses, hide modules with
-      // `block_index > current_block_index`. Today's session pick will never
+      // `order > current_block_index`. Today's session pick will never
       // land on a future block. When `current_block_index` is null (cron not
       // fired or no block published), no sessions are available.
       const cadence = course.block_cadence as string | undefined;
@@ -516,8 +516,8 @@ router.get("/workout/daily", async (req, res) => {
         const filteredDocs = currentBlockIndex === null ?
           [] :
           allModulesSnap.docs.filter((d) => {
-            const bi = d.data().block_index;
-            return typeof bi !== "number" || bi <= currentBlockIndex;
+            const ord = d.data().order;
+            return typeof ord !== "number" || ord <= currentBlockIndex;
           });
         modulesSnap = {empty: filteredDocs.length === 0, docs: filteredDocs};
       } else {
@@ -2460,7 +2460,7 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     .limit(MAX_MODULES_PER_COURSE)
     .get();
 
-  // Monthly-drop cadence: hide modules with block_index > current_block_index.
+  // Monthly-drop cadence: hide modules with order > current_block_index.
   // Creators and admins see everything for authoring. If `current_block_index`
   // is null (cron hasn't fired or no block published yet), non-creators see
   // nothing — never leak future content.
@@ -2474,8 +2474,8 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
       visibleModules = [];
     } else {
       visibleModules = modulesSnap.docs.filter((d) => {
-        const bi = d.data().block_index;
-        return typeof bi !== "number" || bi <= currentBlockIndex;
+        const ord = d.data().order;
+        return typeof ord !== "number" || ord <= currentBlockIndex;
       });
     }
   }
@@ -2626,7 +2626,7 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
       expires_at: expiresAtIso,
       block: {
         moduleId: moduleDoc.id,
-        block_index: moduleData.block_index ?? currentBlockIndex,
+        block_index: moduleData.order ?? currentBlockIndex,
         title: moduleData.title ?? null,
         unlocks_at: moduleData.unlocks_at ?? null,
         sessions,

@@ -71,3 +71,43 @@
   line-height: 1.5;
   margin: 0;
 }
+
+/* Monthly-drops chip on each module card. Toggles the module's `published_at`
+ * timestamp — the cron only advances to modules where this is set. */
+.module-block-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin-top: 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.module-block-chip:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+.module-block-chip:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.module-block-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.module-block-chip--draft {
+  color: rgba(255, 255, 255, 0.5);
+}
+.module-block-chip--published {
+  color: rgba(120, 220, 160, 0.95);
+  border-color: rgba(120, 220, 160, 0.25);
+  background: rgba(120, 220, 160, 0.08);
+}

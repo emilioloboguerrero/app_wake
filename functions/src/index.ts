@@ -2498,7 +2498,7 @@ export const reconcileSubscriptions = onSchedule(
 // Calendar-anchored content drops for `block_cadence: 'monthly_first_monday'`
 // courses. On the first Monday of each month at 00:00 America/Bogota, advance
 // `program_state/{courseId}.current_block_id` to the next module with
-// `published_at != null` and a higher `block_index`. Denormalizes the new
+// `published_at != null` and a higher `order`. Denormalizes the new
 // block onto the course doc so PWA fast-path reads stay single-doc.
 //
 // If no next published module exists, emits a signals alert (Felipe forgot to
@@ -2507,7 +2507,7 @@ export const reconcileSubscriptions = onSchedule(
 // Required Firestore schema (documented in
 // memory/project_monthly_drops.md):
 //   courses/{id}:                block_cadence, current_block_id, current_block_index
-//   courses/{id}/modules/{id}:   block_index (number), unlocks_at (Timestamp),
+//   courses/{id}/modules/{id}:   order (number), unlocks_at (Timestamp),
 //                                published_at (Timestamp | null)
 //   program_state/{courseId}:    current_block_id, current_block_index,
 //                                current_block_started_at, next_block_id,
@@ -2540,13 +2540,13 @@ async function advanceMonthlyDropCourse(
     state.current_block_index :
     0;
 
-  // One server-side inequality (block_index) + orderBy on that field is the
+  // One server-side inequality (order) + orderBy on that field is the
   // simplest Firestore-safe query. Filter unpublished modules client-side.
   // Programs have ~12 blocks, so fetching the upcoming slice is cheap.
   const forwardSnap = await courseRef
     .collection("modules")
-    .where("block_index", ">", currentBlockIndex)
-    .orderBy("block_index", "asc")
+    .where("order", ">", currentBlockIndex)
+    .orderBy("order", "asc")
     .limit(10)
     .get();
 
@@ -2570,11 +2570,11 @@ async function advanceMonthlyDropCourse(
 
   const advanceDoc = published[0];
   const advanceData = advanceDoc.data();
-  const newIndex = advanceData.block_index as number;
+  const newIndex = advanceData.order as number;
   const lookahead = published[1];
   const nextBlockId = lookahead ? lookahead.id : null;
   const nextBlockIndex = lookahead ?
-    (lookahead.data().block_index as number) :
+    (lookahead.data().order as number) :
     null;
 
   const now = admin.firestore.FieldValue.serverTimestamp();
@@ -2734,7 +2734,7 @@ export const monthlyDropAdvance = onSchedule(
 );
 
 // Day-25 nudge. For each `monthly_first_monday` course, check whether the
-// module with `block_index = current_block_index + 1` exists and has
+// module with `order = current_block_index + 1` exists and has
 // `published_at` set. If not, alert in signals so the creator has roughly
 // a week to publish before the next first-Monday cron.
 
@@ -2766,7 +2766,7 @@ export const monthlyDropReadinessCheck = onSchedule(
       const currentIndex = typeof data.current_block_index === "number" ? data.current_block_index : 0;
       const nextSnap = await doc.ref
         .collection("modules")
-        .where("block_index", "==", currentIndex + 1)
+        .where("order", "==", currentIndex + 1)
         .limit(1)
         .get();
       const nextDoc = nextSnap.docs[0];
