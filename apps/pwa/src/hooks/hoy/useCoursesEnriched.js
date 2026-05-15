@@ -11,6 +11,9 @@
 //     is taken at purchase time and never refreshes; reading from the API means
 //     a renamed program / re-uploaded image / rotated download token is reflected
 //     immediately for everyone.
+//   - block_cadence, current_block_id, current_block_index → monthly-drop
+//     subscription model (see memory/project_monthly_drops.md). Hoy + the
+//     workout walker branch on cadence to gate the live block.
 //
 // This hook does NOT block consumers on enrichment. It returns courses immediately
 // with whatever enriched fields are currently cached; missing fields fill in as the
@@ -47,6 +50,9 @@ export function useCoursesEnriched(courses) {
         title: apiData?.title ?? c.title ?? '',
         creatorName: apiData?.creatorName ?? c.creatorName ?? null,
         video_intro_url: apiData?.video_intro_url ?? c.video_intro_url ?? null,
+        block_cadence: apiData?.block_cadence ?? null,
+        current_block_id: apiData?.current_block_id ?? null,
+        current_block_index: typeof apiData?.current_block_index === 'number' ? apiData.current_block_index : null,
       };
     }),
   };

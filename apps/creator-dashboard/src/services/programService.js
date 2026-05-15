@@ -130,6 +130,18 @@ class ProgramService {
     );
   }
 
+  // Generic module field updater. Server allowlist permits:
+  //   title, order, block_index, unlocks_at (ISO), published_at (ISO | null)
+  // Used by the Bloques editor for monthly-drop programs
+  // (memory/project_monthly_drops.md).
+  async updateModule(programId, moduleId, updates) {
+    const res = await apiClient.patch(
+      `/creator/programs/${programId}/modules/${moduleId}`,
+      updates
+    );
+    return res.data;
+  }
+
   async getSessionsByModule(programId, moduleId) {
     const res = await apiClient.get(`/creator/programs/${programId}/modules/${moduleId}/sessions`);
     return res.data;

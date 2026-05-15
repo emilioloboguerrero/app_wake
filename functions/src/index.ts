@@ -23,7 +23,7 @@ import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
 import {handleGithubWebhook} from "./ops/githubWebhook.js";
-import {parseTopicMap} from "./ops/telegram.js";
+import {parseTopicMap, sendTo} from "./ops/telegram.js";
 import {
   getClient as sharedGetClient,
   toErrorMessage as sharedToErrorMessage,
@@ -2493,6 +2493,144 @@ export const reconcileSubscriptions = onSchedule(
   }
 );
 
+// ─── Scheduled: monthly-drop block advance ───────────────────────────────
+//
+// Calendar-anchored content drops for `block_cadence: 'monthly_first_monday'`
+// courses. On the first Monday of each month at 00:00 America/Bogota, advance
+// `program_state/{courseId}.current_block_id` to the next module with
+// `published_at != null` and a higher `block_index`. Denormalizes the new
+// block onto the course doc so PWA fast-path reads stay single-doc.
+//
+// If no next published module exists, emits a signals alert (Felipe forgot to
+// publish). The advance is idempotent — re-runs in the same window are no-ops.
+//
+// Required Firestore schema (documented in
+// memory/project_monthly_drops.md):
+//   courses/{id}:                block_cadence, current_block_id, current_block_index
+//   courses/{id}/modules/{id}:   block_index (number), unlocks_at (Timestamp),
+//                                published_at (Timestamp | null)
+//   program_state/{courseId}:    current_block_id, current_block_index,
+//                                current_block_started_at, next_block_id,
+//                                next_block_index, updated_at
+//
+// Secrets and `readTopics()` are declared further down in the "Wake ops"
+// section; the cron registrations live below that block.
+
+function isFirstMondayOfMonth(d: Date): boolean {
+  // Day-of-month must be 1–7 AND weekday must be Monday. Cron already runs
+  // on Mondays only, so the weekday check is belt-and-suspenders.
+  return d.getDate() <= 7 && d.getDay() === 1;
+}
+
+async function advanceMonthlyDropCourse(
+  courseRef: admin.firestore.DocumentReference,
+  signalsCtx: {botToken: string; chatId: string; topics: import("./ops/telegram.js").TopicMap} | null
+): Promise<{
+  courseId: string;
+  outcome: "advanced" | "no_next_published" | "no_modules" | "already_current";
+  fromBlock: number;
+  toBlock: number | null;
+  toModuleId: string | null;
+}> {
+  const courseId = courseRef.id;
+  const stateRef = db.collection("program_state").doc(courseId);
+  const stateSnap = await stateRef.get();
+  const state = stateSnap.exists ? stateSnap.data() ?? {} : {};
+  const currentBlockIndex = typeof state.current_block_index === "number" ?
+    state.current_block_index :
+    0;
+
+  // One server-side inequality (block_index) + orderBy on that field is the
+  // simplest Firestore-safe query. Filter unpublished modules client-side.
+  // Programs have ~12 blocks, so fetching the upcoming slice is cheap.
+  const forwardSnap = await courseRef
+    .collection("modules")
+    .where("block_index", ">", currentBlockIndex)
+    .orderBy("block_index", "asc")
+    .limit(10)
+    .get();
+
+  const published = forwardSnap.docs.filter((d) => {
+    const p = d.data().published_at;
+    return p !== null && p !== undefined;
+  });
+
+  if (published.length === 0) {
+    if (currentBlockIndex === 0 && forwardSnap.empty) {
+      return {courseId, outcome: "no_modules", fromBlock: 0, toBlock: null, toModuleId: null};
+    }
+    return {
+      courseId,
+      outcome: "no_next_published",
+      fromBlock: currentBlockIndex,
+      toBlock: null,
+      toModuleId: null,
+    };
+  }
+
+  const advanceDoc = published[0];
+  const advanceData = advanceDoc.data();
+  const newIndex = advanceData.block_index as number;
+  const lookahead = published[1];
+  const nextBlockId = lookahead ? lookahead.id : null;
+  const nextBlockIndex = lookahead ?
+    (lookahead.data().block_index as number) :
+    null;
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  await stateRef.set(
+    {
+      current_block_id: advanceDoc.id,
+      current_block_index: newIndex,
+      current_block_started_at: now,
+      next_block_id: nextBlockId,
+      next_block_index: nextBlockIndex,
+      updated_at: now,
+    },
+    {merge: true}
+  );
+  await courseRef.set(
+    {current_block_id: advanceDoc.id, current_block_index: newIndex, updated_at: now},
+    {merge: true}
+  );
+
+  functions.logger.info("monthlyDropAdvance: advanced", {
+    courseId,
+    from: currentBlockIndex,
+    to: newIndex,
+    moduleId: advanceDoc.id,
+  });
+
+  if (signalsCtx) {
+    try {
+      await sendTo(
+        signalsCtx,
+        "signals",
+        `[monthly-drops] ${courseId}: block ${currentBlockIndex} → ${newIndex} ` +
+          `("${advanceData.title ?? advanceDoc.id}")` +
+          (nextBlockId ? ` · next queued: ${nextBlockIndex}` : " · no next block queued")
+      );
+    } catch (err) {
+      functions.logger.warn("monthlyDropAdvance: signals send failed", {
+        courseId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return {
+    courseId,
+    outcome: "advanced",
+    fromBlock: currentBlockIndex,
+    toBlock: newIndex,
+    toModuleId: advanceDoc.id,
+  };
+}
+
+// Cron registrations are placed below the Wake-ops secret declarations so
+// that `telegramSignalsBotToken`, `telegramChatId`, `telegramTopics`, and
+// `readTopics()` are in scope.
+
 // ─── Wake ops: secrets ─────────────────────────────────────────────────────
 const telegramSignalsBotToken = defineSecret("TELEGRAM_SIGNALS_BOT_TOKEN");
 const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
@@ -2513,6 +2651,144 @@ function readTopics(): import("./ops/telegram.js").TopicMap {
   // Lazy import to keep this file cheap; parseTopicMap is pure.
   return parseTopicMap(telegramTopics.value());
 }
+
+// ─── Monthly-drop cron registrations ──────────────────────────────────────
+// Helper functions `isFirstMondayOfMonth` and `advanceMonthlyDropCourse` are
+// declared earlier in this file; secrets and `readTopics()` are right above.
+
+export const monthlyDropAdvance = onSchedule(
+  {
+    schedule: "every monday 00:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
+    memory: "256MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    // Cron triggers every Monday; gate to the first Monday of the month.
+    const nowInBogota = new Date(
+      new Date().toLocaleString("en-US", {timeZone: "America/Bogota"})
+    );
+    if (!isFirstMondayOfMonth(nowInBogota)) {
+      functions.logger.info("monthlyDropAdvance: not first Monday of month, skipping");
+      return;
+    }
+
+    const coursesSnap = await db
+      .collection("courses")
+      .where("block_cadence", "==", "monthly_first_monday")
+      .get();
+
+    if (coursesSnap.empty) {
+      functions.logger.info("monthlyDropAdvance: no monthly-drop courses configured");
+      return;
+    }
+
+    const signalsCtx = telegramSignalsBotToken.value() && telegramChatId.value() ?
+      {
+        botToken: telegramSignalsBotToken.value(),
+        chatId: telegramChatId.value(),
+        topics: readTopics(),
+      } :
+      null;
+
+    const results: Array<Awaited<ReturnType<typeof advanceMonthlyDropCourse>>> = [];
+    for (const doc of coursesSnap.docs) {
+      try {
+        results.push(await advanceMonthlyDropCourse(doc.ref, signalsCtx));
+      } catch (err) {
+        functions.logger.error("monthlyDropAdvance: course advance failed", {
+          courseId: doc.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        if (signalsCtx) {
+          try {
+            await sendTo(
+              signalsCtx,
+              "signals",
+              `[monthly-drops] ${doc.id}: advance FAILED — ${err instanceof Error ? err.message : String(err)}`
+            );
+          } catch {
+            // already-degraded path; logging above is sufficient
+          }
+        }
+      }
+    }
+
+    if (signalsCtx) {
+      const stuck = results.filter((r) => r.outcome === "no_next_published");
+      for (const s of stuck) {
+        try {
+          await sendTo(
+            signalsCtx,
+            "signals",
+            `[monthly-drops] ${s.courseId}: ALERT — no next published block (current=${s.fromBlock}). Creator needs to publish.`
+          );
+        } catch {
+          // best-effort
+        }
+      }
+    }
+  }
+);
+
+// Day-25 nudge. For each `monthly_first_monday` course, check whether the
+// module with `block_index = current_block_index + 1` exists and has
+// `published_at` set. If not, alert in signals so the creator has roughly
+// a week to publish before the next first-Monday cron.
+
+export const monthlyDropReadinessCheck = onSchedule(
+  {
+    schedule: "0 14 25 * *",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
+    memory: "256MiB",
+    timeoutSeconds: 60,
+  },
+  async () => {
+    const coursesSnap = await db
+      .collection("courses")
+      .where("block_cadence", "==", "monthly_first_monday")
+      .get();
+    if (coursesSnap.empty) return;
+
+    const ctx = {
+      botToken: telegramSignalsBotToken.value(),
+      chatId: telegramChatId.value(),
+      topics: readTopics(),
+    };
+    if (!ctx.botToken || !ctx.chatId) return;
+
+    for (const doc of coursesSnap.docs) {
+      const data = doc.data() ?? {};
+      const currentIndex = typeof data.current_block_index === "number" ? data.current_block_index : 0;
+      const nextSnap = await doc.ref
+        .collection("modules")
+        .where("block_index", "==", currentIndex + 1)
+        .limit(1)
+        .get();
+      const nextDoc = nextSnap.docs[0];
+      const readyAt = nextDoc?.data()?.published_at ?? null;
+      if (readyAt) continue;
+
+      try {
+        await sendTo(
+          ctx,
+          "signals",
+          `[monthly-drops] ${doc.id}: next block (index ${currentIndex + 1}) NOT ready yet. ` +
+            "First Monday of next month is ~10 days out."
+        );
+      } catch (err) {
+        functions.logger.warn("monthlyDropReadinessCheck: signal failed", {
+          courseId: doc.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+);
 
 // ─── Scheduled: wake ops daily pulse (logs + payments + client errors + quota) ──
 export const wakeDailyPulseCron = onSchedule(

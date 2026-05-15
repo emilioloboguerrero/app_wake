@@ -1553,8 +1553,24 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     "creatorName", "weight_suggestions", "free_trial", "duration",
     "video_intro_url", "tutorials", "availableLibraries", "content_plan_id",
     "compare_at_price", "visibility", "bundleOnly",
+    // Monthly-drop cadence (memory/project_monthly_drops.md). Only the
+    // creator can opt a program into cadence; current_block_id /
+    // current_block_index are written exclusively by the
+    // `monthlyDropAdvance` cron — not exposed for client write here.
+    "block_cadence",
   ];
   const updates = pickFields(req.body, allowedFields);
+
+  if (updates.block_cadence !== undefined) {
+    const v = updates.block_cadence;
+    if (v !== null && v !== "monthly_first_monday") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "block_cadence debe ser 'monthly_first_monday' o null",
+        "block_cadence"
+      );
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
@@ -7877,9 +7893,45 @@ router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) 
     throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
   }
 
-  const updates = pickFields(req.body, ["title", "order"]);
+  // block_index / unlocks_at / published_at are monthly-drop fields
+  // (memory/project_monthly_drops.md). They're set per module by the
+  // creator and read by the monthlyDropAdvance cron and the PWA gate.
+  const updates = pickFields(req.body, [
+    "title", "order",
+    "block_index", "unlocks_at", "published_at",
+  ]);
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  if (updates.block_index !== undefined && updates.block_index !== null) {
+    const bi = updates.block_index;
+    if (typeof bi !== "number" || !Number.isInteger(bi) || bi < 1) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "block_index debe ser un entero mayor o igual a 1",
+        "block_index"
+      );
+    }
+  }
+
+  // unlocks_at / published_at accepted as ISO strings (converted to
+  // Timestamp at write time) or null to clear. Anything else is rejected.
+  for (const field of ["unlocks_at", "published_at"] as const) {
+    const v = updates[field];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string" || Number.isNaN(Date.parse(v))) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `${field} debe ser una fecha ISO válida o null`,
+        field
+      );
+    }
+  }
+  for (const field of ["unlocks_at", "published_at"] as const) {
+    if (typeof updates[field] === "string") {
+      updates[field] = admin.firestore.Timestamp.fromDate(new Date(updates[field] as string));
+    }
   }
 
   await modRef.update({...updates, updated_at: FieldValue.serverTimestamp()});

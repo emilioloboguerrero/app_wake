@@ -514,6 +514,10 @@ export const PUBLIC_COURSE_FIELDS = [
   "tags",
   // Counts (computed at write time; safe)
   "modules_count", "sessions_count", "duration_weeks",
+  // Monthly-drop cadence (memory/project_monthly_drops.md). These are part of
+  // the program's public contract — the PWA branches on `block_cadence` to
+  // gate the carousel and the workout walker to the currently-live block.
+  "block_cadence", "current_block_id", "current_block_index",
   // Timestamps
   "created_at", "updated_at",
 ];
