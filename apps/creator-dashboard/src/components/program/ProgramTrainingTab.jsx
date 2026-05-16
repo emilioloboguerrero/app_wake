@@ -8,7 +8,7 @@ import libraryService from '../../services/libraryService';
 import plansService from '../../services/plansService';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
 
-export default function ProgramTrainingTab({ programId, creatorId }) {
+export default function ProgramTrainingTab({ programId, creatorId, program = null }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isAddingWeek, setIsAddingWeek] = useState(false);
@@ -34,12 +34,23 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
     if (!programId) return;
     setIsAddingWeek(true);
     try {
-      await programService.createModule(programId);
+      const created = await programService.createModule(programId);
+      // Rename the freshly-created module to "Mes N" for cadenced programs
+      // (createModule's API always writes "Semana N"). Keeps the editor's
+      // mental model consistent with the consumer brief's vocab.
+      if (program?.block_cadence === 'monthly_first_monday' && created?.id) {
+        try {
+          const existing = await programService.getModulesByProgram(programId);
+          const newest = existing.find((m) => m.id === created.id);
+          const ord = typeof newest?.order === 'number' ? newest.order : (existing.length - 1);
+          await programService.updateModule(programId, created.id, { title: `Mes ${ord + 1}` });
+        } catch {/* best-effort: legacy title is acceptable */}
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
     } finally {
       setIsAddingWeek(false);
     }
-  }, [programId, queryClient]);
+  }, [programId, queryClient, program?.block_cadence]);
 
   const handleDeleteWeek = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
@@ -65,6 +76,7 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
       <div className="plan-structure-main">
         <ProgramWeeksGrid
           programId={programId}
+          program={program}
           modules={modules}
           onAddWeek={handleAddWeek}
           onDeleteWeek={handleDeleteWeek}

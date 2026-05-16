@@ -7908,6 +7908,103 @@ router.post("/creator/programs/:programId/modules", async (req, res) => {
   res.status(201).json({data: {moduleId: ref.id, id: ref.id}});
 });
 
+// POST /creator/programs/:programId/initialize-cadence
+//
+// Bootstraps `program_state/{courseId}` so the monthly-drop cron can take over.
+// Coaches call this once after publishing Mes 1, instead of the seed scripts
+// (`seed-bejarano-program-state.js`, `fix-bejarano-launch.js`). Idempotent
+// refusal: returns ALREADY_INITIALIZED if program_state already exists, so a
+// double-click can't silently overwrite a running cron's state.
+//
+// Behavior:
+//   1. Verify the course is monthly-drop and owned by the caller
+//   2. Verify no program_state doc yet
+//   3. Pick the lowest-order module with `published_at !== null` as the current
+//      block. Refuse if none.
+//   4. Pick the next published module (if any) as `next_block_id`.
+//   5. Write program_state with `current_block_started_at: serverTimestamp()`
+//      so the consumer's week-bucketing math anchors to the moment of init.
+//   6. Mirror `current_block_id` + `current_block_index` onto the course doc.
+//
+// Errors: CADENCE_NOT_ENABLED, ALREADY_INITIALIZED, NO_PUBLISHED_MODULES.
+router.post("/creator/programs/:programId/initialize-cadence", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const courseRef = db.collection("courses").doc(req.params.programId);
+  const courseDoc = await courseRef.get();
+  if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  const course = courseDoc.data() ?? {};
+  if (course.block_cadence !== "monthly_first_monday") {
+    throw new WakeApiServerError(
+      "CADENCE_NOT_ENABLED", 400,
+      "Activa 'Bloques mensuales' antes de iniciar la cadencia"
+    );
+  }
+
+  const stateRef = db.collection("program_state").doc(req.params.programId);
+  const stateSnap = await stateRef.get();
+  if (stateSnap.exists) {
+    throw new WakeApiServerError(
+      "ALREADY_INITIALIZED", 409,
+      "Este programa ya tiene una cadencia activa"
+    );
+  }
+
+  // Pick lowest-order published module as the current block; next published
+  // as next_block_id (the cron will use this on the next first Monday).
+  const modulesSnap = await courseRef
+    .collection("modules")
+    .orderBy("order", "asc")
+    .limit(50)
+    .get();
+  const published = modulesSnap.docs.filter((d) => {
+    const p = d.data().published_at;
+    return p !== null && p !== undefined;
+  });
+  if (published.length === 0) {
+    throw new WakeApiServerError(
+      "NO_PUBLISHED_MODULES", 400,
+      "Publica al menos un bloque antes de iniciar la cadencia"
+    );
+  }
+
+  const current = published[0];
+  const currentData = current.data();
+  const currentIndex = currentData.order as number;
+  const next = published[1] ?? null;
+  const nextId = next ? next.id : null;
+  const nextIndex = next ? (next.data().order as number) : null;
+
+  const now = FieldValue.serverTimestamp();
+  await stateRef.set({
+    current_block_id: current.id,
+    current_block_index: currentIndex,
+    current_block_started_at: now,
+    next_block_id: nextId,
+    next_block_index: nextIndex,
+    updated_at: now,
+  });
+  await courseRef.update({
+    current_block_id: current.id,
+    current_block_index: currentIndex,
+    updated_at: now,
+  });
+
+  res.json({
+    data: {
+      courseId: req.params.programId,
+      current_block_id: current.id,
+      current_block_index: currentIndex,
+      current_block_title: currentData.title ?? null,
+      next_block_id: nextId,
+      next_block_index: nextIndex,
+    },
+  });
+});
+
 // PATCH /creator/programs/:programId/modules/:moduleId
 router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);

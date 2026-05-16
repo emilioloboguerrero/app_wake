@@ -21,6 +21,8 @@ import plansService from '../../services/plansService';
 import apiClient from '../../utils/apiClient';
 import useProgramEditor from '../../hooks/useProgramEditor';
 import MediaDropZone from '../ui/MediaDropZone';
+import programService from '../../services/programService';
+import { useToast } from '../../contexts/ToastContext';
 import './GroupProgramView.css';
 
 // Returns the next first-Monday-of-month at or after `from`, evaluated in
@@ -241,6 +243,37 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   const handleCadenceToggle = useCallback(async (active) => {
     await editor.saveField({ block_cadence: active ? 'monthly_first_monday' : null });
   }, [editor]);
+
+  // Initialize program_state so the monthly-drop cron has something to advance.
+  // The button is the dashboard replacement for seed-bejarano-program-state.js;
+  // it's disabled until at least one module is published, and refuses to
+  // overwrite an existing state doc (server-side 409 ALREADY_INITIALIZED).
+  const { showToast } = useToast();
+  const [isInitializingCadence, setIsInitializingCadence] = useState(false);
+  const hasProgramState = typeof program?.current_block_index === 'number';
+  const handleInitializeCadence = useCallback(async () => {
+    if (!programId || isInitializingCadence) return;
+    setIsInitializingCadence(true);
+    try {
+      await programService.initializeCadence(programId);
+      showToast('Cadencia iniciada. El primer bloque ya está en vivo.', 'success');
+      await refetchProgram?.();
+      queryClient.invalidateQueries({ queryKey: ['program', 'modules', programId, 'cadence'] });
+    } catch (err) {
+      const code = err?.code || err?.error?.code;
+      if (code === 'ALREADY_INITIALIZED') {
+        showToast('Esta cadencia ya estaba iniciada.', 'info');
+      } else if (code === 'NO_PUBLISHED_MODULES') {
+        showToast('Publica al menos un bloque antes de iniciar la cadencia.', 'error');
+      } else if (code === 'CADENCE_NOT_ENABLED') {
+        showToast('Activa "Bloques mensuales" antes de iniciar la cadencia.', 'error');
+      } else {
+        showToast(err?.message || 'No pudimos iniciar la cadencia. Intenta de nuevo.', 'error');
+      }
+    } finally {
+      setIsInitializingCadence(false);
+    }
+  }, [programId, isInitializingCadence, showToast, refetchProgram, queryClient]);
 
   // Cadence telemetry surfaced to the creator: which block is live, when the
   // next drop happens, and whether the next module is ready. Without these
@@ -619,7 +652,23 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     </p>
                   )}
 
-                  {cadenceActive && cadenceInfo && (
+                  {cadenceActive && !hasProgramState && (
+                    <div className="gp-cadence-card__init">
+                      <button
+                        type="button"
+                        className="gp-cadence-card__init-btn"
+                        onClick={handleInitializeCadence}
+                        disabled={isInitializingCadence}
+                      >
+                        {isInitializingCadence ? 'Iniciando…' : 'Iniciar cadencia desde el primer bloque publicado'}
+                      </button>
+                      <p className="gp-cadence-card__init-hint">
+                        Publica al menos un bloque y pulsa este botón para que el cron lo entregue en vivo. Después de iniciar, el siguiente bloque se entregará automáticamente cada primer lunes.
+                      </p>
+                    </div>
+                  )}
+
+                  {cadenceActive && cadenceInfo && hasProgramState && (
                     <div className="gp-cadence-card__rows">
                       <div className="gp-cadence-card__row">
                         <span className="gp-cadence-card__row-label">En vivo ahora</span>
@@ -648,17 +697,17 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     </div>
                   )}
 
-                  {cadenceActive && cadenceInfo?.warningLevel === 'urgent' && (
+                  {cadenceActive && hasProgramState && cadenceInfo?.warningLevel === 'urgent' && (
                     <p className="gp-cadence-card__alert gp-cadence-card__alert--urgent">
                       Faltan {cadenceInfo.daysToDrop} días para el próximo drop y el siguiente bloque sigue en borrador. Publícalo desde Contenido antes del lunes para que tus suscriptores no se queden sin material.
                     </p>
                   )}
-                  {cadenceActive && cadenceInfo?.warningLevel === 'soft' && (
+                  {cadenceActive && hasProgramState && cadenceInfo?.warningLevel === 'soft' && (
                     <p className="gp-cadence-card__alert gp-cadence-card__alert--soft">
                       Recuerda publicar el próximo bloque antes del {formatDropDate(cadenceInfo.nextDropDate)} para mantener la cadencia.
                     </p>
                   )}
-                  {cadenceActive && cadenceInfo?.warningLevel === 'no_next' && (
+                  {cadenceActive && hasProgramState && cadenceInfo?.warningLevel === 'no_next' && (
                     <p className="gp-cadence-card__alert gp-cadence-card__alert--urgent">
                       No hay un siguiente bloque creado. Crea el módulo desde Contenido o tus suscriptores se quedarán sin contenido nuevo este mes.
                     </p>
@@ -796,6 +845,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                 <ProgramTrainingTab
                   programId={programId}
                   creatorId={user.uid}
+                  program={program}
                 />
             </KeepAlivePane>
             <KeepAlivePane active={contenidoSubtab === 'nutricion'}>

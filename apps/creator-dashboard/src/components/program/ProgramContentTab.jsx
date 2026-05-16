@@ -48,6 +48,7 @@ import { Tree, TreeFolder, TreeFile } from '../ui/FileTree';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
 import WeekVolumeDrawer from '../WeekVolumeDrawer';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../../utils/plannedVolumeUtils';
+import BlockPublishChip from './BlockPublishChip';
 
 const INCOMPLETE_ICON_SVG = (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -64,19 +65,6 @@ const DRAG_HANDLE_SVG = (
     <circle cx="9" cy="19" r="1.5" fill="currentColor"/>
     <circle cx="15" cy="19" r="1.5" fill="currentColor"/>
   </svg>
-);
-
-const BlockPublishChip = ({ isPublished, busy, onClick }) => (
-  <button
-    type="button"
-    className={`module-block-chip ${isPublished ? 'module-block-chip--published' : 'module-block-chip--draft'}`}
-    onClick={(e) => { e.stopPropagation(); if (!busy) onClick(); }}
-    disabled={busy}
-    title={isPublished ? 'Quitar publicación (vuelve a borrador)' : 'Publicar este bloque (el cron podrá entregarlo)'}
-  >
-    <span className="module-block-chip__dot" />
-    <span>{busy ? 'Guardando…' : (isPublished ? 'Publicado' : 'Borrador')}</span>
-  </button>
 );
 
 const SortableModuleCard = ({

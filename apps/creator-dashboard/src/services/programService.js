@@ -130,6 +130,15 @@ class ProgramService {
     );
   }
 
+  // Bootstrap program_state for a monthly-drop course. Server requires the
+  // course's block_cadence flag + at least one published module. Idempotent
+  // refusal on re-run (409 ALREADY_INITIALIZED). Replaces the legacy
+  // seed-bejarano-program-state.js script for coaches.
+  async initializeCadence(programId) {
+    const res = await apiClient.post(`/creator/programs/${programId}/initialize-cadence`, {});
+    return res.data;
+  }
+
   // Generic module field updater. Server allowlist permits:
   //   title, order, unlocks_at (ISO), published_at (ISO | null)
   // Used by the Bloques editor for monthly-drop programs
