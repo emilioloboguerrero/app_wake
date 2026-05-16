@@ -2377,8 +2377,8 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
-  const courses = userDoc.data()?.courses ?? {};
-  const hasAccess = courses[req.params.courseId];
+  const courses = (userDoc.data()?.courses ?? {}) as Record<string, {status?: string} | undefined>;
+  const courseAccess = courses[req.params.courseId];
 
   const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
   if (!courseDoc.exists) {
@@ -2391,7 +2391,18 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   // M-36: only "published" is a valid status; the legacy "publicado" branch
   // was never written by any current endpoint.
   const isPublished = courseData_.status === "published";
-  if (!hasAccess && !isCreator && !isAdmin && !isPublished) {
+  // For cadenced (subscription) courses the "published-means-public" semantics
+  // do not apply — content is gated by an active subscription. A truthy
+  // course entry without `status: active` is the post-lapse state (history
+  // kept, program locked per memory/project_monthly_drops.md) and must also be
+  // rejected here, since /current-block enforces the same and these endpoints
+  // must agree.
+  const isCadenced = courseData_.block_cadence === "monthly_first_monday";
+  const accessActive = !!courseAccess && courseAccess.status === "active";
+  const passes = isCadenced ?
+    (accessActive || isCreator || isAdmin) :
+    (!!courseAccess || isCreator || isAdmin || isPublished);
+  if (!passes) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 

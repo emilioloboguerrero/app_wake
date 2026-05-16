@@ -2517,10 +2517,34 @@ export const reconcileSubscriptions = onSchedule(
 // Secrets and `readTopics()` are declared further down in the "Wake ops"
 // section; the cron registrations live below that block.
 
+// Returns YYYY-MM-DD for `d` in America/Bogota. Used both to gate
+// first-Monday-of-month (date-of-month 1–7) and to make the advance
+// idempotent within a single BOG calendar day (manual re-trigger + scheduled
+// fire on the same day must not double-advance).
+function bogotaDateParts(d: Date): {year: number; month: number; day: number; weekday: number} {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
+  const weekdayMap: Record<string, number> = {Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6};
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    weekday: weekdayMap[parts.weekday] ?? -1,
+  };
+}
+
+function bogotaDateKey(d: Date): string {
+  const {year, month, day} = bogotaDateParts(d);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function isFirstMondayOfMonth(d: Date): boolean {
-  // Day-of-month must be 1–7 AND weekday must be Monday. Cron already runs
-  // on Mondays only, so the weekday check is belt-and-suspenders.
-  return d.getDate() <= 7 && d.getDay() === 1;
+  // Day-of-month 1–7 AND weekday Monday, both evaluated in America/Bogota.
+  const {day, weekday} = bogotaDateParts(d);
+  return day <= 7 && weekday === 1;
 }
 
 async function advanceMonthlyDropCourse(
@@ -2537,18 +2561,39 @@ async function advanceMonthlyDropCourse(
   const stateRef = db.collection("program_state").doc(courseId);
   const stateSnap = await stateRef.get();
   const state = stateSnap.exists ? stateSnap.data() ?? {} : {};
+  // Sentinel: -1 means "no block live yet". Modules are 0-indexed on `order`
+  // (dashboard's createModule writes `order = existing.length`), so the first
+  // advance must pick order=0. Using 0 as the default would skip block 0.
   const currentBlockIndex = typeof state.current_block_index === "number" ?
     state.current_block_index :
-    0;
+    -1;
+
+  // Idempotence guard: if this course already advanced today (BOG), no-op.
+  // Protects against duplicate scheduled fires + manual re-triggers landing
+  // on the same first Monday.
+  const startedAt = state.current_block_started_at;
+  if (startedAt && typeof (startedAt as {toDate?: () => Date}).toDate === "function") {
+    const startedDate = (startedAt as {toDate: () => Date}).toDate();
+    if (bogotaDateKey(startedDate) === bogotaDateKey(new Date())) {
+      return {
+        courseId,
+        outcome: "already_current",
+        fromBlock: currentBlockIndex,
+        toBlock: currentBlockIndex,
+        toModuleId: (state.current_block_id as string | null) ?? null,
+      };
+    }
+  }
 
   // One server-side inequality (order) + orderBy on that field is the
   // simplest Firestore-safe query. Filter unpublished modules client-side.
-  // Programs have ~12 blocks, so fetching the upcoming slice is cheap.
+  // Programs have ~12 blocks; 50 is a generous cap that survives long gaps
+  // of unpublished modules between current and the next published one.
   const forwardSnap = await courseRef
     .collection("modules")
     .where("order", ">", currentBlockIndex)
     .orderBy("order", "asc")
-    .limit(10)
+    .limit(50)
     .get();
 
   const published = forwardSnap.docs.filter((d) => {
@@ -2557,8 +2602,8 @@ async function advanceMonthlyDropCourse(
   });
 
   if (published.length === 0) {
-    if (currentBlockIndex === 0 && forwardSnap.empty) {
-      return {courseId, outcome: "no_modules", fromBlock: 0, toBlock: null, toModuleId: null};
+    if (currentBlockIndex === -1 && forwardSnap.empty) {
+      return {courseId, outcome: "no_modules", fromBlock: -1, toBlock: null, toModuleId: null};
     }
     return {
       courseId,
@@ -2667,11 +2712,9 @@ export const monthlyDropAdvance = onSchedule(
     timeoutSeconds: 120,
   },
   async () => {
-    // Cron triggers every Monday; gate to the first Monday of the month.
-    const nowInBogota = new Date(
-      new Date().toLocaleString("en-US", {timeZone: "America/Bogota"})
-    );
-    if (!isFirstMondayOfMonth(nowInBogota)) {
+    // Cron triggers every Monday; gate to the first Monday of the month
+    // evaluated in America/Bogota (the cron's timezone).
+    if (!isFirstMondayOfMonth(new Date())) {
       functions.logger.info("monthlyDropAdvance: not first Monday of month, skipping");
       return;
     }
@@ -2764,22 +2807,29 @@ export const monthlyDropReadinessCheck = onSchedule(
 
     for (const doc of coursesSnap.docs) {
       const data = doc.data() ?? {};
-      const currentIndex = typeof data.current_block_index === "number" ? data.current_block_index : 0;
+      const currentIndex = typeof data.current_block_index === "number" ? data.current_block_index : -1;
+      // Match the advance cron: take the next module by `order > current`,
+      // not literal `current + 1`, so creator-side gaps don't pin the alert.
       const nextSnap = await doc.ref
         .collection("modules")
-        .where("order", "==", currentIndex + 1)
+        .where("order", ">", currentIndex)
+        .orderBy("order", "asc")
         .limit(1)
         .get();
       const nextDoc = nextSnap.docs[0];
+      const nextOrder = nextDoc?.data()?.order ?? null;
       const readyAt = nextDoc?.data()?.published_at ?? null;
       if (readyAt) continue;
 
       try {
+        const labeledIndex = typeof nextOrder === "number" ? nextOrder : currentIndex + 1;
+        const reason = nextDoc ?
+          `next block (index ${labeledIndex}) NOT ready yet.` :
+          "no next module authored.";
         await sendTo(
           ctx,
           "signals",
-          `[monthly-drops] ${doc.id}: next block (index ${currentIndex + 1}) NOT ready yet. ` +
-            "First Monday of next month is ~10 days out."
+          `[monthly-drops] ${doc.id}: ${reason} First Monday of next month is ~10 days out.`
         );
       } catch (err) {
         functions.logger.warn("monthlyDropReadinessCheck: signal failed", {
