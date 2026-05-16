@@ -1,6 +1,9 @@
 // Reads the currently-unlocked block for a `block_cadence: 'monthly_first_monday'`
 // course. Returns:
-//   { block, locked, expiresAt, cadence, nextBlockIndex }
+//   { block, locked, expiresAt, cadence, nextBlockIndex, nextBlockUnlocksAt }
+//
+// `block` carries `started_at` (from program_state.current_block_started_at)
+// which the Contenido calendar uses to bucket session completions into weeks.
 //
 // The endpoint is only meaningful for cadenced courses. Pass `enabled` from
 // the caller (typically `course.block_cadence === 'monthly_first_monday'`)
@@ -28,6 +31,7 @@ export function useCurrentBlock(courseId, { enabled = true } = {}) {
     expiresAt: data?.expires_at ?? null,
     cadence: data?.cadence ?? null,
     nextBlockIndex: data?.next_block_index ?? null,
+    nextBlockUnlocksAt: data?.next_block_unlocks_at ?? null,
     isLoading: q.isLoading,
     isError: q.isError,
     refetch: q.refetch,

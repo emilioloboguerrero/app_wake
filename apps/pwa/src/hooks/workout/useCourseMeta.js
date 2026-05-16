@@ -46,6 +46,13 @@ export function useCourseMeta(courseSnapshot, courseIdOverride) {
       deliveryType: apiData?.deliveryType ?? c.deliveryType ?? null,
       weight_suggestions: apiData?.weight_suggestions ?? c.weight_suggestions,
       availableLibraries: apiData?.availableLibraries ?? c.availableLibraries,
+      // Monthly-drop cadence (memory/project_monthly_drops.md). Required by
+      // CourseDetail to branch on whether to render the calendar mini strip.
+      block_cadence: apiData?.block_cadence ?? c.block_cadence ?? null,
+      current_block_id: apiData?.current_block_id ?? c.current_block_id ?? null,
+      current_block_index: typeof apiData?.current_block_index === 'number'
+        ? apiData.current_block_index
+        : (typeof c.current_block_index === 'number' ? c.current_block_index : null),
     };
   }, [courseSnapshot, apiData, courseId]);
 }

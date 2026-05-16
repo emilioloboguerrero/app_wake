@@ -2555,9 +2555,11 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
 //     expires_at: ISO | null,     // from users/{uid}.courses[courseId]
 //     block: {                    // null when locked OR no current block yet
 //       moduleId, block_index, title, unlocks_at,
+//       started_at: ISO | null,   // from program_state.current_block_started_at
 //       sessions: [...full tree]
 //     } | null,
-//     next_block_index: number | null
+//     next_block_index: number | null,
+//     next_block_unlocks_at: ISO | null  // from next module's unlocks_at
 //   }
 router.get("/workout/programs/:courseId/current-block", async (req, res) => {
   const auth = await validateAuth(req);
@@ -2618,6 +2620,48 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
     course.current_block_index :
     null;
 
+  // Always look up program_state so callers (locked or not) can render the
+  // next-block chip on Hoy + the calendar entrances in Contenido.
+  const stateDoc = await db.collection("program_state").doc(courseId).get();
+  const stateData = stateDoc.exists ? (stateDoc.data() ?? {}) : {};
+  const nextBlockIndex = (stateData.next_block_index as number | null | undefined) ?? null;
+  const nextBlockId = (stateData.next_block_id as string | null | undefined) ?? null;
+  const startedAtRaw = stateData.current_block_started_at as
+    | {toMillis?: () => number; toDate?: () => Date}
+    | string
+    | undefined;
+  let startedAtIso: string | null = null;
+  if (typeof startedAtRaw === "string") {
+    startedAtIso = startedAtRaw;
+  } else if (startedAtRaw && typeof startedAtRaw.toDate === "function") {
+    try {
+      startedAtIso = startedAtRaw.toDate().toISOString();
+    } catch {
+      startedAtIso = null;
+    }
+  } else if (startedAtRaw && typeof startedAtRaw.toMillis === "function") {
+    try {
+      startedAtIso = new Date(startedAtRaw.toMillis()).toISOString();
+    } catch {
+      startedAtIso = null;
+    }
+  }
+
+  let nextBlockUnlocksAtIso: string | null = null;
+  if (nextBlockId) {
+    const nextModuleDoc = await courseDoc.ref.collection("modules").doc(nextBlockId).get();
+    const unlocksRaw = nextModuleDoc.exists ? nextModuleDoc.data()?.unlocks_at : null;
+    if (typeof unlocksRaw === "string") {
+      nextBlockUnlocksAtIso = unlocksRaw;
+    } else if (unlocksRaw && typeof (unlocksRaw as {toDate?: () => Date}).toDate === "function") {
+      try {
+        nextBlockUnlocksAtIso = (unlocksRaw as {toDate: () => Date}).toDate().toISOString();
+      } catch {
+        nextBlockUnlocksAtIso = null;
+      }
+    }
+  }
+
   if (locked || !currentBlockId) {
     res.json({
       data: {
@@ -2626,7 +2670,8 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
         locked,
         expires_at: expiresAtIso,
         block: null,
-        next_block_index: null,
+        next_block_index: nextBlockIndex,
+        next_block_unlocks_at: nextBlockUnlocksAtIso,
       },
     });
     return;
@@ -2643,7 +2688,8 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
         locked: false,
         expires_at: expiresAtIso,
         block: null,
-        next_block_index: null,
+        next_block_index: nextBlockIndex,
+        next_block_unlocks_at: nextBlockUnlocksAtIso,
       },
     });
     return;
@@ -2661,12 +2707,20 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
     })
   );
 
-  const stateDoc = await db.collection("program_state").doc(courseId).get();
-  const nextBlockIndex = stateDoc.exists ?
-    (stateDoc.data()?.next_block_index as number | null) ?? null :
-    null;
-
   const moduleData = moduleDoc.data() ?? {};
+  // unlocks_at on the module may be Timestamp or ISO string; normalize.
+  const moduleUnlocksRaw = moduleData.unlocks_at;
+  let moduleUnlocksIso: string | null = null;
+  if (typeof moduleUnlocksRaw === "string") {
+    moduleUnlocksIso = moduleUnlocksRaw;
+  } else if (moduleUnlocksRaw && typeof (moduleUnlocksRaw as {toDate?: () => Date}).toDate === "function") {
+    try {
+      moduleUnlocksIso = (moduleUnlocksRaw as {toDate: () => Date}).toDate().toISOString();
+    } catch {
+      moduleUnlocksIso = null;
+    }
+  }
+
   res.json({
     data: {
       courseId,
@@ -2677,10 +2731,151 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
         moduleId: moduleDoc.id,
         block_index: moduleData.order ?? currentBlockIndex,
         title: moduleData.title ?? null,
-        unlocks_at: moduleData.unlocks_at ?? null,
+        unlocks_at: moduleUnlocksIso,
+        started_at: startedAtIso,
         sessions,
       },
       next_block_index: nextBlockIndex,
+      next_block_unlocks_at: nextBlockUnlocksAtIso,
+    },
+  });
+});
+
+// GET /workout/programs/:courseId/blocks-overview
+//
+// Lightweight metadata for the monthly-drop calendar UIs (Contenido +
+// pre-purchase course detail). Returns titles + unlock dates for every block
+// without exposing sessions or exercises, so it's safe to surface in
+// non-subscribed contexts. Non-cadenced courses get `{cadence: null, blocks: []}`
+// so callers can branch without a second round-trip.
+//
+// Shape:
+//   {
+//     courseId,
+//     cadence: 'monthly_first_monday' | null,
+//     current_block_index: number | null,
+//     current_block_started_at: ISO | null,
+//     next_block_unlocks_at: ISO | null,
+//     blocks: [
+//       {
+//         moduleId,
+//         order,
+//         title,
+//         unlocks_at: ISO | null,
+//         isCurrent: boolean,
+//         isPast: boolean,
+//         isFuture: boolean,
+//         session_count: number  // best-effort; 0 for unpublished
+//       }
+//     ]
+//   }
+router.get("/workout/programs/:courseId/blocks-overview", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const {courseId} = req.params;
+  const courseDoc = await db.collection("courses").doc(courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const course = courseDoc.data() ?? {};
+  const cadence = (course.block_cadence as string | undefined) ?? null;
+
+  // Discovery-tier access: published, owner, creator, or admin. Draft courses
+  // remain invisible to discovery so unfinished work doesn't leak. Subscription
+  // status is irrelevant — block titles + unlock dates ARE the pitch.
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const hasCourse = !!((userDoc.data()?.courses ?? {}) as Record<string, unknown>)[courseId];
+  const isCreator = course.creator_id === auth.userId;
+  const isAdmin = auth.role === "admin";
+  const isPublished = course.status === "published";
+  if (!(isPublished || hasCourse || isCreator || isAdmin)) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
+  if (cadence !== "monthly_first_monday") {
+    res.json({
+      data: {
+        courseId,
+        cadence: null,
+        current_block_index: null,
+        current_block_started_at: null,
+        next_block_unlocks_at: null,
+        blocks: [],
+      },
+    });
+    return;
+  }
+
+  const stateDoc = await db.collection("program_state").doc(courseId).get();
+  const stateData = stateDoc.exists ? (stateDoc.data() ?? {}) : {};
+  const currentBlockIndex = typeof course.current_block_index === "number" ?
+    course.current_block_index :
+    null;
+  const nextBlockId = (stateData.next_block_id as string | null | undefined) ?? null;
+
+  const startedAtRaw = stateData.current_block_started_at as
+    | {toDate?: () => Date; toMillis?: () => number}
+    | string
+    | undefined;
+  let currentBlockStartedAt: string | null = null;
+  if (typeof startedAtRaw === "string") {
+    currentBlockStartedAt = startedAtRaw;
+  } else if (startedAtRaw && typeof startedAtRaw.toDate === "function") {
+    try {
+      currentBlockStartedAt = startedAtRaw.toDate().toISOString();
+    } catch {
+      currentBlockStartedAt = null;
+    }
+  }
+
+  const modulesSnap = await courseDoc.ref
+    .collection("modules")
+    .orderBy("order", "asc")
+    .limit(MAX_MODULES_PER_COURSE)
+    .get();
+
+  let nextBlockUnlocksAt: string | null = null;
+  const blocks = modulesSnap.docs.map((mDoc) => {
+    const m = mDoc.data() ?? {};
+    const order = typeof m.order === "number" ? m.order : 0;
+    const unlocksRaw = m.unlocks_at;
+    let unlocksAt: string | null = null;
+    if (typeof unlocksRaw === "string") {
+      unlocksAt = unlocksRaw;
+    } else if (unlocksRaw && typeof (unlocksRaw as {toDate?: () => Date}).toDate === "function") {
+      try {
+        unlocksAt = (unlocksRaw as {toDate: () => Date}).toDate().toISOString();
+      } catch {
+        unlocksAt = null;
+      }
+    }
+    const isCurrent = currentBlockIndex !== null && order === currentBlockIndex;
+    const isPast = currentBlockIndex !== null && order < currentBlockIndex;
+    const isFuture = currentBlockIndex !== null && order > currentBlockIndex;
+    if (mDoc.id === nextBlockId && unlocksAt) {
+      nextBlockUnlocksAt = unlocksAt;
+    }
+    return {
+      moduleId: mDoc.id,
+      order,
+      title: (m.title as string) ?? null,
+      unlocks_at: unlocksAt,
+      isCurrent,
+      isPast,
+      isFuture,
+    };
+  });
+
+  res.json({
+    data: {
+      courseId,
+      cadence,
+      current_block_index: currentBlockIndex,
+      current_block_started_at: currentBlockStartedAt,
+      next_block_unlocks_at: nextBlockUnlocksAt,
+      blocks,
     },
   });
 });

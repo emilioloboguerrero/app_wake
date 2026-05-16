@@ -12,12 +12,14 @@ import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
 import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import { useCurrentBlock } from '../hooks/hoy/useCurrentBlock';
 import WakeLoader from './WakeLoader.web.jsx';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const MONTH_NAMES_SHORT_LOWER = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 const todayYmd = () => {
   const d = new Date();
@@ -28,6 +30,14 @@ const formatDateChip = (ymd) => {
   if (!ymd) return '';
   const d = new Date(`${ymd}T12:00:00`);
   return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+};
+
+const formatNextBlockChip = (iso) => {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t);
+  return `Próximo bloque · ${d.getDate()} ${MONTH_NAMES_SHORT_LOWER[d.getMonth()]}`;
 };
 
 const styles = {
@@ -181,6 +191,21 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.18)',
     zIndex: 2,
   },
+  nextBlockChip: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    padding: '4px 10px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: '0.72rem',
+    fontWeight: 500,
+    letterSpacing: 0.2,
+    border: '1px solid rgba(255,255,255,0.08)',
+    zIndex: 2,
+    pointerEvents: 'none',
+  },
   statusPill: {
     position: 'absolute',
     bottom: 16,
@@ -308,6 +333,17 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
     staleTime: 60 * 1000,
   });
   const sessionLoading = sessionQueryLoading || (!sessionState && !!user?.uid && !!courseId && !isExpired);
+
+  // Monthly-drop chip: revives useCurrentBlock to surface the next block's
+  // unlock date. Only gated by cadence — when the next block hasn't been
+  // queued by the cron yet, nextBlockUnlocksAt is null and the chip is hidden.
+  const isMonthlyDrop = course?.block_cadence === 'monthly_first_monday';
+  const { nextBlockUnlocksAt, locked: blockLocked } = useCurrentBlock(courseId, {
+    enabled: !!courseId && isMonthlyDrop && !isExpired,
+  });
+  const nextBlockChipText = isMonthlyDrop && !blockLocked
+    ? formatNextBlockChip(nextBlockUnlocksAt)
+    : null;
 
   const sessionImageUrl = sessionState?.session?.image_url;
   const programImageUrl = course?.image_url;
@@ -446,6 +482,8 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
               <div style={styles.statusPill}>Actualizando</div>
             ) : downloadStatus === 'failed' ? (
               <div style={{ ...styles.statusPill, ...styles.statusPillFailed }}>Error</div>
+            ) : nextBlockChipText ? (
+              <div style={styles.nextBlockChip}>{nextBlockChipText}</div>
             ) : null}
             {sessionLoading && !isExpired ? (
               <div style={styles.loaderOverlay}>
