@@ -131,9 +131,10 @@ class ProgramService {
   }
 
   // Generic module field updater. Server allowlist permits:
-  //   title, order, block_index, unlocks_at (ISO), published_at (ISO | null)
+  //   title, order, unlocks_at (ISO), published_at (ISO | null)
   // Used by the Bloques editor for monthly-drop programs
-  // (memory/project_monthly_drops.md).
+  // (memory/project_monthly_drops.md). module.order doubles as the block
+  // ordinal; there is no separate block_index field.
   async updateModule(programId, moduleId, updates) {
     const res = await apiClient.patch(
       `/creator/programs/${programId}/modules/${moduleId}`,

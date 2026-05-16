@@ -180,8 +180,9 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
 
   // ── Monthly drops (memory/project_monthly_drops.md) ──────────
   // Cohort-synced calendar-anchored content. Cron flips the live block on the
-  // first Monday of every month. Felipe opts a program in here; per-module
-  // block_index/published_at are set elsewhere (sortable module card / detail).
+  // first Monday of every month. Felipe opts a program in here; the per-module
+  // Publicado chip in ProgramContentTab writes published_at, which is the
+  // cron's gate. module.order doubles as the block ordinal.
   const cadenceActive = program?.block_cadence === 'monthly_first_monday';
 
   const handleCadenceToggle = useCallback(async (active) => {

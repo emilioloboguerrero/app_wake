@@ -450,7 +450,7 @@
 }
 
 .gp-config__card--tall {
-  grid-row: span 2;
+  grid-row: span 3;
 }
 
 .gp-config__card--tall .gp-config__media-wrap,
