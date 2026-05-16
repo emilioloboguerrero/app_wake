@@ -100,13 +100,13 @@ const styles = {
   dotGrid: {
     marginTop: 'auto',
     display: 'grid',
-    gridTemplateColumns: 'repeat(5, 1fr)',
-    rowGap: 6,
-    columnGap: 6,
+    gridTemplateColumns: 'repeat(7, 1fr)',
+    rowGap: 5,
+    columnGap: 4,
   },
   dot: {
-    width: 8,
-    height: 8,
+    width: 6,
+    height: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
@@ -123,10 +123,10 @@ export default function MonthlyBlockMiniStrip({ blocks, currentBlock, maxBlocks 
 
   if (!tiles.length) return null;
 
-  const currentSessionCount = currentBlock?.sessions?.length ?? 0;
-  // Display ~3 weeks of dots to suggest cadence without overwhelming the
-  // pre-purchase tile. Falls back to 5×3 if session count is unknown.
-  const dotCount = Math.min(15, Math.max(5, currentSessionCount * 3));
+  // Show 2 weeks × 7 days of dots — enough to suggest cadence without
+  // overwhelming the tile, and uniform regardless of how many days the
+  // program actually uses (Bejarano = 5 days, others may use 7).
+  const dotCount = 14;
 
   return (
     <div style={styles.wrap}>

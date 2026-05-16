@@ -15,7 +15,11 @@
 import React, { useMemo } from 'react';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const DAY_LABELS = ['L', 'M', 'X', 'J', 'V'];
+// Full week: L M X J V S D. Programs that don't use every day (e.g. Bejarano's
+// 5-day split) render empty cells on the unused days — no column hiding, so
+// every course feels visually consistent.
+const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const DAYS_PER_WEEK = 7;
 const MONTH_NAMES_FULL = [
   'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
   'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
@@ -106,8 +110,8 @@ const styles = {
   grid: {
     marginTop: 22,
     display: 'grid',
-    gridTemplateColumns: 'repeat(5, 1fr) auto',
-    columnGap: 10,
+    gridTemplateColumns: 'repeat(7, 1fr) auto',
+    columnGap: 8,
     rowGap: 14,
     alignItems: 'center',
   },
@@ -178,13 +182,14 @@ function CurrentBlockCard({ block, sessions, completionByKey, onPressSession, in
     () => monthLabelFor(block?.started_at || block?.unlocks_at, 0),
     [block?.started_at, block?.unlocks_at]
   );
-  // Sessions in the current block are 5 templates (Mon-Fri). Bucket by dayIndex
-  // 1..5; defensively skip rest days / out-of-range.
+  // Bucket sessions by dayIndex 1..7 (L M X J V S D). Programs that use fewer
+  // days render dashed empty cells on unused columns — no column hiding, so the
+  // shape stays uniform across courses.
   const sessionsByDay = useMemo(() => {
     const map = new Map();
     (sessions || []).forEach((s) => {
       const dayIndex = typeof s.dayIndex === 'number' ? s.dayIndex : null;
-      if (dayIndex === null || dayIndex < 1 || dayIndex > 5) return;
+      if (dayIndex === null || dayIndex < 1 || dayIndex > DAYS_PER_WEEK) return;
       if (!map.has(dayIndex)) map.set(dayIndex, s);
     });
     return map;
@@ -192,7 +197,7 @@ function CurrentBlockCard({ block, sessions, completionByKey, onPressSession, in
 
   const hasAnySession = sessionsByDay.size > 0;
   const weeks = [0, 1, 2, 3];
-  const days = [1, 2, 3, 4, 5];
+  const days = Array.from({ length: DAYS_PER_WEEK }, (_, i) => i + 1);
 
   // A session is "done" in week W when sessionHistory has a completion of the
   // matching sessionId between blockStart + W*7d and blockStart + (W+1)*7d.

@@ -8,6 +8,10 @@ Make `block_cadence: 'monthly_first_monday'` courses visually obvious. A subscri
 
 - **One block = one calendar month**, starting the **first Monday** of that month.
 - Blocks are 4 weeks. Week 1 starts the first Monday; weeks 2–4 follow consecutively.
+- Sessions can be scheduled on **any day of the week** (`dayIndex ∈ {1..7}`,
+  L M X J V S D). Programs that only use a subset (e.g. Bejarano's Mon–Fri
+  split) render dashed empty cells on unused days — the calendar always shows
+  all seven columns so the shape is uniform across courses.
 - Bejarano (`courses/NTQIWMZBOxntwmUiXQZp`) is the first such program. Modules titled `Mes 1 — Base`, `Mes 2 — Volumen`, `Mes 3 — Hipertrofia avanzada`.
 - Current state: M1 is live (`program_state.current_block_id = AHSaID03k5K1Cq3qNcIw`), M2 unlocks 2026-06-01, M3 unlocks 2026-07-06.
 
@@ -34,11 +38,11 @@ Make `block_cadence: 'monthly_first_monday'` courses visually obvious. A subscri
 │  MAYO 2026                          │  ← month name, current
 │  Mes 1 — Base                       │  ← block title (no subtext under)
 │                                     │
-│  L   M   X   J   V                  │
-│  ●   ●   ●   ●   ●     semana 1     │
-│  ●   ○   ○   ○   ○     semana 2     │  ← ● = done, ○ = pending
-│  ○   ○   ○   ○   ○     semana 3     │
-│  ○   ○   ○   ○   ○     semana 4     │
+│  L   M   X   J   V   S   D          │
+│  ●   ●   ●   ●   ●   ·   ·  semana 1│  ← · = no session that day
+│  ●   ○   ○   ○   ○   ·   ·  semana 2│  ← ● = done, ○ = pending
+│  ○   ○   ○   ○   ○   ·   ·  semana 3│
+│  ○   ○   ○   ○   ○   ·   ·  semana 4│
 └─────────────────────────────────────┘
 
 ┌─────────────────────────────────────┐
