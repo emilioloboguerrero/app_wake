@@ -98,7 +98,7 @@ export async function sendTrialActivatedEmail(args: {
   `;
   return sendEmail({
     to: args.to,
-    subject: `Empezó tu prueba gratuita en Wake`,
+    subject: "Empezó tu prueba gratuita en Wake",
     html: wrapTemplate({heading: "Tu prueba empezó", body, ctaLabel: "Abrir Wake", ctaUrl: cta}),
   });
 }
@@ -133,9 +133,9 @@ export async function sendChargeReceiptEmail(args: {
   nextBillingDate?: string | null; // ISO
 }): Promise<boolean> {
   const cta = `${APP_BASE}/library/manage/${args.courseId}`;
-  const nextLine = args.nextBillingDate
-    ? `<p style="margin:0 0 12px;">El próximo cobro será el <strong>${formatDate(args.nextBillingDate)}</strong>.</p>`
-    : "";
+  const nextLine = args.nextBillingDate ?
+    `<p style="margin:0 0 12px;">El próximo cobro será el <strong>${formatDate(args.nextBillingDate)}</strong>.</p>` :
+    "";
   const body = `
     <p style="margin:0 0 12px;">Cobramos <strong>${formatCOP(args.amount)} ${args.currencyId}</strong> por tu suscripción a <strong>${args.programTitle}</strong> el ${formatDate(args.chargeDate)}.</p>
     ${nextLine}

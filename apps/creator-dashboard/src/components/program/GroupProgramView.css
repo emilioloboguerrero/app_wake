@@ -1165,3 +1165,82 @@
     padding: 14px;
   }
 }
+
+/* ── Cadence card (monthly drops) ───────────────────────────── */
+/* Surfaces the cron's state to the creator: live block, next drop, readiness
+   warnings. Spans 2 columns so the rows have room to breathe. */
+.gp-cadence-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.gp-cadence-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.gp-cadence-card__header h3 {
+  margin: 0;
+}
+
+.gp-cadence-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 10px;
+}
+
+.gp-cadence-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.gp-cadence-card__row-label {
+  color: rgba(255, 255, 255, 0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 11px;
+}
+
+.gp-cadence-card__row-value {
+  color: rgba(255, 255, 255, 0.85);
+  text-align: right;
+  font-weight: 500;
+}
+
+.gp-cadence-card__alert {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.gp-cadence-card__alert--soft {
+  background: rgba(255, 200, 80, 0.08);
+  color: rgba(255, 220, 150, 0.92);
+  border: 1px solid rgba(255, 200, 80, 0.18);
+}
+
+.gp-cadence-card__alert--urgent {
+  background: rgba(255, 100, 100, 0.10);
+  color: rgba(255, 180, 180, 0.95);
+  border: 1px solid rgba(255, 100, 100, 0.22);
+}
+
+.gp-cadence-card--soft {
+  border-color: rgba(255, 200, 80, 0.18);
+}
+
+.gp-cadence-card--urgent,
+.gp-cadence-card--no_next {
+  border-color: rgba(255, 100, 100, 0.22);
+}

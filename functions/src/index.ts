@@ -2427,6 +2427,9 @@ export const reconcileSubscriptions = onSchedule(
       const subscriptionId = doc.id;
       const localStatus = data.status as string | undefined;
       const localNextBilling = data.next_billing_date as string | undefined;
+      const courseId = typeof data.course_id === "string" ? data.course_id : null;
+      const userId = (typeof data.user_id === "string" ? data.user_id :
+        (typeof data.userId === "string" ? data.userId : null));
 
       try {
         const pre = (await preapproval.get({id: subscriptionId})) as unknown as {
@@ -2465,6 +2468,50 @@ export const reconcileSubscriptions = onSchedule(
           update.last_action = "reconcile";
           await doc.ref.set(update, {merge: true});
           driftFixed++;
+        }
+
+        // CRITICAL: when MP advances next_billing_date but the renewal webhook
+        // dropped, we still need to extend access on the user's course entry —
+        // otherwise the user paid, MP confirms, and Wake locks them out at
+        // /current-block until the next charge clears. Only bump forward
+        // (never shorten access). Skip cancelled subs so we don't extend
+        // someone who just cancelled.
+        if (
+          mpStatus === "authorized" &&
+          mpNextBilling &&
+          courseId &&
+          userId
+        ) {
+          try {
+            const userRef = db.collection("users").doc(userId);
+            const mpNextMs = Date.parse(mpNextBilling);
+            if (Number.isFinite(mpNextMs)) {
+              await db.runTransaction(async (tx) => {
+                const userSnap = await tx.get(userRef);
+                if (!userSnap.exists) return;
+                const courses = (userSnap.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
+                const entry = courses[courseId];
+                if (!entry) return;
+                if (entry.status !== "active" && entry.status !== "expired") return;
+                const onDiskRaw = entry.expires_at;
+                let onDiskMs: number | null = null;
+                if (typeof onDiskRaw === "string") {
+                  const ms = Date.parse(onDiskRaw);
+                  if (Number.isFinite(ms)) onDiskMs = ms;
+                }
+                if (onDiskMs !== null && onDiskMs >= mpNextMs) return;
+                tx.update(userRef, {
+                  [`courses.${courseId}.expires_at`]: mpNextBilling,
+                  [`courses.${courseId}.status`]: "active",
+                  updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                });
+              });
+            }
+          } catch (extErr) {
+            functions.logger.warn("reconcileSubscriptions: course expires_at bump failed", {
+              subscriptionId, userId, courseId, error: sharedToErrorMessage(extErr),
+            });
+          }
         }
         synced++;
       } catch (err: unknown) {
@@ -2729,6 +2776,17 @@ export const monthlyDropAdvance = onSchedule(
       return;
     }
 
+    // Only advance published courses. Drafts/paused/archived may have stale
+    // current_block_index that would otherwise be mirrored onto the course
+    // doc and exposed to anyone who can read the course (creator, admin,
+    // or — if a draft is later flipped published — actual subscribers).
+    // In-memory filter; composite index isn't worth it for ~12 cadenced courses.
+    const eligibleDocs = coursesSnap.docs.filter((d) => d.data()?.status === "published");
+    if (eligibleDocs.length === 0) {
+      functions.logger.info("monthlyDropAdvance: no published monthly-drop courses; skipping");
+      return;
+    }
+
     const signalsCtx = telegramSignalsBotToken.value() && telegramChatId.value() ?
       {
         botToken: telegramSignalsBotToken.value(),
@@ -2738,7 +2796,7 @@ export const monthlyDropAdvance = onSchedule(
       null;
 
     const results: Array<Awaited<ReturnType<typeof advanceMonthlyDropCourse>>> = [];
-    for (const doc of coursesSnap.docs) {
+    for (const doc of eligibleDocs) {
       try {
         results.push(await advanceMonthlyDropCourse(doc.ref, signalsCtx));
       } catch (err) {
@@ -2838,6 +2896,83 @@ export const monthlyDropReadinessCheck = onSchedule(
         });
       }
     }
+  }
+);
+
+// ─── Scheduled: lapse-flip ───────────────────────────────────────────────
+// Walks every user once a day and stamps `status: "expired"` on any
+// `users/{uid}.courses[id]` entry whose `expires_at` is past the access
+// grace window AND is not already in a terminal state. Without this, a
+// `status: "active"` entry survives indefinitely after expires_at lapses,
+// and the only thing locking the user out is whatever code happens to also
+// check expires_at — which is now uniform (workout.ts) but historically
+// drifted across surfaces. The flip lets every gate reduce to a simple
+// "status active?" check and gives monthlyDropsPulse / paymentsPulse an
+// honest count of lapsed access.
+//
+// Grace window must match /current-block + /programs/:id (3 days) so we
+// don't flip a paying user out from under MP's billing retries.
+//
+// Cost: one read of the users collection daily + targeted updates only on
+// users with expirations. With wolf-20b8b's user count (~thousands), this
+// is a cheap operation; if the collection grows past ~50k, replace with
+// a sharded sweep keyed off `next_expiry_at` denormalized at write time.
+export const lapsedCoursesFlip = onSchedule(
+  {
+    schedule: "every day 04:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const ACCESS_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+    const cutoffMs = Date.now() - ACCESS_GRACE_MS;
+
+    const snap = await db.collection("users").get();
+    let usersChecked = 0;
+    let usersUpdated = 0;
+    let coursesFlipped = 0;
+    let trialsFlipped = 0;
+
+    for (const doc of snap.docs) {
+      usersChecked++;
+      const courses = (doc.data().courses ?? {}) as Record<string, Record<string, unknown>>;
+      const updates: Record<string, unknown> = {};
+      for (const [courseId, entry] of Object.entries(courses)) {
+        if (!entry || typeof entry !== "object") continue;
+        const status = entry.status;
+        // Only flip entries that are still nominally usable. Skip terminal
+        // states (cancelled / expired / refunded) and bundle-derived entries
+        // — bundles are revoked atomically by the bundle subscription path.
+        if (status !== "active" && status !== undefined) continue;
+        const exp = entry.expires_at;
+        if (typeof exp !== "string") continue;
+        const expMs = Date.parse(exp);
+        if (!Number.isFinite(expMs)) continue;
+        if (expMs >= cutoffMs) continue;
+
+        updates[`courses.${courseId}.status`] = "expired";
+        updates[`courses.${courseId}.expired_at`] = new Date().toISOString();
+        if (entry.is_trial === true) trialsFlipped++;
+        coursesFlipped++;
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = admin.firestore.FieldValue.serverTimestamp();
+        try {
+          await doc.ref.update(updates);
+          usersUpdated++;
+        } catch (err) {
+          functions.logger.warn("lapsedCoursesFlip: user update failed", {
+            userId: doc.id, error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    functions.logger.info("lapsedCoursesFlip: done", {
+      usersChecked, usersUpdated, coursesFlipped, trialsFlipped,
+    });
   }
 );
 

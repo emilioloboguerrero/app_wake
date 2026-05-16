@@ -15,6 +15,32 @@ const router = Router();
 const MAX_MODULES_PER_COURSE = 20;
 const MAX_SESSIONS_PER_MODULE = 50;
 
+// Grace window applied when gating subscription access on `expires_at`.
+// MercadoPago retries failed charges for ~3 days; without this window, a
+// paying subscriber whose card charge is one day late would lose access the
+// moment expires_at passes — even though MP is still attempting to bill them.
+// The lapse-flip cron uses the same grace so the two stay in sync.
+export const ACCESS_EXPIRY_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
+// Server-side mirror of the PWA's utils/courseAccess.isCourseEntryActive.
+// Keep these in sync — different gates here vs. on the client cause the
+// "I see it on Hoy but it's missing from my library" failure mode.
+function courseAccessIsActive(entry: Record<string, unknown> | undefined | null): boolean {
+  if (!entry) return false;
+  const raw = entry.expires_at;
+  let expiresAtMs: number | null = null;
+  if (typeof raw === "string") {
+    const ms = Date.parse(raw);
+    if (Number.isFinite(ms)) expiresAtMs = ms;
+  } else if (raw && typeof raw === "object" && typeof (raw as {toMillis?: () => number}).toMillis === "function") {
+    expiresAtMs = (raw as {toMillis: () => number}).toMillis();
+  }
+  if (expiresAtMs !== null && expiresAtMs + ACCESS_EXPIRY_GRACE_MS < Date.now()) return false;
+  if (entry.status === "active") return true;
+  if (entry.is_trial === true) return true;
+  return false;
+}
+
 // ─── 1RM helpers ─────────────────────────────────────────────────────────────
 function parseReportedIntensity(val: string | null | undefined): number | null {
   if (!val) return null;
@@ -2392,13 +2418,11 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   // was never written by any current endpoint.
   const isPublished = courseData_.status === "published";
   // For cadenced (subscription) courses the "published-means-public" semantics
-  // do not apply — content is gated by an active subscription. A truthy
-  // course entry without `status: active` is the post-lapse state (history
-  // kept, program locked per memory/project_monthly_drops.md) and must also be
-  // rejected here, since /current-block enforces the same and these endpoints
-  // must agree.
+  // do not apply — content is gated by an active subscription. courseAccessIsActive
+  // applies the same grace window /current-block uses so the two endpoints
+  // can never disagree about whether a user is "in" their program.
   const isCadenced = courseData_.block_cadence === "monthly_first_monday";
-  const accessActive = !!courseAccess && courseAccess.status === "active";
+  const accessActive = courseAccessIsActive(courseAccess as Record<string, unknown> | undefined);
   const passes = isCadenced ?
     (accessActive || isCreator || isAdmin) :
     (!!courseAccess || isCreator || isAdmin || isPublished);
@@ -2571,8 +2595,22 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
     expiresAtMs = ms;
     expiresAtIso = new Date(ms).toISOString();
   }
+  // 3-day grace window: MP retries failed charges for ~3 days, during which
+  // the local expires_at is stale even though the user is still a paying
+  // subscriber. Without grace, a single missed retry around the first-Monday
+  // boundary causes the user to lose access to the new monthly block until
+  // the next charge clears (potentially days). Note: an explicit cancellation
+  // sets entry.status = 'cancelled', and the lapse-flip cron writes 'expired'
+  // when the grace window itself elapses — so this only forgives in-flight
+  // billing retries, not abandoned subscriptions.
+  const ACCESS_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+  const entryStatus = userCourseEntry?.status ?? null;
+  const isCancelledOrExpired = entryStatus === "cancelled" || entryStatus === "expired";
   const now = Date.now();
-  const hasActiveAccess = expiresAtMs !== null && expiresAtMs >= now;
+  const hasActiveAccess =
+    !isCancelledOrExpired &&
+    expiresAtMs !== null &&
+    expiresAtMs >= now - ACCESS_GRACE_MS;
   const locked = !(isCreator || isAdmin || hasActiveAccess);
 
   const currentBlockId = (course.current_block_id as string | undefined) ?? null;

@@ -20,8 +20,32 @@ import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignme
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
 import {capture as analyticsCapture} from "../../lib/analytics.js";
+import {
+  sendOneTimePurchaseEmail,
+  sendSubscriptionStartedEmail,
+  sendChargeReceiptEmail,
+  sendTrialActivatedEmail,
+  sendCancellationEmail,
+} from "../services/purchaseEmails.js";
 
 const router = Router();
+
+// Email priority: user.email is the account they actually use; payer_email is
+// what they used at MP checkout (may differ). Prefer the account email so
+// emails reach them where they read other product comms; fall back to payer.
+function pickRecipientEmail(
+  userData: Record<string, unknown> | null | undefined,
+  payerEmail?: string | null
+): string | null {
+  const candidates = [
+    typeof userData?.email === "string" ? userData.email : null,
+    payerEmail,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && EMAIL_RE.test(c)) return c;
+  }
+  return null;
+}
 
 // MercadoPago redirects the buyer back to one of these URLs after checkout.
 // We derive the host from the caller's Origin header when it's in the trusted
@@ -41,6 +65,19 @@ function resolveAppBaseUrl(req: Request): string {
   const origin = req.get("origin");
   if (origin && PAYMENT_REDIRECT_ALLOWED_ORIGINS.has(origin)) return origin;
   return PAYMENT_REDIRECT_DEFAULT;
+}
+
+// MercadoPago calls this server-to-server (no Origin header), so we can't
+// derive from the request. Pin to the project: prod → wakelab.co, staging →
+// wake-staging.web.app. Override stays available for ngrok/tunnel testing.
+function resolveWebhookUrl(): string {
+  const override = process.env.WAKE_NOTIFICATION_URL_OVERRIDE;
+  if (override) return override;
+  const project = process.env.GCLOUD_PROJECT;
+  const base = project === "wake-staging" ?
+    "https://wake-staging.web.app" :
+    "https://wakelab.co";
+  return `${base}/api/v1/payments/webhook`;
 }
 
 function getMPClient() {
@@ -266,7 +303,11 @@ router.post("/payments/subscription", async (req, res) => {
     clampTrialDurationDays(rawTrialDays) :
     0;
 
-  const notificationUrlOverride = process.env.WAKE_NOTIFICATION_URL_OVERRIDE;
+  // Webhook URL: prefer explicit override (used by ad-hoc tests / tunnels);
+  // otherwise default to the project's Hosting rewrite to /api/v1/payments/webhook.
+  // Without this, MP falls back to the account-level URL configured in the
+  // dashboard — silently dropping webhooks if that URL is wrong/missing.
+  const notificationUrl = resolveWebhookUrl();
 
   let result;
   try {
@@ -287,7 +328,9 @@ router.post("/payments/subscription", async (req, res) => {
         },
         status: "pending",
         back_url: "https://www.mercadopago.com.co/subscriptions",
-        ...(notificationUrlOverride ? {notification_url: notificationUrlOverride} : {}),
+        // notification_url isn't in the SDK's PreApprovalRequest type but MP
+        // does honor it. Spread keeps TS happy without an explicit `as any`.
+        ...{notification_url: notificationUrl},
       },
     });
   } catch (error: unknown) {
@@ -785,6 +828,11 @@ router.post("/payments/webhook", async (req: Request, res) => {
       // trial window. The first real charge fires only after the trial,
       // so without this the user has paid but sees no course. Idempotent —
       // re-firing of the same webhook is a no-op once access exists.
+      //
+      // Errors here are NOT swallowed: classify and return 5xx for retryable
+      // failures so MP retries the webhook. Otherwise the user has signed up
+      // for a trial, has been billed (or will be), and silently has no access
+      // until the daily reconcile cron catches up.
       const trialDays = Number(existingSubData.free_trial_days);
       const courseIdForGrant =
         typeof existingSubData.course_id === "string" ? existingSubData.course_id : "";
@@ -794,36 +842,71 @@ router.post("/payments/webhook", async (req: Request, res) => {
         nextPaymentDate &&
         courseIdForGrant
       ) {
-        const userRef = db.collection("users").doc(parsed.userId);
-        const userDoc = await userRef.get();
-        const existing = (userDoc.data()?.courses?.[courseIdForGrant] ?? null) as
-          Record<string, unknown> | null;
-        const alreadyActive = existing?.status === "active" &&
-          typeof existing?.expires_at === "string" &&
-          new Date(existing.expires_at as string) > new Date();
-        if (!alreadyActive) {
-          const courseDoc = await db.collection("courses").doc(courseIdForGrant).get();
-          const course = (courseDoc.exists ? courseDoc.data() : {}) as Record<string, unknown>;
-          await userRef.update({
-            [`courses.${courseIdForGrant}`]: {
-              access_duration: course.access_duration ?? "monthly",
-              expires_at: nextPaymentDate,
-              status: "active",
-              is_trial: true,
-              purchased_at: new Date().toISOString(),
-              deliveryType: course.deliveryType ?? "low_ticket",
-              title: course.title ?? "Untitled Course",
-              image_url: course.image_url ?? null,
-              discipline: course.discipline ?? "General",
-              creatorName: course.creatorName ?? course.creator_name ?? null,
-              creator_id: course.creator_id ?? null,
-            },
-            updated_at: FieldValue.serverTimestamp(),
-          });
+        try {
+          const userRef = db.collection("users").doc(parsed.userId);
+          const userDoc = await userRef.get();
+          const userData = userDoc.exists ? (userDoc.data() ?? null) : null;
+          const existing = (userData?.courses?.[courseIdForGrant] ?? null) as
+            Record<string, unknown> | null;
+          const alreadyActive = existing?.status === "active" &&
+            typeof existing?.expires_at === "string" &&
+            new Date(existing.expires_at as string) > new Date();
+          if (!alreadyActive) {
+            const courseDoc = await db.collection("courses").doc(courseIdForGrant).get();
+            const course = (courseDoc.exists ? courseDoc.data() : {}) as Record<string, unknown>;
+            await userRef.update({
+              [`courses.${courseIdForGrant}`]: {
+                access_duration: course.access_duration ?? "monthly",
+                expires_at: nextPaymentDate,
+                status: "active",
+                is_trial: true,
+                purchased_at: new Date().toISOString(),
+                deliveryType: course.deliveryType ?? "low_ticket",
+                title: course.title ?? "Untitled Course",
+                image_url: course.image_url ?? null,
+                discipline: course.discipline ?? "General",
+                creatorName: course.creatorName ?? course.creator_name ?? null,
+                creator_id: course.creator_id ?? null,
+              },
+              updated_at: FieldValue.serverTimestamp(),
+            });
+
+            const recipient = pickRecipientEmail(userData, payerEmail);
+            const transactionAmount = autoRecurring?.transaction_amount ?? 0;
+            const currency = autoRecurring?.currency_id ?? "COP";
+            if (recipient && transactionAmount > 0) {
+              await sendTrialActivatedEmail({
+                to: recipient,
+                programTitle: (course.title as string) ?? "tu programa",
+                courseId: courseIdForGrant,
+                trialDays,
+                trialEndDate: nextPaymentDate,
+                transactionAmount,
+                currencyId: currency,
+              });
+            }
+          }
+        } catch (trialErr) {
+          functions.logger.error("Trial grant failed", trialErr);
+          if (classifyError(trialErr) === "RETRYABLE") {
+            res.status(500).json({
+              error: {code: "INTERNAL_ERROR", message: "Error procesando trial"},
+            });
+            return;
+          }
+          // NON_RETRYABLE: fall through to 200 so MP stops retrying.
         }
       }
     } catch (err) {
+      // Outer try guards the preapproval fetch + sub doc set. Classify
+      // similarly so dropped webhooks don't go silent.
       functions.logger.error("Error processing subscription_preapproval webhook", err);
+      if (classifyError(err) === "RETRYABLE") {
+        res.status(500).json({
+          error: {code: "INTERNAL_ERROR", message: "Error procesando preapproval"},
+        });
+        return;
+      }
     }
 
     res.status(200).send("OK");
@@ -1081,13 +1164,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
       }
     }
 
+    let bundleResult: Awaited<ReturnType<typeof assignBundleToUser>> | null = null;
     try {
       // Security (audit H-17): bundle grant + processed_payments finalization
       // run in a single runTransaction. Without this, a crash between the
       // grant and the processed_payments write enabled full retry, and two
       // concurrent renewal webhooks could both compute new expires_at off the
       // same stale snapshot.
-      const result = await db.runTransaction(async (tx) => {
+      bundleResult = await db.runTransaction(async (tx) => {
         const r = await assignBundleToUser({
           userId,
           bundleId,
@@ -1137,7 +1221,6 @@ router.post("/payments/webhook", async (req: Request, res) => {
         });
         return r;
       });
-      void result;
     } catch (bundleErr) {
       functions.logger.error("Bundle assignment failed", bundleErr);
       const errType = classifyError(bundleErr);
@@ -1149,6 +1232,72 @@ router.post("/payments/webhook", async (req: Request, res) => {
         processed_at: FieldValue.serverTimestamp(),
         status: "error", error_type: "bundle_assignment_failed",
       });
+    }
+
+    // Best-effort: bundle confirmation email + analytics. Pick the first
+    // granted course as the deep-link target so the CTA lands on a real
+    // program; falls back to /library when no courses were granted.
+    if (bundleResult && bundleResult.courseIdsGranted.length > 0) {
+      try {
+        const recipient = pickRecipientEmail(userDoc.data() ?? null, null);
+        const amount = bundleRefreshedAmount ?? paymentData.transaction_amount ?? null;
+        const currency = bundleRefreshedCurrency ?? paymentData.currency_id ?? "COP";
+        const firstCourseId = bundleResult.courseIdsGranted[0];
+        if (recipient && amount && amount > 0) {
+          if (isSubscription) {
+            if (isBundleRenewal) {
+              await sendChargeReceiptEmail({
+                to: recipient,
+                programTitle: bundleResult.bundleTitle,
+                courseId: firstCourseId,
+                amount,
+                currencyId: currency,
+                chargeDate: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+                nextBillingDate: bundleRefreshedNextBilling ?? null,
+              });
+            } else {
+              await sendSubscriptionStartedEmail({
+                to: recipient,
+                programTitle: bundleResult.bundleTitle,
+                courseId: firstCourseId,
+                nextBillingDate: bundleRefreshedNextBilling ?? bundleResult.expiresAt,
+                transactionAmount: amount,
+                currencyId: currency,
+              });
+            }
+          } else {
+            await sendOneTimePurchaseEmail({
+              to: recipient,
+              programTitle: bundleResult.bundleTitle,
+              courseId: firstCourseId,
+              amount,
+              currencyId: currency,
+              accessUntil: bundleResult.expiresAt,
+            });
+          }
+        }
+      } catch (emailErr) {
+        functions.logger.warn("Bundle email send failed (non-blocking)", {
+          userId, bundleId, error: String(emailErr),
+        });
+      }
+
+      try {
+        analyticsCapture({
+          distinctId: userId,
+          event: "program.purchase_completed",
+          properties: {
+            bundle_id: bundleId,
+            course_ids: bundleResult.courseIdsGranted,
+            is_subscription: isSubscription,
+            is_renewal: isBundleRenewal,
+            access_duration: accessDuration,
+            amount: bundleRefreshedAmount ?? paymentData.transaction_amount ?? null,
+            currency: bundleRefreshedCurrency ?? paymentData.currency_id ?? null,
+            payment_type: paymentType,
+          },
+        });
+      } catch {/* best-effort */}
     }
 
     res.status(200).send("OK");
@@ -1280,6 +1429,48 @@ router.post("/payments/webhook", async (req: Request, res) => {
       });
     });
 
+    // Best-effort: receipt email + analytics. Both run after the transaction
+    // commits so a flaky email/PostHog cannot roll back the renewal grant.
+    // Idempotency is enforced by processed_payments above — duplicate webhooks
+    // never reach this point, so duplicate emails aren't a concern.
+    try {
+      const recipient = pickRecipientEmail(userData, null);
+      const finalAmount = refreshedAmount ?? paymentData.transaction_amount ?? null;
+      const finalCurrency = refreshedCurrency ?? paymentData.currency_id ?? "COP";
+      if (recipient && finalAmount && finalAmount > 0) {
+        await sendChargeReceiptEmail({
+          to: recipient,
+          programTitle: courseTitle,
+          courseId,
+          amount: finalAmount,
+          currencyId: finalCurrency,
+          chargeDate: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
+          nextBillingDate: refreshedNextBilling ?? null,
+        });
+      }
+    } catch (emailErr) {
+      functions.logger.warn("Renewal email send failed (non-blocking)", {
+        userId, courseId, error: String(emailErr),
+      });
+    }
+
+    try {
+      analyticsCapture({
+        distinctId: userId,
+        event: "program.purchase_completed",
+        properties: {
+          course_id: courseId,
+          is_subscription: true,
+          is_renewal: true,
+          access_duration: courseAccessDuration,
+          delivery_type: courseDetails?.deliveryType || null,
+          amount: refreshedAmount ?? paymentData.transaction_amount ?? null,
+          currency: refreshedCurrency ?? paymentData.currency_id ?? null,
+          payment_type: paymentType,
+        },
+      });
+    } catch {/* best-effort */}
+
     res.status(200).send("OK");
     return;
   }
@@ -1325,6 +1516,49 @@ router.post("/payments/webhook", async (req: Request, res) => {
       payment_type: paymentType, courseTitle, state: "completed",
     }, {merge: true});
   });
+
+  // Best-effort confirmation email. Subscription with a trial already
+  // fired sendTrialActivatedEmail in the subscription_preapproval handler,
+  // so don't double-send: only email here when free_trial_days isn't set
+  // on the local sub doc (= no trial path).
+  try {
+    const recipient = pickRecipientEmail(userData, null);
+    const amount = paymentData.transaction_amount || null;
+    const currency = paymentData.currency_id || "COP";
+
+    if (recipient && amount && amount > 0) {
+      if (isSubscription && subscriptionId) {
+        const subDoc = await db
+          .collection("users").doc(userId)
+          .collection("subscriptions").doc(subscriptionId)
+          .get();
+        const subFreeTrialDays = Number(subDoc.data()?.free_trial_days || 0);
+        if (subFreeTrialDays === 0) {
+          await sendSubscriptionStartedEmail({
+            to: recipient,
+            programTitle: courseTitle,
+            courseId,
+            nextBillingDate: subscriptionNextBilling || expirationDate,
+            transactionAmount: amount,
+            currencyId: currency,
+          });
+        }
+      } else {
+        await sendOneTimePurchaseEmail({
+          to: recipient,
+          programTitle: courseTitle,
+          courseId,
+          amount,
+          currencyId: currency,
+          accessUntil: expirationDate,
+        });
+      }
+    }
+  } catch (emailErr) {
+    functions.logger.warn("Purchase email send failed (non-blocking)", {
+      userId, courseId, error: String(emailErr),
+    });
+  }
 
   try {
     analyticsCapture({
@@ -1419,6 +1653,42 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
 
       await db.collection("subscription_cancellation_feedback").add(surveyRecord);
     } catch {/* non-critical */}
+  }
+
+  // Best-effort cancellation email. Access remains until expires_at on the
+  // course entry (= MP's last next_billing_date). If the sub was cancelled
+  // before any non-trial charge fired, expires_at may be undefined — in
+  // that case, skip the email rather than tell the user a wrong date.
+  try {
+    const courseIdForEmail =
+      typeof subscriptionData.course_id === "string" ? subscriptionData.course_id : null;
+    if (courseIdForEmail) {
+      const userDoc = await db.collection("users").doc(auth.userId).get();
+      const userData = userDoc.exists ? (userDoc.data() ?? null) : null;
+      const courseEntry = (userData?.courses?.[courseIdForEmail] ?? null) as
+        Record<string, unknown> | null;
+      const accessUntil = typeof courseEntry?.expires_at === "string" ?
+        (courseEntry.expires_at as string) : null;
+      const recipient = pickRecipientEmail(
+        userData,
+        typeof subscriptionData.payer_email === "string" ? subscriptionData.payer_email : null,
+      );
+      const programTitle =
+        (typeof courseEntry?.title === "string" ? (courseEntry.title as string) : null) ??
+        (typeof subscriptionData.course_title === "string" ? subscriptionData.course_title : "tu programa");
+      if (recipient && accessUntil) {
+        await sendCancellationEmail({
+          to: recipient,
+          programTitle,
+          courseId: courseIdForEmail,
+          accessUntil,
+        });
+      }
+    }
+  } catch (emailErr) {
+    functions.logger.warn("Cancel email send failed (non-blocking)", {
+      userId: auth.userId, subscriptionId, error: String(emailErr),
+    });
   }
 
   res.json({data: {status: "cancelled"}});

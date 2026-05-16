@@ -101,15 +101,23 @@ export async function cancelMpSubscription(
   } catch (err: unknown) {
     // MP returns an error if the preapproval is already cancelled on their
     // side (e.g. user cancelled in customer portal but webhook hasn't synced
-    // yet). Treat that as success — the desired end state already holds.
+    // yet). Treat that case — and only that case — as success. The earlier
+    // pattern `/already.*cancel|status.*cancel|400/i` matched any error whose
+    // stringification contained "400" (including a URL with port :400 or a
+    // stack frame at line 400), which would silently swallow real failures
+    // and let MP keep billing the user. Match against the structured MP
+    // error shape: status === 400 AND a message/cause that names the
+    // already-cancelled state explicitly.
+    const errObj = (err && typeof err === "object" ? err : {}) as Record<string, unknown>;
     const raw = err instanceof Error ? err.message :
-      (err && typeof err === "object" && "message" in err ?
-        String((err as {message: unknown}).message) :
-        String(err));
-    const isAlreadyCancelled = /already.*cancel|status.*cancel|400/i.test(raw);
-    if (!isAlreadyCancelled) {
+      (typeof errObj.message === "string" ? errObj.message : String(err));
+    const status = typeof errObj.status === "number" ? errObj.status :
+      (typeof errObj.statusCode === "number" ? errObj.statusCode : null);
+    const looksAlreadyCancelled = status === 400 &&
+      /\balready\s+cancel|preapproval.*cancel|status.*cancel/i.test(raw);
+    if (!looksAlreadyCancelled) {
       functions.logger.error("cancelMpSubscription: MP update failed", {
-        userId, subscriptionId, error: raw,
+        userId, subscriptionId, status, error: raw,
       });
       return "failed";
     }

@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
 import apiClient from '../../utils/apiClient';
+import { isCourseEntryActive } from '../../utils/courseAccess';
 
 function transformCourses(userData) {
   if (!userData?.courses) return [];
-  const now = new Date();
   return Object.entries(userData.courses).map(([courseId, e]) => {
-    const hasAccess = e.is_trial ||
-      (e.status === 'active' && (!e.expires_at || new Date(e.expires_at) > now));
+    const hasAccess = isCourseEntryActive(e);
     return {
       id: courseId,
       courseId,

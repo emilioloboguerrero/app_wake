@@ -2,20 +2,11 @@ import apiClient from '../utils/apiClient';
 import apiService from './apiService';
 import logger from '../utils/logger';
 import analyticsService from './analyticsService';
+import { isCourseEntryActive } from '../utils/courseAccess';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
-    if (!courseEntry) return false;
-
-    const expiresAt = courseEntry.expires_at ? new Date(courseEntry.expires_at) : null;
-    const now = new Date();
-    const isNotExpired = !expiresAt || expiresAt > now;
-
-    if (!isNotExpired) return false;
-    if (courseEntry.status === 'active') return true;
-    if (courseEntry.is_trial) return true;
-
-    return false;
+    return isCourseEntryActive(courseEntry);
   }
 
   /**
@@ -272,11 +263,12 @@ class PurchaseService {
       const userCourses = userDoc.courses || {};
       const now = new Date();
 
-      // Return flat shape matching getUserActiveCourses
+      // Return flat shape matching getUserActiveCourses. isActive routes
+      // through the shared courseAccess helper so this list agrees with
+      // useUserCourses and HoyScreen.
       return Object.entries(userCourses).map(([courseId, e]) => {
-        const isActive = e.status === 'active';
-        const isNotExpired = e.expires_at ? new Date(e.expires_at) > now : true;
         const isCancelled = e.status === 'cancelled';
+        const isNotExpired = e.expires_at ? new Date(e.expires_at) > now : true;
 
         return {
           id: courseId,
@@ -291,7 +283,7 @@ class PurchaseService {
           purchased_at: e.purchased_at,
           deliveryType: e.deliveryType,
           is_trial: e.is_trial,
-          isActive: isActive && isNotExpired,
+          isActive: isCourseEntryActive(e),
           isExpired: !isNotExpired && !isCancelled,
           isCompleted: false,
         };

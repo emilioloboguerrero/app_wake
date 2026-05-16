@@ -1627,8 +1627,28 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
+  // When a creator turns cadence OFF, clean up program_state so a stale
+  // current_block_id can't gate content if cadence is later re-enabled or
+  // if any cron logic changes. The cron itself filters by block_cadence so
+  // this is defensive, not corrective.
+  if (updates.block_cadence === null) {
+    await db.collection("program_state").doc(req.params.programId).delete().catch(() => {
+      // best-effort: doc may not exist
+    });
+    await docRef.update({
+      current_block_id: FieldValue.delete(),
+      current_block_index: FieldValue.delete(),
+    }).catch(() => {
+      // best-effort: fields may not exist
+    });
+  }
+
   // Sync updated fields to enrolled users' course entries
-  const syncFields: Record<string, string> = {image_url: "image_url", title: "title"};
+  const syncFields: Record<string, string> = {
+    image_url: "image_url",
+    title: "title",
+    block_cadence: "block_cadence",
+  };
   const userUpdates: Record<string, unknown> = {};
   for (const [field, courseField] of Object.entries(syncFields)) {
     if (updates[field] !== undefined) {

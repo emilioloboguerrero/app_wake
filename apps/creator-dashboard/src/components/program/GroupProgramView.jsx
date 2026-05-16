@@ -23,6 +23,43 @@ import useProgramEditor from '../../hooks/useProgramEditor';
 import MediaDropZone from '../ui/MediaDropZone';
 import './GroupProgramView.css';
 
+// Returns the next first-Monday-of-month at or after `from`, evaluated in
+// America/Bogota (the cron's timezone). Used to compute the live "Próximo
+// drop" date the creator sees so they don't have to do calendar math.
+function nextFirstMondayBogota(from = new Date()) {
+  const fmt = (d) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Bogota',
+    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  }).formatToParts(d).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+
+  const d = new Date(from);
+  for (let i = 0; i < 60; i++) {
+    const parts = fmt(d);
+    const dom = Number(parts.day);
+    if (parts.weekday === 'Mon' && dom <= 7) {
+      // Today qualifies — but only if the cron hasn't already fired (00:00 BOG).
+      // Treating "today" as the next drop is fine for display purposes; the
+      // creator gets clarity that the drop happens this calendar day.
+      return new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00-05:00`);
+    }
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return null;
+}
+
+function daysBetween(a, b) {
+  if (!a || !b) return null;
+  return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatDropDate(date) {
+  if (!date) return '';
+  return new Intl.DateTimeFormat('es-CO', {
+    timeZone: 'America/Bogota',
+    weekday: 'long', day: 'numeric', month: 'long',
+  }).format(date);
+}
+
 const TAB_ITEMS = [
   { id: 'programa', label: 'Programa' },
   { id: 'contenido', label: 'Contenido' },
@@ -77,17 +114,23 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   };
 
   // ── Price & trial state (GroupProgramView-specific) ───────────
+  // For cadenced (monthly-drop) programs the only price that matters is
+  // `subscription_price` — payments.ts requires it to create a PreApproval and
+  // refuses the OTP path entirely. The price card below switches its target
+  // field based on cadenceActive so the creator never sets the wrong field.
   const [priceValue, setPriceValue] = useState(program?.price != null ? String(program.price) : '');
+  const [subscriptionPriceValue, setSubscriptionPriceValue] = useState(program?.subscription_price != null ? String(program.subscription_price) : '');
   const [compareAtPriceValue, setCompareAtPriceValue] = useState(program?.compare_at_price != null ? String(program.compare_at_price) : '');
   const [freeTrialActive, setFreeTrialActive] = useState(!!program?.free_trial?.active);
   const [freeTrialDays, setFreeTrialDays] = useState(String(program?.free_trial?.duration_days ?? 0));
 
   useEffect(() => {
     setPriceValue(program?.price != null ? String(program.price) : '');
+    setSubscriptionPriceValue(program?.subscription_price != null ? String(program.subscription_price) : '');
     setCompareAtPriceValue(program?.compare_at_price != null ? String(program.compare_at_price) : '');
     setFreeTrialActive(!!program?.free_trial?.active);
     setFreeTrialDays(String(program?.free_trial?.duration_days ?? 0));
-  }, [program?.price, program?.compare_at_price, program?.free_trial]);
+  }, [program?.price, program?.subscription_price, program?.compare_at_price, program?.free_trial]);
 
   // ── Content tab state ─────────────────────────────────────────
   const [mediaPickerContext, setMediaPickerContext] = useState('program');
@@ -152,6 +195,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     await editor.saveField({ price: numericPrice });
   }, [priceValue, program?.price, editor]);
 
+  const saveSubscriptionPrice = useCallback(async () => {
+    const numeric = subscriptionPriceValue === '' ? null : parseInt(String(subscriptionPriceValue).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 2000) {
+      setSubscriptionPriceValue(program?.subscription_price != null ? String(program.subscription_price) : '');
+      return;
+    }
+    if (numeric === program?.subscription_price) return;
+    await editor.saveField({ subscription_price: numeric });
+  }, [subscriptionPriceValue, program?.subscription_price, editor]);
+
   const saveCompareAtPrice = useCallback(async () => {
     const numeric = compareAtPriceValue === '' ? null : parseInt(String(compareAtPriceValue).replace(/\D/g, ''), 10);
     if (numeric !== null && numeric < 2000) {
@@ -188,6 +241,49 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   const handleCadenceToggle = useCallback(async (active) => {
     await editor.saveField({ block_cadence: active ? 'monthly_first_monday' : null });
   }, [editor]);
+
+  // Cadence telemetry surfaced to the creator: which block is live, when the
+  // next drop happens, and whether the next module is ready. Without these
+  // the creator has zero in-dashboard signal that the cron is about to flip
+  // to a draft module — a silent failure that only surfaces in Telegram.
+  const { data: cadenceModulesRes } = useQuery({
+    queryKey: ['program', 'modules', programId, 'cadence'],
+    queryFn: () => apiClient.get(`/creator/programs/${programId}/modules`).then((r) => r?.data ?? []),
+    enabled: !!programId && cadenceActive,
+    staleTime: 60 * 1000,
+  });
+  const cadenceModules = useMemo(() => {
+    const list = Array.isArray(cadenceModulesRes) ? cadenceModulesRes :
+      (cadenceModulesRes?.data ?? []);
+    return [...list].sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
+  }, [cadenceModulesRes]);
+
+  const cadenceInfo = useMemo(() => {
+    if (!cadenceActive) return null;
+    const currentIdx = typeof program?.current_block_index === 'number'
+      ? program.current_block_index
+      : -1;
+    const currentModule = cadenceModules.find((m) => m?.order === currentIdx) ?? null;
+    const nextModule = cadenceModules.find((m) => (m?.order ?? -1) > currentIdx) ?? null;
+    const nextDrop = nextFirstMondayBogota(new Date());
+    const today = new Date();
+    const daysToDrop = daysBetween(today, nextDrop);
+    const nextReady = !!nextModule?.published_at;
+    return {
+      currentIdx,
+      currentTitle: currentModule?.title ?? null,
+      nextIdx: nextModule?.order ?? null,
+      nextTitle: nextModule?.title ?? null,
+      nextReady,
+      nextDropDate: nextDrop,
+      daysToDrop,
+      // Yellow warning: <14 days out and not ready. Red urgent: <7 days.
+      warningLevel: nextModule == null && currentIdx >= 0 ? 'no_next' :
+        (!nextReady && daysToDrop != null && daysToDrop <= 7) ? 'urgent' :
+        (!nextReady && daysToDrop != null && daysToDrop <= 14) ? 'soft' :
+        null,
+    };
+  }, [cadenceActive, cadenceModules, program?.current_block_index]);
 
   // ── Image handler wrapper (handles mediaPickerContext) ────────
   const handleMediaPickerSelect = useCallback(async (item) => {
@@ -416,43 +512,57 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
               <h2 className="gp-section-title gp-section-title--config">Configuracion</h2>
               <div className="gp-config__grid">
 
-                {/* Price */}
+                {/* Price — switches input target to subscription_price when
+                    monthly cadence is on. payments.ts requires
+                    subscription_price (not price) to issue a PreApproval for
+                    cadenced programs, so without this branch a creator would
+                    silently leave the program unsubscribable. */}
                 <BentoCard className="gp-config__card">
                   <GlowingEffect spread={24} proximity={60} />
-                  <h3>Precio</h3>
+                  <h3>{cadenceActive ? 'Precio mensual' : 'Precio'}</h3>
                   <div className="gp-price-field">
                     <span className="gp-price-field__currency">$</span>
                     <input
                       className="gp-price-field__input"
                       type="text"
                       inputMode="numeric"
-                      value={priceValue ? Number(priceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
-                      onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))}
-                      onBlur={savePrice}
-                      placeholder="Gratis"
+                      value={cadenceActive
+                        ? (subscriptionPriceValue ? Number(subscriptionPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : '')
+                        : (priceValue ? Number(priceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : '')}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, '');
+                        if (cadenceActive) setSubscriptionPriceValue(raw);
+                        else setPriceValue(raw);
+                      }}
+                      onBlur={cadenceActive ? saveSubscriptionPrice : savePrice}
+                      placeholder={cadenceActive ? 'Sin precio' : 'Gratis'}
                     />
-                    <span className="gp-price-field__hint">COP</span>
+                    <span className="gp-price-field__hint">{cadenceActive ? 'COP / mes' : 'COP'}</span>
                   </div>
                 </BentoCard>
 
-                {/* Compare at price */}
-                <BentoCard className="gp-config__card">
-                  <GlowingEffect spread={24} proximity={60} />
-                  <h3>Precio comparativo</h3>
-                  <div className="gp-price-field">
-                    <span className="gp-price-field__currency">$</span>
-                    <input
-                      className="gp-price-field__input"
-                      type="text"
-                      inputMode="numeric"
-                      value={compareAtPriceValue ? Number(compareAtPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
-                      onChange={(e) => setCompareAtPriceValue(e.target.value.replace(/\D/g, ''))}
-                      onBlur={saveCompareAtPrice}
-                      placeholder="Opcional"
-                    />
-                    <span className="gp-price-field__hint">COP</span>
-                  </div>
-                </BentoCard>
+                {/* Compare at price — only meaningful for OTP. Hidden when
+                    monthly cadence is on so the creator isn't tempted to set a
+                    value that the subscription path silently ignores. */}
+                {!cadenceActive && (
+                  <BentoCard className="gp-config__card">
+                    <GlowingEffect spread={24} proximity={60} />
+                    <h3>Precio comparativo</h3>
+                    <div className="gp-price-field">
+                      <span className="gp-price-field__currency">$</span>
+                      <input
+                        className="gp-price-field__input"
+                        type="text"
+                        inputMode="numeric"
+                        value={compareAtPriceValue ? Number(compareAtPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
+                        onChange={(e) => setCompareAtPriceValue(e.target.value.replace(/\D/g, ''))}
+                        onBlur={saveCompareAtPrice}
+                        placeholder="Opcional"
+                      />
+                      <span className="gp-price-field__hint">COP</span>
+                    </div>
+                  </BentoCard>
+                )}
 
                 {/* Free trial */}
                 <BentoCard className="gp-config__card">
@@ -483,11 +593,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                   </div>
                 </BentoCard>
 
-                {/* Bloques mensuales (monthly drops) */}
-                <BentoCard className="gp-config__card">
+                {/* Bloques mensuales (monthly drops) — when active, surfaces:
+                    current live block, next drop date, readiness warning if
+                    next module is still draft within 14 days of the drop.
+                    Without this, the creator has no in-app signal that the
+                    cron is about to flip to a draft and silently misses
+                    publishes. */}
+                <BentoCard className={`gp-config__card gp-config__card--span-2 gp-cadence-card ${cadenceInfo?.warningLevel ? `gp-cadence-card--${cadenceInfo.warningLevel}` : ''}`}>
                   <GlowingEffect spread={24} proximity={60} />
-                  <h3>Bloques mensuales</h3>
-                  <div className="gp-trial">
+                  <div className="gp-cadence-card__header">
+                    <h3>Bloques mensuales</h3>
                     <button
                       type="button"
                       className={`gp-trial__toggle ${cadenceActive ? 'gp-trial__toggle--active' : ''}`}
@@ -497,13 +612,61 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                       <span>{cadenceActive ? 'Activos' : 'Inactivos'}</span>
                     </button>
                   </div>
-                  {cadenceActive ? (
-                    <p className="gp-config__hint">
-                      Se desbloquea un nuevo bloque el primer lunes de cada mes para todos tus suscriptores.
-                    </p>
-                  ) : (
+
+                  {!cadenceActive && (
                     <p className="gp-config__hint">
                       Programas mensuales que se renuevan solos. Activa para que tus suscriptores reciban un bloque nuevo cada primer lunes.
+                    </p>
+                  )}
+
+                  {cadenceActive && cadenceInfo && (
+                    <div className="gp-cadence-card__rows">
+                      <div className="gp-cadence-card__row">
+                        <span className="gp-cadence-card__row-label">En vivo ahora</span>
+                        <span className="gp-cadence-card__row-value">
+                          {cadenceInfo.currentIdx >= 0
+                            ? `Mes ${cadenceInfo.currentIdx + 1}${cadenceInfo.currentTitle ? ` — ${cadenceInfo.currentTitle}` : ''}`
+                            : 'Aún no se ha entregado ningún bloque'}
+                        </span>
+                      </div>
+                      <div className="gp-cadence-card__row">
+                        <span className="gp-cadence-card__row-label">Próximo drop</span>
+                        <span className="gp-cadence-card__row-value">
+                          {cadenceInfo.nextDropDate
+                            ? `${formatDropDate(cadenceInfo.nextDropDate)}${cadenceInfo.daysToDrop != null ? ` · en ${cadenceInfo.daysToDrop} día${cadenceInfo.daysToDrop === 1 ? '' : 's'}` : ''}`
+                            : '—'}
+                        </span>
+                      </div>
+                      <div className="gp-cadence-card__row">
+                        <span className="gp-cadence-card__row-label">Próximo bloque</span>
+                        <span className="gp-cadence-card__row-value">
+                          {cadenceInfo.nextIdx != null
+                            ? `Mes ${cadenceInfo.nextIdx + 1}${cadenceInfo.nextTitle ? ` — ${cadenceInfo.nextTitle}` : ''} · ${cadenceInfo.nextReady ? 'Publicado' : 'Borrador'}`
+                            : 'No has creado el siguiente bloque'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {cadenceActive && cadenceInfo?.warningLevel === 'urgent' && (
+                    <p className="gp-cadence-card__alert gp-cadence-card__alert--urgent">
+                      Faltan {cadenceInfo.daysToDrop} días para el próximo drop y el siguiente bloque sigue en borrador. Publícalo desde Contenido antes del lunes para que tus suscriptores no se queden sin material.
+                    </p>
+                  )}
+                  {cadenceActive && cadenceInfo?.warningLevel === 'soft' && (
+                    <p className="gp-cadence-card__alert gp-cadence-card__alert--soft">
+                      Recuerda publicar el próximo bloque antes del {formatDropDate(cadenceInfo.nextDropDate)} para mantener la cadencia.
+                    </p>
+                  )}
+                  {cadenceActive && cadenceInfo?.warningLevel === 'no_next' && (
+                    <p className="gp-cadence-card__alert gp-cadence-card__alert--urgent">
+                      No hay un siguiente bloque creado. Crea el módulo desde Contenido o tus suscriptores se quedarán sin contenido nuevo este mes.
+                    </p>
+                  )}
+
+                  {cadenceActive && (
+                    <p className="gp-config__hint">
+                      Cada primer lunes a las 00:00 (Bogotá) tus suscriptores reciben automáticamente el siguiente bloque publicado. Los borradores no entran al cron.
                     </p>
                   )}
                 </BentoCard>

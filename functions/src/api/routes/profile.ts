@@ -1053,6 +1053,14 @@ router.get("/courses", async (req, res) => {
     } as Record<string, unknown>;
   });
 
+  // Hide drafts from anyone who is not the owning creator. The /creator/programs
+  // endpoint exists for creators to manage their own drafts; this listing is for
+  // discovery and should never expose unpublished courses to other users.
+  const isOwnerProfileRequest = creatorId && creatorId === auth.userId;
+  if (!isOwnerProfileRequest) {
+    docs = docs.filter((d) => d.status === "published");
+  }
+
   // Global library only: hide rival creators' one-on-one programs while locked
   if (lock) {
     docs = docs.filter((d) => {
