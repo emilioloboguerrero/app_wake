@@ -2819,13 +2819,17 @@ export const monthlyDropAdvance = onSchedule(
     }
 
     if (signalsCtx) {
-      const stuck = results.filter((r) => r.outcome === "no_next_published");
-      for (const s of stuck) {
+      // Carry-over: no next published block is now a normal state, not an
+      // alert. A coach may intentionally let a drop run for multiple months
+      // (memory/project_monthly_drops.md). We still emit one INFO line per
+      // course so the ops bus has a paper trail, but stop paging.
+      const carried = results.filter((r) => r.outcome === "no_next_published");
+      for (const c of carried) {
         try {
           await sendTo(
             signalsCtx,
             "signals",
-            `[monthly-drops] ${s.courseId}: ALERT — no next published block (current=${s.fromBlock}). Creator needs to publish.`
+            `[monthly-drops] ${c.courseId}: carry-over · current block ${c.fromBlock} continues this month`
           );
         } catch {
           // best-effort
@@ -2835,11 +2839,12 @@ export const monthlyDropAdvance = onSchedule(
   }
 );
 
-// Day-25 nudge. For each `monthly_first_monday` course, check whether the
-// module with `order = current_block_index + 1` exists and has
-// `published_at` set. If not, alert in signals so the creator has roughly
-// a week to publish before the next first-Monday cron.
-
+// Day-25 readiness sweep — retained as a no-op for now. Under the
+// carry-over model (memory/project_monthly_drops.md), an unauthored next
+// block is a normal state, so pinging the creator is wrong: they may have
+// chosen to let the current block run another month. The function still
+// exists to keep deployment manifests stable; it logs at info level and
+// does not send signals.
 export const monthlyDropReadinessCheck = onSchedule(
   {
     schedule: "0 14 25 * *",
@@ -2850,52 +2855,7 @@ export const monthlyDropReadinessCheck = onSchedule(
     timeoutSeconds: 60,
   },
   async () => {
-    const coursesSnap = await db
-      .collection("courses")
-      .where("block_cadence", "==", "monthly_first_monday")
-      .get();
-    if (coursesSnap.empty) return;
-
-    const ctx = {
-      botToken: telegramSignalsBotToken.value(),
-      chatId: telegramChatId.value(),
-      topics: readTopics(),
-    };
-    if (!ctx.botToken || !ctx.chatId) return;
-
-    for (const doc of coursesSnap.docs) {
-      const data = doc.data() ?? {};
-      const currentIndex = typeof data.current_block_index === "number" ? data.current_block_index : -1;
-      // Match the advance cron: take the next module by `order > current`,
-      // not literal `current + 1`, so creator-side gaps don't pin the alert.
-      const nextSnap = await doc.ref
-        .collection("modules")
-        .where("order", ">", currentIndex)
-        .orderBy("order", "asc")
-        .limit(1)
-        .get();
-      const nextDoc = nextSnap.docs[0];
-      const nextOrder = nextDoc?.data()?.order ?? null;
-      const readyAt = nextDoc?.data()?.published_at ?? null;
-      if (readyAt) continue;
-
-      try {
-        const labeledIndex = typeof nextOrder === "number" ? nextOrder : currentIndex + 1;
-        const reason = nextDoc ?
-          `next block (index ${labeledIndex}) NOT ready yet.` :
-          "no next module authored.";
-        await sendTo(
-          ctx,
-          "signals",
-          `[monthly-drops] ${doc.id}: ${reason} First Monday of next month is ~10 days out.`
-        );
-      } catch (err) {
-        functions.logger.warn("monthlyDropReadinessCheck: signal failed", {
-          courseId: doc.id,
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    functions.logger.info("monthlyDropReadinessCheck: carry-over model — no signals emitted");
   }
 );
 

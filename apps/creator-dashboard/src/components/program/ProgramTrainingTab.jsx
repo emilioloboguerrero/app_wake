@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
+import ProgramCadenceCalendar from './ProgramCadenceCalendar';
 import PlanningLibrarySidebar from '../PlanningLibrarySidebar';
 import programService from '../../services/programService';
 import libraryService from '../../services/libraryService';
@@ -64,6 +65,8 @@ export default function ProgramTrainingTab({ programId, creatorId, program = nul
     navigate(`/programs/${programId}/modules/${mod.id}/sessions/${session.id}/edit`);
   }, [navigate, programId]);
 
+  const cadenceActive = program?.block_cadence === 'monthly_first_monday';
+
   return (
     <div className="plan-structure-layout">
       <div className="plan-structure-sidebars">
@@ -74,22 +77,31 @@ export default function ProgramTrainingTab({ programId, creatorId, program = nul
         />
       </div>
       <div className="plan-structure-main">
-        <ProgramWeeksGrid
-          programId={programId}
-          program={program}
-          modules={modules}
-          onAddWeek={handleAddWeek}
-          onDeleteWeek={handleDeleteWeek}
-          onModulesChange={handleModulesChange}
-          onSessionClick={handleSessionClick}
-          libraryService={libraryService}
-          plansService={plansService}
-          creatorId={creatorId}
-          isLoading={isLoadingModules}
-          isAddingWeek={isAddingWeek}
-          queryClient={queryClient}
-          queryKeys={queryKeys}
-        />
+        {cadenceActive ? (
+          <ProgramCadenceCalendar
+            programId={programId}
+            program={program}
+            modules={modules}
+            onModulesChange={handleModulesChange}
+          />
+        ) : (
+          <ProgramWeeksGrid
+            programId={programId}
+            program={program}
+            modules={modules}
+            onAddWeek={handleAddWeek}
+            onDeleteWeek={handleDeleteWeek}
+            onModulesChange={handleModulesChange}
+            onSessionClick={handleSessionClick}
+            libraryService={libraryService}
+            plansService={plansService}
+            creatorId={creatorId}
+            isLoading={isLoadingModules}
+            isAddingWeek={isAddingWeek}
+            queryClient={queryClient}
+            queryKeys={queryKeys}
+          />
+        )}
       </div>
     </div>
   );

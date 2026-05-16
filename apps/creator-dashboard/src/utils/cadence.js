@@ -92,3 +92,109 @@ export function ymdToMondayIso(ymd) {
   const monday = nextFirstMondayBogota(picked);
   return monday ? monday.toISOString() : picked.toISOString();
 }
+
+// ─── Calendar editor helpers ─────────────────────────────────────
+// Used by ProgramCadenceCalendar to map calendar weeks → active drop module,
+// applying carry-over semantics (months without a new drop inherit the
+// previous one). Mirrors the cron contract: a module's "activation Monday"
+// is the first-Monday-of-month implied by its unlocks_at, falling back to
+// the program_state baseline + orderOffset months.
+
+// Monday of the ISO week containing `date`, snapped to 00:00 local time.
+export function mondayOfWeek(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  return d;
+}
+
+// First Monday of the calendar month containing `date`.
+export function firstMondayOfMonth(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), 1);
+  for (let i = 0; i < 7; i++) {
+    if (d.getDay() === 1) return d;
+    d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
+
+// When does a module's content go live? `unlocks_at` wins. Otherwise we
+// stagger from a baseline first-Monday by (module.order - baselineOrder)
+// months. baseline comes from program_state.current_block_started_at —
+// when absent the caller passes the next first-Monday-from-today.
+export function moduleActivationMonday(mod, baselineFirstMonday, baselineOrder = 0) {
+  if (mod?.unlocks_at) {
+    const t = typeof mod.unlocks_at === 'string'
+      ? Date.parse(mod.unlocks_at)
+      : mod.unlocks_at?.toDate?.()?.getTime?.();
+    if (Number.isFinite(t)) return firstMondayOfMonth(new Date(t));
+  }
+  const offset = (mod?.order ?? 0) - baselineOrder;
+  const target = new Date(baselineFirstMonday);
+  target.setMonth(target.getMonth() + offset);
+  return firstMondayOfMonth(target);
+}
+
+// Returns the module that should drive content for `weekMonday`. Highest-
+// order published module whose activation Monday is ≤ weekMonday. Returns
+// null if no module is active yet (program hasn't started).
+export function resolveActiveDropForWeek(modules, weekMonday, baselineFirstMonday, baselineOrder = 0) {
+  if (!Array.isArray(modules) || modules.length === 0) return null;
+  const candidates = modules
+    .filter((m) => m?.published_at)
+    .map((m) => ({ m, activates: moduleActivationMonday(m, baselineFirstMonday, baselineOrder) }))
+    .filter(({ activates }) => activates.getTime() <= weekMonday.getTime())
+    .sort((a, b) => (b.m.order ?? 0) - (a.m.order ?? 0));
+  return candidates[0]?.m ?? null;
+}
+
+// Build [first-of-month-1, …, first-of-month-N] from a starting month for
+// the multi-month stack.
+export function monthsForward(fromDate, count) {
+  const out = [];
+  const base = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+  for (let i = 0; i < count; i++) {
+    out.push(new Date(base.getFullYear(), base.getMonth() + i, 1));
+  }
+  return out;
+}
+
+// Builds the 7-cell weekday rows that fill a calendar month grid.
+// Returns an array of { weeks: [{ monday, days: [{ date, inMonth }] }] }.
+// Leading days from prev month + trailing days from next month so the grid
+// always renders complete L-D rows.
+export function buildMonthGrid(monthDate) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstOfMonth = new Date(year, month, 1);
+  const lastOfMonth = new Date(year, month + 1, 0);
+  const startingDayOfWeek = (firstOfMonth.getDay() + 6) % 7; // Mon=0
+  const totalCells = Math.ceil((startingDayOfWeek + lastOfMonth.getDate()) / 7) * 7;
+  const weeks = [];
+  let cursor = new Date(year, month, 1 - startingDayOfWeek);
+  for (let w = 0; w < totalCells / 7; w++) {
+    const monday = new Date(cursor);
+    const days = [];
+    for (let d = 0; d < 7; d++) {
+      days.push({
+        date: new Date(cursor),
+        inMonth: cursor.getMonth() === month,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push({ monday, days });
+  }
+  return { monthDate, weeks };
+}
+
+// Short month label "Mayo" (sentence case, no year) — used in the carry-
+// over headers ("Sin drop · sigue Mes 1 — Base").
+export function monthShortSentence(date) {
+  const names = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+  ];
+  return names[date.getMonth()];
+}

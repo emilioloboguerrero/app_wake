@@ -10,8 +10,6 @@ import programService from '../services/programService';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
 import { GlowingEffect, DragSessionPreview } from './ui';
-import BlockPublishChip from './program/BlockPublishChip';
-import { WEEKDAY_LABELS, monthLabelFull, shortUnlockLabel, isoToYMD, ymdToMondayIso } from '../utils/cadence';
 import '../screens/ProgramDetailScreen.css';
 import '../screens/SharedScreenLayout.css';
 import './PlanWeeksGrid.css';
@@ -42,22 +40,9 @@ const ProgramWeeksGrid = ({
   queryClient = null,
   queryKeys = null,
 }) => {
-  // Monthly-drop courses (memory/project_monthly_drops.md) swap the week-grid
-  // shell: 7 weekday columns (L M X J V S D), `Mes N — title` block header,
-  // per-block publish chip + unlock-date popover. Sessions still live inside
-  // modules; only the framing changes. Non-cadenced courses (low_ticket
-  // non-monthly, general, one_on_one) render the legacy week grid unchanged.
-  const cadenceActive = program?.block_cadence === 'monthly_first_monday';
-  const dayLabels = cadenceActive ? WEEKDAY_LABELS : DAY_NUMBER_LABELS;
-  const blockNoun = cadenceActive ? 'mes' : 'semana';
-  const blockNounCapital = cadenceActive ? 'Mes' : 'Semana';
-
-  // Per-block publish + unlock-date state. publishBusyId guards against
-  // double-clicks; unlockEditingId opens the date popover for one block at a
-  // time.
-  const [publishBusyId, setPublishBusyId] = useState(null);
-  const [unlockEditingId, setUnlockEditingId] = useState(null);
-  const [unlockDraftYmd, setUnlockDraftYmd] = useState('');
+  // Cadenced (monthly-drop) courses no longer reach this component — they
+  // route to ProgramCadenceCalendar in ProgramTrainingTab. This grid is the
+  // legacy week editor for low_ticket / general / one_on_one programs only.
   const { showToast } = useToast();
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [addSessionModuleId, setAddSessionModuleId] = useState(null);
@@ -151,9 +136,6 @@ const ProgramWeeksGrid = ({
         librarySessionRef = libSession.id;
       }
       const imageUrl = sessionImageUrlFromLibrary || libSession?.image_url || null;
-      const dayIndexForSlot = cadenceActive && addSessionSlotIndex >= 0 && addSessionSlotIndex <= 6
-        ? addSessionSlotIndex + 1
-        : null;
       const created = await programService.createSession(
         programId,
         addSessionModuleId,
@@ -161,21 +143,13 @@ const ProgramWeeksGrid = ({
         null,
         imageUrl,
         librarySessionRef,
-        dayIndexForSlot,
+        null,
       );
       const modId = addSessionModuleId;
       const newSessionId = created?.id;
       if (newSessionId && addSessionSlotIndex >= 0 && addSessionSlotIndex <= 6) {
         const orderPatch = { sessionId: newSessionId, order: addSessionSlotIndex };
         await programService.updateSessionOrder(programId, modId, [orderPatch]);
-        if (cadenceActive) {
-          // updateSessionOrder only writes `order`; for cadenced sessions we
-          // also need dayIndex (the consumer reads dayIndex to bucket the
-          // calendar). Patch it explicitly since the helper doesn't carry it.
-          await programService.updateSession(programId, modId, newSessionId, {
-            dayIndex: addSessionSlotIndex + 1,
-          });
-        }
       }
       setAddSessionModuleId(null);
       setAddSessionSlotIndex(0);
@@ -208,7 +182,6 @@ const ProgramWeeksGrid = ({
         const libSession = await libraryService?.getLibrarySessionById?.(creatorId, data.librarySessionRef);
         const title = libSession?.title || data.title || 'Sesión';
         const imageUrl = libSession?.image_url ?? null;
-        const dayIndexForSlot = cadenceActive && slotIndex >= 0 && slotIndex <= 6 ? slotIndex + 1 : null;
         const created = await programService.createSession(
           programId,
           moduleId,
@@ -216,17 +189,12 @@ const ProgramWeeksGrid = ({
           null,
           imageUrl,
           data.librarySessionRef,
-          dayIndexForSlot,
+          null,
         );
         if (created?.id && slotIndex >= 0 && slotIndex <= 6) {
           await programService.updateSessionOrder(programId, moduleId, [
             { sessionId: created.id, order: slotIndex },
           ]);
-          if (cadenceActive) {
-            await programService.updateSession(programId, moduleId, created.id, {
-              dayIndex: slotIndex + 1,
-            });
-          }
         }
         await refreshModules();
         await new Promise((r) => setTimeout(r, 0));
@@ -300,18 +268,11 @@ const ProgramWeeksGrid = ({
     setDeleteConfirmTarget({ type: 'session', mod, modIndex, session, moduleId });
   };
 
-  // Slot = day index (0-6 → L..D when cadenced). For cadenced courses we read
-  // `s.dayIndex` (1-indexed, 1=L) first and fall back to `s.order` for legacy
-  // sessions written before the schema migration. Non-cadenced courses keep
-  // their positional `s.order` resolution unchanged.
+  // Slot = positional order. Cadenced courses bucket by dayIndex in
+  // ProgramCadenceCalendar; this grid is positional only.
   const getSessionForSlot = (module, slotIndex) => {
     const sessions = module?.sessions || [];
     if (slotIndex < 0 || slotIndex > 6) return null;
-    if (cadenceActive) {
-      const expectedDayIndex = slotIndex + 1;
-      const byDay = sessions.find((s) => typeof s.dayIndex === 'number' && s.dayIndex === expectedDayIndex);
-      if (byDay) return byDay;
-    }
     return sessions.find((s) => (s.order !== undefined && s.order !== null ? s.order : 99) === slotIndex) ?? null;
   };
 
@@ -359,16 +320,8 @@ const ProgramWeeksGrid = ({
         await programService.updateSessionOrder(programId, sourceModuleId, [
           { sessionId: sourceSessionId, order: targetSlotIndex },
         ]);
-        if (cadenceActive && targetSlotIndex >= 0 && targetSlotIndex <= 6) {
-          await programService.updateSession(programId, sourceModuleId, sourceSessionId, {
-            dayIndex: targetSlotIndex + 1,
-          });
-        }
       } else {
         await programService.moveSession(programId, sourceModuleId, targetModuleId, sourceSessionId, targetSlotIndex);
-        // moveSession on cadenced courses already passes dayIndex via the
-        // service helper, but it currently does so only when not undefined;
-        // re-patch explicitly so we don't depend on that path.
       }
       await refreshModules();
       showToast('Sesión movida', 'success');
@@ -609,7 +562,7 @@ const ProgramWeeksGrid = ({
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
-              {cadenceActive ? 'Añadir mes' : 'Añadir semana'}
+              Añadir semana
             </>
           )}
         </button>
@@ -618,70 +571,18 @@ const ProgramWeeksGrid = ({
       <div className="plan-weeks-list-wrap">
         {modules.length > 0 && (
           <div className="plan-weeks-days-header">
-            {dayLabels.map((label, i) => (
+            {DAY_NUMBER_LABELS.map((label, i) => (
               <div key={i} className="plan-weeks-days-header-cell">{label}</div>
             ))}
           </div>
         )}
         {modules.length === 0 ? (
           <div className="plan-weeks-empty">
-            {cadenceActive
-              ? 'No hay meses. Pulsa «Añadir mes» para crear el primero.'
-              : 'No hay semanas. Pulsa «Añadir semana» para crear la primera.'}
+            No hay semanas. Pulsa «Añadir semana» para crear la primera.
           </div>
         ) : (
           modules.map((mod, modIndex) => {
-            const blockTitle = mod.title || `${blockNounCapital} ${modIndex + 1}`;
-            const isPublished = !!mod.published_at;
-            const publishBusy = publishBusyId === mod.id;
-            const unlockIso = typeof mod.unlocks_at === 'string'
-              ? mod.unlocks_at
-              : (mod.unlocks_at?.toDate?.()?.toISOString?.() ?? null);
-            const monthTag = cadenceActive
-              ? monthLabelFull(unlockIso, modIndex)
-              : null;
-            const unlockChip = cadenceActive ? shortUnlockLabel(unlockIso) : null;
-            const isUnlockEditing = unlockEditingId === mod.id;
-
-            const handleTogglePublished = async () => {
-              if (publishBusy) return;
-              setPublishBusyId(mod.id);
-              try {
-                await programService.updateModule(programId, mod.id, {
-                  published_at: isPublished ? null : new Date().toISOString(),
-                });
-                await refreshModules();
-              } catch (err) {
-                showToast(err?.message || 'No pudimos actualizar el estado del bloque.', 'error');
-              } finally {
-                setPublishBusyId(null);
-              }
-            };
-
-            const handleOpenUnlock = (e) => {
-              e.stopPropagation();
-              setUnlockEditingId(mod.id);
-              setUnlockDraftYmd(isoToYMD(unlockIso));
-            };
-            const handleSaveUnlock = async () => {
-              const iso = ymdToMondayIso(unlockDraftYmd);
-              setUnlockEditingId(null);
-              try {
-                await programService.updateModule(programId, mod.id, { unlocks_at: iso });
-                await refreshModules();
-              } catch (err) {
-                showToast(err?.message || 'No pudimos guardar la fecha.', 'error');
-              }
-            };
-            const handleClearUnlock = async () => {
-              setUnlockEditingId(null);
-              try {
-                await programService.updateModule(programId, mod.id, { unlocks_at: null });
-                await refreshModules();
-              } catch (err) {
-                showToast(err?.message || 'No pudimos limpiar la fecha.', 'error');
-              }
-            };
+            const blockTitle = mod.title || `Semana ${modIndex + 1}`;
 
             return (
             <div key={mod.id} className="plan-weeks-week-block">
@@ -694,44 +595,7 @@ const ProgramWeeksGrid = ({
               >
                 <div className="plan-weeks-week-header__left">
                   <span className="plan-weeks-week-title">{blockTitle}</span>
-                  {cadenceActive && monthTag ? (
-                    <span className="plan-weeks-week-month">{monthTag}</span>
-                  ) : null}
                 </div>
-                {cadenceActive ? (
-                  <div className="plan-weeks-week-header__actions">
-                    {isUnlockEditing ? (
-                      <div className="plan-weeks-unlock-popover" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="date"
-                          className="plan-weeks-unlock-input"
-                          value={unlockDraftYmd}
-                          onChange={(e) => setUnlockDraftYmd(e.target.value)}
-                          autoFocus
-                        />
-                        <button type="button" className="plan-weeks-unlock-save" onClick={handleSaveUnlock}>Guardar</button>
-                        {unlockIso ? (
-                          <button type="button" className="plan-weeks-unlock-clear" onClick={handleClearUnlock}>Limpiar</button>
-                        ) : null}
-                        <button type="button" className="plan-weeks-unlock-cancel" onClick={() => setUnlockEditingId(null)}>Cancelar</button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="plan-weeks-unlock-chip"
-                        onClick={handleOpenUnlock}
-                        title="Editar fecha de desbloqueo"
-                      >
-                        {unlockChip || 'Fecha'}
-                      </button>
-                    )}
-                    <BlockPublishChip
-                      isPublished={isPublished}
-                      busy={publishBusy}
-                      onClick={handleTogglePublished}
-                    />
-                  </div>
-                ) : null}
                 <div className="plan-weeks-week-menu-wrap">
                   <button
                     type="button"
@@ -901,9 +765,7 @@ const ProgramWeeksGrid = ({
             onDragLeave={handleDragLeaveWeek}
             onDrop={handleDropBelow}
           >
-            {cadenceActive
-              ? 'Arrastra un plan aquí para añadir sus meses'
-              : 'Arrastra un plan aquí para añadir sus semanas'}
+            Arrastra un plan aquí para añadir sus semanas
           </div>
         )}
       </div>
