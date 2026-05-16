@@ -14,13 +14,13 @@
 //
 // Every method is safe to call when PostHog is missing, opted out, or pre-init.
 
+import posthog from 'posthog-js';
 import logger from '../utils/logger';
 
 const APP_NAME = 'pwa';
 const STORAGE_OPTOUT_KEY = 'wake_analytics_opt_out';
 const REPLAY_SAMPLE = 0.2;
 
-let client = null;
 let initialized = false;
 let initAttempted = false;
 
@@ -87,9 +87,6 @@ function init() {
   if (readOptOut()) return;
 
   try {
-    // Dynamic require so the SDK never blocks bundle parse if not installed yet.
-    // eslint-disable-next-line global-require
-    const posthog = require('posthog-js').default || require('posthog-js');
     posthog.init(key, {
       api_host: readHost(),
       person_profiles: 'identified_only',
@@ -117,23 +114,25 @@ function init() {
             app_version: readAppVersion(),
             env: detectEnv(),
           });
-          initialized = true;
         } catch (err) {
           logger.error?.('[analytics] register failed', err);
         }
       },
     });
-    client = posthog;
+    // Posthog-js captures events into its queue from the moment init() returns,
+    // even before the loaded callback fires. Gating on the loaded callback (as
+    // we did previously) silently dropped every event between init and load.
+    initialized = true;
   } catch (err) {
     logger.error?.('[analytics] init failed', err);
   }
 }
 
 function withClient(fn) {
-  if (!client || !initialized) return;
+  if (!initialized) return;
   if (readOptOut()) return;
   try {
-    fn(client);
+    fn(posthog);
   } catch (err) {
     logger.error?.('[analytics] call failed', err);
   }

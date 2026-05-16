@@ -5,6 +5,18 @@
 import apiClient, { WakeApiError } from '../utils/apiClient';
 import logger from '../utils/logger';
 import { queryClient } from '../config/queryClient';
+import analyticsService from './analyticsService';
+
+// Activation event fired once per install on the first successful diary save.
+// localStorage flag avoids a Firestore read; works offline.
+function trackFirstMealOnce() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    if (window.localStorage.getItem('wake_first_meal_done')) return;
+    window.localStorage.setItem('wake_first_meal_done', '1');
+    analyticsService.track('activation.first_meal_logged');
+  } catch {}
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -179,8 +191,10 @@ export async function addDiaryEntry(_userId, data) {
     queryClient.setQueryData(['nutrition', 'diary', body.date], (old) =>
       [...(old ?? []), optimisticEntry]
     );
+    trackFirstMealOnce();
     return tempId;
   }
+  trackFirstMealOnce();
   return result?.data?.entryId;
 }
 
@@ -225,6 +239,7 @@ export async function addDiaryEntries(_userId, entries) {
     })),
     lastKnownActivityDate: getLastKnownActivityDate(_userId),
   }, { idempotent: false });
+  trackFirstMealOnce();
   return result?.data?.entryIds ?? [];
 }
 

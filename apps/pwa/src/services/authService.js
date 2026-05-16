@@ -42,12 +42,8 @@ class AuthService {
         displayName: displayName
       });
 
-      try {
-        analyticsService.identify(cred.user.uid, {
-          email_domain: email ? String(email).split('@')[1] || null : null,
-        });
-        analyticsService.track('auth.signup_completed', { method: 'email' });
-      } catch {}
+      // identify() is handled by AuthContext's onAuthStateChanged.
+      try { analyticsService.track('auth.signup_completed', { method: 'email' }); } catch {}
 
       return cred.user;
     } catch (error) {
@@ -81,15 +77,8 @@ class AuthService {
         });
       });
 
-      try {
-        const u = auth.currentUser || userCredential.user;
-        if (u?.uid) {
-          analyticsService.identify(u.uid, {
-            email_domain: u.email ? String(u.email).split('@')[1] || null : null,
-          });
-        }
-        analyticsService.track('auth.login', { method: 'email' });
-      } catch {}
+      // identify() is handled by AuthContext's onAuthStateChanged.
+      try { analyticsService.track('auth.login', { method: 'email' }); } catch {}
 
       return auth.currentUser || userCredential.user;
     } catch (error) {

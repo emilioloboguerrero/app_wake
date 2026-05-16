@@ -70,12 +70,8 @@ class GoogleAuthService {
         // Create or update user document (allows new users — no account required)
         const docResult = await this.createOrUpdateUserDocument(firebaseUser);
 
+        // identify() is handled by AuthContext's onAuthStateChanged.
         try {
-          if (firebaseUser?.uid) {
-            analyticsService.identify(firebaseUser.uid, {
-              email_domain: firebaseUser.email ? String(firebaseUser.email).split('@')[1] || null : null,
-            });
-          }
           const isNew = docResult?.isNewUser === true;
           analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', { method: 'google' });
         } catch {}
@@ -147,12 +143,8 @@ class GoogleAuthService {
       // Create or update user document (allows new users — no account required)
       const docResult = await this.createOrUpdateUserDocument(firebaseUser);
 
+      // identify() is handled by AuthContext's onAuthStateChanged.
       try {
-        if (firebaseUser?.uid) {
-          analyticsService.identify(firebaseUser.uid, {
-            email_domain: firebaseUser.email ? String(firebaseUser.email).split('@')[1] || null : null,
-          });
-        }
         const isNew = docResult?.isNewUser === true;
         analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', { method: 'google' });
       } catch {}

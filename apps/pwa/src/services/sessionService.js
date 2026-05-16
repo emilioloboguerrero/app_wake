@@ -469,6 +469,19 @@ class SessionService {
           exercises_completed: stats?.exercisesCompleted ?? (actualSessionData.exercises?.length || 0),
           had_pr: Array.isArray(personalRecords) && personalRecords.length > 0,
         });
+        // Activation event: fire once per install. localStorage flag avoids
+        // a Firestore read; treating "first workout on this device" as the
+        // activation moment is acceptable and works offline.
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            if (!window.localStorage.getItem('wake_first_workout_done')) {
+              window.localStorage.setItem('wake_first_workout_done', '1');
+              analyticsService.track('activation.first_workout_completed', {
+                course_id: actualSessionData.courseId || null,
+              });
+            }
+          }
+        } catch {}
       } catch {}
 
       return {

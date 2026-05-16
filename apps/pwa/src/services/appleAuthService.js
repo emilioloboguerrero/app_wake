@@ -189,12 +189,8 @@ class AppleAuthService {
       // Create or update user document in Firestore (same as Google — create if missing)
       const docResult = await this.createOrUpdateUserDocument(firebaseUser);
 
+      // identify() is handled by AuthContext's onAuthStateChanged.
       try {
-        if (firebaseUser?.uid) {
-          analyticsService.identify(firebaseUser.uid, {
-            email_domain: firebaseUser.email ? String(firebaseUser.email).split('@')[1] || null : null,
-          });
-        }
         const isNew = docResult?.isNewUser === true;
         analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', { method: 'apple' });
       } catch {}

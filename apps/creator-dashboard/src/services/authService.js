@@ -26,12 +26,8 @@ class AuthService {
       logger.warn('[AuthService] sendEmailVerification failed (non-fatal):', err?.message || err);
     }
 
-    try {
-      analyticsService.identify(user.uid, {
-        email_domain: email ? String(email).split('@')[1] || null : null,
-      });
-      analyticsService.track('auth.signup_completed', { method: 'email' });
-    } catch {}
+    // identify() is handled by AuthContext's onAuthStateChanged.
+    try { analyticsService.track('auth.signup_completed', { method: 'email' }); } catch {}
 
     return user;
   }
@@ -66,12 +62,8 @@ class AuthService {
       }
     }
 
-    try {
-      analyticsService.identify(user.uid, {
-        email_domain: email ? String(email).split('@')[1] || null : null,
-      });
-      analyticsService.track('auth.login', { method: 'email' });
-    } catch {}
+    // identify() is handled by AuthContext's onAuthStateChanged.
+    try { analyticsService.track('auth.login', { method: 'email' }); } catch {}
 
     return user;
   }
