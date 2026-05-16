@@ -125,6 +125,16 @@ router.post("/payments/preference", async (req, res) => {
 
   const course = courseDoc.data()!;
 
+  // Block one-time checkout for non-published courses. Catalog routes filter
+  // by `status == "published"` but this endpoint accepts a direct courseId,
+  // so without this check a leaked draft id could be paid for.
+  if (course.status !== "published") {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403,
+      "Este programa aún no está disponible para compra"
+    );
+  }
+
   // Block buying a rival creator's one-on-one program while locked in
   if (course.deliveryType === "one_on_one") {
     const lock = await getActiveOneOnOneLock(auth.userId);
@@ -203,6 +213,19 @@ router.post("/payments/subscription", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
+
+  // Block subscription checkout for non-published courses. Catalog-discovery
+  // routes already filter `status == "published"`, but this endpoint accepts a
+  // direct courseId so a leaked/draft id could otherwise create a billable
+  // PreApproval against a course no real subscriber should see. Creators
+  // previewing their own draft can self-grant via /users/me/move-course
+  // (isFreeGrantAllowed allows draft + own course).
+  if (course.status !== "published") {
+    throw new WakeApiServerError(
+      "FORBIDDEN", 403,
+      "Este programa aún no está disponible para suscripción"
+    );
+  }
 
   // Subscription uses the dedicated monthly price; falls back to course.price
   // for 1:1 programs (which are subscription-only by design) and legacy docs.

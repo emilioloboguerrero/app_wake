@@ -5078,15 +5078,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Reps — prefer drop-sequence display when present */}
+        {/* Reps — show the `reps` anchor only. rep_sequence encodes a
+            multi-week microcycle (W1→W4) the subscriber can't navigate
+            yet (no week-aware UI), so the array is intentionally hidden
+            here. Coaches read it via the dashboard. */}
         {set.reps && (
           <View style={styles.setDetailRow}>
             <Text style={styles.setDetailLabel}>Repeticiones:</Text>
-            <Text style={styles.setDetailValue}>
-              {Array.isArray(set.rep_sequence) && set.rep_sequence.length > 0
-                ? `${set.rep_sequence.join(' → ')} (${set.reps})`
-                : set.reps}
-            </Text>
+            <Text style={styles.setDetailValue}>{String(set.reps)}</Text>
           </View>
         )}
         

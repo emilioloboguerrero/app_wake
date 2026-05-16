@@ -1427,6 +1427,7 @@ router.post("/creator/programs", async (req, res) => {
     visibility?: string;
     availableLibraries?: unknown[];
     free_trial?: Record<string, unknown>;
+    block_cadence?: string | null;
   }>(
     {
       title: "string",
@@ -1441,9 +1442,19 @@ router.post("/creator/programs", async (req, res) => {
       visibility: "optional_string",
       availableLibraries: "optional_array",
       free_trial: "optional_object",
+      block_cadence: "optional_string",
     },
     req.body
   );
+
+  if (body.block_cadence !== undefined && body.block_cadence !== null &&
+      body.block_cadence !== "monthly_first_monday") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "block_cadence debe ser 'monthly_first_monday' o null",
+      "block_cadence"
+    );
+  }
 
   if (body.visibility !== undefined && !["standalone", "bundle-only", "both"].includes(body.visibility)) {
     throw new WakeApiServerError(
@@ -1510,6 +1521,7 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.discipline !== undefined && {discipline: body.discipline}),
     ...(body.weight_suggestions !== undefined && {weight_suggestions: body.weight_suggestions}),
     ...(body.duration !== undefined && {duration: body.duration}),
+    ...(body.block_cadence !== undefined && {block_cadence: body.block_cadence}),
     availableLibraries,
     creator_id: auth.userId,
     creatorName,
@@ -7859,15 +7871,19 @@ router.post("/creator/programs/:programId/modules", async (req, res) => {
     req.body
   );
 
-  const ref = await db
-    .collection("courses")
-    .doc(req.params.programId)
-    .collection("modules")
-    .add({
-      title: body.title,
-      order: body.order ?? 0,
-      created_at: FieldValue.serverTimestamp(),
-    });
+  // Modules are 0-indexed and the cron uses `order` directly as the block
+  // index for `block_cadence: 'monthly_first_monday'` courses. Defaulting to
+  // `existing.length` prevents collisions when the client omits `order`
+  // (project_monthly_drops.md). A literal `order: 0` from the client is
+  // honored — only `undefined` falls back to the count.
+  const modulesCol = db.collection("courses").doc(req.params.programId).collection("modules");
+  const resolvedOrder = body.order ?? (await modulesCol.count().get()).data().count;
+
+  const ref = await modulesCol.add({
+    title: body.title,
+    order: resolvedOrder,
+    created_at: FieldValue.serverTimestamp(),
+  });
 
   res.status(201).json({data: {moduleId: ref.id, id: ref.id}});
 });
