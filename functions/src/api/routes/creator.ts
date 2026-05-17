@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import * as crypto from "node:crypto";
 import {Resend} from "resend";
-import {db, FieldValue, FieldPath} from "../firestore.js";
+import {db, FieldValue, FieldPath, Timestamp} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
@@ -8053,7 +8053,7 @@ router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) 
   }
   for (const field of ["unlocks_at", "published_at"] as const) {
     if (typeof updates[field] === "string") {
-      updates[field] = admin.firestore.Timestamp.fromDate(new Date(updates[field] as string));
+      updates[field] = Timestamp.fromDate(new Date(updates[field] as string));
     }
   }
 
