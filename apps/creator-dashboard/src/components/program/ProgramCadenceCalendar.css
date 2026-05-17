@@ -53,12 +53,6 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  animation: pcc-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes pcc-enter {
-  from { opacity: 0; transform: translateY(24px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 .pcc-month-head {

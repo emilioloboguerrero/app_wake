@@ -444,7 +444,6 @@ export default function ProgramCadenceCalendar({
           <div
             key={`month-${monthDate.getTime()}`}
             className="pcc-month"
-            style={{ animationDelay: `${Math.min(sectionIdx * 60, 360)}ms` }}
           >
             <div className="pcc-month-head">
               <div className="pcc-month-head__left">
