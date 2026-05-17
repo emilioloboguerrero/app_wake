@@ -137,13 +137,15 @@ export function moduleActivationMonday(mod, baselineFirstMonday, baselineOrder =
   return firstMondayOfMonth(target);
 }
 
-// Returns the module that should drive content for `weekMonday`. Highest-
-// order published module whose activation Monday is ≤ weekMonday. Returns
-// null if no module is active yet (program hasn't started).
+// Returns the module that should drive content for `weekMonday` in the
+// creator's editor view. Highest-order module whose activation Monday is
+// ≤ weekMonday — including drafts, since the editor needs to show in-
+// progress work the cron will refuse to ship. The drop bar reflects
+// borrador/publicado/en vivo state separately. The cron's own filter on
+// `published_at` is server-side and unaffected by this helper.
 export function resolveActiveDropForWeek(modules, weekMonday, baselineFirstMonday, baselineOrder = 0) {
   if (!Array.isArray(modules) || modules.length === 0) return null;
   const candidates = modules
-    .filter((m) => m?.published_at)
     .map((m) => ({ m, activates: moduleActivationMonday(m, baselineFirstMonday, baselineOrder) }))
     .filter(({ activates }) => activates.getTime() <= weekMonday.getTime())
     .sort((a, b) => (b.m.order ?? 0) - (a.m.order ?? 0));
