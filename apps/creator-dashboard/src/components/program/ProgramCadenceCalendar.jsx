@@ -307,10 +307,10 @@ export default function ProgramCadenceCalendar({
       // via API directly using the returned id.
       try {
         const libRef = data.librarySessionRef || data.sourceLibrarySessionId;
-        console.log('[CADENCE-DROP] POST sessions (empty-month)', { newModuleId: newId, librarySessionRef: libRef, targetDayIndex });
+        console.log('[CADENCE-DROP] POST sessions (empty-month)', { newModuleId: newId, librarySessionRef: libRef, targetDayIndex, title: data.title });
         await programService.createSessionFromLibrary(
           programId, newId, libRef,
-          targetDayIndex - 1, null, targetDayIndex,
+          targetDayIndex - 1, null, targetDayIndex, data.title || null,
         );
         console.log('[CADENCE-DROP] POST sessions OK (empty-month) → refresh');
         refresh();
@@ -327,11 +327,11 @@ export default function ProgramCadenceCalendar({
     if (data?.type === DRAG_TYPE_LIBRARY_SESSION) {
       const libSessionId = data.librarySessionRef || data.sourceLibrarySessionId;
       if (!libSessionId) { console.log('[CADENCE-DROP] abort: library payload missing librarySessionRef', data); return; }
-      console.log('[CADENCE-DROP] branch: existing drop ← library session', { moduleId: activeDrop.id, librarySessionRef: libSessionId, targetDayIndex });
+      console.log('[CADENCE-DROP] branch: existing drop ← library session', { moduleId: activeDrop.id, librarySessionRef: libSessionId, targetDayIndex, title: data.title });
       try {
         await programService.createSessionFromLibrary(
           programId, activeDrop.id, libSessionId,
-          targetDayIndex - 1, null, targetDayIndex,
+          targetDayIndex - 1, null, targetDayIndex, data.title || null,
         );
         console.log('[CADENCE-DROP] POST sessions OK → refresh');
         refresh();

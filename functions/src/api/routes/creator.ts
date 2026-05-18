@@ -8146,6 +8146,10 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
       const libData = libDoc.data()!;
       const metaUpdate: Record<string, unknown> = {};
       if (!body.image_url && libData.image_url) metaUpdate.image_url = libData.image_url;
+      const placeholderTitle = !body.title || body.title === "Sesion" || body.title === "Sesión";
+      if (placeholderTitle && typeof libData.title === "string" && libData.title.trim()) {
+        metaUpdate.title = libData.title;
+      }
       if (Object.keys(metaUpdate).length > 0) await ref.update(metaUpdate);
 
       const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();

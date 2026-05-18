@@ -803,7 +803,11 @@ const ProgramContentTab = ({
       if (selectedModule.libraryModuleRef) {
         await libraryService.addSessionToLibraryModule(user.uid, selectedModule.libraryModuleRef, librarySessionId);
       }
-      await programService.createSessionFromLibrary(programId, selectedModule.id, librarySessionId);
+      const libSession = librarySessions.find((s) => s.id === librarySessionId);
+      await programService.createSessionFromLibrary(
+        programId, selectedModule.id, librarySessionId,
+        null, libSession?.image_url || null, null, libSession?.title || null,
+      );
       const freshSessions = await programService.getSessionsByModule(programId, selectedModule.id);
       const sorted = freshSessions.sort((a, b) => {
         const oA = a.order ?? Infinity;

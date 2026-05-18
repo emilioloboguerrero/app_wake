@@ -172,9 +172,9 @@ class ProgramService {
     return res.data;
   }
 
-  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null, imageUrl = null, dayIndex = null) {
+  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null, imageUrl = null, dayIndex = null, title = null) {
     const body = {
-      title: 'Sesion',
+      title: title || 'Sesion',
       order: order ?? 0,
       librarySessionRef,
     };
