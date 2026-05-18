@@ -80,6 +80,20 @@ export function isoToYMD(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Normalize the three shapes `unlocks_at` can arrive in (ISO string, client-
+// SDK Timestamp, serialized admin Timestamp) into an ISO string. Returns
+// null for missing/invalid values. Reused by the date-picker and any other
+// surface that needs the raw ISO from a fetched module.
+export function unlocksAtToIso(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'string') return Number.isFinite(Date.parse(raw)) ? raw : null;
+  if (typeof raw?.toDate === 'function') return raw.toDate().toISOString();
+  const seconds = raw.seconds ?? raw._seconds;
+  const nanos = raw.nanoseconds ?? raw._nanoseconds ?? 0;
+  if (Number.isFinite(seconds)) return new Date(seconds * 1000 + Math.floor(nanos / 1e6)).toISOString();
+  return null;
+}
+
 // Round to the next first-Monday-Bogota at or after the picked date so the
 // stored value can never miss the cron's gate. Returns ISO. Pass an empty
 // string to clear.
@@ -124,11 +138,26 @@ export function firstMondayOfMonth(date) {
 // stagger from a baseline first-Monday by (module.order - baselineOrder)
 // months. baseline comes from program_state.current_block_started_at —
 // when absent the caller passes the next first-Monday-from-today.
+//
+// `unlocks_at` arrives in three possible shapes:
+//   - ISO string (when the client just PATCHed it and hasn't refetched)
+//   - Firestore client-SDK Timestamp ({ toDate() })
+//   - Serialized admin Timestamp from the REST API: { seconds, nanoseconds }
+//     or { _seconds, _nanoseconds } depending on the firebase-admin version.
+//     This is the common case for data round-tripping through Express.
 export function moduleActivationMonday(mod, baselineFirstMonday, baselineOrder = 0) {
-  if (mod?.unlocks_at) {
-    const t = typeof mod.unlocks_at === 'string'
-      ? Date.parse(mod.unlocks_at)
-      : mod.unlocks_at?.toDate?.()?.getTime?.();
+  const raw = mod?.unlocks_at;
+  if (raw) {
+    let t;
+    if (typeof raw === 'string') {
+      t = Date.parse(raw);
+    } else if (typeof raw?.toDate === 'function') {
+      t = raw.toDate().getTime();
+    } else {
+      const seconds = raw.seconds ?? raw._seconds;
+      const nanos = raw.nanoseconds ?? raw._nanoseconds ?? 0;
+      if (Number.isFinite(seconds)) t = seconds * 1000 + Math.floor(nanos / 1e6);
+    }
     if (Number.isFinite(t)) return firstMondayOfMonth(new Date(t));
   }
   const offset = (mod?.order ?? 0) - baselineOrder;
@@ -138,9 +167,13 @@ export function moduleActivationMonday(mod, baselineFirstMonday, baselineOrder =
 }
 
 // Returns the module that should drive content for `weekMonday` in the
-// creator's editor view. Highest-order module whose activation Monday is
-// ≤ weekMonday — including drafts, since the editor needs to show in-
-// progress work the cron will refuse to ship. The drop bar reflects
+// creator's editor view. Most-recently-activated module whose activation
+// Monday is ≤ weekMonday — including drafts, since the editor needs to
+// show in-progress work the cron will refuse to ship. Sorting by
+// activation (not order) so a coach who slots a drop into an empty month
+// doesn't steamroll every later month's existing drop just because the
+// new module was created last. Tie-break on order DESC for the edge case
+// of two modules with the same activation Monday. The drop bar reflects
 // borrador/publicado/en vivo state separately. The cron's own filter on
 // `published_at` is server-side and unaffected by this helper.
 export function resolveActiveDropForWeek(modules, weekMonday, baselineFirstMonday, baselineOrder = 0) {
@@ -148,7 +181,11 @@ export function resolveActiveDropForWeek(modules, weekMonday, baselineFirstMonda
   const candidates = modules
     .map((m) => ({ m, activates: moduleActivationMonday(m, baselineFirstMonday, baselineOrder) }))
     .filter(({ activates }) => activates.getTime() <= weekMonday.getTime())
-    .sort((a, b) => (b.m.order ?? 0) - (a.m.order ?? 0));
+    .sort((a, b) => {
+      const dt = b.activates.getTime() - a.activates.getTime();
+      if (dt !== 0) return dt;
+      return (b.m.order ?? 0) - (a.m.order ?? 0);
+    });
   return candidates[0]?.m ?? null;
 }
 

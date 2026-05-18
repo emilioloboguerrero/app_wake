@@ -14,9 +14,11 @@ import {
   resolveActiveDropForWeek,
   buildMonthGrid,
   monthsForward,
+  unlocksAtToIso,
 } from '../../utils/cadence';
 import { DRAG_TYPE_LIBRARY_SESSION } from '../PlanningLibrarySidebar';
 import programService from '../../services/programService';
+import apiClient from '../../utils/apiClient';
 import { useToast } from '../../contexts/ToastContext';
 import './ProgramCadenceCalendar.css';
 
@@ -113,6 +115,12 @@ export default function ProgramCadenceCalendar({
   const monthSections = useMemo(() => {
     const sections = monthsToRender.map((monthDate) => buildMonthGrid(monthDate));
 
+    console.log('[CADENCE-RENDER] monthSections recompute',
+      'modules.length=', modules?.length,
+      'baseline=', { firstMonday: baseline.firstMonday?.toISOString?.(), order: baseline.order },
+      'modulesWithUnlocks=', modules?.filter?.((m) => m?.unlocks_at)?.map?.((m) => ({ id: m.id, order: m.order, unlocks_at: typeof m.unlocks_at === 'string' ? m.unlocks_at : m.unlocks_at?.toDate?.()?.toISOString?.(), sessionCount: m.sessions?.length ?? 0 })),
+    );
+
     // Flatten weeks to mark drop transitions across month boundaries.
     let prevDropId = null;
     sections.forEach((section) => {
@@ -136,6 +144,16 @@ export default function ProgramCadenceCalendar({
           return activates.getMonth() === section.monthDate.getMonth() &&
                  activates.getFullYear() === section.monthDate.getFullYear();
         })?.drop?.id ?? null;
+
+      console.log('[CADENCE-RENDER] section', section.monthDate.toISOString().slice(0, 7),
+        'weeks=', section.weeks.map((w) => ({
+          monday: w.monday.toISOString().slice(0, 10),
+          dropId: w.drop?.id ?? null,
+          dropOrder: w.drop?.order ?? null,
+          dropSessions: w.drop?.sessions?.length ?? 0,
+          isFirst: w.isFirstWeekOfDrop,
+        })),
+      );
     });
     return sections;
   }, [monthsToRender, modules, baseline.firstMonday, baseline.order]);
@@ -204,22 +222,34 @@ export default function ProgramCadenceCalendar({
 
   // ─── Create drop for an empty month ───────────────────────────
   // Anchors the new module's unlocks_at to the first Monday of `monthDate`
-  // so the cron picks it up at the right calendar moment.
+  // so the cron picks it up at the right calendar moment. Uses
+  // `modules.length` from the already-loaded prop instead of a fresh
+  // network round-trip; on slow connections the legacy
+  // `programService.createModule` re-fetched modules+sessions (1+N reads)
+  // before posting, which on Bogotá networks could exceed the apiClient
+  // timeout mid-drop and silently abort the chain.
   const handleCreateDropForMonth = useCallback(async (monthDate) => {
     if (pendingDropId) return;
     const monthMonday = firstMondayOfMonth(monthDate);
+    const order = modules?.length ?? 0;
+    const monthName = monthShortSentence(monthDate);
     setPendingDropId(`new-${monthDate.getTime()}`);
     try {
-      const created = await programService.createModule(programId);
-      if (!created?.id) throw new Error('No se pudo crear el bloque');
-      const monthName = monthShortSentence(monthDate);
-      const order = (modules?.length ?? 0); // createModule writes order = existing.length
-      await programService.updateModule(programId, created.id, {
+      // POST validateBody only accepts title+order (creator.ts:7889) — set
+      // unlocks_at in a follow-up PATCH. Two round-trips, but still saves the
+      // 1+N fan-out the legacy programService.createModule did before posting.
+      const created = await apiClient.post(`/creator/programs/${programId}/modules`, {
         title: `Mes ${order + 1} — ${monthName}`,
+        order,
+      });
+      const newId = created?.data?.id ?? created?.data?.moduleId ?? created?.id;
+      if (!newId) throw new Error('No se pudo crear el bloque');
+      await apiClient.patch(`/creator/programs/${programId}/modules/${newId}`, {
         unlocks_at: monthMonday.toISOString(),
       });
-      refresh();
-      return created.id;
+      // No refresh here — caller (handleDropOnDay) refreshes once after the
+      // session POST so we don't fire two back-to-back modules refetches.
+      return newId;
     } catch (err) {
       showToast(err?.message || 'No pudimos crear el bloque.', 'error');
       return null;
@@ -258,9 +288,11 @@ export default function ProgramCadenceCalendar({
     e.stopPropagation();
     setDragOverDay(null);
     const rawData = e.dataTransfer.getData('application/json');
-    if (!rawData) return;
+    console.log('[CADENCE-DROP] fired', { dayCol, rawDataLength: rawData?.length, hasDrop: !!week.drop, isFirstWeekOfDrop: week.isFirstWeekOfDrop, monthDate: monthDate?.toISOString?.() });
+    if (!rawData) { console.log('[CADENCE-DROP] abort: no application/json payload'); return; }
     let data;
-    try { data = JSON.parse(rawData); } catch { return; }
+    try { data = JSON.parse(rawData); } catch (err) { console.log('[CADENCE-DROP] abort: JSON parse failed', err); return; }
+    console.log('[CADENCE-DROP] payload', data);
 
     const targetDayIndex = dayIndexFromColumn(dayCol);
     let activeDrop = week.drop;
@@ -268,35 +300,43 @@ export default function ProgramCadenceCalendar({
     // Empty-month drop target: create the drop first, then route the session
     // into the freshly created template.
     if (!activeDrop && data?.type === DRAG_TYPE_LIBRARY_SESSION) {
+      console.log('[CADENCE-DROP] branch: empty-month → create drop + add session', { targetDayIndex });
       const newId = await handleCreateDropForMonth(monthDate);
-      if (!newId) return;
+      if (!newId) { console.log('[CADENCE-DROP] abort: handleCreateDropForMonth returned null'); return; }
       // Newly created module isn't in `modules` yet; we'll add the session
       // via API directly using the returned id.
       try {
+        const libRef = data.librarySessionRef || data.sourceLibrarySessionId;
+        console.log('[CADENCE-DROP] POST sessions (empty-month)', { newModuleId: newId, librarySessionRef: libRef, targetDayIndex });
         await programService.createSessionFromLibrary(
-          programId, newId, data.librarySessionRef || data.sourceLibrarySessionId,
+          programId, newId, libRef,
           targetDayIndex - 1, null, targetDayIndex,
         );
+        console.log('[CADENCE-DROP] POST sessions OK (empty-month) → refresh');
         refresh();
       } catch (err) {
+        console.log('[CADENCE-DROP] POST sessions FAILED (empty-month)', err);
         showToast(err?.message || 'No pudimos añadir la sesión.', 'error');
       }
       return;
     }
 
-    if (!activeDrop) return;
+    if (!activeDrop) { console.log('[CADENCE-DROP] abort: no activeDrop, type=', data?.type); return; }
 
     // Library session into existing drop's template
     if (data?.type === DRAG_TYPE_LIBRARY_SESSION) {
       const libSessionId = data.librarySessionRef || data.sourceLibrarySessionId;
-      if (!libSessionId) return;
+      if (!libSessionId) { console.log('[CADENCE-DROP] abort: library payload missing librarySessionRef', data); return; }
+      console.log('[CADENCE-DROP] branch: existing drop ← library session', { moduleId: activeDrop.id, librarySessionRef: libSessionId, targetDayIndex });
       try {
         await programService.createSessionFromLibrary(
           programId, activeDrop.id, libSessionId,
           targetDayIndex - 1, null, targetDayIndex,
         );
+        console.log('[CADENCE-DROP] POST sessions OK → refresh');
         refresh();
       } catch (err) {
+        console.log('[CADENCE-DROP] POST sessions FAILED', err);
         showToast(err?.message || 'No pudimos añadir la sesión.', 'error');
       }
       return;
@@ -304,18 +344,24 @@ export default function ProgramCadenceCalendar({
 
     // Template session reorder within the same drop (dayIndex change)
     if (data?.type === DRAG_TYPE_TEMPLATE_SESSION) {
-      if (data.moduleId !== activeDrop.id) return; // cross-drop = v2
-      if (data.fromDayIndex === targetDayIndex) return;
+      console.log('[CADENCE-DROP] branch: template reorder', { sameModule: data.moduleId === activeDrop.id, fromDayIndex: data.fromDayIndex, targetDayIndex });
+      if (data.moduleId !== activeDrop.id) { console.log('[CADENCE-DROP] abort: cross-drop reorder not supported'); return; }
+      if (data.fromDayIndex === targetDayIndex) { console.log('[CADENCE-DROP] abort: same dayIndex'); return; }
       try {
         await programService.updateSession(
           programId, activeDrop.id, data.sessionId,
           { dayIndex: targetDayIndex, order: targetDayIndex - 1 },
         );
+        console.log('[CADENCE-DROP] PATCH session OK → refresh');
         refresh();
       } catch (err) {
+        console.log('[CADENCE-DROP] PATCH session FAILED', err);
         showToast(err?.message || 'No pudimos mover la sesión.', 'error');
       }
+      return;
     }
+
+    console.log('[CADENCE-DROP] abort: payload type not recognized', data?.type);
   }, [programId, handleCreateDropForMonth, refresh, showToast]);
 
   const handleDeleteSession = useCallback(async (e, mod, session) => {
@@ -470,7 +516,10 @@ export default function ProgramCadenceCalendar({
                   <button
                     type="button"
                     className="pcc-create-drop-btn"
-                    onClick={() => handleCreateDropForMonth(monthDate)}
+                    onClick={async () => {
+                      const id = await handleCreateDropForMonth(monthDate);
+                      if (id) refresh();
+                    }}
                     disabled={!!pendingDropId}
                   >
                     + Crear drop
@@ -518,8 +567,16 @@ export default function ProgramCadenceCalendar({
                         onDragOver={interactive ? (e) => {
                           e.preventDefault();
                           e.dataTransfer.dropEffect = 'move';
+                          if (dragOverDay !== `${weekKey}-${dayCol}`) {
+                            console.log('[CADENCE-DRAG] over interactive cell', { weekKey, dayCol, hasDrop: !!drop, isFirstWeekOfDrop: isFirst });
+                          }
                           setDragOverDay(`${weekKey}-${dayCol}`);
-                        } : undefined}
+                        } : (e) => {
+                          if (e.target.dataset.cadenceLoggedOnce !== '1') {
+                            e.target.dataset.cadenceLoggedOnce = '1';
+                            console.log('[CADENCE-DRAG] over NON-interactive cell (mirror week — drop will not fire)', { weekKey, dayCol });
+                          }
+                        }}
                         onDragLeave={interactive ? () => setDragOverDay(null) : undefined}
                         onDrop={interactive ? (e) => handleDropOnDay(e, week, dayCol, monthDate) : undefined}
                       >
@@ -590,10 +647,7 @@ export default function ProgramCadenceCalendar({
                 const rect = { top: menuAnchorRect.top, left: menuAnchorRect.left, bottom: menuAnchorRect.bottom, right: menuAnchorRect.right };
                 setUnlockEditingId(mod.id);
                 setUnlockAnchorRect(rect);
-                const iso = typeof mod.unlocks_at === 'string'
-                  ? mod.unlocks_at
-                  : (mod.unlocks_at?.toDate?.()?.toISOString?.() ?? null);
-                setUnlockDraftYmd(isoToYMD(iso));
+                setUnlockDraftYmd(isoToYMD(unlocksAtToIso(mod.unlocks_at)));
               }}
             >
               Editar fecha de drop

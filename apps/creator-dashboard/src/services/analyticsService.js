@@ -57,6 +57,7 @@ function init() {
       autocapture: false,
       capture_pageview: false,
       capture_pageleave: true,
+      capture_exceptions: true,
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '[data-ph-no-capture]',
