@@ -13,17 +13,16 @@ class ProgramService {
   }
 
   async createProgram(_creatorId, _creatorName, programData) {
+    const deliveryType = programData.deliveryType || 'general';
     const res = await apiClient.post('/creator/programs', {
       title: programData.title || '',
       description: programData.description || null,
       imageUrl: programData.imageUrl || null,
       discipline: programData.discipline || null,
-      deliveryType: programData.deliveryType || 'low_ticket',
+      deliveryType,
     });
     try {
-      analyticsService.track('creator.program_created', {
-        delivery_type: programData.deliveryType || 'low_ticket',
-      });
+      analyticsService.track('creator.program_created', { delivery_type: deliveryType });
     } catch {}
     return res.data;
   }
@@ -109,7 +108,7 @@ class ProgramService {
     const existing = await this.getModulesByProgram(programId);
     const order = existing.length;
     const res = await apiClient.post(`/creator/programs/${programId}/modules`, {
-      title: `Semana ${order + 1}`,
+      title: moduleName || `Semana ${order + 1}`,
       order,
     });
     return res.data;
@@ -162,7 +161,7 @@ class ProgramService {
       title: sessionName || 'Sesion',
       order: order ?? 0,
     };
-    if (librarySessionRef) body.librarySessionRef = librarySessionRef;
+    if (librarySessionRef) body.source_library_session_id = librarySessionRef;
     if (imageUrl) body.image_url = imageUrl;
     if (dayIndex != null) body.dayIndex = dayIndex;
     const res = await apiClient.post(
@@ -176,7 +175,7 @@ class ProgramService {
     const body = {
       title: title || 'Sesion',
       order: order ?? 0,
-      librarySessionRef,
+      source_library_session_id: librarySessionRef,
     };
     if (imageUrl) body.image_url = imageUrl;
     if (dayIndex != null) body.dayIndex = dayIndex;

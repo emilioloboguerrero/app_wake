@@ -162,7 +162,7 @@ class CourseDownloadService {
         courseData: {
           ...courseData,
           modules: modules || [],
-          deliveryType: courseData.deliveryType ?? 'low_ticket'
+          deliveryType: courseData.deliveryType ?? 'general'
         }
       };
       await this.storeCourseLocally(courseId, {
@@ -278,7 +278,7 @@ class CourseDownloadService {
         courseData: {
           ...courseData,
           modules: modules || [],
-          deliveryType: courseData.deliveryType ?? 'low_ticket'
+          deliveryType: courseData.deliveryType ?? 'general'
         },
         clientProgram: clientProgram || null
       };

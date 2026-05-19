@@ -53,7 +53,7 @@ function RevenueWidget({ isLoading, isError, lowTicket, oneOnOne, programs = [],
   const netRevenue = useMemo(() => grossRevenue * (1 - WAKE_FEE), [grossRevenue]);
   const wakeFeeAmount = useMemo(() => grossRevenue * WAKE_FEE, [grossRevenue]);
 
-  const hasLowTicket = programs.some(p => p.deliveryType === 'low_ticket');
+  const hasLowTicket = programs.some(p => p.deliveryType !== 'one_on_one');
   const hasOneOnOne = programs.some(p => p.deliveryType === 'one_on_one');
 
   const perProgramRevenue = useMemo(() => {

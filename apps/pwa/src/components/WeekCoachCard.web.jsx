@@ -499,7 +499,7 @@ const WeekCoachCard = ({
   // single "complete program" surface. We render one row per fixed program so
   // it's never ambiguous which one the link refers to.
   const fixedCourses = useMemo(
-    () => envCourses.filter((c) => c.deliveryType === 'low_ticket' || c.deliveryType === 'general'),
+    () => envCourses.filter((c) => c.deliveryType !== 'one_on_one'),
     [envCourses],
   );
   const hasOneOnOne = envCourses.some((c) => c.deliveryType === 'one_on_one');

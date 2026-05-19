@@ -163,7 +163,7 @@ export async function assignBundleToUser(
       expires_at: entryExpiresAt,
       status: "active",
       purchased_at: (previousBundleEntry?.purchased_at as string) ?? now.toISOString(),
-      deliveryType: courseData.deliveryType ?? "low_ticket",
+      deliveryType: courseData.deliveryType ?? "general",
       title: courseData.title ?? "Untitled Course",
       image_url: courseData.image_url ?? null,
       discipline: courseData.discipline ?? "General",

@@ -1456,6 +1456,19 @@ router.post("/creator/programs", async (req, res) => {
     );
   }
 
+  // Collapse the legacy `low_ticket` deliveryType into `general`. Both meant
+  // "shared program, not 1:1"; the split predated subscriptions and only
+  // confused downstream filters. New writes are normalized; backfill script
+  // sweeps historical docs.
+  if (body.deliveryType === "low_ticket") body.deliveryType = "general";
+  if (body.deliveryType !== "general" && body.deliveryType !== "one_on_one") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "deliveryType debe ser 'general' o 'one_on_one'",
+      "deliveryType"
+    );
+  }
+
   if (body.visibility !== undefined && !["standalone", "bundle-only", "both"].includes(body.visibility)) {
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400,
@@ -1580,6 +1593,20 @@ router.patch("/creator/programs/:programId", async (req, res) => {
         "VALIDATION_ERROR", 400,
         "block_cadence debe ser 'monthly_first_monday' o null",
         "block_cadence"
+      );
+    }
+  }
+
+  // Same normalization as POST: collapse the legacy `low_ticket` value into
+  // `general` and reject anything outside {general, one_on_one}. Without this
+  // guard the PATCH path was a back-door for arbitrary deliveryType strings.
+  if (updates.deliveryType !== undefined) {
+    if (updates.deliveryType === "low_ticket") updates.deliveryType = "general";
+    if (updates.deliveryType !== "general" && updates.deliveryType !== "one_on_one") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "deliveryType debe ser 'general' o 'one_on_one'",
+        "deliveryType"
       );
     }
   }
@@ -8117,10 +8144,21 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const body = validateBody<{ title: string; order?: number; librarySessionRef?: string; dayIndex?: number; image_url?: string }>(
-    {title: "string", order: "optional_number", librarySessionRef: "optional_string", dayIndex: "optional_number", image_url: "optional_string"},
+  const body = validateBody<{
+    title: string; order?: number;
+    source_library_session_id?: string; librarySessionRef?: string;
+    dayIndex?: number; image_url?: string;
+  }>(
+    {
+      title: "string", order: "optional_number",
+      source_library_session_id: "optional_string",
+      librarySessionRef: "optional_string",
+      dayIndex: "optional_number", image_url: "optional_string",
+    },
     req.body
   );
+
+  const sourceLibId = body.source_library_session_id ?? body.librarySessionRef ?? null;
 
   const ref = await db
     .collection("courses")
@@ -8131,25 +8169,26 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
     .add({
       title: body.title,
       order: body.order ?? 0,
-      ...(body.librarySessionRef !== undefined && {librarySessionRef: body.librarySessionRef}),
+      isRestDay: false,
+      ...(sourceLibId && {source_library_session_id: sourceLibId}),
       ...(body.dayIndex !== undefined && {dayIndex: body.dayIndex}),
       ...(body.image_url !== undefined && {image_url: body.image_url}),
       created_at: FieldValue.serverTimestamp(),
     });
 
-  // Deep-copy exercises+sets from library session when librarySessionRef is provided
-  if (body.librarySessionRef) {
+  // Deep-copy exercises+sets from the referenced library session and
+  // propagate defaultDataTemplate + notes so manual creations match the
+  // shape produced by the seed scripts.
+  if (sourceLibId) {
     const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
-      .collection("sessions").doc(body.librarySessionRef);
+      .collection("sessions").doc(sourceLibId);
     const libDoc = await libSessionRef.get();
     if (libDoc.exists) {
       const libData = libDoc.data()!;
       const metaUpdate: Record<string, unknown> = {};
       if (!body.image_url && libData.image_url) metaUpdate.image_url = libData.image_url;
-      const placeholderTitle = !body.title || body.title === "Sesion" || body.title === "Sesión";
-      if (placeholderTitle && typeof libData.title === "string" && libData.title.trim()) {
-        metaUpdate.title = libData.title;
-      }
+      if (libData.defaultDataTemplate) metaUpdate.defaultDataTemplate = libData.defaultDataTemplate;
+      if (typeof libData.notes === "string" && libData.notes.trim()) metaUpdate.notes = libData.notes;
       if (Object.keys(metaUpdate).length > 0) await ref.update(metaUpdate);
 
       const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();

@@ -2583,15 +2583,23 @@ function bogotaDateParts(d: Date): {year: number; month: number; day: number; we
   };
 }
 
-function bogotaDateKey(d: Date): string {
-  const {year, month, day} = bogotaDateParts(d);
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
 function isFirstMondayOfMonth(d: Date): boolean {
   // Day-of-month 1–7 AND weekday Monday, both evaluated in America/Bogota.
   const {day, weekday} = bogotaDateParts(d);
   return day <= 7 && weekday === 1;
+}
+
+// Tolerant gate: returns true when `d` is the first Monday of the month in
+// BOG OR within 24h after it. Cloud Scheduler can fire seconds before the
+// nominal wallclock; without this window an invocation at 23:59:59 BOG of
+// Sunday would compute weekday=Sunday and skip the advance for an entire
+// month. Idempotence is preserved by `current_block_started_at` — re-runs
+// within the same BOG day are no-ops.
+function isWithinFirstMondayWindow(d: Date): boolean {
+  if (isFirstMondayOfMonth(d)) return true;
+  // Check the BOG calendar day that "yesterday" would land on.
+  const yesterday = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+  return isFirstMondayOfMonth(yesterday);
 }
 
 async function advanceMonthlyDropCourse(
@@ -2615,13 +2623,19 @@ async function advanceMonthlyDropCourse(
     state.current_block_index :
     -1;
 
-  // Idempotence guard: if this course already advanced today (BOG), no-op.
-  // Protects against duplicate scheduled fires + manual re-triggers landing
-  // on the same first Monday.
+  // Idempotence guard: once this course has advanced anywhere in the current
+  // BOG month, the cron is done for the month. BOG-month keying (rather than
+  // BOG-day) is what makes the tolerant first-Monday window safe — without
+  // it, a Mon-01:00 advance followed by a Tue-01:00 re-fire (both within the
+  // tolerant window) would double-advance. Manual mid-month re-fires are
+  // also no-ops, which is the desired behavior (the cron should advance
+  // exactly once per month).
   const startedAt = state.current_block_started_at;
   if (startedAt && typeof (startedAt as {toDate?: () => Date}).toDate === "function") {
     const startedDate = (startedAt as {toDate: () => Date}).toDate();
-    if (bogotaDateKey(startedDate) === bogotaDateKey(new Date())) {
+    const startedParts = bogotaDateParts(startedDate);
+    const nowParts = bogotaDateParts(new Date());
+    if (startedParts.year === nowParts.year && startedParts.month === nowParts.month) {
       return {
         courseId,
         outcome: "already_current",
@@ -2670,8 +2684,15 @@ async function advanceMonthlyDropCourse(
     (lookahead.data().order as number) :
     null;
 
+  // Atomic write: program_state and the course-doc mirror MUST advance
+  // together. If only program_state advances and the course-doc write fails,
+  // PWA fast-path reads keep returning the old block forever (the mirror is
+  // what HoyScreen + the workout walker consult). Batched writes commit
+  // together or not at all.
   const now = admin.firestore.FieldValue.serverTimestamp();
-  await stateRef.set(
+  const batch = db.batch();
+  batch.set(
+    stateRef,
     {
       current_block_id: advanceDoc.id,
       current_block_index: newIndex,
@@ -2682,10 +2703,12 @@ async function advanceMonthlyDropCourse(
     },
     {merge: true}
   );
-  await courseRef.set(
+  batch.set(
+    courseRef,
     {current_block_id: advanceDoc.id, current_block_index: newIndex, updated_at: now},
     {merge: true}
   );
+  await batch.commit();
 
   functions.logger.info("monthlyDropAdvance: advanced", {
     courseId,
@@ -2751,7 +2774,11 @@ function readTopics(): import("./ops/telegram.js").TopicMap {
 
 export const monthlyDropAdvance = onSchedule(
   {
-    schedule: "every monday 00:00",
+    // 01:00 BOG instead of 00:00 — buffers against Cloud Scheduler firing
+    // a few seconds before the wallclock day boundary, which previously
+    // could shift the BOG date back to Sunday and silently skip the advance
+    // for the entire month.
+    schedule: "every monday 01:00",
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
@@ -2759,10 +2786,11 @@ export const monthlyDropAdvance = onSchedule(
     timeoutSeconds: 120,
   },
   async () => {
-    // Cron triggers every Monday; gate to the first Monday of the month
-    // evaluated in America/Bogota (the cron's timezone).
-    if (!isFirstMondayOfMonth(new Date())) {
-      functions.logger.info("monthlyDropAdvance: not first Monday of month, skipping");
+    // Cron triggers every Monday; tolerant gate accepts the first Monday OR
+    // the 24h after it, so a near-boundary invocation can still advance.
+    // Idempotence in advanceMonthlyDropCourse prevents double-advance.
+    if (!isWithinFirstMondayWindow(new Date())) {
+      functions.logger.info("monthlyDropAdvance: not within first-Monday window, skipping");
       return;
     }
 
@@ -2839,15 +2867,20 @@ export const monthlyDropAdvance = onSchedule(
   }
 );
 
-// Day-25 readiness sweep — retained as a no-op for now. Under the
-// carry-over model (memory/project_monthly_drops.md), an unauthored next
-// block is a normal state, so pinging the creator is wrong: they may have
-// chosen to let the current block run another month. The function still
-// exists to keep deployment manifests stable; it logs at info level and
-// does not send signals.
+// Cron-fired assertion. Re-purposed from the old day-25 publication-readiness
+// sweep (carry-over makes unauthored next blocks WAI). Now it verifies the
+// monthlyDropAdvance cron actually ran this BOG month for every published
+// cadenced course: if `program_state.current_block_started_at` is older than
+// the first day of the current BOG month, the advance silently missed and
+// every subscriber is stuck on the previous block. Emits a Telegram signal
+// so ops can manually re-fire the advance.
+//
+// Runs daily at 09:00 BOG starting day 2 of the month (so the first-Monday
+// cron has had business hours to land before we alert). A weekly cron would
+// risk waiting up to 7 days to notice a miss.
 export const monthlyDropReadinessCheck = onSchedule(
   {
-    schedule: "0 14 25 * *",
+    schedule: "0 9 2-8 * *",
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
@@ -2855,7 +2888,60 @@ export const monthlyDropReadinessCheck = onSchedule(
     timeoutSeconds: 60,
   },
   async () => {
-    functions.logger.info("monthlyDropReadinessCheck: carry-over model — no signals emitted");
+    const {year: bogYear, month: bogMonth} = bogotaDateParts(new Date());
+    // First instant of the current BOG month, expressed as a UTC ms epoch.
+    // BOG = UTC-5, so 00:00 BOG of day 1 = 05:00 UTC of day 1. Anything before
+    // this means the advance is one or more months behind.
+    const monthStartMs = Date.UTC(bogYear, bogMonth - 1, 1) + 5 * 60 * 60 * 1000;
+
+    const coursesSnap = await db
+      .collection("courses")
+      .where("block_cadence", "==", "monthly_first_monday")
+      .get();
+    const published = coursesSnap.docs.filter((d) => d.data()?.status === "published");
+    if (published.length === 0) return;
+
+    const signalsCtx = telegramSignalsBotToken.value() && telegramChatId.value() ?
+      {
+        botToken: telegramSignalsBotToken.value(),
+        chatId: telegramChatId.value(),
+        topics: readTopics(),
+      } :
+      null;
+
+    for (const courseDoc of published) {
+      const stateDoc = await db.collection("program_state").doc(courseDoc.id).get();
+      // Freshly-cadenced courses have no program_state yet; the next cron
+      // run will create it. Treat as "not behind" — alerting daily for a
+      // brand-new course would be noise the creator can't act on.
+      if (!stateDoc.exists) continue;
+      const startedAt = stateDoc.data()?.current_block_started_at as
+        | {toMillis?: () => number} | undefined;
+      const startedMs = startedAt && typeof startedAt.toMillis === "function" ?
+        startedAt.toMillis() :
+        null;
+      if (startedMs === null) continue;
+      if (startedMs >= monthStartMs) continue;
+
+      functions.logger.warn("monthlyDropReadinessCheck: cron missed this month", {
+        courseId: courseDoc.id,
+        startedMs,
+        monthStartMs,
+      });
+      if (signalsCtx) {
+        try {
+          await sendTo(
+            signalsCtx,
+            "signals",
+            `[monthly-drops] ${courseDoc.id}: advance MISSED — current_block_started_at` +
+              " is older than the first day of this BOG month. Manually trigger" +
+              " monthlyDropAdvance or investigate scheduler logs."
+          );
+        } catch {
+          // already-degraded path; log above is sufficient
+        }
+      }
+    }
   }
 );
 

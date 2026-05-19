@@ -22,6 +22,97 @@ const MAX_SESSIONS_PER_MODULE = 50;
 // The lapse-flip cron uses the same grace so the two stay in sync.
 export const ACCESS_EXPIRY_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
+// Coerce a Firestore Timestamp | ISO string | nullish value to an ISO string.
+function timestampToIso(raw: unknown): string | null {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object") {
+    const obj = raw as {toDate?: () => Date; toMillis?: () => number};
+    if (typeof obj.toDate === "function") {
+      try {
+        return obj.toDate().toISOString();
+      } catch {
+        return null;
+      }
+    }
+    if (typeof obj.toMillis === "function") {
+      try {
+        return new Date(obj.toMillis()).toISOString();
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+// Returns BOG-localized {year, month, day, weekday} for a Date. Mirrors
+// the helper in index.ts; duplicated here to avoid a cross-file dep just
+// for the unlocks_at compute path.
+function bogotaDateParts(d: Date): {year: number; month: number; day: number; weekday: number} {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
+  const weekdayMap: Record<string, number> = {Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6};
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    weekday: weekdayMap[parts.weekday] ?? -1,
+  };
+}
+
+// First Monday of a given BOG month, as a Date at 00:00 BOG (05:00 UTC).
+// Any 7 consecutive days contain a Monday, so the loop always terminates.
+function firstMondayOfBogMonth(year: number, month: number): Date {
+  for (let day = 1; day <= 7; day++) {
+    const probe = new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
+    if (bogotaDateParts(probe).weekday === 1) return probe;
+  }
+  throw new Error(`unreachable: no Monday in first 7 days of ${year}-${month}`);
+}
+
+// Computes the unlock date for a future block at `monthsAhead` first-Monday
+// cron ticks after `base`'s BOG month. monthsAhead=1 → next month's first
+// Monday; monthsAhead=2 → the one after; etc.
+function firstMondayOfBogMonthOffset(base: Date, monthsAhead: number): Date {
+  const {year, month} = bogotaDateParts(base);
+  const targetMonth0 = month - 1 + monthsAhead;
+  const targetYear = year + Math.floor(targetMonth0 / 12);
+  const targetMonth = ((targetMonth0 % 12) + 12) % 12 + 1;
+  return firstMondayOfBogMonth(targetYear, targetMonth);
+}
+
+// Resolves a block's user-visible unlock date. Prefers the creator's explicit
+// `unlocks_at` if set. Otherwise derives deterministically from the cron
+// cadence: current block uses when it actually unlocked; future blocks count
+// first-Mondays forward from there. Past blocks return null — we don't keep
+// per-block historical unlock dates, and showing a wrong date is worse than
+// showing none.
+//
+// IMPORTANT: do NOT fall back to `published_at` — it's the timestamp the
+// creator toggled "Publicado", which can be weeks before the block actually
+// unlocks, and would render misleading past dates in the PWA.
+function resolveBlockUnlocksAt(args: {
+  unlocksAtRaw: unknown;
+  blockOrder: number;
+  currentBlockIndex: number | null;
+  currentBlockStartedAt: Date | null;
+}): string | null {
+  const explicit = timestampToIso(args.unlocksAtRaw);
+  if (explicit !== null) return explicit;
+  if (args.currentBlockIndex === null || args.currentBlockStartedAt === null) return null;
+  if (args.blockOrder === args.currentBlockIndex) {
+    return args.currentBlockStartedAt.toISOString();
+  }
+  if (args.blockOrder > args.currentBlockIndex) {
+    const offset = args.blockOrder - args.currentBlockIndex;
+    return firstMondayOfBogMonthOffset(args.currentBlockStartedAt, offset).toISOString();
+  }
+  return null;
+}
+
 // Server-side mirror of the PWA's utils/courseAccess.isCourseEntryActive.
 // Keep these in sync — different gates here vs. on the client cause the
 // "I see it on Hoy but it's missing from my library" failure mode.
@@ -35,7 +126,11 @@ function courseAccessIsActive(entry: Record<string, unknown> | undefined | null)
   } else if (raw && typeof raw === "object" && typeof (raw as {toMillis?: () => number}).toMillis === "function") {
     expiresAtMs = (raw as {toMillis: () => number}).toMillis();
   }
-  if (expiresAtMs !== null && expiresAtMs + ACCESS_EXPIRY_GRACE_MS < Date.now()) return false;
+  // Trial entries still expire — `is_trial: true` plus a stale `expires_at`
+  // is the post-trial state and must NOT pass. Previously this branch
+  // returned true unconditionally for trials, granting indefinite access.
+  if (expiresAtMs === null) return false;
+  if (expiresAtMs + ACCESS_EXPIRY_GRACE_MS < Date.now()) return false;
   if (entry.status === "active") return true;
   if (entry.is_trial === true) return true;
   return false;
@@ -136,7 +231,7 @@ router.get("/workout/daily", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
-  const deliveryType = course.deliveryType ?? "low_ticket";
+  const deliveryType = course.deliveryType ?? "general";
 
   // Resolve the target session based on delivery type
   let targetModuleId: string | null = null;
@@ -981,7 +1076,7 @@ router.get("/workout/session-exercises", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
-  const deliveryType = course.deliveryType ?? "low_ticket";
+  const deliveryType = course.deliveryType ?? "general";
 
   // Resolve session doc reference based on delivery type and moduleId
   let sessionDocRef: FirebaseFirestore.DocumentReference;
@@ -1200,7 +1295,7 @@ router.get("/workout/courses", async (req, res) => {
       courseId,
       title: entry.title ?? null,
       imageUrl: entry.image_url ?? null,
-      deliveryType: entry.deliveryType ?? "low_ticket",
+      deliveryType: entry.deliveryType ?? "general",
       status: entry.status ?? "active",
       expiresAt: entry.expires_at ?? null,
       purchasedAt: entry.purchased_at ?? null,
@@ -2626,40 +2721,19 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
   const stateData = stateDoc.exists ? (stateDoc.data() ?? {}) : {};
   const nextBlockIndex = (stateData.next_block_index as number | null | undefined) ?? null;
   const nextBlockId = (stateData.next_block_id as string | null | undefined) ?? null;
-  const startedAtRaw = stateData.current_block_started_at as
-    | {toMillis?: () => number; toDate?: () => Date}
-    | string
-    | undefined;
-  let startedAtIso: string | null = null;
-  if (typeof startedAtRaw === "string") {
-    startedAtIso = startedAtRaw;
-  } else if (startedAtRaw && typeof startedAtRaw.toDate === "function") {
-    try {
-      startedAtIso = startedAtRaw.toDate().toISOString();
-    } catch {
-      startedAtIso = null;
-    }
-  } else if (startedAtRaw && typeof startedAtRaw.toMillis === "function") {
-    try {
-      startedAtIso = new Date(startedAtRaw.toMillis()).toISOString();
-    } catch {
-      startedAtIso = null;
-    }
-  }
+  const startedAtIso = timestampToIso(stateData.current_block_started_at);
+  const startedAtDate = startedAtIso ? new Date(startedAtIso) : null;
 
   let nextBlockUnlocksAtIso: string | null = null;
-  if (nextBlockId) {
+  if (nextBlockId && nextBlockIndex !== null) {
     const nextModuleDoc = await courseDoc.ref.collection("modules").doc(nextBlockId).get();
-    const unlocksRaw = nextModuleDoc.exists ? nextModuleDoc.data()?.unlocks_at : null;
-    if (typeof unlocksRaw === "string") {
-      nextBlockUnlocksAtIso = unlocksRaw;
-    } else if (unlocksRaw && typeof (unlocksRaw as {toDate?: () => Date}).toDate === "function") {
-      try {
-        nextBlockUnlocksAtIso = (unlocksRaw as {toDate: () => Date}).toDate().toISOString();
-      } catch {
-        nextBlockUnlocksAtIso = null;
-      }
-    }
+    const moduleData = nextModuleDoc.exists ? nextModuleDoc.data() ?? {} : {};
+    nextBlockUnlocksAtIso = resolveBlockUnlocksAt({
+      unlocksAtRaw: moduleData.unlocks_at,
+      blockOrder: nextBlockIndex,
+      currentBlockIndex,
+      currentBlockStartedAt: startedAtDate,
+    });
   }
 
   if (locked || !currentBlockId) {
@@ -2708,18 +2782,12 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
   );
 
   const moduleData = moduleDoc.data() ?? {};
-  // unlocks_at on the module may be Timestamp or ISO string; normalize.
-  const moduleUnlocksRaw = moduleData.unlocks_at;
-  let moduleUnlocksIso: string | null = null;
-  if (typeof moduleUnlocksRaw === "string") {
-    moduleUnlocksIso = moduleUnlocksRaw;
-  } else if (moduleUnlocksRaw && typeof (moduleUnlocksRaw as {toDate?: () => Date}).toDate === "function") {
-    try {
-      moduleUnlocksIso = (moduleUnlocksRaw as {toDate: () => Date}).toDate().toISOString();
-    } catch {
-      moduleUnlocksIso = null;
-    }
-  }
+  const moduleUnlocksIso = resolveBlockUnlocksAt({
+    unlocksAtRaw: moduleData.unlocks_at,
+    blockOrder: typeof moduleData.order === "number" ? moduleData.order : (currentBlockIndex ?? 0),
+    currentBlockIndex,
+    currentBlockStartedAt: startedAtDate,
+  });
 
   res.json({
     data: {
@@ -2815,20 +2883,8 @@ router.get("/workout/programs/:courseId/blocks-overview", async (req, res) => {
     null;
   const nextBlockId = (stateData.next_block_id as string | null | undefined) ?? null;
 
-  const startedAtRaw = stateData.current_block_started_at as
-    | {toDate?: () => Date; toMillis?: () => number}
-    | string
-    | undefined;
-  let currentBlockStartedAt: string | null = null;
-  if (typeof startedAtRaw === "string") {
-    currentBlockStartedAt = startedAtRaw;
-  } else if (startedAtRaw && typeof startedAtRaw.toDate === "function") {
-    try {
-      currentBlockStartedAt = startedAtRaw.toDate().toISOString();
-    } catch {
-      currentBlockStartedAt = null;
-    }
-  }
+  const currentBlockStartedAt = timestampToIso(stateData.current_block_started_at);
+  const currentBlockStartedAtDate = currentBlockStartedAt ? new Date(currentBlockStartedAt) : null;
 
   const modulesSnap = await courseDoc.ref
     .collection("modules")
@@ -2840,20 +2896,15 @@ router.get("/workout/programs/:courseId/blocks-overview", async (req, res) => {
   const blocks = modulesSnap.docs.map((mDoc) => {
     const m = mDoc.data() ?? {};
     const order = typeof m.order === "number" ? m.order : 0;
-    const unlocksRaw = m.unlocks_at;
-    let unlocksAt: string | null = null;
-    if (typeof unlocksRaw === "string") {
-      unlocksAt = unlocksRaw;
-    } else if (unlocksRaw && typeof (unlocksRaw as {toDate?: () => Date}).toDate === "function") {
-      try {
-        unlocksAt = (unlocksRaw as {toDate: () => Date}).toDate().toISOString();
-      } catch {
-        unlocksAt = null;
-      }
-    }
     const isCurrent = currentBlockIndex !== null && order === currentBlockIndex;
     const isPast = currentBlockIndex !== null && order < currentBlockIndex;
     const isFuture = currentBlockIndex !== null && order > currentBlockIndex;
+    const unlocksAt = resolveBlockUnlocksAt({
+      unlocksAtRaw: m.unlocks_at,
+      blockOrder: order,
+      currentBlockIndex,
+      currentBlockStartedAt: currentBlockStartedAtDate,
+    });
     if (mDoc.id === nextBlockId && unlocksAt) {
       nextBlockUnlocksAt = unlocksAt;
     }

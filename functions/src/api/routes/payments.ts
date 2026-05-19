@@ -861,7 +861,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
                 status: "active",
                 is_trial: true,
                 purchased_at: new Date().toISOString(),
-                deliveryType: course.deliveryType ?? "low_ticket",
+                deliveryType: course.deliveryType ?? "general",
                 title: course.title ?? "Untitled Course",
                 image_url: course.image_url ?? null,
                 discipline: course.discipline ?? "General",
