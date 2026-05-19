@@ -804,9 +804,14 @@ const ProgramContentTab = ({
         await libraryService.addSessionToLibraryModule(user.uid, selectedModule.libraryModuleRef, librarySessionId);
       }
       const libSession = librarySessions.find((s) => s.id === librarySessionId);
+      // Strip the "Mes N — " prefix so the new session inherits the slot
+      // name only (e.g. "Empuje"), matching the seed convention. Library
+      // sessions are titled "Mes N — Slot" because they have no parent
+      // module; module sessions don't need that prefix.
+      const slotTitle = (libSession?.title || '').replace(/^Mes\s+\d+\s*[—-]\s*/i, '').trim() || 'Sesión';
       await programService.createSessionFromLibrary(
         programId, selectedModule.id, librarySessionId,
-        null, libSession?.image_url || null, null, libSession?.title || null,
+        null, libSession?.image_url || null, null, slotTitle,
       );
       const freshSessions = await programService.getSessionsByModule(programId, selectedModule.id);
       const sorted = freshSessions.sort((a, b) => {
