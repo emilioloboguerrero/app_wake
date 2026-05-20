@@ -766,6 +766,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const checkpointApiTimerRef = useRef(null);
   const checkpointNotesTimerRef = useRef(null);
   const saveCheckpointRef = useRef(null);
+  // Set when the user voluntarily discards or successfully completes. Gates the
+  // unmount checkpoint flush so it can't resurrect a just-cleared checkpoint.
+  const sessionEndedRef = useRef(false);
 
   // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
   const focusTimeoutIdsRef = useRef([]);
@@ -1352,9 +1355,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Flush checkpoint on unmount. SPA back-nav (including iOS edge-swipe) unmounts
   // the component without firing pagehide/visibilitychange, so the other handlers
-  // alone aren't enough.
+  // alone aren't enough. Skip when the user explicitly discarded or completed —
+  // otherwise the flush resurrects a just-cleared checkpoint and the recovery
+  // modal reappears on Hoy / DailyWorkout.
   useEffect(() => {
     return () => {
+      if (sessionEndedRef.current) return;
       if (saveCheckpointRef.current) saveCheckpointRef.current();
     };
   }, []);
@@ -2352,9 +2358,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setConfirmModalConfig(null);
           try {
 
+            // Mark session as ended BEFORE clearing so the unmount cleanup
+            // (which fires after navigation.goBack) won't re-write the checkpoint.
+            sessionEndedRef.current = true;
             // Cancel the current session and clear local data
             await sessionManager.cancelSession();
             try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+            if (checkpointApiTimerRef.current) {
+              clearTimeout(checkpointApiTimerRef.current);
+              checkpointApiTimerRef.current = null;
+            }
             import('../utils/apiClient.js').then(mod => {
               const client = mod.default || mod.apiClient;
               client.delete('/workout/session/active').catch(() => {});
@@ -2397,9 +2410,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             onPress: async () => {
               try {
 
+                // Mark session as ended BEFORE clearing so the unmount cleanup
+                // (which fires after navigation.goBack) won't re-write the checkpoint.
+                sessionEndedRef.current = true;
                 // Cancel the current session and clear local data
                 await sessionManager.cancelSession();
                 try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+                if (checkpointApiTimerRef.current) {
+                  clearTimeout(checkpointApiTimerRef.current);
+                  checkpointApiTimerRef.current = null;
+                }
                 import('../utils/apiClient.js').then(mod => {
                   const client = mod.default || mod.apiClient;
                   client.delete('/workout/session/active').catch(() => {});
@@ -4182,9 +4202,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     );
                      
                      if (result) {
+                       // Mark session as ended BEFORE clearing so the unmount cleanup
+                       // (which fires when navigating to WorkoutCompletion) won't
+                       // re-write the checkpoint.
+                       sessionEndedRef.current = true;
                        // Clear checkpoint on successful completion
                        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
                        sessionManager.cancelPendingCheckpoint();
+                       if (checkpointApiTimerRef.current) {
+                         clearTimeout(checkpointApiTimerRef.current);
+                         checkpointApiTimerRef.current = null;
+                       }
                        import('../utils/apiClient.js').then(mod => {
                          const client = mod.default || mod.apiClient;
                          client.delete('/workout/session/active');
