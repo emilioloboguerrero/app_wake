@@ -516,7 +516,7 @@ const HoyScreen = () => {
 
   if (isLoading) {
     return (
-      <div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <SafeAreaView
           style={containerStyle}
           edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -549,7 +549,7 @@ const HoyScreen = () => {
 
   if (isEmpty) {
     return (
-      <div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <SafeAreaView
           style={containerStyle}
           edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -605,7 +605,7 @@ const HoyScreen = () => {
   }
 
   return (
-    <div>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <Animated.View style={{ flex: 1, opacity: screenAnim }}>
         <SafeAreaView
           style={containerStyle}
