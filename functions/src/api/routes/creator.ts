@@ -1648,6 +1648,20 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     }
   }
 
+  // Safety belt: a positive subscription_price implies monthly billing, but the
+  // checkout endpoint refuses to run without access_duration (the webhook needs
+  // it to compute expires_at). If this PATCH lands a subscription_price on a
+  // course that was created without access_duration (e.g. seeded by a script
+  // that forgot the field), backfill it to "monthly" here so the buy page
+  // doesn't 400 silently for end users.
+  if (typeof updates.subscription_price === "number" && updates.subscription_price > 0) {
+    const existing = doc.data() ?? {};
+    const existingAccess = updates.access_duration ?? existing.access_duration;
+    if (typeof existingAccess !== "string" || !existingAccess.trim()) {
+      updates.access_duration = "monthly";
+    }
+  }
+
   await docRef.update({
     ...updates,
     updated_at: FieldValue.serverTimestamp(),

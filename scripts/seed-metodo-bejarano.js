@@ -517,6 +517,7 @@ async function writeCourseAndModules(libTitleToId, nameToId, months, { write }) 
       deliveryType: 'general',
       visibility: 'both',
       subscription_price: SUBSCRIPTION_PRICE_COP,
+      access_duration: 'monthly',
       block_cadence: 'monthly_first_monday',
       creator_id: FELIPE_UID,
       creatorName: 'Felipe Bejarano',
