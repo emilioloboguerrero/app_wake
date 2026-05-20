@@ -83,7 +83,23 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
   }, [plans, q, sortKey]);
 
   const handlePlanCreated = useCallback((data) => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
+    if (data?.id) {
+      const key = queryKeys.plans.byCreator(user?.uid);
+      queryClient.setQueryData(key, (prev = []) => {
+        if (prev.some((p) => p.id === data.id)) return prev;
+        const optimistic = {
+          id: data.id,
+          title: data.title ?? '',
+          description: data.description ?? '',
+          creator_id: user?.uid,
+          weekCount: 1,
+          clientCount: 0,
+          created_at: { _seconds: Math.floor(Date.now() / 1000) },
+        };
+        return [optimistic, ...prev];
+      });
+      queryClient.invalidateQueries({ queryKey: key });
+    }
     setIsCreateOpen(false);
     if (data?.id) navigate(`/plans/${data.id}`);
   }, [queryClient, user?.uid, navigate]);
