@@ -615,7 +615,7 @@ const HoyScreen = () => {
 
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+            contentContainerStyle={{ paddingBottom: 160 }}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
             bounces
