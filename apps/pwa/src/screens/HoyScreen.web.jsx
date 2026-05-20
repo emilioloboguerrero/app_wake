@@ -346,7 +346,7 @@ const HoyScreen = () => {
   }, [recoveryCheckpoint, user?.uid, courses, navigate]);
 
   const handleOpenCall = useCallback((call) => {
-    const id = call?.booking?.id;
+    const id = call?.booking?.bookingId || call?.booking?.id;
     if (!id) return;
     navigate(`/call/${id}`, {
       state: { booking: call.booking, course: call.course, creatorName: call.creatorName },
@@ -693,7 +693,7 @@ const HoyScreen = () => {
                       onScrollEndDrag={handleScroll}
                       onMomentumScrollEnd={handleScroll}
                       scrollEventThrottle={16}
-                      style={{ height: CARD_HEIGHT + 16, width: '100%' }}
+                      style={{ height: CARD_HEIGHT + 16, width: '100%', touchAction: 'pan-x' }}
                       getItemLayout={(_d, i) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * i, index: i })}
                       initialNumToRender={2}
                       maxToRenderPerBatch={3}

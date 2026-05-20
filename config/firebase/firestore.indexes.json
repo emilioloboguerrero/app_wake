@@ -68,6 +68,15 @@
       "collectionGroup": "call_bookings",
       "queryScope": "COLLECTION",
       "fields": [
+        {"fieldPath": "clientUserId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "slotStartUtc", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "call_bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "slotStartUtc", "order": "ASCENDING"}

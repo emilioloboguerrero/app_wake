@@ -177,9 +177,9 @@ const PreviewBanners = ({
 
       {upcomingCalls.map((call) => {
         const creatorName = call?.creatorName || 'Tu coach';
-        const startsAt = call?.booking?.startTime || call?.booking?.scheduledFor || call?.booking?.start_time;
+        const startsAt = call?.booking?.slotStartUtc;
         return (
-          <div key={call?.booking?.id} style={styles.banner}>
+          <div key={call?.booking?.bookingId || call?.booking?.id} style={styles.banner}>
             <div style={styles.textCol}>
               <span style={styles.title}>Llamada con {creatorName}</span>
               <span style={styles.subtitle}>{formatCallTime(startsAt)}</span>
