@@ -20,6 +20,27 @@ import analyticsService from './services/analyticsService';
 // Initialize analytics as early as possible (no-op when key missing or opted out).
 analyticsService.init();
 
+// Normalize a trailing slash on the entry path before BrowserRouter reads
+// location.pathname. React Router v6 treats `/app/payment/success/` as
+// distinct from `/app/payment/success` and falls through to the catch-all
+// when no route declares the slash form. External links (email CTAs,
+// pasted URLs) sometimes carry a trailing slash; rewriting it once here
+// keeps the bypass-gate check and the router agreeing on the canonical
+// path. Uses replaceState so back-button history is unaffected.
+if (typeof window !== 'undefined') {
+  const _p = window.location.pathname;
+  if (_p.length > 1 && _p.endsWith('/')) {
+    const normalized = _p.replace(/\/+$/, '') || '/';
+    if (normalized !== _p) {
+      window.history.replaceState(
+        null,
+        '',
+        normalized + window.location.search + window.location.hash
+      );
+    }
+  }
+}
+
 // Extra top padding for non-iOS so Mac/Android browser layout matches iOS (safe area is 0 there).
 const CONTENT_TOP_PADDING_NON_IOS = 0;
 
@@ -44,6 +65,37 @@ const getIsEmailLinkPath = (basePath) => {
   if (typeof window === 'undefined') return false;
   const emailLinkPath = basePath ? (basePath.replace(/\/$/, '') + '/email-link') : '/email-link';
   return window.location.pathname === emailLinkPath;
+};
+
+// Paths that must remain reachable from any browser, not just an installed
+// PWA. These are post-payment landings and the deep-link destinations the
+// confirmation emails point to. Without this, buyers clicking their email
+// get the "install Wake" screen instead of the page they expect. Keep this
+// list aligned with anywhere we generate `${APP_BASE}/...` URLs in emails.
+const getBypassesInstallGate = (basePath) => {
+  if (typeof window === 'undefined') return false;
+  const base = basePath ? basePath.replace(/\/$/, '') : '';
+  // Normalize trailing slash so external links like `/app/payment/success/`
+  // match the same routes as `/app/payment/success`.
+  const rawPath = window.location.pathname;
+  const path = (rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath) || '/';
+  // Exact-match routes
+  const exact = new Set([
+    `${base}/payment/success`,
+    `${base}/payment/cancelled`,
+  ]);
+  if (exact.has(path)) return true;
+  // Prefix-match routes for deep-links that include an id segment.
+  const prefixes = [
+    `${base}/library/manage`,  // subscription management
+    `${base}/course`,          // /course/:courseId (one-time confirmation CTA)
+    `${base}/bundle`,          // /bundle/:bundleId (bundle CTA)
+    `${base}/video-exchange`,  // /video-exchange/:exchangeId (coach reply email)
+  ];
+  for (const root of prefixes) {
+    if (path === root || path.startsWith(`${root}/`)) return true;
+  }
+  return false;
 };
 
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
@@ -251,6 +303,7 @@ export default function App() {
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
   const isEmailLinkPath = getIsEmailLinkPath(webBasePath);
+  const bypassesInstallGate = getBypassesInstallGate(webBasePath);
 
   // Determine final fonts loaded state (after hooks are called)
   // CRITICAL: Always use fontsLoadedFromHook to maintain consistent hook order
@@ -691,16 +744,36 @@ export default function App() {
   // Single AuthProvider for entire app so auth state persists when navigating from /login to /
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
-  if (isEmailLinkPath) {
+  if (isEmailLinkPath || bypassesInstallGate) {
     // Render through WebAppNavigator so the route-level handler picks up
-    // /email-link. Skips InstallScreen entirely (the user must be able to
-    // complete sign-in in their email-client's browser, not the PWA shell).
-    // WebAppNavigator is lazy-loaded by loadHeavyComponents; show the
-    // loading frame until it's ready rather than rendering undefined.
-    // The sync-load block above tries to require WebAppNavigator on every
-    // render, so on first paint it's usually defined; fall back to the
-    // loading frame only if both async and sync loads haven't finished.
-    content = WebAppNavigator ? <WebAppNavigator /> : loadingMarkup;
+    // /email-link (and the email-CTA landings: /payment/success,
+    // /payment/cancelled, /library/manage/:courseId, /course/:courseId,
+    // /bundle/:bundleId, /video-exchange/:exchangeId). Skips InstallScreen
+    // entirely — these are clicked from the buyer's email in a regular
+    // browser, not the installed PWA. WebAppNavigator is lazy-loaded by
+    // loadHeavyComponents; show the loading frame until it's ready rather
+    // than rendering undefined. The sync-load block above tries to require
+    // WebAppNavigator on every render, so on first paint it's usually
+    // defined; fall back to the loading frame only if both async and sync
+    // loads haven't finished.
+    //
+    // Must wrap in VideoProvider/VideoUploadProvider — same as the main app
+    // branch below — because some bypass routes (CourseDetailScreen) call
+    // useVideo() and would crash with "must be used within VideoProvider"
+    // otherwise.
+    if (!WebAppNavigator) {
+      content = loadingMarkup;
+    } else if (VideoProvider) {
+      const inner = (
+        <VideoProvider>
+          <WebAppNavigator />
+          {VideoUploadStatusPill && <VideoUploadStatusPill />}
+        </VideoProvider>
+      );
+      content = VideoUploadProvider ? <VideoUploadProvider>{inner}</VideoUploadProvider> : inner;
+    } else {
+      content = <WebAppNavigator />;
+    }
   } else if (!shouldShowAppFlow()) {
     content = <InstallScreen />;
   } else if (isLoginPath) {

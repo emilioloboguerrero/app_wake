@@ -501,7 +501,12 @@ export default function InstallScreen() {
                   Abrir en Chrome
                 </a>
               )}
-              {googleAppIOS && (
+              {/* Show "Abrir en Safari" for ANY iOS in-app browser, not just
+                  the Google app. Instagram/FB/TikTok/etc. on iPhone need the
+                  same escape hatch — the Chrome scheme may silently fail if
+                  Chrome isn't installed, and clipboard-fallback into Safari
+                  is the safe path. */}
+              {isInAppBrowserIOS() && (
                 <button
                   type="button"
                   className="install-open-btn install-open-btn-safari"

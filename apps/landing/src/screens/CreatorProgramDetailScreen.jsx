@@ -266,6 +266,18 @@ export default function CreatorProgramDetailScreen() {
         return;
       }
       if (result?.initPoint) {
+        // Stash the payer email so PostPaymentScreen can disclose it
+        // separately from the Firebase account email when they differ.
+        // The buyer often types a different MP email here — without this,
+        // we'd lie about which inbox we sent the magic-link to.
+        try {
+          const payer = payerEmailOverride
+            ? payerEmailOverride.trim().toLowerCase()
+            : (getCurrentUser()?.email || '').toLowerCase();
+          if (payer && program?.id) {
+            window.sessionStorage.setItem(`wake_payer_${program.id}`, payer);
+          }
+        } catch { /* private mode — fall through */ }
         window.location.href = result.initPoint;
         return;
       }

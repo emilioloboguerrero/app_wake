@@ -7,6 +7,7 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-
 import { useAuth } from '../contexts/AuthContext';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 import LoadingScreen from '../screens/LoadingScreen';
+import UnauthAccessGate from '../components/UnauthAccessGate.web.jsx';
 // Use mobile components with web wrappers
 // These wrappers provide React Router navigation to the mobile components
 import LoginScreen from '../screens/LoginScreen.web';
@@ -30,6 +31,7 @@ import CourseStructureScreen from '../screens/CourseStructureScreen.web';
 // Import CourseDetailScreen directly using web wrapper for React Router navigation
 import CourseDetailScreen from '../screens/CourseDetailScreen.web';
 import BundleDetailScreen from '../screens/BundleDetailScreen.web';
+import VideoExchangeStandaloneScreen from '../screens/VideoExchangeStandaloneScreen.web';
 // Import CreatorProfileScreen directly using web wrapper for React Router navigation
 import CreatorProfileScreen from '../screens/CreatorProfileScreen.web';
 import UpcomingCallDetailScreen from '../screens/UpcomingCallDetailScreen.web';
@@ -524,30 +526,56 @@ const WebAppNavigator = () => {
         }
       />
 
+      {/* Email-CTA destination: confirmation emails deep-link here via a
+          Firebase magic-link, which signs the user in on EmailLinkSignInScreen
+          first and then `window.location.replace`s here. The route bypasses
+          the install gate at the App.web.js level, but we still need to
+          handle the unauth case (cookies lost across the email-app hop) —
+          UnauthAccessGate renders a magic-link form instead of an empty
+          spinner. */}
       <Route
         path="/library/manage/:courseId"
         element={
-          <AuthenticatedLayout>
+          <UnauthAccessGate>
             {React.createElement(withErrorBoundary(ProgramSubscriptionScreen, 'ProgramSubscription'))}
-          </AuthenticatedLayout>
+          </UnauthAccessGate>
         }
       />
 
+      {/* /course/:courseId is the one-time confirmation CTA destination as
+          well as the in-app program detail. Bypass the install gate so
+          post-purchase email clicks land here, then UnauthAccessGate handles
+          a missing session by showing a magic-link form (preserves the
+          courseId across the sign-in hop). */}
       <Route
         path="/course/:courseId"
         element={
-          <AuthenticatedLayout>
+          <UnauthAccessGate>
             {React.createElement(withErrorBoundary(CourseDetailScreen, 'CourseDetail'))}
-          </AuthenticatedLayout>
+          </UnauthAccessGate>
         }
       />
 
+      {/* Bundle confirmation CTA target — same rationale as /course above. */}
       <Route
         path="/bundle/:bundleId"
         element={
-          <AuthenticatedLayout>
+          <UnauthAccessGate>
             {React.createElement(withErrorBoundary(BundleDetailScreen, 'BundleDetail'))}
-          </AuthenticatedLayout>
+          </UnauthAccessGate>
+        }
+      />
+
+      {/* Coach-reply email lands here. The same thread view is rendered as an
+          overlay inside the workout flow; this route is just the standalone
+          surface so the email CTA has somewhere to go. UnauthAccessGate
+          covers the cross-device case where the buyer isn't signed in yet. */}
+      <Route
+        path="/video-exchange/:exchangeId"
+        element={
+          <UnauthAccessGate>
+            {React.createElement(withErrorBoundary(VideoExchangeStandaloneScreen, 'VideoExchange'))}
+          </UnauthAccessGate>
         }
       />
 
@@ -729,23 +757,13 @@ const WebAppNavigator = () => {
         }
       />
 
-      <Route
-        path="/payment/success"
-        element={
-          <AuthenticatedLayout>
-            <PaymentSuccessScreen />
-          </AuthenticatedLayout>
-        }
-      />
-
-      <Route
-        path="/payment/cancelled"
-        element={
-          <AuthenticatedLayout>
-            <PaymentCancelledScreen />
-          </AuthenticatedLayout>
-        }
-      />
+      {/* Payment landings: MercadoPago redirects buyers here after checkout
+          completes. Cookies often don't survive the cross-origin hop on
+          Safari, so we must NOT gate on auth — PaymentSuccessScreen polls
+          a public courseId status endpoint and falls back to a magic-link
+          form when the buyer isn't signed in. */}
+      <Route path="/payment/success" element={<PaymentSuccessScreen />} />
+      <Route path="/payment/cancelled" element={<PaymentCancelledScreen />} />
 
         {/* Catch all - redirect to home */}
         <Route path="*" element={<Navigate to="/" replace />} />

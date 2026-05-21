@@ -19,15 +19,65 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
 import { auth } from '../config/firebase';
+import { buildAppUrl } from '../utils/basePath';
 
 const STORAGE_KEY = 'wake_email_for_sign_in';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Validate `?next=` to a SAME-ORIGIN PATH ONLY (no query string). Reject
+// anything with a scheme, protocol-relative URLs, backslash tricks, or
+// query-string punctuation — accepting `https://evil.com` here would turn
+// this screen into an open redirector on a freshly signed-in session,
+// and `?` / `&` / `=` open the door to params we don't want to round-trip.
+const NEXT_PATH_RE = /^\/[A-Za-z0-9/_.\-]{0,256}$/;
+
+// Pull and validate the post-signin destination. Returns a path under /app
+// or null when no safe next is present (caller falls back to /app/library).
+function getValidatedNext() {
+  try {
+    const raw = new URLSearchParams(window.location.search).get('next');
+    if (!raw) return null;
+    const decoded = decodeURIComponent(raw);
+    if (decoded.startsWith('//') || decoded.includes('\\')) return null;
+    if (!NEXT_PATH_RE.test(decoded)) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+// Pull the email the link was generated for, baked in by the server in
+// the continueUrl. Falls back to null when missing (older emails) and the
+// caller will then consult localStorage or prompt.
+function getEmailFromQuery() {
+  try {
+    const raw = new URLSearchParams(window.location.search).get('email');
+    if (!raw) return null;
+    const decoded = decodeURIComponent(raw).trim().toLowerCase();
+    return EMAIL_RE.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve the absolute redirect target for post-signin. Delegated to the
+// shared basePath helper so App.web.js, WebAppNavigator, and this screen
+// all agree on what the base prefix is for a given runtime.
+function resolveAbsoluteRedirect(nextPath) {
+  return buildAppUrl(nextPath);
+}
 
 const EmailLinkSignInScreen = () => {
   const navigate = useNavigate();
   // 'verifying' | 'needs_email' | 'signing_in' | 'error' | 'done'
   const [state, setState] = useState('verifying');
   const [errorMsg, setErrorMsg] = useState('');
+  // Tracks whether the failure is the "already used" case — those messages
+  // need a softer copy because the buyer is most likely already inside.
+  const [errorAlreadyUsed, setErrorAlreadyUsed] = useState(false);
+  // Count completion attempts so we can distinguish "you typed the wrong
+  // email" (first try) from "this code is genuinely used/expired" (second
+  // try). Firebase returns the same error code in both cases.
+  const [attemptCount, setAttemptCount] = useState(0);
   const [emailInput, setEmailInput] = useState('');
 
   useEffect(() => {
@@ -37,6 +87,13 @@ const EmailLinkSignInScreen = () => {
       navigate('/login', { replace: true });
       return;
     }
+    // Resolution priority:
+    //   1. `?email=` baked into the link by the server (matches the address
+    //      the oobCode was generated for — best signal).
+    //   2. localStorage (set by /acceso when the same browser made the
+    //      original magic-link request).
+    //   3. Manual prompt.
+    const queryEmail = getEmailFromQuery();
     const stored = (() => {
       try {
         return window.localStorage.getItem(STORAGE_KEY);
@@ -44,8 +101,9 @@ const EmailLinkSignInScreen = () => {
         return null;
       }
     })();
-    if (stored && EMAIL_RE.test(stored)) {
-      completeSignIn(stored);
+    const auto = queryEmail || (stored && EMAIL_RE.test(stored) ? stored.trim().toLowerCase() : null);
+    if (auto) {
+      completeSignIn(auto);
     } else {
       setState('needs_email');
     }
@@ -55,22 +113,52 @@ const EmailLinkSignInScreen = () => {
   const completeSignIn = async (email) => {
     setState('signing_in');
     setErrorMsg('');
+    setErrorAlreadyUsed(false);
+    setAttemptCount((c) => c + 1);
     try {
       await signInWithEmailLink(auth, email, window.location.href);
       try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
       setState('done');
+      // Honor `?next=` from the email-link continueUrl so confirmation emails
+      // (and UnauthAccessGate's magic-link kick) deep-link to a specific
+      // screen. The server validates and embeds `next` before it ever reaches
+      // this URL, so we just trust the parsed value here.
       // window.location.replace clears the oobCode from history so the link
       // can't be re-used on back-button.
-      window.location.replace('/app/library');
+      const next = getValidatedNext() || '/library';
+      window.location.replace(resolveAbsoluteRedirect(next));
     } catch (err) {
       const code = err?.code || '';
-      const msg =
-        code === 'auth/invalid-action-code'
-          ? 'Este enlace expiró o ya fue usado. Pedí uno nuevo desde /acceso.'
-          : code === 'auth/invalid-email'
-            ? 'Correo inválido.'
-            : 'No pudimos entrar con este enlace. Pedí uno nuevo desde /acceso.';
-      setErrorMsg(msg);
+      // If the user is already signed in (e.g. they clicked the link twice
+      // after a successful first sign-in), the second invalid-action-code
+      // failure is harmless — treat it as success and redirect them through
+      // instead of showing an alarming "ya lo usaste" page.
+      if (code === 'auth/invalid-action-code' && auth.currentUser) {
+        setState('done');
+        const next = getValidatedNext() || '/library';
+        window.location.replace(resolveAbsoluteRedirect(next));
+        return;
+      }
+      // Firebase returns auth/invalid-action-code for BOTH wrong-email-on-
+      // first-attempt AND genuinely-consumed codes. Branch on attempt:
+      // first failure most likely means the typed/stored email doesn't
+      // match the one the link was generated for; later failures are the
+      // genuine "used or expired" case.
+      if (code === 'auth/invalid-action-code') {
+        if (attemptCount === 0) {
+          setErrorMsg('El correo no coincide con el del enlace. Probá con el mismo correo que usaste al recibirlo.');
+          setState('needs_email');
+          return;
+        }
+        setErrorAlreadyUsed(true);
+        setErrorMsg('Este enlace es de un solo uso y ya lo usaste. Si ya estás dentro, abrí Wake desde la pantalla de inicio.');
+      } else if (code === 'auth/expired-action-code') {
+        setErrorMsg('El enlace expiró. Pedí uno nuevo desde /acceso.');
+      } else if (code === 'auth/invalid-email') {
+        setErrorMsg('Correo inválido.');
+      } else {
+        setErrorMsg('No pudimos entrar con este enlace. Pedí uno nuevo desde /acceso.');
+      }
       setState('error');
     }
   };
@@ -80,6 +168,16 @@ const EmailLinkSignInScreen = () => {
     const trimmed = emailInput.trim().toLowerCase();
     if (!EMAIL_RE.test(trimmed)) {
       setErrorMsg('Ingresa un correo válido.');
+      return;
+    }
+    // Compare against ?email= when present — catches the "buyer typed
+    // the wrong email" case BEFORE we burn the oobCode. Firebase would
+    // otherwise return auth/invalid-action-code on the wrong-email
+    // attempt, which both consumes the code AND is indistinguishable
+    // from "already used."
+    const expected = getEmailFromQuery();
+    if (expected && expected !== trimmed) {
+      setErrorMsg('El correo no coincide con el del enlace. Usá el mismo correo al que recibiste el email.');
       return;
     }
     completeSignIn(trimmed);
@@ -122,9 +220,11 @@ const EmailLinkSignInScreen = () => {
           </>
         ) : (
           <>
-            <h1 style={styles.title}>No pudimos entrar</h1>
+            <h1 style={styles.title}>{errorAlreadyUsed ? 'Enlace ya usado' : 'No pudimos entrar'}</h1>
             <p style={styles.message}>{errorMsg}</p>
-            <a href="/acceso" style={styles.link}>Pedir un enlace nuevo</a>
+            <a href="/acceso" style={styles.link}>
+              {errorAlreadyUsed ? 'Pedir uno nuevo solo si no estás dentro' : 'Pedir un enlace nuevo'}
+            </a>
           </>
         )}
       </div>

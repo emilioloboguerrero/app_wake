@@ -23,6 +23,13 @@ export interface MercadoPagoPreapproval {
     start_date?: string | null;
     transaction_amount?: number | null;
     currency_id?: string | null;
+    // MP echoes back the trial configuration we sent at preapproval-create
+    // time. Used by the webhook handler to synthesize a trial expiry when
+    // next_payment_date isn't populated on the first authorized event.
+    free_trial?: {
+      frequency?: number | null;
+      frequency_type?: string | null;
+    };
   };
   reason?: string | null;
   status?: string | null;

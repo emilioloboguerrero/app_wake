@@ -15,12 +15,16 @@ const STATUS_LABEL = {
   paused: 'Pausada',
   cancelled: 'Cancelada',
 };
+// Dark cinematic palette — white-tone intensity instead of hardcoded chroma.
+// docs/STANDARDS.md mandates: "image-extracted accent on screens that show
+// an image; pure white-tones everywhere else." This screen has no image, so
+// status differentiation is by opacity, not color.
 const STATUS_COLOR = {
-  pending: 'rgba(241, 196, 15, 0.85)',
-  authorized: 'rgba(46, 204, 113, 0.85)',
-  active: 'rgba(46, 204, 113, 0.85)',
-  paused: 'rgba(230, 126, 34, 0.85)',
-  cancelled: 'rgba(231, 76, 60, 0.85)',
+  pending: 'rgba(255, 255, 255, 0.55)',
+  authorized: 'rgba(255, 255, 255, 0.85)',
+  active: 'rgba(255, 255, 255, 0.85)',
+  paused: 'rgba(255, 255, 255, 0.45)',
+  cancelled: 'rgba(255, 255, 255, 0.35)',
 };
 
 const fmtDate = (iso) => {
@@ -65,17 +69,20 @@ export default function ProgramSubscriptionScreen() {
   });
   const [cancelState, setCancelState] = useState('idle'); // idle | sending | done | error
   const [cancelError, setCancelError] = useState('');
+  // Help paragraph about changing the card is collapsed by default — the
+  // most common path is read-only review; expand only if the user asks.
+  const [paymentHelpOpen, setPaymentHelpOpen] = useState(false);
 
   useEffect(() => { document.title = 'Gestionar suscripción — Wake'; }, []);
 
-  const { data: profile } = useQuery({
+  const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: ['user', user?.uid, 'profile'],
     queryFn: () => apiClient.get('/users/me').then((r) => r?.data ?? null),
     enabled: !!user?.uid,
     staleTime: 30_000,
   });
 
-  const { data: subscriptions = [], refetch: refetchSubs } = useQuery({
+  const { data: subscriptions = [], isLoading: subsLoading, refetch: refetchSubs } = useQuery({
     queryKey: ['user', user?.uid, 'subscriptions'],
     queryFn: () => apiClient.get('/users/me/subscriptions').then((r) => r?.data ?? []),
     enabled: !!user?.uid,
@@ -111,8 +118,25 @@ export default function ProgramSubscriptionScreen() {
     setCancelState('sending');
     setCancelError('');
     try {
+      // Transform UI's flat survey to the server's { answers: [...] } shape.
+      // The server reads `survey.answers` and ignores anything else; without
+      // this transform, every cancel succeeded but the qualitative data was
+      // silently dropped on the floor.
+      const answers = [
+        survey.reason ? `reason: ${survey.reason}` : null,
+        survey.satisfaction != null ? `satisfaction: ${survey.satisfaction}` : null,
+        survey.resubscribeLikelihood != null ? `resubscribe_likelihood: ${survey.resubscribeLikelihood}` : null,
+        survey.improvement ? `improvement: ${survey.improvement}` : null,
+      ].filter(Boolean);
+      const surveyPayload = answers.length > 0 ? {
+        answers,
+        source: 'in_app_cancel_flow_v1',
+        courseId,
+        courseTitle: course?.title,
+        subscriptionStatusBefore: subscription.status,
+      } : undefined;
       await apiClient.post(`/payments/subscriptions/${subscription.subscription_id}/cancel`, {
-        survey,
+        ...(surveyPayload ? { survey: surveyPayload } : {}),
       });
       setCancelState('done');
       setConfirmStep('done');
@@ -126,7 +150,28 @@ export default function ProgramSubscriptionScreen() {
   if (!user?.uid) {
     return <div style={styles.loading}>Iniciando sesión…</div>;
   }
+  // Hold the empty-state copy until BOTH queries have settled. Without this
+  // gate, the screen flashes "No encontramos esta suscripción" for the
+  // ~500ms before /users/me + /users/me/subscriptions resolve.
+  const stillLoading = profileLoading || subsLoading;
   if (!course && !subscription) {
+    if (stillLoading) {
+      return (
+        <div style={styles.page}>
+          <button style={styles.backButton} onClick={() => navigate('/library')}>
+            ← Biblioteca
+          </button>
+          <div style={styles.card} aria-busy="true">
+            <div style={styles.heroSkeleton} />
+            <div style={styles.body}>
+              <div style={styles.skeletonTitle} />
+              <div style={styles.skeletonLine} />
+              <div style={{ ...styles.skeletonLine, width: '60%' }} />
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div style={styles.page}>
         <button style={styles.backButton} onClick={() => navigate('/library')}>
@@ -153,8 +198,12 @@ export default function ProgramSubscriptionScreen() {
 
       <article style={styles.card}>
         {imageUrl ? (
-          <div style={{ ...styles.heroImage, backgroundImage: `url(${imageUrl})` }} />
-        ) : null}
+          <div style={{ ...styles.heroImage, backgroundImage: `url(${imageUrl})` }}>
+            <div style={styles.heroGradient} />
+          </div>
+        ) : (
+          <div style={styles.heroFallback} aria-hidden="true" />
+        )}
 
         <div style={styles.body}>
           <h1 style={styles.title}>{programTitle}</h1>
@@ -162,34 +211,50 @@ export default function ProgramSubscriptionScreen() {
           <div style={styles.statusRow}>
             <span style={{ ...styles.statusDot, background: statusColor }} />
             <span style={styles.statusText}>
-              {isTrial ? `Prueba gratuita · ${trialDaysLeft} ${trialDaysLeft === 1 ? 'día' : 'días'} restantes` : statusLabel}
+              {isTrial ? `Prueba · ${trialDaysLeft} ${trialDaysLeft === 1 ? 'día' : 'días'}` : statusLabel}
             </span>
           </div>
 
-          {isCancelled ? (
+          {!isCancelled && nextBilling ? (
+            <div style={styles.billingRow}>
+              <div>
+                <div style={styles.billingLabel}>
+                  {isTrial ? 'Primer cobro' : 'Próximo cobro'}
+                </div>
+                <div style={styles.billingDate}>{fmtDate(nextBilling)}</div>
+              </div>
+              {monthlyAmount ? (
+                <div style={styles.billingAmount}>
+                  {fmtMoney(monthlyAmount, currency)}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {isCancelled && course?.expires_at ? (
             <p style={styles.note}>
-              Tu suscripción está cancelada. {course?.expires_at ? `Acceso hasta el ${fmtDate(course.expires_at)}.` : ''}
-            </p>
-          ) : isTrial ? (
-            <p style={styles.note}>
-              Después de la prueba, se cobrarán {fmtMoney(monthlyAmount, currency)} al mes.
-              El primer cobro será el {fmtDate(nextBilling)}.
-            </p>
-          ) : nextBilling ? (
-            <p style={styles.note}>
-              Próximo cobro: <strong>{fmtDate(nextBilling)}</strong> por {fmtMoney(monthlyAmount, currency)}.
+              Acceso hasta el {fmtDate(course.expires_at)}.
             </p>
           ) : null}
 
           <div style={styles.section}>
-            <div style={styles.sectionLabel}>Método de pago</div>
-            <div style={styles.paymentText}>
-              Tarjeta guardada en Mercado Pago.
+            <div style={styles.paymentRow}>
+              <span style={styles.paymentText}>Tarjeta de Mercado Pago</span>
+              <button
+                type="button"
+                style={styles.paymentToggle}
+                onClick={() => setPaymentHelpOpen((v) => !v)}
+                aria-expanded={paymentHelpOpen}
+              >
+                {paymentHelpOpen ? 'Ocultar' : 'Cambiar'}
+              </button>
             </div>
-            <div style={styles.paymentSub}>
-              Para cambiar la tarjeta, cancelá esta suscripción y suscribite de nuevo
-              con la tarjeta nueva. No vas a perder acceso durante el período pago.
-            </div>
+            {paymentHelpOpen ? (
+              <div style={styles.paymentSub}>
+                Para cambiar la tarjeta, cancelá esta suscripción y suscribite de nuevo.
+                Mantenés el acceso hasta el final del período pago.
+              </div>
+            ) : null}
           </div>
 
           {canCancel ? (
@@ -352,15 +417,46 @@ const styles = {
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     backgroundColor: '#0f0f0f',
+    position: 'relative',
+  },
+  heroGradient: {
+    position: 'absolute',
+    inset: 0,
+    background: 'linear-gradient(to bottom, rgba(0,0,0,0) 55%, rgba(26,26,26,0.85) 100%)',
+  },
+  heroFallback: {
+    width: '100%',
+    height: 6,
+    background: 'linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.12), rgba(255,255,255,0.04))',
+  },
+  heroSkeleton: {
+    width: '100%',
+    aspectRatio: '16/9',
+    background: 'linear-gradient(90deg, rgba(255,255,255,0.04), rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
+  },
+  skeletonTitle: {
+    width: '70%',
+    height: 24,
+    borderRadius: 6,
+    background: 'rgba(255,255,255,0.06)',
+    margin: '0 0 16px',
+  },
+  skeletonLine: {
+    width: '90%',
+    height: 12,
+    borderRadius: 4,
+    background: 'rgba(255,255,255,0.04)',
+    margin: '0 0 10px',
   },
   body: {
-    padding: '28px 24px 24px',
+    padding: '24px 22px 20px',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 600,
     letterSpacing: '-0.3px',
-    margin: '0 0 16px',
+    lineHeight: 1.2,
+    margin: '0 0 14px',
   },
   statusRow: {
     display: 'flex',
@@ -385,34 +481,67 @@ const styles = {
     color: 'rgba(255,255,255,0.65)',
     margin: '0 0 20px',
   },
-  section: {
-    borderTop: '1px solid rgba(255,255,255,0.07)',
-    paddingTop: 20,
-    marginTop: 16,
+  billingRow: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 16,
+    padding: '14px 0 18px',
   },
-  sectionLabel: {
+  billingLabel: {
     fontSize: 11,
     letterSpacing: '0.8px',
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.45)',
-    marginBottom: 12,
+    marginBottom: 4,
     fontWeight: 600,
+  },
+  billingDate: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: 500,
+  },
+  billingAmount: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: 600,
+    letterSpacing: '-0.2px',
+  },
+  section: {
+    borderTop: '1px solid rgba(255,255,255,0.07)',
+    paddingTop: 14,
+    marginTop: 4,
+  },
+  paymentRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   paymentText: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.85)',
     fontWeight: 500,
-    marginBottom: 6,
+  },
+  paymentToggle: {
+    background: 'transparent',
+    border: 'none',
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    cursor: 'pointer',
+    padding: '4px 0',
+    fontFamily: 'inherit',
+    textDecoration: 'underline',
   },
   paymentSub: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
     lineHeight: 1.5,
+    marginTop: 10,
   },
   cancelSection: {
-    borderTop: '1px solid rgba(255,255,255,0.07)',
-    paddingTop: 20,
-    marginTop: 24,
+    paddingTop: 18,
+    marginTop: 14,
     textAlign: 'center',
   },
   cancelLink: {

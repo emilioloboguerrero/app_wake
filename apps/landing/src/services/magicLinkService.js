@@ -12,7 +12,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // without updating both sides.
 const STORAGE_KEY = 'wake_email_for_sign_in';
 
-export async function requestMagicLink(email) {
+export async function requestMagicLink(email, next) {
   const trimmed = (email || '').trim().toLowerCase();
   if (!trimmed) return { success: false, error: 'Ingresa tu correo' };
 
@@ -20,10 +20,14 @@ export async function requestMagicLink(email) {
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    // `next` is optional. When provided, the server allowlist-validates it
+    // and embeds it into the email-link continueUrl so the buyer lands on
+    // the screen they were trying to reach. Server defaults to /library.
+    const body = next ? { email: trimmed, next } : { email: trimmed };
     const res = await fetch('/api/v1/auth/request-magic-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ email: trimmed }),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -33,7 +37,19 @@ export async function requestMagicLink(email) {
         return { success: false, error: body?.error?.message || 'Email inválido' };
       }
       if (res.status === 429) {
-        return { success: false, error: 'Esperá un momento antes de pedir otro enlace.' };
+        // Surface server's Retry-After hint so the caller can show a
+        // countdown and disable resubmits instead of letting the buyer
+        // tap "submit" against a still-active cap.
+        const retryAfterHeader = res.headers.get('Retry-After');
+        const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : null;
+        return {
+          success: false,
+          error: 'Esperá un momento antes de pedir otro enlace.',
+          retryAfter: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 60,
+        };
+      }
+      if (res.status === 503) {
+        return { success: false, error: 'No pudimos enviar el enlace. Intentá de nuevo en un momento.' };
       }
       return { success: false, error: 'No pudimos enviar el enlace. Intentalo de nuevo.' };
     }

@@ -39,6 +39,7 @@ import {
   generateUnsubscribeToken,
   reserveEmailBudget,
 } from "./api/services/emailHelpers.js";
+import {buildSignInUrl as buildPurchaseSignInUrl} from "./api/services/purchaseEmails.js";
 import {capture as analyticsCapture, flushAnalytics} from "./lib/analytics.js";
 
 const db = admin.firestore();
@@ -1104,7 +1105,16 @@ export const sendVideoExchangeNotification = functions
       }
 
       const fromAddress = "Wake <no-reply@wakelab.co>";
-      const ctaUrl = isToCoach ? "https://wakelab.co/creators/inbox" : "https://wakelab.co/app";
+      // Client recipient: bake a magic-link so the bare URL doesn't land them
+      // on the InstallScreen with no path back. Deep-link to the specific
+      // exchange so a tap on the email opens the thread, not just home.
+      // App.web.js's bypass list includes /video-exchange/* so the
+      // unauthenticated browser doesn't get the install gate.
+      // Coach recipient stays on the creator dashboard (its own SPA, its
+      // own auth flow).
+      const ctaUrl = isToCoach ?
+        "https://wakelab.co/creators/inbox" :
+        await buildPurchaseSignInUrl(toEmail, `/video-exchange/${exchangeId}`);
       const subject = isToCoach ?
         `Nuevo video de ${senderName}` :
         `${senderName} respondió tu video`;
@@ -2422,12 +2432,32 @@ export const reconcileSubscriptions = onSchedule(
     let driftFixed = 0;
     let errors = 0;
 
+    // Best-effort helper: given a bundle id, return the list of course ids
+    // it grants. Cached per-cron-tick to avoid re-reading the same bundle.
+    const bundleCourseCache = new Map<string, string[]>();
+    const resolveBundleCourseIds = async (bundleId: string): Promise<string[]> => {
+      if (bundleCourseCache.has(bundleId)) return bundleCourseCache.get(bundleId)!;
+      try {
+        const bDoc = await db.collection("bundles").doc(bundleId).get();
+        const raw = bDoc.data()?.course_ids;
+        const ids = Array.isArray(raw) ?
+          raw.filter((v): v is string => typeof v === "string" && v.length > 0) :
+          [];
+        bundleCourseCache.set(bundleId, ids);
+        return ids;
+      } catch {
+        bundleCourseCache.set(bundleId, []);
+        return [];
+      }
+    };
+
     for (const doc of snap.docs) {
       const data = doc.data() ?? {};
       const subscriptionId = doc.id;
       const localStatus = data.status as string | undefined;
       const localNextBilling = data.next_billing_date as string | undefined;
       const courseId = typeof data.course_id === "string" ? data.course_id : null;
+      const bundleId = typeof data.bundle_id === "string" ? data.bundle_id : null;
       const userId = (typeof data.user_id === "string" ? data.user_id :
         (typeof data.userId === "string" ? data.userId : null));
 
@@ -2476,41 +2506,110 @@ export const reconcileSubscriptions = onSchedule(
         // /current-block until the next charge clears. Only bump forward
         // (never shorten access). Skip cancelled subs so we don't extend
         // someone who just cancelled.
-        if (
-          mpStatus === "authorized" &&
-          mpNextBilling &&
-          courseId &&
-          userId
-        ) {
-          try {
-            const userRef = db.collection("users").doc(userId);
-            const mpNextMs = Date.parse(mpNextBilling);
-            if (Number.isFinite(mpNextMs)) {
+        //
+        // Also materializes the missing entry from courses/{id} when MP says
+        // authorized but the local user.courses[id] is missing entirely —
+        // covers the "paid but never granted access" failure mode where the
+        // initial trial-grant / payment-webhook never wrote to the user doc.
+        // Walks course_ids[] for bundle subscriptions too, since the sub doc
+        // for a bundle carries bundle_id but no course_id.
+        if (mpStatus === "authorized" && mpNextBilling && userId) {
+          const targetCourseIds: string[] = courseId ?
+            [courseId] :
+            (bundleId ? await resolveBundleCourseIds(bundleId) : []);
+          for (const targetCourseId of targetCourseIds) {
+            try {
+              const userRef = db.collection("users").doc(userId);
+              const mpNextMs = Date.parse(mpNextBilling);
+              if (!Number.isFinite(mpNextMs)) continue;
               await db.runTransaction(async (tx) => {
                 const userSnap = await tx.get(userRef);
                 if (!userSnap.exists) return;
                 const courses = (userSnap.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
-                const entry = courses[courseId];
-                if (!entry) return;
-                if (entry.status !== "active" && entry.status !== "expired") return;
-                const onDiskRaw = entry.expires_at;
-                let onDiskMs: number | null = null;
-                if (typeof onDiskRaw === "string") {
-                  const ms = Date.parse(onDiskRaw);
-                  if (Number.isFinite(ms)) onDiskMs = ms;
+                const entry = courses[targetCourseId];
+                if (entry) {
+                  // Existing entry: only bump expires_at forward.
+                  if (entry.status !== "active" && entry.status !== "expired") return;
+                  const onDiskRaw = entry.expires_at;
+                  let onDiskMs: number | null = null;
+                  if (typeof onDiskRaw === "string") {
+                    const ms = Date.parse(onDiskRaw);
+                    if (Number.isFinite(ms)) onDiskMs = ms;
+                  }
+                  if (onDiskMs !== null && onDiskMs >= mpNextMs) return;
+                  tx.update(userRef, {
+                    [`courses.${targetCourseId}.expires_at`]: mpNextBilling,
+                    [`courses.${targetCourseId}.status`]: "active",
+                    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                  });
+                } else {
+                  // No entry: materialize from courses/{id} so the buyer who
+                  // paid but never had access actually gets it. Last-resort
+                  // safety net — this is the buyer whose webhook dropped.
+                  // Carry the local sub doc's access_duration (defaults to
+                  // monthly only when truly unknown) and use the sub doc's
+                  // created_at as purchased_at when present, so the funnel
+                  // analytics keep the correct acquisition timestamp.
+                  void userSnap;
+                  const subAccessDuration = typeof data.access_duration === "string" ?
+                    data.access_duration :
+                    "monthly";
+                  // sub.created_at is a Firestore Timestamp (.toDate()) or
+                  // missing for very old docs — fall back to mpNextBilling -
+                  // 30d as a stable approximation, then to now() as last
+                  // resort.
+                  let purchasedAtIso: string;
+                  const createdAt = data.created_at;
+                  if (createdAt && typeof createdAt === "object" && typeof (createdAt as {toDate?: () => Date}).toDate === "function") {
+                    try {
+                      purchasedAtIso = (createdAt as {toDate: () => Date}).toDate().toISOString();
+                    } catch {
+                      purchasedAtIso = new Date(Math.max(0, mpNextMs - 30 * 86400000)).toISOString();
+                    }
+                  } else if (typeof createdAt === "string") {
+                    purchasedAtIso = createdAt;
+                  } else {
+                    purchasedAtIso = new Date(Math.max(0, mpNextMs - 30 * 86400000)).toISOString();
+                  }
+                  tx.update(userRef, {
+                    [`courses.${targetCourseId}`]: {
+                      access_duration: subAccessDuration,
+                      expires_at: mpNextBilling,
+                      status: "active",
+                      is_trial: false,
+                      purchased_at: purchasedAtIso,
+                      title: "",
+                      image_url: null,
+                      // Deferred metadata fill — these get hydrated by the
+                      // next charge webhook or by /users/me reads. The
+                      // important thing is that access is granted now.
+                      _materialized_from: "reconcile",
+                    },
+                    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                  });
                 }
-                if (onDiskMs !== null && onDiskMs >= mpNextMs) return;
-                tx.update(userRef, {
-                  [`courses.${courseId}.expires_at`]: mpNextBilling,
-                  [`courses.${courseId}.status`]: "active",
-                  updated_at: admin.firestore.FieldValue.serverTimestamp(),
-                });
+              });
+              // Hydrate metadata on a freshly-materialized entry outside the
+              // transaction. If this fails the user still has access.
+              try {
+                const courseDoc = await db.collection("courses").doc(targetCourseId).get();
+                const c = courseDoc.data();
+                if (c) {
+                  const userRef2 = db.collection("users").doc(userId);
+                  await userRef2.update({
+                    [`courses.${targetCourseId}.title`]: c.title ?? "Untitled Course",
+                    [`courses.${targetCourseId}.image_url`]: c.image_url ?? null,
+                    [`courses.${targetCourseId}.deliveryType`]: c.deliveryType ?? "general",
+                    [`courses.${targetCourseId}.creator_id`]: c.creator_id ?? null,
+                    [`courses.${targetCourseId}.creatorName`]: c.creatorName ?? c.creator_name ?? null,
+                  });
+                }
+              } catch {/* best-effort hydrate */}
+            } catch (extErr) {
+              functions.logger.warn("reconcileSubscriptions: course materialize/bump failed", {
+                subscriptionId, userId, courseId: targetCourseId, error: sharedToErrorMessage(extErr),
               });
             }
-          } catch (extErr) {
-            functions.logger.warn("reconcileSubscriptions: course expires_at bump failed", {
-              subscriptionId, userId, courseId, error: sharedToErrorMessage(extErr),
-            });
           }
         }
         synced++;

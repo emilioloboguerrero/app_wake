@@ -5,6 +5,7 @@ import { subscribeAuthState } from '../services/storefrontAuthService';
 import { getCreatorProgram } from '../services/creatorStorefrontService';
 import { getCheckoutStatus } from '../services/storefrontCheckoutService';
 import { requestMagicLink } from '../services/magicLinkService';
+import { getCurrentIdToken } from '../services/storefrontAuthService';
 import { getDownloadUrl, getDownloadLabel } from '../utils/smartDownload';
 import './PostPaymentScreen.css';
 
@@ -48,10 +49,25 @@ export default function PostPaymentScreen() {
   const [creator, setCreator] = useState(null);
   const [user, setUser] = useState(null);
   const userEmail = user?.email || null;
+  // Buyer may have typed a different MP email at checkout (the
+  // `requireAlternateEmail` branch). CreatorProgramDetailScreen stashes
+  // whatever email actually went to MP under `wake_payer_${courseId}` —
+  // we use it to disclose both inboxes honestly when they differ.
+  const payerEmail = (() => {
+    if (!courseId) return null;
+    try {
+      const raw = window.sessionStorage.getItem(`wake_payer_${courseId}`);
+      return raw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? raw.toLowerCase() : null;
+    } catch {
+      return null;
+    }
+  })();
+  const accountEmailLower = userEmail ? userEmail.toLowerCase() : null;
+  const payerDiffersFromAccount = payerEmail && accountEmailLower && payerEmail !== accountEmailLower;
   // 'idle' | 'polling' | 'active' | 'timeout'
-  // Only meaningful for one-time approved purchases — subscriptions don't
-  // grant access until the first charge webhook lands, which can take hours,
-  // so we keep the existing "primer cobro pendiente" copy for that path.
+  // Now also runs for subscriptions: MP's authorized_payment commonly fires
+  // within seconds of the back_url redirect, so we should detect it instead
+  // of unconditionally telling the buyer "primer cobro pendiente."
   const [accessState, setAccessState] = useState('idle');
   // Magic-link email send state — fires once when we know who the buyer is
   // and either access is confirmed or this is a subscription (subs grant
@@ -60,8 +76,10 @@ export default function PostPaymentScreen() {
   const magicLinkFiredRef = useRef(false);
   // Firebase restores persisted auth asynchronously; until the first
   // onAuthStateChanged fires we don't know whether the user is signed in
-  // or signed out. Without this, a slow auth restore looks identical to a
-  // signed-out user and we'd render the wrong fallback.
+  // or signed out. We must NOT trust the first `null` callback as
+  // "signed out" — Safari can fire null first, then the real user 0.5-3s
+  // later. Flip authResolved immediately on a non-null callback OR after
+  // a 1.5s grace window on null, whichever comes first.
   const [authResolved, setAuthResolved] = useState(false);
   // Signed-out fallback: lets the buyer request a magic link from here when
   // their session didn't restore after the MP redirect (cross-origin cookie
@@ -71,13 +89,33 @@ export default function PostPaymentScreen() {
   const [fallbackError, setFallbackError] = useState('');
 
   // Subscribe to auth state — `auth.currentUser` is null until Firebase
-  // restores the session asynchronously after a hard reload.
+  // restores the session asynchronously after a hard reload. Use a grace
+  // window on the first null callback so a slow restore on Safari doesn't
+  // misclassify a signed-in buyer as signed-out and surface the fallback
+  // email form to them.
   useEffect(() => {
+    let graceTimer = null;
+    let resolvedRef = false;
+    const flipResolved = () => {
+      if (resolvedRef) return;
+      resolvedRef = true;
+      setAuthResolved(true);
+    };
     const unsubscribe = subscribeAuthState((u) => {
       setUser(u || null);
-      setAuthResolved(true);
+      if (u) {
+        // Real user — resolve immediately.
+        if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
+        flipResolved();
+      } else if (!resolvedRef && !graceTimer) {
+        // First null callback: wait briefly for the real user to land.
+        graceTimer = setTimeout(flipResolved, 1500);
+      }
     });
-    return () => unsubscribe?.();
+    return () => {
+      if (graceTimer) clearTimeout(graceTimer);
+      unsubscribe?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -105,18 +143,43 @@ export default function PostPaymentScreen() {
     // its own title.
   }, [isSubscription, isRejected, isInconclusive]);
 
-  // Poll the API until the webhook grants course access. Skipped for
-  // rejected payments (no access to wait for) and for subscriptions (first
-  // charge can take hours; existing "primer cobro pendiente" copy already
-  // covers that case). Polling runs even for inconclusive status — if the
-  // user really did pay and MP just didn't append the right param, the
-  // webhook still fires and we'll detect access here.
+  // noindex: post-payment URLs carry a `?course=...` param that uniquely
+  // identifies a purchase — they MUST NOT end up in search-engine indexes.
   useEffect(() => {
-    if (!user || !courseId || isSubscription || isRejected) return undefined;
+    let meta = document.querySelector('meta[name="robots"]');
+    let created = false;
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'robots');
+      document.head.appendChild(meta);
+      created = true;
+    }
+    const prev = meta.getAttribute('content');
+    meta.setAttribute('content', 'noindex, nofollow');
+    return () => {
+      if (created) meta.remove();
+      else if (prev != null) meta.setAttribute('content', prev);
+    };
+  }, []);
+
+  // Poll the API until the webhook grants course access. Runs for both
+  // one-time AND subscription purchases — MP's authorized_payment commonly
+  // lands within seconds, so subscribers can usually see "Tu programa está
+  // listo" instead of the misleading "primer cobro en las próximas horas"
+  // copy that the old code unconditionally showed. Skipped for rejected
+  // payments (no access to wait for). Tracks consecutive failed ticks so
+  // we can distinguish "webhook slow" from "we can't talk to the server"
+  // and surface the right copy.
+  const [networkTrouble, setNetworkTrouble] = useState(false);
+  useEffect(() => {
+    if (!user || !courseId || isRejected) return undefined;
 
     let cancelled = false;
     let timer = null;
+    let consecutiveFails = 0;
+    let tokenRefreshAttempted = false;
     setAccessState('polling');
+    setNetworkTrouble(false);
     const startedAt = Date.now();
 
     const tick = async () => {
@@ -126,6 +189,23 @@ export default function PostPaymentScreen() {
       if (result?.active) {
         setAccessState('active');
         return;
+      }
+      // null result = network/server failure; consecutive failures get
+      // their own state so we can show a "having problems" message and
+      // bounce the ID token once before continuing.
+      if (result === null) {
+        consecutiveFails += 1;
+        if (consecutiveFails >= 3 && !cancelled) {
+          setNetworkTrouble(true);
+          if (!tokenRefreshAttempted) {
+            tokenRefreshAttempted = true;
+            // Force-refresh via the storefront auth helper (modular SDK).
+            try { await getCurrentIdToken(true); } catch { /* ignore */ }
+          }
+        }
+      } else {
+        consecutiveFails = 0;
+        if (!cancelled) setNetworkTrouble(false);
       }
       if (Date.now() - startedAt >= ACCESS_POLL_MAX_MS) {
         setAccessState('timeout');
@@ -139,13 +219,13 @@ export default function PostPaymentScreen() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [user, courseId, isSubscription, isRejected]);
+  }, [user, courseId, isRejected]);
 
   // Send the buyer a magic-link email so they can always get back to their
-  // account from anywhere. Fires exactly once per page load, only when we
-  // have a confirmed buyer email AND either access has been confirmed
-  // (one-time approved) or this is an authorized subscription. Failure here
-  // is non-blocking — the user can always request a new link at /acceso.
+  // account from anywhere. Fires exactly once per buyer+resource, persisted
+  // in sessionStorage so a page refresh doesn't burn the 5/min/email
+  // rate-limit. Failure surfaces in copy below — the buyer can always
+  // request a new one at /acceso.
   useEffect(() => {
     if (magicLinkFiredRef.current) return;
     if (!userEmail) return;
@@ -154,38 +234,61 @@ export default function PostPaymentScreen() {
       (isSubscription && !isRejected) ||
       (isApprovedParam && !isRejected);
     if (!shouldSend) return;
+    // sessionStorage key includes the resource so different course purchases
+    // each get their own magic-link without colliding on a single fire flag.
+    const fireKey = `wake_pp_ml_${userEmail}_${courseId || 'noctx'}`;
+    try {
+      const already = window.sessionStorage.getItem(fireKey);
+      if (already === 'sent') { setMagicLinkState('sent'); magicLinkFiredRef.current = true; return; }
+      if (already === 'failed') { setMagicLinkState('failed'); magicLinkFiredRef.current = true; return; }
+    } catch { /* private mode — fall through */ }
     magicLinkFiredRef.current = true;
     setMagicLinkState('sending');
     requestMagicLink(userEmail).then((r) => {
-      setMagicLinkState(r.success ? 'sent' : 'failed');
+      const outcome = r.success ? 'sent' : 'failed';
+      setMagicLinkState(outcome);
+      try { window.sessionStorage.setItem(fireKey, outcome); } catch { /* ignore */ }
     });
-  }, [userEmail, accessState, isSubscription, isRejected, isApprovedParam]);
+  }, [userEmail, courseId, accessState, isSubscription, isRejected, isApprovedParam]);
 
   const downloadUrl = getDownloadUrl();
   const downloadLabel = getDownloadLabel();
 
-  const showWaitingForFirstCharge = isSubscription && !isRejected;
   // When the buyer actually has access (poll succeeded) we always claim
   // success — regardless of how messy MP's redirect params were.
   const isAccessConfirmed = accessState === 'active';
+  // For subscriptions we now poll, so show "waiting for first charge" copy
+  // only when the poll has actually timed out without access (= access
+  // really IS pending) — not unconditionally as the old code did.
+  const showWaitingForFirstCharge =
+    isSubscription && !isRejected && !isAccessConfirmed &&
+    (accessState === 'timeout' || accessState === 'idle');
   // Inconclusive + timeout = MP redirected without an approval signal AND
   // the webhook never granted access within the polling window. That's the
   // "user backed out without paying" case.
   const isIncompleteFinal = isInconclusive && accessState === 'timeout';
+  // Distinguish "approved param + webhook lagging" from "really confirmed."
+  // Both used to render "Pago confirmado" + "Abrir Wake," but a buyer
+  // clicking through after a 30s timeout lands on an empty library. Now
+  // we show a softer copy AND no "Abrir Wake" CTA in that limbo state.
+  const isApprovedButLagging =
+    isApprovedParam && !isRejected && accessState === 'timeout' && !isAccessConfirmed;
 
   const heading = isRejected
     ? 'Pago rechazado'
     : isAccessConfirmed
       ? 'Pago confirmado'
-      : showWaitingForFirstCharge
-        ? 'Suscripción autorizada'
-        : isIncompleteFinal
-          ? 'No completaste el pago'
-          : isPendingParam
-            ? 'Pago en proceso'
-            : isApprovedParam
-              ? 'Pago confirmado'
-              : 'Verificando tu pago';
+      : isApprovedButLagging
+        ? 'Pago aprobado — activando'
+        : showWaitingForFirstCharge
+          ? 'Suscripción autorizada'
+          : isIncompleteFinal
+            ? 'No completaste el pago'
+            : isPendingParam
+              ? 'Pago en proceso'
+              : isApprovedParam
+                ? 'Pago confirmado'
+                : 'Verificando tu pago';
 
   return (
     <div className="pp-root">
@@ -226,6 +329,12 @@ export default function PostPaymentScreen() {
           <p className="pp-message">
             Tu programa está listo. Ábrelo en Wake para empezar.
           </p>
+        ) : isApprovedButLagging ? (
+          <p className="pp-message">
+            Tu pago está confirmado. La activación está tardando un poco más
+            de lo normal — te enviaremos un correo cuando tu programa esté
+            listo. Mientras tanto, no pierdas este enlace.
+          </p>
         ) : showWaitingForFirstCharge ? (
           <p className="pp-message">
             Autorizamos tu suscripción. Mercado Pago hará el primer cobro en
@@ -238,11 +347,15 @@ export default function PostPaymentScreen() {
             al programa para intentarlo otra vez.
           </p>
         ) : accessState === 'polling' ? (
-          <p className="pp-message">
+          <p className="pp-message" role="status" aria-live="polite">
             <span className="pp-poll-spinner" aria-hidden="true" />
-            {isApprovedParam
-              ? 'Estamos activando tu acceso. Esto tarda unos segundos.'
-              : 'Estamos verificando tu pago. Esto tarda unos segundos.'}
+            {networkTrouble
+              ? 'Estamos teniendo problemas para confirmar. Revisá tu conexión — vamos a seguir intentando.'
+              : isApprovedParam
+                ? 'Estamos activando tu acceso. Esto tarda unos segundos.'
+                : isSubscription
+                  ? 'Estamos confirmando tu suscripción. Esto tarda unos segundos.'
+                  : 'Estamos verificando tu pago. Esto tarda unos segundos.'}
           </p>
         ) : isPendingParam ? (
           <p className="pp-message">
@@ -255,17 +368,26 @@ export default function PostPaymentScreen() {
             te enviaremos un correo cuando tu programa esté listo en Wake.
           </p>
         ) : (
-          <p className="pp-message">
+          <p className="pp-message" role="status" aria-live="polite">
             <span className="pp-poll-spinner" aria-hidden="true" />
             Verificando tu pago.
           </p>
         )}
 
-        {!isRejected && !isIncompleteFinal && !showWaitingForFirstCharge ? (
+        {/* Hide the "Abrir Wake" CTA when access isn't actually confirmed —
+            the buyer would land in an empty library. The magic-link in the
+            email is the right path back in the lagging case. */}
+        {!isRejected && !isIncompleteFinal && !showWaitingForFirstCharge && !isApprovedButLagging ? (
           <div className="pp-actions">
             <a href={downloadUrl} className="pp-cta pp-cta-primary">
               {downloadLabel}
             </a>
+          </div>
+        ) : isApprovedButLagging ? (
+          <div className="pp-actions">
+            <Link to="/acceso" className="pp-cta pp-cta-primary">
+              Entrar con mi correo
+            </Link>
           </div>
         ) : showWaitingForFirstCharge ? (
           // The subscription is authorized but course access is granted only
@@ -294,15 +416,37 @@ export default function PostPaymentScreen() {
 
         {!isRejected && !isIncompleteFinal && userEmail ? (
           <div className="pp-email-block">
-            <p className="pp-email-note">
-              Te enviamos un enlace de acceso a <strong>{userEmail}</strong>.
-              {' '}Guardálo — tu correo es tu llave a la cuenta.
-            </p>
+            {/* Tell the buyer the truth about whether the magic-link
+                actually went out — the old code claimed success even when
+                Resend failed or the rate-limit hit. */}
+            {magicLinkState === 'sent' || magicLinkState === 'sending' ? (
+              <p className="pp-email-note">
+                {magicLinkState === 'sending' ? 'Enviando un enlace de acceso a' : 'Te enviamos un enlace de acceso a'}{' '}
+                <strong>{userEmail}</strong>.
+                {' '}Guardálo — tu correo es tu llave a la cuenta.
+              </p>
+            ) : magicLinkState === 'failed' ? (
+              <p className="pp-email-note">
+                No pudimos enviar el correo a <strong>{userEmail}</strong> en este intento.
+                Podés pedir uno nuevo en{' '}
+                <Link to="/acceso" className="pp-inline-link">wakelab.co/acceso</Link>.
+              </p>
+            ) : (
+              <p className="pp-email-note">
+                Te enviaremos un enlace de acceso a <strong>{userEmail}</strong>{' '}
+                en un momento. Tu correo es tu llave a la cuenta.
+              </p>
+            )}
             <p className="pp-spam-note">
               ¿No lo ves en unos minutos? Revisá <strong>spam</strong> o{' '}
-              <strong>promociones</strong>. Si lo perdés, podés pedir uno nuevo en{' '}
-              <Link to="/acceso" className="pp-inline-link">wakelab.co/acceso</Link>.
+              <strong>promociones</strong>.
             </p>
+            {payerDiffersFromAccount ? (
+              <p className="pp-spam-note">
+                El recibo de Mercado Pago va a <strong>{payerEmail}</strong>{' '}
+                — el enlace de acceso lo enviamos a tu correo de Wake.
+              </p>
+            ) : null}
           </div>
         ) : !isRejected && !isIncompleteFinal && authResolved && !user ? (
           // Session didn't restore after the MP redirect (cross-origin cookie

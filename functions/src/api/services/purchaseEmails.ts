@@ -2,6 +2,7 @@
 // All templates Spanish, dark-theme, single CTA. Idempotency is enforced by
 // the caller — these are pure send functions that don't dedupe.
 
+import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import {Resend} from "resend";
 
@@ -36,7 +37,89 @@ async function sendEmail({to, subject, html}: SendArgs): Promise<boolean> {
 }
 
 function redact(email: string): string {
-  return email.replace(/(.{2}).+(@.+)/, "$1***$2");
+  // Mask the local-part for any address shape — including short locals
+  // (a@b.c) that the prior regex skipped, leaking full emails to logs.
+  const at = email.indexOf("@");
+  if (at <= 0) return "***";
+  const local = email.slice(0, at);
+  const domain = email.slice(at);
+  if (local.length <= 2) return `${local[0]}***${domain}`;
+  return `${local.slice(0, 2)}***${domain}`;
+}
+
+// Defense against CRLF header injection via creator-authored titles. Resend
+// likely sanitizes its own headers, but program titles flow into the email
+// subject and we shouldn't trust the upstream to drop control characters.
+function sanitizeSubject(value: string): string {
+  // Drop CR/LF and other low-ASCII control characters; collapse whitespace
+  // runs. Keep printable characters (space, dash, accents) so we never
+  // mangle legitimate program titles like "Pierna - Empuje".
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1f\x7f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+// Bake a Firebase email-link into the CTA so the buyer is auto-signed-in on
+// click AND deep-linked to `nextPath`. Without this the bare deep-link drops
+// users on a screen that demands a login they don't have a session for —
+// which is exactly the bug that motivated this helper. Falls back to the
+// bare deep-link when link generation fails (e.g. user not yet provisioned
+// in Firebase Auth), so the email still goes out.
+//
+// Pre-creates the Auth user when missing — generateSignInWithEmailLink
+// requires an existing identity. Without the pre-create, dashboard-only or
+// API-only users (whose Firestore doc exists but whose Auth entry doesn't)
+// silently fall back to the bare URL, which then dumps them at the install
+// screen. Embeds &email= in the continueUrl so the receiving page can
+// pre-fill the form on a fresh device, avoiding the wrong-email-burns-the-
+// link trap.
+export async function buildSignInUrl(to: string, nextPath: string): Promise<string> {
+  const safeNext = nextPath.startsWith("/") ? nextPath : `/${nextPath}`;
+  const normalizedEmail = to.trim().toLowerCase();
+  // ?next= deep-link target + &email= so EmailLinkSignInScreen knows the
+  // email without consulting localStorage (which is per-browser-context and
+  // empty when the user clicks the link in their email-client's browser).
+  const continueUrl =
+    `${getAppBaseUrl()}/email-link?next=${encodeURIComponent(safeNext)}` +
+    `&email=${encodeURIComponent(normalizedEmail)}`;
+
+  // Ensure the Auth user exists. Skip the lookup cost when generation fails
+  // for a reason unrelated to user existence (caught below).
+  try {
+    await admin.auth().getUserByEmail(normalizedEmail);
+  } catch (err) {
+    const code = (err as {code?: string})?.code;
+    if (code === "auth/user-not-found") {
+      try {
+        await admin.auth().createUser({email: normalizedEmail, emailVerified: false});
+      } catch (createErr) {
+        functions.logger.warn("buildSignInUrl pre-create failed", {
+          to: redact(normalizedEmail), error: String(createErr),
+        });
+      }
+    }
+  }
+
+  try {
+    return await admin.auth().generateSignInWithEmailLink(normalizedEmail, {
+      url: continueUrl,
+      handleCodeInApp: true,
+    });
+  } catch (err) {
+    functions.logger.warn("buildSignInUrl fallback to bare deep-link", {
+      to: redact(normalizedEmail), nextPath, error: String(err),
+    });
+    return `${getAppBaseUrl()}${safeNext}`;
+  }
+}
+
+// Resolve the app's base URL per environment. Staging buyers' magic-links
+// must point at staging's Auth project (different oobCode signer); a
+// hardcoded prod URL silently invalidates every staging link. Pattern
+// mirrors resolveWebhookUrl in payments.ts.
+function getAppBaseUrl(): string {
+  const project = process.env.GCLOUD_PROJECT;
+  if (project === "wake-staging") return "https://wake-staging.web.app/app";
+  return APP_BASE;
 }
 
 function formatCOP(amount: number): string {
@@ -72,8 +155,9 @@ function wrapTemplate(args: {
     <a href="${args.ctaUrl}" style="display:inline-block;background:#fff;color:#1a1a1a;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;text-decoration:none;">${args.ctaLabel}</a>
     ${args.footer ? `<p style="font-size:12px;color:rgba(255,255,255,0.45);margin:32px 0 0;line-height:1.5;">${args.footer}</p>` : ""}
     <p style="font-size:12px;color:rgba(255,255,255,0.35);margin:32px 0 0;line-height:1.5;">
+      Este enlace te firma automáticamente en tu cuenta. Es de un solo uso —
+      si lo perdés, pedí uno nuevo en <a href="https://wakelab.co/acceso" style="color:rgba(255,255,255,0.6);">wakelab.co/acceso</a>.
       ¿Necesitás ayuda? Escribinos a <a href="mailto:${SUPPORT_EMAIL}" style="color:rgba(255,255,255,0.6);">${SUPPORT_EMAIL}</a>.
-      Si perdés el acceso, podés recuperarlo en <a href="https://wakelab.co/acceso" style="color:rgba(255,255,255,0.6);">wakelab.co/acceso</a>.
     </p>
   </div>
 </body></html>`;
@@ -90,7 +174,7 @@ export async function sendTrialActivatedEmail(args: {
   transactionAmount: number;
   currencyId: string;
 }): Promise<boolean> {
-  const cta = `${APP_BASE}/library/manage/${args.courseId}`;
+  const cta = await buildSignInUrl(args.to, `/library/manage/${args.courseId}`);
   const body = `
     <p style="margin:0 0 12px;">Empezó tu prueba gratuita de <strong>${args.programTitle}</strong>.</p>
     <p style="margin:0 0 12px;">Tenés acceso completo hasta el <strong>${formatDate(args.trialEndDate)}</strong>.
@@ -98,8 +182,8 @@ export async function sendTrialActivatedEmail(args: {
   `;
   return sendEmail({
     to: args.to,
-    subject: "Empezó tu prueba gratuita en Wake",
-    html: wrapTemplate({heading: "Tu prueba empezó", body, ctaLabel: "Abrir Wake", ctaUrl: cta}),
+    subject: sanitizeSubject("Empezó tu prueba gratuita en Wake"),
+    html: wrapTemplate({heading: "Tu prueba empezó", body, ctaLabel: "Gestionar mi suscripción", ctaUrl: cta}),
   });
 }
 
@@ -111,15 +195,15 @@ export async function sendSubscriptionStartedEmail(args: {
   transactionAmount: number;
   currencyId: string;
 }): Promise<boolean> {
-  const cta = `${APP_BASE}/library/manage/${args.courseId}`;
+  const cta = await buildSignInUrl(args.to, `/library/manage/${args.courseId}`);
   const body = `
     <p style="margin:0 0 12px;">Tu suscripción a <strong>${args.programTitle}</strong> está activa.</p>
     <p style="margin:0 0 12px;">El próximo cobro será el <strong>${formatDate(args.nextBillingDate)}</strong> por <strong>${formatCOP(args.transactionAmount)} ${args.currencyId}</strong>.</p>
   `;
   return sendEmail({
     to: args.to,
-    subject: `Bienvenido a ${args.programTitle}`,
-    html: wrapTemplate({heading: "Tu suscripción está activa", body, ctaLabel: "Abrir Wake", ctaUrl: cta}),
+    subject: sanitizeSubject(`Bienvenido a ${args.programTitle}`),
+    html: wrapTemplate({heading: "Tu suscripción está activa", body, ctaLabel: "Gestionar mi suscripción", ctaUrl: cta}),
   });
 }
 
@@ -132,7 +216,7 @@ export async function sendChargeReceiptEmail(args: {
   chargeDate: string; // ISO
   nextBillingDate?: string | null; // ISO
 }): Promise<boolean> {
-  const cta = `${APP_BASE}/library/manage/${args.courseId}`;
+  const cta = await buildSignInUrl(args.to, `/library/manage/${args.courseId}`);
   const nextLine = args.nextBillingDate ?
     `<p style="margin:0 0 12px;">El próximo cobro será el <strong>${formatDate(args.nextBillingDate)}</strong>.</p>` :
     "";
@@ -142,8 +226,8 @@ export async function sendChargeReceiptEmail(args: {
   `;
   return sendEmail({
     to: args.to,
-    subject: `Recibo de pago — ${args.programTitle}`,
-    html: wrapTemplate({heading: "Recibo de pago", body, ctaLabel: "Ver detalles", ctaUrl: cta}),
+    subject: sanitizeSubject(`Recibo de pago — ${args.programTitle}`),
+    html: wrapTemplate({heading: "Recibo de pago", body, ctaLabel: "Ver mi suscripción", ctaUrl: cta}),
   });
 }
 
@@ -151,17 +235,22 @@ export async function sendCancellationEmail(args: {
   to: string;
   programTitle: string;
   courseId: string;
-  accessUntil: string; // ISO
+  accessUntil: string | null; // ISO, or null when access end isn't known
 }): Promise<boolean> {
-  const cta = `${APP_BASE}/library/manage/${args.courseId}`;
+  const cta = await buildSignInUrl(args.to, `/library/manage/${args.courseId}`);
+  // When accessUntil is unknown (cancel mid-trial before a charge), drop
+  // the date line rather than lying about a deadline.
+  const accessLine = args.accessUntil ?
+    `<p style="margin:0 0 12px;">Vas a tener acceso al programa hasta el <strong>${formatDate(args.accessUntil)}</strong>.</p>` :
+    "";
   const body = `
     <p style="margin:0 0 12px;">Cancelaste tu suscripción a <strong>${args.programTitle}</strong>. No habrá más cobros.</p>
-    <p style="margin:0 0 12px;">Vas a tener acceso al programa hasta el <strong>${formatDate(args.accessUntil)}</strong>.</p>
+    ${accessLine}
   `;
   return sendEmail({
     to: args.to,
-    subject: `Cancelaste ${args.programTitle}`,
-    html: wrapTemplate({heading: "Suscripción cancelada", body, ctaLabel: "Volver al programa", ctaUrl: cta}),
+    subject: sanitizeSubject(`Cancelaste ${args.programTitle}`),
+    html: wrapTemplate({heading: "Suscripción cancelada", body, ctaLabel: "Ver mi suscripción", ctaUrl: cta}),
   });
 }
 
@@ -173,14 +262,14 @@ export async function sendOneTimePurchaseEmail(args: {
   currencyId: string;
   accessUntil: string; // ISO
 }): Promise<boolean> {
-  const cta = `${APP_BASE}/library`;
+  const cta = await buildSignInUrl(args.to, `/course/${args.courseId}`);
   const body = `
     <p style="margin:0 0 12px;">Tienes acceso a <strong>${args.programTitle}</strong>.</p>
     <p style="margin:0 0 12px;">Pagaste <strong>${formatCOP(args.amount)} ${args.currencyId}</strong>. Acceso válido hasta el <strong>${formatDate(args.accessUntil)}</strong>.</p>
   `;
   return sendEmail({
     to: args.to,
-    subject: `Tu acceso a ${args.programTitle}`,
-    html: wrapTemplate({heading: "Tu programa está listo", body, ctaLabel: "Abrir Wake", ctaUrl: cta}),
+    subject: sanitizeSubject(`Tu acceso a ${args.programTitle}`),
+    html: wrapTemplate({heading: "Tu programa está listo", body, ctaLabel: "Abrir mi programa", ctaUrl: cta}),
   });
 }

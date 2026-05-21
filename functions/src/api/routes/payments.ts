@@ -67,6 +67,55 @@ function resolveAppBaseUrl(req: Request): string {
   return PAYMENT_REDIRECT_DEFAULT;
 }
 
+// Resolve a creator's storefront username so MercadoPago can redirect buyers
+// back to the landing's PostPaymentScreen at `/{username}/comprado`. That
+// screen runs entirely on the landing app (no PWA install required), polls
+// for access, and auto-sends a magic-link to the buyer — none of which works
+// if we drop the buyer on MP's own dashboard. Returns null when the creator
+// has no username set, in which case the caller falls back to the PWA route.
+const USERNAME_RE = /^[a-z0-9_]{1,32}$/i;
+async function resolveCreatorUsername(creatorId: unknown): Promise<string | null> {
+  if (typeof creatorId !== "string" || !creatorId) return null;
+  try {
+    const doc = await db.collection("users").doc(creatorId).get();
+    const username = doc.data()?.username;
+    if (typeof username === "string" && USERNAME_RE.test(username)) return username;
+  } catch (err) {
+    functions.logger.warn("resolveCreatorUsername failed", {creatorId, error: String(err)});
+  }
+  return null;
+}
+
+// Build the post-payment redirect URL MercadoPago sends the buyer to after
+// checkout. Prefers the landing's `/:username/comprado` (auto-magic-link,
+// no PWA install gate) and falls back to the PWA's `/app/payment/success`
+// when the creator has no username — that route's InstallScreen bypass
+// keeps it reachable from any browser.
+function buildPostPaymentUrl(args: {
+  base: string;
+  username: string | null;
+  courseId?: string | null;
+  bundleId?: string | null;
+  mode: "one_time" | "subscription";
+}): string {
+  const subSuffix = args.mode === "subscription" ? "&mode=subscription" : "";
+  if (args.username) {
+    const params: string[] = [];
+    if (args.courseId) params.push(`course=${encodeURIComponent(args.courseId)}`);
+    if (args.bundleId) params.push(`bundle=${encodeURIComponent(args.bundleId)}`);
+    if (args.mode === "subscription") params.push("mode=subscription");
+    const qs = params.length > 0 ? `?${params.join("&")}` : "";
+    return `${args.base}/${args.username}/comprado${qs}`;
+  }
+  if (args.courseId) {
+    return `${args.base}/app/payment/success?courseId=${encodeURIComponent(args.courseId)}${subSuffix}`;
+  }
+  if (args.bundleId) {
+    return `${args.base}/app/payment/success?bundleId=${encodeURIComponent(args.bundleId)}${subSuffix}`;
+  }
+  return `${args.base}/acceso`;
+}
+
 // MercadoPago calls this server-to-server (no Origin header), so we can't
 // derive from the request. Pin to the project: prod → wakelab.co, staging →
 // wake-staging.web.app. Override stays available for ngrok/tunnel testing.
@@ -207,13 +256,15 @@ router.post("/payments/preference", async (req, res) => {
         unit_price: course.price,
       }],
       external_reference: externalReference,
-      back_urls: (() => {
+      back_urls: await (async () => {
         const base = resolveAppBaseUrl(req);
-        return {
-          success: `${base}/app/payment/success?courseId=${courseId}`,
-          failure: `${base}/app/payment/cancelled?courseId=${courseId}`,
-          pending: `${base}/app/payment/cancelled?courseId=${courseId}`,
-        };
+        const username = await resolveCreatorUsername(course.creator_id);
+        const successUrl = buildPostPaymentUrl({base, username, courseId, mode: "one_time"});
+        // Failure/pending always land on the PWA's cancelled screen so the
+        // copy matches the user's actual state ("no se completó") instead of
+        // a generic "thanks for buying" panel.
+        const cancelledUrl = `${base}/app/payment/cancelled?courseId=${encodeURIComponent(courseId)}`;
+        return {success: successUrl, failure: cancelledUrl, pending: cancelledUrl};
       })(),
       // auto_return:"all" so a rejected/abandoned checkout also auto-redirects
       // back to /payment/cancelled instead of stranding the user on MP. With
@@ -238,8 +289,11 @@ router.post("/payments/subscription", async (req, res) => {
   );
 
   if (!COURSE_ID_RE.test(body.courseId)) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inv��lido", "courseId");
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
   }
+  // Normalize at validation time — case + whitespace differences between
+  // checkout and sign-in break pickRecipientEmail's downstream matching.
+  body.payer_email = body.payer_email.trim().toLowerCase();
   if (!EMAIL_RE.test(body.payer_email)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email de pago inválido", "payer_email");
   }
@@ -327,7 +381,12 @@ router.post("/payments/subscription", async (req, res) => {
           } : {}),
         },
         status: "pending",
-        back_url: "https://www.mercadopago.com.co/subscriptions",
+        back_url: buildPostPaymentUrl({
+          base: resolveAppBaseUrl(req),
+          username: await resolveCreatorUsername(course.creator_id),
+          courseId: body.courseId,
+          mode: "subscription",
+        }),
         // notification_url isn't in the SDK's PreApprovalRequest type but MP
         // does honor it. Spread keeps TS happy without an explicit `as any`.
         ...{notification_url: notificationUrl},
@@ -454,13 +513,12 @@ router.post("/payments/bundle-preference", async (req, res) => {
       }],
       external_reference: externalReference,
       metadata: {access_duration: "yearly"},
-      back_urls: (() => {
+      back_urls: await (async () => {
         const base = resolveAppBaseUrl(req);
-        return {
-          success: `${base}/app/payment/success?bundleId=${body.bundleId}`,
-          failure: `${base}/app/payment/cancelled?bundleId=${body.bundleId}`,
-          pending: `${base}/app/payment/cancelled?bundleId=${body.bundleId}`,
-        };
+        const username = await resolveCreatorUsername(bundle.creator_id);
+        const successUrl = buildPostPaymentUrl({base, username, bundleId: body.bundleId, mode: "one_time"});
+        const cancelledUrl = `${base}/app/payment/cancelled?bundleId=${encodeURIComponent(body.bundleId)}`;
+        return {success: successUrl, failure: cancelledUrl, pending: cancelledUrl};
       })(),
       // See /payments/preference above: "all" so abandoned checkouts redirect
       // to /payment/cancelled instead of stranding the user on MP.
@@ -488,6 +546,7 @@ router.post("/payments/bundle-subscription", async (req, res) => {
   if (!COURSE_ID_RE.test(body.bundleId)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "bundleId inválido", "bundleId");
   }
+  body.payer_email = body.payer_email.trim().toLowerCase();
   if (!EMAIL_RE.test(body.payer_email)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email de pago inválido", "payer_email");
   }
@@ -538,7 +597,12 @@ router.post("/payments/bundle-subscription", async (req, res) => {
           start_date: startDate.toISOString(),
         },
         status: "pending",
-        back_url: "https://www.mercadopago.com.co/subscriptions",
+        back_url: buildPostPaymentUrl({
+          base: resolveAppBaseUrl(req),
+          username: await resolveCreatorUsername(bundle.creator_id),
+          bundleId: body.bundleId,
+          mode: "subscription",
+        }),
       },
     });
   } catch (error: unknown) {
@@ -619,7 +683,15 @@ router.post("/payments/bundle-subscription", async (req, res) => {
 router.post("/payments/webhook", async (req: Request, res) => {
   const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Webhook secret no configurado");
+    // Missing secret is a deploy-config problem — MP retrying for 24h while
+    // we wait for a re-deploy doesn't change anything and floods logs. Log
+    // loudly so on-call notices, then 200 so MP stops retrying. Reconcile
+    // will sweep up any missed state once the secret returns.
+    functions.logger.error("CRITICAL: Webhook secret missing — webhook dropped without processing", {
+      webhookType: req.body?.type, webhookAction: req.body?.action,
+    });
+    res.status(200).send("OK");
+    return;
   }
 
   // ── Validate signature ──
@@ -662,7 +734,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
       // don't blow the window if MP ever changes formats again.
       const tsNum = Number(ts);
       const tsMs = isNaN(tsNum) ? NaN : tsNum > 1e12 ? tsNum : tsNum * 1000;
-      if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
+      // 24h tolerance: MP retries failed webhooks with exponential backoff
+      // for up to ~24 hours, signing each retry with the ORIGINAL send time.
+      // A 5-min window meant every retry past that mark rejected as
+      // "timestamp expirado", defeating the entire retry contract. HMAC
+      // verification + processed_payments idempotency provide replay
+      // protection — the timestamp check is at best a defense-in-depth
+      // signal that we can afford to widen.
+      if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 24 * 60 * 60 * 1000) {
         functions.logger.warn("Webhook signature: timestamp out of range", {
           tsRaw: ts, tsMs, nowMs: Date.now(), skewMs: Date.now() - tsMs,
         });
@@ -696,27 +775,36 @@ router.post("/payments/webhook", async (req: Request, res) => {
       }
     }
   } else if (signatureHeaderLegacy) {
+    // Legacy HMAC signs the raw request body. Express's json() parser has
+    // already consumed and discarded the original bytes by this point, so
+    // we MUST read from req.rawBody (preserved by the Firebase Functions
+    // wrapper). JSON.stringify(req.body) does NOT round-trip byte-for-byte
+    // — key ordering, whitespace, numeric formatting, and unicode escapes
+    // all differ — so the old fallback silently rejected every legacy-
+    // signed payload. Refuse loudly instead so on-call can spot it.
     const rawBodyValue = (req as Request & { rawBody?: unknown }).rawBody;
-    let rawBodyBuffer: Buffer;
+    let rawBodyBuffer: Buffer | null = null;
     if (Buffer.isBuffer(rawBodyValue)) {
       rawBodyBuffer = rawBodyValue;
     } else if (typeof rawBodyValue === "string") {
       rawBodyBuffer = Buffer.from(rawBodyValue);
-    } else {
-      rawBodyBuffer = Buffer.from(JSON.stringify(req.body ?? {}));
     }
 
-    const expected = crypto.createHmac("sha256", webhookSecret).update(rawBodyBuffer).digest("hex");
-    if (signatureHeaderLegacy.length === expected.length) {
-      try {
-        signatureIsValid = crypto.timingSafeEqual(
-          Buffer.from(signatureHeaderLegacy, "utf8"),
-          Buffer.from(expected, "utf8")
-        );
-      } catch {/* length mismatch */}
-    }
-    if (!signatureIsValid) {
-      signatureFailReason = "legacy_hmac_mismatch";
+    if (!rawBodyBuffer) {
+      signatureFailReason = "legacy_rawbody_missing";
+    } else {
+      const expected = crypto.createHmac("sha256", webhookSecret).update(rawBodyBuffer).digest("hex");
+      if (signatureHeaderLegacy.length === expected.length) {
+        try {
+          signatureIsValid = crypto.timingSafeEqual(
+            Buffer.from(signatureHeaderLegacy, "utf8"),
+            Buffer.from(expected, "utf8")
+          );
+        } catch {/* length mismatch */}
+      }
+      if (!signatureIsValid) {
+        signatureFailReason = "legacy_hmac_mismatch";
+      }
     }
   } else {
     signatureFailReason = "no_signature_header";
@@ -736,7 +824,6 @@ router.post("/payments/webhook", async (req: Request, res) => {
       bodyHasDataId: Boolean(req.body?.data?.id),
       contentType: req.get("content-type") ?? null,
       userAgent: req.get("user-agent") ?? null,
-      secretLen: webhookSecret.length,
     });
     res.status(403).json({
       error: {code: "FORBIDDEN", message: "Firma de webhook inválida"},
@@ -803,13 +890,40 @@ router.post("/payments/webhook", async (req: Request, res) => {
         .doc(parsed.userId)
         .collection("subscriptions")
         .doc(preapprovalId);
-      const existingSub = await subRef.get();
+      let existingSub = await subRef.get();
+      // Materialize the local sub doc when MP says a preapproval exists for
+      // this user+course but our Firestore write failed during checkout.
+      // Without this, the recurring webhook would keep arriving for a
+      // preapproval we have no record of — MP bills the buyer monthly, Wake
+      // never grants access, and reconcileSubscriptions can't help (it only
+      // walks docs that already exist). The materialized doc is tagged with
+      // last_action: "materialized_from_webhook" so we can see how often
+      // this path fires. Only safe because we've already validated the MP
+      // preapproval is real (preapproval.get above) and that
+      // external_reference's userId matches parsed.userId.
       if (!existingSub.exists) {
-        functions.logger.warn("Skipping preapproval for unknown subscription", {
-          preapprovalId, userId: parsed.userId,
+        const payerEmailForMaterialize =
+          preapprovalData?.payer_email ?? preapprovalData?.payer?.email ?? null;
+        const trialDaysFromMp = Number(autoRecurring?.free_trial?.frequency ?? 0);
+        await subRef.set({
+          subscription_id: preapprovalId,
+          user_id: parsed.userId,
+          userId: parsed.userId,
+          course_id: parsed.courseId ?? null,
+          bundle_id: parsed.bundleId ?? null,
+          status: preapprovalData?.status || "pending",
+          payer_email: payerEmailForMaterialize,
+          transaction_amount: autoRecurring?.transaction_amount ?? null,
+          currency_id: autoRecurring?.currency_id ?? null,
+          free_trial_days: Number.isFinite(trialDaysFromMp) && trialDaysFromMp > 0 ? trialDaysFromMp : 0,
+          created_at: FieldValue.serverTimestamp(),
+          updated_at: FieldValue.serverTimestamp(),
+          last_action: "materialized_from_webhook",
+        }, {merge: true});
+        functions.logger.warn("Materialized missing subscription doc from webhook", {
+          preapprovalId, userId: parsed.userId, courseId: parsed.courseId ?? null,
         });
-        res.status(200).send("OK");
-        return;
+        existingSub = await subRef.get();
       }
       const existingSubData = existingSub.data() ?? {};
       const existingUserId = (existingSubData.user_id ?? existingSubData.userId ?? parsed.userId) as string;
@@ -836,12 +950,48 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const trialDays = Number(existingSubData.free_trial_days);
       const courseIdForGrant =
         typeof existingSubData.course_id === "string" ? existingSubData.course_id : "";
-      if (
-        preapprovalData?.status === "authorized" &&
-        trialDays > 0 &&
-        nextPaymentDate &&
-        courseIdForGrant
-      ) {
+      // Bundle-trial-grant is a known gap: this block only runs for
+      // single-course subs (courseIdForGrant must be non-empty). Bundle
+      // trial purchases rely on the daily reconcileSubscriptions cron to
+      // materialize access entries from bundle.course_ids — slower but
+      // safe. Trial-grant via webhook for bundles would require fetching
+      // the bundle and looping; deferred until bundle-trials see real
+      // volume.
+      // Synthesize the trial expiry when MP omits next_payment_date on the
+      // first authorized webhook (common on initial authorization — the
+      // billing schedule isn't computed until the trial timer starts). The
+      // local sub doc has free_trial_days, and MP gives us start_date in
+      // auto_recurring; either is enough to derive a deterministic expiry.
+      // Last-resort: now + trialDays days. Without this fallback the entire
+      // trial grant block silently skipped and the buyer paid for access
+      // they never received — see P0-9 in the audit.
+      let trialEndIso: string | null = null;
+      if (preapprovalData?.status === "authorized" && trialDays > 0 && courseIdForGrant) {
+        const candidates: Array<string | null | undefined> = [
+          nextPaymentDate,
+          autoRecurring?.start_date,
+        ];
+        for (const candidate of candidates) {
+          if (typeof candidate !== "string") continue;
+          const ms = Date.parse(candidate);
+          if (!Number.isFinite(ms)) continue;
+          // MP's start_date is the trial START (= now). The trial END is
+          // start + trialDays. Distinguish from next_payment_date which IS
+          // the trial end. Heuristic: if the candidate is within 24h of
+          // now, treat it as start; otherwise treat as end.
+          if (Math.abs(ms - Date.now()) < 24 * 60 * 60 * 1000) {
+            trialEndIso = new Date(ms + trialDays * 86400000).toISOString();
+          } else {
+            trialEndIso = new Date(ms).toISOString();
+          }
+          break;
+        }
+        if (!trialEndIso) {
+          trialEndIso = new Date(Date.now() + trialDays * 86400000).toISOString();
+        }
+      }
+
+      if (preapprovalData?.status === "authorized" && trialDays > 0 && courseIdForGrant && trialEndIso) {
         try {
           const userRef = db.collection("users").doc(parsed.userId);
           const userDoc = await userRef.get();
@@ -854,13 +1004,20 @@ router.post("/payments/webhook", async (req: Request, res) => {
           if (!alreadyActive) {
             const courseDoc = await db.collection("courses").doc(courseIdForGrant).get();
             const course = (courseDoc.exists ? courseDoc.data() : {}) as Record<string, unknown>;
+            // Preserve purchased_at across re-grants (e.g. re-trial). The
+            // dotted update() syntax replaces the whole sub-object, so we
+            // need to explicitly carry it forward. Matters for funnel
+            // analytics that key on first acquisition.
+            const purchasedAt =
+              (typeof existing?.purchased_at === "string" ? existing.purchased_at : null) ??
+              new Date().toISOString();
             await userRef.update({
               [`courses.${courseIdForGrant}`]: {
                 access_duration: course.access_duration ?? "monthly",
-                expires_at: nextPaymentDate,
+                expires_at: trialEndIso,
                 status: "active",
                 is_trial: true,
-                purchased_at: new Date().toISOString(),
+                purchased_at: purchasedAt,
                 deliveryType: course.deliveryType ?? "general",
                 title: course.title ?? "Untitled Course",
                 image_url: course.image_url ?? null,
@@ -880,7 +1037,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
                 programTitle: (course.title as string) ?? "tu programa",
                 courseId: courseIdForGrant,
                 trialDays,
-                trialEndDate: nextPaymentDate,
+                trialEndDate: trialEndIso,
                 transactionAmount,
                 currencyId: currency,
               });
@@ -942,7 +1099,13 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   const processedRef = db.collection("processed_payments").doc(paymentId);
 
-  // Idempotency check for updated events
+  // Idempotency check for updated events.
+  //
+  // Reprocess allowlist: any prior state that can legitimately transition
+  // to "approved" via a later MP event. Some card flows land at "authorized"
+  // first (held but not captured) and only emit a payment.updated with
+  // "approved" later — without "authorized" in the allowlist, that second
+  // event short-circuited and the buyer never got access.
   if (webhookAction === "payment.updated" || webhookAction === "updated") {
     const processedDoc = await processedRef.get();
     if (processedDoc.exists) {
@@ -951,7 +1114,8 @@ router.post("/payments/webhook", async (req: Request, res) => {
         res.status(200).send("OK");
         return;
       }
-      if (prevStatus !== "pending" && prevStatus !== "in_process" && prevStatus !== "processing") {
+      const reprocessable = new Set(["pending", "in_process", "processing", "authorized"]);
+      if (!reprocessable.has(prevStatus)) {
         res.status(200).send("OK");
         return;
       }
@@ -1676,7 +1840,11 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
       const programTitle =
         (typeof courseEntry?.title === "string" ? (courseEntry.title as string) : null) ??
         (typeof subscriptionData.course_title === "string" ? subscriptionData.course_title : "tu programa");
-      if (recipient && accessUntil) {
+      // Always send the cancellation email when we have a recipient — even
+      // when accessUntil is missing (e.g. cancel during a botched-trial
+      // before any non-trial charge fired). The template handles the null
+      // case with softer copy so the buyer at least gets confirmation.
+      if (recipient) {
         await sendCancellationEmail({
           to: recipient,
           programTitle,
