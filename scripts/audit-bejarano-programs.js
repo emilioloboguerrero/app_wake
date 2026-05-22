@@ -88,8 +88,8 @@ function checkSet(setId, data, scope) {
   if (hasReps && typeof reps !== 'number' && reps !== 'AMRAP' && typeof reps !== 'string') {
     flag('error', s, `reps has invalid type: ${typeof reps}`);
   }
-  if (typeof reps === 'string' && reps !== 'AMRAP' && !/^\d+([+-]\d+)?$/.test(reps)) {
-    flag('warn', s, `reps string not a number, "N-N" range, or AMRAP: "${reps}"`);
+  if (typeof reps === 'string' && reps !== 'AMRAP' && !/^\d+([+-]\d+)?$/.test(reps) && !/^\d+\s*c\s*\/\s*u$/i.test(reps)) {
+    flag('warn', s, `reps string not a number, "N-N" range, "AMRAP", or "N c/u": "${reps}"`);
   }
 
   if (hasRepSeq && !repSeq.every((n) => typeof n === 'number' && n > 0)) {

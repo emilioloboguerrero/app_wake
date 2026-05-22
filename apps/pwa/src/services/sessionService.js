@@ -6,6 +6,7 @@ import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 import { queryClient } from '../config/queryClient';
 import analyticsService from './analyticsService';
+import { parseTotalReps } from '../utils/repsParser';
 
 class SessionService {
   constructor() {
@@ -646,7 +647,7 @@ class SessionService {
             exercise.sets.forEach(set => {
               if (set.reps && set.weight) {
                 stats.totalSets++;
-                stats.totalReps += parseInt(set.reps) || 0;
+                stats.totalReps += parseTotalReps(set.reps);
                 stats.totalWeight += parseFloat(set.weight) || 0;
               }
             });
