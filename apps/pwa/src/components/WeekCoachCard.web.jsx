@@ -75,7 +75,7 @@ const styles = {
     gap: 18,
   },
   faceFront: {
-    paddingTop: 96,
+    paddingTop: 20,
   },
   faceBack: {
     transform: 'rotateY(180deg)',
@@ -631,9 +631,13 @@ const WeekCoachCard = ({
   // Per-date course attribution: which course owns the completed/planned session for
   // a given date. First match wins (envCourses already honors pinned-first ordering),
   // so click navigation goes to the most relevant program.
-  const { completedDateMap, plannedDateMap } = useMemo(() => {
+  // sessionTitleByDate is populated for one_on_one (via plannedDate) and for the
+  // current day on any deliveryType (via the primary session state).
+  const todayYmd = useMemo(() => toYYYYMMDD(today), [today]);
+  const { completedDateMap, plannedDateMap, sessionTitleByDate } = useMemo(() => {
     const completed = new Map();
     const planned = new Map();
+    const titles = new Map();
     envCourses.forEach((course, idx) => {
       const isOO = course.deliveryType === 'one_on_one';
       const sessionState = sessionStateQueries[idx]?.data;
@@ -651,16 +655,19 @@ const WeekCoachCard = ({
           } else if (!planned.has(ymd)) {
             planned.set(ymd, course);
           }
+          if (s.title && !titles.has(ymd)) titles.set(ymd, s.title);
         });
       } else {
         const dates = moduleCalendarQueries[idx]?.data;
         (Array.isArray(dates) ? dates : []).forEach((ymd) => {
           if (!completed.has(ymd)) completed.set(ymd, course);
         });
+        const todayTitle = sessionState?.session?.title;
+        if (todayTitle && !titles.has(todayYmd)) titles.set(todayYmd, todayTitle);
       }
     });
-    return { completedDateMap: completed, plannedDateMap: planned };
-  }, [envCourses, sessionStateQueries, moduleCalendarQueries]);
+    return { completedDateMap: completed, plannedDateMap: planned, sessionTitleByDate: titles };
+  }, [envCourses, sessionStateQueries, moduleCalendarQueries, todayYmd]);
 
   const statusForDate = (ymd) => {
     if (completedDateMap.has(ymd)) return 'completed';
@@ -746,53 +753,94 @@ const WeekCoachCard = ({
                 </button>
               </div>
             </div>
-            <div style={styles.weekStrip}>
+            <div style={styles.weekList}>
               {weekDates.map((d, i) => {
                 const ymd = toYYYYMMDD(d);
                 const status = statusForDate(ymd);
                 const isTodayCell = isSameDay(d, today);
                 const isSelected = selectedDate === ymd;
-                // Every day in the visible week is reachable — users can train
-                // ahead within the current/next week window.
-                const clickable = true;
-                const cellStyle = {
-                  ...styles.weekDay,
-                  ...(isTodayCell && !isSelected ? styles.weekDayToday : {}),
-                  ...(isSelected ? styles.weekDaySelected : {}),
-                  cursor: 'pointer',
+                const title = sessionTitleByDate.get(ymd) || null;
+                const isWeekend = i >= 5; // Sat/Sun
+                const rowStyle = {
+                  ...styles.weekRow,
+                  ...(isTodayCell && !isSelected ? styles.weekRowToday : {}),
+                  ...(isSelected ? styles.weekRowSelected : {}),
                 };
-                const dotColor =
-                  status === 'completed' ? ENTRY_GREEN
-                  : status === 'planned' ? PLANNED_GREY
-                  : 'transparent';
+                const dayLabelStyle = isSelected
+                  ? { ...styles.weekRowDayLabel, ...styles.weekRowDayLabelSelected }
+                  : isTodayCell
+                    ? { ...styles.weekRowDayLabel, ...styles.weekRowDayLabelToday }
+                    : styles.weekRowDayLabel;
+                const dayNumberStyle = isSelected
+                  ? { ...styles.weekRowDayNumber, ...styles.weekRowDayNumberSelected }
+                  : styles.weekRowDayNumber;
+                let titleNode;
+                if (title) {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : styles.weekRowTitle}>
+                      {title}
+                    </span>
+                  );
+                } else if (status === 'completed') {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
+                      Sesión completada
+                    </span>
+                  );
+                } else if (isWeekend) {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : styles.weekRowTitleRest}>
+                      Descanso
+                    </span>
+                  );
+                } else {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
+                      {status === 'planned' ? 'Sesión planeada' : 'Sin sesión'}
+                    </span>
+                  );
+                }
+                let rightNode = null;
+                if (status === 'completed') {
+                  rightNode = <span style={styles.weekCheck}>✓</span>;
+                } else if (isTodayCell && !isSelected) {
+                  rightNode = <span style={styles.weekTodayPill}>Hoy</span>;
+                } else if (isTodayCell && isSelected) {
+                  rightNode = (
+                    <span style={{ ...styles.weekTodayPill, ...styles.weekTodayPillSelected }}>
+                      Hoy
+                    </span>
+                  );
+                }
                 return (
                   <div
                     key={ymd}
-                    style={cellStyle}
-                    onClick={clickable ? (e) => {
+                    style={rowStyle}
+                    onClick={(e) => {
                       e.stopPropagation();
                       onSelectDate?.(ymd);
-                    } : undefined}
-                    role={clickable ? 'button' : undefined}
-                    tabIndex={clickable ? 0 : undefined}
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
-                    <span
-                      style={isSelected
-                        ? { ...styles.weekDayLabel, ...styles.weekDayLabelSelected }
-                        : isTodayCell
-                          ? { ...styles.weekDayLabel, ...styles.weekDayLabelToday }
-                          : styles.weekDayLabel}
-                    >
-                      {DAY_LABELS_SHORT[i]}
-                    </span>
-                    <span
-                      style={isSelected
-                        ? { ...styles.weekDayNumber, ...styles.weekDayNumberSelected }
-                        : styles.weekDayNumber}
-                    >
-                      {d.getDate()}
-                    </span>
-                    <span style={{ ...styles.weekDayDotSlot, backgroundColor: dotColor }} />
+                    <div style={styles.weekRowLeft}>
+                      <span style={dayLabelStyle}>{DAY_LABELS_SHORT[i]}</span>
+                      <span style={dayNumberStyle}>{d.getDate()}</span>
+                    </div>
+                    <div style={styles.weekRowBody}>
+                      {titleNode}
+                    </div>
+                    <div style={styles.weekRowRight}>
+                      {rightNode}
+                    </div>
                   </div>
                 );
               })}
