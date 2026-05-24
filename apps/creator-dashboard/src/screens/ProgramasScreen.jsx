@@ -38,7 +38,7 @@ const TABS = [
 
 // ─── Programa card ────────────────────────────────────────────────────────────
 
-const ProgramaCard = ({ program, index, onClick, onDelete, onToggleBundleOnly }) => {
+const ProgramaCard = ({ program, index, onClick, onDelete, onToggleBundleOnly, onDuplicate }) => {
   const enrollments = program.enrollmentCount ?? 0;
   const [accent, setAccent] = useState(null);
 
@@ -53,6 +53,7 @@ const ProgramaCard = ({ program, index, onClick, onDelete, onToggleBundleOnly })
   const bundleOnly = program.bundleOnly ?? (program.visibility === 'bundle-only');
 
   const menuItems = [
+    { label: 'Duplicar', onClick: () => onDuplicate(program) },
     {
       label: bundleOnly ? 'Vender también como programa standalone' : 'Vender solo dentro de bundles',
       onClick: () => onToggleBundleOnly(program, !bundleOnly),
@@ -263,6 +264,24 @@ const ProgramasScreen = () => {
     onSettled: () => queryClient.invalidateQueries({ queryKey: programsQueryKey }),
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: (programId) => apiClient.post(`/creator/programs/${programId}/duplicate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: programsQueryKey });
+      showToast('Programa duplicado.', 'success');
+      const newId = res?.data?.id;
+      if (newId) navigate(`/programs/${newId}`);
+    },
+    onError: () => {
+      showToast('No pudimos duplicar el programa. Intenta de nuevo.', 'error');
+    },
+  });
+
+  const handleDuplicate = useCallback((program) => {
+    if (duplicateMutation.isPending) return;
+    duplicateMutation.mutate(program.id);
+  }, [duplicateMutation]);
+
   const bundleOnlyMutation = useMutation({
     mutationFn: ({ programId, bundleOnly }) =>
       apiClient.patch(`/creator/programs/${programId}`, { bundleOnly }),
@@ -431,6 +450,7 @@ const ProgramasScreen = () => {
                           onClick={handleProgramCardClick}
                           onDelete={handleDelete}
                           onToggleBundleOnly={handleToggleBundleOnly}
+                          onDuplicate={handleDuplicate}
                         />
                       </motion.div>
                     ))}

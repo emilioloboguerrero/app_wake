@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
+import apiClient from '../utils/apiClient';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../config/queryClient';
 import {
@@ -200,6 +201,22 @@ export default function NutritionScreen({ clientId = null }) {
     }
   };
 
+  const duplicatePlanMutation = useMutation({
+    mutationFn: (planId) => apiClient.post(`/creator/nutrition/plans/${planId}/duplicate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
+      showToast('Plan duplicado.', 'success');
+      const newId = res?.data?.id;
+      if (newId) navigate(`/nutrition/plans/${newId}`);
+    },
+    onError: () => showToast('No pudimos duplicar el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const handleDuplicatePlan = (planId) => {
+    if (duplicatePlanMutation.isPending) return;
+    duplicatePlanMutation.mutate(planId);
+  };
+
   const handleCreatePlanAndOpen = async () => {
     const name = planFormName.trim();
     if (!name || !creatorId) return;
@@ -346,6 +363,23 @@ export default function NutritionScreen({ clientId = null }) {
                         {activeTab === 'planes' && item.description ? (
                           <span className="ns-list-card-meta">{item.description}</span>
                         ) : null}
+                        {activeTab === 'planes' && (
+                          <button
+                            type="button"
+                            className="ns-list-card-duplicate"
+                            title="Duplicar plan"
+                            aria-label="Duplicar plan"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicatePlan(item.id);
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                              <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.6"/>
+                              <path d="M5 15V6a1 1 0 011-1h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     );
                   })}

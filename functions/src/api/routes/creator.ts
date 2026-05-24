@@ -2467,6 +2467,38 @@ router.delete("/creator/nutrition/plans/:planId", async (req, res) => {
   res.status(204).send();
 });
 
+// POST /creator/nutrition/plans/:planId/duplicate
+router.post("/creator/nutrition/plans/:planId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("plans")
+    .doc(req.params.planId);
+
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newRef = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("plans")
+    .add({
+      ...sourceData,
+      name: `${sourceData.name ?? "Plan"} (copia)`,
+      creatorId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({data: {id: newRef.id}});
+});
+
 // POST /creator/nutrition/plans/:planId/propagate
 router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -2772,6 +2804,38 @@ router.delete("/creator/nutrition/programs/:programId", async (req, res) => {
 
   await docRef.delete();
   res.status(204).send();
+});
+
+// POST /creator/nutrition/programs/:programId/duplicate
+router.post("/creator/nutrition/programs/:programId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .doc(req.params.programId);
+
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan nutricional no encontrado");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newRef = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .add({
+      ...sourceData,
+      name: `${sourceData.name ?? "Plan nutricional"} (copia)`,
+      creatorId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({data: {id: newRef.id}});
 });
 
 // ─── Client Nutrition Assignments ─────────────────────────────────────────
@@ -5775,6 +5839,88 @@ router.delete("/creator/library/sessions/:sessionId", async (req, res) => {
   batch.delete(ref);
   await batch.commit();
   res.status(204).send();
+});
+
+// POST /creator/library/sessions/:sessionId/duplicate
+router.post("/creator/library/sessions/:sessionId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions")
+    .doc(req.params.sessionId);
+
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newRef = await db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions")
+    .add({
+      ...sourceData,
+      title: `${sourceData.title ?? "Sesión"} (copia)`,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  // Deep copy subcollections: exercises → sets. Library refs (primary/alternatives
+  // maps) are preserved verbatim — they point at exercises_library/* entries that
+  // are intentionally shared between the source and the copy.
+  const exSnap = await sourceRef.collection("exercises").get();
+  let batch = db.batch();
+  let count = 0;
+
+  for (const eDoc of exSnap.docs) {
+    const newExRef = newRef.collection("exercises").doc();
+    batch.set(newExRef, {
+      ...eDoc.data(),
+      id: newExRef.id,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
+
+    const setsSnap = await eDoc.ref.collection("sets").get();
+    for (const setDoc of setsSnap.docs) {
+      const newSetRef = newExRef.collection("sets").doc();
+      batch.set(newSetRef, {
+        ...setDoc.data(),
+        id: newSetRef.id,
+        created_at: FieldValue.serverTimestamp(),
+      });
+      count++;
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
+    }
+  }
+
+  // Also copy objective_presets if present
+  const presetsSnap = await sourceRef.collection("objective_presets").get();
+  for (const pDoc of presetsSnap.docs) {
+    const newPresetRef = newRef.collection("objective_presets").doc();
+    batch.set(newPresetRef, {
+      ...pDoc.data(),
+      id: newPresetRef.id,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
+  }
+
+  if (count > 0) await batch.commit();
+
+  res.status(201).json({data: {id: newRef.id}});
 });
 
 // Library session exercise/set CRUD — with allowlisted fields

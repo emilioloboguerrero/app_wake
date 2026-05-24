@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
@@ -10,6 +10,7 @@ import NutritionWeeksGrid from '../components/nutrition/NutritionWeeksGrid';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { cacheConfig, queryKeys } from '../config/queryClient';
+import apiClient from '../utils/apiClient';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import './NutritionProgramEditorScreen.css';
 
@@ -28,6 +29,7 @@ const normalizeWeeks = (raw) => {
 
 export default function NutritionProgramEditorScreen() {
   const { programId } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -146,6 +148,22 @@ export default function NutritionProgramEditorScreen() {
     saveWeeks(next);
   }, [weeks, saveWeeks]);
 
+  const duplicateMutation = useMutation({
+    mutationFn: () => apiClient.post(`/creator/nutrition/programs/${programId}/duplicate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.programs(creatorId) });
+      showToast('Plan nutricional duplicado.', 'success');
+      const newId = res?.data?.id;
+      if (newId) navigate(`/nutrition/programs/${newId}`);
+    },
+    onError: () => showToast('No pudimos duplicar el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const handleDuplicate = useCallback(() => {
+    if (duplicateMutation.isPending) return;
+    duplicateMutation.mutate();
+  }, [duplicateMutation]);
+
   const openNameEditor = useCallback(() => {
     setNameDraft(programName);
     setIsEditingName(true);
@@ -242,6 +260,21 @@ export default function NutritionProgramEditorScreen() {
       showBackButton
       backPath={BACK_PATH}
       onHeaderEditClick={openNameEditor}
+      headerRight={(
+        <button
+          type="button"
+          className="np-header-duplicate-btn"
+          onClick={handleDuplicate}
+          disabled={duplicateMutation.isPending}
+          title="Duplicar plan"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.6"/>
+            <path d="M5 15V6a1 1 0 011-1h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+          </svg>
+          {duplicateMutation.isPending ? 'Duplicando…' : 'Duplicar'}
+        </button>
+      )}
     >
       <div className="np-root">
         <div className="plan-structure-layout">
