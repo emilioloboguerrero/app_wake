@@ -104,6 +104,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [mercadoPagoEmail, setMercadoPagoEmail] = useState('');
   const [emailModalError, setEmailModalError] = useState('');
+  const [preCheckout, setPreCheckout] = useState(null); // { checkoutURL, mode: 'web'|'native' }
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
   const [simulateUserRole, setSimulateUserRole] = useState(false);
@@ -823,20 +824,13 @@ useEffect(() => {
         return;
       }
 
-      // On web: redirect to MercadoPago. Use window.open for installed PWA
-      // compatibility — iOS standalone mode silently drops location.href to
-      // external origins. Fall back to location.href if popup is blocked.
-      if (isWeb) {
-        const opened = window.open(purchaseResult.checkoutURL, '_blank', 'noopener,noreferrer');
-        if (!opened) {
-          window.location.href = purchaseResult.checkoutURL;
-        }
-        return;
-      }
-
-      // Native: open in-app WebView modal
-      setCheckoutURL(purchaseResult.checkoutURL);
-      setShowPaymentModal(true);
+      // Show pre-checkout confirmation so the user sees which email to use
+      // when MercadoPago asks for one. The actual redirect happens on
+      // "Continuar al pago" inside the modal.
+      setPreCheckout({
+        checkoutURL: purchaseResult.checkoutURL,
+        mode: isWeb ? 'web' : 'native',
+      });
       setPurchasing(false);
       
     } catch (error) {
@@ -847,6 +841,29 @@ useEffect(() => {
       processingPurchaseRef.current = false;
       pendingPostPurchaseRef.current = false;
     }
+  };
+
+  // User confirmed the pre-checkout email reminder — actually open MP now.
+  const handleConfirmPreCheckout = () => {
+    if (!preCheckout) return;
+    const { checkoutURL, mode } = preCheckout;
+    setPreCheckout(null);
+    if (mode === 'web') {
+      const opened = window.open(checkoutURL, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        window.location.href = checkoutURL;
+      }
+      return;
+    }
+    setCheckoutURL(checkoutURL);
+    setShowPaymentModal(true);
+  };
+
+  const handleCancelPreCheckout = () => {
+    setPreCheckout(null);
+    setProcessingPurchase(false);
+    processingPurchaseRef.current = false;
+    pendingPostPurchaseRef.current = false;
   };
 
   // Handle email submission for Mercado Pago subscription
@@ -1533,7 +1550,7 @@ useEffect(() => {
           <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.emailModalTitle}>Correo de Mercado Pago</Text>
             <Text style={styles.emailModalDescription}>
-              Necesitamos el correo de tu cuenta de Mercado Pago para procesar la suscripción.
+              Mercado Pago necesita un correo distinto para la suscripción. Tu compra se vinculará automáticamente a tu cuenta Wake.
             </Text>
             
             <TextInput
@@ -1577,6 +1594,47 @@ useEffect(() => {
                 ) : (
                   <Text style={styles.emailModalButtonSubmitText}>Continuar</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Pre-checkout reminder: show the user's account email so they use the
+          same one when MercadoPago asks at the end of checkout. */}
+      <Modal
+        visible={!!preCheckout}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelPreCheckout}
+      >
+        <Pressable style={styles.emailModalOverlay} onPress={handleCancelPreCheckout}>
+          <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.emailModalTitle}>Usa este correo en Mercado Pago</Text>
+            <Text style={styles.emailModalDescription}>
+              Al final del pago, Mercado Pago te pedirá un correo. Usa el mismo de tu cuenta Wake para que tu compra quede vinculada.
+            </Text>
+
+            <View style={styles.preCheckoutEmailCard}>
+              <Text style={styles.preCheckoutEmailLabel}>Tu correo Wake</Text>
+              <Text style={styles.preCheckoutEmailValue} numberOfLines={1}>
+                {(user || auth.currentUser)?.email || ''}
+              </Text>
+            </View>
+
+            <View style={styles.emailModalButtons}>
+              <TouchableOpacity
+                style={[styles.emailModalButton, styles.emailModalButtonCancel]}
+                onPress={handleCancelPreCheckout}
+              >
+                <Text style={styles.emailModalButtonCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
+                onPress={handleConfirmPreCheckout}
+              >
+                <Text style={styles.emailModalButtonSubmitText}>Continuar al pago</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -2488,6 +2546,28 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flexDirection: 'row',
     gap: Math.max(12, screenWidth * 0.03),
     marginTop: Math.max(16, screenHeight * 0.02),
+  },
+  preCheckoutEmailCard: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: Math.max(10, screenWidth * 0.025),
+    paddingVertical: Math.max(12, screenHeight * 0.015),
+    paddingHorizontal: Math.max(14, screenWidth * 0.035),
+    marginBottom: Math.max(4, screenHeight * 0.005),
+  },
+  preCheckoutEmailLabel: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  preCheckoutEmailValue: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
   },
   emailModalButton: {
     flex: 1,

@@ -343,63 +343,127 @@ const styles = {
     marginTop: 2,
   },
 
-  // Front-face week strip
-  weekStrip: {
-    display: 'flex',
-    gap: 5,
-    width: '100%',
-  },
-  weekDay: {
-    flex: 1,
-    minWidth: 0,
-    paddingTop: 8,
-    paddingBottom: 8,
-    paddingLeft: 2,
-    paddingRight: 2,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.07)',
+  // Front-face week list (sessions of the week)
+  weekList: {
     display: 'flex',
     flexDirection: 'column',
+    gap: 2,
+    width: '100%',
+  },
+  weekRow: {
+    display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 12,
+    padding: '8px 10px',
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+    border: '1px solid transparent',
+    cursor: 'pointer',
+    transition: 'background-color 160ms ease, border-color 160ms ease',
   },
-  weekDayToday: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.18)',
+  weekRowToday: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
   },
-  weekDaySelected: {
+  weekRowSelected: {
     backgroundColor: 'var(--accent, #fff)',
     border: '1px solid var(--accent, #fff)',
   },
-  weekDayLabel: {
+  weekRowLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 34,
+    flexShrink: 0,
+  },
+  weekRowDayLabel: {
     fontSize: 9,
     fontWeight: 700,
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.55)',
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 1,
   },
-  weekDayLabelToday: {
+  weekRowDayLabelToday: {
     color: '#fff',
   },
-  weekDayLabelSelected: {
+  weekRowDayLabelSelected: {
     color: 'var(--accent-text, #1a1a1a)',
-    opacity: 0.85,
+    opacity: 0.75,
   },
-  weekDayNumber: {
-    fontSize: 16,
+  weekRowDayNumber: {
+    fontSize: 17,
     fontWeight: 600,
     color: '#fff',
     fontVariantNumeric: 'tabular-nums',
     lineHeight: 1.1,
+    marginTop: 2,
   },
-  weekDayNumberSelected: {
+  weekRowDayNumberSelected: {
     color: 'var(--accent-text, #1a1a1a)',
   },
-  weekDayDotSlot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
+  weekRowBody: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  weekRowTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -0.1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  weekRowTitleMuted: {
+    color: 'rgba(255,255,255,0.32)',
+    fontWeight: 500,
+  },
+  weekRowTitleSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+  },
+  weekRowTitleRest: {
+    color: 'rgba(255,255,255,0.4)',
+    fontStyle: 'italic',
+    fontWeight: 500,
+  },
+  weekRowRight: {
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 38,
+  },
+  weekCheck: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(34, 140, 70, 0.95)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 800,
+  },
+  weekTodayPill: {
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.65)',
+    padding: '3px 7px',
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.12)',
+  },
+  weekTodayPillSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    border: '1px solid rgba(0,0,0,0.18)',
   },
 };
 

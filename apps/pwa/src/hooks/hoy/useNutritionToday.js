@@ -69,8 +69,8 @@ export function useNutritionToday(userId, dateYmd) {
     queryKey: ['nutrition', 'has-assignment', userId],
     queryFn: async () => {
       try {
-        await apiClient.get('/nutrition/assignment', { params: { date: today } });
-        return true;
+        const r = await apiClient.get('/nutrition/assignment', { params: { date: today } });
+        return !!r?.data;
       } catch {
         return false;
       }

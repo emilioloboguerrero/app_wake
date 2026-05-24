@@ -252,12 +252,56 @@ const styles = {
     color: '#fff',
   },
   muscleWrap: {
-    flex: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px 12px',
+    padding: '4px 12px 0 12px',
     minHeight: 0,
+    flexShrink: 0,
+  },
+  exerciseList: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    padding: '4px 24px 0 24px',
+    display: 'flex',
+    flexDirection: 'column',
+    WebkitMaskImage: 'linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%)',
+    maskImage: 'linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%)',
+    scrollbarWidth: 'none',
+  },
+  exerciseRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: '10px 0',
+    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    minHeight: 0,
+  },
+  exerciseRowLast: {
+    borderBottom: 'none',
+  },
+  exerciseName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: -0.1,
+    lineHeight: 1.25,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  exerciseMeta: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 600,
+    color: 'rgba(255,255,255,0.42)',
+    letterSpacing: 0.4,
+    fontVariantNumeric: 'tabular-nums',
   },
   beginRow: {
     padding: '0 20px 20px 20px',
@@ -388,6 +432,18 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
     return acc;
   }, [sessionState?.workout?.exercises]);
 
+  const exerciseSummary = useMemo(() => {
+    const exercises = sessionState?.workout?.exercises;
+    if (!Array.isArray(exercises)) return [];
+    return exercises
+      .filter((ex) => ex?.name)
+      .map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        setCount: Array.isArray(ex.sets) ? ex.sets.length : 0,
+      }));
+  }, [sessionState?.workout?.exercises]);
+
   const canBegin = !!sessionState?.workout && !isExpired && !isCompleted;
   const beginLabel = isExpired
     ? 'Renovar acceso'
@@ -512,7 +568,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
                 <MuscleSilhouetteSVG
                   muscleVolumes={muscleVolumes}
                   accentRgb={accentRgb}
-                  height={300}
+                  height={200}
                 />
               ) : (
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
@@ -520,6 +576,26 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
                 </span>
               )}
             </div>
+
+            {exerciseSummary.length > 0 ? (
+              <div style={styles.exerciseList}>
+                {exerciseSummary.map((ex, idx) => (
+                  <div
+                    key={ex.id || `${idx}-${ex.name}`}
+                    style={idx === exerciseSummary.length - 1
+                      ? { ...styles.exerciseRow, ...styles.exerciseRowLast }
+                      : styles.exerciseRow}
+                  >
+                    <span style={styles.exerciseName}>{ex.name}</span>
+                    {ex.setCount > 0 ? (
+                      <span style={styles.exerciseMeta}>
+                        {ex.setCount}× {ex.setCount === 1 ? 'serie' : 'series'}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <div style={styles.beginRow}>
               <button

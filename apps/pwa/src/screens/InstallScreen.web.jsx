@@ -211,19 +211,19 @@ function isChromeAndroid() {
   return /Chrome/i.test(ua) && !ua.includes('GSA');
 }
 
-/** Safari (iOS) – two Paso 1 (abajo = botones + Compartir; arriba = solo Compartir), then Paso 2 and 3 same for both. */
+/** Safari (iOS) – two Paso 1 (abajo = "···" → Compartir; arriba = Compartir directo), then Paso 2 and 3 same for both. */
 function getIosSafariSteps() {
   return [
     {
       stepNum: 1,
       label: 'Barra de búsqueda abajo',
-      text: 'Toca los botones en la barra y luego Compartir en el menú.',
+      text: 'Toca "···" en la barra y luego "Compartir" en el menú.',
       images: [getInstallGuideImage('IMG_1363.jpg'), getInstallGuideImage('IMG_1364.jpg')],
     },
     {
       stepNum: 1,
       label: 'Barra de búsqueda arriba',
-      text: 'Toca Compartir en la barra (solo eso).',
+      text: 'Toca "Compartir" en la barra. Si no lo ves, toca "···" y luego "Compartir".',
       image: getInstallGuideImage('IMG_1360.jpg'),
     },
     {

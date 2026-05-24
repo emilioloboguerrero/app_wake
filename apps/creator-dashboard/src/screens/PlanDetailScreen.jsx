@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import apiClient from '../utils/apiClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
@@ -377,6 +378,22 @@ const PlanDetailScreen = () => {
   };
 
 
+  const duplicatePlanMutation = useMutation({
+    mutationFn: () => apiClient.post(`/creator/plans/${planId}/duplicate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['creator', 'plans'] });
+      showToast('Plan duplicado.', 'success');
+      const newId = res?.data?.id;
+      if (newId) navigate(`/plans/${newId}`);
+    },
+    onError: () => showToast('No pudimos duplicar el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const handleDuplicatePlan = useCallback(() => {
+    if (duplicatePlanMutation.isPending) return;
+    duplicatePlanMutation.mutate();
+  }, [duplicatePlanMutation]);
+
   if (!user) {
     return <PlanDetailSkeleton />;
   }
@@ -416,7 +433,21 @@ const PlanDetailScreen = () => {
       backPath="/content"
       onBack={handleBack}
       onHeaderEditClick={() => setIsEditModalOpen(true)}
-      headerRight={hasMadeChanges && propagateAffectedCount > 0 ? (
+      headerRight={!hasMadeChanges ? (
+        <button
+          type="button"
+          className="library-session-duplicate-btn"
+          onClick={handleDuplicatePlan}
+          disabled={duplicatePlanMutation.isPending}
+          title="Duplicar plan"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.6"/>
+            <path d="M5 15V6a1 1 0 011-1h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+          </svg>
+          {duplicatePlanMutation.isPending ? 'Duplicando…' : 'Duplicar'}
+        </button>
+      ) : hasMadeChanges && propagateAffectedCount > 0 ? (
         <div className="library-session-propagate-group">
           <button
             type="button"

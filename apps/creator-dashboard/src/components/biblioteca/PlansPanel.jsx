@@ -25,7 +25,7 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
-function PlanCard({ plan, onDelete, onOpen }) {
+function PlanCard({ plan, onDelete, onOpen, onDuplicate }) {
   return (
     <div className="bib-card bib-plan-card" onClick={() => onOpen(plan.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(plan.id)}>
       <GlowingEffect spread={20} borderWidth={1} />
@@ -49,7 +49,11 @@ function PlanCard({ plan, onDelete, onOpen }) {
         <div className="bib-plan-menu" onClick={(e) => e.stopPropagation()}>
           <MenuDropdown
             trigger={<button type="button" className="bib-plan-menu-trigger"><DotsIcon /></button>}
-            items={[{ label: 'Eliminar', danger: true, onClick: () => onDelete(plan.id, plan.title) }]}
+            items={[
+              { label: 'Duplicar', onClick: () => onDuplicate(plan) },
+              { divider: true },
+              { label: 'Eliminar', danger: true, onClick: () => onDelete(plan.id, plan.title) },
+            ]}
           />
         </div>
         <span className="bib-plan-open-icon"><ArrowRightIcon /></span>
@@ -129,6 +133,22 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
     navigate(`/plans/${planId}`);
   }, [navigate]);
 
+  const duplicatePlanMutation = useMutation({
+    mutationFn: (planId) => apiClient.post(`/creator/plans/${planId}/duplicate`),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
+      showToast('Plan duplicado.', 'success');
+      const newId = res?.data?.id;
+      if (newId) navigate(`/plans/${newId}`);
+    },
+    onError: () => showToast('No pudimos duplicar el plan. Intenta de nuevo.', 'error'),
+  });
+
+  const handleDuplicatePlan = useCallback((plan) => {
+    if (duplicatePlanMutation.isPending) return;
+    duplicatePlanMutation.mutate(plan.id);
+  }, [duplicatePlanMutation]);
+
   return (
     <>
       <PanelShell
@@ -154,6 +174,7 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
                   plan={plan}
                   onDelete={handleDeletePlan}
                   onOpen={handleOpenPlan}
+                  onDuplicate={handleDuplicatePlan}
                 />
               </motion.div>
             ))}

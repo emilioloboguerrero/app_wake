@@ -4678,6 +4678,83 @@ router.delete("/creator/plans/:planId", async (req, res) => {
   res.status(204).send();
 });
 
+// POST /creator/plans/:planId/duplicate
+router.post("/creator/plans/:planId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db.collection("plans").doc(req.params.planId);
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists || sourceDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newDoc = await db.collection("plans").add({
+    ...sourceData,
+    title: `${sourceData.title ?? "Plan"} (copia)`,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  // Deep copy subcollections: modules → sessions → exercises → sets.
+  // Library refs inside exercises (primary/alternatives maps) are preserved verbatim.
+  const newRef = db.collection("plans").doc(newDoc.id);
+  const modulesSnap = await sourceRef.collection("modules").get();
+  let batch = db.batch();
+  let count = 0;
+
+  for (const mDoc of modulesSnap.docs) {
+    const newModRef = newRef.collection("modules").doc();
+    batch.set(newModRef, {
+      ...mDoc.data(),
+      id: newModRef.id,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+    const sessionsSnap = await mDoc.ref.collection("sessions").get();
+    for (const sDoc of sessionsSnap.docs) {
+      const newSessRef = newModRef.collection("sessions").doc();
+      batch.set(newSessRef, {
+        ...sDoc.data(),
+        id: newSessRef.id,
+        created_at: FieldValue.serverTimestamp(),
+      });
+      count++;
+      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+      const exSnap = await sDoc.ref.collection("exercises").get();
+      for (const eDoc of exSnap.docs) {
+        const newExRef = newSessRef.collection("exercises").doc();
+        batch.set(newExRef, {
+          ...eDoc.data(),
+          id: newExRef.id,
+          created_at: FieldValue.serverTimestamp(),
+        });
+        count++;
+        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+        const setsSnap = await eDoc.ref.collection("sets").get();
+        for (const setDoc of setsSnap.docs) {
+          const newSetRef = newExRef.collection("sets").doc();
+          batch.set(newSetRef, {
+            ...setDoc.data(),
+            id: newSetRef.id,
+            created_at: FieldValue.serverTimestamp(),
+          });
+          count++;
+          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+        }
+      }
+    }
+  }
+  if (count > 0) await batch.commit();
+
+  res.status(201).json({data: {id: newDoc.id}});
+});
+
 // POST /creator/plans/:planId/modules
 router.post("/creator/plans/:planId/modules", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
