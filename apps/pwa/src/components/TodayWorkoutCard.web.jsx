@@ -5,7 +5,7 @@
 //
 // Tap front -> flip to back. Tap back (not on action) -> flip to front.
 // Tap Begin -> /warmup. Tap on an expired card -> renew flow (onRenew handler).
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
@@ -251,25 +251,80 @@ const styles = {
     lineHeight: 1.15,
     color: '#fff',
   },
-  muscleWrap: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '4px 12px 0 12px',
+  backScrollWrap: {
+    flex: 1,
     minHeight: 0,
-    flexShrink: 0,
+    position: 'relative',
+    display: 'flex',
   },
-  exerciseList: {
+  backScrollArea: {
     flex: 1,
     minHeight: 0,
     overflowY: 'auto',
     overflowX: 'hidden',
-    padding: '4px 24px 0 24px',
+    overscrollBehavior: 'contain',
+    scrollbarWidth: 'none',
+    WebkitOverflowScrolling: 'touch',
     display: 'flex',
     flexDirection: 'column',
-    WebkitMaskImage: 'linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%)',
-    maskImage: 'linear-gradient(180deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 100%)',
-    scrollbarWidth: 'none',
+  },
+  scrollTrack: {
+    position: 'absolute',
+    top: 12,
+    bottom: 12,
+    right: 8,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    pointerEvents: 'none',
+    transition: `opacity 220ms ${SPRING}`,
+  },
+  scrollThumb: {
+    position: 'absolute',
+    left: 0,
+    width: '100%',
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  sectionBlock: {
+    flexShrink: 0,
+    padding: '20px 24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  sectionBlockDivided: {
+    borderTop: '1px solid rgba(255,255,255,0.06)',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  sectionKicker: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  sectionCount: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.35)',
+    fontVariantNumeric: 'tabular-nums',
+    letterSpacing: 0.2,
+  },
+  muscleWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 0,
+  },
+  exerciseList: {
+    display: 'flex',
+    flexDirection: 'column',
   },
   exerciseRow: {
     display: 'flex',
@@ -358,6 +413,8 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
+  const [scrollState, setScrollState] = useState({ scrollable: false, thumbTop: 0, thumbHeight: 0 });
+  const backScrollRef = useRef(null);
 
   // selectedDate drives which session the card resolves. Today shares the cache key
   // ['preview','todaySession',uid,courseId] with HoyScreen and the prefetch hook;
@@ -444,6 +501,48 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
       }));
   }, [sessionState?.workout?.exercises]);
 
+  const hasMuscleData = Object.keys(muscleVolumes).length > 0;
+
+  // Drive the side scroll indicator: thumb height = visible / total, thumb top
+  // = scrollTop / total. Hidden when content fits. rAF-coalesces scroll updates
+  // so React state never lags behind the scroll position on fast scrolls.
+  useEffect(() => {
+    if (!flipped) return undefined;
+    const el = backScrollRef.current;
+    if (!el) return undefined;
+    let frame = 0;
+    const recompute = () => {
+      frame = 0;
+      const { scrollHeight, clientHeight, scrollTop } = el;
+      const scrollable = scrollHeight > clientHeight + 4;
+      if (!scrollable) {
+        setScrollState({ scrollable: false, thumbTop: 0, thumbHeight: 0 });
+        return;
+      }
+      const ratio = clientHeight / scrollHeight;
+      const thumbHeightPct = Math.max(ratio * 100, 12);
+      const denom = scrollHeight - clientHeight;
+      const thumbTopPct = denom > 0 ? (scrollTop / denom) * (100 - thumbHeightPct) : 0;
+      setScrollState({ scrollable: true, thumbTop: thumbTopPct, thumbHeight: thumbHeightPct });
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(recompute);
+    };
+    recompute();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(recompute) : null;
+    if (ro) {
+      ro.observe(el);
+      Array.from(el.children).forEach((c) => ro.observe(c));
+    }
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+      if (ro) ro.disconnect();
+    };
+  }, [flipped, sessionLoading, exerciseSummary.length, hasMuscleData]);
+
   const canBegin = !!sessionState?.workout && !isExpired && !isCompleted;
   const beginLabel = isExpired
     ? 'Renovar acceso'
@@ -458,7 +557,6 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
             : isToday
               ? 'Empezar'
               : `Empezar el ${dateLabel}`;
-  const hasMuscleData = Object.keys(muscleVolumes).length > 0;
 
   const handleFlip = (e) => {
     e?.stopPropagation?.();
@@ -561,41 +659,82 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
               <span style={styles.backTitle}>{headlineTitle}</span>
             </div>
 
-            <div style={styles.muscleWrap}>
-              {sessionLoading ? (
-                <WakeLoader size={64} />
-              ) : hasMuscleData ? (
-                <MuscleSilhouetteSVG
-                  muscleVolumes={muscleVolumes}
-                  accentRgb={accentRgb}
-                  height={200}
-                />
-              ) : (
-                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
-                  {isRestDay ? 'Recupera para entrenar mejor' : 'Sin datos de activación'}
-                </span>
-              )}
-            </div>
-
-            {exerciseSummary.length > 0 ? (
-              <div style={styles.exerciseList}>
-                {exerciseSummary.map((ex, idx) => (
-                  <div
-                    key={ex.id || `${idx}-${ex.name}`}
-                    style={idx === exerciseSummary.length - 1
-                      ? { ...styles.exerciseRow, ...styles.exerciseRowLast }
-                      : styles.exerciseRow}
-                  >
-                    <span style={styles.exerciseName}>{ex.name}</span>
-                    {ex.setCount > 0 ? (
-                      <span style={styles.exerciseMeta}>
-                        {ex.setCount}× {ex.setCount === 1 ? 'serie' : 'series'}
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
+            <div style={styles.backScrollWrap}>
+            <div
+              ref={backScrollRef}
+              style={styles.backScrollArea}
+              onClick={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+            >
+              <div style={styles.sectionBlock}>
+                <div style={styles.sectionHeader}>
+                  <span style={styles.sectionKicker}>Activación muscular</span>
+                  {hasMuscleData ? (
+                    <span style={styles.sectionCount}>
+                      {Object.keys(muscleVolumes).length}{' '}
+                      {Object.keys(muscleVolumes).length === 1 ? 'grupo' : 'grupos'}
+                    </span>
+                  ) : null}
+                </div>
+                <div style={styles.muscleWrap}>
+                  {sessionLoading ? (
+                    <WakeLoader size={64} />
+                  ) : hasMuscleData ? (
+                    <MuscleSilhouetteSVG
+                      muscleVolumes={muscleVolumes}
+                      accentRgb={accentRgb}
+                      height={300}
+                    />
+                  ) : (
+                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                      {isRestDay ? 'Recupera para entrenar mejor' : 'Sin datos de activación'}
+                    </span>
+                  )}
+                </div>
               </div>
-            ) : null}
+
+              {exerciseSummary.length > 0 ? (
+                <div style={{ ...styles.sectionBlock, ...styles.sectionBlockDivided }}>
+                  <div style={styles.sectionHeader}>
+                    <span style={styles.sectionKicker}>Ejercicios</span>
+                    <span style={styles.sectionCount}>
+                      {exerciseSummary.length} {exerciseSummary.length === 1 ? 'ejercicio' : 'ejercicios'}
+                    </span>
+                  </div>
+                  <div style={styles.exerciseList}>
+                    {exerciseSummary.map((ex, idx) => (
+                      <div
+                        key={ex.id || `${idx}-${ex.name}`}
+                        style={idx === exerciseSummary.length - 1
+                          ? { ...styles.exerciseRow, ...styles.exerciseRowLast }
+                          : styles.exerciseRow}
+                      >
+                        <span style={styles.exerciseName}>{ex.name}</span>
+                        {ex.setCount > 0 ? (
+                          <span style={styles.exerciseMeta}>
+                            {ex.setCount}× {ex.setCount === 1 ? 'serie' : 'series'}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+              <div
+                style={{ ...styles.scrollTrack, opacity: scrollState.scrollable ? 1 : 0 }}
+                aria-hidden
+              >
+                <div
+                  style={{
+                    ...styles.scrollThumb,
+                    top: `${scrollState.thumbTop}%`,
+                    height: `${scrollState.thumbHeight}%`,
+                  }}
+                />
+              </div>
+            </div>
 
             <div style={styles.beginRow}>
               <button

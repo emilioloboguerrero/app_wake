@@ -1,8 +1,7 @@
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import apiClient from '../utils/apiClient';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -2686,26 +2685,6 @@ const LibrarySessionDetailScreen = () => {
     setIsSavingLibraryExerciseChoice(false);
   };
 
-  const duplicateSessionMutation = useMutation({
-    mutationFn: () => apiClient.post(`/creator/library/sessions/${sessionId}/duplicate`),
-    onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user?.uid) });
-      showToast('Sesión duplicada.', 'success');
-      const newId = res?.data?.id;
-      if (newId) navigate(`/content/sessions/${newId}`);
-    },
-    onError: (err) => {
-      logger.error('Error duplicating session:', err);
-      showToast('No pudimos duplicar la sesión. Intenta de nuevo.', 'error');
-    },
-  });
-
-  const handleDuplicateSession = useCallback(() => {
-    if (duplicateSessionMutation.isPending) return;
-    duplicateSessionMutation.mutate();
-  }, [duplicateSessionMutation]);
-
   const handleOpenPropagateModal = async () => {
     if (!user?.uid || !sessionId) return;
     try {
@@ -3573,21 +3552,7 @@ const LibrarySessionDetailScreen = () => {
       backPath={backPath}
       backState={backState}
       onBack={handleBack}
-      headerRight={(!hasMadeChanges && !effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit) ? (
-        <button
-          type="button"
-          className="library-session-duplicate-btn"
-          onClick={handleDuplicateSession}
-          disabled={duplicateSessionMutation.isPending}
-          title="Duplicar sesión"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.6"/>
-            <path d="M5 15V6a1 1 0 011-1h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-          </svg>
-          {duplicateSessionMutation.isPending ? 'Duplicando…' : 'Duplicar'}
-        </button>
-      ) : hasMadeChanges && (
+      headerRight={hasMadeChanges && (
         (!effectiveIsClientEdit && !effectiveIsAnyPlanContentEdit && !isAnyInstanceEdit && libraryUsageCount > 0) ||
         (isPlanInstanceEdit && planAffectedCount > 0)
       ) ? (

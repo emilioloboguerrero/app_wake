@@ -20,6 +20,7 @@ import {
 } from '../components/ui';
 import ContextualHint from '../components/hints/ContextualHint';
 import { useToast } from '../contexts/ToastContext';
+import { useBackgroundTasks } from '../contexts/BackgroundTaskContext';
 import '../components/PropagateChangesModal.css';
 import './NutritionScreen.css';
 
@@ -67,6 +68,7 @@ export default function NutritionScreen({ clientId = null }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const creatorId = user?.uid ?? '';
   const queryClient = useQueryClient();
 
@@ -202,19 +204,20 @@ export default function NutritionScreen({ clientId = null }) {
   };
 
   const duplicatePlanMutation = useMutation({
-    mutationFn: (planId) => apiClient.post(`/creator/nutrition/plans/${planId}/duplicate`),
-    onSuccess: (res) => {
+    mutationFn: ({ id }) => apiClient.post(`/creator/nutrition/plans/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
-      showToast('Plan duplicado.', 'success');
+      task.succeed(`"${name}" duplicado`);
       const newId = res?.data?.id;
       if (newId) navigate(`/nutrition/plans/${newId}`);
     },
-    onError: () => showToast('No pudimos duplicar el plan. Intenta de nuevo.', 'error'),
+    onError: (_err, { task, name }) => task.fail(`No pudimos duplicar "${name}"`),
   });
 
-  const handleDuplicatePlan = (planId) => {
-    if (duplicatePlanMutation.isPending) return;
-    duplicatePlanMutation.mutate(planId);
+  const handleDuplicatePlan = (plan) => {
+    const name = plan.name || 'plan';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicatePlanMutation.mutate({ id: plan.id, task, name });
   };
 
   const handleCreatePlanAndOpen = async () => {
@@ -371,7 +374,7 @@ export default function NutritionScreen({ clientId = null }) {
                             aria-label="Duplicar plan"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDuplicatePlan(item.id);
+                              handleDuplicatePlan(item);
                             }}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>

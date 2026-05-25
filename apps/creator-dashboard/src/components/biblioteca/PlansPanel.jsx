@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTaskContext';
 import { GlowingEffect, AnimatedList, MenuDropdown, ConfirmDeleteModal } from '../ui';
 import PanelShell from './PanelShell';
 import CreatePlanOverlay from './CreatePlanOverlay';
@@ -67,6 +68,7 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const { data: plans = [], isLoading, error } = useQuery({
@@ -134,20 +136,21 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
   }, [navigate]);
 
   const duplicatePlanMutation = useMutation({
-    mutationFn: (planId) => apiClient.post(`/creator/plans/${planId}/duplicate`),
-    onSuccess: (res) => {
+    mutationFn: ({ id }) => apiClient.post(`/creator/plans/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
-      showToast('Plan duplicado.', 'success');
+      task.succeed(`"${name}" duplicado`);
       const newId = res?.data?.id;
       if (newId) navigate(`/plans/${newId}`);
     },
-    onError: () => showToast('No pudimos duplicar el plan. Intenta de nuevo.', 'error'),
+    onError: (_err, { task, name }) => task.fail(`No pudimos duplicar "${name}"`),
   });
 
   const handleDuplicatePlan = useCallback((plan) => {
-    if (duplicatePlanMutation.isPending) return;
-    duplicatePlanMutation.mutate(plan.id);
-  }, [duplicatePlanMutation]);
+    const name = plan.title || 'plan';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicatePlanMutation.mutate({ id: plan.id, task, name });
+  }, [duplicatePlanMutation, addTask]);
 
   return (
     <>

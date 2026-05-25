@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useBackgroundTasks } from '../contexts/BackgroundTaskContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
@@ -222,6 +223,7 @@ const ProgramasScreen = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') === 'bundles' ? 'bundles' : 'programas';
@@ -265,22 +267,23 @@ const ProgramasScreen = () => {
   });
 
   const duplicateMutation = useMutation({
-    mutationFn: (programId) => apiClient.post(`/creator/programs/${programId}/duplicate`),
-    onSuccess: (res) => {
+    mutationFn: ({ id }) => apiClient.post(`/creator/programs/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
       queryClient.invalidateQueries({ queryKey: programsQueryKey });
-      showToast('Programa duplicado.', 'success');
+      task.succeed(`"${name}" duplicado`);
       const newId = res?.data?.id;
       if (newId) navigate(`/programs/${newId}`);
     },
-    onError: () => {
-      showToast('No pudimos duplicar el programa. Intenta de nuevo.', 'error');
+    onError: (_err, { task, name }) => {
+      task.fail(`No pudimos duplicar "${name}"`);
     },
   });
 
   const handleDuplicate = useCallback((program) => {
-    if (duplicateMutation.isPending) return;
-    duplicateMutation.mutate(program.id);
-  }, [duplicateMutation]);
+    const name = program.title || 'programa';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicateMutation.mutate({ id: program.id, task, name });
+  }, [duplicateMutation, addTask]);
 
   const bundleOnlyMutation = useMutation({
     mutationFn: ({ programId, bundleOnly }) =>
