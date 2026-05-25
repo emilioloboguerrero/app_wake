@@ -207,6 +207,14 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     await editor.saveField({ block_cadence: active ? 'monthly_first_monday' : null });
   }, [editor]);
 
+  // Weekly scheduling: pins each session to a weekday (dayIndex 1..7 = Lun..Dom)
+  // so the Hoy carousel shows the right session per day and surfaces "Descanso"
+  // on rest days, instead of the legacy "next incomplete" walker.
+  const weeklyScheduling = program?.scheduling === 'weekly';
+  const handleWeeklyToggle = useCallback(async (active) => {
+    await editor.saveField({ scheduling: active ? 'weekly' : null });
+  }, [editor]);
+
   // Initialize program_state so the monthly-drop cron has something to advance.
   // The button is the dashboard replacement for seed-bejarano-program-state.js;
   // it's disabled until at least one module is published, and refuses to
@@ -620,6 +628,35 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                       {cadenceInfo.currentIdx >= 0 && cadenceInfo.currentTitle
                         ? `En vivo: ${cadenceInfo.currentTitle}. Edita los próximos drops desde Contenido → Entrenamiento.`
                         : 'Edita los próximos drops desde Contenido → Entrenamiento.'}
+                    </p>
+                  )}
+                </BentoCard>
+
+                {/* Calendario semanal — pins each session to a weekday so Hoy
+                    shows the right session per day and "Descanso" on rest days.
+                    Cadence programs already author dayIndex via the drag-drop
+                    calendar; non-cadence weekly programs fall back to
+                    order-as-weekday (Lun=order 0). */}
+                <BentoCard className="gp-config__card gp-config__card--span-2">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <div className="gp-cadence-card__header">
+                    <h3>Calendario semanal</h3>
+                    <button
+                      type="button"
+                      className={`gp-trial__toggle ${weeklyScheduling ? 'gp-trial__toggle--active' : ''}`}
+                      onClick={() => handleWeeklyToggle(!weeklyScheduling)}
+                    >
+                      <span className="gp-trial__toggle-dot" />
+                      <span>{weeklyScheduling ? 'Activo' : 'Inactivo'}</span>
+                    </button>
+                  </div>
+                  {!weeklyScheduling ? (
+                    <p className="gp-config__hint">
+                      Hoy avanza la siguiente sesión sin completar, sin importar el día. Activa para asignar cada sesión a un día de la semana y mostrar "Descanso" en los días libres.
+                    </p>
+                  ) : (
+                    <p className="gp-config__hint">
+                      Cada sesión se ancla a un día (Lun–Dom). Hoy muestra la sesión del día y "Descanso" en los días sin sesión.
                     </p>
                   )}
                 </BentoCard>

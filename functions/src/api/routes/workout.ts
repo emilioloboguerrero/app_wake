@@ -678,6 +678,9 @@ router.get("/workout/daily", async (req, res) => {
               title: (sess.data().title as string) ?? "",
               moduleTitle: modTitle,
               image_url: (sess.data().image_url as string) ?? null,
+              dayIndex: typeof sess.data().dayIndex === "number" ?
+                (sess.data().dayIndex as number) :
+                null,
             }));
           })
         ),
@@ -688,49 +691,140 @@ router.get("/workout/daily", async (req, res) => {
       completedSessionIds = new Set(legacyCompletedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-      resolvedAllSessions = allSessions.map((s) => ({
-        sessionId: s.sessionId,
-        title: s.title,
-        moduleId: s.moduleId,
-        moduleTitle: s.moduleTitle,
-        order: s.order,
-        image_url: s.image_url,
-      }));
 
-      if (allSessions.length === 0) {
-        res.json({
-          data: {
-            hasSession: false,
-            isRestDay: false,
-            emptyReason: "no_planning_this_week",
-            session: null,
-            progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
-            allSessions: [],
-          },
+      // Weekly-scheduled programs: pivot to per-weekday plannedDate so the
+      // Hoy carousel + WeekCoachCard render the same dayIndex semantics that
+      // one-on-one programs use. Convention here is 1..7 = Lun..Dom (matches
+      // ProgramCadenceCalendar + the Bejarano seed script).
+      const isWeekly = course.scheduling === "weekly";
+      if (isWeekly) {
+        const requestedDate = (req.query.date as string) ?? null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayWeekdayIdx = ((today.getDay() + 6) % 7) + 1; // 1..7 Lun..Dom
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - (todayWeekdayIdx - 1));
+
+        // Weekly programs repeat the same sessionIds every week, so the
+        // course-scoped sessionHistory fetched above includes completions
+        // from prior weeks. Re-scope completedSessionIds to this week only
+        // — otherwise WeekCoachCard would mark every dayIndex as "done"
+        // for any session the user ever finished.
+        const weekStartIso = weekStart.toISOString();
+        const weekCompletedSnap = await db.collection("users").doc(auth.userId)
+          .collection("sessionHistory")
+          .where("courseId", "==", courseId)
+          .where("completedAt", ">=", weekStartIso)
+          .get();
+        completedSessionIds = new Set(
+          weekCompletedSnap.docs
+            .map((d) => d.data().sessionId as string | undefined)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        );
+
+        // Only surface sessions from the currently-active module
+        // (cadence already trimmed modulesSnap above; if cadence is off,
+        // we take the first/only module — weekly programs are expected to
+        // have a single recurring template module unless cadence rotates them).
+        const activeModuleId = modulesSnap.docs[0]?.id ?? null;
+        const weekSessions = allSessions.filter((s) => s.moduleId === activeModuleId);
+        const sessionsWithDate = weekSessions.map((s) => {
+          // dayIndex=1..7 (Lun..Dom) matches ProgramCadenceCalendar +
+          // seed-metodo-bejarano. Fall back to order+1 for legacy docs that
+          // pre-date dayIndex authoring (e.g. courses created before the
+          // weekly-schedule rollout).
+          const dayIdx = s.dayIndex ?? (s.order ?? 0) + 1;
+          const date = new Date(weekStart.getTime() + (dayIdx - 1) * 86400000);
+          return {...s, dayIndex: dayIdx, plannedDate: toLocalDateISO(date)};
         });
-        return;
+        sessionsWithDate.sort((a, b) => a.dayIndex - b.dayIndex);
+        resolvedAllSessions = sessionsWithDate.map((s) => ({
+          sessionId: s.sessionId,
+          title: s.title,
+          moduleId: s.moduleId,
+          moduleTitle: s.moduleTitle,
+          order: s.order,
+          image_url: s.image_url,
+          plannedDate: s.plannedDate,
+        }));
+
+        const targetDate = requestedDate ?? toLocalDateISO(today);
+        const targetWeekday = (() => {
+          const d = new Date(`${targetDate}T12:00:00`);
+          return ((d.getDay() + 6) % 7) + 1;
+        })();
+        const dateInThisWeek = sessionsWithDate.some((s) => s.plannedDate === targetDate);
+        const todaySession = requestedSessionId ?
+          sessionsWithDate.find((s) => s.sessionId === requestedSessionId) :
+          dateInThisWeek ?
+            sessionsWithDate.find((s) => s.plannedDate === targetDate) :
+            sessionsWithDate.find((s) => s.dayIndex === targetWeekday);
+
+        if (!todaySession) {
+          res.json({
+            data: {
+              hasSession: false,
+              isRestDay: true,
+              emptyReason: "no_session_today",
+              session: null,
+              progress: {
+                completed: completedSessionIds.size,
+                total: sessionsWithDate.length,
+                allSessionsCompleted: [...completedSessionIds],
+              },
+              allSessions: resolvedAllSessions,
+            },
+          });
+          return;
+        }
+
+        targetModuleId = todaySession.moduleId;
+        targetSessionId = todaySession.sessionId;
+      } else {
+        resolvedAllSessions = allSessions.map((s) => ({
+          sessionId: s.sessionId,
+          title: s.title,
+          moduleId: s.moduleId,
+          moduleTitle: s.moduleTitle,
+          order: s.order,
+          image_url: s.image_url,
+        }));
+
+        if (allSessions.length === 0) {
+          res.json({
+            data: {
+              hasSession: false,
+              isRestDay: false,
+              emptyReason: "no_planning_this_week",
+              session: null,
+              progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
+              allSessions: [],
+            },
+          });
+          return;
+        }
+
+        const nextSession = requestedSessionId ?
+          allSessions.find((s) => s.sessionId === requestedSessionId) :
+          allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+
+        if (!nextSession) {
+          res.json({
+            data: {
+              hasSession: false,
+              isRestDay: false,
+              emptyReason: "all_sessions_completed",
+              session: null,
+              progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]},
+              allSessions: resolvedAllSessions,
+            },
+          });
+          return;
+        }
+
+        targetModuleId = nextSession.moduleId;
+        targetSessionId = nextSession.sessionId;
       }
-
-      const nextSession = requestedSessionId ?
-        allSessions.find((s) => s.sessionId === requestedSessionId) :
-        allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
-
-      if (!nextSession) {
-        res.json({
-          data: {
-            hasSession: false,
-            isRestDay: false,
-            emptyReason: "all_sessions_completed",
-            session: null,
-            progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]},
-            allSessions: resolvedAllSessions,
-          },
-        });
-        return;
-      }
-
-      targetModuleId = nextSession.moduleId;
-      targetSessionId = nextSession.sessionId;
     }
   }
 

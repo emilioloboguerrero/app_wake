@@ -53,6 +53,7 @@ export function useCoursesEnriched(courses) {
         block_cadence: apiData?.block_cadence ?? null,
         current_block_id: apiData?.current_block_id ?? null,
         current_block_index: typeof apiData?.current_block_index === 'number' ? apiData.current_block_index : null,
+        scheduling: apiData?.scheduling ?? c.scheduling ?? null,
       };
     }),
   };

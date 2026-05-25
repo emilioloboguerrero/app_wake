@@ -2,9 +2,10 @@
 //   Front: coach picker, Lun→Dom day strip (date + status dot), nutrition adherence,
 //          flip-to-calendar button.
 //   Back:  month label + nav, full month grid with the same dot system, flip-back button.
-// Dot system: green = a session was completed that date; grey = (one_on_one only) a
-// session is planned but not completed. Module/general programs are not date-scheduled
-// so they only get green dots from sessionHistory.
+// Dot system: green = a session was completed that date; grey = a session is
+// planned but not completed (one_on_one, or any program whose sessionState
+// exposes per-session plannedDate — e.g. general+scheduling=weekly). Module
+// programs without per-day scheduling fall back to green dots from sessionHistory.
 // Neither face overflows the card; no internal scrolling. Accent CSS vars are
 // scoped to this card (derived from the active coach's profile picture).
 import React, { useMemo, useState, useEffect } from 'react';
@@ -610,19 +611,20 @@ const WeekCoachCard = ({
     return { startYmd: toYYYYMMDD(start), endYmd: toYYYYMMDD(end) };
   }, [monthGrid, monday, weekDates]);
 
-  // Module/general programs aren't date-scheduled, so completed dates come from
-  // sessionHistory (via /workout/calendar). One_on_one derives them from
-  // sessionState.allSessions + completedSessionIds, no extra fetch.
+  // Courses that don't carry per-session plannedDate (legacy general/low_ticket)
+  // need a separate sessionHistory fetch to surface completed dates. Date-scheduled
+  // courses (one_on_one, scheduling='weekly') derive both planned and completed
+  // dates from sessionState.allSessions + completedSessionIds — no extra fetch.
+  const isDateScheduled = (c) => c.deliveryType === 'one_on_one' || c.scheduling === 'weekly';
   const moduleCalendarQueries = useQueries({
     queries: envCourses.map((c) => {
       const cId = c.courseId || c.id;
-      const isOO = c.deliveryType === 'one_on_one';
       return {
         queryKey: ['hoy', 'completedCalendar', user?.uid, cId, calendarRange.startYmd, calendarRange.endYmd],
         queryFn: () => exerciseHistoryService.getDatesWithCompletedSessionsForCourse(
           user.uid, cId, calendarRange.startYmd, calendarRange.endYmd,
         ),
-        enabled: !!user?.uid && !!cId && !isOO,
+        enabled: !!user?.uid && !!cId && !isDateScheduled(c),
         staleTime: 5 * 60 * 1000,
       };
     }),
@@ -639,15 +641,20 @@ const WeekCoachCard = ({
     const planned = new Map();
     const titles = new Map();
     envCourses.forEach((course, idx) => {
-      const isOO = course.deliveryType === 'one_on_one';
       const sessionState = sessionStateQueries[idx]?.data;
-      if (isOO) {
+      // Branch on the actual data shape, not the course flag. /workout/daily
+      // returns plannedDate per session for any date-scheduled program
+      // (one_on_one or scheduling='weekly'); that's the truth, regardless of
+      // whether the flag has propagated through enrichment + user-doc caches.
+      const allSessionsList = sessionState?.allSessions || [];
+      const hasPlanned = allSessionsList.some((s) => s.plannedDate);
+      if (hasPlanned) {
         const completedIds = new Set(
           Array.isArray(sessionState?.progress?.allSessionsCompleted)
             ? sessionState.progress.allSessionsCompleted
             : [],
         );
-        (sessionState?.allSessions || []).forEach((s) => {
+        allSessionsList.forEach((s) => {
           if (!s.plannedDate) return;
           const ymd = String(s.plannedDate).slice(0, 10);
           if (completedIds.has(s.sessionId)) {

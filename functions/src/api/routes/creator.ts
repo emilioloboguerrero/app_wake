@@ -1428,6 +1428,7 @@ router.post("/creator/programs", async (req, res) => {
     availableLibraries?: unknown[];
     free_trial?: Record<string, unknown>;
     block_cadence?: string | null;
+    scheduling?: string | null;
   }>(
     {
       title: "string",
@@ -1443,6 +1444,7 @@ router.post("/creator/programs", async (req, res) => {
       availableLibraries: "optional_array",
       free_trial: "optional_object",
       block_cadence: "optional_string",
+      scheduling: "optional_string",
     },
     req.body
   );
@@ -1453,6 +1455,18 @@ router.post("/creator/programs", async (req, res) => {
       "VALIDATION_ERROR", 400,
       "block_cadence debe ser 'monthly_first_monday' o null",
       "block_cadence"
+    );
+  }
+
+  // scheduling='weekly' means sessions render per-day in the week strip
+  // (TodayWorkoutCard + WeekCoachCard pivot to dayIndex-based plannedDate).
+  // null/undefined = legacy sequential "next incomplete session" behavior.
+  if (body.scheduling !== undefined && body.scheduling !== null &&
+      body.scheduling !== "weekly") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "scheduling debe ser 'weekly' o null",
+      "scheduling"
     );
   }
 
@@ -1535,6 +1549,7 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.weight_suggestions !== undefined && {weight_suggestions: body.weight_suggestions}),
     ...(body.duration !== undefined && {duration: body.duration}),
     ...(body.block_cadence !== undefined && {block_cadence: body.block_cadence}),
+    ...(body.scheduling !== undefined && {scheduling: body.scheduling}),
     availableLibraries,
     creator_id: auth.userId,
     creatorName,
@@ -1583,6 +1598,10 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     // current_block_index are written exclusively by the
     // `monthlyDropAdvance` cron — not exposed for client write here.
     "block_cadence",
+    // Weekly per-day scheduling: when set to 'weekly', /workout/daily computes
+    // plannedDate from session.dayIndex (1..7 = Lun..Dom) and TodayWorkoutCard
+    // surfaces "Descanso" on days without a session.
+    "scheduling",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -1593,6 +1612,17 @@ router.patch("/creator/programs/:programId", async (req, res) => {
         "VALIDATION_ERROR", 400,
         "block_cadence debe ser 'monthly_first_monday' o null",
         "block_cadence"
+      );
+    }
+  }
+
+  if (updates.scheduling !== undefined) {
+    const v = updates.scheduling;
+    if (v !== null && v !== "weekly") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "scheduling debe ser 'weekly' o null",
+        "scheduling"
       );
     }
   }
@@ -1689,6 +1719,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     image_url: "image_url",
     title: "title",
     block_cadence: "block_cadence",
+    scheduling: "scheduling",
   };
   const userUpdates: Record<string, unknown> = {};
   for (const [field, courseField] of Object.entries(syncFields)) {
