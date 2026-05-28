@@ -109,6 +109,13 @@ class PurchaseService {
       try {
         result = await apiClient.post('/payments/subscription', { courseId, payer_email: payerEmail });
       } catch (error) {
+        if (error.code === 'CAPACITY_FULL') {
+          return {
+            success: false,
+            capacityFull: true,
+            error: error.message || "Cupos agotados",
+          };
+        }
         if (error.code === 'CONFLICT') {
           return {
             success: false,
@@ -170,6 +177,7 @@ class PurchaseService {
     } catch (error) {
       return {
         success: false,
+        capacityFull: error.code === 'CAPACITY_FULL',
         error: error.message || "Error preparing payment",
       };
     }

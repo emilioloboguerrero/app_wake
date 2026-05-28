@@ -134,6 +134,8 @@ const PUBLIC_PATHS = [
   /^\/public\/creators\/[^/]+$/, // GET /public/creators/:username
   /^\/public\/creators\/[^/]+\/programs\/[^/]+$/, // GET /public/creators/:username/programs/:programId
   /^\/public\/storefront\/creators$/, // GET /public/storefront/creators
+  /^\/public\/programs\/[^/]+\/availability$/, // GET program seat availability
+  /^\/public\/programs\/[^/]+\/waitlist$/, // POST join sold-out waitlist
   /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
   // MP webhook authenticates via HMAC signature, not Firebase token (the
   // handler verifies x-signature / x-hmac-signature before doing any work).

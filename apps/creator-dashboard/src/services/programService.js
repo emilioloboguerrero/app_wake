@@ -32,6 +32,19 @@ class ProgramService {
     return res.data;
   }
 
+  async getWaitlist(programId) {
+    const res = await apiClient.get(`/creator/programs/${programId}/waitlist`);
+    return res.data;
+  }
+
+  async admitFromWaitlist(programId, waitlistId) {
+    const res = await apiClient.post(
+      `/creator/programs/${programId}/waitlist/${waitlistId}/admit`,
+      {}
+    );
+    return res.data;
+  }
+
   async releaseProgram(programId) {
     const res = await apiClient.patch(`/creator/programs/${programId}/status`, { status: 'published' });
     try { analyticsService.track('creator.program_published'); } catch {}

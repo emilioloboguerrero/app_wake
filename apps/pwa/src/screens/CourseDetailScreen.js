@@ -26,6 +26,7 @@ import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
 import firestoreService from '../services/apiService';
+import apiClient from '../utils/apiClient';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import courseDownloadService from '../data-management/courseDownloadService';
@@ -109,6 +110,13 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [userCallBooking, setUserCallBooking] = useState(null);
   const [simulateUserRole, setSimulateUserRole] = useState(false);
   const [refreshingOwnership, setRefreshingOwnership] = useState(false);
+  // Sold-out waitlist (beta cap)
+  const [showWaitlistModal, setShowWaitlistModal] = useState(false);
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistError, setWaitlistError] = useState('');
+  const [waitlistDone, setWaitlistDone] = useState(false);
 
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
@@ -682,6 +690,38 @@ useEffect(() => {
     return isDraft || isAdminUser || isCreatorOwnProgram;
   };
 
+  const openWaitlist = () => {
+    const effectiveUser = user || auth.currentUser;
+    setWaitlistName((prev) => prev || effectiveUser?.displayName || '');
+    setWaitlistEmail((prev) => prev || effectiveUser?.email || '');
+    setWaitlistError('');
+    setWaitlistDone(false);
+    setShowWaitlistModal(true);
+  };
+
+  const submitWaitlist = async () => {
+    const name = waitlistName.trim();
+    const email = waitlistEmail.trim().toLowerCase();
+    if (!name) {
+      setWaitlistError('Ingresa tu nombre.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setWaitlistError('Ingresa un correo válido.');
+      return;
+    }
+    setWaitlistSubmitting(true);
+    setWaitlistError('');
+    try {
+      await apiClient.post(`/public/programs/${course.id}/waitlist`, { email, name });
+      setWaitlistDone(true);
+    } catch (err) {
+      setWaitlistError('No pudimos guardarte. Intenta de nuevo.');
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
+
   const handlePurchaseCourse = async () => {
     // Get effective user (from context or Firebase auth)
     const effectiveUser = user || auth.currentUser;
@@ -803,6 +843,16 @@ useEffect(() => {
       });
 
       if (!purchaseResult.success) {
+        // Filled up between load and tap — flip to the waitlist instead of a
+        // dead-end error.
+        if (purchaseResult.capacityFull) {
+          setPurchasing(false);
+          setProcessingPurchase(false);
+          processingPurchaseRef.current = false;
+          pendingPostPurchaseRef.current = false;
+          openWaitlist();
+          return;
+        }
         // Handle special case: requires alternate email for subscription
         if (purchaseResult.requiresAlternateEmail) {
           setPurchasing(false);
@@ -1078,6 +1128,19 @@ useEffect(() => {
           ) : (
             <Text style={styles.primaryButtonText}>Probar</Text>
           )}
+        </TouchableOpacity>
+      );
+    }
+
+    // Beta cap: program is sold out → waitlist instead of buy. Owners,
+    // creators and free-flow previews are handled above and never reach here.
+    if (course.isFull && !simulateUserRole) {
+      return (
+        <TouchableOpacity
+          style={[styles.primaryButton, styles.soldOutButton]}
+          onPress={openWaitlist}
+        >
+          <Text style={styles.primaryButtonText}>Cupos agotados · Lista de espera</Text>
         </TouchableOpacity>
       );
     }
@@ -1596,6 +1659,98 @@ useEffect(() => {
                 )}
               </TouchableOpacity>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Sold-out waitlist (beta cap): capture name + email so we can reach out
+          when a seat opens. No payment — mirrors the event waitlist. */}
+      <Modal
+        visible={showWaitlistModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowWaitlistModal(false)}
+      >
+        <Pressable
+          style={styles.emailModalOverlay}
+          onPress={() => setShowWaitlistModal(false)}
+        >
+          <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
+            {waitlistDone ? (
+              <>
+                <Text style={styles.emailModalTitle}>¡Estás en la lista!</Text>
+                <Text style={styles.emailModalDescription}>
+                  Te avisaremos en {waitlistEmail} si se libera un cupo.
+                </Text>
+                <View style={styles.emailModalButtons}>
+                  <TouchableOpacity
+                    style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
+                    onPress={() => setShowWaitlistModal(false)}
+                  >
+                    <Text style={styles.emailModalButtonSubmitText}>Listo</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.emailModalTitle}>Lista de espera</Text>
+                <Text style={styles.emailModalDescription}>
+                  Cupos agotados. Déjanos tus datos y te avisamos si se abre un cupo.
+                </Text>
+
+                <TextInput
+                  style={styles.emailModalInput}
+                  placeholder="Tu nombre"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={waitlistName}
+                  onChangeText={(text) => {
+                    setWaitlistName(text);
+                    setWaitlistError('');
+                  }}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+
+                <TextInput
+                  style={[styles.emailModalInput, waitlistError && styles.emailModalInputError]}
+                  placeholder="Tu correo"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={waitlistEmail}
+                  onChangeText={(text) => {
+                    setWaitlistEmail(text);
+                    setWaitlistError('');
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                {waitlistError ? (
+                  <Text style={styles.emailModalErrorText}>{waitlistError}</Text>
+                ) : null}
+
+                <View style={styles.emailModalButtons}>
+                  <TouchableOpacity
+                    style={[styles.emailModalButton, styles.emailModalButtonCancel]}
+                    onPress={() => setShowWaitlistModal(false)}
+                  >
+                    <Text style={styles.emailModalButtonCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
+                    onPress={submitWaitlist}
+                    disabled={waitlistSubmitting}
+                  >
+                    {waitlistSubmitting ? (
+                      <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" />
+                    ) : (
+                      <Text style={styles.emailModalButtonSubmitText}>Unirme</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -2292,6 +2447,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   ownedButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
     opacity: 0.45,
+  },
+  soldOutButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
   },
   refreshOwnershipButton: {
     flexDirection: 'row',

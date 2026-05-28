@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { STALE_TIMES } from '../config/queryConfig';
 import { useAuth } from '../contexts/AuthContext';
 import firestoreService from '../services/apiService';
+import apiClient from '../utils/apiClient';
 import LoadingScreen from './LoadingScreen';
 // Import the base component
 const CourseDetailScreenModule = require('./CourseDetailScreen.js');
@@ -21,15 +22,32 @@ const CourseDetailScreen = () => {
   const { data: course, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['programs', courseId],
     queryFn: async () => {
+      // Beta cap: best-effort seat availability so the buy button can show the
+      // sold-out → waitlist state. Silent on failure (uncapped programs return
+      // isFull:false anyway).
+      const fetchAvailability = async (id) => {
+        try {
+          const res = await apiClient.get(`/public/programs/${id}/availability`);
+          return res?.data ?? {};
+        } catch {
+          return {};
+        }
+      };
+
       if (courseFromState) {
-        return { ...courseFromState, courseId: courseFromState.courseId || courseFromState.id || courseId, id: courseFromState.id || courseFromState.courseId || courseId };
+        const resolvedId = courseFromState.courseId || courseFromState.id || courseId;
+        const availability = await fetchAvailability(resolvedId);
+        return { ...courseFromState, ...availability, courseId: resolvedId, id: courseFromState.id || courseFromState.courseId || courseId };
       }
       const courseData = await firestoreService.getCourse(courseId);
       if (!courseData) throw new Error('Course not found');
+      const resolvedId = courseData.id || courseId;
+      const availability = await fetchAvailability(resolvedId);
       const transformedCourse = {
         ...courseData,
-        id: courseData.id || courseId,
-        courseId: courseData.id || courseId,
+        ...availability,
+        id: resolvedId,
+        courseId: resolvedId,
         title: courseData.title || 'Programa sin título',
         image_url: courseData.image_url || null,
         discipline: courseData.discipline || 'General',

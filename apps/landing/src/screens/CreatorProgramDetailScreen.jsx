@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { LandingFooter } from './ShowcaseLandingScreen';
-import { WakeApiError } from '../utils/apiClient';
+import apiClient, { WakeApiError } from '../utils/apiClient';
 import { getCreatorProgram, getCreatorStorefront } from '../services/creatorStorefrontService';
 import {
   startStorefrontCheckout,
@@ -132,6 +132,12 @@ export default function CreatorProgramDetailScreen() {
   const [altEmail, setAltEmail] = useState('');
   const [needsAltEmail, setNeedsAltEmail] = useState(false);
   const [alreadyOwned, setAlreadyOwned] = useState(null);
+  // Sold-out waitlist: 'hidden' (just the CTA) | 'form' | 'done'.
+  const [waitlistPhase, setWaitlistPhase] = useState('hidden');
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistError, setWaitlistError] = useState(null);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
   const videoRef = useRef(null);
@@ -284,6 +290,12 @@ export default function CreatorProgramDetailScreen() {
       throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
     } catch (err) {
       setBusyMode(null);
+      // Filled up between page load and click — flip to the waitlist instead of
+      // showing a dead-end error.
+      if (err?.code === 'CAPACITY_FULL') {
+        openWaitlist();
+        return;
+      }
       setCheckoutError(err?.message || 'No se pudo iniciar el pago');
     }
   };
@@ -339,6 +351,40 @@ export default function CreatorProgramDetailScreen() {
       return;
     }
     runCheckout(pendingMode, trimmed);
+  };
+
+  const openWaitlist = () => {
+    const user = getCurrentUser();
+    if (user) {
+      setWaitlistName((prev) => prev || user.displayName || '');
+      setWaitlistEmail((prev) => prev || user.email || '');
+    }
+    setWaitlistError(null);
+    setWaitlistPhase('form');
+  };
+
+  const submitWaitlist = async (e) => {
+    if (e) e.preventDefault();
+    const name = waitlistName.trim();
+    const email = waitlistEmail.trim().toLowerCase();
+    if (!name) {
+      setWaitlistError('Ingresa tu nombre.');
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      setWaitlistError('Ingresa un correo válido.');
+      return;
+    }
+    setWaitlistSubmitting(true);
+    setWaitlistError(null);
+    try {
+      await apiClient.post(`/public/programs/${program.id}/waitlist`, { email, name });
+      setWaitlistPhase('done');
+    } catch {
+      setWaitlistError('No pudimos guardarte. Intenta de nuevo.');
+    } finally {
+      setWaitlistSubmitting(false);
+    }
   };
 
   // When both modes are available, subscription is the primary CTA and
@@ -439,6 +485,64 @@ export default function CreatorProgramDetailScreen() {
             >
               <span className="cpd-cta-label">Reservar llamada</span>
             </button>
+          ) : (program.isFull || waitlistPhase !== 'hidden') ? (
+            <div className="cpd-soldout">
+              {waitlistPhase === 'done' ? (
+                <div className="cpd-waitlist-done" role="status">
+                  <h2 className="cpd-waitlist-done-title">¡Estás en la lista!</h2>
+                  <p className="cpd-waitlist-done-text">
+                    Te avisaremos a <strong>{waitlistEmail}</strong> si se abre un cupo.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <span className="cpd-soldout-badge">Cupos agotados</span>
+                  {waitlistPhase === 'form' ? (
+                    <form className="cpd-waitlist-form" onSubmit={submitWaitlist}>
+                      <p className="cpd-waitlist-label">
+                        Déjanos tus datos y te avisamos si se abre un cupo.
+                      </p>
+                      <input
+                        type="text"
+                        className="cpd-alt-email-input"
+                        placeholder="Tu nombre"
+                        value={waitlistName}
+                        onChange={(e) => { setWaitlistName(e.target.value); setWaitlistError(null); }}
+                        maxLength={120}
+                        disabled={waitlistSubmitting}
+                      />
+                      <input
+                        type="email"
+                        className="cpd-alt-email-input"
+                        placeholder="Tu correo"
+                        value={waitlistEmail}
+                        onChange={(e) => { setWaitlistEmail(e.target.value); setWaitlistError(null); }}
+                        maxLength={200}
+                        disabled={waitlistSubmitting}
+                      />
+                      {waitlistError ? <p className="cpd-error" role="alert">{waitlistError}</p> : null}
+                      <button
+                        type="submit"
+                        className="cpd-cta cpd-cta-primary"
+                        disabled={waitlistSubmitting}
+                      >
+                        <span className="cpd-cta-label">
+                          {waitlistSubmitting ? 'Enviando…' : 'Unirme a la lista'}
+                        </span>
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="cpd-cta cpd-cta-primary"
+                      onClick={openWaitlist}
+                    >
+                      <span className="cpd-cta-label">Unirme a la lista de espera</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           ) : needsAltEmail ? null : (
             // Hide the primary CTAs while the alt-email form is showing. Both
             // buttons remained visible and clickable, so a user could re-fire

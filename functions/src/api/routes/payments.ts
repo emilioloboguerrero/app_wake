@@ -16,6 +16,7 @@ import {
   calculateExpirationDate, classifyError, getClient,
 } from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
+import {assertCourseHasSeat} from "../services/capacity.js";
 import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
@@ -242,6 +243,10 @@ router.post("/payments/preference", async (req, res) => {
     );
   }
 
+  // Beta cap: refuse checkout once the program is full. Real lock — the UI also
+  // hides the button, but a client could call this directly.
+  await assertCourseHasSeat(courseId, course);
+
   const externalReference = buildExternalReference(auth.userId, courseId, "otp");
 
   const client = getMPClient();
@@ -337,6 +342,10 @@ router.post("/payments/subscription", async (req, res) => {
       );
     }
   }
+
+  // Beta cap: refuse checkout once the program is full. Real lock — the UI also
+  // hides the button, but a client could call this directly.
+  await assertCourseHasSeat(body.courseId, course);
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
   if (!userDoc.exists) {
@@ -1025,6 +1034,11 @@ router.post("/payments/webhook", async (req: Request, res) => {
                 creatorName: course.creatorName ?? course.creator_name ?? null,
                 creator_id: course.creator_id ?? null,
               },
+              // Count trial grants toward the beta cap. arrayUnion keeps this
+              // set-unique, so the cap's seat count (see capacity.ts) includes
+              // trial users from the moment access is granted, not their first
+              // charge.
+              purchased_courses: FieldValue.arrayUnion(courseIdForGrant),
               updated_at: FieldValue.serverTimestamp(),
             });
 

@@ -88,6 +88,9 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   const [compareAtPriceValue, setCompareAtPriceValue] = useState(program?.compare_at_price != null ? String(program.compare_at_price) : '');
   const [freeTrialActive, setFreeTrialActive] = useState(!!program?.free_trial?.active);
   const [freeTrialDays, setFreeTrialDays] = useState(String(program?.free_trial?.duration_days ?? 0));
+  // Beta cap: max unique purchasers. Empty = uncapped. Buyers past the cap land
+  // on a waitlist (see the waitlist panel below).
+  const [capacityValue, setCapacityValue] = useState(program?.capacity != null ? String(program.capacity) : '');
 
   useEffect(() => {
     setPriceValue(program?.price != null ? String(program.price) : '');
@@ -95,7 +98,8 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     setCompareAtPriceValue(program?.compare_at_price != null ? String(program.compare_at_price) : '');
     setFreeTrialActive(!!program?.free_trial?.active);
     setFreeTrialDays(String(program?.free_trial?.duration_days ?? 0));
-  }, [program?.price, program?.subscription_price, program?.compare_at_price, program?.free_trial]);
+    setCapacityValue(program?.capacity != null ? String(program.capacity) : '');
+  }, [program?.price, program?.subscription_price, program?.compare_at_price, program?.free_trial, program?.capacity]);
 
   // ── Content tab state ─────────────────────────────────────────
   const [mediaPickerContext, setMediaPickerContext] = useState('program');
@@ -131,6 +135,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     queryFn: () => apiClient.get(`/creator/programs/${programId}/demographics`).then(r => r.data),
     enabled: !!programId && activeTab === 'programa',
     staleTime: 15 * 60 * 1000,
+  });
+
+  // Beta cap: load the waitlist only for capped programs so uncapped ones pay
+  // nothing. Powers the "X/cap vendidos" count and the admit list.
+  const isCapped = program?.capacity != null && Number(program.capacity) >= 1;
+  const { data: waitlistData, refetch: refetchWaitlist } = useQuery({
+    queryKey: ['creator', 'programWaitlist', programId],
+    queryFn: () => programService.getWaitlist(programId),
+    enabled: !!programId && isCapped,
+    staleTime: 60 * 1000,
   });
 
   const programAdherence = useMemo(() => {
@@ -184,6 +198,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     await editor.saveField({ compare_at_price: numeric });
   }, [compareAtPriceValue, program?.compare_at_price, program?.price, editor]);
 
+  const saveCapacity = useCallback(async () => {
+    const numeric = capacityValue === '' ? null : parseInt(String(capacityValue).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 1) {
+      setCapacityValue(program?.capacity != null ? String(program.capacity) : '');
+      return;
+    }
+    if (numeric === (program?.capacity ?? null)) return;
+    await editor.saveField({ capacity: numeric });
+  }, [capacityValue, program?.capacity, editor]);
+
   const saveTrialDays = useCallback(async () => {
     const days = Math.max(0, parseInt(freeTrialDays, 10) || 0);
     const free_trial = { active: !!freeTrialActive, duration_days: days };
@@ -220,6 +244,18 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   // it's disabled until at least one module is published, and refuses to
   // overwrite an existing state doc (server-side 409 ALREADY_INITIALIZED).
   const { showToast } = useToast();
+
+  const handleAdmitFromWaitlist = useCallback(async (waitlistId) => {
+    try {
+      await programService.admitFromWaitlist(programId, waitlistId);
+      showToast('Cupo abierto. Avísale a la persona para que lo tome.', 'success');
+      await refetchWaitlist();
+      await refetchProgram?.();
+    } catch {
+      showToast('No pudimos admitir desde la lista. Intenta de nuevo.', 'error');
+    }
+  }, [programId, refetchWaitlist, refetchProgram, showToast]);
+
   const [isInitializingCadence, setIsInitializingCadence] = useState(false);
   const hasProgramState = typeof program?.current_block_index === 'number';
   const handleInitializeCadence = useCallback(async () => {
@@ -581,6 +617,64 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     )}
                   </div>
                 </BentoCard>
+
+                {/* Cupos (beta cap) — max unique purchasers. Empty = sin
+                    límite. Once full, the buy button on every surface turns
+                    into a waitlist that captures email + name. */}
+                <BentoCard className="gp-config__card">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <h3>Cupos</h3>
+                  <div className="gp-price-field">
+                    <input
+                      className="gp-price-field__input"
+                      type="text"
+                      inputMode="numeric"
+                      value={capacityValue ? Number(capacityValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
+                      onChange={(e) => setCapacityValue(e.target.value.replace(/\D/g, ''))}
+                      onBlur={saveCapacity}
+                      placeholder="Sin límite"
+                    />
+                    <span className="gp-price-field__hint">personas</span>
+                  </div>
+                  {isCapped && waitlistData && (
+                    <p className="gp-capacity-count">
+                      {waitlistData.seatsTaken}/{waitlistData.capacity} vendidos
+                    </p>
+                  )}
+                </BentoCard>
+
+                {/* Waitlist — only shown when capped and people are waiting.
+                    Admitir abre un cupo (capacity += 1); the freed seat goes to
+                    whoever checks out next, so reach out to the person. */}
+                {isCapped && waitlistData?.waitlist?.length > 0 && (
+                  <BentoCard className="gp-config__card gp-config__card--span-2">
+                    <GlowingEffect spread={24} proximity={60} />
+                    <h3>
+                      Lista de espera{' '}
+                      <span className="gp-waitlist-count">{waitlistData.waitlist.length}</span>
+                    </h3>
+                    <div className="gp-waitlist">
+                      {waitlistData.waitlist.map((w) => (
+                        <div key={w.id} className="gp-waitlist__row">
+                          <div className="gp-waitlist__info">
+                            <span className="gp-waitlist__name">{w.name || 'Sin nombre'}</span>
+                            <span className="gp-waitlist__email">{w.email}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="gp-waitlist__admit"
+                            onClick={() => handleAdmitFromWaitlist(w.id)}
+                          >
+                            Admitir
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="gp-waitlist__hint">
+                      Admitir abre un cupo. Avísale a la persona para que lo tome.
+                    </p>
+                  </BentoCard>
+                )}
 
                 {/* Bloques mensuales — structural toggle. Per-block authoring,
                     publish state, and unlock dates live in the cadence

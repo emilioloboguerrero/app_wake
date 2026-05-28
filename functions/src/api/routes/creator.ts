@@ -18,6 +18,7 @@ import {
   validateDeletionPath,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
+import {countCourseSeatsTaken} from "../services/capacity.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
 import {isReservedUsername} from "../utils/reservedUsernames.js";
@@ -1602,8 +1603,23 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     // plannedDate from session.dayIndex (1..7 = Lun..Dom) and TodayWorkoutCard
     // surfaces "Descanso" on days without a session.
     "scheduling",
+    // Beta purchase cap: max unique lifetime purchasers. null = uncapped.
+    // Enforced at checkout via capacity.ts; counts buyers past the cap into a
+    // waitlist instead.
+    "capacity",
   ];
   const updates = pickFields(req.body, allowedFields);
+
+  if (updates.capacity !== undefined && updates.capacity !== null) {
+    const v = updates.capacity;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 1) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "capacity debe ser un entero mayor o igual a 1, o null para quitar el límite",
+        "capacity"
+      );
+    }
+  }
 
   if (updates.block_cadence !== undefined) {
     const v = updates.block_cadence;
@@ -1744,6 +1760,83 @@ router.patch("/creator/programs/:programId", async (req, res) => {
 
   res.json({data: {updated: true}});
 });
+
+// GET /creator/programs/:programId/waitlist
+//
+// Lists waitlist entries (email + name) plus the current seat count, so the
+// dashboard can show "12/20 cupos" and the people waiting. Mirrors the event
+// waitlist management view.
+router.get("/creator/programs/:programId/waitlist", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const programRef = db.collection("courses").doc(req.params.programId);
+  const programDoc = await programRef.get();
+  if (!programDoc.exists || programDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const snap = await programRef
+    .collection("waitlist")
+    .orderBy("created_at", "asc")
+    .limit(500)
+    .get();
+  const waitlist = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      email: data.email ?? null,
+      name: data.name ?? null,
+      created_at: data.created_at?.toDate?.()?.toISOString?.() ?? null,
+    };
+  });
+
+  const cap = programDoc.data()?.capacity;
+  const capacity =
+    typeof cap === "number" && Number.isInteger(cap) && cap >= 1 ? cap : null;
+  const seatsTaken = await countCourseSeatsTaken(req.params.programId);
+
+  res.json({data: {capacity, seatsTaken, waitlist}});
+});
+
+// POST /creator/programs/:programId/waitlist/:waitlistId/admit
+//
+// Admitting opens one seat (capacity += 1) and removes the entry. The freed
+// seat goes to whoever checks out next, so reach out to the admitted person so
+// they claim it. Programs cost money — we can't auto-enroll like events do.
+router.post(
+  "/creator/programs/:programId/waitlist/:waitlistId/admit",
+  async (req, res) => {
+    const auth = await validateAuthAndRateLimit(req);
+    requireCreator(auth);
+
+    const programRef = db.collection("courses").doc(req.params.programId);
+    const programDoc = await programRef.get();
+    if (!programDoc.exists || programDoc.data()?.creator_id !== auth.userId) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+    }
+
+    const waitlistRef = programRef
+      .collection("waitlist")
+      .doc(req.params.waitlistId);
+    const waitlistDoc = await waitlistRef.get();
+    if (!waitlistDoc.exists) {
+      throw new WakeApiServerError(
+        "NOT_FOUND", 404, "Entrada de lista de espera no encontrada"
+      );
+    }
+
+    // Only bump a real cap. On an (unexpectedly) uncapped program, incrementing
+    // an absent field would set capacity to 1 and suddenly cap it — skip.
+    const cap = programDoc.data()?.capacity;
+    if (typeof cap === "number" && Number.isInteger(cap) && cap >= 1) {
+      await programRef.update({capacity: FieldValue.increment(1)});
+    }
+    await waitlistRef.delete();
+
+    res.json({data: {admitted: true}});
+  }
+);
 
 // PATCH /creator/programs/:programId/status
 router.patch("/creator/programs/:programId/status", async (req, res) => {

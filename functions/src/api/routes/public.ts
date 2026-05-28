@@ -13,7 +13,7 @@ import * as functions from "firebase-functions";
 import {Preference, PreApproval} from "mercadopago";
 import {db, FieldValue} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
-import {checkRateLimit} from "../middleware/rateLimit.js";
+import {checkRateLimit, checkIpRateLimit} from "../middleware/rateLimit.js";
 import {validateBody} from "../middleware/validate.js";
 import {safeErrorPayload, redactEmailForLog} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
@@ -23,6 +23,7 @@ import {
   getClient,
   type MercadoPagoPreapproval,
 } from "../services/paymentHelpers.js";
+import {getCourseAvailability, assertCourseHasSeat} from "../services/capacity.js";
 
 const router = Router();
 
@@ -274,11 +275,16 @@ router.get(
       throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
     }
 
+    const availability = await getCourseAvailability(programDoc.id, programData);
+
     setStorefrontCache(res);
     res.json({
       data: {
         creator,
-        program: shapePublicProgramDetail(programDoc.id, programData),
+        program: {
+          ...shapePublicProgramDetail(programDoc.id, programData),
+          ...availability,
+        },
       },
     });
   }
@@ -515,6 +521,10 @@ router.post("/public/checkout/start", async (req, res) => {
       return;
     }
   }
+
+  // Beta cap: refuse checkout once the program is full. Real lock — the public
+  // buy page also hides the button, but a client could call this directly.
+  await assertCourseHasSeat(body.courseId, course);
 
   // Bootstrap user doc with storefront-acquisition flags. Include displayName
   // from the ID-token claims so a race with onUserCreated doesn't leave the
@@ -805,6 +815,75 @@ router.get("/public/checkout/status", async (req, res) => {
   const active = entry?.status === "active" && stillValid;
 
   res.json({data: {active, expiresAt}});
+});
+
+// ─── Beta capacity + waitlist ──────────────────────────────────────────────
+
+// GET /public/programs/:programId/availability
+//
+// Public, unauthenticated. Returns {capacity, seatsRemaining, isFull} so a buy
+// page can render the "Cupos agotados → lista de espera" state before the user
+// clicks. The checkout endpoint is the real gate; this is just for UX.
+router.get("/public/programs/:programId/availability", async (req, res) => {
+  const programId = req.params.programId || "";
+  if (!COURSE_ID_RE.test(programId) || RESERVED_COURSE_IDS.has(programId)) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const programDoc = await db.collection("courses").doc(programId).get();
+  if (!programDoc.exists || programDoc.data()?.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const availability = await getCourseAvailability(programId, programDoc.data() ?? {});
+  // Short cache: seat counts change, but a 30s window protects Firestore from
+  // bursts without making the sold-out signal feel stale.
+  res.setHeader("Cache-Control", "public, max-age=30, s-maxage=30");
+  res.json({data: availability});
+});
+
+// POST /public/programs/:programId/waitlist
+//
+// Public, unauthenticated. Captures {email, name} when a program is sold out.
+// Dedup by email so joining twice is a no-op. Mirrors the event waitlist.
+router.post("/public/programs/:programId/waitlist", async (req, res) => {
+  await checkIpRateLimit(req, 10);
+
+  const programId = req.params.programId || "";
+  if (!COURSE_ID_RE.test(programId) || RESERVED_COURSE_IDS.has(programId)) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+
+  const body = validateBody<{ email: string; name: string }>(
+    {email: "string", name: "string"},
+    req.body,
+    {maxStringLength: 200}
+  );
+  const email = body.email.trim().toLowerCase();
+  const name = body.name.trim();
+  if (!EMAIL_RE.test(email)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email inválido", "email");
+  }
+  if (!name) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Ingresa tu nombre", "name");
+  }
+
+  const programDoc = await db.collection("courses").doc(programId).get();
+  if (!programDoc.exists || programDoc.data()?.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+
+  const waitlistCol = db.collection("courses").doc(programId).collection("waitlist");
+  const existing = await waitlistCol.where("email", "==", email).limit(1).get();
+  if (!existing.empty) {
+    res.status(200).json({data: {status: "waitlisted", alreadyOnList: true}});
+    return;
+  }
+
+  await waitlistCol.add({
+    email,
+    name,
+    created_at: FieldValue.serverTimestamp(),
+  });
+  res.status(201).json({data: {status: "waitlisted", alreadyOnList: false}});
 });
 
 export default router;
