@@ -122,7 +122,19 @@ class SessionService {
           workout: null,
           index: 0,
           isManual: false,
-          allSessions: [],
+          // Rest days / all-completed return hasSession:false but still carry the
+          // week's planned sessions — the WeekCoachCard strip needs them to label
+          // each day. Preserve them instead of dropping to an empty list.
+          allSessions: (d?.allSessions ?? []).map(s => ({
+            id: s.sessionId,
+            sessionId: s.sessionId,
+            title: s.title,
+            moduleId: s.moduleId,
+            moduleTitle: s.moduleTitle,
+            order: s.order,
+            plannedDate: s.plannedDate ?? null,
+            image_url: s.image_url ?? null,
+          })),
           progress: d?.progress ?? null,
           isLoading: false,
           error: null,

@@ -18,6 +18,7 @@ import {
   useWindowDimensions,
   Dimensions,
   Animated,
+  Easing,
   Modal,
   Pressable,
   Alert,
@@ -877,6 +878,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [sessionData, setSessionData] = useState(null);
   const [currentView, setCurrentView] = useState(0); // 0 = sheet closed, 1 = sheet open (exercise list)
   const [isSheetOpen, setIsSheetOpen] = useState(false);
+  // Whether the user has ever opened the exercise-list drawer (persisted). Until they
+  // have, a subtle pull-down hint pulses on the closed lid at the start of each set.
+  const [hasEverOpenedDrawer, setHasEverOpenedDrawer] = useState(() => {
+    try { return localStorage.getItem('wake_exercise_drawer_opened') === 'true'; } catch { return false; }
+  });
   const [expandedExercises, setExpandedExercises] = useState({}); // Track which exercises are expanded
   const [isMenuVisible, setIsMenuVisible] = useState(false); // Menu visibility state
   const [isSetInputVisible, setIsSetInputVisible] = useState(false); // Set input popup visibility
@@ -1224,6 +1230,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const sheetMarginAnim = useRef(new Animated.Value(CLOSED_HORIZONTAL_MARGIN)).current;
   const sheetBackdropOpacity = useRef(new Animated.Value(0)).current;
   const sheetDragStartHeightRef = useRef(CLOSED_LID_HEIGHT);
+  // Pull-down hint pulse for the closed lid (native driver: transform only).
+  const lidPulseAnim = useRef(new Animated.Value(0)).current;
   
   // Simple scroll position tracking for pagination
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -2001,6 +2009,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Bottom sheet open/close — height animation (non-native driver so the card stays
   // bottom-anchored with all four corners rounded throughout the transition).
   const openSheet = useCallback(() => {
+    if (!hasEverOpenedDrawer) {
+      setHasEverOpenedDrawer(true);
+      try { localStorage.setItem('wake_exercise_drawer_opened', 'true'); } catch {}
+    }
     setIsSheetOpen(true);
     setCurrentView(1);
     Animated.parallel([
@@ -2008,7 +2020,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       Animated.spring(sheetMarginAnim, { toValue: EXPANDED_HORIZONTAL_MARGIN, useNativeDriver: false, bounciness: 0, speed: 16 }),
       Animated.timing(sheetBackdropOpacity, { toValue: 1, duration: 200, useNativeDriver: false }),
     ]).start();
-  }, [sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, sheetHeight, EXPANDED_HORIZONTAL_MARGIN]);
+  }, [hasEverOpenedDrawer, sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, sheetHeight, EXPANDED_HORIZONTAL_MARGIN]);
 
   // Bridge refs: closeSheet is defined here but handleSaveEditMode lives lower in
   // the file. Using refs lets closeSheet commit pending edits without a forward ref.
@@ -2054,6 +2066,26 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     },
     onPanResponderTerminate: () => closeSheet(),
   }), [sheetHeightAnim, sheetBackdropOpacity, sheetHeight, openSheet, closeSheet]);
+
+  // Pull-down hint: until the user has ever opened the drawer, nudge the closed lid
+  // down and back at the start of each new set to invite the slide-down gesture.
+  useEffect(() => {
+    if (hasEverOpenedDrawer || isSheetOpen) return;
+    lidPulseAnim.setValue(0);
+    // Wait for the screen/set to settle, then nudge a few times so it's noticeable.
+    const anim = Animated.sequence([
+      Animated.delay(700),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lidPulseAnim, { toValue: 1, duration: 750, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: false }),
+          Animated.timing(lidPulseAnim, { toValue: 0, duration: 950, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: false }),
+        ]),
+        { iterations: 2 }
+      ),
+    ]);
+    anim.start();
+    return () => { anim.stop(); lidPulseAnim.setValue(0); };
+  }, [currentExerciseIndex, currentSetIndex, hasEverOpenedDrawer, isSheetOpen, lidPulseAnim]);
 
   // Render pagination indicators - exact copy from MainScreen
   // Render pagination indicators for top cards - MainScreen style
@@ -6174,6 +6206,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             height: sheetHeightAnim,
             left: sheetMarginAnim,
             right: sheetMarginAnim,
+            transform: [{ translateY: lidPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 12] }) }],
           },
         ]}
       >
