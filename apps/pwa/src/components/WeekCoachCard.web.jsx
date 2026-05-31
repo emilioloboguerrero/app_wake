@@ -431,6 +431,12 @@ const styles = {
     fontStyle: 'italic',
     fontWeight: 500,
   },
+  weekRowTitleSkeleton: {
+    display: 'inline-block',
+    width: '62%',
+    height: 12,
+    borderRadius: 6,
+  },
   weekRowRight: {
     flexShrink: 0,
     display: 'flex',
@@ -676,6 +682,17 @@ const WeekCoachCard = ({
     return { completedDateMap: completed, plannedDateMap: planned, sessionTitleByDate: titles };
   }, [envCourses, sessionStateQueries, moduleCalendarQueries, todayYmd]);
 
+  // While the session queries are still resolving and we have no week data yet
+  // (cold start, or stale-empty persisted cache being refetched), show skeleton
+  // bars in the day rows instead of a misleading "Sin sesión". Once any data
+  // lands, render real labels — a background focus-refetch won't trigger this.
+  const weekResolving = useMemo(() => {
+    const anyFetching = sessionStateQueries.some((q) => q && (q.isLoading || q.isFetching));
+    const hasWeekData =
+      sessionTitleByDate.size > 0 || plannedDateMap.size > 0 || completedDateMap.size > 0;
+    return anyFetching && !hasWeekData;
+  }, [sessionStateQueries, sessionTitleByDate, plannedDateMap, completedDateMap]);
+
   const statusForDate = (ymd) => {
     if (completedDateMap.has(ymd)) return 'completed';
     if (plannedDateMap.has(ymd)) return 'planned';
@@ -782,7 +799,11 @@ const WeekCoachCard = ({
                   ? { ...styles.weekRowDayNumber, ...styles.weekRowDayNumberSelected }
                   : styles.weekRowDayNumber;
                 let titleNode;
-                if (title) {
+                if (weekResolving) {
+                  titleNode = (
+                    <span className="wake-skeleton" style={styles.weekRowTitleSkeleton} />
+                  );
+                } else if (title) {
                   titleNode = (
                     <span style={isSelected
                       ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
