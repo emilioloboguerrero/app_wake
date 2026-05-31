@@ -91,6 +91,12 @@ export const AuthProvider = ({ children }) => {
               onboarding_completed: !!data.onboardingCompleted,
               profile_completed: !!data.profileCompleted,
             });
+            // A coach's own dashboard activity attributes to their coach group.
+            if ((data.role || 'user') === 'creator') {
+              analyticsService.group('coach', firebaseUser.uid, {
+                name: data.displayName || data.username || null,
+              });
+            }
           } catch {}
           setWebOnboardingCompleted(data.webOnboardingCompleted ?? false);
           setProfileCompleted(data.profileCompleted ?? false);

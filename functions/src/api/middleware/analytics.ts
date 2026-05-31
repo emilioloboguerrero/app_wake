@@ -105,6 +105,9 @@ export function analyticsMiddleware(
             primary_coach_id: coach.primaryCoachId,
             coach_ids: coach.coachIds,
           },
+          groups: coach.primaryCoachId ?
+            {coach: coach.primaryCoachId} :
+            undefined,
         });
       })
       .catch(() => {

@@ -100,20 +100,8 @@ const getBypassesInstallGate = (basePath) => {
 
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
 const BrowserRouter = require('react-router-dom').BrowserRouter;
-const useLocation = require('react-router-dom').useLocation;
 const AuthProvider = require('./contexts/AuthContext').AuthProvider;
 
-// Session-level screen.viewed tracking. One event per route change.
-function AnalyticsScreenTracker() {
-  const location = useLocation();
-  const lastPath = React.useRef(null);
-  React.useEffect(() => {
-    if (location.pathname === lastPath.current) return;
-    lastPath.current = location.pathname;
-    analyticsService.screenViewed(location.pathname);
-  }, [location.pathname]);
-  return null;
-}
 const ActivityStreakProvider = require('./contexts/ActivityStreakContext').ActivityStreakProvider;
 const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
@@ -847,7 +835,6 @@ export default function App() {
         <SafeAreaProvider initialMetrics={initialMetrics}>
           <AuthProvider>
             <ActivityStreakProvider>
-              <AnalyticsScreenTracker />
               <OfflineBanner />
               <FrozenBottomWrapper>
                 <View style={contentWrapperStyle}>

@@ -14,6 +14,7 @@ import {
   isFreeGrantAllowed,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
+import {identify} from "../../lib/analytics.js";
 import {calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
@@ -79,6 +80,36 @@ router.get("/users/me", async (req, res) => {
     db.collection("users").doc(auth.userId)
       .set({pinnedNutritionAssignmentId}, {merge: true})
       .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
+  }
+
+  // Enrich the PostHog person with profile attributes the analytics middleware
+  // doesn't see (it only carries role + coach attribution). Fire-and-forget; the
+  // Firebase UID is the shared distinct_id, so these $set onto the same person.
+  try {
+    const courses = (data.courses ?? {}) as Record<string, {deliveryType?: string}>;
+    const deliveryTypes = [
+      ...new Set(Object.values(courses).map((c) => c?.deliveryType).filter(Boolean)),
+    ];
+    const createdAtRaw = data.created_at as {toDate?: () => Date} | Date | null;
+    let createdAtIso: string | null = null;
+    if (createdAtRaw && typeof (createdAtRaw as {toDate?: () => Date}).toDate === "function") {
+      createdAtIso = (createdAtRaw as {toDate: () => Date}).toDate().toISOString();
+    } else if (createdAtRaw instanceof Date) {
+      createdAtIso = createdAtRaw.toISOString();
+    }
+    identify(auth.userId, {
+      role: data.role ?? "user",
+      country: data.country ?? null,
+      onboarding_completed: !!data.onboardingCompleted,
+      profile_completed: !!data.profileCompleted,
+      web_onboarding_completed: !!data.webOnboardingCompleted,
+      course_count: Object.keys(courses).length,
+      delivery_types: deliveryTypes,
+      acquired_via: data.acquiredVia ?? null,
+      created_at: createdAtIso,
+    });
+  } catch (err) {
+    functions.logger.warn("profile:identify-enrich-failed", {error: String(err)});
   }
 
   res.json({

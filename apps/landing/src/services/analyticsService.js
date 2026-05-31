@@ -1,6 +1,6 @@
 // Wake analytics service — Landing
 // Anonymous behavior: identified_only person profiles, but anonymous events still flow
-// for funnel analysis (landing.cta_clicked, screen.viewed). Session replay at 100%.
+// for funnel analysis ($pageview, landing.cta_clicked). Session replay at 100%.
 
 import posthog from 'posthog-js';
 
@@ -56,8 +56,9 @@ function init() {
       api_host: readHost(),
       person_profiles: 'identified_only',
       autocapture: false,
-      capture_pageview: false,
+      capture_pageview: 'history_change',
       capture_pageleave: true,
+      capture_exceptions: true,
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '[data-ph-no-capture]',
@@ -89,7 +90,6 @@ const analyticsService = {
   init,
   identify(userId, props = {}) { if (userId) safe((c) => c.identify(userId, props)); },
   track(event, props = {}) { if (event) safe((c) => c.capture(event, props)); },
-  screenViewed(name, props = {}) { this.track('screen.viewed', { screen_name: name, ...props }); },
   reset() { safe((c) => c.reset()); },
   setSuperProps(props = {}) { safe((c) => c.register(props)); },
   optOut() { writeOptOut(true); safe((c) => c.opt_out_capturing()); },

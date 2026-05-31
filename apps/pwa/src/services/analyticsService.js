@@ -7,7 +7,6 @@
 //   analyticsService.init()
 //   analyticsService.identify(userId, props)
 //   analyticsService.track(event, props)
-//   analyticsService.screenViewed(name, props)
 //   analyticsService.reset()
 //   analyticsService.optOut() / optIn() / isOptedOut()
 //   analyticsService.setSuperProps(props)
@@ -91,8 +90,9 @@ function init() {
       api_host: readHost(),
       person_profiles: 'identified_only',
       autocapture: false,
-      capture_pageview: false,
+      capture_pageview: 'history_change',
       capture_pageleave: true,
+      capture_exceptions: true,
       disable_session_recording: false,
       session_recording: {
         maskAllInputs: true,
@@ -148,10 +148,6 @@ function track(event, props = {}) {
   withClient((c) => c.capture(event, props));
 }
 
-function screenViewed(name, props = {}) {
-  track('screen.viewed', { screen_name: name, ...props });
-}
-
 function reset() {
   withClient((c) => c.reset());
 }
@@ -182,7 +178,6 @@ const analyticsService = {
   init,
   identify,
   track,
-  screenViewed,
   reset,
   setSuperProps,
   optOut,

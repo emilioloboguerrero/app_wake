@@ -55,7 +55,7 @@ function init() {
       api_host: readHost(),
       person_profiles: 'identified_only',
       autocapture: false,
-      capture_pageview: false,
+      capture_pageview: 'history_change',
       capture_pageleave: true,
       capture_exceptions: true,
       session_recording: {
@@ -88,8 +88,8 @@ function safe(fn) {
 const analyticsService = {
   init,
   identify(userId, props = {}) { if (userId) safe((c) => c.identify(userId, props)); },
+  group(type, key, props = {}) { if (type && key) safe((c) => c.group(type, key, props)); },
   track(event, props = {}) { if (event) safe((c) => c.capture(event, props)); },
-  screenViewed(name, props = {}) { this.track('screen.viewed', { screen_name: name, ...props }); },
   reset() { safe((c) => c.reset()); },
   setSuperProps(props = {}) { safe((c) => c.register(props)); },
   optOut() { writeOptOut(true); safe((c) => c.opt_out_capturing()); },

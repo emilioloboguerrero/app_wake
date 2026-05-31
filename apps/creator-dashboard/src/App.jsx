@@ -1,19 +1,6 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import analyticsService from './services/analyticsService';
-
-// Session-level screen.viewed tracking. One event per route change.
-function AnalyticsScreenTracker() {
-  const location = useLocation();
-  const lastPath = React.useRef(null);
-  React.useEffect(() => {
-    if (location.pathname === lastPath.current) return;
-    lastPath.current = location.pathname;
-    analyticsService.screenViewed(location.pathname);
-  }, [location.pathname]);
-  return null;
-}
 import { ToastProvider } from './contexts/ToastContext';
 import { MediaUploadProvider } from './contexts/MediaUploadContext';
 import { BackgroundTaskProvider } from './contexts/BackgroundTaskContext';
@@ -64,7 +51,6 @@ const CREATOR_BASE = '/creators';
 function AppContent() {
   return (
     <Router basename={CREATOR_BASE}>
-        <AnalyticsScreenTracker />
         <div className="App">
           <Routes>
             <Route path="/login" element={<DebugScreenTracker name="LoginScreen"><LoginScreen /></DebugScreenTracker>} />

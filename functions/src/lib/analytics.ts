@@ -47,9 +47,12 @@ export interface CaptureProps {
   distinctId: string;
   event: string;
   properties?: Record<string, unknown>;
+  // Group keys by group type (e.g. {coach: "<coachUid>"}). Lets events roll up
+  // by group in PostHog group analytics.
+  groups?: Record<string, string>;
 }
 
-export function capture({distinctId, event, properties}: CaptureProps): void {
+export function capture({distinctId, event, properties, groups}: CaptureProps): void {
   const c = getClient();
   if (!c || !distinctId || !event) return;
   try {
@@ -62,6 +65,7 @@ export function capture({distinctId, event, properties}: CaptureProps): void {
         env: envName(),
         ...(properties ?? {}),
       },
+      ...(groups ? {groups} : {}),
     });
   } catch (err) {
     functions.logger.warn("analytics:capture-failed", {
