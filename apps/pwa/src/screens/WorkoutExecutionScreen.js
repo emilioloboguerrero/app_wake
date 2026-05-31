@@ -881,7 +881,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Whether the user has ever opened the exercise-list drawer (persisted). Until they
   // have, a subtle pull-down hint pulses on the closed lid at the start of each set.
   const [hasEverOpenedDrawer, setHasEverOpenedDrawer] = useState(() => {
-    try { return localStorage.getItem('wake_exercise_drawer_opened') === 'true'; } catch { return false; }
+    try { return localStorage.getItem('wake_exercise_drawer_opened_v2') === 'true'; } catch { return false; }
   });
   const [expandedExercises, setExpandedExercises] = useState({}); // Track which exercises are expanded
   const [isMenuVisible, setIsMenuVisible] = useState(false); // Menu visibility state
@@ -2011,7 +2011,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const openSheet = useCallback(() => {
     if (!hasEverOpenedDrawer) {
       setHasEverOpenedDrawer(true);
-      try { localStorage.setItem('wake_exercise_drawer_opened', 'true'); } catch {}
+      try { localStorage.setItem('wake_exercise_drawer_opened_v2', 'true'); } catch {}
     }
     setIsSheetOpen(true);
     setCurrentView(1);
