@@ -2887,6 +2887,21 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     return () => clearTimeout(t);
   }, [isTimerModalVisible]);
 
+  // Session timer: tick total elapsed every second for the whole session, so the
+  // header readout stays live even when the rest-timer modal is closed. Recomputes
+  // from the start ref (set on mount / restored from checkpoint) so reloads keep counting.
+  useEffect(() => {
+    const tick = () => {
+      const start = workoutStartTimeRef.current;
+      if (start != null) {
+        setTotalElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // Timer modal: tick total time and rest countdown every second when modal is visible
   useEffect(() => {
     if (!isTimerModalVisible) return;
@@ -5436,6 +5451,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         onMenuPress={() => {
           setIsMenuVisible(true);
         }}
+        sessionElapsedSeconds={totalElapsedSeconds}
       />
 
       {/* Post-save ring+check overlay (web only) */}

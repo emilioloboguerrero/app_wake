@@ -86,7 +86,8 @@ export const FixedWakeHeader = ({
   showMenuButton = false,
   onMenuPress = null,
   menuButton = null,
-  backgroundColor = '#1a1a1a'
+  backgroundColor = '#1a1a1a',
+  sessionElapsedSeconds = null
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -305,8 +306,31 @@ export const FixedWakeHeader = ({
         </button>
       )}
 
+      {/* Session timer - replaces the streak badge during a workout. Live MM:SS of
+          total session time, surfaced from WorkoutExecutionScreen. */}
+      {sessionElapsedSeconds != null && (
+        <div
+          aria-label="Tiempo de sesión"
+          style={{
+            position: 'absolute',
+            top: barCenterTop,
+            right: Math.max(32, screenWidth * 0.08),
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            zIndex: 1001,
+          }}
+        >
+          <span style={{ color: '#ffffff', fontSize: 16, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+            {String(Math.floor(sessionElapsedSeconds / 60)).padStart(2, '0')}:{String(sessionElapsedSeconds % 60).padStart(2, '0')}
+          </span>
+        </div>
+      )}
+
       {/* Streak badge - same structure as DailyWorkoutScreen (base / middle / inner), slightly larger.
           Click to open streak details modal. */}
+      {sessionElapsedSeconds == null && (
       <div
         aria-label="Racha"
         role="button"
@@ -351,7 +375,8 @@ export const FixedWakeHeader = ({
           {streakDisplayNum}
         </span>
       </div>
-      
+      )}
+
       {/* Reset Button - aligned with logo center */}
       {showResetButton && onResetPress && (
         <button
