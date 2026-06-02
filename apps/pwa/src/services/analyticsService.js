@@ -75,6 +75,23 @@ function writeOptOut(v) {
   } catch {}
 }
 
+// Drop benign DOMException AbortErrors from Error Tracking. expo-video's web
+// player discards the HTMLVideoElement.play() promise, so an interrupted
+// play()/replace()/replay() surfaces on iOS Safari as an unhandled
+// "AbortError: The operation was aborted." It's expected (interrupted playback),
+// not a real error, and can't be caught at the call site (player.play() returns
+// void). Our own fetch aborts are already translated to WakeApiError upstream,
+// so a raw AbortError reaching here is always this benign media case.
+function dropBenignAbortErrors(event) {
+  if (event?.event === '$exception') {
+    const list = event.properties?.$exception_list;
+    if (Array.isArray(list) && list.some((e) => e?.type === 'AbortError')) {
+      return null;
+    }
+  }
+  return event;
+}
+
 function init() {
   if (initAttempted) return;
   initAttempted = true;
@@ -93,6 +110,7 @@ function init() {
       capture_pageview: 'history_change',
       capture_pageleave: true,
       capture_exceptions: true,
+      before_send: dropBenignAbortErrors,
       disable_session_recording: false,
       session_recording: {
         maskAllInputs: true,

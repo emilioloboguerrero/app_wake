@@ -20,6 +20,18 @@ import analyticsService from './services/analyticsService';
 // Initialize analytics as early as possible (no-op when key missing or opted out).
 analyticsService.init();
 
+// expo-video's web player calls HTMLVideoElement.play() without handling the
+// returned promise (VideoPlayer.web.js). On iOS Safari an interrupted
+// play()/replace()/replay() (loop restart, pause-after-play, source swap,
+// unmount on navigation) rejects with a benign "AbortError: The operation was
+// aborted." Since player.play() returns void, it can't be caught at the call
+// site — mark it handled here so it doesn't surface as an unhandled rejection.
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    if (event?.reason?.name === 'AbortError') event.preventDefault();
+  });
+}
+
 // Normalize a trailing slash on the entry path before BrowserRouter reads
 // location.pathname. React Router v6 treats `/app/payment/success/` as
 // distinct from `/app/payment/success` and falls through to the catch-all
