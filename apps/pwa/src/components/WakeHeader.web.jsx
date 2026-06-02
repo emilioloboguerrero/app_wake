@@ -2,12 +2,12 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { View, Image, useWindowDimensions } from 'react-native';
+import { View, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import useAppViewportSize from '../hooks/useAppViewportSize.web';
 import { useAuth } from '../contexts/AuthContext';
 import { useActivityStreakContext } from '../contexts/ActivityStreakContext';
 import logger from '../utils/logger';
-import { isPWA } from '../utils/platform';
 import HeaderStreakInfoModal from './HeaderStreakInfoModal.web.jsx';
 
 // Match DailyWorkoutScreen streak: base 60, middle 20, inner 8; offsets bottom 0, 6, 8. Header scale: base 32 (a bit larger).
@@ -29,12 +29,44 @@ function StreakFlameSvg({ size, stroke, strokeWidth, fill, opacity, flipX }) {
   );
 }
 
-// Push header bar down on non-iPhone (Mac/Android) where safe area is 0.
-const HEADER_TOP_OFFSET_NON_IOS = 24;
-// Extra push for the header bar in browser mode (non-PWA) so items don't sit flush against the top, without matching the full PWA offset.
-const HEADER_TOP_OFFSET_BROWSER_EXTRA = 34;
-// When env(safe-area-inset-top) is 0 in standalone (e.g. iOS localhost PWA), use this so layout matches production (iPhone 17 / Dynamic Island ~59px).
-const STANDALONE_SAFE_AREA_TOP_FALLBACK = 59;
+const HEADER_CONTENT_HEIGHT_IOS = 32;
+const MIN_TOP_INSET_NON_IOS = 24;
+// iOS Dynamic Island/notch fallback for standalone localhost where env() resolves late.
+const IOS_STANDALONE_TOP_FALLBACK = 59;
+// Breathing room above + below the logo inside the non-iOS bar. The non-iOS
+// bar must contain the logo (no notch to hide overflow), so the bar's content
+// area is sized to logoHeight + this constant.
+const NON_IOS_LOGO_BREATHING = 16;
+
+const useHeaderMetrics = () => {
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useAppViewportSize();
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  const rawTop = Math.max(0, Number(insets?.top) || 0);
+
+  const safeTop = isIOS
+    ? (rawTop > 0 ? rawTop : IOS_STANDALONE_TOP_FALLBACK)
+    : Math.max(MIN_TOP_INSET_NON_IOS, rawTop);
+
+  // On iOS the logo overflows the 32-tall content area but is hidden inside the
+  // notch/Dynamic Island safe-area band, so the visual stays clean. On web and
+  // Android there's no notch — the bar must be tall enough to contain the
+  // 120 × 68.4 logo box, otherwise the logo dangles past the bar background
+  // and crashes into screen content.
+  const logoWidth = Math.min(screenWidth * 0.35, 120);
+  const logoHeight = logoWidth * 0.57;
+  const headerContentHeight = isIOS
+    ? HEADER_CONTENT_HEIGHT_IOS
+    : Math.ceil(logoHeight) + NON_IOS_LOGO_BREATHING;
+  const headerBarHeight = headerContentHeight + safeTop;
+  // Extra space below the bar before content starts. iOS keeps 0 to preserve
+  // the existing tuned look; web/Android get a clear gap so content isn't
+  // crammed right against the bar background.
+  const breathingRoom = isIOS ? 0 : 24;
+
+  return { headerBarHeight, safeTop, breathingRoom, headerContentHeight };
+};
 
 // Simple SVG icons for web
 const ChevronLeftIcon = ({ size = 20, color = '#ffffff' }) => (
@@ -58,26 +90,13 @@ export const FixedWakeHeader = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
-  const headerHeight = 32;
-  const initialSafeTopRef = React.useRef(null);
-  // Header: use raw insets only (no fallback). Safe-area fallback is applied to content via WakeHeaderSpacer only.
-  if (initialSafeTopRef.current === null) {
-    initialSafeTopRef.current = Math.max(0, insets.top);
-  }
-  const safeAreaTop = initialSafeTopRef.current;
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
-  const isBrowser = !isPWA();
-  // Base offset. In browser (non-PWA), always add an extra push so items don't feel glued to the top — smaller than PWA's natural offset.
-  const baseExtra = isIOS ? 0 : HEADER_TOP_OFFSET_NON_IOS;
-  const browserExtra = isBrowser ? HEADER_TOP_OFFSET_BROWSER_EXTRA : 0;
-  const extraTop = baseExtra + browserExtra;
-  const totalTop = safeAreaTop + extraTop;
+  const { width: screenWidth } = useAppViewportSize();
+  const { headerBarHeight, safeTop, headerContentHeight } = useHeaderMetrics();
+  const headerHeight = headerContentHeight;
   const logoWidth = Math.min(screenWidth * 0.35, 120);
   const logoHeight = logoWidth * 0.57;
   const iconSize = 20;
-  const barCenterTop = totalTop + headerHeight / 2;
+  const barCenterTop = safeTop + headerHeight / 2;
   const [isStreakModalOpen, setIsStreakModalOpen] = React.useState(false);
   
   const shouldShowProfileButton = profileImageUrl !== null || onProfilePress;
@@ -135,14 +154,14 @@ export const FixedWakeHeader = ({
       top: 0,
       left: 0,
       right: 0,
-      minHeight: headerHeight + totalTop,
-      height: headerHeight + totalTop,
+      minHeight: headerBarHeight,
+      height: headerBarHeight,
       flexShrink: 0,
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingTop: totalTop,
+      paddingTop: safeTop,
       paddingLeft: screenWidth * 0.06,
       paddingRight: screenWidth * 0.06,
       paddingBottom: 0,
@@ -378,35 +397,27 @@ export const FixedWakeHeader = ({
     : headerEl;
 };
 
-// Extra top space for content area when not iPhone (Mac/Android) so content doesn't sit right under the header.
-const CONTENT_TOP_PADDING_NON_IOS = 100;
-
-// Header spacer: matches FixedWakeHeader (32px + safe area top). On non-iOS adds extra height so content has top padding.
-// Fallback fires whenever rawTop is 0 — covers iOS PWA (env() resolves late) AND no-notch devices / desktop browsers where env(safe-area-inset-top) is always 0, so content doesn't feel cramped.
+// Spacer below the fixed header. Height = bar height + breathing room.
+// Reactive via useHeaderMetrics — re-computes when the viewport resizes or
+// the safe-area resolves.
 export const WakeHeaderSpacer = () => {
-  const insets = useSafeAreaInsets();
-  const ref = React.useRef(null);
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent || '');
-  const rawTop = Math.max(0, Number(insets?.top) || 0);
-  const effectiveTop =
-    rawTop === 0 ? STANDALONE_SAFE_AREA_TOP_FALLBACK : rawTop;
-  if (ref.current === null) {
-    const headerHeight = 32 + effectiveTop;
-    const extra = isIOS ? 0 : CONTENT_TOP_PADDING_NON_IOS;
-    ref.current = headerHeight + extra;
-  }
-  const totalHeight = ref.current;
+  const { headerBarHeight, breathingRoom } = useHeaderMetrics();
+  const totalHeight = headerBarHeight + breathingRoom;
   return <div style={{ height: totalHeight, flexShrink: 0, boxSizing: 'border-box' }} />;
 };
 
-// Single place to control space between header (spacer) and content. Use this to wrap content below WakeHeaderSpacer.
-// Use marginTop (not paddingTop): CSS does not support negative padding, so negative values have no effect on web.
-export const GAP_AFTER_HEADER = -20;
-// Tighter gap in PWA to reduce space between header and content (more negative = content pulled up).
+// On iOS the bar is taller than its content area (notch/Dynamic Island padding),
+// so we pull content up under the translucent glass to maximize usable real
+// estate — the logo lives in the notch zone, not in the way. On web/Android the
+// bar is sized to fully contain the logo, so any negative pull would slide
+// content underneath the logo. Keep the gap at 0 there.
+export const GAP_AFTER_HEADER = -32;
 export const GAP_AFTER_HEADER_PWA = -32;
-
-/** Use this when you need the effective gap (PWA-aware on web, GAP_AFTER_HEADER on native). */
-export const getGapAfterHeader = () => (isPWA() ? GAP_AFTER_HEADER_PWA : GAP_AFTER_HEADER);
+export const getGapAfterHeader = () => {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  return isIOS ? GAP_AFTER_HEADER : 0;
+};
 
 export const WakeHeaderContent = ({ style, gapAfterHeader, ...rest }) => {
   const effectiveGap = gapAfterHeader ?? getGapAfterHeader();

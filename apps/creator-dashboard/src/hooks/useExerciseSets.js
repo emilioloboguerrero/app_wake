@@ -73,6 +73,11 @@ const getObjectiveFields = (objectives) => {
   return filtered.length > 0 ? filtered : ['reps', 'intensity'];
 };
 
+// `notes` is per-set free text — never seed it as a default and never propagate
+// it across sets. Use this for any code that builds default-fill values.
+const getDefaultableFields = (objectives) =>
+  getObjectiveFields(objectives).filter(o => o !== 'notes');
+
 const isPendingId = (id) => typeof id === 'string' && id.startsWith('pending-');
 
 /**
@@ -139,11 +144,12 @@ const useExerciseSets = ({
     });
   }, []);
 
-  // Seed defaultSetValues from exercise.defaultSetValues or first loaded set
+  // Seed defaultSetValues from exercise.defaultSetValues or first loaded set.
+  // Notes are excluded — they're per-set content, not a default.
   const seedDefaults = useCallback((loadedSets) => {
     if (defaultsSeededRef.current) return;
     defaultsSeededRef.current = true;
-    const objFields = getObjectiveFields(objectivesRef.current);
+    const objFields = getDefaultableFields(objectivesRef.current);
     const stored = initialDefaultsRef.current;
     if (stored && typeof stored === 'object' && Object.keys(stored).length > 0) {
       const seeded = {};
@@ -485,7 +491,7 @@ const useExerciseSets = ({
     const current = sets.length;
     if (target === current) return;
 
-    const objectiveFields = getObjectiveFields(objectivesRef.current);
+    const objectiveFields = getDefaultableFields(objectivesRef.current);
     const defaults = {};
     objectiveFields.forEach(o => {
       const v = defaultSetValues[o];

@@ -48,6 +48,7 @@ import { Tree, TreeFolder, TreeFile } from '../ui/FileTree';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
 import WeekVolumeDrawer from '../WeekVolumeDrawer';
 import { computePlannedMuscleVolumes, getPrimaryReferences } from '../../utils/plannedVolumeUtils';
+import BlockPublishChip from './BlockPublishChip';
 
 const INCOMPLETE_ICON_SVG = (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -66,10 +67,15 @@ const DRAG_HANDLE_SVG = (
   </svg>
 );
 
-const SortableModuleCard = ({ module, isModuleEditMode, onModuleClick, onDeleteModule, moduleIndex, isModuleIncomplete }) => {
+const SortableModuleCard = ({
+  module, isModuleEditMode, onModuleClick, onDeleteModule, moduleIndex, isModuleIncomplete,
+  cadenceActive, onTogglePublished, publishBusyId,
+}) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: module.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
   const moduleNumber = (module.order !== undefined && module.order !== null) ? module.order + 1 : moduleIndex + 1;
+  const isPublished = !!module.published_at;
+  const publishBusy = publishBusyId === module.id;
 
   return (
     <div
@@ -104,7 +110,15 @@ const SortableModuleCard = ({ module, isModuleEditMode, onModuleClick, onDeleteM
         <h3 className="module-card-title">{module.title || `Semana ${moduleNumber}`}</h3>
         {module.description && <p className="module-card-description">{module.description}</p>}
       </div>
-      <div className="module-card-footer" />
+      <div className="module-card-footer">
+        {cadenceActive && (
+          <BlockPublishChip
+            isPublished={isPublished}
+            busy={publishBusy}
+            onClick={() => onTogglePublished?.(module)}
+          />
+        )}
+      </div>
     </div>
   );
 };
@@ -682,6 +696,39 @@ const ProgramContentTab = ({
     setDeleteModuleConfirmation('');
   };
 
+  // Monthly-drops: per-module "Borrador / Publicado" toggle. Setting
+  // published_at gates the module for the monthlyDropAdvance cron. See
+  // memory/project_monthly_drops.md.
+  const cadenceActive = program?.block_cadence === 'monthly_first_monday';
+  const [publishBusyId, setPublishBusyId] = useState(null);
+
+  const handleTogglePublished = useCallback(async (module) => {
+    if (!programId || !module?.id) return;
+    setPublishBusyId(module.id);
+    const wasPublished = !!module.published_at;
+    const nextValue = wasPublished ? null : new Date().toISOString();
+    // Optimistic — flip locally so the chip updates instantly.
+    setModules((prev) => prev.map((m) => (
+      m.id === module.id ? { ...m, published_at: nextValue } : m
+    )));
+    try {
+      await programService.updateModule(programId, module.id, { published_at: nextValue });
+      showToast(
+        wasPublished ? 'Bloque vuelto a borrador' : 'Bloque publicado',
+        'success',
+      );
+    } catch (err) {
+      // Revert on failure.
+      setModules((prev) => prev.map((m) => (
+        m.id === module.id ? { ...m, published_at: wasPublished ? module.published_at : null } : m
+      )));
+      logger.error('[ProgramContentTab] toggle published failed', err);
+      showToast('No pudimos cambiar el estado del bloque', 'error');
+    } finally {
+      setPublishBusyId(null);
+    }
+  }, [programId, showToast]);
+
   const handleConfirmDeleteModule = async () => {
     if (!moduleToDelete || !deleteModuleConfirmation.trim() || !programId) return;
     const moduleTitle = moduleToDelete.title || moduleToDelete.name || `Modulo ${moduleToDelete.id?.slice(0, 8) || ''}`;
@@ -756,7 +803,16 @@ const ProgramContentTab = ({
       if (selectedModule.libraryModuleRef) {
         await libraryService.addSessionToLibraryModule(user.uid, selectedModule.libraryModuleRef, librarySessionId);
       }
-      await programService.createSessionFromLibrary(programId, selectedModule.id, librarySessionId);
+      const libSession = librarySessions.find((s) => s.id === librarySessionId);
+      // Strip the "Mes N — " prefix so the new session inherits the slot
+      // name only (e.g. "Empuje"), matching the seed convention. Library
+      // sessions are titled "Mes N — Slot" because they have no parent
+      // module; module sessions don't need that prefix.
+      const slotTitle = (libSession?.title || '').replace(/^Mes\s+\d+\s*[—-]\s*/i, '').trim() || 'Sesión';
+      await programService.createSessionFromLibrary(
+        programId, selectedModule.id, librarySessionId,
+        null, libSession?.image_url || null, null, slotTitle,
+      );
       const freshSessions = await programService.getSessionsByModule(programId, selectedModule.id);
       const sorted = freshSessions.sort((a, b) => {
         const oA = a.order ?? Infinity;
@@ -1254,6 +1310,9 @@ const ProgramContentTab = ({
                             onDeleteModule={handleDeleteModule}
                             moduleIndex={index}
                             isModuleIncomplete={isModuleIncomplete(module)}
+                            cadenceActive={cadenceActive}
+                            onTogglePublished={handleTogglePublished}
+                            publishBusyId={publishBusyId}
                           />
                         ))}
                       </div>
@@ -1273,7 +1332,15 @@ const ProgramContentTab = ({
                             <h3 className="module-card-title">{module.title || `Semana ${moduleNumber}`}</h3>
                             {module.description && <p className="module-card-description">{module.description}</p>}
                           </div>
-                          <div className="module-card-footer" />
+                          <div className="module-card-footer">
+                            {cadenceActive && (
+                              <BlockPublishChip
+                                isPublished={!!module.published_at}
+                                busy={publishBusyId === module.id}
+                                onClick={() => handleTogglePublished(module)}
+                              />
+                            )}
+                          </div>
                         </div>
                       );
                     })}

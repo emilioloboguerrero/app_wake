@@ -78,8 +78,8 @@ const DISCIPLINE_OPTIONS = [
 const OO_STEPS = ['name', 'discipline', 'library', 'weight', 'media', 'creating', 'success'];
 const OO_QUESTION_COUNT = 5;
 
-const LT_STEPS = ['name', 'discipline', 'access', 'price', 'trial', 'weight', 'media', 'creating', 'success'];
-const LT_QUESTION_COUNT = 7;
+const LT_STEPS_MONTHLY = ['name', 'discipline', 'access', 'cadence', 'price', 'trial', 'weight', 'media', 'creating', 'success'];
+const LT_STEPS_ONETIME = ['name', 'discipline', 'access', 'price', 'trial', 'weight', 'media', 'creating', 'success'];
 
 const ACCESS_OPTIONS = [
   { id: 'monthly', label: 'Suscripcion mensual', desc: 'Cobro recurrente cada mes', icon: 'repeat' },
@@ -111,6 +111,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
   const [weightSuggestions, setWeightSuggestions] = useState(true);
 
   const [accessType, setAccessType] = useState('monthly');
+  const [monthlyDrops, setMonthlyDrops] = useState(false);
   const [price, setPrice] = useState('');
   const [freeTrialActive, setFreeTrialActive] = useState(false);
   const [freeTrialDays, setFreeTrialDays] = useState('7');
@@ -142,8 +143,10 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
 
   const copy = isOneOnOne ? COPY_OO : (type === 'plan' ? COPY_PLAN : COPY_PROGRAM);
   const isMultiStep = isOneOnOne || isLowTicket;
-  const activeSteps = isOneOnOne ? OO_STEPS : (isLowTicket ? LT_STEPS : null);
-  const activeQuestionCount = isOneOnOne ? OO_QUESTION_COUNT : (isLowTicket ? LT_QUESTION_COUNT : 0);
+  const ltSteps = accessType === 'monthly' ? LT_STEPS_MONTHLY : LT_STEPS_ONETIME;
+  const activeSteps = isOneOnOne ? OO_STEPS : (isLowTicket ? ltSteps : null);
+  // Question count = total steps minus 'creating' and 'success' (terminal states).
+  const activeQuestionCount = activeSteps ? activeSteps.length - 2 : 0;
   const stepIndex = activeSteps ? activeSteps.indexOf(step) : -1;
 
   useEffect(() => {
@@ -157,6 +160,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
       setSelectedLibraryIds(new Set());
       setWeightSuggestions(true);
       setAccessType('monthly');
+      setMonthlyDrops(false);
       setPrice('');
       setFreeTrialActive(false);
       setFreeTrialDays('7');
@@ -199,6 +203,9 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
           active: freeTrialActive,
           duration_days: freeTrialActive ? Math.max(1, parseInt(freeTrialDays, 10) || 7) : 0,
         };
+        if (accessType === 'monthly' && monthlyDrops) {
+          payload.block_cadence = 'monthly_first_monday';
+        }
       }
       const res = await apiClient.post('/creator/programs', payload);
       return res?.data;
@@ -450,6 +457,46 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
                       </span>
                     </button>
                   ))}
+                </div>
+              </div>
+              <div className="cfo-footer">
+                <button type="button" className="cfo-back-btn" onClick={goBack}><IconArrowLeft /></button>
+                <button type="button" className="cfo-next-btn" onClick={goNext}>
+                  Siguiente <IconArrowRight />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Cadence: monthly drops (low-ticket subscription only) ───── */}
+          {step === 'cadence' && (
+            <div className="cfo-step" key="cadence">
+              <div className="cfo-step__header">
+                <h1 className="cfo-step__title">Como entregas el contenido?</h1>
+                <p className="cfo-step__desc">Decide si todo el programa esta disponible desde el primer dia o si lo liberas mes a mes.</p>
+              </div>
+              <div className="cfo-step__content">
+                <div className="cfo-choice">
+                  <button type="button" className={`cfo-choice-card ${!monthlyDrops ? 'cfo-choice-card--active' : ''}`} onClick={() => setMonthlyDrops(false)}>
+                    <GlowingEffect spread={18} borderWidth={1} />
+                    <span className="cfo-choice-card__icon">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><path d="M3 9h18" /></svg>
+                    </span>
+                    <span className="cfo-choice-card__text">
+                      <span className="cfo-choice-card__label">Todo abierto</span>
+                      <span className="cfo-choice-card__desc">Los clientes ven todos los modulos desde el primer dia</span>
+                    </span>
+                  </button>
+                  <button type="button" className={`cfo-choice-card ${monthlyDrops ? 'cfo-choice-card--active' : ''}`} onClick={() => setMonthlyDrops(true)}>
+                    <GlowingEffect spread={18} borderWidth={1} />
+                    <span className="cfo-choice-card__icon">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+                    </span>
+                    <span className="cfo-choice-card__text">
+                      <span className="cfo-choice-card__label">Bloques mensuales</span>
+                      <span className="cfo-choice-card__desc">Se libera un modulo nuevo el primer lunes de cada mes</span>
+                    </span>
+                  </button>
                 </div>
               </div>
               <div className="cfo-footer">

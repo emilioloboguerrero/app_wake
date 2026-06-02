@@ -604,7 +604,9 @@
 }
 
 .exc-card-sets-table {
-  width: 100%;
+  /* min-width (not width) so a wide notes column can push the table past the
+     wrapper's width and trigger horizontal scroll instead of squeezing inputs. */
+  min-width: 100%;
   border-collapse: collapse;
 }
 
@@ -663,6 +665,19 @@
   padding: 0 8px;
   font-size: 13px;
   text-align: center;
+}
+
+/* Notes textarea — wider, left-aligned, autosizing */
+.exc-card-notes-input {
+  width: 100%;
+  min-width: 160px;
+  height: auto;
+  min-height: 28px;
+  padding: 6px 8px;
+  text-align: left;
+  resize: vertical;
+  line-height: 1.35;
+  font-family: inherit;
 }
 
 /* Row actions — hidden by default */

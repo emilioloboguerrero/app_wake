@@ -5,8 +5,9 @@ import { auth } from '../config/firebase';
 import apiService from './apiService';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import logger from '../utils/logger'; 
+import logger from '../utils/logger';
 import * as Crypto from 'expo-crypto';
+import analyticsService from './analyticsService';
 
 // Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -186,10 +187,16 @@ class AppleAuthService {
       }
       
       // Create or update user document in Firestore (same as Google — create if missing)
-      await this.createOrUpdateUserDocument(firebaseUser);
-      
-      return { 
-        success: true, 
+      const docResult = await this.createOrUpdateUserDocument(firebaseUser);
+
+      // identify() is handled by AuthContext's onAuthStateChanged.
+      try {
+        const isNew = docResult?.isNewUser === true;
+        analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', { method: 'apple' });
+      } catch {}
+
+      return {
+        success: true,
         user: firebaseUser
       };
       

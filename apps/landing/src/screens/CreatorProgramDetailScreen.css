@@ -1,0 +1,722 @@
+/* Creator Program Detail — wakelab.co/{username}/{programId}
+
+   Accent: --cpd-accent comes from the program's cover image (extracted at
+   runtime). Falls back to white when extraction fails or the image is tainted
+   by CORS. Never hardcode a brand color here. */
+
+.cpd-root {
+  --cpd-accent: rgba(255, 255, 255, 0.95);
+  --cpd-accent-soft: rgba(255, 255, 255, 0.08);
+  --cpd-accent-line: rgba(255, 255, 255, 0.18);
+  --cpd-accent-text: #1a1a1a;
+
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.95);
+  padding-top: 96px;
+}
+
+/* ── Back button ───────────────────────────────────────────────────────── */
+/* Bare chevron at top-left — same style as the PWA's FixedWakeHeader back
+   button: no background, no border, just the icon. Sits at the same vertical
+   center as the WAKE pill in the global header. */
+.cpd-back-fab {
+  position: fixed;
+  top: 32px;
+  left: 24px;
+  z-index: 1001;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-back-fab:hover {
+  opacity: 0.7;
+}
+
+/* ── Content layout ────────────────────────────────────────────────────── */
+.cpd-content {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px 24px 64px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+  animation: cpd-fade-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cpd-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Media ─────────────────────────────────────────────────────────────── */
+/* Borderless, edge-to-edge image. The cover IS the visual — no chrome.
+   Capped at viewport height so the right column's CTA stays in view on
+   first paint without scrolling. */
+.cpd-media {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  max-height: calc(100vh - 160px);
+}
+
+.cpd-video,
+.cpd-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 12;
+  max-height: calc(100vh - 160px);
+  object-fit: cover;
+  background: #0a0a0a;
+}
+
+.cpd-video {
+  /* Letterbox video instead of cropping — preserves the source framing. */
+  object-fit: contain;
+}
+
+.cpd-cover-placeholder {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+}
+
+/* ── Video player (mirrors PWA CourseDetailScreen video) ──────────────── */
+/* Click anywhere on the shell to toggle play/pause. When paused: dim layer
+   + large plain play icon centered, plus volume and restart pills in the
+   top-right corner. When playing: clean — no overlays. */
+.cpd-video-shell {
+  position: relative;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.cpd-video-shell:focus-visible {
+  outline: 2px solid var(--cpd-accent);
+  outline-offset: 4px;
+}
+
+.cpd-video-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.cpd-video-play-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  color: #fff;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cpd-video-corner {
+  position: absolute;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 4;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-video-corner:hover {
+  background: rgba(0, 0, 0, 0.78);
+}
+
+.cpd-video-corner-volume { top: 12px; }
+.cpd-video-corner-restart { top: 56px; }
+
+/* ── Info ──────────────────────────────────────────────────────────────── */
+.cpd-info {
+  padding-top: 8px;
+}
+
+/* Title + meta only. CTAs (with price baked in) live below as the action zone.
+   Pills come after the CTAs as supporting "what you get" context. */
+.cpd-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.cpd-title {
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.cpd-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+.cpd-meta span:not(:last-child)::after {
+  content: ' ·';
+  margin-left: 4px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* ── Includes pills ────────────────────────────────────────────────────── */
+.cpd-includes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+.cpd-include-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--cpd-accent-soft);
+  border: 1px solid var(--cpd-accent-line);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Pills overlaid on top of the cover image / video. Dark glass background
+   for legibility regardless of what's behind. Pointer-events disabled so
+   clicks fall through to the video toggle. */
+.cpd-includes-overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  margin: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.cpd-includes-overlay .cpd-include-pill {
+  background: rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* ── CTAs ──────────────────────────────────────────────────────────────── */
+/* Price lives inside the button — label on the left, price on the right.
+   Primary uses the program's accent color; secondary is a bordered variant. */
+.cpd-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 22px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: filter 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              background 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-cta-primary {
+  background: var(--cpd-accent);
+  color: var(--cpd-accent-text);
+}
+
+.cpd-cta-primary:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.cpd-cta-secondary {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  border-color: var(--cpd-accent-line);
+}
+
+.cpd-cta-secondary:hover {
+  background: var(--cpd-accent-soft);
+  transform: translateY(-1px);
+}
+
+.cpd-cta:active {
+  transform: translateY(0);
+}
+
+.cpd-cta:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.cpd-cta-label {
+  letter-spacing: -0.005em;
+}
+
+.cpd-cta-price {
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.cpd-cta-suffix {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.cpd-ctas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+/* Single-CTA case (one-on-one) shouldn't carry the .cpd-ctas wrapper margin
+   collapse, so apply margin directly. */
+.cpd-cta + :not(.cpd-cta) {
+  margin-top: 0;
+}
+
+.cpd-no-price {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+}
+
+.cpd-error {
+  font-size: 13px;
+  color: #ff7676;
+  margin: -4px 0 16px;
+  line-height: 1.45;
+}
+
+.cpd-already-owned {
+  margin-bottom: 16px;
+}
+
+.cpd-already-owned p {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 10px;
+}
+
+.cpd-alt-email {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+.cpd-alt-email-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+
+.cpd-alt-email-input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.cpd-alt-email-input:focus {
+  outline: none;
+  border-color: var(--cpd-accent-line);
+}
+
+.cpd-alt-email-cancel {
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px;
+  transition: color 150ms ease;
+}
+
+.cpd-alt-email-cancel:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cpd-alt-email-cancel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cpd-soldout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.cpd-soldout-badge {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+
+.cpd-waitlist-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.cpd-waitlist-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+
+.cpd-waitlist-done {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  animation: cpd-waitlist-rise 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cpd-waitlist-done-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.cpd-waitlist-done-text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+  line-height: 1.55;
+}
+
+.cpd-waitlist-done-text strong {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+
+@keyframes cpd-waitlist-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Creator row ───────────────────────────────────────────────────────── */
+.cpd-creator-row {
+  padding-top: 20px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cpd-creator-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.75);
+  transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-creator-link:hover {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.cpd-creator-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cpd-creator-avatar-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+}
+
+.cpd-creator-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ── Related programs ──────────────────────────────────────────────────── */
+/* Compact cards under the main content showing two other programs from the
+   same creator, so the visitor can keep browsing if this one isn't the right
+   fit. Hides entirely when the creator has no other programs. */
+.cpd-related {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 8px 24px 64px;
+}
+
+.cpd-related-title {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 16px;
+}
+
+.cpd-related-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 720px;
+}
+
+.cpd-related-card {
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              background 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-related-card:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.cpd-related-card-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+
+.cpd-related-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cpd-related-card-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+}
+
+.cpd-related-card-body {
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cpd-related-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.25;
+}
+
+.cpd-related-card-price {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .cpd-related {
+    padding: 0 16px 48px;
+  }
+  .cpd-related-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* ── Loading / empty ───────────────────────────────────────────────────── */
+.cpd-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cpd-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: cpd-spin 0.8s linear infinite;
+}
+
+@keyframes cpd-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cpd-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cpd-empty-inner {
+  text-align: center;
+  padding: 48px 24px;
+  max-width: 480px;
+}
+
+.cpd-empty-inner h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+}
+
+.cpd-empty-inner p {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.55;
+  margin: 0 0 28px;
+}
+
+.cpd-empty-cta {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-empty-cta:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .cpd-content {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .cpd-title {
+    font-size: 32px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cpd-root {
+    padding-top: 80px;
+  }
+  .cpd-back-fab {
+    top: 26px;
+    left: 16px;
+    width: 36px;
+    height: 36px;
+  }
+  .cpd-content {
+    padding: 12px 16px 48px;
+  }
+  .cpd-title {
+    font-size: 28px;
+  }
+  .cpd-cta {
+    padding: 15px 18px;
+    font-size: 14px;
+  }
+}

@@ -132,7 +132,7 @@ const ICONS = [EnergyIcon, SorenessIcon, SleepIcon];
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ReadinessCheckModal({ onClose, mandatory = false }) {
+export default function ReadinessCheckModal({ onClose }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [step, setStep] = useState(0);
   const [values, setValues] = useState({ energy: null, soreness: null, sleep: null });
@@ -179,7 +179,6 @@ export default function ReadinessCheckModal({ onClose, mandatory = false }) {
   };
 
   const handleSkip = () => {
-    if (mandatory) return;
     const dateStr = toYYYYMMDD(new Date());
     try { localStorage.setItem(`wake_readiness_${dateStr}`, 'skipped'); } catch (_) {}
     dismiss();
@@ -229,11 +228,7 @@ export default function ReadinessCheckModal({ onClose, mandatory = false }) {
 
   return (
     <Animated.View style={[styles.overlay, { opacity: fadeAnim }]} pointerEvents="box-none">
-      {mandatory ? (
-        <View style={StyleSheet.absoluteFill} pointerEvents="auto" />
-      ) : (
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={handleSkip} activeOpacity={1} />
-      )}
+      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={handleSkip} activeOpacity={1} />
       <Animated.View style={[styles.card, { width: cardWidth, transform: [{ translateY: slideAnim }] }]}>
 
         {/* Header: back button + progress bars */}

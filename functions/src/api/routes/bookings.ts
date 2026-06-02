@@ -689,18 +689,24 @@ router.post("/bookings", async (req, res) => {
   });
 });
 
-// GET /bookings — list user's bookings (with optional filters)
+// GET /bookings — list the client's upcoming scheduled bookings.
+// Returns only `status == 'scheduled'` bookings with `slotStartUtc >= now`,
+// ordered soonest-first. Past and cancelled bookings are intentionally excluded —
+// surfaces like Hoy banners and CourseDetail's "you have a call" check both
+// want upcoming/active state only.
 router.get("/bookings", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const {creatorId, courseId, status} = req.query as Record<string, string | undefined>;
+  const {creatorId, courseId} = req.query as Record<string, string | undefined>;
+  const nowIso = new Date().toISOString();
 
-  // Query bookings where user is client OR creator
   const query: Query = db
     .collection("call_bookings")
     .where("clientUserId", "==", auth.userId)
-    .orderBy("slotStartUtc", "desc")
+    .where("status", "==", "scheduled")
+    .where("slotStartUtc", ">=", nowIso)
+    .orderBy("slotStartUtc", "asc")
     .limit(50);
 
   const snapshot = await query.get();
@@ -721,10 +727,8 @@ router.get("/bookings", async (req, res) => {
     };
   });
 
-  // Client-side filters (Firestore can only have one inequality/range)
   if (creatorId) results = results.filter((b) => b.creatorId === creatorId);
   if (courseId) results = results.filter((b) => b.courseId === courseId);
-  if (status) results = results.filter((b) => b.status === status);
 
   res.json({data: results});
 });

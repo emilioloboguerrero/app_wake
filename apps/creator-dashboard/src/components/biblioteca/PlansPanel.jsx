@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTaskContext';
 import { GlowingEffect, AnimatedList, MenuDropdown, ConfirmDeleteModal } from '../ui';
 import PanelShell from './PanelShell';
 import CreatePlanOverlay from './CreatePlanOverlay';
@@ -25,7 +26,7 @@ const ArrowRightIcon = () => (
   </svg>
 );
 
-function PlanCard({ plan, onDelete, onOpen }) {
+function PlanCard({ plan, onDelete, onOpen, onDuplicate }) {
   return (
     <div className="bib-card bib-plan-card" onClick={() => onOpen(plan.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onOpen(plan.id)}>
       <GlowingEffect spread={20} borderWidth={1} />
@@ -49,7 +50,11 @@ function PlanCard({ plan, onDelete, onOpen }) {
         <div className="bib-plan-menu" onClick={(e) => e.stopPropagation()}>
           <MenuDropdown
             trigger={<button type="button" className="bib-plan-menu-trigger"><DotsIcon /></button>}
-            items={[{ label: 'Eliminar', danger: true, onClick: () => onDelete(plan.id, plan.title) }]}
+            items={[
+              { label: 'Duplicar', onClick: () => onDuplicate(plan) },
+              { divider: true },
+              { label: 'Eliminar', danger: true, onClick: () => onDelete(plan.id, plan.title) },
+            ]}
           />
         </div>
         <span className="bib-plan-open-icon"><ArrowRightIcon /></span>
@@ -63,6 +68,7 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const { data: plans = [], isLoading, error } = useQuery({
@@ -83,7 +89,23 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
   }, [plans, q, sortKey]);
 
   const handlePlanCreated = useCallback((data) => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
+    if (data?.id) {
+      const key = queryKeys.plans.byCreator(user?.uid);
+      queryClient.setQueryData(key, (prev = []) => {
+        if (prev.some((p) => p.id === data.id)) return prev;
+        const optimistic = {
+          id: data.id,
+          title: data.title ?? '',
+          description: data.description ?? '',
+          creator_id: user?.uid,
+          weekCount: 1,
+          clientCount: 0,
+          created_at: { _seconds: Math.floor(Date.now() / 1000) },
+        };
+        return [optimistic, ...prev];
+      });
+      queryClient.invalidateQueries({ queryKey: key });
+    }
     setIsCreateOpen(false);
     if (data?.id) navigate(`/plans/${data.id}`);
   }, [queryClient, user?.uid, navigate]);
@@ -113,6 +135,23 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
     navigate(`/plans/${planId}`);
   }, [navigate]);
 
+  const duplicatePlanMutation = useMutation({
+    mutationFn: ({ id }) => apiClient.post(`/creator/plans/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(user?.uid) });
+      task.succeed(`"${name}" duplicado`);
+      const newId = res?.data?.id;
+      if (newId) navigate(`/plans/${newId}`);
+    },
+    onError: (_err, { task, name }) => task.fail(`No pudimos duplicar "${name}"`),
+  });
+
+  const handleDuplicatePlan = useCallback((plan) => {
+    const name = plan.title || 'plan';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicatePlanMutation.mutate({ id: plan.id, task, name });
+  }, [duplicatePlanMutation, addTask]);
+
   return (
     <>
       <PanelShell
@@ -138,6 +177,7 @@ export default function PlansPanel({ searchQuery = '', sortKey }) {
                   plan={plan}
                   onDelete={handleDeletePlan}
                   onOpen={handleOpenPlan}
+                  onDuplicate={handleDuplicatePlan}
                 />
               </motion.div>
             ))}

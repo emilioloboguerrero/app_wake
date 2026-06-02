@@ -25,6 +25,8 @@ const ProgramLibraryScreen = () => {
           const creatorId = params?.creatorId;
           if (creatorId) navigate(`/creator/${creatorId}`);
         },
+        'AllPurchasedCourses': () => navigate('/courses'),
+        'Subscriptions': () => navigate('/subscriptions'),
         'Main': () => navigate('/'),
         'MainScreen': () => navigate('/'),
       };

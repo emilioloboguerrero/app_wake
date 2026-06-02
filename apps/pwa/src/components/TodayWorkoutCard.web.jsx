@@ -1,22 +1,40 @@
 // Workout card — front: full-bleed image with text overlay (program kicker + session title).
-// Back: muscle activation silhouette + Begin button + video history (one-on-one only).
+// Back: muscle activation silhouette (tinted with the image accent) + Begin button. For
+// one-on-one programs, a camera button sits at the top-right of the back face and opens
+// the video-exchange history.
 //
 // Tap front -> flip to back. Tap back (not on action) -> flip to front.
 // Tap Begin -> /warmup. Tap on an expired card -> renew flow (onRenew handler).
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
-import VideoExchangeOverlay from './videoExchange/VideoExchangeOverlay.web';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import WakeLoader from './WakeLoader.web.jsx';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const formatDateChip = (ymd) => {
+  if (!ymd) return '';
+  const d = new Date(`${ymd}T12:00:00`);
+  return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${MONTH_NAMES[d.getMonth()]}`;
+};
 
 const styles = {
   outer: {
     width: '100%',
     height: '100%',
-    perspective: 1200,
+    perspective: 2400,
     cursor: 'pointer',
   },
   inner: {
@@ -129,6 +147,40 @@ const styles = {
     border: '1px solid rgba(255,255,255,0.28)',
     zIndex: 2,
   },
+  manageLink: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    padding: '8px 14px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 12,
+    fontWeight: 500,
+    border: '1px solid rgba(255,255,255,0.18)',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    zIndex: 3,
+  },
+  dateChip: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    padding: '6px 12px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    color: '#fff',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    fontWeight: 700,
+    border: '1px solid rgba(255,255,255,0.18)',
+    zIndex: 2,
+  },
   statusPill: {
     position: 'absolute',
     bottom: 16,
@@ -158,6 +210,7 @@ const styles = {
     flexDirection: 'column',
     gap: 4,
     color: '#fff',
+    paddingRight: 72, // leave room for the floating camera button
   },
   backKicker: {
     fontSize: 11,
@@ -173,13 +226,112 @@ const styles = {
     lineHeight: 1.15,
     color: '#fff',
   },
-  muscleWrap: {
+  backScrollWrap: {
     flex: 1,
+    minHeight: 0,
+    position: 'relative',
+    display: 'flex',
+  },
+  backScrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    overscrollBehavior: 'contain',
+    scrollbarWidth: 'none',
+    WebkitOverflowScrolling: 'touch',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  scrollTrack: {
+    position: 'absolute',
+    top: 12,
+    bottom: 12,
+    right: 8,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    pointerEvents: 'none',
+    transition: `opacity 220ms ${SPRING}`,
+  },
+  scrollThumb: {
+    position: 'absolute',
+    left: 0,
+    width: '100%',
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  sectionBlock: {
+    flexShrink: 0,
+    padding: '20px 24px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+  },
+  sectionBlockDivided: {
+    borderTop: '1px solid rgba(255,255,255,0.06)',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  sectionKicker: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  sectionCount: {
+    fontSize: 11,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.35)',
+    fontVariantNumeric: 'tabular-nums',
+    letterSpacing: 0.2,
+  },
+  muscleWrap: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '8px 12px',
     minHeight: 0,
+  },
+  exerciseList: {
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  exerciseRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: '10px 0',
+    borderBottom: '1px solid rgba(255,255,255,0.05)',
+    minHeight: 0,
+  },
+  exerciseRowLast: {
+    borderBottom: 'none',
+  },
+  exerciseName: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.88)',
+    letterSpacing: -0.1,
+    lineHeight: 1.25,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  exerciseMeta: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 600,
+    color: 'rgba(255,255,255,0.42)',
+    letterSpacing: 0.4,
+    fontVariantNumeric: 'tabular-nums',
   },
   beginRow: {
     padding: '0 20px 20px 20px',
@@ -187,12 +339,8 @@ const styles = {
     flexDirection: 'column',
     gap: 8,
   },
-  buttonRow: {
-    display: 'flex',
-    gap: 8,
-  },
   beginButton: {
-    flex: 1,
+    width: '100%',
     height: 56,
     borderRadius: 14,
     backgroundColor: '#ffffff',
@@ -209,49 +357,73 @@ const styles = {
     color: 'rgba(255,255,255,0.4)',
     cursor: 'not-allowed',
   },
-  videoButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 22,
-    cursor: 'pointer',
-    flexShrink: 0,
-  },
-  flipHint: {
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
-    textAlign: 'center',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+  loaderOverlay: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(10,10,10,0.45)',
+    backdropFilter: 'blur(2px)',
+    WebkitBackdropFilter: 'blur(2px)',
+    zIndex: 4,
+    pointerEvents: 'none',
+    borderRadius: 24,
   },
 };
 
-const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, onBegin, onRenew }) => {
+const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, selectedDate, onBegin, onRenew }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const courseId = course?.courseId || course?.id;
   const programTitle = course?.title || '';
-  const courseCreatorId = course?.creator_id || null;
-  const isOneOnOne = course?.deliveryType === 'one_on_one';
-  const canAccessVideoHistory = !!(isOneOnOne && courseCreatorId && user?.uid);
   const isTrial = course?.is_trial === true;
+  const trialDaysLeft = useMemo(() => {
+    if (!isTrial || !course?.expires_at) return null;
+    const t = new Date(course.expires_at).getTime();
+    if (!Number.isFinite(t)) return null;
+    return Math.max(0, Math.ceil((t - Date.now()) / (24 * 60 * 60 * 1000)));
+  }, [isTrial, course?.expires_at]);
 
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
+  const [imageBroken, setImageBroken] = useState(false);
+  const [scrollState, setScrollState] = useState({ scrollable: false, thumbTop: 0, thumbHeight: 0 });
+  const backScrollRef = useRef(null);
 
-  const { data: sessionState } = useQuery({
-    queryKey: ['preview', 'todaySession', user?.uid, courseId],
-    queryFn: () => sessionService.getCurrentSession(user.uid, courseId),
+  // selectedDate drives which session the card resolves. Today shares the cache key
+  // ['preview','todaySession',uid,courseId] with HoyScreen and the prefetch hook;
+  // other dates use a date-suffixed key so today's data isn't clobbered.
+  const isToday = !selectedDate || selectedDate === todayYmd();
+  const dateLabel = !isToday ? formatDateChip(selectedDate) : '';
+  const todaySessionKey = ['preview', 'todaySession', user?.uid, courseId];
+  const dateSessionKey = ['preview', 'todaySession', user?.uid, courseId, selectedDate];
+
+  const { data: sessionState, isLoading: sessionQueryLoading } = useQuery({
+    queryKey: isToday ? todaySessionKey : dateSessionKey,
+    queryFn: () => sessionService.getCurrentSession(user.uid, courseId, isToday ? {} : { targetDate: selectedDate }),
     enabled: !!user?.uid && !!courseId && !isExpired,
-    staleTime: 0,
+    // 60s window covers carousel swipes and quick re-mounts without a round-trip.
+    // Explicit invalidation on completion (sessionService.completeSession) and
+    // program updates (HoyScreen.handleApplyProgramUpdate) keeps the card fresh.
+    staleTime: 60 * 1000,
   });
+  const sessionLoading = sessionQueryLoading || (!sessionState && !!user?.uid && !!courseId && !isExpired);
 
   const sessionImageUrl = sessionState?.session?.image_url;
-  const fallbackImageUrl = course?.image_url;
-  const imageUrl = sessionImageUrl || fallbackImageUrl;
+  const programImageUrl = course?.image_url;
+  const imageUrl = sessionImageUrl || programImageUrl;
+  const accent = useAccentFromImage(imageUrl);
+  const accentVarsStyle = accent
+    ? {
+        '--accent': accent.accent,
+        '--accent-r': accent.accentR,
+        '--accent-g': accent.accentG,
+        '--accent-b': accent.accentB,
+        '--accent-text': accent.accentText,
+      }
+    : {};
+  const accentRgb = accent ? [accent.accentR, accent.accentG, accent.accentB] : null;
 
   const sessionTitle = sessionState?.session?.title;
   const isCompleted = !!sessionState?.todaySessionAlreadyCompleted;
@@ -260,6 +432,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
 
   let headlineTitle;
   if (isExpired) headlineTitle = 'Acceso expirado';
+  else if (sessionLoading) headlineTitle = programTitle;
   else if (isCompleted) headlineTitle = 'Sesión completada';
   else if (isRestDay) headlineTitle = 'Día de descanso';
   else if (noPlanningThisWeek) headlineTitle = 'Sin sesiones esta semana';
@@ -280,17 +453,74 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
     return acc;
   }, [sessionState?.workout?.exercises]);
 
+  const exerciseSummary = useMemo(() => {
+    const exercises = sessionState?.workout?.exercises;
+    if (!Array.isArray(exercises)) return [];
+    return exercises
+      .filter((ex) => ex?.name)
+      .map((ex) => ({
+        id: ex.id,
+        name: ex.name,
+        setCount: Array.isArray(ex.sets) ? ex.sets.length : 0,
+      }));
+  }, [sessionState?.workout?.exercises]);
+
+  const hasMuscleData = Object.keys(muscleVolumes).length > 0;
+
+  // Drive the side scroll indicator: thumb height = visible / total, thumb top
+  // = scrollTop / total. Hidden when content fits. rAF-coalesces scroll updates
+  // so React state never lags behind the scroll position on fast scrolls.
+  useEffect(() => {
+    if (!flipped) return undefined;
+    const el = backScrollRef.current;
+    if (!el) return undefined;
+    let frame = 0;
+    const recompute = () => {
+      frame = 0;
+      const { scrollHeight, clientHeight, scrollTop } = el;
+      const scrollable = scrollHeight > clientHeight + 4;
+      if (!scrollable) {
+        setScrollState({ scrollable: false, thumbTop: 0, thumbHeight: 0 });
+        return;
+      }
+      const ratio = clientHeight / scrollHeight;
+      const thumbHeightPct = Math.max(ratio * 100, 12);
+      const denom = scrollHeight - clientHeight;
+      const thumbTopPct = denom > 0 ? (scrollTop / denom) * (100 - thumbHeightPct) : 0;
+      setScrollState({ scrollable: true, thumbTop: thumbTopPct, thumbHeight: thumbHeightPct });
+    };
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(recompute);
+    };
+    recompute();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(recompute) : null;
+    if (ro) {
+      ro.observe(el);
+      Array.from(el.children).forEach((c) => ro.observe(c));
+    }
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+      if (ro) ro.disconnect();
+    };
+  }, [flipped, sessionLoading, exerciseSummary.length, hasMuscleData]);
+
   const canBegin = !!sessionState?.workout && !isExpired && !isCompleted;
   const beginLabel = isExpired
     ? 'Renovar acceso'
-    : isCompleted
-      ? 'Completada'
-      : isRestDay
-        ? 'Día de descanso'
-        : noPlanningThisWeek
-          ? 'Sin sesión'
-          : 'Empezar';
-  const hasMuscleData = Object.keys(muscleVolumes).length > 0;
+    : sessionLoading
+      ? 'Cargando…'
+      : isCompleted
+        ? 'Completada'
+        : isRestDay
+          ? 'Día de descanso'
+          : noPlanningThisWeek
+            ? 'Sin sesión'
+            : isToday
+              ? 'Empezar'
+              : `Empezar el ${dateLabel}`;
 
   const handleFlip = (e) => {
     e?.stopPropagation?.();
@@ -315,26 +545,27 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
     });
   };
 
-  const handleVideoHistory = (e) => {
-    e?.stopPropagation?.();
-    setVideoHistoryOpen(true);
-  };
-
-  const beginStyle = canBegin ? styles.beginButton : { ...styles.beginButton, ...styles.beginDisabled };
+  const beginAccentStyle = accent && (canBegin || isExpired)
+    ? { backgroundColor: accent.accent, color: accent.accentText }
+    : null;
+  const beginStyle = canBegin
+    ? { ...styles.beginButton, ...(beginAccentStyle || {}) }
+    : { ...styles.beginButton, ...styles.beginDisabled };
 
   return (
     <>
-      <div style={styles.outer} role="button" tabIndex={0}>
+      <div style={{ ...styles.outer, ...accentVarsStyle }} role="button" tabIndex={0}>
         <div style={{ ...styles.inner, transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}>
           {/* FRONT */}
           <div style={styles.face} onClick={handleFlip}>
             <div style={styles.imageBackdrop} />
-            {imageUrl ? (
+            {imageUrl && !imageBroken ? (
               <img
                 src={imageUrl}
                 alt={programTitle}
                 style={imageLoaded ? { ...styles.image, ...styles.imageLoaded } : styles.image}
                 onLoad={() => setImageLoaded(true)}
+                onError={() => setImageBroken(true)}
               />
             ) : (
               <div style={styles.imagePlaceholder}>imagen del programa</div>
@@ -344,70 +575,144 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, on
               <span style={styles.title}>{headlineTitle}</span>
             </div>
             {isExpired ? <div style={styles.expiredBadge}>Expirado</div> : null}
-            {isTrial ? <div style={styles.trialBadge}>Prueba</div> : null}
+            {!isToday ? (
+              <div style={styles.dateChip}>{dateLabel}</div>
+            ) : isTrial ? (
+              <div style={styles.trialBadge}>
+                {trialDaysLeft != null
+                  ? `Prueba · ${trialDaysLeft} ${trialDaysLeft === 1 ? 'día' : 'días'}`
+                  : 'Prueba'}
+              </div>
+            ) : null}
+            {isTrial && !isExpired && courseId ? (
+              <button
+                type="button"
+                style={styles.manageLink}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/library/manage/${courseId}`);
+                }}
+              >
+                Gestionar suscripción
+              </button>
+            ) : null}
             {downloadStatus === 'updating' ? (
               <div style={styles.statusPill}>Actualizando</div>
             ) : downloadStatus === 'failed' ? (
               <div style={{ ...styles.statusPill, ...styles.statusPillFailed }}>Error</div>
+            ) : null}
+            {sessionLoading && !isExpired ? (
+              <div style={styles.loaderOverlay}>
+                <WakeLoader size={56} />
+              </div>
             ) : null}
           </div>
 
           {/* BACK */}
           <div style={{ ...styles.face, ...styles.back }} onClick={handleFlip}>
             <div style={styles.backHeader}>
-              {programTitle ? <span style={styles.backKicker}>{programTitle}</span> : null}
+              {programTitle ? (
+                <span style={styles.backKicker}>
+                  {programTitle}{!isToday && dateLabel ? ` · ${dateLabel}` : ''}
+                </span>
+              ) : !isToday && dateLabel ? (
+                <span style={styles.backKicker}>{dateLabel}</span>
+              ) : null}
               <span style={styles.backTitle}>{headlineTitle}</span>
             </div>
 
-            <div style={styles.muscleWrap}>
-              {hasMuscleData ? (
-                <MuscleSilhouetteSVG
-                  muscleVolumes={muscleVolumes}
-                  useWorkoutExecutionColors={true}
-                  height={300}
+            <div style={styles.backScrollWrap}>
+            <div
+              ref={backScrollRef}
+              style={styles.backScrollArea}
+              onClick={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
+              onTouchMove={(e) => e.stopPropagation()}
+            >
+              <div style={styles.sectionBlock}>
+                <div style={styles.sectionHeader}>
+                  <span style={styles.sectionKicker}>Activación muscular</span>
+                  {hasMuscleData ? (
+                    <span style={styles.sectionCount}>
+                      {Object.keys(muscleVolumes).length}{' '}
+                      {Object.keys(muscleVolumes).length === 1 ? 'grupo' : 'grupos'}
+                    </span>
+                  ) : null}
+                </div>
+                <div style={styles.muscleWrap}>
+                  {sessionLoading ? (
+                    <WakeLoader size={64} />
+                  ) : hasMuscleData ? (
+                    <MuscleSilhouetteSVG
+                      muscleVolumes={muscleVolumes}
+                      accentRgb={accentRgb}
+                      height={300}
+                    />
+                  ) : (
+                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                      {isRestDay ? 'Recupera para entrenar mejor' : 'Sin datos de activación'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {exerciseSummary.length > 0 ? (
+                <div style={{ ...styles.sectionBlock, ...styles.sectionBlockDivided }}>
+                  <div style={styles.sectionHeader}>
+                    <span style={styles.sectionKicker}>Ejercicios</span>
+                    <span style={styles.sectionCount}>
+                      {exerciseSummary.length} {exerciseSummary.length === 1 ? 'ejercicio' : 'ejercicios'}
+                    </span>
+                  </div>
+                  <div style={styles.exerciseList}>
+                    {exerciseSummary.map((ex, idx) => (
+                      <div
+                        key={ex.id || `${idx}-${ex.name}`}
+                        style={idx === exerciseSummary.length - 1
+                          ? { ...styles.exerciseRow, ...styles.exerciseRowLast }
+                          : styles.exerciseRow}
+                      >
+                        <span style={styles.exerciseName}>{ex.name}</span>
+                        {ex.setCount > 0 ? (
+                          <span style={styles.exerciseMeta}>
+                            {ex.setCount}× {ex.setCount === 1 ? 'serie' : 'series'}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+              <div
+                style={{ ...styles.scrollTrack, opacity: scrollState.scrollable ? 1 : 0 }}
+                aria-hidden
+              >
+                <div
+                  style={{
+                    ...styles.scrollThumb,
+                    top: `${scrollState.thumbTop}%`,
+                    height: `${scrollState.thumbHeight}%`,
+                  }}
                 />
-              ) : (
-                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
-                  {isRestDay ? 'Recupera para entrenar mejor' : 'Sin datos de activación'}
-                </span>
-              )}
+              </div>
             </div>
 
             <div style={styles.beginRow}>
-              <div style={styles.buttonRow}>
-                <button
-                  style={canBegin || isExpired ? styles.beginButton : beginStyle}
-                  onClick={handleBegin}
-                  disabled={!canBegin && !isExpired}
-                >
-                  {beginLabel}
-                </button>
-                {canAccessVideoHistory ? (
-                  <button
-                    style={styles.videoButton}
-                    onClick={handleVideoHistory}
-                    aria-label="Historial de videos"
-                    title="Historial de videos"
-                  >
-                    {'▶'}
-                  </button>
-                ) : null}
-              </div>
-              <span style={styles.flipHint}>Toca la tarjeta para volver</span>
+              <button
+                style={canBegin || isExpired
+                  ? { ...styles.beginButton, ...(beginAccentStyle || {}) }
+                  : beginStyle}
+                onClick={handleBegin}
+                disabled={(!canBegin && !isExpired) || sessionLoading}
+              >
+                {beginLabel}
+              </button>
             </div>
+
           </div>
         </div>
       </div>
-
-      {canAccessVideoHistory && VideoExchangeOverlay ? (
-        <VideoExchangeOverlay
-          open={videoHistoryOpen}
-          mode="history"
-          userId={user?.uid}
-          creatorId={courseCreatorId}
-          onClose={() => setVideoHistoryOpen(false)}
-        />
-      ) : null}
     </>
   );
 };

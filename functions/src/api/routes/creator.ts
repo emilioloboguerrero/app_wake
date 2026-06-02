@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import * as crypto from "node:crypto";
 import {Resend} from "resend";
-import {db, FieldValue, FieldPath} from "../firestore.js";
+import {db, FieldValue, FieldPath, Timestamp} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuthAndRateLimit} from "../middleware/auth.js";
 import {checkRateLimit} from "../middleware/rateLimit.js";
@@ -18,8 +18,10 @@ import {
   validateDeletionPath,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
+import {countCourseSeatsTaken} from "../services/capacity.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
+import {isReservedUsername} from "../utils/reservedUsernames.js";
 
 const router = Router();
 
@@ -1426,6 +1428,8 @@ router.post("/creator/programs", async (req, res) => {
     visibility?: string;
     availableLibraries?: unknown[];
     free_trial?: Record<string, unknown>;
+    block_cadence?: string | null;
+    scheduling?: string | null;
   }>(
     {
       title: "string",
@@ -1440,9 +1444,45 @@ router.post("/creator/programs", async (req, res) => {
       visibility: "optional_string",
       availableLibraries: "optional_array",
       free_trial: "optional_object",
+      block_cadence: "optional_string",
+      scheduling: "optional_string",
     },
     req.body
   );
+
+  if (body.block_cadence !== undefined && body.block_cadence !== null &&
+      body.block_cadence !== "monthly_first_monday") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "block_cadence debe ser 'monthly_first_monday' o null",
+      "block_cadence"
+    );
+  }
+
+  // scheduling='weekly' means sessions render per-day in the week strip
+  // (TodayWorkoutCard + WeekCoachCard pivot to dayIndex-based plannedDate).
+  // null/undefined = legacy sequential "next incomplete session" behavior.
+  if (body.scheduling !== undefined && body.scheduling !== null &&
+      body.scheduling !== "weekly") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "scheduling debe ser 'weekly' o null",
+      "scheduling"
+    );
+  }
+
+  // Collapse the legacy `low_ticket` deliveryType into `general`. Both meant
+  // "shared program, not 1:1"; the split predated subscriptions and only
+  // confused downstream filters. New writes are normalized; backfill script
+  // sweeps historical docs.
+  if (body.deliveryType === "low_ticket") body.deliveryType = "general";
+  if (body.deliveryType !== "general" && body.deliveryType !== "one_on_one") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "deliveryType debe ser 'general' o 'one_on_one'",
+      "deliveryType"
+    );
+  }
 
   if (body.visibility !== undefined && !["standalone", "bundle-only", "both"].includes(body.visibility)) {
     throw new WakeApiServerError(
@@ -1509,6 +1549,8 @@ router.post("/creator/programs", async (req, res) => {
     ...(body.discipline !== undefined && {discipline: body.discipline}),
     ...(body.weight_suggestions !== undefined && {weight_suggestions: body.weight_suggestions}),
     ...(body.duration !== undefined && {duration: body.duration}),
+    ...(body.block_cadence !== undefined && {block_cadence: body.block_cadence}),
+    ...(body.scheduling !== undefined && {scheduling: body.scheduling}),
     availableLibraries,
     creator_id: auth.userId,
     creatorName,
@@ -1552,8 +1594,68 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     "creatorName", "weight_suggestions", "free_trial", "duration",
     "video_intro_url", "tutorials", "availableLibraries", "content_plan_id",
     "compare_at_price", "visibility", "bundleOnly",
+    // Monthly-drop cadence (memory/project_monthly_drops.md). Only the
+    // creator can opt a program into cadence; current_block_id /
+    // current_block_index are written exclusively by the
+    // `monthlyDropAdvance` cron — not exposed for client write here.
+    "block_cadence",
+    // Weekly per-day scheduling: when set to 'weekly', /workout/daily computes
+    // plannedDate from session.dayIndex (1..7 = Lun..Dom) and TodayWorkoutCard
+    // surfaces "Descanso" on days without a session.
+    "scheduling",
+    // Beta purchase cap: max unique lifetime purchasers. null = uncapped.
+    // Enforced at checkout via capacity.ts; counts buyers past the cap into a
+    // waitlist instead.
+    "capacity",
   ];
   const updates = pickFields(req.body, allowedFields);
+
+  if (updates.capacity !== undefined && updates.capacity !== null) {
+    const v = updates.capacity;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 1) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "capacity debe ser un entero mayor o igual a 1, o null para quitar el límite",
+        "capacity"
+      );
+    }
+  }
+
+  if (updates.block_cadence !== undefined) {
+    const v = updates.block_cadence;
+    if (v !== null && v !== "monthly_first_monday") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "block_cadence debe ser 'monthly_first_monday' o null",
+        "block_cadence"
+      );
+    }
+  }
+
+  if (updates.scheduling !== undefined) {
+    const v = updates.scheduling;
+    if (v !== null && v !== "weekly") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "scheduling debe ser 'weekly' o null",
+        "scheduling"
+      );
+    }
+  }
+
+  // Same normalization as POST: collapse the legacy `low_ticket` value into
+  // `general` and reject anything outside {general, one_on_one}. Without this
+  // guard the PATCH path was a back-door for arbitrary deliveryType strings.
+  if (updates.deliveryType !== undefined) {
+    if (updates.deliveryType === "low_ticket") updates.deliveryType = "general";
+    if (updates.deliveryType !== "general" && updates.deliveryType !== "one_on_one") {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "deliveryType debe ser 'general' o 'one_on_one'",
+        "deliveryType"
+      );
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
@@ -1592,14 +1694,49 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     }
   }
 
+  // Safety belt: a positive subscription_price implies monthly billing, but the
+  // checkout endpoint refuses to run without access_duration (the webhook needs
+  // it to compute expires_at). If this PATCH lands a subscription_price on a
+  // course that was created without access_duration (e.g. seeded by a script
+  // that forgot the field), backfill it to "monthly" here so the buy page
+  // doesn't 400 silently for end users.
+  if (typeof updates.subscription_price === "number" && updates.subscription_price > 0) {
+    const existing = doc.data() ?? {};
+    const existingAccess = updates.access_duration ?? existing.access_duration;
+    if (typeof existingAccess !== "string" || !existingAccess.trim()) {
+      updates.access_duration = "monthly";
+    }
+  }
+
   await docRef.update({
     ...updates,
     updated_at: FieldValue.serverTimestamp(),
     last_update: FieldValue.serverTimestamp(),
   });
 
+  // When a creator turns cadence OFF, clean up program_state so a stale
+  // current_block_id can't gate content if cadence is later re-enabled or
+  // if any cron logic changes. The cron itself filters by block_cadence so
+  // this is defensive, not corrective.
+  if (updates.block_cadence === null) {
+    await db.collection("program_state").doc(req.params.programId).delete().catch(() => {
+      // best-effort: doc may not exist
+    });
+    await docRef.update({
+      current_block_id: FieldValue.delete(),
+      current_block_index: FieldValue.delete(),
+    }).catch(() => {
+      // best-effort: fields may not exist
+    });
+  }
+
   // Sync updated fields to enrolled users' course entries
-  const syncFields: Record<string, string> = {image_url: "image_url", title: "title"};
+  const syncFields: Record<string, string> = {
+    image_url: "image_url",
+    title: "title",
+    block_cadence: "block_cadence",
+    scheduling: "scheduling",
+  };
   const userUpdates: Record<string, unknown> = {};
   for (const [field, courseField] of Object.entries(syncFields)) {
     if (updates[field] !== undefined) {
@@ -1623,6 +1760,83 @@ router.patch("/creator/programs/:programId", async (req, res) => {
 
   res.json({data: {updated: true}});
 });
+
+// GET /creator/programs/:programId/waitlist
+//
+// Lists waitlist entries (email + name) plus the current seat count, so the
+// dashboard can show "12/20 cupos" and the people waiting. Mirrors the event
+// waitlist management view.
+router.get("/creator/programs/:programId/waitlist", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const programRef = db.collection("courses").doc(req.params.programId);
+  const programDoc = await programRef.get();
+  if (!programDoc.exists || programDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const snap = await programRef
+    .collection("waitlist")
+    .orderBy("created_at", "asc")
+    .limit(500)
+    .get();
+  const waitlist = snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      email: data.email ?? null,
+      name: data.name ?? null,
+      created_at: data.created_at?.toDate?.()?.toISOString?.() ?? null,
+    };
+  });
+
+  const cap = programDoc.data()?.capacity;
+  const capacity =
+    typeof cap === "number" && Number.isInteger(cap) && cap >= 1 ? cap : null;
+  const seatsTaken = await countCourseSeatsTaken(req.params.programId);
+
+  res.json({data: {capacity, seatsTaken, waitlist}});
+});
+
+// POST /creator/programs/:programId/waitlist/:waitlistId/admit
+//
+// Admitting opens one seat (capacity += 1) and removes the entry. The freed
+// seat goes to whoever checks out next, so reach out to the admitted person so
+// they claim it. Programs cost money — we can't auto-enroll like events do.
+router.post(
+  "/creator/programs/:programId/waitlist/:waitlistId/admit",
+  async (req, res) => {
+    const auth = await validateAuthAndRateLimit(req);
+    requireCreator(auth);
+
+    const programRef = db.collection("courses").doc(req.params.programId);
+    const programDoc = await programRef.get();
+    if (!programDoc.exists || programDoc.data()?.creator_id !== auth.userId) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+    }
+
+    const waitlistRef = programRef
+      .collection("waitlist")
+      .doc(req.params.waitlistId);
+    const waitlistDoc = await waitlistRef.get();
+    if (!waitlistDoc.exists) {
+      throw new WakeApiServerError(
+        "NOT_FOUND", 404, "Entrada de lista de espera no encontrada"
+      );
+    }
+
+    // Only bump a real cap. On an (unexpectedly) uncapped program, incrementing
+    // an absent field would set capacity to 1 and suddenly cap it — skip.
+    const cap = programDoc.data()?.capacity;
+    if (typeof cap === "number" && Number.isInteger(cap) && cap >= 1) {
+      await programRef.update({capacity: FieldValue.increment(1)});
+    }
+    await waitlistRef.delete();
+
+    res.json({data: {admitted: true}});
+  }
+);
 
 // PATCH /creator/programs/:programId/status
 router.patch("/creator/programs/:programId/status", async (req, res) => {
@@ -2377,6 +2591,38 @@ router.delete("/creator/nutrition/plans/:planId", async (req, res) => {
   res.status(204).send();
 });
 
+// POST /creator/nutrition/plans/:planId/duplicate
+router.post("/creator/nutrition/plans/:planId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("plans")
+    .doc(req.params.planId);
+
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newRef = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("plans")
+    .add({
+      ...sourceData,
+      name: `${sourceData.name ?? "Plan"} (copia)`,
+      creatorId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({data: {id: newRef.id}});
+});
+
 // POST /creator/nutrition/plans/:planId/propagate
 router.post("/creator/nutrition/plans/:planId/propagate", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -2682,6 +2928,38 @@ router.delete("/creator/nutrition/programs/:programId", async (req, res) => {
 
   await docRef.delete();
   res.status(204).send();
+});
+
+// POST /creator/nutrition/programs/:programId/duplicate
+router.post("/creator/nutrition/programs/:programId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .doc(req.params.programId);
+
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan nutricional no encontrado");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newRef = await db
+    .collection("creator_nutrition_library")
+    .doc(auth.userId)
+    .collection("programs")
+    .add({
+      ...sourceData,
+      name: `${sourceData.name ?? "Plan nutricional"} (copia)`,
+      creatorId: auth.userId,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  res.status(201).json({data: {id: newRef.id}});
 });
 
 // ─── Client Nutrition Assignments ─────────────────────────────────────────
@@ -3056,9 +3334,9 @@ router.patch("/creator/clients/:clientId/nutrition/assignments/:assignmentId", a
   // and overwrite the program snapshot with a single-day-shaped doc, leaving
   // a corrupted hybrid (mode='program' + planId set + single-day snapshot).
   // To switch to a different program, delete + reassign.
-  const allowedFields = assignmentMode === "program"
-    ? ["status", "startDate", "endDate"]
-    : ["status", "startDate", "endDate", "planId", "planName"];
+  const allowedFields = assignmentMode === "program" ?
+    ["status", "startDate", "endDate"] :
+    ["status", "startDate", "endDate", "planId", "planName"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
@@ -4524,6 +4802,83 @@ router.delete("/creator/plans/:planId", async (req, res) => {
   res.status(204).send();
 });
 
+// POST /creator/plans/:planId/duplicate
+router.post("/creator/plans/:planId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db.collection("plans").doc(req.params.planId);
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists || sourceDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Plan no encontrado");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newDoc = await db.collection("plans").add({
+    ...sourceData,
+    title: `${sourceData.title ?? "Plan"} (copia)`,
+    created_at: FieldValue.serverTimestamp(),
+    updated_at: FieldValue.serverTimestamp(),
+  });
+
+  // Deep copy subcollections: modules → sessions → exercises → sets.
+  // Library refs inside exercises (primary/alternatives maps) are preserved verbatim.
+  const newRef = db.collection("plans").doc(newDoc.id);
+  const modulesSnap = await sourceRef.collection("modules").get();
+  let batch = db.batch();
+  let count = 0;
+
+  for (const mDoc of modulesSnap.docs) {
+    const newModRef = newRef.collection("modules").doc();
+    batch.set(newModRef, {
+      ...mDoc.data(),
+      id: newModRef.id,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+    const sessionsSnap = await mDoc.ref.collection("sessions").get();
+    for (const sDoc of sessionsSnap.docs) {
+      const newSessRef = newModRef.collection("sessions").doc();
+      batch.set(newSessRef, {
+        ...sDoc.data(),
+        id: newSessRef.id,
+        created_at: FieldValue.serverTimestamp(),
+      });
+      count++;
+      if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+      const exSnap = await sDoc.ref.collection("exercises").get();
+      for (const eDoc of exSnap.docs) {
+        const newExRef = newSessRef.collection("exercises").doc();
+        batch.set(newExRef, {
+          ...eDoc.data(),
+          id: newExRef.id,
+          created_at: FieldValue.serverTimestamp(),
+        });
+        count++;
+        if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+
+        const setsSnap = await eDoc.ref.collection("sets").get();
+        for (const setDoc of setsSnap.docs) {
+          const newSetRef = newExRef.collection("sets").doc();
+          batch.set(newSetRef, {
+            ...setDoc.data(),
+            id: newSetRef.id,
+            created_at: FieldValue.serverTimestamp(),
+          });
+          count++;
+          if (count >= 450) { await batch.commit(); batch = db.batch(); count = 0; }
+        }
+      }
+    }
+  }
+  if (count > 0) await batch.commit();
+
+  res.status(201).json({data: {id: newDoc.id}});
+});
+
 // POST /creator/plans/:planId/modules
 router.post("/creator/plans/:planId/modules", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -5100,6 +5455,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
     type?: string;
     duration?: number;
     rep_sequence?: number[];
+    notes?: string;
   }>(
     {
       order: "number",
@@ -5112,6 +5468,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
       type: "optional_string",
       duration: "optional_number",
       rep_sequence: "optional_array",
+      notes: "optional_string",
     },
     req.body
   );
@@ -5119,6 +5476,10 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerci
   // rep_sequence: enforce number[] at route level (validateBody only checks top-level array type)
   if (body.rep_sequence && !body.rep_sequence.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+  }
+
+  if (typeof body.notes === "string" && body.notes.length > 500) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes no puede exceder 500 caracteres", "notes");
   }
 
   // Allow custom_* fields from body on creation
@@ -5157,7 +5518,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     .collection("sets").doc(req.params.setId);
 
   // Allowlist set fields
-  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence"];
+  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence", "notes"];
   const updates = pickFields(req.body, allowedFields);
 
   // rep_sequence: enforce number[] if present
@@ -5166,6 +5527,10 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId/exerc
     if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
     }
+  }
+
+  if (updates.notes !== undefined && updates.notes !== null && (typeof updates.notes !== "string" || updates.notes.length > 500)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes debe ser un string de máximo 500 caracteres", "notes");
   }
 
   // Allow custom objective/measure fields (custom_*)
@@ -5459,7 +5824,7 @@ router.post("/creator/library/sessions", async (req, res) => {
   // Auto-seed defaultDataTemplate from creator's first objective preset (or sensible default)
   const DEFAULT_TEMPLATE = {
     measures: ["reps", "weight", "intensity"],
-    objectives: ["reps", "intensity", "previous"],
+    objectives: ["reps", "intensity", "previous", "notes"],
     customMeasureLabels: {},
     customObjectiveLabels: {},
   };
@@ -5677,6 +6042,88 @@ router.delete("/creator/library/sessions/:sessionId", async (req, res) => {
   res.status(204).send();
 });
 
+// POST /creator/library/sessions/:sessionId/duplicate
+router.post("/creator/library/sessions/:sessionId/duplicate", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const sourceRef = db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions")
+    .doc(req.params.sessionId);
+
+  const sourceDoc = await sourceRef.get();
+  if (!sourceDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+  }
+
+  const sourceData = sourceDoc.data()!;
+  const newRef = await db
+    .collection("creator_libraries")
+    .doc(auth.userId)
+    .collection("sessions")
+    .add({
+      ...sourceData,
+      title: `${sourceData.title ?? "Sesión"} (copia)`,
+      created_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    });
+
+  // Deep copy subcollections: exercises → sets. Library refs (primary/alternatives
+  // maps) are preserved verbatim — they point at exercises_library/* entries that
+  // are intentionally shared between the source and the copy.
+  const exSnap = await sourceRef.collection("exercises").get();
+  let batch = db.batch();
+  let count = 0;
+
+  for (const eDoc of exSnap.docs) {
+    const newExRef = newRef.collection("exercises").doc();
+    batch.set(newExRef, {
+      ...eDoc.data(),
+      id: newExRef.id,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
+
+    const setsSnap = await eDoc.ref.collection("sets").get();
+    for (const setDoc of setsSnap.docs) {
+      const newSetRef = newExRef.collection("sets").doc();
+      batch.set(newSetRef, {
+        ...setDoc.data(),
+        id: newSetRef.id,
+        created_at: FieldValue.serverTimestamp(),
+      });
+      count++;
+      if (count >= 450) {
+        await batch.commit(); batch = db.batch(); count = 0;
+      }
+    }
+  }
+
+  // Also copy objective_presets if present
+  const presetsSnap = await sourceRef.collection("objective_presets").get();
+  for (const pDoc of presetsSnap.docs) {
+    const newPresetRef = newRef.collection("objective_presets").doc();
+    batch.set(newPresetRef, {
+      ...pDoc.data(),
+      id: newPresetRef.id,
+      created_at: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count >= 450) {
+      await batch.commit(); batch = db.batch(); count = 0;
+    }
+  }
+
+  if (count > 0) await batch.commit();
+
+  res.status(201).json({data: {id: newRef.id}});
+});
+
 // Library session exercise/set CRUD — with allowlisted fields
 router.post("/creator/library/sessions/:sessionId/exercises", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
@@ -5750,6 +6197,7 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
     weight?: number; intensity?: string; rir?: number;
     restSeconds?: number; type?: string;
     duration?: number; rep_sequence?: number[];
+    notes?: string;
   }>(
     {
       order: "number",
@@ -5762,12 +6210,17 @@ router.post("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets", a
       type: "optional_string",
       duration: "optional_number",
       rep_sequence: "optional_array",
+      notes: "optional_string",
     },
     req.body
   );
 
   if (body.rep_sequence && !body.rep_sequence.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
+  }
+
+  if (typeof body.notes === "string" && body.notes.length > 500) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes no puede exceder 500 caracteres", "notes");
   }
 
   const ref = await db
@@ -5790,7 +6243,7 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     .collection("exercises").doc(req.params.exerciseId)
     .collection("sets").doc(req.params.setId);
 
-  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence"];
+  const allowedFields = ["order", "title", "reps", "weight", "intensity", "rir", "restSeconds", "type", "duration", "rep_sequence", "notes"];
   const updates = pickFields(req.body, allowedFields);
 
   if (updates.rep_sequence !== undefined) {
@@ -5798,6 +6251,10 @@ router.patch("/creator/library/sessions/:sessionId/exercises/:exerciseId/sets/:s
     if (seq !== null && (!Array.isArray(seq) || !seq.every((n) => typeof n === "number" && Number.isFinite(n) && n > 0))) {
       throw new WakeApiServerError("VALIDATION_ERROR", 400, "rep_sequence debe ser un array de números positivos", "rep_sequence");
     }
+  }
+
+  if (updates.notes !== undefined && updates.notes !== null && (typeof updates.notes !== "string" || updates.notes.length > 500)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "notes debe ser un string de máximo 500 caracteres", "notes");
   }
 
   // Allow custom objective/measure fields (custom_*)
@@ -7314,6 +7771,11 @@ router.get("/creator/username-check", async (req, res) => {
   }
   const normalized = raw.toLowerCase().trim();
 
+  if (isReservedUsername(normalized)) {
+    res.json({data: {available: false, reason: "reserved"}});
+    return;
+  }
+
   const snapshot = await db
     .collection("users")
     .where("username", "==", normalized)
@@ -7817,17 +8279,118 @@ router.post("/creator/programs/:programId/modules", async (req, res) => {
     req.body
   );
 
-  const ref = await db
-    .collection("courses")
-    .doc(req.params.programId)
-    .collection("modules")
-    .add({
-      title: body.title,
-      order: body.order ?? 0,
-      created_at: FieldValue.serverTimestamp(),
-    });
+  // Modules are 0-indexed and the cron uses `order` directly as the block
+  // index for `block_cadence: 'monthly_first_monday'` courses. Defaulting to
+  // `existing.length` prevents collisions when the client omits `order`
+  // (project_monthly_drops.md). A literal `order: 0` from the client is
+  // honored — only `undefined` falls back to the count.
+  const modulesCol = db.collection("courses").doc(req.params.programId).collection("modules");
+  const resolvedOrder = body.order ?? (await modulesCol.count().get()).data().count;
+
+  const ref = await modulesCol.add({
+    title: body.title,
+    order: resolvedOrder,
+    created_at: FieldValue.serverTimestamp(),
+  });
 
   res.status(201).json({data: {moduleId: ref.id, id: ref.id}});
+});
+
+// POST /creator/programs/:programId/initialize-cadence
+//
+// Bootstraps `program_state/{courseId}` so the monthly-drop cron can take over.
+// Coaches call this once after publishing Mes 1, instead of the seed scripts
+// (`seed-bejarano-program-state.js`, `fix-bejarano-launch.js`). Idempotent
+// refusal: returns ALREADY_INITIALIZED if program_state already exists, so a
+// double-click can't silently overwrite a running cron's state.
+//
+// Behavior:
+//   1. Verify the course is monthly-drop and owned by the caller
+//   2. Verify no program_state doc yet
+//   3. Pick the lowest-order module with `published_at !== null` as the current
+//      block. Refuse if none.
+//   4. Pick the next published module (if any) as `next_block_id`.
+//   5. Write program_state with `current_block_started_at: serverTimestamp()`
+//      so the consumer's week-bucketing math anchors to the moment of init.
+//   6. Mirror `current_block_id` + `current_block_index` onto the course doc.
+//
+// Errors: CADENCE_NOT_ENABLED, ALREADY_INITIALIZED, NO_PUBLISHED_MODULES.
+router.post("/creator/programs/:programId/initialize-cadence", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+
+  const courseRef = db.collection("courses").doc(req.params.programId);
+  const courseDoc = await courseRef.get();
+  if (!courseDoc.exists || courseDoc.data()?.creator_id !== auth.userId) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  const course = courseDoc.data() ?? {};
+  if (course.block_cadence !== "monthly_first_monday") {
+    throw new WakeApiServerError(
+      "CADENCE_NOT_ENABLED", 400,
+      "Activa 'Bloques mensuales' antes de iniciar la cadencia"
+    );
+  }
+
+  const stateRef = db.collection("program_state").doc(req.params.programId);
+  const stateSnap = await stateRef.get();
+  if (stateSnap.exists) {
+    throw new WakeApiServerError(
+      "ALREADY_INITIALIZED", 409,
+      "Este programa ya tiene una cadencia activa"
+    );
+  }
+
+  // Pick lowest-order published module as the current block; next published
+  // as next_block_id (the cron will use this on the next first Monday).
+  const modulesSnap = await courseRef
+    .collection("modules")
+    .orderBy("order", "asc")
+    .limit(50)
+    .get();
+  const published = modulesSnap.docs.filter((d) => {
+    const p = d.data().published_at;
+    return p !== null && p !== undefined;
+  });
+  if (published.length === 0) {
+    throw new WakeApiServerError(
+      "NO_PUBLISHED_MODULES", 400,
+      "Publica al menos un bloque antes de iniciar la cadencia"
+    );
+  }
+
+  const current = published[0];
+  const currentData = current.data();
+  const currentIndex = currentData.order as number;
+  const next = published[1] ?? null;
+  const nextId = next ? next.id : null;
+  const nextIndex = next ? (next.data().order as number) : null;
+
+  const now = FieldValue.serverTimestamp();
+  await stateRef.set({
+    current_block_id: current.id,
+    current_block_index: currentIndex,
+    current_block_started_at: now,
+    next_block_id: nextId,
+    next_block_index: nextIndex,
+    updated_at: now,
+  });
+  await courseRef.update({
+    current_block_id: current.id,
+    current_block_index: currentIndex,
+    updated_at: now,
+  });
+
+  res.json({
+    data: {
+      courseId: req.params.programId,
+      current_block_id: current.id,
+      current_block_index: currentIndex,
+      current_block_title: currentData.title ?? null,
+      next_block_id: nextId,
+      next_block_index: nextIndex,
+    },
+  });
 });
 
 // PATCH /creator/programs/:programId/modules/:moduleId
@@ -7851,9 +8414,35 @@ router.patch("/creator/programs/:programId/modules/:moduleId", async (req, res) 
     throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
   }
 
-  const updates = pickFields(req.body, ["title", "order"]);
+  // unlocks_at + published_at are monthly-drop fields
+  // (memory/project_monthly_drops.md). published_at is the gate the cron
+  // filters by — unset means the cron skips that module. order is the
+  // existing module ordinal and doubles as the block index.
+  const updates = pickFields(req.body, [
+    "title", "order",
+    "unlocks_at", "published_at",
+  ]);
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  // unlocks_at / published_at accepted as ISO strings (converted to
+  // Timestamp at write time) or null to clear. Anything else is rejected.
+  for (const field of ["unlocks_at", "published_at"] as const) {
+    const v = updates[field];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string" || Number.isNaN(Date.parse(v))) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `${field} debe ser una fecha ISO válida o null`,
+        field
+      );
+    }
+  }
+  for (const field of ["unlocks_at", "published_at"] as const) {
+    if (typeof updates[field] === "string") {
+      updates[field] = Timestamp.fromDate(new Date(updates[field] as string));
+    }
   }
 
   await modRef.update({...updates, updated_at: FieldValue.serverTimestamp()});
@@ -7916,10 +8505,21 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
-  const body = validateBody<{ title: string; order?: number; librarySessionRef?: string; dayIndex?: number; image_url?: string }>(
-    {title: "string", order: "optional_number", librarySessionRef: "optional_string", dayIndex: "optional_number", image_url: "optional_string"},
+  const body = validateBody<{
+    title: string; order?: number;
+    source_library_session_id?: string; librarySessionRef?: string;
+    dayIndex?: number; image_url?: string;
+  }>(
+    {
+      title: "string", order: "optional_number",
+      source_library_session_id: "optional_string",
+      librarySessionRef: "optional_string",
+      dayIndex: "optional_number", image_url: "optional_string",
+    },
     req.body
   );
+
+  const sourceLibId = body.source_library_session_id ?? body.librarySessionRef ?? null;
 
   const ref = await db
     .collection("courses")
@@ -7930,21 +8530,26 @@ router.post("/creator/programs/:programId/modules/:moduleId/sessions", async (re
     .add({
       title: body.title,
       order: body.order ?? 0,
-      ...(body.librarySessionRef !== undefined && {librarySessionRef: body.librarySessionRef}),
+      isRestDay: false,
+      ...(sourceLibId && {source_library_session_id: sourceLibId}),
       ...(body.dayIndex !== undefined && {dayIndex: body.dayIndex}),
       ...(body.image_url !== undefined && {image_url: body.image_url}),
       created_at: FieldValue.serverTimestamp(),
     });
 
-  // Deep-copy exercises+sets from library session when librarySessionRef is provided
-  if (body.librarySessionRef) {
+  // Deep-copy exercises+sets from the referenced library session and
+  // propagate defaultDataTemplate + notes so manual creations match the
+  // shape produced by the seed scripts.
+  if (sourceLibId) {
     const libSessionRef = db.collection("creator_libraries").doc(auth.userId)
-      .collection("sessions").doc(body.librarySessionRef);
+      .collection("sessions").doc(sourceLibId);
     const libDoc = await libSessionRef.get();
     if (libDoc.exists) {
       const libData = libDoc.data()!;
       const metaUpdate: Record<string, unknown> = {};
       if (!body.image_url && libData.image_url) metaUpdate.image_url = libData.image_url;
+      if (libData.defaultDataTemplate) metaUpdate.defaultDataTemplate = libData.defaultDataTemplate;
+      if (typeof libData.notes === "string" && libData.notes.trim()) metaUpdate.notes = libData.notes;
       if (Object.keys(metaUpdate).length > 0) await ref.update(metaUpdate);
 
       const libExSnap = await libSessionRef.collection("exercises").orderBy("order", "asc").get();
@@ -9981,6 +10586,11 @@ router.get("/creator/check-username/:username", async (req, res) => {
     return;
   }
 
+  if (isReservedUsername(username)) {
+    res.json({data: {available: false, reason: "reserved"}});
+    return;
+  }
+
   const existing = await db.collection("users")
     .where("username", "==", username)
     .limit(1)
@@ -10059,6 +10669,9 @@ router.post("/creator/register", async (req, res) => {
   }
   if (!/^[a-z0-9_-]+$/.test(body.username)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Username solo puede contener letras, numeros, guiones y guiones bajos", "username");
+  }
+  if (isReservedUsername(body.username)) {
+    throw new WakeApiServerError("CONFLICT", 409, "Este username está reservado", "username");
   }
   if (!body.birthDate) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "Fecha de nacimiento es requerida", "birthDate");

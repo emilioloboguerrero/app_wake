@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import DashboardLayout from '../components/DashboardLayout';
 import Modal from '../components/Modal';
 import Input from '../components/Input';
+import apiClient from '../utils/apiClient';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import { cacheConfig, queryKeys } from '../config/queryClient';
 import {
@@ -19,6 +20,7 @@ import {
 } from '../components/ui';
 import ContextualHint from '../components/hints/ContextualHint';
 import { useToast } from '../contexts/ToastContext';
+import { useBackgroundTasks } from '../contexts/BackgroundTaskContext';
 import '../components/PropagateChangesModal.css';
 import './NutritionScreen.css';
 
@@ -66,6 +68,7 @@ export default function NutritionScreen({ clientId = null }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const creatorId = user?.uid ?? '';
   const queryClient = useQueryClient();
 
@@ -198,6 +201,23 @@ export default function NutritionScreen({ clientId = null }) {
     } finally {
       setNewMealCreating(false);
     }
+  };
+
+  const duplicatePlanMutation = useMutation({
+    mutationFn: ({ id }) => apiClient.post(`/creator/nutrition/plans/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.plans(creatorId) });
+      task.succeed(`"${name}" duplicado`);
+      const newId = res?.data?.id;
+      if (newId) navigate(`/nutrition/plans/${newId}`);
+    },
+    onError: (_err, { task, name }) => task.fail(`No pudimos duplicar "${name}"`),
+  });
+
+  const handleDuplicatePlan = (plan) => {
+    const name = plan.name || 'plan';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicatePlanMutation.mutate({ id: plan.id, task, name });
   };
 
   const handleCreatePlanAndOpen = async () => {
@@ -346,6 +366,23 @@ export default function NutritionScreen({ clientId = null }) {
                         {activeTab === 'planes' && item.description ? (
                           <span className="ns-list-card-meta">{item.description}</span>
                         ) : null}
+                        {activeTab === 'planes' && (
+                          <button
+                            type="button"
+                            className="ns-list-card-duplicate"
+                            title="Duplicar plan"
+                            aria-label="Duplicar plan"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicatePlan(item);
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                              <rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="1.6"/>
+                              <path d="M5 15V6a1 1 0 011-1h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+                            </svg>
+                          </button>
+                        )}
                       </div>
                     );
                   })}

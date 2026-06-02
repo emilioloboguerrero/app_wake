@@ -16,6 +16,29 @@ import { useEffect } from 'react';
 import './LandingDesignScreen.css';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
 import ScrollFlowSection from '../components/ScrollFlowSection';
+import analyticsService from '../services/analyticsService';
+
+function readUtmParams() {
+  if (typeof window === 'undefined') return {};
+  try {
+    const p = new URLSearchParams(window.location.search);
+    return {
+      utm_source: p.get('utm_source'),
+      utm_medium: p.get('utm_medium'),
+      utm_campaign: p.get('utm_campaign'),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function trackCta(section, label) {
+  analyticsService.track('landing.cta_clicked', {
+    section,
+    cta_label: label,
+    ...readUtmParams(),
+  });
+}
 
 const COPY = {
   brand: 'WAKE',
@@ -277,13 +300,13 @@ export default function LandingDesignScreen() {
         <nav className="lds-nav-links">
           {COPY.nav.map((l) => <a key={l.label} href={l.href}>{l.label}</a>)}
         </nav>
-        <a href="/app" className="lds-nav-cta">{COPY.navCta}</a>
+        <a href="/app" className="lds-nav-cta" onClick={() => trackCta('nav', COPY.navCta)}>{COPY.navCta}</a>
       </header>
 
       {/* ── HERO ── */}
       <section className="lds-hero">
         <div className="lds-hero-inner">
-          <a href="/app" className="lds-pill lds-eu">
+          <a href="/app" className="lds-pill lds-eu" onClick={() => trackCta('hero_pill', COPY.hero.pill.cta)}>
             <span className="lds-pill-tag">{COPY.hero.pill.tag}</span>
             <span className="lds-pill-text">{COPY.hero.pill.text}</span>
             <span className="lds-pill-cta">{COPY.hero.pill.cta}</span>
@@ -298,7 +321,7 @@ export default function LandingDesignScreen() {
           <p className="lds-hero-sub lds-eu" style={{ animationDelay: '0.28s' }}>{COPY.hero.sub}</p>
 
           <div className="lds-hero-actions lds-eu" style={{ animationDelay: '0.34s' }}>
-            <a href="/app" className="lds-cta-primary">{COPY.hero.cta}</a>
+            <a href="/app" className="lds-cta-primary" onClick={() => trackCta('hero', COPY.hero.cta)}>{COPY.hero.cta}</a>
           </div>
 
           <div className="lds-hero-chips lds-eu" style={{ animationDelay: '0.4s' }}>
@@ -360,7 +383,7 @@ export default function LandingDesignScreen() {
           </h2>
           <p className="lds-sub">{COPY.allinone.sub}</p>
           <div className="lds-wf-actions">
-            <a href="/app" className="lds-cta-primary">{COPY.allinone.primaryCta}</a>
+            <a href="/app" className="lds-cta-primary" onClick={() => trackCta('allinone', COPY.allinone.primaryCta)}>{COPY.allinone.primaryCta}</a>
             <a href="#" className="lds-cta-ghost">{COPY.allinone.secondaryCta} →</a>
           </div>
         </div>
@@ -428,7 +451,7 @@ export default function LandingDesignScreen() {
           <span className="lds-dot" aria-hidden="true" />
         </h2>
         <div className="lds-final-actions lds-eu" style={{ animationDelay: '0.15s' }}>
-          <a href="/app" className="lds-cta-primary">{COPY.finalCta.primary}</a>
+          <a href="/app" className="lds-cta-primary" onClick={() => trackCta('final', COPY.finalCta.primary)}>{COPY.finalCta.primary}</a>
           <a href="#" className="lds-cta-ghost">{COPY.finalCta.secondary} →</a>
         </div>
       </section>

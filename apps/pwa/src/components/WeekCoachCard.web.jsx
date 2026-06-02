@@ -1,17 +1,25 @@
-// Third card — single face. No flip.
-// Layout (top to bottom):
-//   - Coach picker (only when count >= 2)
-//   - Esta semana sessions list (compact)
-//   - Full month grid (calendar at the bottom of the card)
-//   - "Ver programa completo" CTA (low-ticket only)
-//
-// Body scrolls internally if content overflows the fixed card height.
-import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+// Third card — two faces with a 3D flip.
+//   Front: coach picker, Lun→Dom day strip (date + status dot), nutrition adherence,
+//          flip-to-calendar button.
+//   Back:  month label + nav, full month grid with the same dot system, flip-back button.
+// Dot system: green = a session was completed that date; grey = a session is
+// planned but not completed (one_on_one, or any program whose sessionState
+// exposes per-session plannedDate — e.g. general+scheduling=weekly). Module
+// programs without per-day scheduling fall back to green dots from sessionHistory.
+// Neither face overflows the card; no internal scrolling. Accent CSS vars are
+// scoped to this card (derived from the active coach's profile picture).
+import React, { useMemo, useState, useEffect } from 'react';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
+import exerciseHistoryService from '../services/exerciseHistoryService';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import VideoExchangeOverlay from './videoExchange/VideoExchangeOverlay.web';
 
 const DAY_LABELS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const ENTRY_GREEN = 'rgba(34, 140, 70, 0.95)';
+const PLANNED_GREY = 'rgba(255,255,255,0.55)';
 const MONTH_LABELS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -34,38 +42,47 @@ const isSameDay = (a, b) => {
 const toYYYYMMDD = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// Parse a YYYY-MM-DD-prefixed string as a LOCAL date (not UTC).
-// new Date("2026-05-02") parses as UTC midnight, which off-shifts to the previous
-// day in negative-UTC timezones (Colombia is UTC-5). We need the same calendar day
-// the user's coach scheduled, in the user's local timezone.
-const parseLocalDate = (ymdLike) => {
-  if (!ymdLike) return null;
-  const [y, m, d] = String(ymdLike).slice(0, 10).split('-').map(Number);
-  if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d);
-};
+const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 const styles = {
   card: {
     width: '100%',
     height: '100%',
     borderRadius: 24,
-    overflow: 'hidden',
+    position: 'relative',
+    perspective: '1600px',
+    color: '#fff',
+  },
+  flipper: {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    transition: `transform 720ms ${EASE}`,
+    transformStyle: 'preserve-3d',
+    willChange: 'transform',
+  },
+  face: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 24,
     backgroundColor: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(255,255,255,0.07)',
-    color: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  body: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: 'auto',
+    overflow: 'hidden',
+    backfaceVisibility: 'hidden',
+    WebkitBackfaceVisibility: 'hidden',
     display: 'flex',
     flexDirection: 'column',
     padding: 20,
     gap: 18,
   },
+  faceFront: {
+    paddingTop: 20,
+  },
+  faceBack: {
+    transform: 'rotateY(180deg)',
+  },
+
+  // Coach picker
   coachWrap: {
     position: 'relative',
   },
@@ -95,21 +112,21 @@ const styles = {
   coachChevron: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.5)',
-    transition: 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1)',
+    transition: `transform 200ms ${EASE}`,
   },
   dropdown: {
     position: 'absolute',
-    top: 'calc(100% + 6px)',
+    bottom: 'calc(100% + 6px)',
     left: 0,
     right: 0,
     borderRadius: 12,
     backgroundColor: '#222',
     border: '1px solid rgba(255,255,255,0.12)',
-    boxShadow: '0 10px 40px rgba(0,0,0,0.45)',
+    boxShadow: '0 -10px 40px rgba(0,0,0,0.45)',
     zIndex: 50,
     padding: 6,
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'column-reverse',
     gap: 2,
   },
   dropdownItem: {
@@ -136,6 +153,8 @@ const styles = {
     inset: 0,
     zIndex: 40,
   },
+
+  // Section
   section: {
     display: 'flex',
     flexDirection: 'column',
@@ -148,118 +167,131 @@ const styles = {
     textTransform: 'uppercase',
     color: 'rgba(255,255,255,0.5)',
   },
-
-  // 7-day strip (one-on-one): compact, fits the card width, never scrolls laterally.
-  dayStrip: {
-    display: 'flex',
-    gap: 4,
-  },
-  dayStripCell: {
-    flex: 1,
-    minWidth: 0,
-    height: 52,
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    padding: '4px 2px',
-  },
-  dayStripCellToday: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    border: '1px solid rgba(255,255,255,0.25)',
-  },
-  dayStripLabel: {
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: 'rgba(255,255,255,0.45)',
-    textTransform: 'uppercase',
-    fontWeight: 700,
-  },
-  dayStripDate: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: 'rgba(255,255,255,0.85)',
-  },
-  // Equal-flex session cells (general / low_ticket): compact, distributed equally, no scroll.
-  sessionFitRow: {
-    display: 'flex',
-    gap: 4,
-  },
-  sessionFitCell: {
-    flex: 1,
-    minWidth: 0,
-    height: 52,
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    padding: '4px 2px',
-  },
-  sessionFitCellToday: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    border: '1px solid rgba(255,255,255,0.25)',
-  },
-  sessionFitNum: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: 'rgba(255,255,255,0.85)',
-  },
-  // Status dots — green (completed) / gray (planned, not completed).
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusDotCompleted: {
-    backgroundColor: 'rgba(91, 200, 130, 0.9)',
-  },
-  statusDotPlanned: {
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
-  },
-  statusDotPlaceholder: {
-    width: 6,
-    height: 6,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.4)',
-    paddingTop: 4,
-  },
-
-  // Month grid
-  monthHeader: {
+  sectionHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
-  monthLabel: {
-    fontSize: 14,
-    fontWeight: 700,
-    letterSpacing: -0.2,
-  },
-  monthNav: {
+  sectionActions: {
     display: 'flex',
+    alignItems: 'center',
     gap: 6,
   },
-  monthChevron: {
+  sectionFlipButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.85)',
+    cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    color: 'rgba(255,255,255,0.7)',
+    padding: 0,
+  },
+
+  // Coach avatar
+  coachAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  coachAvatarImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
+  coachAvatarFallback: {
     fontSize: 13,
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.7)',
+    letterSpacing: 0.3,
+  },
+  coachAvatarSm: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  coachInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
+    flex: 1,
+  },
+
+  // Footer (front)
+  footer: {
+    marginTop: 'auto',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  programLink: {
+    background: 'transparent',
     border: 'none',
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: 0.4,
+    cursor: 'pointer',
+    padding: '4px 0',
+    textAlign: 'center',
+  },
+  flipButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: '#fff',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    alignSelf: 'center',
+  },
+
+  // Back face — month grid
+  backHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  backTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    letterSpacing: -0.2,
+    color: '#fff',
+    textTransform: 'capitalize',
+  },
+  backNav: {
+    display: 'flex',
+    gap: 6,
+  },
+  navButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
     cursor: 'pointer',
     fontWeight: 600,
   },
@@ -309,20 +341,136 @@ const styles = {
     width: 4,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
-  programButton: {
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+
+  // Front-face week list (sessions of the week)
+  weekList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    width: '100%',
+  },
+  weekRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '8px 10px',
+    borderRadius: 10,
+    backgroundColor: 'transparent',
+    border: '1px solid transparent',
+    cursor: 'pointer',
+    transition: 'background-color 160ms ease, border-color 160ms ease',
+  },
+  weekRowToday: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
     border: '1px solid rgba(255,255,255,0.12)',
+  },
+  weekRowSelected: {
+    backgroundColor: 'var(--accent, #fff)',
+    border: '1px solid var(--accent, #fff)',
+  },
+  weekRowLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 34,
+    flexShrink: 0,
+  },
+  weekRowDayLabel: {
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 1,
+  },
+  weekRowDayLabelToday: {
     color: '#fff',
+  },
+  weekRowDayLabelSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+    opacity: 0.75,
+  },
+  weekRowDayNumber: {
+    fontSize: 17,
+    fontWeight: 600,
+    color: '#fff',
+    fontVariantNumeric: 'tabular-nums',
+    lineHeight: 1.1,
+    marginTop: 2,
+  },
+  weekRowDayNumberSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+  },
+  weekRowBody: {
+    flex: 1,
+    minWidth: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  weekRowTitle: {
     fontSize: 13,
     fontWeight: 600,
-    letterSpacing: 0.3,
-    cursor: 'pointer',
-    marginTop: 4,
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -0.1,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  weekRowTitleMuted: {
+    color: 'rgba(255,255,255,0.32)',
+    fontWeight: 500,
+  },
+  weekRowTitleSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+  },
+  weekRowTitleRest: {
+    color: 'rgba(255,255,255,0.4)',
+    fontStyle: 'italic',
+    fontWeight: 500,
+  },
+  weekRowTitleSkeleton: {
+    display: 'inline-block',
+    width: '62%',
+    height: 12,
+    borderRadius: 6,
+  },
+  weekRowRight: {
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 38,
+  },
+  weekCheck: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(34, 140, 70, 0.95)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 800,
+  },
+  weekTodayPill: {
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.65)',
+    padding: '3px 7px',
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.12)',
+  },
+  weekTodayPillSelected: {
+    color: 'var(--accent-text, #1a1a1a)',
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    border: '1px solid rgba(0,0,0,0.18)',
   },
 };
 
@@ -336,11 +484,57 @@ const buildMonthGrid = (year, month) => {
   });
 };
 
+const initialsFor = (name) => {
+  if (!name) return '·';
+  const parts = String(name).trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p.charAt(0).toUpperCase()).join('') || '·';
+};
+
+const CalendarIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 10h18" />
+    <path d="M8 3v4" />
+    <path d="M16 3v4" />
+  </svg>
+);
+
+const ArrowLeftIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+);
+
+const CameraIcon = ({ size = 15 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" />
+    <circle cx="12" cy="13" r="3.5" />
+  </svg>
+);
+
+const CoachAvatar = ({ imageUrl, name, small = false }) => {
+  const [errored, setErrored] = useState(false);
+  // Reset error state when imageUrl changes — different coach, different URL.
+  useEffect(() => { setErrored(false); }, [imageUrl]);
+  const showImage = imageUrl && !errored;
+  return (
+    <div style={small ? { ...styles.coachAvatar, ...styles.coachAvatarSm } : styles.coachAvatar}>
+      {showImage ? (
+        <img src={imageUrl} alt="" style={styles.coachAvatarImg} loading="lazy" onError={() => setErrored(true)} />
+      ) : (
+        <span style={styles.coachAvatarFallback}>{initialsFor(name)}</span>
+      )}
+    </div>
+  );
+};
+
 const WeekCoachCard = ({
   coachEnvironments = [],
   selectedCoachId,
+  profileImagesByCoachId = {},
+  selectedDate,
   onSelectCoach,
-  onTapDate,
+  onSelectDate,
   onSeeProgram,
 }) => {
   const { user } = useAuth();
@@ -354,76 +548,165 @@ const WeekCoachCard = ({
     month: today.getMonth(),
   });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [flipped, setFlipped] = useState(false);
 
   const selected = coachEnvironments.find((c) => c.coachId === selectedCoachId) || coachEnvironments[0];
-  const primaryCourse = selected?.workouts?.[0];
-  const courseId = primaryCourse?.courseId || primaryCourse?.id;
-  // 'general' and 'low_ticket' both have fixed program trees (sessions in modules).
-  // 'one_on_one' is week-by-week assigned. The "Ver programa completo" CTA is for fixed-tree types.
-  const hasFixedProgram = primaryCourse?.deliveryType === 'low_ticket' || primaryCourse?.deliveryType === 'general';
-  const isOneOnOne = primaryCourse?.deliveryType === 'one_on_one';
+  const selectedProfileImageUrl = selected ? (profileImagesByCoachId?.[selected.coachId] || null) : null;
+  const accent = useAccentFromImage(selectedProfileImageUrl);
+  const accentVarsStyle = accent
+    ? {
+        '--accent': accent.accent,
+        '--accent-r': accent.accentR,
+        '--accent-g': accent.accentG,
+        '--accent-b': accent.accentB,
+        '--accent-text': accent.accentText,
+      }
+    : {};
+  // All courses in the selected coach env contribute to the calendar — multiple
+  // programs from the same coach merge their planned/completed dots into one view.
+  const envCourses = useMemo(() => selected?.workouts || [], [selected]);
+  const primaryCourse = envCourses[0];
+  // Programs whose structure can be browsed — one_on_one is week-by-week, no
+  // single "complete program" surface. We render one row per fixed program so
+  // it's never ambiguous which one the link refers to.
+  const fixedCourses = useMemo(
+    () => envCourses.filter((c) => c.deliveryType !== 'one_on_one'),
+    [envCourses],
+  );
+  const hasOneOnOne = envCourses.some((c) => c.deliveryType === 'one_on_one');
   const showCoachPicker = (coachEnvironments?.length || 0) >= 2;
+  const [videoHistoryOpen, setVideoHistoryOpen] = useState(false);
 
-  const { data: sessionState } = useQuery({
-    queryKey: ['preview', 'todaySession', user?.uid, courseId],
-    queryFn: () => sessionService.getCurrentSession(user.uid, courseId),
-    enabled: !!user?.uid && !!courseId,
-    staleTime: 0,
+  const sessionStateQueries = useQueries({
+    queries: envCourses.map((c) => {
+      const cId = c.courseId || c.id;
+      // Expired courses still render in the carousel (with the "Expirado" tag)
+      // but we skip the API call — it would 403 and just create noise.
+      const expired =
+        !c?.is_trial &&
+        (c?.hasAccess === false ||
+          (c?.expires_at && new Date(c.expires_at) <= new Date()));
+      return {
+        queryKey: ['preview', 'todaySession', user?.uid, cId],
+        queryFn: () => sessionService.getCurrentSession(user.uid, cId),
+        enabled: !!user?.uid && !!cId && !expired,
+        staleTime: 0,
+      };
+    }),
   });
 
   const monday = useMemo(() => getMonday(today), [today]);
   const mondayYmd = useMemo(() => toYYYYMMDD(monday), [monday]);
-  const sundayYmd = useMemo(() => {
-    const s = new Date(monday);
-    s.setDate(monday.getDate() + 6);
-    return toYYYYMMDD(s);
-  }, [monday]);
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     return d;
   }), [monday]);
 
-  const sessionsByDate = useMemo(() => {
-    const map = new Map();
-    (sessionState?.allSessions || []).forEach((s) => {
-      if (!s.plannedDate) return;
-      const key = String(s.plannedDate).slice(0, 10);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(s);
-    });
-    return map;
-  }, [sessionState?.allSessions]);
-
-  // Set of sessionIds the user has completed — used to color status dots.
-  const completedSessionIds = useMemo(() => {
-    const arr = sessionState?.progress?.allSessionsCompleted;
-    return new Set(Array.isArray(arr) ? arr : []);
-  }, [sessionState?.progress?.allSessionsCompleted]);
-
-  // Filter via YYYY-MM-DD string comparison to avoid the UTC-midnight shift bug
-  // that hides today's sessions in negative-UTC timezones.
-  const weekSessions = useMemo(() => {
-    if (!sessionState?.allSessions) return [];
-    return sessionState.allSessions
-      .filter((s) => {
-        if (!s.plannedDate) return false;
-        const ymd = String(s.plannedDate).slice(0, 10);
-        return ymd >= mondayYmd && ymd <= sundayYmd;
-      })
-      .sort((a, b) => String(a.plannedDate).localeCompare(String(b.plannedDate)));
-  }, [sessionState?.allSessions, mondayYmd, sundayYmd]);
-
-  // For non-date-scheduled programs (low_ticket, general) sessions have plannedDate: null.
-  // The current module's sessions == this week's sessions. Cap at 7 so equal-flex cells stay legible.
-  const moduleWeekSessions = useMemo(() => {
-    const all = sessionState?.allSessions || [];
-    if (!all.length) return [];
-    return all.slice(0, 7);
-  }, [sessionState?.allSessions]);
-
   const monthLabel = `${MONTH_LABELS[visibleMonth.month]} ${visibleMonth.year}`;
   const monthGrid = useMemo(() => buildMonthGrid(visibleMonth.year, visibleMonth.month), [visibleMonth]);
+
+  // Date range covering both the visible month grid and this week's strip — single
+  // source-of-truth for completed-date lookups across both faces.
+  const calendarRange = useMemo(() => {
+    const monthStart = monthGrid[0];
+    const monthEnd = monthGrid[monthGrid.length - 1];
+    const start = monthStart < monday ? monthStart : monday;
+    const weekEnd = weekDates[6];
+    const end = monthEnd > weekEnd ? monthEnd : weekEnd;
+    return { startYmd: toYYYYMMDD(start), endYmd: toYYYYMMDD(end) };
+  }, [monthGrid, monday, weekDates]);
+
+  // Courses that don't carry per-session plannedDate (legacy general/low_ticket)
+  // need a separate sessionHistory fetch to surface completed dates. Date-scheduled
+  // courses (one_on_one, scheduling='weekly') derive both planned and completed
+  // dates from sessionState.allSessions + completedSessionIds — no extra fetch.
+  const isDateScheduled = (c) => c.deliveryType === 'one_on_one' || c.scheduling === 'weekly';
+  const moduleCalendarQueries = useQueries({
+    queries: envCourses.map((c) => {
+      const cId = c.courseId || c.id;
+      return {
+        queryKey: ['hoy', 'completedCalendar', user?.uid, cId, calendarRange.startYmd, calendarRange.endYmd],
+        queryFn: () => exerciseHistoryService.getDatesWithCompletedSessionsForCourse(
+          user.uid, cId, calendarRange.startYmd, calendarRange.endYmd,
+        ),
+        enabled: !!user?.uid && !!cId && !isDateScheduled(c),
+        staleTime: 5 * 60 * 1000,
+      };
+    }),
+  });
+
+  // Per-date course attribution: which course owns the completed/planned session for
+  // a given date. First match wins (envCourses already honors pinned-first ordering),
+  // so click navigation goes to the most relevant program.
+  // sessionTitleByDate is populated for one_on_one (via plannedDate) and for the
+  // current day on any deliveryType (via the primary session state).
+  const todayYmd = useMemo(() => toYYYYMMDD(today), [today]);
+  const { completedDateMap, plannedDateMap, sessionTitleByDate } = useMemo(() => {
+    const completed = new Map();
+    const planned = new Map();
+    const titles = new Map();
+    envCourses.forEach((course, idx) => {
+      const sessionState = sessionStateQueries[idx]?.data;
+      // Branch on the actual data shape, not the course flag. /workout/daily
+      // returns plannedDate per session for any date-scheduled program
+      // (one_on_one or scheduling='weekly'); that's the truth, regardless of
+      // whether the flag has propagated through enrichment + user-doc caches.
+      const allSessionsList = sessionState?.allSessions || [];
+      const hasPlanned = allSessionsList.some((s) => s.plannedDate);
+      if (hasPlanned) {
+        const completedIds = new Set(
+          Array.isArray(sessionState?.progress?.allSessionsCompleted)
+            ? sessionState.progress.allSessionsCompleted
+            : [],
+        );
+        allSessionsList.forEach((s) => {
+          if (!s.plannedDate) return;
+          const ymd = String(s.plannedDate).slice(0, 10);
+          if (completedIds.has(s.sessionId)) {
+            if (!completed.has(ymd)) completed.set(ymd, course);
+          } else if (!planned.has(ymd)) {
+            planned.set(ymd, course);
+          }
+          if (s.title && !titles.has(ymd)) titles.set(ymd, s.title);
+        });
+      } else {
+        const dates = moduleCalendarQueries[idx]?.data;
+        (Array.isArray(dates) ? dates : []).forEach((ymd) => {
+          if (!completed.has(ymd)) completed.set(ymd, course);
+        });
+        const todayTitle = sessionState?.session?.title;
+        if (todayTitle && !titles.has(todayYmd)) titles.set(todayYmd, todayTitle);
+      }
+    });
+    return { completedDateMap: completed, plannedDateMap: planned, sessionTitleByDate: titles };
+  }, [envCourses, sessionStateQueries, moduleCalendarQueries, todayYmd]);
+
+  // While the session queries are still resolving and we have no week data yet
+  // (cold start, or stale-empty persisted cache being refetched), show skeleton
+  // bars in the day rows instead of a misleading "Sin sesión". Once any data
+  // lands, render real labels — a background focus-refetch won't trigger this.
+  const weekResolving = useMemo(() => {
+    const anyFetching = sessionStateQueries.some((q) => q && (q.isLoading || q.isFetching));
+    const hasWeekData =
+      sessionTitleByDate.size > 0 || plannedDateMap.size > 0 || completedDateMap.size > 0;
+    return anyFetching && !hasWeekData;
+  }, [sessionStateQueries, sessionTitleByDate, plannedDateMap, completedDateMap]);
+
+  const statusForDate = (ymd) => {
+    if (completedDateMap.has(ymd)) return 'completed';
+    if (plannedDateMap.has(ymd)) return 'planned';
+    return 'none';
+  };
+
+  // Calendar/strip cutoff — users can access training for the current week AND
+  // next week. Anything past next Sunday is treated as out-of-range.
+  const nextWeekSunday = useMemo(() => {
+    const s = new Date(monday);
+    s.setDate(monday.getDate() + 13);
+    s.setHours(0, 0, 0, 0);
+    return s;
+  }, [monday]);
 
   const handlePrevMonth = (e) => {
     e?.stopPropagation?.();
@@ -439,9 +722,9 @@ const WeekCoachCard = ({
       return nm > 11 ? { year: m.year + 1, month: 0 } : { year: m.year, month: nm };
     });
   };
-  const handleSeeProgram = (e) => {
+  const handleSeeProgram = (course) => (e) => {
     e?.stopPropagation?.();
-    if (onSeeProgram && primaryCourse) onSeeProgram(primaryCourse);
+    if (onSeeProgram && course) onSeeProgram(course);
   };
   const togglePicker = (e) => {
     e?.stopPropagation?.();
@@ -452,113 +735,203 @@ const WeekCoachCard = ({
     onSelectCoach?.(coachId);
     setPickerOpen(false);
   };
+  const handleFlip = (e) => {
+    e?.stopPropagation?.();
+    setPickerOpen(false);
+    setFlipped((f) => !f);
+  };
 
   return (
-    <div style={styles.card}>
-      <div style={styles.body}>
-        {showCoachPicker ? (
-          <div style={styles.coachWrap}>
-            <div style={styles.coachRow} onClick={togglePicker} role="button" tabIndex={0}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={styles.coachKicker}>Coach</span>
-                <span style={styles.coachName}>{selected?.coachName}</span>
+    <div style={{ ...styles.card, ...accentVarsStyle }}>
+      <div
+        style={{
+          ...styles.flipper,
+          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+        {/* FRONT */}
+        <div style={{ ...styles.face, ...styles.faceFront }}>
+          <div style={styles.section}>
+            <div style={styles.sectionHeader}>
+              <span style={styles.sectionLabel}>Esta semana</span>
+              <div style={styles.sectionActions}>
+                {hasOneOnOne ? (
+                  <button
+                    style={styles.sectionFlipButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVideoHistoryOpen(true);
+                    }}
+                    aria-label="Historial de videos"
+                    title="Historial de videos"
+                  >
+                    <CameraIcon size={15} />
+                  </button>
+                ) : null}
+                <button
+                  style={styles.sectionFlipButton}
+                  onClick={handleFlip}
+                  aria-label="Ver calendario del mes"
+                >
+                  <CalendarIcon size={15} />
+                </button>
               </div>
-              <span style={{ ...styles.coachChevron, transform: pickerOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
             </div>
-            {pickerOpen ? (
-              <>
-                <div style={styles.dropdownBackdrop} onClick={togglePicker} />
-                <div style={styles.dropdown}>
-                  {coachEnvironments.map((c) => {
-                    const active = c.coachId === selected?.coachId;
-                    return (
-                      <div
-                        key={c.coachId}
-                        style={active ? { ...styles.dropdownItem, ...styles.dropdownItemActive } : styles.dropdownItem}
-                        onClick={handlePickCoach(c.coachId)}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <span>{c.coachName}</span>
-                        {active ? <span style={styles.dropdownCheck}>✓</span> : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div style={styles.section}>
-          <span style={styles.sectionLabel}>Esta semana</span>
-          {isOneOnOne ? (
-            // 7-day strip: every day Mon→Sun. Green dot = a session that day is completed,
-            // gray dot = a session that day is planned but not completed, no dot = no session.
-            <div style={styles.dayStrip}>
+            <div style={styles.weekList}>
               {weekDates.map((d, i) => {
                 const ymd = toYYYYMMDD(d);
-                const sessions = sessionsByDate.get(ymd) || [];
-                const hasSession = sessions.length > 0;
-                const anyCompleted = sessions.some((s) => completedSessionIds.has(s.sessionId));
+                const status = statusForDate(ymd);
                 const isTodayCell = isSameDay(d, today);
-                const cellStyle = {
-                  ...styles.dayStripCell,
-                  ...(isTodayCell ? styles.dayStripCellToday : {}),
-                  cursor: hasSession ? 'pointer' : 'default',
+                const isSelected = selectedDate === ymd;
+                const title = sessionTitleByDate.get(ymd) || null;
+                const isWeekend = i >= 5; // Sat/Sun
+                const rowStyle = {
+                  ...styles.weekRow,
+                  ...(isTodayCell && !isSelected ? styles.weekRowToday : {}),
+                  ...(isSelected ? styles.weekRowSelected : {}),
                 };
-                let dotStyle;
-                if (!hasSession) dotStyle = styles.statusDotPlaceholder;
-                else if (anyCompleted) dotStyle = { ...styles.statusDot, ...styles.statusDotCompleted };
-                else dotStyle = { ...styles.statusDot, ...styles.statusDotPlanned };
+                const dayLabelStyle = isSelected
+                  ? { ...styles.weekRowDayLabel, ...styles.weekRowDayLabelSelected }
+                  : isTodayCell
+                    ? { ...styles.weekRowDayLabel, ...styles.weekRowDayLabelToday }
+                    : styles.weekRowDayLabel;
+                const dayNumberStyle = isSelected
+                  ? { ...styles.weekRowDayNumber, ...styles.weekRowDayNumberSelected }
+                  : styles.weekRowDayNumber;
+                let titleNode;
+                if (weekResolving) {
+                  titleNode = (
+                    <span className="wake-skeleton" style={styles.weekRowTitleSkeleton} />
+                  );
+                } else if (title) {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : styles.weekRowTitle}>
+                      {title}
+                    </span>
+                  );
+                } else if (status === 'completed') {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
+                      Sesión completada
+                    </span>
+                  );
+                } else if (isWeekend) {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : styles.weekRowTitleRest}>
+                      Descanso
+                    </span>
+                  );
+                } else {
+                  titleNode = (
+                    <span style={isSelected
+                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                      : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
+                      {status === 'planned' ? 'Sesión planeada' : 'Sin sesión'}
+                    </span>
+                  );
+                }
+                let rightNode = null;
+                if (status === 'completed') {
+                  rightNode = <span style={styles.weekCheck}>✓</span>;
+                } else if (isTodayCell && !isSelected) {
+                  rightNode = <span style={styles.weekTodayPill}>Hoy</span>;
+                } else if (isTodayCell && isSelected) {
+                  rightNode = (
+                    <span style={{ ...styles.weekTodayPill, ...styles.weekTodayPillSelected }}>
+                      Hoy
+                    </span>
+                  );
+                }
                 return (
                   <div
-                    key={i}
-                    style={cellStyle}
-                    onClick={hasSession ? () => onTapDate?.(ymd, primaryCourse) : undefined}
+                    key={ymd}
+                    style={rowStyle}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectDate?.(ymd);
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
-                    <span style={styles.dayStripLabel}>{DAY_LABELS[i]}</span>
-                    <span style={styles.dayStripDate}>{d.getDate()}</span>
-                    <span style={dotStyle} />
+                    <div style={styles.weekRowLeft}>
+                      <span style={dayLabelStyle}>{DAY_LABELS_SHORT[i]}</span>
+                      <span style={dayNumberStyle}>{d.getDate()}</span>
+                    </div>
+                    <div style={styles.weekRowBody}>
+                      {titleNode}
+                    </div>
+                    <div style={styles.weekRowRight}>
+                      {rightNode}
+                    </div>
                   </div>
                 );
               })}
             </div>
-          ) : moduleWeekSessions.length === 0 ? (
-            <span style={styles.emptyText}>Sin sesiones programadas</span>
-          ) : (
-            // General / low_ticket: compact session cells, equal flex, no horizontal scroll.
-            // Green dot = completed, gray dot = planned (not yet completed).
-            <div style={styles.sessionFitRow}>
-              {moduleWeekSessions.map((s, i) => {
-                const d = parseLocalDate(s.plannedDate);
-                const isTodaySession = d && isSameDay(d, today);
-                const isCompleted = completedSessionIds.has(s.sessionId);
-                const cellStyle = isTodaySession
-                  ? { ...styles.sessionFitCell, ...styles.sessionFitCellToday }
-                  : styles.sessionFitCell;
-                const dotStyle = isCompleted
-                  ? { ...styles.statusDot, ...styles.statusDotCompleted }
-                  : { ...styles.statusDot, ...styles.statusDotPlanned };
-                return (
-                  <div key={s.sessionId} style={cellStyle}>
-                    <span style={styles.sessionFitNum}>
-                      {String(s.order != null ? s.order + 1 : i + 1).padStart(2, '0')}
-                    </span>
-                    <span style={dotStyle} />
+          </div>
+
+          {showCoachPicker ? (
+            <div style={{ ...styles.coachWrap, marginTop: 'auto' }}>
+              <div style={styles.coachRow} onClick={togglePicker} role="button" tabIndex={0}>
+                <div style={styles.coachInfo}>
+                  <CoachAvatar imageUrl={selectedProfileImageUrl} name={selected?.coachName} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                    <span style={styles.coachKicker}>Coach</span>
+                    <span style={styles.coachName}>{selected?.coachName}</span>
                   </div>
-                );
-              })}
+                </div>
+                <span style={{ ...styles.coachChevron, transform: pickerOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}>▾</span>
+              </div>
+              {pickerOpen ? (
+                <>
+                  <div style={styles.dropdownBackdrop} onClick={togglePicker} />
+                  <div style={styles.dropdown}>
+                    {coachEnvironments.map((c) => {
+                      const active = c.coachId === selected?.coachId;
+                      const itemImage = profileImagesByCoachId?.[c.coachId] || null;
+                      return (
+                        <div
+                          key={c.coachId}
+                          style={active ? { ...styles.dropdownItem, ...styles.dropdownItemActive } : styles.dropdownItem}
+                          onClick={handlePickCoach(c.coachId)}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                            <CoachAvatar imageUrl={itemImage} name={c.coachName} small />
+                            <span>{c.coachName}</span>
+                          </div>
+                          {active ? <span style={styles.dropdownCheck}>✓</span> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            <div style={{ ...styles.coachInfo, marginTop: 'auto' }}>
+              <CoachAvatar imageUrl={selectedProfileImageUrl} name={selected?.coachName} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                <span style={styles.coachKicker}>Coach</span>
+                <span style={styles.coachName}>{selected?.coachName || '—'}</span>
+              </div>
             </div>
           )}
         </div>
 
-        <div style={styles.section}>
-          <div style={styles.monthHeader}>
-            <span style={styles.monthLabel}>{monthLabel}</span>
-            <div style={styles.monthNav}>
-              <button style={styles.monthChevron} onClick={handlePrevMonth} aria-label="Mes anterior">{'‹'}</button>
-              <button style={styles.monthChevron} onClick={handleNextMonth} aria-label="Mes siguiente">{'›'}</button>
+        {/* BACK */}
+        <div style={{ ...styles.face, ...styles.faceBack }}>
+          <div style={styles.backHeader}>
+            <span style={styles.backTitle}>{monthLabel}</span>
+            <div style={styles.backNav}>
+              <button style={styles.navButton} onClick={handlePrevMonth} aria-label="Mes anterior">{'‹'}</button>
+              <button style={styles.navButton} onClick={handleNextMonth} aria-label="Mes siguiente">{'›'}</button>
             </div>
           </div>
 
@@ -573,33 +946,82 @@ const WeekCoachCard = ({
               const otherMonth = d.getMonth() !== visibleMonth.month;
               const isTodayCell = isSameDay(d, today);
               const ymd = toYYYYMMDD(d);
-              const hasSession = sessionsByDate.has(ymd);
+              const status = statusForDate(ymd);
+              const isSelected = selectedDate === ymd;
+              const isOutOfRange = d > nextWeekSunday;
+              const clickable = !isOutOfRange;
               const cellStyle = {
                 ...styles.gridCell,
                 ...(otherMonth ? styles.gridCellOtherMonth : {}),
-                ...(isTodayCell ? styles.gridCellToday : {}),
-                cursor: hasSession ? 'pointer' : 'default',
+                ...(isTodayCell && !isSelected ? styles.gridCellToday : {}),
+                ...(isSelected ? {
+                  backgroundColor: 'var(--accent, #fff)',
+                  border: '1px solid var(--accent, #fff)',
+                  color: 'var(--accent-text, #1a1a1a)',
+                } : {}),
+                ...(isOutOfRange ? { opacity: 0.4 } : {}),
+                cursor: clickable ? 'pointer' : 'default',
               };
+              const dotColor =
+                status === 'completed' ? ENTRY_GREEN
+                : status === 'planned' ? PLANNED_GREY
+                : null;
               return (
                 <div
                   key={i}
                   style={cellStyle}
-                  onClick={hasSession ? () => onTapDate?.(ymd, primaryCourse) : undefined}
+                  onClick={clickable ? () => {
+                    onSelectDate?.(ymd);
+                    setFlipped(false);
+                  } : undefined}
                 >
                   <span>{d.getDate()}</span>
-                  {hasSession ? <span style={styles.sessionDot} /> : null}
+                  {dotColor ? (
+                    <span style={{ ...styles.sessionDot, backgroundColor: dotColor }} />
+                  ) : null}
                 </div>
               );
             })}
           </div>
 
-          {hasFixedProgram ? (
-            <button style={styles.programButton} onClick={handleSeeProgram}>
-              Ver programa completo
-            </button>
+          {fixedCourses.length > 0 ? (
+            <div style={{ ...styles.footer, marginTop: 'auto' }}>
+              {fixedCourses.length === 1 ? (
+                <button style={styles.programLink} onClick={handleSeeProgram(fixedCourses[0])}>
+                  Ver programa completo
+                </button>
+              ) : (
+                fixedCourses.map((c) => (
+                  <button
+                    key={c.courseId || c.id}
+                    style={styles.programLink}
+                    onClick={handleSeeProgram(c)}
+                  >
+                    Ver {c.title || 'programa'}
+                  </button>
+                ))
+              )}
+            </div>
           ) : null}
+
+          <button
+            style={fixedCourses.length > 0 ? styles.flipButton : { ...styles.flipButton, marginTop: 'auto' }}
+            onClick={handleFlip}
+            aria-label="Volver"
+          >
+            <ArrowLeftIcon />
+          </button>
         </div>
       </div>
+
+      {hasOneOnOne ? (
+        <VideoExchangeOverlay
+          open={videoHistoryOpen}
+          mode="history"
+          userId={user?.uid}
+          onClose={() => setVideoHistoryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 };

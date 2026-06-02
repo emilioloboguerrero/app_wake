@@ -1,0 +1,534 @@
+/* Creator Storefront — wakelab.co/{username}
+   Dark cinematic premium minimalist. White-tone content on #1a1a1a canvas.
+   Mobile-first: most traffic from IG bio links. */
+
+.cs-root {
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* ── Loading / empty / error states ─────────────────────────────────────── */
+.cs-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: cs-spin 0.8s linear infinite;
+}
+
+@keyframes cs-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cs-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cs-empty-inner {
+  text-align: center;
+  padding: 48px 24px;
+  max-width: 480px;
+}
+
+.cs-empty-inner h1 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 12px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.cs-empty-inner p {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.55;
+  margin: 0 0 28px;
+}
+
+.cs-empty-cta {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cs-empty-cta:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* ── Hero (cinematic — mirrors the landing /  hero pattern) ────────────── */
+/* Full-bleed creator photo as a low-opacity backdrop, Wake logo watermark
+   underneath, name + bio composited on top. */
+.cs-hero {
+  position: relative;
+  width: 100%;
+  min-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 96px 24px 64px;
+}
+
+.cs-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.cs-hero-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cs-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, #1a1a1a 0%, transparent 35%),
+    rgba(0, 0, 0, 0.65);
+  z-index: 1;
+}
+
+/* Back-to-library link — frosted pill anchored top-left of the hero.
+   Sits above the watermark and bg, beneath the centered hero content. */
+.cs-hero-back {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 8px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition:
+    background 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cs-hero-back:hover {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateX(-2px);
+}
+
+.cs-hero-back-arrow {
+  font-size: 14px;
+  letter-spacing: 0;
+  line-height: 1;
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cs-hero-back:hover .cs-hero-back-arrow {
+  transform: translateX(-2px);
+}
+
+/* Wake logo watermark — same sizing and opacity as the landing hero. */
+.cs-hero-icon {
+  position: absolute;
+  z-index: 1;
+  width: clamp(360px, 65vh, 820px);
+  height: auto;
+  opacity: 0.22;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cs-hero-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 900px;
+  animation: cs-hero-fade-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cs-hero-fade-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cs-hero-name {
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(36px, 6vw, 84px);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  color: #fff;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cs-hero-bio {
+  font-size: clamp(15px, 1.4vw, 18px);
+  font-weight: 400;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+  max-width: 560px;
+}
+
+/* ── Sections / grids ──────────────────────────────────────────────────── */
+.cs-section {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.cs-section-title {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 20px;
+}
+
+.cs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+/* ── Flip card ─────────────────────────────────────────────────────────── */
+/* Front mirrors the PWA Hoy workout card: full-bleed image with the title
+   overlaid bottom-left in difference-blend white. Tapping anywhere flips the
+   card; the back surfaces the structured info (name, discipline, price) and a
+   CTA that navigates to the program detail / purchase screen. */
+.cs-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  perspective: 1600px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  outline: none;
+  /* Avoid the iOS Safari tap highlight; we own the visual feedback. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cs-card:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 4px;
+  border-radius: 18px;
+}
+
+.cs-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cs-card.is-flipped .cs-card-inner {
+  transform: rotateY(180deg);
+}
+
+.cs-card-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  background-color: #0a0a0a;
+}
+
+/* ── Card tags (top-right, both faces) ─────────────────────────────────── */
+/* Skipped for one_on_one programs in the JSX. Frosted pills so they read
+   over any image (front) and over the dark panel (back). */
+.cs-card-tags {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.cs-card-tag {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* On the back face the panel is already dark — soften the pill so it doesn't
+   shout next to the title. */
+.cs-card-back .cs-card-tag {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+/* ── Front face ────────────────────────────────────────────────────────── */
+.cs-card-front {
+  /* No body, no border treatment — just the image with overlay text. */
+}
+
+.cs-card-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+.cs-card-image-placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+}
+
+.cs-card-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  pointer-events: none;
+  /* mix-blend-mode: difference makes white text readable on any image and
+     mirrors the PWA workout card. */
+  mix-blend-mode: difference;
+  color: #fff;
+}
+
+.cs-card-overlay-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── Back face ─────────────────────────────────────────────────────────── */
+/* Three vertical zones with intentional whitespace: header (kicker + title)
+   sits up top, a flex spacer pushes the price cells and CTA toward the
+   bottom. Prices live in side-by-side cells separated by a hairline so two
+   pricing modes read as a comparison rather than a stack. */
+.cs-card-back {
+  transform: rotateY(180deg);
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(255, 255, 255, 0.05) 0%, transparent 55%),
+    #161616;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  /* Top padding leaves room for the absolute-positioned tag column. */
+  padding: 56px 24px 22px;
+}
+
+.cs-card-back-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.cs-card-back-kicker {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+}
+
+.cs-card-back-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cs-card-back-spacer {
+  flex: 1 1 auto;
+  min-height: 16px;
+}
+
+.cs-card-back-prices {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  margin-bottom: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cs-card-back-price {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 14px 8px;
+}
+
+.cs-card-back-price + .cs-card-back-price {
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.cs-card-back-price-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.cs-card-back-price-value {
+  font-size: 19px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.015em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.cs-card-back-price-suffix {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.45);
+  margin-left: 3px;
+}
+
+.cs-card-back-cta {
+  width: 100%;
+  height: 50px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0e0e0e;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: none;
+  cursor: pointer;
+  transition:
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cs-card-back-cta:hover {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cs-card-back-cta:active {
+  transform: scale(0.98);
+}
+
+/* ── Mobile tuning ─────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cs-hero {
+    min-height: 88vh;
+    padding: 88px 20px 56px;
+  }
+  .cs-hero-icon {
+    width: clamp(280px, 80vw, 480px);
+  }
+  .cs-hero-bio {
+    font-size: 15px;
+    padding: 0 8px;
+  }
+  .cs-section {
+    padding: 24px 16px 36px;
+  }
+  /* Full-width cards on mobile — single column, generous tap target. */
+  .cs-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .cs-card {
+    aspect-ratio: 4 / 5;
+  }
+  .cs-card-overlay {
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+  }
+  .cs-card-overlay-title {
+    font-size: 30px;
+  }
+  .cs-card-back {
+    padding: 60px 22px 20px;
+  }
+  .cs-card-back-title {
+    font-size: 26px;
+  }
+  .cs-card-back-price-value {
+    font-size: 21px;
+  }
+}

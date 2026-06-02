@@ -7,9 +7,11 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-
 import { useAuth } from '../contexts/AuthContext';
 import { withErrorBoundary } from '../utils/withErrorBoundary';
 import LoadingScreen from '../screens/LoadingScreen';
+import UnauthAccessGate from '../components/UnauthAccessGate.web.jsx';
 // Use mobile components with web wrappers
 // These wrappers provide React Router navigation to the mobile components
 import LoginScreen from '../screens/LoginScreen.web';
+import EmailLinkSignInScreen from '../screens/EmailLinkSignInScreen.web.jsx';
 import HoyScreen from '../screens/HoyScreen.web.jsx';
 import ProfileScreen from '../screens/ProfileScreen.web.jsx';
 // Import AllPurchasedCoursesScreen directly (not lazy) to avoid hook order issues with fonts.js
@@ -18,6 +20,8 @@ import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web'
 import SubscriptionsScreen from '../screens/SubscriptionsScreen.web';
 // Import ProgramLibraryScreen directly (not lazy) - using web wrapper for React Router navigation
 import ProgramLibraryScreen from '../screens/ProgramLibraryScreen.web';
+// Per-program subscription management
+import ProgramSubscriptionScreen from '../screens/ProgramSubscriptionScreen.web.jsx';
 // Import workout-related screens directly to avoid Metro "unknown module" errors with lazy chunks on web
 import DailyWorkoutScreen from '../screens/DailyWorkoutScreen.web';
 import WorkoutExecutionScreen from '../screens/WorkoutExecutionScreen.web';
@@ -27,6 +31,7 @@ import CourseStructureScreen from '../screens/CourseStructureScreen.web';
 // Import CourseDetailScreen directly using web wrapper for React Router navigation
 import CourseDetailScreen from '../screens/CourseDetailScreen.web';
 import BundleDetailScreen from '../screens/BundleDetailScreen.web';
+import VideoExchangeStandaloneScreen from '../screens/VideoExchangeStandaloneScreen.web';
 // Import CreatorProfileScreen directly using web wrapper for React Router navigation
 import CreatorProfileScreen from '../screens/CreatorProfileScreen.web';
 import UpcomingCallDetailScreen from '../screens/UpcomingCallDetailScreen.web';
@@ -45,15 +50,18 @@ import EventRegistrationsScreen from '../screens/EventRegistrationsScreen.web';
 import PaymentSuccessScreen from '../screens/PaymentSuccessScreen.web';
 import PaymentCancelledScreen from '../screens/PaymentCancelledScreen.web';
 import apiService from '../services/apiService';
+import apiClient from '../utils/apiClient';
 import DebugScreenTracker from '../components/DebugScreenTracker.web';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import BottomTabBar from '../components/BottomTabBar.web';
 import ReadinessCheckModal from '../components/ReadinessCheckModal.web';
+import ReadinessOptInPrompt from '../components/ReadinessOptInPrompt.web';
 import { getTodayReadiness } from '../services/readinessService';
 import UserRoleContext, { useUserRole } from '../contexts/UserRoleContext';
 
 export const RefreshProfileContext = createContext(null);
 export const OpenReadinessModalContext = createContext(null);
+export const ReadinessOptInPromptContext = createContext(null);
 
 // Role-based guard for creator-only routes
 const CreatorRouteGuard = ({ children }) => {
@@ -110,9 +118,22 @@ const readStaleOnboardingCache = (uid) => {
     return {
       profileCompleted: status.profileCompleted ?? false,
       onboardingCompleted: status.onboardingCompleted ?? false,
+      onboardingDeferred: status.onboardingDeferred ?? false,
     };
   } catch (_) {
     return null;
+  }
+};
+
+// `?intent=storefront` is appended by the landing's PostPaymentScreen redirect
+// path. When present, force a fresh /users/me read instead of trusting the
+// cached `onboardingDeferred:false` from before the storefront purchase.
+const isStorefrontIntent = () => {
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get('intent') === 'storefront';
+  } catch (_) {
+    return false;
   }
 };
 
@@ -165,8 +186,11 @@ const AuthenticatedLayout = ({ children }) => {
         }, 10000);
 
         try {
-          const skipCache = skipCacheNextRef.current;
-          if (skipCache) skipCacheNextRef.current = false;
+          // Storefront-purchase redirects must always re-read /users/me so the
+          // PWA picks up `onboardingDeferred:true` written seconds ago. Skips
+          // the 60s cache below.
+          const skipCache = skipCacheNextRef.current || isStorefrontIntent();
+          if (skipCacheNextRef.current) skipCacheNextRef.current = false;
 
           if (!skipCache) {
             let cached = null;
@@ -174,11 +198,15 @@ const AuthenticatedLayout = ({ children }) => {
             if (cached) {
               const status = JSON.parse(cached);
               const cacheAge = Date.now() - (status.cachedAt || 0);
-              if (cacheAge < 5 * 60 * 1000) {
+              // 60s TTL — short enough that a storefront purchase in another
+              // tab propagates fast, long enough to absorb the typical
+              // tab-restore burst.
+              if (cacheAge < 60 * 1000) {
                 if (mounted) {
                   setUserProfile({
                     profileCompleted: status.profileCompleted ?? false,
-                    onboardingCompleted: status.onboardingCompleted ?? false
+                    onboardingCompleted: status.onboardingCompleted ?? false,
+                    onboardingDeferred: status.onboardingDeferred ?? false,
                   });
                   setProfileLoading(false);
                 }
@@ -202,6 +230,7 @@ const AuthenticatedLayout = ({ children }) => {
                 localStorage.setItem(`onboarding_status_${uid}`, JSON.stringify({
                   onboardingCompleted: profile.onboardingCompleted ?? false,
                   profileCompleted: profile.profileCompleted ?? false,
+                  onboardingDeferred: profile.onboardingDeferred ?? false,
                   cachedAt: Date.now(),
                 }));
               } catch (_) {}
@@ -243,20 +272,34 @@ const AuthenticatedLayout = ({ children }) => {
   }, [uid, refreshKey]);
 
   const [showReadiness, setShowReadiness] = React.useState(false);
-  const [readinessMandatory, setReadinessMandatory] = React.useState(false);
+  const [showOptInPrompt, setShowOptInPrompt] = React.useState(false);
   const openReadinessModal = React.useCallback(() => {
-    setReadinessMandatory(false);
     setShowReadiness(true);
   }, []);
+  const requestReadinessOptInPrompt = React.useCallback(() => {
+    setShowOptInPrompt(true);
+  }, []);
   const readinessCheckedRef = React.useRef(false);
+  // Reset the per-mount readiness debounce when uid changes — otherwise
+  // signing out and back in within the same SPA session never re-shows the
+  // readiness modal for the new account.
+  const readinessUidRef = React.useRef(null);
+  React.useEffect(() => {
+    if (readinessUidRef.current !== uid) {
+      readinessCheckedRef.current = false;
+      readinessUidRef.current = uid ?? null;
+    }
+  }, [uid]);
   React.useEffect(() => {
     if (readinessCheckedRef.current) return;
     if (!user || profileLoading || userProfile === null) return;
-    const needsOnboardingCheck = userProfile && (
+    const needsOnboardingCheck = userProfile && !userProfile.onboardingDeferred && (
       userProfile.onboardingCompleted === false ||
       (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
     );
     if (needsOnboardingCheck) return;
+    // Only auto-show the daily readiness check if the user has opted in.
+    if (userProfile.readinessOptIn !== true) return;
     readinessCheckedRef.current = true;
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -272,11 +315,21 @@ const AuthenticatedLayout = ({ children }) => {
       if (existing) {
         try { localStorage.setItem(lsKey, 'done'); } catch (_) {}
       } else {
-        setReadinessMandatory(true);
         setTimeout(() => setShowReadiness(true), 800);
       }
     }).catch(() => {});
   }, [user?.uid, profileLoading, userProfile]);
+
+  const handleOptInChoice = React.useCallback(async (optIn) => {
+    setShowOptInPrompt(false);
+    try {
+      await apiClient.patch('/users/me', { readinessOptIn: !!optIn });
+    } catch (_) {}
+    refreshUserProfile();
+    if (optIn) {
+      setTimeout(() => setShowReadiness(true), 250);
+    }
+  }, [refreshUserProfile]);
 
   // Auth loading — wait for AuthContext to resolve
   if (loading) {
@@ -293,8 +346,12 @@ const AuthenticatedLayout = ({ children }) => {
     return <LoadingScreen />;
   }
 
-  // Onboarding routing
-  const needsOnboarding = userProfile && (
+  // Onboarding routing.
+  // Storefront-acquired users have `onboardingDeferred: true` set on the
+  // server when they complete checkout. We let them straight into the app on
+  // first entry; HoyScreen surfaces a soft prompt later. They can still
+  // complete onboarding voluntarily from settings.
+  const needsOnboarding = userProfile && !userProfile.onboardingDeferred && (
     userProfile.onboardingCompleted === false ||
     (userProfile.profileCompleted === false || userProfile.profileCompleted === undefined)
   );
@@ -328,24 +385,34 @@ const AuthenticatedLayout = ({ children }) => {
   return (
     <RefreshProfileContext.Provider value={{ refreshUserProfile }}>
       <OpenReadinessModalContext.Provider value={{ openReadinessModal }}>
-        <UserRoleContext.Provider value={{ role: userRole }}>
-          <div
-            key={location.key}
-            className={screenClass}
-            style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
-          >
-            {children}
-          </div>
-          {tabBarEl}
-          {showReadiness && typeof document !== 'undefined' && document.body
-            ? createPortal(
-                <ReadinessCheckModal mandatory={readinessMandatory} onClose={() => setShowReadiness(false)} />,
-                document.body
-              )
-            : showReadiness
-              ? <ReadinessCheckModal mandatory={readinessMandatory} onClose={() => setShowReadiness(false)} />
-              : null}
-        </UserRoleContext.Provider>
+        <ReadinessOptInPromptContext.Provider value={{ requestReadinessOptInPrompt }}>
+          <UserRoleContext.Provider value={{ role: userRole }}>
+            <div
+              key={location.key}
+              className={screenClass}
+              style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+            >
+              {children}
+            </div>
+            {tabBarEl}
+            {showReadiness && typeof document !== 'undefined' && document.body
+              ? createPortal(
+                  <ReadinessCheckModal onClose={() => setShowReadiness(false)} />,
+                  document.body
+                )
+              : showReadiness
+                ? <ReadinessCheckModal onClose={() => setShowReadiness(false)} />
+                : null}
+            {showOptInPrompt && typeof document !== 'undefined' && document.body
+              ? createPortal(
+                  <ReadinessOptInPrompt onChoose={handleOptInChoice} />,
+                  document.body
+                )
+              : showOptInPrompt
+                ? <ReadinessOptInPrompt onChoose={handleOptInChoice} />
+                : null}
+          </UserRoleContext.Provider>
+        </ReadinessOptInPromptContext.Provider>
       </OpenReadinessModalContext.Provider>
     </RefreshProfileContext.Provider>
   );
@@ -369,7 +436,20 @@ const NutritionRouteWrapper = () => {
 const WebAppNavigator = () => {
   const location = useLocation();
   const isLoginRoute = location.pathname === '/login';
+  // /email-link consumes a one-shot oobCode in the URL — must run outside
+  // the auth-required layout (the user is signed out at the moment they land
+  // here, by definition) and must not redirect even if a different session
+  // is already active (the link could be intended to switch accounts).
+  const isEmailLinkRoute = location.pathname === '/email-link';
   const { user, loading } = useAuth();
+
+  if (isEmailLinkRoute) {
+    return (
+      <Routes>
+        <Route path="/email-link" element={<EmailLinkSignInScreen />} />
+      </Routes>
+    );
+  }
 
   if (isLoginRoute) {
     if (!loading && user) {
@@ -446,21 +526,56 @@ const WebAppNavigator = () => {
         }
       />
 
+      {/* Email-CTA destination: confirmation emails deep-link here via a
+          Firebase magic-link, which signs the user in on EmailLinkSignInScreen
+          first and then `window.location.replace`s here. The route bypasses
+          the install gate at the App.web.js level, but we still need to
+          handle the unauth case (cookies lost across the email-app hop) —
+          UnauthAccessGate renders a magic-link form instead of an empty
+          spinner. */}
       <Route
-        path="/course/:courseId"
+        path="/library/manage/:courseId"
         element={
-          <AuthenticatedLayout>
-            {React.createElement(withErrorBoundary(CourseDetailScreen, 'CourseDetail'))}
-          </AuthenticatedLayout>
+          <UnauthAccessGate>
+            {React.createElement(withErrorBoundary(ProgramSubscriptionScreen, 'ProgramSubscription'))}
+          </UnauthAccessGate>
         }
       />
 
+      {/* /course/:courseId is the one-time confirmation CTA destination as
+          well as the in-app program detail. Bypass the install gate so
+          post-purchase email clicks land here, then UnauthAccessGate handles
+          a missing session by showing a magic-link form (preserves the
+          courseId across the sign-in hop). */}
+      <Route
+        path="/course/:courseId"
+        element={
+          <UnauthAccessGate>
+            {React.createElement(withErrorBoundary(CourseDetailScreen, 'CourseDetail'))}
+          </UnauthAccessGate>
+        }
+      />
+
+      {/* Bundle confirmation CTA target — same rationale as /course above. */}
       <Route
         path="/bundle/:bundleId"
         element={
-          <AuthenticatedLayout>
+          <UnauthAccessGate>
             {React.createElement(withErrorBoundary(BundleDetailScreen, 'BundleDetail'))}
-          </AuthenticatedLayout>
+          </UnauthAccessGate>
+        }
+      />
+
+      {/* Coach-reply email lands here. The same thread view is rendered as an
+          overlay inside the workout flow; this route is just the standalone
+          surface so the email CTA has somewhere to go. UnauthAccessGate
+          covers the cross-device case where the buyer isn't signed in yet. */}
+      <Route
+        path="/video-exchange/:exchangeId"
+        element={
+          <UnauthAccessGate>
+            {React.createElement(withErrorBoundary(VideoExchangeStandaloneScreen, 'VideoExchange'))}
+          </UnauthAccessGate>
         }
       />
 
@@ -642,23 +757,13 @@ const WebAppNavigator = () => {
         }
       />
 
-      <Route
-        path="/payment/success"
-        element={
-          <AuthenticatedLayout>
-            <PaymentSuccessScreen />
-          </AuthenticatedLayout>
-        }
-      />
-
-      <Route
-        path="/payment/cancelled"
-        element={
-          <AuthenticatedLayout>
-            <PaymentCancelledScreen />
-          </AuthenticatedLayout>
-        }
-      />
+      {/* Payment landings: MercadoPago redirects buyers here after checkout
+          completes. Cookies often don't survive the cross-origin hop on
+          Safari, so we must NOT gate on auth — PaymentSuccessScreen polls
+          a public courseId status endpoint and falls back to a magic-link
+          form when the buyer isn't signed in. */}
+      <Route path="/payment/success" element={<PaymentSuccessScreen />} />
+      <Route path="/payment/cancelled" element={<PaymentCancelledScreen />} />
 
         {/* Catch all - redirect to home */}
         <Route path="*" element={<Navigate to="/" replace />} />

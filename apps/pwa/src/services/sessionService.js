@@ -5,6 +5,8 @@ import exerciseHistoryService from './exerciseHistoryService';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger.js';
 import { queryClient } from '../config/queryClient';
+import analyticsService from './analyticsService';
+import { parseTotalReps } from '../utils/repsParser';
 
 class SessionService {
   constructor() {
@@ -120,7 +122,19 @@ class SessionService {
           workout: null,
           index: 0,
           isManual: false,
-          allSessions: [],
+          // Rest days / all-completed return hasSession:false but still carry the
+          // week's planned sessions — the WeekCoachCard strip needs them to label
+          // each day. Preserve them instead of dropping to an empty list.
+          allSessions: (d?.allSessions ?? []).map(s => ({
+            id: s.sessionId,
+            sessionId: s.sessionId,
+            title: s.title,
+            moduleId: s.moduleId,
+            moduleTitle: s.moduleTitle,
+            order: s.order,
+            plannedDate: s.plannedDate ?? null,
+            image_url: s.image_url ?? null,
+          })),
           progress: d?.progress ?? null,
           isLoading: false,
           error: null,
@@ -455,7 +469,33 @@ class SessionService {
       queryClient.invalidateQueries({ queryKey: ['user', userId] });
       queryClient.invalidateQueries({ queryKey: ['programs', courseId] });
       queryClient.invalidateQueries({ queryKey: ['workout', 'calendar'] });
+      // Hoy's TodayWorkoutCard caches the daily session under this key with a
+      // 60s staleTime — invalidate so "Empezar" flips to "Sesión completada"
+      // immediately after completion.
+      queryClient.invalidateQueries({ queryKey: ['preview', 'todaySession', userId] });
 
+      try {
+        analyticsService.track('workout.session_completed', {
+          course_id: actualSessionData.courseId || null,
+          duration_seconds: Math.round(Number(actualSessionData.duration) || 0),
+          sets_completed: stats?.totalSets || 0,
+          exercises_completed: stats?.exercisesCompleted ?? (actualSessionData.exercises?.length || 0),
+          had_pr: Array.isArray(personalRecords) && personalRecords.length > 0,
+        });
+        // Activation event: fire once per install. localStorage flag avoids
+        // a Firestore read; treating "first workout on this device" as the
+        // activation moment is acceptable and works offline.
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            if (!window.localStorage.getItem('wake_first_workout_done')) {
+              window.localStorage.setItem('wake_first_workout_done', '1');
+              analyticsService.track('activation.first_workout_completed', {
+                course_id: actualSessionData.courseId || null,
+              });
+            }
+          }
+        } catch {}
+      } catch {}
 
       return {
         sessionData: actualSessionData,
@@ -619,7 +659,7 @@ class SessionService {
             exercise.sets.forEach(set => {
               if (set.reps && set.weight) {
                 stats.totalSets++;
-                stats.totalReps += parseInt(set.reps) || 0;
+                stats.totalReps += parseTotalReps(set.reps);
                 stats.totalWeight += parseFloat(set.weight) || 0;
               }
             });

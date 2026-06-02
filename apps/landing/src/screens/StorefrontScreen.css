@@ -1,0 +1,284 @@
+/* Wake Lab — wakelab.co/lab
+   Public directory of every creator with published programs.
+   Mirrors the cinematic hero + card system used in CreatorStorefrontScreen,
+   so navigating from /lab → /{username} feels continuous. */
+
+.bib-root {
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* ── Hero (cinematic — mirrors the per-creator storefront hero) ────────── */
+.bib-hero {
+  position: relative;
+  width: 100%;
+  min-height: 70vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 96px 24px 64px;
+}
+
+.bib-hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.bib-hero-overlay {
+  position: absolute;
+  inset: 0;
+  /* No backdrop image on the directory — just a deep wash with a soft top
+     vignette so the Wake watermark catches light. */
+  background:
+    radial-gradient(80% 60% at 50% 25%, rgba(255, 255, 255, 0.04), transparent 60%),
+    linear-gradient(to top, #1a1a1a 0%, transparent 35%),
+    #0f0f0f;
+}
+
+.bib-hero-icon {
+  position: absolute;
+  z-index: 1;
+  width: clamp(200px, 32vh, 440px);
+  height: auto;
+  opacity: 0.18;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.bib-hero-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 720px;
+  animation: bib-hero-fade-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bib-hero-fade-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bib-hero-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+.bib-hero-title {
+  font-family: 'Inter', sans-serif;
+  font-size: clamp(44px, 7vw, 96px);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  color: #fff;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bib-hero-bio {
+  font-size: clamp(15px, 1.4vw, 18px);
+  font-weight: 400;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  max-width: 540px;
+}
+
+/* ── States ─────────────────────────────────────────────────────────────── */
+.bib-loading {
+  min-height: 30vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bib-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: bib-spin 0.8s linear infinite;
+}
+
+@keyframes bib-spin {
+  to { transform: rotate(360deg); }
+}
+
+.bib-empty {
+  min-height: 30vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 16px;
+}
+
+/* ── Grid ──────────────────────────────────────────────────────────────── */
+.bib-section {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+}
+
+.bib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+/* ── Creator card (mirrors the program card front face) ────────────────── */
+/* 4:5 full-bleed image, city pill top-right, name overlaid bottom-left in
+   difference-blend white. No flip — clicking navigates to /{username}. */
+.bib-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: 18px;
+  overflow: hidden;
+  background-color: #0a0a0a;
+  text-decoration: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 480ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: bib-card-fade-in 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bib-card-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bib-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+.bib-card:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 4px;
+}
+
+.bib-card-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+  transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.bib-card:hover .bib-card-image {
+  transform: scale(1.03);
+}
+
+.bib-card-image-placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+}
+
+.bib-card-tags {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.bib-card-tag {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bib-card-overlay {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  pointer-events: none;
+  mix-blend-mode: difference;
+  color: #fff;
+}
+
+.bib-card-overlay-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 600px) {
+  .bib-hero {
+    min-height: 56vh;
+    padding: 88px 20px 48px;
+  }
+  .bib-section {
+    padding: 24px 20px 64px;
+  }
+  .bib-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .bib-card-overlay {
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+  }
+  .bib-card-overlay-title {
+    font-size: 18px;
+  }
+  .bib-card-tags {
+    top: 10px;
+    right: 10px;
+  }
+  .bib-card-tag {
+    font-size: 9px;
+    padding: 4px 8px;
+  }
+}

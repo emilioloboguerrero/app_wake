@@ -21,8 +21,10 @@ import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import warmupData from '../../assets/data/warmup_data.json';
 import assetBundleService from '../services/assetBundleService';
+import videoCacheService from '../services/videoCacheService';
 import logger from '../utils/logger';
 import { isWeb } from '../utils/platform';
+import analyticsService from '../services/analyticsService';
 const WarmupScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionId } = route.params;
@@ -242,6 +244,19 @@ const WarmupScreen = ({ navigation, route }) => {
     Animated.timing(screenAnim, { toValue: 1, duration: 480, useNativeDriver: true }).start();
   }, []);
 
+  // Warmup videos are bundled local assets, so the network is idle for the
+  // 30-90s the user is here. Use that window to start pulling the first two
+  // execution exercise videos into the HTTP cache so playback starts instantly
+  // when the user advances to WorkoutExecutionScreen.
+  useEffect(() => {
+    const exercises = workout?.exercises;
+    if (!Array.isArray(exercises)) return;
+    for (let i = 0; i < Math.min(2, exercises.length); i++) {
+      const url = exercises[i]?.video_url;
+      if (url) videoCacheService.preloadVideo(url);
+    }
+  }, [workout]);
+
   // Timer ref to avoid recreation
   const timerRef = useRef(null);
   
@@ -291,6 +306,32 @@ const WarmupScreen = ({ navigation, route }) => {
   }, [isMuted]);
   
   const videoPlayer = useVideoPlayer(videoSource, videoPlayerCallback);
+
+  // Visibility: warmup videos failing to load is what drives users to exit and
+  // re-enter repeatedly (and is where most real video errors are observed).
+  // Emit a structured event when the player reports a genuine load error —
+  // deduped so a stuck source can't spam — instead of leaving it invisible.
+  const warmupVideoFailTrackedRef = useRef(false);
+  useEffect(() => {
+    if (!videoPlayer || typeof videoPlayer.addListener !== 'function') return;
+    let sub;
+    try {
+      sub = videoPlayer.addListener('statusChange', (payload) => {
+        const status = payload?.status || payload;
+        if (status !== 'error') return;
+        if (warmupVideoFailTrackedRef.current) return;
+        warmupVideoFailTrackedRef.current = true;
+        try {
+          analyticsService.track('workout.video_load_failed', {
+            stage: 'warmup',
+            exercise_name: currentExercise?.name || null,
+            error: payload?.error?.message ? String(payload.error.message).slice(0, 200) : null,
+          });
+        } catch { /* never throw from analytics */ }
+      });
+    } catch (_) {}
+    return () => { try { sub?.remove?.(); } catch (_) {} };
+  }, [videoPlayer, currentExercise]);
 
   // Memoized utility functions
   const getExerciseDuration = useCallback((index) => {

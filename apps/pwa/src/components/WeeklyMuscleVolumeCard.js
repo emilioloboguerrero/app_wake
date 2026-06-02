@@ -12,7 +12,8 @@ import muscleVolumeInfoService from '../services/muscleVolumeInfoService';
 
 const toYMD = (d) => d.toISOString().split('T')[0];
 
-const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, weekDisplayName, showCurrentWeekLabel = false, onInfoPress }) => {
+const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, weekDisplayName, showCurrentWeekLabel = false, onInfoPress, accentRgb = null }) => {
+  const accentCss = accentRgb ? `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})` : null;
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // Create styles with current dimensions - memoized to prevent recalculation
@@ -110,10 +111,11 @@ const WeeklyMuscleVolumeCard = ({ userId, sessionMuscleVolumes, selectedWeek, we
         >
           {sortedMuscles.map(([muscle, sets]) => {
             const textColor = getMuscleColorForText(sets);
+            const useAccent = accentCss && sets > 0;
             return (
               <View key={muscle} style={styles.muscleRow}>
                 <Text style={styles.muscleName} numberOfLines={1} ellipsizeMode="tail">{getMuscleDisplayName(muscle)}</Text>
-                <Text style={[styles.muscleVolume, { color: textColor.color, opacity: textColor.opacity }]}>
+                <Text style={[styles.muscleVolume, { color: useAccent ? accentCss : textColor.color, opacity: textColor.opacity }]}>
                   {sets.toFixed(1)} sets
                 </Text>
               </View>

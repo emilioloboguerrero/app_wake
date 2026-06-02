@@ -30,6 +30,7 @@ import SvgChampion from '../components/icons/SvgChampion';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 import { shouldTrackMuscleVolume } from '../constants/muscles';
 import { getMondayWeek, getWeekDates } from '../utils/weekCalculation';
 import { auth } from '../config/firebase';
@@ -43,11 +44,18 @@ import exerciseHistoryService from '../services/exerciseHistoryService';
 import apiClient from '../utils/apiClient';
 import WakeLoader from '../components/WakeLoader';
 
-const WorkoutCompletionScreen = ({ navigation, route }) => {
+const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { course, workout, sessionData, localStats, personalRecords, sessionMuscleVolumes } = route.params || {};
   const { user } = useAuth();
   const userId = (user || auth.currentUser)?.uid;
+
+  // Accent color from session/program image — drives muscle silhouette tint and Finalizar button.
+  const accentImageUrl = workout?.image_url || workout?.imageUrl || course?.image_url || course?.imageUrl || null;
+  const accent = useAccentFromImage(accentImageUrl);
+  const accentColor = accent?.accent || null;
+  const accentTextColor = accent?.accentText || '#1a1a1a';
+  const accentRgb = accent ? [accent.accentR, accent.accentG, accent.accentB] : null;
 
   const { data: userData } = useQuery({
     queryKey: ['user', userId],
@@ -561,7 +569,14 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
   };
 
   const handleFinishWorkout = () => {
-    // Simply navigate to main screen - session completion is handled by workout screen
+    // If the user hasn't decided about readiness tracking yet, ask now.
+    // userData.readinessOptIn comes from /users/me; null/undefined means undecided.
+    const optIn = userData?.readinessOptIn;
+    if (onRequestReadinessOptIn && (optIn === null || optIn === undefined)) {
+      onRequestReadinessOptIn();
+    }
+    // Navigate immediately — the prompt is rendered at app layout level via portal,
+    // so it overlays whatever screen we land on next.
     navigation.navigate('MainScreen');
   };
 
@@ -1306,8 +1321,11 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
         <FixedWakeHeader />
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>No se pudieron calcular las estadísticas</Text>
-          <TouchableOpacity style={styles.finishButton} onPress={handleFinishWorkout}>
-            <Text style={styles.finishButtonText}>Finalizar Entrenamiento</Text>
+          <TouchableOpacity
+            style={[styles.finishButton, accentColor && { backgroundColor: accentColor }]}
+            onPress={handleFinishWorkout}
+          >
+            <Text style={[styles.finishButtonText, accentColor && { color: accentTextColor }]}>Finalizar Entrenamiento</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -1418,6 +1436,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                         onWeekChange={() => {}}
                         isReadOnly={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
+                        accentRgb={accentRgb}
                       />
                     </View>
                   )}
@@ -1430,6 +1449,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                         sessionMuscleVolumes={sessionMuscleVolumes}
                         showCurrentWeekLabel={true}
                         onInfoPress={handleMuscleVolumeInfoPress}
+                        accentRgb={accentRgb}
                       />
                     </View>
                   )}
@@ -1522,8 +1542,11 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
 
           {/* Finish Button */}
           <View style={styles.actionsRow}>
-            <TouchableOpacity style={styles.finishButton} onPress={handleFinishWorkout}>
-              <Text style={styles.finishButtonText}>Finalizar Entrenamiento</Text>
+            <TouchableOpacity
+              style={[styles.finishButton, accentColor && { backgroundColor: accentColor }]}
+              onPress={handleFinishWorkout}
+            >
+              <Text style={[styles.finishButtonText, accentColor && { color: accentTextColor }]}>Finalizar Entrenamiento</Text>
             </TouchableOpacity>
           </View>
 
@@ -1732,7 +1755,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                           {sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0 ? (
                             <View style={styles.shareCardMuscleBackground}>
                               <View style={{ width: '100%', height: 330 }}>
-                                <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} />
+                                <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} accentRgb={accentRgb} />
                               </View>
                             </View>
                           ) : (
@@ -1966,7 +1989,7 @@ const WorkoutCompletionScreen = ({ navigation, route }) => {
                   {sessionMuscleVolumes && Object.keys(sessionMuscleVolumes).length > 0 ? (
                     <View style={styles.fullscreenMuscleBackground}>
                       <View style={{ width: '100%', height: 330 }}>
-                        <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} />
+                        <MuscleSilhouetteSVG muscleVolumes={sessionMuscleVolumes} enhanced={true} accentRgb={accentRgb} />
                       </View>
                     </View>
                   ) : (

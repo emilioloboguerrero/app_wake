@@ -1,0 +1,689 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { LandingFooter } from './ShowcaseLandingScreen';
+import apiClient, { WakeApiError } from '../utils/apiClient';
+import { getCreatorProgram, getCreatorStorefront } from '../services/creatorStorefrontService';
+import {
+  startStorefrontCheckout,
+  StorefrontCheckoutError,
+} from '../services/storefrontCheckoutService';
+import { getCurrentUser } from '../services/storefrontAuthService';
+import { useAccentFromImage } from '../utils/accentColor';
+import AuthModal from '../components/AuthModal';
+import './CreatorProgramDetailScreen.css';
+
+const COP = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 0,
+});
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function formatPrice(value, currency) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  if (!currency || currency.toUpperCase() === 'COP') return COP.format(value);
+  try {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return `${value}`;
+  }
+}
+
+function IncludesTags({ program, className }) {
+  if (program.deliveryType === 'one_on_one') {
+    return (
+      <div className={`cpd-includes ${className || ''}`} aria-label="Formato del programa">
+        <span className="cpd-include-pill">Asesoría</span>
+      </div>
+    );
+  }
+  const showTraining = program.hasTraining !== false;
+  const showNutrition = program.hasNutrition === true;
+  if (!showTraining && !showNutrition) return null;
+  return (
+    <div className={`cpd-includes ${className || ''}`} aria-label="Lo que incluye">
+      {showTraining ? <span className="cpd-include-pill">Entrenamiento</span> : null}
+      {showNutrition ? <span className="cpd-include-pill">Nutrición</span> : null}
+    </div>
+  );
+}
+
+function RelatedCard({ username, program }) {
+  const isOneOnOne = program.deliveryType === 'one_on_one';
+  const otp = formatPrice(program.price, program.currency);
+  const sub = formatPrice(program.subscriptionPrice, program.currency);
+  const priceText = isOneOnOne ? 'Asesoría' : (sub ? `${sub}/mes` : otp);
+  return (
+    <Link to={`/${username}/${program.id}`} className="cpd-related-card">
+      <div className="cpd-related-card-media">
+        {program.imageUrl ? (
+          <img src={program.imageUrl} alt="" loading="lazy" decoding="async" />
+        ) : (
+          <div className="cpd-related-card-placeholder" aria-hidden="true" />
+        )}
+      </div>
+      <div className="cpd-related-card-body">
+        <h3 className="cpd-related-card-title">{program.title}</h3>
+        {priceText ? <p className="cpd-related-card-price">{priceText}</p> : null}
+      </div>
+    </Link>
+  );
+}
+
+function BackArrow() {
+  // Same chevron-left as the PWA's FixedWakeHeader.
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="m15 19-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Icons ported from the PWA's CourseDetailScreen video player
+// (apps/pwa/src/components/icons/{SvgPlay, SvgVolumeMax, SvgVolumeOff, SvgArrowReload}).
+function PlayIcon({ size = 48 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 17.3336V6.66698C5 5.78742 5 5.34715 5.18509 5.08691C5.34664 4.85977 5.59564 4.71064 5.87207 4.67499C6.18868 4.63415 6.57701 4.84126 7.35254 5.25487L17.3525 10.5882L17.3562 10.5898C18.2132 11.0469 18.642 11.2756 18.7826 11.5803C18.9053 11.8462 18.9053 12.1531 18.7826 12.4189C18.6418 12.7241 18.212 12.9537 17.3525 13.4121L7.35254 18.7454C6.57645 19.1593 6.1888 19.3657 5.87207 19.3248C5.59564 19.2891 5.34664 19.1401 5.18509 18.9129C5 18.6527 5 18.2132 5 17.3336Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function VolumeMaxIcon({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M18.82 4.68652C19.8191 5.61821 20.6167 6.74472 21.1636 7.99657C21.7105 9.24842 21.9952 10.5991 21.9999 11.9652C22.0047 13.3313 21.7295 14.6838 21.1914 15.9395C20.6532 17.1951 19.8635 18.3272 18.8709 19.2658M16.092 7.61194C16.6915 8.17095 17.17 8.84686 17.4982 9.59797C17.8263 10.3491 17.9971 11.1595 18 11.9791C18.0028 12.7988 17.8377 13.6103 17.5148 14.3637C17.1919 15.1171 16.7181 15.7963 16.1225 16.3595M7.4803 15.4069L9.15553 17.48C10.0288 18.5607 10.4655 19.1011 10.848 19.1599C11.1792 19.2108 11.5138 19.0925 11.7394 18.8448C12 18.5586 12 17.8638 12 16.4744V7.52572C12 6.13627 12 5.44155 11.7394 5.15536C11.5138 4.90761 11.1792 4.78929 10.848 4.84021C10.4655 4.89904 10.0288 5.43939 9.15553 6.52009L7.4803 8.59319C7.30388 8.81151 7.21567 8.92067 7.10652 8.99922C7.00982 9.06881 6.90147 9.12056 6.78656 9.15204C6.65687 9.18756 6.51652 9.18756 6.23583 9.18756H4.8125C4.0563 9.18756 3.6782 9.18756 3.37264 9.2885C2.77131 9.48716 2.2996 9.95887 2.10094 10.5602C2 10.8658 2 11.2439 2 12.0001C2 12.7563 2 13.1344 2.10094 13.4399C2.2996 14.0413 2.77131 14.513 3.37264 14.7116C3.6782 14.8126 4.0563 14.8126 4.8125 14.8126H6.23583C6.51652 14.8126 6.65687 14.8126 6.78656 14.8481C6.90147 14.8796 7.00982 14.9313 7.10652 15.0009C7.21567 15.0794 7.30388 15.1886 7.4803 15.4069Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function VolumeOffIcon({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M10 9.18725H8.8125C8.0563 9.18725 7.6782 9.18725 7.37264 9.28819C6.77131 9.48684 6.2996 9.95855 6.10094 10.5599C6 10.8654 6 11.2435 6 11.9997C6 12.7559 6 13.134 6.10094 13.4396C6.2996 14.0409 6.77131 14.5127 7.37264 14.7113C7.6782 14.8122 8.0563 14.8122 8.8125 14.8122H10.2358C10.5165 14.8122 10.6569 14.8122 10.7866 14.8478C10.9015 14.8792 11.0098 14.931 11.1065 15.0006C11.2157 15.0791 11.3039 15.1883 11.4803 15.4066L13.1555 17.4797C14.0288 18.5604 14.4655 19.1008 14.848 19.1596C15.1792 19.2105 15.5138 19.0922 15.7394 18.8444C16 18.5583 16 17.8635 16 16.4741V14.9997M16 10.4997V6.97735C16 6.04105 16 5.57291 15.8776 5.3488C15.6329 4.90109 15.0905 4.70931 14.6188 4.90379C14.3827 5.00113 14.0885 5.36526 13.5 6.0935L12.875 6.86693M6 4.99975L20 18.9997" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ReloadIcon({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14 16H19V21M10 8H5V3M19.4176 9.0034C18.8569 7.61566 17.9181 6.41304 16.708 5.53223C15.4979 4.65141 14.0652 4.12752 12.5723 4.02051C11.0794 3.9135 9.58606 4.2274 8.2627 4.92661C6.93933 5.62582 5.83882 6.68254 5.08594 7.97612M4.58203 14.9971C5.14272 16.3848 6.08146 17.5874 7.29157 18.4682C8.50169 19.3491 9.93588 19.8723 11.4288 19.9793C12.9217 20.0863 14.4138 19.7725 15.7371 19.0732C17.0605 18.374 18.1603 17.3175 18.9131 16.0239" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export default function CreatorProgramDetailScreen() {
+  const { username, programId } = useParams();
+  const [data, setData] = useState(null);
+  const [status, setStatus] = useState('loading');
+  const [authOpen, setAuthOpen] = useState(false);
+  const [pendingMode, setPendingMode] = useState(null);
+  // Single source of truth for which CTA is in flight. Avoids the bug where
+  // `checkoutBusy && pendingMode === 'one_time'` lit up the wrong button when
+  // pendingMode lagged behind the actual click target.
+  const [busyMode, setBusyMode] = useState(null);
+  const [checkoutError, setCheckoutError] = useState(null);
+  const [altEmail, setAltEmail] = useState('');
+  const [needsAltEmail, setNeedsAltEmail] = useState(false);
+  const [alreadyOwned, setAlreadyOwned] = useState(null);
+  // Sold-out waitlist: 'hidden' (just the CTA) | 'form' | 'done'.
+  const [waitlistPhase, setWaitlistPhase] = useState('hidden');
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistError, setWaitlistError] = useState(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [videoMuted, setVideoMuted] = useState(false);
+  const videoRef = useRef(null);
+  const [related, setRelated] = useState([]);
+
+  const accent = useAccentFromImage(data?.program?.imageUrl);
+
+  const toggleVideo = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused || v.ended) {
+      if (v.ended) v.currentTime = 0;
+      v.play();
+    } else {
+      v.pause();
+    }
+  };
+
+  const restartVideo = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = 0;
+    v.play();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus('loading');
+    setData(null);
+    setRelated([]);
+    // Storefront fetch is best-effort; the cache is shared with the storefront
+    // screen so this is usually a hit. Any failure is silent — the related
+    // section just hides.
+    Promise.all([
+      getCreatorProgram(username, programId),
+      getCreatorStorefront(username).catch(() => null),
+    ])
+      .then(([res, storefront]) => {
+        if (cancelled) return;
+        if (!res) {
+          setStatus('not_found');
+          return;
+        }
+        setData(res);
+        setStatus('ready');
+        if (storefront?.programs) {
+          const all = [
+            ...(storefront.programs.general || []),
+            ...(storefront.programs.oneOnOne || []),
+          ];
+          setRelated(all.filter((p) => p.id !== programId).slice(0, 2));
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (err instanceof WakeApiError && err.status === 404) {
+          setStatus('not_found');
+        } else {
+          setStatus('error');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [username, programId]);
+
+  useEffect(() => {
+    if (status === 'ready' && data?.program?.title && data?.creator?.displayName) {
+      document.title = `${data.program.title} — ${data.creator.displayName}`;
+    }
+    // Don't reset on unmount — the next screen sets its own title and the
+    // brief "Wake" flash is jarring.
+  }, [status, data]);
+
+  if (status === 'loading') {
+    return (
+      <div className="cpd-root">
+        <div className="cpd-loading"><div className="cpd-spinner" /></div>
+      </div>
+    );
+  }
+
+  if (status === 'not_found' || status === 'error') {
+    return (
+      <div className="cpd-root cpd-empty">
+        <div className="cpd-empty-inner">
+          <h1>Programa no disponible</h1>
+          <p>Este programa ya no está publicado o no existe.</p>
+          <Link to={`/${username}`} className="cpd-empty-cta">Ver perfil</Link>
+        </div>
+      </div>
+    );
+  }
+
+  const { creator, program } = data;
+  const isOneOnOne = program.deliveryType === 'one_on_one';
+  const hasOneTime =
+    typeof program.price === 'number' && program.price > 0;
+  const hasSubscription =
+    typeof program.subscriptionPrice === 'number' && program.subscriptionPrice > 0;
+  const oneTimePrice = formatPrice(program.price, program.currency);
+  const subPrice = formatPrice(program.subscriptionPrice, program.currency);
+
+  const accentStyle = accent
+    ? {
+      '--cpd-accent': accent.accent,
+      '--cpd-accent-soft': accent.accentSoft,
+      '--cpd-accent-line': accent.accentLine,
+      '--cpd-accent-text': accent.accentText,
+    }
+    : undefined;
+
+  const runCheckout = async (mode, payerEmailOverride) => {
+    setBusyMode(mode);
+    setCheckoutError(null);
+    setAlreadyOwned(null);
+    try {
+      const result = await startStorefrontCheckout({
+        username: creator.username,
+        courseId: program.id,
+        mode,
+        payerEmail: payerEmailOverride,
+      });
+      if (result?.needsAlternateEmail) {
+        setNeedsAltEmail(true);
+        setBusyMode(null);
+        return;
+      }
+      if (result?.alreadyPurchased) {
+        setAlreadyOwned({ appUrl: result.appUrl || '/app/' });
+        setBusyMode(null);
+        return;
+      }
+      if (result?.initPoint) {
+        // Stash the payer email so PostPaymentScreen can disclose it
+        // separately from the Firebase account email when they differ.
+        // The buyer often types a different MP email here — without this,
+        // we'd lie about which inbox we sent the magic-link to.
+        try {
+          const payer = payerEmailOverride
+            ? payerEmailOverride.trim().toLowerCase()
+            : (getCurrentUser()?.email || '').toLowerCase();
+          if (payer && program?.id) {
+            window.sessionStorage.setItem(`wake_payer_${program.id}`, payer);
+          }
+        } catch { /* private mode — fall through */ }
+        window.location.href = result.initPoint;
+        return;
+      }
+      throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
+    } catch (err) {
+      setBusyMode(null);
+      // Filled up between page load and click — flip to the waitlist instead of
+      // showing a dead-end error.
+      if (err?.code === 'CAPACITY_FULL') {
+        openWaitlist();
+        return;
+      }
+      setCheckoutError(err?.message || 'No se pudo iniciar el pago');
+    }
+  };
+
+  const goToBooking = () => {
+    // Deep-link into the PWA so the existing call-booking flow handles the
+    // session selection. The query params let the PWA route to a coach-scoped
+    // view once that surface exists.
+    const url = `/app/?intent=book_call&coach=${encodeURIComponent(creator.username)}&course=${encodeURIComponent(program.id)}`;
+    window.location.href = url;
+  };
+
+  const handleBuy = (mode) => {
+    setCheckoutError(null);
+    setNeedsAltEmail(false);
+    setAlreadyOwned(null);
+    setAltEmail('');
+    setPendingMode(mode);
+    if (isOneOnOne) {
+      const intentMode = mode === 'book_call' ? 'book_call' : 'book_call';
+      setPendingMode(intentMode);
+      if (getCurrentUser()) {
+        goToBooking();
+      } else {
+        setAuthOpen(true);
+      }
+      return;
+    }
+    if (getCurrentUser()) {
+      runCheckout(mode);
+    } else {
+      setAuthOpen(true);
+    }
+  };
+
+  const handleAuthenticated = () => {
+    setAuthOpen(false);
+    if (pendingMode === 'book_call') {
+      goToBooking();
+      return;
+    }
+    if (pendingMode) {
+      runCheckout(pendingMode);
+    }
+  };
+
+  const submitAltEmail = (e) => {
+    e.preventDefault();
+    if (!pendingMode) return;
+    const trimmed = altEmail.trim().toLowerCase();
+    if (!EMAIL_RE.test(trimmed)) {
+      setCheckoutError('Correo inválido.');
+      return;
+    }
+    runCheckout(pendingMode, trimmed);
+  };
+
+  const openWaitlist = () => {
+    const user = getCurrentUser();
+    if (user) {
+      setWaitlistName((prev) => prev || user.displayName || '');
+      setWaitlistEmail((prev) => prev || user.email || '');
+    }
+    setWaitlistError(null);
+    setWaitlistPhase('form');
+  };
+
+  const submitWaitlist = async (e) => {
+    if (e) e.preventDefault();
+    const name = waitlistName.trim();
+    const email = waitlistEmail.trim().toLowerCase();
+    if (!name) {
+      setWaitlistError('Ingresa tu nombre.');
+      return;
+    }
+    if (!EMAIL_RE.test(email)) {
+      setWaitlistError('Ingresa un correo válido.');
+      return;
+    }
+    setWaitlistSubmitting(true);
+    setWaitlistError(null);
+    try {
+      await apiClient.post(`/public/programs/${program.id}/waitlist`, { email, name });
+      setWaitlistPhase('done');
+    } catch {
+      setWaitlistError('No pudimos guardarte. Intenta de nuevo.');
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
+
+  // When both modes are available, subscription is the primary CTA and
+  // one-time is the secondary. When only one is available, that one is primary.
+  const oneTimeIsPrimary = hasOneTime && !hasSubscription;
+
+  return (
+    <div className="cpd-root" style={accentStyle}>
+      <Link to={`/${username}`} className="cpd-back-fab" aria-label={`Volver a ${creator.displayName}`}>
+        <BackArrow />
+      </Link>
+
+      <article className="cpd-content">
+        <div className="cpd-media">
+          {program.videoIntroUrl ? (
+            <div
+              className="cpd-video-shell"
+              role="button"
+              tabIndex={0}
+              aria-label={videoPlaying ? 'Pausar video' : 'Reproducir video'}
+              onClick={toggleVideo}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleVideo();
+                }
+              }}
+            >
+              <video
+                ref={videoRef}
+                className="cpd-video"
+                src={program.videoIntroUrl}
+                poster={program.imageUrl || undefined}
+                playsInline
+                preload="metadata"
+                muted={videoMuted}
+                onPlay={() => setVideoPlaying(true)}
+                onPause={() => setVideoPlaying(false)}
+                onEnded={() => setVideoPlaying(false)}
+              />
+              {!videoPlaying ? (
+                <>
+                  <div className="cpd-video-dim" aria-hidden="true" />
+                  <div className="cpd-video-play-icon" aria-hidden="true">
+                    <PlayIcon size={48} />
+                  </div>
+                  <button
+                    type="button"
+                    className="cpd-video-corner cpd-video-corner-volume"
+                    onClick={(e) => { e.stopPropagation(); setVideoMuted((m) => !m); }}
+                    aria-label={videoMuted ? 'Activar sonido' : 'Silenciar'}
+                  >
+                    {videoMuted ? <VolumeOffIcon /> : <VolumeMaxIcon />}
+                  </button>
+                  <button
+                    type="button"
+                    className="cpd-video-corner cpd-video-corner-restart"
+                    onClick={(e) => { e.stopPropagation(); restartVideo(); }}
+                    aria-label="Reiniciar video"
+                  >
+                    <ReloadIcon />
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : program.imageUrl ? (
+            <img
+              src={program.imageUrl}
+              alt={program.title}
+              className="cpd-cover"
+              loading="eager"
+              decoding="async"
+              fetchPriority="high"
+            />
+          ) : (
+            <div className="cpd-cover cpd-cover-placeholder" aria-hidden="true" />
+          )}
+          <IncludesTags program={program} className="cpd-includes-overlay" />
+        </div>
+
+        <div className="cpd-info">
+          <header className="cpd-header">
+            <h1 className="cpd-title">{program.title}</h1>
+
+            <div className="cpd-meta">
+              {program.discipline ? <span>{program.discipline}</span> : null}
+              {program.duration ? <span>{program.duration}</span> : null}
+              {program.durationWeeks ? <span>{program.durationWeeks} semanas</span> : null}
+            </div>
+          </header>
+
+          {isOneOnOne ? (
+            <button
+              type="button"
+              className="cpd-cta cpd-cta-primary"
+              onClick={() => handleBuy('book_call')}
+              disabled={busyMode !== null}
+            >
+              <span className="cpd-cta-label">Reservar llamada</span>
+            </button>
+          ) : (program.isFull || waitlistPhase !== 'hidden') ? (
+            <div className="cpd-soldout">
+              {waitlistPhase === 'done' ? (
+                <div className="cpd-waitlist-done" role="status">
+                  <h2 className="cpd-waitlist-done-title">¡Estás en la lista!</h2>
+                  <p className="cpd-waitlist-done-text">
+                    Te avisaremos a <strong>{waitlistEmail}</strong> si se abre un cupo.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <span className="cpd-soldout-badge">Cupos agotados</span>
+                  {waitlistPhase === 'form' ? (
+                    <form className="cpd-waitlist-form" onSubmit={submitWaitlist}>
+                      <p className="cpd-waitlist-label">
+                        Déjanos tus datos y te avisamos si se abre un cupo.
+                      </p>
+                      <input
+                        type="text"
+                        className="cpd-alt-email-input"
+                        placeholder="Tu nombre"
+                        value={waitlistName}
+                        onChange={(e) => { setWaitlistName(e.target.value); setWaitlistError(null); }}
+                        maxLength={120}
+                        disabled={waitlistSubmitting}
+                      />
+                      <input
+                        type="email"
+                        className="cpd-alt-email-input"
+                        placeholder="Tu correo"
+                        value={waitlistEmail}
+                        onChange={(e) => { setWaitlistEmail(e.target.value); setWaitlistError(null); }}
+                        maxLength={200}
+                        disabled={waitlistSubmitting}
+                      />
+                      {waitlistError ? <p className="cpd-error" role="alert">{waitlistError}</p> : null}
+                      <button
+                        type="submit"
+                        className="cpd-cta cpd-cta-primary"
+                        disabled={waitlistSubmitting}
+                      >
+                        <span className="cpd-cta-label">
+                          {waitlistSubmitting ? 'Enviando…' : 'Unirme a la lista'}
+                        </span>
+                      </button>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="cpd-cta cpd-cta-primary"
+                      onClick={openWaitlist}
+                    >
+                      <span className="cpd-cta-label">Unirme a la lista de espera</span>
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          ) : needsAltEmail ? null : (
+            // Hide the primary CTAs while the alt-email form is showing. Both
+            // buttons remained visible and clickable, so a user could re-fire
+            // a subscription attempt with the wrong email and loop the same
+            // MP rejection. The alt-email form below is the only valid next
+            // step until it succeeds or the user resets the flow.
+            <div className="cpd-ctas">
+              {hasSubscription ? (
+                <button
+                  type="button"
+                  className="cpd-cta cpd-cta-primary"
+                  onClick={() => handleBuy('subscription')}
+                  disabled={busyMode !== null}
+                >
+                  <span className="cpd-cta-label">
+                    {busyMode === 'subscription' ? 'Procesando…' : 'Suscríbete'}
+                  </span>
+                  {subPrice ? (
+                    <span className="cpd-cta-price">
+                      {subPrice}<span className="cpd-cta-suffix">/mes</span>
+                    </span>
+                  ) : null}
+                </button>
+              ) : null}
+              {hasOneTime ? (
+                <button
+                  type="button"
+                  className={`cpd-cta ${oneTimeIsPrimary ? 'cpd-cta-primary' : 'cpd-cta-secondary'}`}
+                  onClick={() => handleBuy('one_time')}
+                  disabled={busyMode !== null}
+                >
+                  <span className="cpd-cta-label">
+                    {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
+                  </span>
+                  {oneTimePrice ? (
+                    <span className="cpd-cta-price">{oneTimePrice}</span>
+                  ) : null}
+                </button>
+              ) : null}
+              {!hasOneTime && !hasSubscription ? (
+                <p className="cpd-no-price">Este programa aún no tiene precio.</p>
+              ) : null}
+            </div>
+          )}
+
+          {checkoutError ? <p className="cpd-error" role="alert">{checkoutError}</p> : null}
+
+          {alreadyOwned ? (
+            <div className="cpd-already-owned" role="status">
+              <p>Ya tienes acceso a este programa.</p>
+              <a href={alreadyOwned.appUrl} className="cpd-cta cpd-cta-primary">
+                <span className="cpd-cta-label">Abrir en la app</span>
+              </a>
+            </div>
+          ) : null}
+
+          {needsAltEmail ? (
+            <form className="cpd-alt-email" onSubmit={submitAltEmail}>
+              <p className="cpd-alt-email-label">
+                Para suscripciones, Mercado Pago necesita tu correo registrado en su plataforma:
+              </p>
+              <input
+                type="email"
+                className="cpd-alt-email-input"
+                placeholder="correo@mercadopago.com"
+                value={altEmail}
+                onChange={(e) => setAltEmail(e.target.value)}
+                maxLength={254}
+                required
+                disabled={busyMode !== null}
+              />
+              <button
+                type="submit"
+                className="cpd-cta cpd-cta-primary"
+                disabled={busyMode !== null || !altEmail}
+              >
+                <span className="cpd-cta-label">
+                  {busyMode !== null ? 'Procesando…' : 'Continuar'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="cpd-alt-email-cancel"
+                onClick={() => {
+                  setNeedsAltEmail(false);
+                  setAltEmail('');
+                  setCheckoutError(null);
+                  setPendingMode(null);
+                }}
+                disabled={busyMode !== null}
+              >
+                Cancelar
+              </button>
+            </form>
+          ) : null}
+
+          <div className="cpd-creator-row">
+            <Link to={`/${username}`} className="cpd-creator-link">
+              {creator.profilePictureUrl ? (
+                <img src={creator.profilePictureUrl} alt="" className="cpd-creator-avatar" />
+              ) : (
+                <div className="cpd-creator-avatar cpd-creator-avatar-placeholder">
+                  {creator.displayName.charAt(0)}
+                </div>
+              )}
+              <span className="cpd-creator-name">{creator.displayName}</span>
+            </Link>
+          </div>
+        </div>
+      </article>
+
+      {related.length > 0 ? (
+        <section className="cpd-related" aria-label={`Más programas de ${creator.displayName}`}>
+          <h2 className="cpd-related-title">Más de {creator.displayName}</h2>
+          <div className="cpd-related-grid">
+            {related.map((p) => (
+              <RelatedCard key={p.id} username={creator.username} program={p} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <LandingFooter />
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onAuthenticated={handleAuthenticated}
+        title={
+          pendingMode === 'book_call' ?
+            `Reserva una llamada con ${creator.displayName}` :
+            pendingMode === 'subscription' ?
+              `Suscríbete a ${program.title}` :
+              `Compra ${program.title}`
+        }
+        subtitle={
+          pendingMode === 'book_call' ?
+            `Crea una cuenta o inicia sesión para coordinar tu primera sesión.` :
+            `Crea una cuenta o inicia sesión para continuar con ${creator.displayName}.`
+        }
+      />
+    </div>
+  );
+}

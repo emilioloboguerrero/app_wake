@@ -172,13 +172,16 @@ export function validateBody<T>(
     }
   }
 
-  // Strip fields not declared in the schema to prevent injection of arbitrary data
+  // Strip fields not declared in the schema to prevent injection of arbitrary data.
+  // Also drop nulls for optional fields: validateBody already accepts null as
+  // "absent" (skipping type checks above), so the returned object should reflect
+  // that — otherwise downstream `if (body.X !== undefined)` guards mishandle null.
   if (stripUnknown) {
     const result: Record<string, unknown> = {};
     for (const field of Object.keys(schema)) {
-      if (obj[field] !== undefined) {
-        result[field] = obj[field];
-      }
+      const value = obj[field];
+      if (value === undefined || value === null) continue;
+      result[field] = value;
     }
     return result as T;
   }

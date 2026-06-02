@@ -95,12 +95,18 @@ const SessionDetailScreen = ({ navigation, route }) => {
   };
 
   const renderSetInfo = (set, setIndex) => {
-    // Prefer drop-sequence → reps → duration → dash
+    // Prefer reps anchor → drop-sequence → duration → dash. A rep_sequence
+    // with >1 element encodes a multi-week microcycle (W1→W4) the subscriber
+    // can't yet navigate — showing "10 → 10 → 8 → 12" inline confuses
+    // non-creators because there's no week-aware UI to pick the right value.
+    // Fall back to the array only as a true drop-set fallback when no `reps`
+    // anchor exists.
     let repsDisplay = '-';
-    if (Array.isArray(set.rep_sequence) && set.rep_sequence.length > 0) {
-      repsDisplay = set.rep_sequence.join(' → ');
-    } else if (set.reps) {
-      repsDisplay = set.reps;
+    const seq = Array.isArray(set.rep_sequence) ? set.rep_sequence : null;
+    if (set.reps) {
+      repsDisplay = String(set.reps);
+    } else if (seq && seq.length > 0) {
+      repsDisplay = seq.join(' → ');
     } else if (set.duration != null && set.duration !== '') {
       repsDisplay = `${set.duration}s`;
     }

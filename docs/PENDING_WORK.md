@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-05-01. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-05-10. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -10,148 +10,7 @@ Last updated: 2026-05-01. Single source of truth for all unimplemented, partial,
 
 ---
 
-## Conversion & Growth
-
-### 3b. Subscription Management Screen `NOT STARTED`
-
-In-app screen for users to view and manage their active subscription. Currently there is no visibility into subscription state inside the app.
-
-**Screen (`/app/subscription`, accessible from profile):**
-- Plan name, status (activo / cancelado / vencido), next billing date, amount
-- Cancelar button → confirmation modal → reason selector → API call → Firestore update
-
-**API needed:**
-- `GET /payments/subscription` — current subscription status
-- `POST /payments/subscription/cancel` — cancel with reason
-
-**Checklist:**
-- [ ] `GET /payments/subscription` endpoint
-- [ ] `POST /payments/subscription/cancel` endpoint
-- [ ] Subscription screen UI in PWA
-- [ ] Cancel flow (modal + reason selector)
-- [ ] Firestore update on cancel
-
----
-
-### 3e. Creator Public Buy Page `NOT STARTED`
-
-A public, no-login web page where prospects can purchase a creator's program directly — no PWA install, no signup wall in front of checkout. Today the only purchase path is inside the PWA after auth, which kills conversion from external traffic (IG bio links, ads, creator stories).
-
-**Surface:** new public route on the landing app — `/c/:creatorSlug` (creator storefront) and `/c/:creatorSlug/:programSlug` (program detail + buy). No auth required to view or initiate checkout.
-
-**Flow:**
-1. Visitor lands on program page (hero, description, what's included, price, creator credentials)
-2. Clicks "Comprar" → email + name capture (single short form, no password)
-3. `POST /payments/guest-checkout` creates a MercadoPago preference using the same `external_reference` format (`v1|{userId}|{courseId}|otp`), with `userId` resolved from the email — if no Firebase user exists, create one with a random password and flag `provisional: true`
-4. Redirect to MercadoPago
-5. Webhook completes purchase → grants course access on the provisional user, sends a "claim your account" email with a one-time magic link (Firebase `signInWithEmailLink`)
-6. User lands in PWA already authenticated, with the program already in their library
-
-**Open questions to resolve before build:**
-- Slug source: a new `slug` field on `users/{creatorId}` and `courses/{courseId}`, or use IDs? Slugs are better for SEO and shareability — recommend slugs with uniqueness validation
-- Existing-email collision: if email matches an existing user, skip provisional creation and send a "log in to complete" link instead
-- One-on-one programs: gated to logged-in flow only (creator needs to enroll manually)? Or also purchasable publicly with a follow-up onboarding step? Recommend low-ticket only for V1
-- MercadoPago `payer.email` is required — use the captured email
-
-**Data model changes:**
-- `users/{userId}` — add `slug` (creator only), `provisional: boolean` (true until magic link claimed)
-- `courses/{courseId}` — add `slug`, `publicListing: boolean` (default false; creator opts in per course)
-- New collection `magic_link_tokens/{token}` — `{ userId, expiresAt, used: boolean }` for first-claim flow
-
-**API:**
-- `GET /public/creators/:slug` — creator profile + listed programs (no auth)
-- `GET /public/creators/:slug/programs/:programSlug` — program detail (no auth)
-- `POST /payments/guest-checkout` — `{ email, name, programSlug, accessDuration }` → MercadoPago preference URL
-- `POST /auth/claim-account` — `{ token }` → returns Firebase custom token / sign-in link
-
-**Creator dashboard:**
-- New "Tienda" section: toggle `publicListing` per program, set slug, preview public URL, copy link
-- Storefront customization: hero image, bio, social links (reuse `users/{creatorId}` profile fields)
-
-**Checklist:**
-- [ ] Slug fields + uniqueness validation on creator + program
-- [ ] Public storefront route in landing app (`/c/:creatorSlug`)
-- [ ] Public program detail page with buy CTA
-- [ ] `POST /payments/guest-checkout` endpoint
-- [ ] Provisional user creation logic
-- [ ] Magic link claim flow + `magic_link_tokens` collection
-- [ ] Webhook handles provisional users (existing logic should already work — verify)
-- [ ] Claim-account email template (Resend)
-- [ ] Creator dashboard: storefront management screen
-- [ ] Creator dashboard: per-program publish toggle + URL preview
-- [ ] SEO: meta tags, OG image, sitemap entries for listed programs
-- [ ] Analytics events: `storefront.viewed`, `storefront.buy_clicked`, `guest_checkout.started`, `guest_checkout.completed`, `account.claimed`
-
----
-
-### 3c. Stripe Migration `DECISION PENDING`
-
-Potential future replacement of MercadoPago with Stripe for better subscription UX (Customer Portal, upgrade/downgrade, dunning). Not urgent — current MP flow works. Requires a business decision before any code.
-
-| Factor | MercadoPago | Stripe |
-|---|---|---|
-| Colombia coverage | Native, preferred by local banks | Available, less familiar |
-| Subscription management | All custom-built | Customer Portal out of the box |
-| Developer experience | Moderate | Excellent |
-| Migration effort | — | 2–3 weeks (new functions, webhook, keys) |
-
-**Prerequisites:** confirm Colombian user card acceptance on Stripe, decide parallel vs hard-cutover.
-
-**Supersedes the Gen1→Gen2 MercadoPago migration (security audit Tier 4.1).** The audit recommends moving MP webhook handling from the legacy Gen1 functions in [functions/src/index.ts:172-1498](functions/src/index.ts#L172-L1498) onto the Gen2 Express API at `/api/v1/payments/*` (which already has refund handling, transactional renewal grants, and replay protection that Gen1 lacks). That's a 1–2 week build plus a 30-day shadow window. **If Stripe replaces MP, all of that Gen2 MP work gets thrown away.** Decision rule: if the Stripe call is "yes, within ~6 months," skip Tier 4.1 and let Stripe be the migration. If Stripe is "no" or "much later," do Tier 4.1 first to close the refund-handling gap. Open security risk while deferred: Gen1 silently ignores refunds — a refunded customer keeps course access until manually revoked.
-
-**Checklist:**
-- [ ] Business decision made (this also resolves whether to do security-audit Tier 4.1)
-- [ ] Stripe account + Colombia configuration
-- [ ] Cloud Functions for Stripe checkout and webhook
-- [ ] Stripe Customer Portal integration
-- [ ] Migrate existing subscribers
-- [ ] Deprecate MercadoPago subscription functions (Gen1 + the dormant Gen2 routes both)
-
----
-
 ## Product Quality
-
-### 5. PWA UI Redesign `NOT STARTED`
-
-Systematic review of the entire PWA to establish a consistent visual identity. Current state is functional but bland — no accent color system, inconsistent animations, generic component feel.
-
-**Goals:**
-- Universal runtime accent color (extracted from active course image — already used in some screens, needs to be the standard everywhere)
-- Animation consistency: all entrances use fade + translateY, spring easing `cubic-bezier(0.22,1,0.36,1)` — audit every screen
-- Spacing, typography hierarchy, component patterns normalized
-- Not a full rewrite — surface-level visual changes only, starting with highest-traffic screens
-
-**Scope (screen order):**
-1. Home / daily overview
-2. Workout execution
-3. Nutrition diary
-4. Progress / Lab
-5. Profile
-6. Onboarding (already mostly solid — light review only)
-
-**Components to normalize:**
-- Cards (course cards, session cards, exercise cards)
-- Buttons (primary, secondary, ghost)
-- Input fields
-- Modals and bottom sheets
-- Empty states
-- Loading skeletons
-
-**Checklist:**
-- [ ] Audit accent color usage — finalize universal context/hook
-- [ ] Home screen
-- [ ] Workout execution screen
-- [ ] Nutrition diary screen
-- [ ] Progress / Lab screens
-- [ ] Profile screen
-- [ ] Button variants normalized
-- [ ] Card variants normalized
-- [ ] Modal and bottom sheet patterns
-- [ ] Animation audit — all screens comply
-- [ ] Empty states
-- [ ] `docs/STANDARDS.md` updated if system expands
-
----
 
 ### 5b. Download Screen Refresh `NOT STARTED`
 
@@ -225,9 +84,54 @@ Reduce Firestore read costs, bundle sizes, and initial load times across all app
 
 ## Analytics & Intelligence
 
-### 6. PostHog Analytics `NOT STARTED`
+### 6. PostHog Analytics `IMPLEMENTED — NOT TESTED`
 
-Full-scale product analytics. Goal: understand user behavior, feature usage, funnels, and retention to inform all future product decisions.
+All 5 layers shipped 2026-05-10 in one pass. Goal: behavior, usage, **cost per user/coach**, and optimization opportunities. Free-tier safe: session-level events only, server cost events sampled at 10% (5xx always captured).
+
+**What shipped:**
+
+| Layer | Where |
+|---|---|
+| 1 — Behavioral analytics | `apps/{pwa,creator-dashboard,landing}/src/services/analyticsService.js` |
+| 2 — Cost telemetry (server) | `functions/src/lib/analytics.ts` + `functions/src/api/middleware/analytics.ts` |
+| 3 — Performance (web vitals) | `capture_performance: { web_vitals: true }` in all 3 client services |
+| 4 — Multi-coach attribution | `functions/src/api/services/coachAttribution.ts` (10-min in-memory cache) |
+| 5 — Quota / sampling | Session-level events only, 10% API request sample, all cost events 100% |
+
+**Server emits (cost-attribution stamped with `primary_coach_id` + `coach_ids[]`):**
+- `api.request_completed` — sampled 10%, all 5xx — includes `route`, `method`, `status`, `duration_ms`, `fatsecret_calls`, `emails_sent`
+- `program.purchase_completed` — MercadoPago webhook (`functions/src/api/routes/payments.ts`)
+- `email.batch_sent` — `processEmailQueue` in `functions/src/index.ts`
+- `workout.session_abandoned` — `detectAbandonedSessions` cron
+
+**Client emits (PWA web, creator dashboard, landing):**
+- `screen.viewed` — one per route change via `useLocation` listener
+- `auth.login`, `auth.signup_completed`, `auth.logout` — email + google + apple in PWA; email in creator dashboard
+- `workout.session_started`, `workout.session_completed { sets_completed, exercises_completed, had_pr, duration_seconds }`
+- `program.purchase_started`
+- `onboarding.completed { primary_goal, training_experience, training_days_per_week, equipment }`
+- `progress.body_log_added`, `progress.readiness_added`
+- Creator: `creator.client_added`, `creator.program_created`, `creator.program_published`, `creator.nutrition_plan_created`, `creator.event_created`
+- `$web_vitals` — automatic per page
+
+**Multi-coach handling:** server resolves `coachIds[]` from `one_on_one_clients where clientId=userId` (for users) or trivially `[userId]` (for creators). PostHog person properties hydrated on identify (deduped 10 min per function instance) so client events inherit attribution via PostHog cohort filters.
+
+**Quota math:** at 1k DAU → ~10 screen.viewed + 2 workout + 1 progress + 1 auth + sampled api.request_completed ≈ 15–20 events/user/day → ~500k events/month. Free tier 1M comfortably accommodates 2× growth before hitting paid.
+
+**Secrets:** add `POSTHOG_API_KEY` to Firebase Secret Manager before deploy. Already bound in `api`, `processEmailQueue`, `detectAbandonedSessions` secret arrays. Client env vars: `EXPO_PUBLIC_POSTHOG_KEY` (PWA), `VITE_POSTHOG_KEY` (creator + landing). Service silently no-ops when key missing.
+
+**Privacy:** opt-out toggle in PWA `apps/pwa/src/screens/ProfileScreen.js` ("Compartir uso anónimo"). `localStorage.wake_analytics_opt_out=1` persists across sessions. `maskAllInputs: true` + `data-ph-no-capture` selector applied site-wide. Privacy policy update (Ley 1581 disclosure) still pending — coordinate with legal before flipping on production.
+
+**Pre-deploy checklist:**
+- [ ] Create PostHog project, copy project API key (client) and server API key
+- [ ] Bind `POSTHOG_API_KEY` secret in Firebase Secret Manager (production + staging)
+- [ ] Set `EXPO_PUBLIC_POSTHOG_KEY` in `apps/pwa/.env`
+- [ ] Set `VITE_POSTHOG_KEY` in `apps/creator-dashboard/.env` and `apps/landing/.env`
+- [ ] Update privacy policy with PostHog disclosure
+- [ ] Verify in PostHog live view: signup → onboarding → workout funnel
+- [ ] Build acquisition funnel + cost-per-coach cohort dashboards
+
+**Original spec retained below for reference:**
 
 **Locked decisions:**
 - `posthog-js` in all three apps (PWA, creator-dashboard, landing)
@@ -361,57 +265,6 @@ Navigation (all apps) — `screen.viewed { screen_name }` on every route change:
 7. Session replay — verify masking
 8. Workout abandonment detection (Cloud Function)
 9. Feature flags infrastructure
-
----
-
-### 7. Platform Security Audit `NOT STARTED`
-
-Full security review before scaling. Goal: identify and mitigate all exploitable surfaces before traffic grows.
-
-**Firestore rules:**
-- Verify all collections have explicit deny-by-default
-- Test cross-user isolation — creator A cannot access creator B's data
-- Subcollection rules don't inherit parent over-permissions
-- `api_keys` collection access controls
-- Emulator-based test suite for critical paths
-
-**API security:**
-- Auth bypass attempts on all protected routes
-- IDOR (Insecure Direct Object Reference) on all resource ID parameters
-- Input validation completeness — every body validated before use
-- Rate limiting coverage — all public/semi-public endpoints protected
-- Secrets never returned in API responses (API key plaintext, tokens)
-
-**Client security:**
-- Firebase config exposure (expected — confirm no secret keys)
-- XSS — any `dangerouslySetInnerHTML` usage
-- Sensitive data in localStorage / sessionStorage
-- Storage path enforcement — users can only write to their own paths
-
-**Auth:**
-- Token refresh behavior — expired token handling in both apps
-- Role claim validation — `creator` vs `user` enforcement on all creator routes
-- Admin action protection
-
-**Payments:**
-- HMAC-SHA256 webhook validation applied on all webhook paths
-- `external_reference` format validated before processing
-- Idempotency (`processed_payments`) working correctly
-- No payment amounts accepted from client — always calculated server-side
-
-**Output:** Security findings report by severity (Critical / High / Medium / Low) + applied fixes for Critical and High.
-
-**Checklist:**
-- [ ] Firestore rules test suite (Firebase emulator)
-- [ ] API IDOR audit on all resource endpoints
-- [ ] Input validation completeness review
-- [ ] Rate limiting coverage review
-- [ ] Auth bypass attempts on protected routes
-- [ ] Storage rules review
-- [ ] Payment webhook security review
-- [ ] Client-side sensitive data audit
-- [ ] Document findings
-- [ ] Fix all Critical and High severity issues
 
 ---
 
@@ -756,17 +609,11 @@ Four dimensions scored 1–5. **Simplicity** = inverse of complexity (5 = fast t
 
 | Item | Leverage | UX Return | Urgency | Simplicity | **Score** |
 |---|---|---|---|---|---|
-| Creator Dashboard Rebuild | 5 | 5 | 5 | 1 | **4.40** |
-| Creator Public Buy Page (3e) | 5 | 4 | 5 | 2 | **4.30** |
-| PWA UI Redesign | 4 | 5 | 4 | 2 | **3.95** |
 | Cardio Tracking V1 | 5 | 5 | 2 | 1 | **3.65** |
 | PostHog Analytics | 4 | 1 | 4 | 4 | **3.25** |
-| Subscription Mgmt Screen (3b) | 3 | 4 | 3 | 3 | **3.20** |
 | Download Screen Refresh (5b) | 2 | 4 | 3 | 4 | **3.05** |
-| Security Audit | 3 | 1 | 4 | 3 | **2.75** |
 | App-wide Optimization | 3 | 3 | 2 | 3 | **2.75** |
 | Creator Email Platform | 3 | 3 | 2 | 2 | **2.60** | Phase 0 (event broadcasts) API done |
-| Stripe Migration (3c) | 3 | 4 | 1 | 1 | **2.40** |
 | Platform Mapping (12) | 4 | 1 | 1 | 1 | **2.10** |
 | Feedback Board | 2 | 2 | 1 | 4 | **2.05** |
 | Third-party API | 2 | 1 | 1 | 3 | **1.65** |
@@ -778,24 +625,18 @@ Weights: Leverage 35% · UX Return 25% · Urgency 25% · Simplicity 15%.
 ## Execution Order
 
 ```
-1.  Security Audit                — close exposure before scaling traffic
-2.  PWA UI Redesign               — right time with small user base, no tech debt pressure
-3.  Creator Public Buy Page (3e)  — unlock external/IG-driven conversion without PWA login wall
-4.  Download Screen Refresh (5b)  — new intro video + optimize existing asset (small contained build, ride along with #3)
-5.  PostHog Analytics             — before driving traffic you need visibility
-6.  Subscription Mgmt Screen (3b) — status + cancel UI, contained build
-7.  App-wide Optimization         — before cardio ships, clean the foundation
-8.  Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 5–7
-9.  Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
-10. Creator Email Platform Ph.1   — unlocks creator marketing
-11. Stripe Migration (3c)         — decision-dependent, not urgent
-12. Feedback Board                — until user base warrants it
-13. Third-party API               — premature at current user count
+1. Download Screen Refresh (5b)  — new intro video + optimize existing asset
+2. PostHog Analytics             — before driving traffic you need visibility
+3. App-wide Optimization         — before cardio ships, clean the foundation
+4. Cardio Tracking V1            — major differentiator; long-track build, start architecture in parallel with 2–3
+5. Platform Mapping (12)         — full audit + canonical docs once the platform's surface is at its largest
+6. Creator Email Platform Ph.1   — unlocks creator marketing
+7. Feedback Board                — until user base warrants it
+8. Third-party API               — premature at current user count
 ```
 
 **Track notes:**
-- **Creator Public Buy Page (#3)** and **Download Screen Refresh (#4)** are paired — both touch the post-purchase experience and benefit from being shipped close together so the new buyer's first impression is consistent end-to-end.
-- **Cardio V1 (#8)** is a long-track build. Start architecture and wearable OAuth research during items 5–7. GPS and provider flows take time to get right.
-- **Platform Mapping (#9)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
-- **Stripe Migration (#11)** is gated on a business decision — don't start until that decision is made.
-- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Creator Dashboard Rebuild — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27.
+- **Cardio V1 (#4)** is a long-track build. Start architecture and wearable OAuth research during items 2–3. GPS and provider flows take time to get right.
+- **Platform Mapping (#5)** is intentionally scheduled after Cardio V1, when surface area is largest and most stable. Doing it earlier means re-doing it after every major shipment.
+- **Completed:** API Testing & QA — merged April 2026. Payment Checkout UX Fix (3a) — completed April 2026. Recipe Videos — completed April 2026. Consumer Landing Redesign — completed 2026-04-17. Creator Landing — completed 2026-04-21. One-on-One Lock-in + Leave Flow (3d) — completed 2026-04-21. Video Exchange System — completed 2026-04-27. Platform Security Audit — completed 2026-05-03. PWA UI Redesign — completed 2026-05-05. Subscription Management Screen (3b) — completed 2026-05-10. Creator Public Buy Page (3e) — completed 2026-05-10.
+- **Stripe Migration (3c):** removed from roadmap 2026-05-10 — staying on MercadoPago for the foreseeable future.

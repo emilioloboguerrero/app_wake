@@ -2,13 +2,14 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
+import ProgramCadenceCalendar from './ProgramCadenceCalendar';
 import PlanningLibrarySidebar from '../PlanningLibrarySidebar';
 import programService from '../../services/programService';
 import libraryService from '../../services/libraryService';
 import plansService from '../../services/plansService';
 import { queryKeys, cacheConfig } from '../../config/queryClient';
 
-export default function ProgramTrainingTab({ programId, creatorId }) {
+export default function ProgramTrainingTab({ programId, creatorId, program = null }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isAddingWeek, setIsAddingWeek] = useState(false);
@@ -34,12 +35,23 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
     if (!programId) return;
     setIsAddingWeek(true);
     try {
-      await programService.createModule(programId);
+      const created = await programService.createModule(programId);
+      // Rename the freshly-created module to "Mes N" for cadenced programs
+      // (createModule's API always writes "Semana N"). Keeps the editor's
+      // mental model consistent with the consumer brief's vocab.
+      if (program?.block_cadence === 'monthly_first_monday' && created?.id) {
+        try {
+          const existing = await programService.getModulesByProgram(programId);
+          const newest = existing.find((m) => m.id === created.id);
+          const ord = typeof newest?.order === 'number' ? newest.order : (existing.length - 1);
+          await programService.updateModule(programId, created.id, { title: `Mes ${ord + 1}` });
+        } catch {/* best-effort: legacy title is acceptable */}
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
     } finally {
       setIsAddingWeek(false);
     }
-  }, [programId, queryClient]);
+  }, [programId, queryClient, program?.block_cadence]);
 
   const handleDeleteWeek = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
@@ -53,6 +65,8 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
     navigate(`/programs/${programId}/modules/${mod.id}/sessions/${session.id}/edit`);
   }, [navigate, programId]);
 
+  const cadenceActive = program?.block_cadence === 'monthly_first_monday';
+
   return (
     <div className="plan-structure-layout">
       <div className="plan-structure-sidebars">
@@ -63,21 +77,31 @@ export default function ProgramTrainingTab({ programId, creatorId }) {
         />
       </div>
       <div className="plan-structure-main">
-        <ProgramWeeksGrid
-          programId={programId}
-          modules={modules}
-          onAddWeek={handleAddWeek}
-          onDeleteWeek={handleDeleteWeek}
-          onModulesChange={handleModulesChange}
-          onSessionClick={handleSessionClick}
-          libraryService={libraryService}
-          plansService={plansService}
-          creatorId={creatorId}
-          isLoading={isLoadingModules}
-          isAddingWeek={isAddingWeek}
-          queryClient={queryClient}
-          queryKeys={queryKeys}
-        />
+        {cadenceActive ? (
+          <ProgramCadenceCalendar
+            programId={programId}
+            program={program}
+            modules={modules}
+            onModulesChange={handleModulesChange}
+          />
+        ) : (
+          <ProgramWeeksGrid
+            programId={programId}
+            program={program}
+            modules={modules}
+            onAddWeek={handleAddWeek}
+            onDeleteWeek={handleDeleteWeek}
+            onModulesChange={handleModulesChange}
+            onSessionClick={handleSessionClick}
+            libraryService={libraryService}
+            plansService={plansService}
+            creatorId={creatorId}
+            isLoading={isLoadingModules}
+            isAddingWeek={isAddingWeek}
+            queryClient={queryClient}
+            queryKeys={queryKeys}
+          />
+        )}
       </div>
     </div>
   );

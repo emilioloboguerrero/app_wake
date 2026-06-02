@@ -49,8 +49,8 @@ const pickPlanName = (plan, assignment) => (
   null
 );
 
-export function useNutritionToday(userId) {
-  const today = todayYYYYMMDD();
+export function useNutritionToday(userId, dateYmd) {
+  const today = dateYmd || todayYYYYMMDD();
 
   // Subscribe to the user profile (same key useUserCourses uses — shared cache, no double fetch).
   // pinnedNutritionAssignmentId is auto-healed server-side in /users/me, so for any user with an
@@ -69,8 +69,8 @@ export function useNutritionToday(userId) {
     queryKey: ['nutrition', 'has-assignment', userId],
     queryFn: async () => {
       try {
-        await apiClient.get('/nutrition/assignment', { params: { date: today } });
-        return true;
+        const r = await apiClient.get('/nutrition/assignment', { params: { date: today } });
+        return !!r?.data;
       } catch {
         return false;
       }

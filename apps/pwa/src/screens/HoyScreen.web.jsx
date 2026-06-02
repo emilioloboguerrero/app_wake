@@ -11,12 +11,12 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Platform,
-  useWindowDimensions,
   Animated,
   View,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import useAppViewportSize from '../hooks/useAppViewportSize.web';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../components/Text';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,8 +31,9 @@ import {
 import { useNutritionToday } from '../hooks/hoy/useNutritionToday';
 import { useSessionRecovery } from '../hooks/hoy/useSessionRecovery';
 import { useCoursesEnriched } from '../hooks/hoy/useCoursesEnriched';
-import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
+import { useDailyWorkoutPrefetch } from '../hooks/hoy/useDailyWorkoutPrefetch';
 import { useCourseDownloadStatus } from '../hooks/hoy/useCourseDownloadStatus';
+import { useCoachProfileImages } from '../hooks/hoy/useCoachProfileImages';
 import { getUpcomingBookingsForUser } from '../services/callBookingService';
 import sessionService from '../services/sessionService';
 import purchaseEventManager from '../services/purchaseEventManager';
@@ -48,9 +49,20 @@ import WeekCoachCard from '../components/WeekCoachCard.web.jsx';
 import HoyBanners from '../components/HoyBanners.web.jsx';
 
 const LIBRARY_MOVED_FLAG = 'wake:preview_library_moved_seen';
+const SELECTED_COACH_KEY = (uid) => `wake:hoy:selectedCoachId:${uid}`;
+
+const todayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const isCourseExpired = (course) => {
   if (course?.is_trial) return false;
+  // includeInactive surfaces cancelled/inactive subscriptions in the carousel
+  // so the user can renew. hasAccess is the source of truth — gate on it so
+  // a cancelled course (status !== 'active') reads as expired even if its
+  // expires_at is in the future.
+  if (course && course.hasAccess === false) return true;
   if (!course?.expires_at) return false;
   return new Date(course.expires_at) <= new Date();
 };
@@ -61,21 +73,53 @@ const HoyScreen = () => {
   const queryClient = useQueryClient();
 
   // Carousel sizing — mirrors MainScreen.js so spacing/proportions match the
-  // production look. CARD_MARGIN keeps a 10% gutter on each side; CARD_HEIGHT
-  // is responsive but never collapses below 500.
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const stableHeightRef = useRef(null);
-  if (Platform.OS === 'web' && stableHeightRef.current === null) {
-    stableHeightRef.current = screenHeight;
-  }
+  // production look. CARD_MARGIN keeps a 10% gutter on each side. Measures
+  // the .app-viewport container (not the window) so the math matches the
+  // centered desktop column. CARD_HEIGHT is capped by CARD_WIDTH * 1.7 so a
+  // narrow column on a tall window doesn't stretch cards into thin billboards.
+  const { width: screenWidth, height: screenHeight } = useAppViewportSize();
   const CARD_MARGIN = useMemo(() => screenWidth * 0.1, [screenWidth]);
   const CARD_WIDTH = useMemo(() => screenWidth - CARD_MARGIN * 2, [screenWidth, CARD_MARGIN]);
-  const CARD_HEIGHT = useMemo(() => Math.max(500, screenHeight * 0.62), [screenHeight]);
-
-  const { courses, isLoading } = useUserCourses(user?.uid);
+  const CARD_HEIGHT = useMemo(
+    () => Math.min(Math.max(500, screenHeight * 0.62), CARD_WIDTH * 1.7),
+    [screenHeight, CARD_WIDTH],
+  );
+  const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid, { includeInactive: true });
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
-  const enrichedCourses = useCoursesEnriched(courses);
+  // Non-blocking: carousel renders as soon as useUserCourses resolves; coach grouping
+  // reflows when creator_id lands. Courses without resolved creator_id share a fallback
+  // bucket keyed by creatorName so cards still appear instantly.
+  const { courses: enrichedCourses } = useCoursesEnriched(courses);
+  const isLoading = coursesLoading;
+  // Prefetch /workout/daily for every course in parallel, sharing the per-card query key
+  // so by the time TodayWorkoutCard mounts the data is already cached.
+  useDailyWorkoutPrefetch(user?.uid, courses);
   const [selectedCoachId, setSelectedCoachId] = useState(null);
+  // The Hoy carousel is anchored to a date — defaults to today, advanced via the
+  // WeekCoachCard day strip / calendar. Workout + nutrition cards reflect this date.
+  const [selectedDate, setSelectedDate] = useState(() => todayYmd());
+
+  // Hydrate persisted coach selection once we know who's logged in. Stored per-user so
+  // switching accounts on the same device doesn't carry the previous user's selection.
+  useEffect(() => {
+    if (!user?.uid) return;
+    try {
+      const v = localStorage.getItem(SELECTED_COACH_KEY(user.uid));
+      if (v) setSelectedCoachId(v);
+    } catch {}
+  }, [user?.uid]);
+
+  const handleSelectCoach = useCallback((coachId) => {
+    setSelectedCoachId(coachId);
+    setSelectedDate(todayYmd());
+    if (!user?.uid || !coachId) return;
+    try { localStorage.setItem(SELECTED_COACH_KEY(user.uid), coachId); } catch {}
+  }, [user?.uid]);
+
+  const handleSelectDate = useCallback((ymd) => {
+    if (!ymd) return;
+    setSelectedDate(ymd);
+  }, []);
 
   // Profile — needed for pinnedTrainingCourseId so we can honor user's preferred order.
   const { data: profile } = useQuery({
@@ -92,8 +136,8 @@ const HoyScreen = () => {
     return user?.email?.split('@')[0] || 'Usuario';
   }, [profile?.displayName, user?.displayName, user?.email]);
 
-  // Real nutrition data (plan + today's diary entries summed).
-  const nutrition = useNutritionToday(user?.uid);
+  // Real nutrition data (plan + diary entries summed) for the selected date.
+  const nutrition = useNutritionToday(user?.uid, selectedDate);
 
   // Pending one-on-one invites surface as banners above the carousel.
   const { data: pendingInvites = [] } = useClientRelationships(user?.uid, { status: 'pending' });
@@ -131,6 +175,10 @@ const HoyScreen = () => {
   const refreshCourses = useCallback(() => {
     if (!user?.uid) return;
     queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user.uid) });
+    // The per-card daily-session cache (TodayWorkoutCard) lives under its own
+    // key — invalidate it too so a coach update or new purchase flips the card
+    // without waiting on the 60s staleTime window.
+    queryClient.invalidateQueries({ queryKey: ['preview', 'todaySession', user.uid] });
   }, [queryClient, user?.uid]);
 
   useEffect(() => {
@@ -183,7 +231,10 @@ const HoyScreen = () => {
   const coachEnvironments = useMemo(() => {
     const byCoach = new Map();
     (enrichedCourses || []).forEach((c) => {
-      const coachKey = c.creator_id || c.creatorName || 'unknown';
+      // Prefer creator_id when available; otherwise group by creatorName so the carousel
+      // still renders before enrichment lands. Once creator_id resolves, the memo
+      // recomputes and groups merge under the canonical key.
+      const coachKey = c.creator_id || (c.creatorName ? `name:${c.creatorName}` : '__unknown__');
       if (!byCoach.has(coachKey)) {
         byCoach.set(coachKey, {
           coachId: coachKey,
@@ -216,16 +267,23 @@ const HoyScreen = () => {
       });
     }
 
-    if (nutrition.hasNutrition) {
-      const matching = nutrition.assignmentCreatorId
+    if (nutrition.hasNutrition && arr.length > 0) {
+      // Prefer the env whose creatorId matches the assignment's creator. If the assignment
+      // doc has no creator_id (legacy assignments) or matches no current env, fall back to
+      // the first env. This fallback is safe here because enrichment is already complete
+      // (the screen is gated on enrichmentLoading) — creatorId values are final, not in-flight.
+      const target = (nutrition.assignmentCreatorId
         ? arr.find((c) => c.creatorId === nutrition.assignmentCreatorId)
-        : null;
-      const target = matching || arr[0];
-      if (target) target.hasNutrition = true;
+        : null) || arr[0];
+      target.hasNutrition = true;
     }
 
     return arr;
   }, [enrichedCourses, nutrition.hasNutrition, nutrition.assignmentCreatorId, pinnedTrainingCourseId]);
+
+  // Profile pictures for every coach environment — used by WeekCoachCard for both
+  // the selector avatars and the card's accent (derived from the active coach's image).
+  const coachProfileImagesByCoachId = useCoachProfileImages(coachEnvironments);
 
   const selectedCoach = useMemo(() => {
     if (!coachEnvironments.length) return null;
@@ -233,7 +291,11 @@ const HoyScreen = () => {
       const found = coachEnvironments.find((c) => c.coachId === selectedCoachId);
       if (found) return found;
     }
-    return coachEnvironments[0];
+    // No persisted selection — prefer the env that has today's nutrition card so the
+    // user sees both workouts and nutrition at a glance instead of having to swipe.
+    // Falls back to the existing pinned-first ordering when no env owns the nutrition.
+    const withNutrition = coachEnvironments.find((c) => c.hasNutrition);
+    return withNutrition || coachEnvironments[0];
   }, [coachEnvironments, selectedCoachId]);
 
   const upcomingCalls = useMemo(() => {
@@ -284,7 +346,7 @@ const HoyScreen = () => {
   }, [recoveryCheckpoint, user?.uid, courses, navigate]);
 
   const handleOpenCall = useCallback((call) => {
-    const id = call?.booking?.id;
+    const id = call?.booking?.bookingId || call?.booking?.id;
     if (!id) return;
     navigate(`/call/${id}`, {
       state: { booking: call.booking, course: call.course, creatorName: call.creatorName },
@@ -349,18 +411,8 @@ const HoyScreen = () => {
     if (index !== currentIndex) setCurrentIndex(index);
   };
 
-  // Accent color extracted from the selected coach's primary image — applied as CSS vars.
-  const accentSourceImage = selectedCoach?.workouts?.[0]?.image_url || null;
-  const accent = useAccentFromImage(accentSourceImage);
-  const accentVarsStyle = accent
-    ? {
-        '--accent': accent.accent,
-        '--accent-r': accent.accentR,
-        '--accent-g': accent.accentG,
-        '--accent-b': accent.accentB,
-        '--accent-text': accent.accentText,
-      }
-    : {};
+  // Accent is intentionally scoped per-card — each card extracts its own color
+  // from the image it's displaying, so the screen wrapper carries no global accent.
 
   const renderSlide = ({ item, index }) => {
     const inputRange = [
@@ -380,6 +432,7 @@ const HoyScreen = () => {
           course={item.course}
           isExpired={isCourseExpired(item.course)}
           downloadStatus={downloadStatusByCourseId[item.course.courseId || item.course.id] || null}
+          selectedDate={selectedDate}
           onBegin={handleBeginWorkout}
           onRenew={handleRenewCourse}
         />
@@ -389,6 +442,8 @@ const HoyScreen = () => {
         <TodayNutritionCard
           imageUrl={selectedCoach?.workouts?.[0]?.image_url}
           nutritionPlanName={nutrition.nutritionPlanName}
+          selectedDate={selectedDate}
+          isLoading={nutrition.isLoading}
           caloriesConsumed={nutrition.caloriesConsumed}
           caloriesTarget={nutrition.caloriesTarget || 2100}
           proteinConsumed={nutrition.proteinConsumed}
@@ -405,11 +460,10 @@ const HoyScreen = () => {
         <WeekCoachCard
           coachEnvironments={coachEnvironments}
           selectedCoachId={selectedCoach?.coachId}
-          onSelectCoach={(coachId) => setSelectedCoachId(coachId)}
-          onTapDate={(ymd, course) => {
-            const id = course?.courseId || course?.id;
-            if (id) navigate(`/course/${id}/workout`, { state: { selectedDate: ymd } });
-          }}
+          profileImagesByCoachId={coachProfileImagesByCoachId}
+          selectedDate={selectedDate}
+          onSelectCoach={handleSelectCoach}
+          onSelectDate={handleSelectDate}
           onSeeProgram={(course) => {
             const id = course?.courseId || course?.id;
             if (id) navigate(`/course/${id}/structure`);
@@ -462,7 +516,7 @@ const HoyScreen = () => {
 
   if (isLoading) {
     return (
-      <div style={accentVarsStyle}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <SafeAreaView
           style={containerStyle}
           edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -495,7 +549,7 @@ const HoyScreen = () => {
 
   if (isEmpty) {
     return (
-      <div style={accentVarsStyle}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <SafeAreaView
           style={containerStyle}
           edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
@@ -504,6 +558,25 @@ const HoyScreen = () => {
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
             <WakeHeaderContent>
               <WakeHeaderSpacer />
+              {/* Banners must render before the empty state so a one-on-one
+                  invitee — who has no programs until they accept — can still
+                  see and act on the pending invite. */}
+              <HoyBanners
+                recoveryCheckpoint={recoveryCheckpoint}
+                onResumeRecovery={handleResumeRecovery}
+                onDiscardRecovery={dismissRecovery}
+                pendingInvites={pendingInvites}
+                onAcceptInvite={handleAcceptInvite}
+                onDeclineInvite={handleDeclineInvite}
+                inviteActionId={inviteActionId}
+                upcomingCalls={upcomingCalls}
+                onOpenCall={handleOpenCall}
+                showLibraryMoved={showLibraryMoved}
+                onDismissLibraryMoved={handleDismissLibraryMoved}
+                onOpenLibrary={() => navigate('/profile')}
+                showProgramUpdate={hasPendingUpdates}
+                onApplyProgramUpdate={handleApplyProgramUpdate}
+              />
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, minHeight: 400 }}>
                 <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff', marginBottom: 8, textAlign: 'center' }}>
                   Aún no tienes un programa
@@ -532,7 +605,7 @@ const HoyScreen = () => {
   }
 
   return (
-    <div style={accentVarsStyle}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <Animated.View style={{ flex: 1, opacity: screenAnim }}>
         <SafeAreaView
           style={containerStyle}
@@ -542,7 +615,7 @@ const HoyScreen = () => {
 
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+            contentContainerStyle={{ paddingBottom: 160 }}
             showsVerticalScrollIndicator={false}
             nestedScrollEnabled
             bounces
@@ -552,7 +625,7 @@ const HoyScreen = () => {
 
               <Animated.View
                 style={{
-                  marginBottom: 12,
+                  marginBottom: 4,
                   opacity: greetAnim,
                   transform: [{ translateY: greetAnim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
                 }}
@@ -596,7 +669,7 @@ const HoyScreen = () => {
                     transform: [{ translateY: cardEntranceAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
                   }}
                 >
-                  <View style={{ width: '100%', alignItems: 'center', overflow: 'visible', marginTop: 8 }}>
+                  <View style={{ width: '100%', alignItems: 'center', overflow: 'visible' }}>
                     <Animated.FlatList
                       ref={flatListRef}
                       data={slides}
@@ -609,6 +682,8 @@ const HoyScreen = () => {
                       decelerationRate="fast"
                       contentContainerStyle={{
                         paddingHorizontal: (screenWidth - CARD_WIDTH) / 2,
+                        paddingTop: 8,
+                        paddingBottom: 0,
                         alignItems: 'center',
                       }}
                       onScroll={Animated.event(
@@ -618,15 +693,15 @@ const HoyScreen = () => {
                       onScrollEndDrag={handleScroll}
                       onMomentumScrollEnd={handleScroll}
                       scrollEventThrottle={16}
-                      style={{ height: CARD_HEIGHT, width: '100%' }}
+                      style={{ height: CARD_HEIGHT + 16, width: '100%', touchAction: 'pan-x' }}
                       getItemLayout={(_d, i) => ({ length: CARD_WIDTH, offset: CARD_WIDTH * i, index: i })}
                       initialNumToRender={2}
                       maxToRenderPerBatch={3}
                       windowSize={5}
-                      removeClippedSubviews
+                      removeClippedSubviews={false}
                       updateCellsBatchingPeriod={50}
                     />
-                    <View style={{ width: '100%', minHeight: 40, justifyContent: 'center', alignItems: 'center', marginTop: 10, paddingTop: 10, paddingBottom: 24 }}>
+                    <View style={{ width: '100%', minHeight: 24, justifyContent: 'center', alignItems: 'center', marginTop: 16, paddingBottom: 12 }}>
                       {renderPaginationIndicators()}
                     </View>
                   </View>

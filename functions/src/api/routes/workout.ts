@@ -15,6 +15,127 @@ const router = Router();
 const MAX_MODULES_PER_COURSE = 20;
 const MAX_SESSIONS_PER_MODULE = 50;
 
+// Grace window applied when gating subscription access on `expires_at`.
+// MercadoPago retries failed charges for ~3 days; without this window, a
+// paying subscriber whose card charge is one day late would lose access the
+// moment expires_at passes — even though MP is still attempting to bill them.
+// The lapse-flip cron uses the same grace so the two stay in sync.
+export const ACCESS_EXPIRY_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
+// Coerce a Firestore Timestamp | ISO string | nullish value to an ISO string.
+function timestampToIso(raw: unknown): string | null {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object") {
+    const obj = raw as {toDate?: () => Date; toMillis?: () => number};
+    if (typeof obj.toDate === "function") {
+      try {
+        return obj.toDate().toISOString();
+      } catch {
+        return null;
+      }
+    }
+    if (typeof obj.toMillis === "function") {
+      try {
+        return new Date(obj.toMillis()).toISOString();
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+// Returns BOG-localized {year, month, day, weekday} for a Date. Mirrors
+// the helper in index.ts; duplicated here to avoid a cross-file dep just
+// for the unlocks_at compute path.
+function bogotaDateParts(d: Date): {year: number; month: number; day: number; weekday: number} {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
+  const weekdayMap: Record<string, number> = {Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6};
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    weekday: weekdayMap[parts.weekday] ?? -1,
+  };
+}
+
+// First Monday of a given BOG month, as a Date at 00:00 BOG (05:00 UTC).
+// Any 7 consecutive days contain a Monday, so the loop always terminates.
+function firstMondayOfBogMonth(year: number, month: number): Date {
+  for (let day = 1; day <= 7; day++) {
+    const probe = new Date(Date.UTC(year, month - 1, day, 5, 0, 0));
+    if (bogotaDateParts(probe).weekday === 1) return probe;
+  }
+  throw new Error(`unreachable: no Monday in first 7 days of ${year}-${month}`);
+}
+
+// Computes the unlock date for a future block at `monthsAhead` first-Monday
+// cron ticks after `base`'s BOG month. monthsAhead=1 → next month's first
+// Monday; monthsAhead=2 → the one after; etc.
+function firstMondayOfBogMonthOffset(base: Date, monthsAhead: number): Date {
+  const {year, month} = bogotaDateParts(base);
+  const targetMonth0 = month - 1 + monthsAhead;
+  const targetYear = year + Math.floor(targetMonth0 / 12);
+  const targetMonth = ((targetMonth0 % 12) + 12) % 12 + 1;
+  return firstMondayOfBogMonth(targetYear, targetMonth);
+}
+
+// Resolves a block's user-visible unlock date. Prefers the creator's explicit
+// `unlocks_at` if set. Otherwise derives deterministically from the cron
+// cadence: current block uses when it actually unlocked; future blocks count
+// first-Mondays forward from there. Past blocks return null — we don't keep
+// per-block historical unlock dates, and showing a wrong date is worse than
+// showing none.
+//
+// IMPORTANT: do NOT fall back to `published_at` — it's the timestamp the
+// creator toggled "Publicado", which can be weeks before the block actually
+// unlocks, and would render misleading past dates in the PWA.
+function resolveBlockUnlocksAt(args: {
+  unlocksAtRaw: unknown;
+  blockOrder: number;
+  currentBlockIndex: number | null;
+  currentBlockStartedAt: Date | null;
+}): string | null {
+  const explicit = timestampToIso(args.unlocksAtRaw);
+  if (explicit !== null) return explicit;
+  if (args.currentBlockIndex === null || args.currentBlockStartedAt === null) return null;
+  if (args.blockOrder === args.currentBlockIndex) {
+    return args.currentBlockStartedAt.toISOString();
+  }
+  if (args.blockOrder > args.currentBlockIndex) {
+    const offset = args.blockOrder - args.currentBlockIndex;
+    return firstMondayOfBogMonthOffset(args.currentBlockStartedAt, offset).toISOString();
+  }
+  return null;
+}
+
+// Server-side mirror of the PWA's utils/courseAccess.isCourseEntryActive.
+// Keep these in sync — different gates here vs. on the client cause the
+// "I see it on Hoy but it's missing from my library" failure mode.
+function courseAccessIsActive(entry: Record<string, unknown> | undefined | null): boolean {
+  if (!entry) return false;
+  const raw = entry.expires_at;
+  let expiresAtMs: number | null = null;
+  if (typeof raw === "string") {
+    const ms = Date.parse(raw);
+    if (Number.isFinite(ms)) expiresAtMs = ms;
+  } else if (raw && typeof raw === "object" && typeof (raw as {toMillis?: () => number}).toMillis === "function") {
+    expiresAtMs = (raw as {toMillis: () => number}).toMillis();
+  }
+  // Trial entries still expire — `is_trial: true` plus a stale `expires_at`
+  // is the post-trial state and must NOT pass. Previously this branch
+  // returned true unconditionally for trials, granting indefinite access.
+  if (expiresAtMs === null) return false;
+  if (expiresAtMs + ACCESS_EXPIRY_GRACE_MS < Date.now()) return false;
+  if (entry.status === "active") return true;
+  if (entry.is_trial === true) return true;
+  return false;
+}
+
 // ─── 1RM helpers ─────────────────────────────────────────────────────────────
 function parseReportedIntensity(val: string | null | undefined): number | null {
   if (!val) return null;
@@ -110,7 +231,7 @@ router.get("/workout/daily", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
-  const deliveryType = course.deliveryType ?? "low_ticket";
+  const deliveryType = course.deliveryType ?? "general";
 
   // Resolve the target session based on delivery type
   let targetModuleId: string | null = null;
@@ -494,8 +615,8 @@ router.get("/workout/daily", async (req, res) => {
         targetSessionId = nextSession.sessionId;
       }
     } else {
-      // ── Legacy low-ticket: resolve from course modules structure ──
-      const modulesSnap = await db
+      // ── Legacy low-ticket / general: resolve from course modules structure ──
+      const allModulesSnap = await db
         .collection("courses")
         .doc(courseId)
         .collection("modules")
@@ -503,7 +624,28 @@ router.get("/workout/daily", async (req, res) => {
         .limit(MAX_MODULES_PER_COURSE)
         .get();
 
-      if (modulesSnap.empty) {
+      // For `block_cadence: 'monthly_first_monday'` courses, hide modules with
+      // `order > current_block_index`. Today's session pick will never
+      // land on a future block. When `current_block_index` is null (cron not
+      // fired or no block published), no sessions are available.
+      const cadence = course.block_cadence as string | undefined;
+      const currentBlockIndex = typeof course.current_block_index === "number" ?
+        course.current_block_index :
+        null;
+      let modulesSnap: {empty: boolean; docs: typeof allModulesSnap.docs};
+      if (cadence === "monthly_first_monday") {
+        const filteredDocs = currentBlockIndex === null ?
+          [] :
+          allModulesSnap.docs.filter((d) => {
+            const ord = d.data().order;
+            return typeof ord !== "number" || ord <= currentBlockIndex;
+          });
+        modulesSnap = {empty: filteredDocs.length === 0, docs: filteredDocs};
+      } else {
+        modulesSnap = allModulesSnap;
+      }
+
+      if (modulesSnap.empty || modulesSnap.docs.length === 0) {
         res.json({
           data: {
             hasSession: false,
@@ -536,6 +678,9 @@ router.get("/workout/daily", async (req, res) => {
               title: (sess.data().title as string) ?? "",
               moduleTitle: modTitle,
               image_url: (sess.data().image_url as string) ?? null,
+              dayIndex: typeof sess.data().dayIndex === "number" ?
+                (sess.data().dayIndex as number) :
+                null,
             }));
           })
         ),
@@ -546,49 +691,140 @@ router.get("/workout/daily", async (req, res) => {
       completedSessionIds = new Set(legacyCompletedSnap.docs.map((d) => d.data().sessionId));
 
       allSessions.sort((a, b) => a.moduleOrder - b.moduleOrder || a.order - b.order);
-      resolvedAllSessions = allSessions.map((s) => ({
-        sessionId: s.sessionId,
-        title: s.title,
-        moduleId: s.moduleId,
-        moduleTitle: s.moduleTitle,
-        order: s.order,
-        image_url: s.image_url,
-      }));
 
-      if (allSessions.length === 0) {
-        res.json({
-          data: {
-            hasSession: false,
-            isRestDay: false,
-            emptyReason: "no_planning_this_week",
-            session: null,
-            progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
-            allSessions: [],
-          },
+      // Weekly-scheduled programs: pivot to per-weekday plannedDate so the
+      // Hoy carousel + WeekCoachCard render the same dayIndex semantics that
+      // one-on-one programs use. Convention here is 1..7 = Lun..Dom (matches
+      // ProgramCadenceCalendar + the Bejarano seed script).
+      const isWeekly = course.scheduling === "weekly";
+      if (isWeekly) {
+        const requestedDate = (req.query.date as string) ?? null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayWeekdayIdx = ((today.getDay() + 6) % 7) + 1; // 1..7 Lun..Dom
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - (todayWeekdayIdx - 1));
+
+        // Weekly programs repeat the same sessionIds every week, so the
+        // course-scoped sessionHistory fetched above includes completions
+        // from prior weeks. Re-scope completedSessionIds to this week only
+        // — otherwise WeekCoachCard would mark every dayIndex as "done"
+        // for any session the user ever finished.
+        const weekStartIso = weekStart.toISOString();
+        const weekCompletedSnap = await db.collection("users").doc(auth.userId)
+          .collection("sessionHistory")
+          .where("courseId", "==", courseId)
+          .where("completedAt", ">=", weekStartIso)
+          .get();
+        completedSessionIds = new Set(
+          weekCompletedSnap.docs
+            .map((d) => d.data().sessionId as string | undefined)
+            .filter((id): id is string => typeof id === "string" && id.length > 0)
+        );
+
+        // Only surface sessions from the currently-active module
+        // (cadence already trimmed modulesSnap above; if cadence is off,
+        // we take the first/only module — weekly programs are expected to
+        // have a single recurring template module unless cadence rotates them).
+        const activeModuleId = modulesSnap.docs[0]?.id ?? null;
+        const weekSessions = allSessions.filter((s) => s.moduleId === activeModuleId);
+        const sessionsWithDate = weekSessions.map((s) => {
+          // dayIndex=1..7 (Lun..Dom) matches ProgramCadenceCalendar +
+          // seed-metodo-bejarano. Fall back to order+1 for legacy docs that
+          // pre-date dayIndex authoring (e.g. courses created before the
+          // weekly-schedule rollout).
+          const dayIdx = s.dayIndex ?? (s.order ?? 0) + 1;
+          const date = new Date(weekStart.getTime() + (dayIdx - 1) * 86400000);
+          return {...s, dayIndex: dayIdx, plannedDate: toLocalDateISO(date)};
         });
-        return;
+        sessionsWithDate.sort((a, b) => a.dayIndex - b.dayIndex);
+        resolvedAllSessions = sessionsWithDate.map((s) => ({
+          sessionId: s.sessionId,
+          title: s.title,
+          moduleId: s.moduleId,
+          moduleTitle: s.moduleTitle,
+          order: s.order,
+          image_url: s.image_url,
+          plannedDate: s.plannedDate,
+        }));
+
+        const targetDate = requestedDate ?? toLocalDateISO(today);
+        const targetWeekday = (() => {
+          const d = new Date(`${targetDate}T12:00:00`);
+          return ((d.getDay() + 6) % 7) + 1;
+        })();
+        const dateInThisWeek = sessionsWithDate.some((s) => s.plannedDate === targetDate);
+        const todaySession = requestedSessionId ?
+          sessionsWithDate.find((s) => s.sessionId === requestedSessionId) :
+          dateInThisWeek ?
+            sessionsWithDate.find((s) => s.plannedDate === targetDate) :
+            sessionsWithDate.find((s) => s.dayIndex === targetWeekday);
+
+        if (!todaySession) {
+          res.json({
+            data: {
+              hasSession: false,
+              isRestDay: true,
+              emptyReason: "no_session_today",
+              session: null,
+              progress: {
+                completed: completedSessionIds.size,
+                total: sessionsWithDate.length,
+                allSessionsCompleted: [...completedSessionIds],
+              },
+              allSessions: resolvedAllSessions,
+            },
+          });
+          return;
+        }
+
+        targetModuleId = todaySession.moduleId;
+        targetSessionId = todaySession.sessionId;
+      } else {
+        resolvedAllSessions = allSessions.map((s) => ({
+          sessionId: s.sessionId,
+          title: s.title,
+          moduleId: s.moduleId,
+          moduleTitle: s.moduleTitle,
+          order: s.order,
+          image_url: s.image_url,
+        }));
+
+        if (allSessions.length === 0) {
+          res.json({
+            data: {
+              hasSession: false,
+              isRestDay: false,
+              emptyReason: "no_planning_this_week",
+              session: null,
+              progress: {completed: 0, total: null, allSessionsCompleted: [...completedSessionIds]},
+              allSessions: [],
+            },
+          });
+          return;
+        }
+
+        const nextSession = requestedSessionId ?
+          allSessions.find((s) => s.sessionId === requestedSessionId) :
+          allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
+
+        if (!nextSession) {
+          res.json({
+            data: {
+              hasSession: false,
+              isRestDay: false,
+              emptyReason: "all_sessions_completed",
+              session: null,
+              progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]},
+              allSessions: resolvedAllSessions,
+            },
+          });
+          return;
+        }
+
+        targetModuleId = nextSession.moduleId;
+        targetSessionId = nextSession.sessionId;
       }
-
-      const nextSession = requestedSessionId ?
-        allSessions.find((s) => s.sessionId === requestedSessionId) :
-        allSessions.find((s) => !completedSessionIds!.has(s.sessionId));
-
-      if (!nextSession) {
-        res.json({
-          data: {
-            hasSession: false,
-            isRestDay: false,
-            emptyReason: "all_sessions_completed",
-            session: null,
-            progress: {completed: completedSessionIds.size, total: allSessions.length, allSessionsCompleted: [...completedSessionIds]},
-            allSessions: resolvedAllSessions,
-          },
-        });
-        return;
-      }
-
-      targetModuleId = nextSession.moduleId;
-      targetSessionId = nextSession.sessionId;
     }
   }
 
@@ -710,6 +946,7 @@ router.get("/workout/daily", async (req, res) => {
         customObjectiveLabels: exData.customObjectiveLabels ?? {},
         order: exData.order ?? 0,
         primaryMuscles: exData.primaryMuscles ?? [],
+        notes: exData.notes ?? null,
         sets: setsSnap.docs.map((setDoc) => {
           const setData = setDoc.data();
           return {
@@ -722,6 +959,7 @@ router.get("/workout/daily", async (req, res) => {
             order: setData.order ?? 0,
             duration: setData.duration ?? null,
             rep_sequence: setData.rep_sequence ?? null,
+            notes: setData.notes ?? null,
           };
         }),
         // Always use libraryExerciseId for the history key (post-migration shape).
@@ -829,6 +1067,7 @@ router.get("/workout/daily", async (req, res) => {
       customObjectiveLabels: ex.customObjectiveLabels,
       order: ex.order,
       primaryMuscles: ex.primaryMuscles,
+      notes: ex.notes,
       sets: ex.sets,
       lastPerformance,
     };
@@ -931,7 +1170,7 @@ router.get("/workout/session-exercises", async (req, res) => {
   }
 
   const course = courseDoc.data()!;
-  const deliveryType = course.deliveryType ?? "low_ticket";
+  const deliveryType = course.deliveryType ?? "general";
 
   // Resolve session doc reference based on delivery type and moduleId
   let sessionDocRef: FirebaseFirestore.DocumentReference;
@@ -1044,6 +1283,7 @@ router.get("/workout/session-exercises", async (req, res) => {
         customObjectiveLabels: exData.customObjectiveLabels ?? {},
         order: exData.order ?? 0,
         primaryMuscles: exData.primaryMuscles ?? [],
+        notes: exData.notes ?? null,
         sets: setsSnap.docs.map((setDoc) => {
           const setData = setDoc.data();
           return {
@@ -1056,6 +1296,7 @@ router.get("/workout/session-exercises", async (req, res) => {
             order: setData.order ?? 0,
             duration: setData.duration ?? null,
             rep_sequence: setData.rep_sequence ?? null,
+            notes: setData.notes ?? null,
           };
         }),
         // Always use libraryExerciseId for the history key (post-migration shape).
@@ -1120,7 +1361,7 @@ router.get("/workout/session-exercises", async (req, res) => {
       implements: (ex.implements?.length ? ex.implements : (libEx.implements as string[])) ?? [],
       primary: ex.primary, alternatives: ex.alternatives, objectives: ex.objectives, measures: ex.measures,
       customMeasureLabels: ex.customMeasureLabels, customObjectiveLabels: ex.customObjectiveLabels,
-      order: ex.order, primaryMuscles: ex.primaryMuscles, sets: ex.sets, lastPerformance,
+      order: ex.order, primaryMuscles: ex.primaryMuscles, notes: ex.notes, sets: ex.sets, lastPerformance,
     };
   });
 
@@ -1148,7 +1389,7 @@ router.get("/workout/courses", async (req, res) => {
       courseId,
       title: entry.title ?? null,
       imageUrl: entry.image_url ?? null,
-      deliveryType: entry.deliveryType ?? "low_ticket",
+      deliveryType: entry.deliveryType ?? "general",
       status: entry.status ?? "active",
       expiresAt: entry.expires_at ?? null,
       purchasedAt: entry.purchased_at ?? null,
@@ -1439,6 +1680,17 @@ router.post("/workout/complete", async (req, res) => {
       .collection("exerciseHistory")
       .doc(exerciseKey);
 
+    // `notes` is the coach's prescriptive instruction for the upcoming set —
+    // not a record of what the user did. Strip it before persisting into
+    // exerciseHistory/lastPerformance so historical records don't bloat with
+    // up-to-500-char strings the user never authored.
+    const stripNotes = (s: Record<string, unknown>): Record<string, unknown> => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const {notes: _n, ...rest} = s;
+      return rest;
+    };
+    const historySets = (exercise.sets ?? []).map(stripNotes);
+
     batch.set(
       historyRef,
       {
@@ -1448,7 +1700,7 @@ router.post("/workout/complete", async (req, res) => {
         sessions: FieldValue.arrayUnion({
           date: completionDate,
           sessionId: completionId,
-          sets: exercise.sets ?? [],
+          sets: historySets,
         }),
         updated_at: FieldValue.serverTimestamp(),
       },
@@ -1462,7 +1714,7 @@ router.post("/workout/complete", async (req, res) => {
       .doc(exerciseKey);
 
     // Production format: exerciseId, exerciseName, libraryId, lastSessionId, lastPerformedAt, totalSets, bestSet
-    const exerciseSets = exercise.sets ?? [];
+    const exerciseSets = historySets;
     const prodBestSet = exerciseSets.length > 0 ?
       exerciseSets.reduce((best: Record<string, unknown>, s: Record<string, unknown>) => {
         const bw = parseFloat(String(best.weight ?? 0));
@@ -2340,8 +2592,8 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
   const userDoc = await db.collection("users").doc(auth.userId).get();
-  const courses = userDoc.data()?.courses ?? {};
-  const hasAccess = courses[req.params.courseId];
+  const courses = (userDoc.data()?.courses ?? {}) as Record<string, {status?: string} | undefined>;
+  const courseAccess = courses[req.params.courseId];
 
   const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
   if (!courseDoc.exists) {
@@ -2354,7 +2606,16 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   // M-36: only "published" is a valid status; the legacy "publicado" branch
   // was never written by any current endpoint.
   const isPublished = courseData_.status === "published";
-  if (!hasAccess && !isCreator && !isAdmin && !isPublished) {
+  // For cadenced (subscription) courses the "published-means-public" semantics
+  // do not apply — content is gated by an active subscription. courseAccessIsActive
+  // applies the same grace window /current-block uses so the two endpoints
+  // can never disagree about whether a user is "in" their program.
+  const isCadenced = courseData_.block_cadence === "monthly_first_monday";
+  const accessActive = courseAccessIsActive(courseAccess as Record<string, unknown> | undefined);
+  const passes = isCadenced ?
+    (accessActive || isCreator || isAdmin) :
+    (!!courseAccess || isCreator || isAdmin || isPublished);
+  if (!passes) {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
@@ -2423,15 +2684,35 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     .limit(MAX_MODULES_PER_COURSE)
     .get();
 
+  // Monthly-drop cadence: hide modules with order > current_block_index.
+  // Creators and admins see everything for authoring. If `current_block_index`
+  // is null (cron hasn't fired or no block published yet), non-creators see
+  // nothing — never leak future content.
+  const monthlyDrop = courseData_.block_cadence === "monthly_first_monday";
+  const currentBlockIndex = typeof courseData_.current_block_index === "number" ?
+    courseData_.current_block_index :
+    null;
+  let visibleModules = modulesSnap.docs;
+  if (monthlyDrop && !isCreator && !isAdmin) {
+    if (currentBlockIndex === null) {
+      visibleModules = [];
+    } else {
+      visibleModules = modulesSnap.docs.filter((d) => {
+        const ord = d.data().order;
+        return typeof ord !== "number" || ord <= currentBlockIndex;
+      });
+    }
+  }
+
   if (!includeSessions) {
-    const modules = modulesSnap.docs.map((doc) => ({...doc.data(), id: doc.id}));
+    const modules = visibleModules.map((doc) => ({...doc.data(), id: doc.id}));
     res.json({data: modules});
     return;
   }
 
   // Full tree: modules -> sessions -> exercises -> sets
   const modules = await Promise.all(
-    modulesSnap.docs.map(async (mDoc) => {
+    visibleModules.map(async (mDoc) => {
       const sessionsSnap = await mDoc.ref
         .collection("sessions")
         .orderBy("order", "asc")
@@ -2447,6 +2728,301 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
     })
   );
   res.json({data: modules});
+});
+
+// GET /workout/programs/:courseId/current-block
+//
+// Returns the currently-unlocked block (module) for a `block_cadence:
+// 'monthly_first_monday'` course, plus the user's access state. The PWA's
+// Hoy carousel + workout walker read from here.
+//
+// Shape:
+//   {
+//     courseId,
+//     cadence: 'monthly_first_monday' | null,
+//     locked: boolean,            // user has no current subscription
+//     expires_at: ISO | null,     // from users/{uid}.courses[courseId]
+//     block: {                    // null when locked OR no current block yet
+//       moduleId, block_index, title, unlocks_at,
+//       started_at: ISO | null,   // from program_state.current_block_started_at
+//       sessions: [...full tree]
+//     } | null,
+//     next_block_index: number | null,
+//     next_block_unlocks_at: ISO | null  // from next module's unlocks_at
+//   }
+router.get("/workout/programs/:courseId/current-block", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const {courseId} = req.params;
+  const [courseDoc, userDoc] = await Promise.all([
+    db.collection("courses").doc(courseId).get(),
+    db.collection("users").doc(auth.userId).get(),
+  ]);
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+  const course = courseDoc.data() ?? {};
+  const cadence = (course.block_cadence as string | undefined) ?? null;
+
+  const userCourseEntry = (userDoc.data()?.courses ?? {})[courseId] as
+    | {expires_at?: string | {toMillis?: () => number}; status?: string}
+    | undefined;
+  const isCreator = course.creator_id === auth.userId;
+  const isAdmin = auth.role === "admin";
+
+  // Resolve expiry; creator/admin bypass the lock. expires_at is stored as
+  // an ISO string by the MP webhook but Firestore Timestamps appear in
+  // older records, so handle both.
+  let expiresAtIso: string | null = null;
+  let expiresAtMs: number | null = null;
+  const raw = userCourseEntry?.expires_at;
+  if (typeof raw === "string") {
+    expiresAtIso = raw;
+    const ms = Date.parse(raw);
+    if (Number.isFinite(ms)) expiresAtMs = ms;
+  } else if (raw && typeof raw === "object" && typeof raw.toMillis === "function") {
+    const ms = raw.toMillis();
+    expiresAtMs = ms;
+    expiresAtIso = new Date(ms).toISOString();
+  }
+  // 3-day grace window: MP retries failed charges for ~3 days, during which
+  // the local expires_at is stale even though the user is still a paying
+  // subscriber. Without grace, a single missed retry around the first-Monday
+  // boundary causes the user to lose access to the new monthly block until
+  // the next charge clears (potentially days). Note: an explicit cancellation
+  // sets entry.status = 'cancelled', and the lapse-flip cron writes 'expired'
+  // when the grace window itself elapses — so this only forgives in-flight
+  // billing retries, not abandoned subscriptions.
+  const ACCESS_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+  const entryStatus = userCourseEntry?.status ?? null;
+  const isCancelledOrExpired = entryStatus === "cancelled" || entryStatus === "expired";
+  const now = Date.now();
+  const hasActiveAccess =
+    !isCancelledOrExpired &&
+    expiresAtMs !== null &&
+    expiresAtMs >= now - ACCESS_GRACE_MS;
+  const locked = !(isCreator || isAdmin || hasActiveAccess);
+
+  const currentBlockId = (course.current_block_id as string | undefined) ?? null;
+  const currentBlockIndex = typeof course.current_block_index === "number" ?
+    course.current_block_index :
+    null;
+
+  // Always look up program_state so callers (locked or not) can render the
+  // next-block chip on Hoy + the calendar entrances in Contenido.
+  const stateDoc = await db.collection("program_state").doc(courseId).get();
+  const stateData = stateDoc.exists ? (stateDoc.data() ?? {}) : {};
+  const nextBlockIndex = (stateData.next_block_index as number | null | undefined) ?? null;
+  const nextBlockId = (stateData.next_block_id as string | null | undefined) ?? null;
+  const startedAtIso = timestampToIso(stateData.current_block_started_at);
+  const startedAtDate = startedAtIso ? new Date(startedAtIso) : null;
+
+  let nextBlockUnlocksAtIso: string | null = null;
+  if (nextBlockId && nextBlockIndex !== null) {
+    const nextModuleDoc = await courseDoc.ref.collection("modules").doc(nextBlockId).get();
+    const moduleData = nextModuleDoc.exists ? nextModuleDoc.data() ?? {} : {};
+    nextBlockUnlocksAtIso = resolveBlockUnlocksAt({
+      unlocksAtRaw: moduleData.unlocks_at,
+      blockOrder: nextBlockIndex,
+      currentBlockIndex,
+      currentBlockStartedAt: startedAtDate,
+    });
+  }
+
+  if (locked || !currentBlockId) {
+    res.json({
+      data: {
+        courseId,
+        cadence,
+        locked,
+        expires_at: expiresAtIso,
+        block: null,
+        next_block_index: nextBlockIndex,
+        next_block_unlocks_at: nextBlockUnlocksAtIso,
+      },
+    });
+    return;
+  }
+
+  const moduleRef = courseDoc.ref.collection("modules").doc(currentBlockId);
+  const moduleDoc = await moduleRef.get();
+  if (!moduleDoc.exists) {
+    // State doc points at a module that no longer exists. Treat as no block.
+    res.json({
+      data: {
+        courseId,
+        cadence,
+        locked: false,
+        expires_at: expiresAtIso,
+        block: null,
+        next_block_index: nextBlockIndex,
+        next_block_unlocks_at: nextBlockUnlocksAtIso,
+      },
+    });
+    return;
+  }
+
+  const sessionsSnap = await moduleRef
+    .collection("sessions")
+    .orderBy("order", "asc")
+    .limit(MAX_SESSIONS_PER_MODULE)
+    .get();
+  const sessions = await Promise.all(
+    sessionsSnap.docs.map(async (sDoc) => {
+      const exercises = await loadExerciseTree(sDoc.ref);
+      return {...sDoc.data(), id: sDoc.id, exercises};
+    })
+  );
+
+  const moduleData = moduleDoc.data() ?? {};
+  const moduleUnlocksIso = resolveBlockUnlocksAt({
+    unlocksAtRaw: moduleData.unlocks_at,
+    blockOrder: typeof moduleData.order === "number" ? moduleData.order : (currentBlockIndex ?? 0),
+    currentBlockIndex,
+    currentBlockStartedAt: startedAtDate,
+  });
+
+  res.json({
+    data: {
+      courseId,
+      cadence,
+      locked: false,
+      expires_at: expiresAtIso,
+      block: {
+        moduleId: moduleDoc.id,
+        block_index: moduleData.order ?? currentBlockIndex,
+        title: moduleData.title ?? null,
+        unlocks_at: moduleUnlocksIso,
+        started_at: startedAtIso,
+        sessions,
+      },
+      next_block_index: nextBlockIndex,
+      next_block_unlocks_at: nextBlockUnlocksAtIso,
+    },
+  });
+});
+
+// GET /workout/programs/:courseId/blocks-overview
+//
+// Lightweight metadata for the monthly-drop calendar UIs (Contenido +
+// pre-purchase course detail). Returns titles + unlock dates for every block
+// without exposing sessions or exercises, so it's safe to surface in
+// non-subscribed contexts. Non-cadenced courses get `{cadence: null, blocks: []}`
+// so callers can branch without a second round-trip.
+//
+// Shape:
+//   {
+//     courseId,
+//     cadence: 'monthly_first_monday' | null,
+//     current_block_index: number | null,
+//     current_block_started_at: ISO | null,
+//     next_block_unlocks_at: ISO | null,
+//     blocks: [
+//       {
+//         moduleId,
+//         order,
+//         title,
+//         unlocks_at: ISO | null,
+//         isCurrent: boolean,
+//         isPast: boolean,
+//         isFuture: boolean,
+//         session_count: number  // best-effort; 0 for unpublished
+//       }
+//     ]
+//   }
+router.get("/workout/programs/:courseId/blocks-overview", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const {courseId} = req.params;
+  const courseDoc = await db.collection("courses").doc(courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const course = courseDoc.data() ?? {};
+  const cadence = (course.block_cadence as string | undefined) ?? null;
+
+  // Discovery-tier access: published, owner, creator, or admin. Draft courses
+  // remain invisible to discovery so unfinished work doesn't leak. Subscription
+  // status is irrelevant — block titles + unlock dates ARE the pitch.
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const hasCourse = !!((userDoc.data()?.courses ?? {}) as Record<string, unknown>)[courseId];
+  const isCreator = course.creator_id === auth.userId;
+  const isAdmin = auth.role === "admin";
+  const isPublished = course.status === "published";
+  if (!(isPublished || hasCourse || isCreator || isAdmin)) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
+  if (cadence !== "monthly_first_monday") {
+    res.json({
+      data: {
+        courseId,
+        cadence: null,
+        current_block_index: null,
+        current_block_started_at: null,
+        next_block_unlocks_at: null,
+        blocks: [],
+      },
+    });
+    return;
+  }
+
+  const stateDoc = await db.collection("program_state").doc(courseId).get();
+  const stateData = stateDoc.exists ? (stateDoc.data() ?? {}) : {};
+  const currentBlockIndex = typeof course.current_block_index === "number" ?
+    course.current_block_index :
+    null;
+  const nextBlockId = (stateData.next_block_id as string | null | undefined) ?? null;
+
+  const currentBlockStartedAt = timestampToIso(stateData.current_block_started_at);
+  const currentBlockStartedAtDate = currentBlockStartedAt ? new Date(currentBlockStartedAt) : null;
+
+  const modulesSnap = await courseDoc.ref
+    .collection("modules")
+    .orderBy("order", "asc")
+    .limit(MAX_MODULES_PER_COURSE)
+    .get();
+
+  let nextBlockUnlocksAt: string | null = null;
+  const blocks = modulesSnap.docs.map((mDoc) => {
+    const m = mDoc.data() ?? {};
+    const order = typeof m.order === "number" ? m.order : 0;
+    const isCurrent = currentBlockIndex !== null && order === currentBlockIndex;
+    const isPast = currentBlockIndex !== null && order < currentBlockIndex;
+    const isFuture = currentBlockIndex !== null && order > currentBlockIndex;
+    const unlocksAt = resolveBlockUnlocksAt({
+      unlocksAtRaw: m.unlocks_at,
+      blockOrder: order,
+      currentBlockIndex,
+      currentBlockStartedAt: currentBlockStartedAtDate,
+    });
+    if (mDoc.id === nextBlockId && unlocksAt) {
+      nextBlockUnlocksAt = unlocksAt;
+    }
+    return {
+      moduleId: mDoc.id,
+      order,
+      title: (m.title as string) ?? null,
+      unlocks_at: unlocksAt,
+      isCurrent,
+      isPast,
+      isFuture,
+    };
+  });
+
+  res.json({
+    data: {
+      courseId,
+      cadence,
+      current_block_index: currentBlockIndex,
+      current_block_started_at: currentBlockStartedAt,
+      next_block_unlocks_at: nextBlockUnlocksAt,
+      blocks,
+    },
+  });
 });
 
 // GET /workout/programs/:courseId/modules/:moduleId/sessions/:sessionId/overrides

@@ -12,6 +12,11 @@ export const STALE_TIMES = {
   bodyLog: 5 * 60 * 1000,
   events: 2 * 60 * 1000,
   eventRegistrations: 60 * 1000,
+  // Monthly-drop current block: flips only on the first Monday of each month
+  // via a server cron. Polling more than ~5 min adds nothing; the cron either
+  // already wrote `current_block_id` on the course doc and the API echoes it
+  // back, or it didn't and there's no new content yet either way.
+  currentBlock: 5 * 60 * 1000,
 };
 
 export const GC_TIMES = {
@@ -25,4 +30,5 @@ export const GC_TIMES = {
   bodyLog: 60 * 60 * 1000,
   events: 5 * 60 * 1000,
   eventRegistrations: 2 * 60 * 1000,
+  currentBlock: 30 * 60 * 1000,
 };

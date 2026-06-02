@@ -4,9 +4,8 @@
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import * as crypto from "node:crypto";
 import type {Request, Response} from "express";
-import {Preference, Payment, PreApproval} from "mercadopago";
+import {PreApproval} from "mercadopago";
 import {Resend} from "resend";
 import {onRequest} from "firebase-functions/v2/https";
 import {onSchedule} from "firebase-functions/v2/scheduler";
@@ -20,45 +19,39 @@ import {runPaymentsPulse} from "./ops/paymentsPulse.js";
 import {runQuotaWatch} from "./ops/quotaWatch.js";
 import {runClientErrors} from "./ops/clientErrors.js";
 import {runDataIntegrity} from "./ops/dataIntegrity.js";
+import {runMonthlyDropsPulse} from "./ops/monthlyDropsPulse.js";
 import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
 import {handleGithubWebhook} from "./ops/githubWebhook.js";
-import {parseTopicMap} from "./ops/telegram.js";
+import {parseTopicMap, sendTo} from "./ops/telegram.js";
 import {
-  type ParsedReference,
-  type MercadoPagoPreapproval,
-  buildExternalReference as sharedBuildExternalReference,
-  parseExternalReference as sharedParseExternalReference,
-  calculateExpirationDate as sharedCalculateExpirationDate,
-  classifyError as sharedClassifyError,
   getClient as sharedGetClient,
   toErrorMessage as sharedToErrorMessage,
 } from "./api/services/paymentHelpers.js";
-import {assignCourseToUser} from "./api/services/courseAssignment.js";
 import {
   assertAllowedCallLinkUrl,
-  assertAllowedSubscriptionTransition,
   clampPushSenderName,
   redactEmailForLog,
-  safeErrorPayload,
 } from "./api/middleware/securityHelpers.js";
-import {assignBundleToUser, revokeBundleAccess} from "./api/services/bundleAssignment.js";
 import {
   escapeHtml as sharedEscapeHtml,
   generateUnsubscribeToken,
   reserveEmailBudget,
 } from "./api/services/emailHelpers.js";
+import {buildSignInUrl as buildPurchaseSignInUrl} from "./api/services/purchaseEmails.js";
+import {capture as analyticsCapture, flushAnalytics} from "./lib/analytics.js";
 
 const db = admin.firestore();
-
-const mercadopagoWebhookSecret = functions.params.defineSecret(
-  "MERCADOPAGO_WEBHOOK_SECRET"
-);
 
 const mercadopagoAccessToken = functions.params.defineSecret(
   "MERCADOPAGO_ACCESS_TOKEN"
 );
+
+// PostHog server-side analytics. Declared near the top because
+// processEmailQueue references it before the other *V2 secret declarations
+// further down. `const` is not hoisted; declaration order matters.
+const posthogApiKeyV2 = defineSecret("POSTHOG_API_KEY");
 
 const fatSecretClientId = functions.params.defineSecret(
   "FATSECRET_CLIENT_ID"
@@ -100,41 +93,21 @@ function checkRateLimit(key: string): boolean {
 }
 
 // ─── Input validation helpers ────────────────────────────────────────────────
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BARCODE_RE = /^\d{8,14}$/;
-const COURSE_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
-
-function isValidEmail(v: unknown): v is string {
-  return typeof v === "string" && EMAIL_RE.test(v);
-}
-
-function isValidCourseId(v: unknown): v is string {
-  return typeof v === "string" && COURSE_ID_RE.test(v);
-}
 
 function isValidBarcode(v: unknown): v is string {
   return typeof v === "string" && BARCODE_RE.test(v);
 }
 
 // ─── Shared helpers (delegated to api/services/) ─────────────────────────────
-const getClient = () => sharedGetClient(mercadopagoAccessToken.value());
-const buildExternalReference = sharedBuildExternalReference;
-const parseExternalReference = sharedParseExternalReference;
-const classifyError = sharedClassifyError;
 const toErrorMessage = sharedToErrorMessage;
-function calculateExpirationDate(
-  accessDuration: string,
-  options: {from?: string} = {}
-): string {
-  return sharedCalculateExpirationDate(accessDuration, options.from);
-}
 
 
 // ─── App Check helper ─────────────────────────────────────────────────────────
-// Both Gen1 and Gen2 first-party (Firebase token) callers must present a valid
-// App Check token (M-14). Gen2 auth middleware skips the check only for the
-// API-key path (third-party callers can't obtain App Check tokens) and for the
-// emulator. The two paths now share enforcement semantics.
+// Gen1 first-party callers must present a valid App Check token (M-14). Gen2
+// auth middleware skips the check only for the API-key path (third-party
+// callers can't obtain App Check tokens) and for the emulator. The two paths
+// now share enforcement semantics.
 async function verifyAppCheck(request: Request): Promise<boolean> {
   const token = request.headers["x-firebase-appcheck"] as string | undefined;
   if (!token) return false;
@@ -146,1534 +119,11 @@ async function verifyAppCheck(request: Request): Promise<boolean> {
   }
 }
 
-// ─── Gen1 auth helper ────────────────────────────────────────────────────────
-async function verifyGen1Auth(request: Request): Promise<string | null> {
-  const header = request.headers?.authorization;
-  if (!header || typeof header !== "string" || !header.startsWith("Bearer ")) return null;
-  try {
-    const decoded = await admin.auth().verifyIdToken(header.slice(7));
-    return decoded.uid;
-  } catch {
-    return null;
-  }
-}
-
 function sendAppCheckError(res: Response): void {
   res.status(401).json({
     error: {code: "UNAUTHENTICATED", message: "App Check token inválido"},
   });
 }
-
-function sendAuthError(res: Response): void {
-  res.status(401).json({
-    error: {code: "UNAUTHENTICATED", message: "Token de autenticación requerido"},
-  });
-}
-
-function sendRateLimitError(res: Response): void {
-  res.status(429).json({
-    error: {
-      code: "RATE_LIMITED",
-      message: "Demasiadas solicitudes. Intenta en un momento.",
-    },
-  });
-}
-
-
-// Create unique payment preference
-export const createPaymentPreference = functions
-  .runWith({secrets: [mercadopagoAccessToken]})
-  .https.onRequest(async (request, response) => {
-    response.set("Access-Control-Allow-Origin", "*");
-    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
-
-    if (request.method === "OPTIONS") {
-      response.status(204).send("");
-      return;
-    }
-
-    if (!(await verifyAppCheck(request))) {
-      sendAppCheckError(response);
-      return;
-    }
-
-    const userId = await verifyGen1Auth(request);
-    if (!userId) {
-      sendAuthError(response);
-      return;
-    }
-
-    if (!checkRateLimit(userId)) {
-      sendRateLimitError(response);
-      return;
-    }
-
-    const {courseId} = request.body || {};
-
-    if (!isValidCourseId(courseId)) {
-      response.status(400).json({
-        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
-      });
-      return;
-    }
-
-    try {
-      const courseDoc = await db.collection("courses").doc(courseId).get();
-      const course = courseDoc.data();
-
-      if (!course) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
-        });
-        return;
-      }
-
-      // Audit M-23: course.price must be a positive number before calling MP.
-      // Without this guard, a free/null price would either error in MP or
-      // silently grant access depending on MP behavior. Currency is COP and
-      // doesn't have decimal subunits in practice, so require an integer.
-      if (typeof course.price !== "number" ||
-          !Number.isInteger(course.price) ||
-          course.price <= 0) {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "El precio del curso no es válido", field: "course.price"},
-        });
-        return;
-      }
-
-      const externalReference = buildExternalReference(userId, courseId, "otp");
-
-      const client = getClient();
-      const preference = new Preference(client);
-      const result = await preference.create({
-        body: {
-          binary_mode: true,
-          items: [{
-            id: courseId,
-            title: course.title,
-            quantity: 1,
-            unit_price: course.price,
-          }],
-          external_reference: externalReference,
-          back_urls: {
-            success: `https://wolf-20b8b.web.app/app/course/${courseId}`,
-            failure: `https://wolf-20b8b.web.app/app/course/${courseId}`,
-            pending: `https://wolf-20b8b.web.app/app/course/${courseId}`,
-          },
-          auto_return: "approved",
-        },
-      });
-
-      functions.logger.info("Payment preference created", {
-        userId,
-        courseId,
-        externalReference,
-      });
-
-      response.json({data: {init_point: result.init_point}});
-    } catch (error: unknown) {
-      // Audit M-25: scrub MP SDK errors before logging (drops payer.email,
-      // identification, BIN, additional_info from Cloud Logging).
-      functions.logger.error("createPaymentPreference error", safeErrorPayload(error));
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: "Error al crear la preferencia de pago"},
-      });
-    }
-  });
-
-// Create subscription dynamically (without pre-created plan)
-export const createSubscriptionCheckout = functions
-  .runWith({secrets: [mercadopagoAccessToken]})
-  .https.onRequest(async (request, response) => {
-    response.set("Access-Control-Allow-Origin", "*");
-    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
-
-    if (request.method === "OPTIONS") {
-      response.status(204).send("");
-      return;
-    }
-
-    if (!(await verifyAppCheck(request))) {
-      sendAppCheckError(response);
-      return;
-    }
-
-    const userId = await verifyGen1Auth(request);
-    if (!userId) {
-      sendAuthError(response);
-      return;
-    }
-
-    if (!checkRateLimit(userId)) {
-      sendRateLimitError(response);
-      return;
-    }
-
-    const {courseId, payer_email: payerEmail} = request.body || {};
-
-    if (!isValidCourseId(courseId)) {
-      response.status(400).json({
-        error: {code: "VALIDATION_ERROR", message: "courseId inválido", field: "courseId"},
-      });
-      return;
-    }
-
-    if (!payerEmail || !isValidEmail(payerEmail)) {
-      response.status(400).json({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Se requiere un email de pago válido",
-          field: "payer_email",
-        },
-      });
-      return;
-    }
-
-    // F-FUNCS-04: bind payer_email to the authed user's stored email so a
-    // client can't impersonate another user's mailbox in the MercadoPago
-    // checkout (which would have the receipt + subscription emails sent
-    // to the impersonated address). Treats the comparison
-    // case-insensitively and trims whitespace.
-    {
-      const userDoc = await db.collection("users").doc(userId).get();
-      const storedEmail = (userDoc.data()?.email as string | undefined)?.toLowerCase().trim();
-      const supplied = payerEmail.toLowerCase().trim();
-      if (!storedEmail || storedEmail !== supplied) {
-        response.status(400).json({
-          error: {
-            code: "VALIDATION_ERROR",
-            message: "El email de pago debe coincidir con el de tu cuenta",
-            field: "payer_email",
-          },
-        });
-        return;
-      }
-    }
-
-    try {
-      const courseDoc = await db.collection("courses").doc(courseId).get();
-      const course = courseDoc.data();
-
-      if (!course) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Curso no encontrado"},
-        });
-        return;
-      }
-
-      if (!course.price) {
-        response.status(400).json({
-          error: {code: "VALIDATION_ERROR", message: "Precio del curso no encontrado"},
-        });
-        return;
-      }
-
-      const userDoc = await db.collection("users").doc(userId).get();
-
-      if (!userDoc.exists) {
-        response.status(404).json({
-          error: {code: "NOT_FOUND", message: "Usuario no encontrado"},
-        });
-        return;
-      }
-
-      const client = getClient();
-      const preapproval = new PreApproval(client);
-
-      const startDate = new Date(Date.now() + 5 * 60 * 1000);
-
-      const externalRef = buildExternalReference(userId, courseId, "sub");
-
-      const result = await preapproval.create({
-        body: {
-          payer_email: payerEmail,
-          reason: course.title || "Subscription",
-          external_reference: externalRef,
-          auto_recurring: {
-            frequency: 1,
-            frequency_type: "months",
-            transaction_amount: course.price,
-            currency_id: "COP",
-            start_date: startDate.toISOString(),
-          },
-          status: "pending",
-          back_url: "https://www.mercadopago.com.co/subscriptions",
-        },
-      });
-
-      if (result.init_point && result.id) {
-        // L-40: don't log the one-time payment URL; it's a tokenized link.
-        functions.logger.info("Subscription created", {
-          subscription_id: result.id,
-          external_reference: externalRef,
-        });
-
-        let nextBillingDate: string | null = null;
-
-        try {
-          const preapprovalDetails =
-            await preapproval.get({id: result.id}) as MercadoPagoPreapproval;
-          nextBillingDate =
-            preapprovalDetails?.next_payment_date ||
-            preapprovalDetails?.auto_recurring?.next_payment_date ||
-            preapprovalDetails?.auto_recurring?.start_date ||
-            null;
-        } catch (detailsError) {
-          functions.logger.warn(
-            "Failed to fetch preapproval details for next billing date",
-            detailsError
-          );
-        }
-
-        if (!nextBillingDate) {
-          nextBillingDate = startDate.toISOString();
-        }
-
-        const subscriptionRef = db
-          .collection("users")
-          .doc(userId)
-          .collection("subscriptions")
-          .doc(result.id);
-
-        await subscriptionRef.set(
-          {
-            subscription_id: result.id,
-            user_id: userId,
-            course_id: courseId,
-            course_title: course.title || "Subscription",
-            status: "pending",
-            payer_email: payerEmail,
-            transaction_amount: course.price,
-            currency_id: "COP",
-            management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${result.id}`,
-            next_billing_date: nextBillingDate,
-            created_at: admin.firestore.FieldValue.serverTimestamp(),
-            updated_at: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          {merge: true}
-        );
-
-        response.json({data: {init_point: result.init_point, subscription_id: result.id}});
-        return;
-      }
-
-      functions.logger.error("PreApproval API did not return init_point");
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: "No se pudo crear el enlace de pago"},
-      });
-    } catch (error: unknown) {
-      const message = toErrorMessage(error);
-      // Audit M-25: scrub MP SDK error before logging.
-      functions.logger.error("Error creating subscription:", safeErrorPayload(error));
-
-      const normalizedMessage = message?.toLowerCase?.() || "";
-      const requiresAlternateEmail =
-        normalizedMessage.includes("cannot operate between different countries") ||
-        normalizedMessage.includes("cannot operate between different") ||
-        normalizedMessage.includes("payer_email") ||
-        normalizedMessage.includes("belongs to another user") ||
-        normalizedMessage.includes("must belong to this site");
-
-      if (requiresAlternateEmail) {
-        response.status(409).json({
-          error: {
-            code: "CONFLICT",
-            message: "Por favor ingresa tu correo de Mercado Pago",
-          },
-          requireAlternateEmail: true,
-        });
-        return;
-      }
-
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: "Error al crear la suscripción"},
-      });
-    }
-  });
-
-// Webhook handler - processes payment and assigns courses to users
-export const processPaymentWebhook = functions
-  .runWith({secrets: [mercadopagoWebhookSecret, mercadopagoAccessToken]})
-  .https.onRequest(async (request: Request, response: Response) => {
-    // L-10: MercadoPago webhooks are server-to-server; no CORS preflight is
-    // ever performed. Drop the wildcard CORS headers — they were noise.
-    if (request.method === "OPTIONS") {
-      response.status(204).send("");
-      return;
-    }
-
-    try {
-      const webhookSecret = mercadopagoWebhookSecret.value();
-
-      if (!webhookSecret) {
-        functions.logger.error("Missing Mercado Pago webhook secret");
-        response.status(500).send("Webhook secret not configured");
-        return;
-      }
-
-      const signatureHeaderLegacy =
-        request.get("x-hmac-signature") ||
-        request.get("x-mercadopago-signature") ||
-        request.get("x-hmac-signature-256");
-      const signatureHeaderNew = request.get("x-signature");
-
-      const rawBodyValue = (request as Request & {rawBody?: unknown}).rawBody;
-
-      const resolveRawBody = (): Buffer => {
-        if (Buffer.isBuffer(rawBodyValue)) {
-          return rawBodyValue;
-        }
-        if (typeof rawBodyValue === "string") {
-          return Buffer.from(rawBodyValue);
-        }
-        if (rawBodyValue !== undefined && rawBodyValue !== null) {
-          return Buffer.from(JSON.stringify(rawBodyValue));
-        }
-        const fallbackBody = request.body ?? {};
-        const fallbackString = typeof fallbackBody === "string" ?
-          fallbackBody :
-          JSON.stringify(fallbackBody);
-        return Buffer.from(fallbackString);
-      };
-
-      const validateSignatureLegacy = (provided: string): boolean => {
-        const rawBodyBuffer = resolveRawBody();
-        const expectedSignature = crypto
-          .createHmac("sha256", webhookSecret)
-          .update(rawBodyBuffer)
-          .digest("hex");
-
-        const providedSignatureBuffer = Buffer.from(provided, "utf8");
-        const expectedSignatureBuffer = Buffer.from(expectedSignature, "utf8");
-
-        if (providedSignatureBuffer.length !== expectedSignatureBuffer.length) {
-          return false;
-        }
-
-        try {
-          return crypto.timingSafeEqual(
-            providedSignatureBuffer,
-            expectedSignatureBuffer
-          );
-        } catch (compareError) {
-          // Audit L-41: drop raw error to avoid leaking webhook payload bytes.
-          functions.logger.error("Error comparing webhook signatures", safeErrorPayload(compareError));
-          return false;
-        }
-      };
-
-      const parseSignatureHeader = (header: string) => {
-        const parts = header.split(",");
-        const result: Record<string, string> = {};
-        for (const part of parts) {
-          const [key, value] = part.split("=");
-          if (key && value) {
-            result[key.trim()] = value.trim();
-          }
-        }
-        return result;
-      };
-
-      const validateSignatureNew = (header: string): boolean => {
-        const parsed = parseSignatureHeader(header);
-        const timestamp = parsed["ts"];
-        const signature = parsed["v1"];
-        const requestId = request.get("x-request-id") ?? "";
-        const dataId = request.body?.data?.id;
-
-        if (!timestamp || !signature || !requestId || !dataId) {
-          functions.logger.warn("Missing fields for Mercado Pago signature validation", {
-            timestampPresent: Boolean(timestamp),
-            signaturePresent: Boolean(signature),
-            requestIdPresent: Boolean(requestId),
-            dataIdPresent: Boolean(dataId),
-          });
-          return false;
-        }
-
-        // Reject replayed webhooks: timestamp must be within 5 minutes of now
-        const tsMs = Number(timestamp) * 1000;
-        if (isNaN(tsMs) || Math.abs(Date.now() - tsMs) > 300_000) {
-          functions.logger.warn("Webhook timestamp too old or invalid", {
-            timestamp,
-            ageMs: isNaN(tsMs) ? "NaN" : Date.now() - tsMs,
-          });
-          return false;
-        }
-
-        const template = `id:${dataId};request-id:${requestId};ts:${timestamp};`;
-        const expectedSignature = crypto
-          .createHmac("sha256", webhookSecret)
-          .update(template)
-          .digest("hex");
-
-        const providedSignatureBuffer = Buffer.from(signature, "utf8");
-        const expectedSignatureBuffer = Buffer.from(expectedSignature, "utf8");
-
-        if (providedSignatureBuffer.length !== expectedSignatureBuffer.length) {
-          return false;
-        }
-
-        try {
-          return crypto.timingSafeEqual(
-            providedSignatureBuffer,
-            expectedSignatureBuffer
-          );
-        } catch (compareError) {
-          // Audit L-41: scrub raw error so webhook payload bytes don't leak.
-          functions.logger.error("Error comparing Mercado Pago signatures", safeErrorPayload(compareError));
-          return false;
-        }
-      };
-
-      let signatureIsValid = false;
-
-      if (signatureHeaderNew) {
-        signatureIsValid = validateSignatureNew(signatureHeaderNew);
-      } else if (signatureHeaderLegacy) {
-        signatureIsValid = validateSignatureLegacy(signatureHeaderLegacy);
-      }
-
-      if (!signatureIsValid) {
-        functions.logger.warn("Invalid Mercado Pago webhook signature", {
-          hasNewSignature: Boolean(signatureHeaderNew),
-          hasLegacySignature: Boolean(signatureHeaderLegacy),
-        });
-        response.status(403).send("Invalid signature");
-        return;
-      }
-
-      functions.logger.info("Webhook received", {
-        type: request.body?.type,
-        action: request.body?.action,
-        dataId: request.body?.data?.id,
-      });
-
-      // Handle both payment and subscription webhooks
-      const webhookType = request.body?.type;
-      const webhookAction = request.body?.action;
-
-      let paymentId: string | null = null;
-
-      // Handle payment webhooks
-      if (webhookType === "payment") {
-        // Handle both payment.created and payment.updated
-        if (
-          webhookAction !== "payment.created" &&
-          webhookAction !== "payment.updated"
-        ) {
-          functions.logger.info(
-            "Skipping non-payment webhook action:",
-            webhookAction
-          );
-          response.status(200).send("OK");
-          return;
-        }
-
-        // Extract payment ID
-        paymentId = request.body?.data?.id;
-      } else if (webhookType === "subscription_authorized_payment") {
-        // Handle subscription authorized payment webhook
-        // This is sent when a payment is authorized for a subscription
-        if (webhookAction !== "created") {
-          functions.logger.info(
-            "Skipping non-created subscription_authorized_payment:",
-            webhookAction
-          );
-          response.status(200).send("OK");
-          return;
-        }
-
-        // Extract payment ID from subscription_authorized_payment
-        // Note: This is an authorized payment ID, not a regular payment ID
-        paymentId = request.body?.data?.id;
-
-        functions.logger.info(
-          "Processing subscription authorized payment:",
-          paymentId
-        );
-      } else if (webhookType === "subscription_preapproval") {
-        const preapprovalId = request.body?.data?.id;
-
-        if (!preapprovalId) {
-          functions.logger.warn(
-            "subscription_preapproval webhook missing preapproval ID"
-          );
-          response.status(200).send("OK");
-          return;
-        }
-
-        try {
-          const client = getClient();
-          const preapproval = new PreApproval(client);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const preapprovalData =
-            await preapproval.get({id: preapprovalId}) as MercadoPagoPreapproval;
-          const externalReference = preapprovalData?.external_reference;
-
-          if (!externalReference) {
-            functions.logger.warn(
-              "subscription_preapproval missing external_reference",
-              preapprovalId
-            );
-            response.status(200).send("OK");
-            return;
-          }
-
-          let parsedReference: ParsedReference | null = null;
-
-          try {
-            parsedReference = parseExternalReference(externalReference);
-          } catch (parseError) {
-            functions.logger.error(
-              "Failed to parse external_reference for subscription_preapproval",
-              parseError
-            );
-            response.status(200).send("OK");
-            return;
-          }
-
-          const subscriptionRef = db
-            .collection("users")
-            .doc(parsedReference.userId)
-            .collection("subscriptions")
-            .doc(preapprovalId);
-
-          // Security (audit H-21): require an existing local subscription
-          // doc whose userId matches the parsed external_reference. Without
-          // this check, an attacker who creates a preapproval off-platform
-          // (MP web UI) can cause us to silently `set({merge: true})` a new
-          // doc anywhere their crafted external_reference points.
-          const existingSub = await subscriptionRef.get();
-          if (!existingSub.exists) {
-            functions.logger.warn(
-              "Skipping preapproval webhook for unknown subscription doc",
-              {preapprovalId, userId: parsedReference.userId}
-            );
-            response.status(200).send("OK");
-            return;
-          }
-          const existingSubData = existingSub.data() ?? {};
-          const existingUserId = existingSubData.user_id ??
-            existingSubData.userId ?? parsedReference.userId;
-          if (existingUserId !== parsedReference.userId) {
-            functions.logger.error(
-              "Preapproval external_reference userId mismatch",
-              {preapprovalId, claimedUserId: parsedReference.userId, actualUserId: existingUserId}
-            );
-            response.status(200).send("OK");
-            return;
-          }
-
-          const nextPaymentDate =
-            preapprovalData?.next_payment_date ||
-            preapprovalData?.auto_recurring?.next_payment_date ||
-            null;
-
-          const updateData: Record<string, unknown> = {
-            status: preapprovalData?.status || "pending",
-            transaction_amount: preapprovalData?.auto_recurring?.transaction_amount || null,
-            currency_id: preapprovalData?.auto_recurring?.currency_id || null,
-            reason: preapprovalData?.reason || null,
-            management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${preapprovalId}`,
-            next_billing_date: nextPaymentDate,
-            updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            last_action: webhookAction,
-          };
-
-          const webhookPayerEmail =
-            preapprovalData?.payer_email ??
-            preapprovalData?.payer?.email ??
-            null;
-
-          if (webhookPayerEmail) {
-            updateData.payer_email = webhookPayerEmail;
-          }
-
-          if (preapprovalData?.status === "cancelled") {
-            updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
-          }
-
-          await subscriptionRef.set(updateData, {merge: true});
-          functions.logger.info(
-            "Subscription preapproval updated:",
-            preapprovalId,
-            updateData.status
-          );
-        } catch (preapprovalError) {
-          functions.logger.error(
-            "Error handling subscription_preapproval webhook:",
-            preapprovalError
-          );
-        }
-
-        response.status(200).send("OK");
-        return;
-      } else {
-        // Unknown webhook type
-        functions.logger.info(
-          "Skipping unknown webhook type:",
-          webhookType,
-          webhookAction
-        );
-        response.status(200).send("OK");
-        return;
-      }
-
-      if (!paymentId) {
-        functions.logger.error("Payment ID not found in webhook");
-        response.status(400).send("Payment ID required");
-        return;
-      }
-
-      functions.logger.info("Processing payment:", paymentId);
-
-      // Fix #6: Check if payment.updated/subscription.updated and
-      // payment.created/subscription.created already processed
-      const processedPaymentsRef = db
-        .collection("processed_payments")
-        .doc(paymentId);
-
-      // Check for duplicate webhook events (updated after created)
-      // Smart duplicate detection: allow reprocessing if status changed from pending to approved
-      if (webhookAction === "payment.updated" || webhookAction === "updated") {
-        const processedDoc = await processedPaymentsRef.get();
-        if (processedDoc.exists) {
-          const processedStatus = processedDoc.data()?.status;
-
-          // Allow reprocessing if previous status was pending/in_process/processing (for async payments like PSE/Bancolombia)
-          // "processing" status means the transaction started but payment wasn't approved yet
-          // This handles the case where payment.created had status "pending" and payment.updated has status "approved"
-          if (processedStatus === "pending" || processedStatus === "in_process" || processedStatus === "processing") {
-            functions.logger.info(
-              "Payment status changed from pending/in_process/processing, allowing reprocessing:",
-              paymentId,
-              "Previous status:",
-              processedStatus
-            );
-            // Continue processing - don't skip
-          } else if (processedStatus === "approved") {
-            // Already processed and approved - skip to prevent duplicate processing
-            functions.logger.info(
-              "Payment already processed and approved, skipping:",
-              paymentId
-            );
-            response.status(200).send("OK");
-            return;
-          } else {
-            // Failed/rejected - don't reprocess
-            functions.logger.info(
-              "Payment already processed with status:",
-              processedStatus,
-              "skipping:",
-              paymentId
-            );
-            response.status(200).send("OK");
-            return;
-          }
-        } else {
-          // payment.created/subscription.created was missed - process updated as fallback
-          functions.logger.info(
-            "Created event was missed, processing updated event as fallback:",
-            paymentId,
-            webhookAction
-          );
-        }
-      }
-
-      // Fetch payment details from Mercado Pago API FIRST
-      // We need to check the status before creating any documents
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let paymentData: any;
-      let paymentSource: "payment" | "authorized_payment" = "payment";
-
-      try {
-        if (webhookType === "subscription_authorized_payment") {
-          const accessToken = mercadopagoAccessToken.value();
-
-          if (!accessToken) {
-            throw new Error("Missing Mercado Pago access token");
-          }
-
-          const authorizedPaymentResponse = await fetch(
-            `https://api.mercadopago.com/authorized_payments/${paymentId}`,
-            {
-              method: "GET",
-              headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-              },
-            }
-          );
-
-          if (!authorizedPaymentResponse.ok) {
-            throw new Error(
-              `Failed to fetch authorized payment: ${authorizedPaymentResponse.status}`
-            );
-          }
-
-          paymentData = await authorizedPaymentResponse.json();
-          paymentSource = "authorized_payment";
-
-          if (!paymentData.status) {
-            paymentData.status = paymentData.payment?.status || "approved";
-          }
-
-          if (!paymentData.external_reference && paymentData.preapproval?.external_reference) {
-            paymentData.external_reference = paymentData.preapproval.external_reference;
-          }
-
-          if (!paymentData.preapproval_id && paymentData.preapproval?.id) {
-            paymentData.preapproval_id = paymentData.preapproval.id;
-          }
-        } else {
-          const client = getClient();
-          const payment = new Payment(client);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const result: any = await payment.get({id: paymentId});
-          paymentData = result || {};
-          paymentSource = "payment";
-        }
-      } catch (apiError: unknown) {
-        const errorMessage = toErrorMessage(apiError);
-        // Audit M-25: scrub MP API error before logging.
-        functions.logger.error("Error fetching payment from API:", safeErrorPayload(apiError));
-
-        const errorType = classifyError(apiError);
-
-        if (errorType === "RETRYABLE") {
-          response.status(500).send("Error fetching payment");
-        } else {
-          await processedPaymentsRef.set({
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "error",
-            error_type: "payment_fetch_failed",
-            error_message: errorMessage,
-          });
-          response.status(200).send("OK");
-        }
-        return;
-      }
-
-      functions.logger.info("Payment data", {
-        paymentId,
-        paymentSource,
-        status: paymentData.status,
-        external_reference: paymentData.external_reference,
-        preapproval_id: paymentData.preapproval_id,
-      });
-
-      // ─── Refund / chargeback handling (audit H-18) ─────────────────────────
-      // Backported from Gen2 payments.ts. Without this branch, Wake had no
-      // production refund handling — refund a payment, the user kept access.
-      // Gen2 webhook is unreachable (audit C-07); Gen1 must handle refunds
-      // until the migration completes.
-      if (paymentData && (
-        paymentData.status === "refunded" ||
-        paymentData.status === "charged_back"
-      )) {
-        try {
-          const prev = await processedPaymentsRef.get();
-          const prevData = prev.exists ? prev.data() : null;
-          if (prevData?.bundleId && prevData?.userId) {
-            const revoked = await revokeBundleAccess(
-              prevData.userId as string,
-              prevData.bundleId as string
-            );
-            functions.logger.info("Bundle access revoked via refund", {
-              paymentId,
-              bundleId: prevData.bundleId,
-              userId: prevData.userId,
-              revoked,
-            });
-          } else if (prevData?.courseId && prevData?.userId) {
-            await db.collection("users").doc(prevData.userId as string).update({
-              [`courses.${prevData.courseId}.status`]: "cancelled",
-              [`courses.${prevData.courseId}.cancelled_at`]: new Date().toISOString(),
-              updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            functions.logger.info("Course access revoked via refund", {
-              paymentId,
-              courseId: prevData.courseId,
-              userId: prevData.userId,
-            });
-          } else {
-            functions.logger.warn("Refund received but no prior course/bundle record", {
-              paymentId,
-              prevStatus: prevData?.status ?? "missing",
-            });
-          }
-        } catch (refundErr) {
-          functions.logger.error("Refund revocation failed", {
-            paymentId,
-            error: refundErr instanceof Error ? refundErr.message : String(refundErr),
-          });
-        }
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: paymentData.status,
-          refunded_at: new Date().toISOString(),
-        }, {merge: true});
-        response.status(200).send("OK");
-        return;
-      }
-
-      // Check if payment is approved
-      if (!paymentData || paymentData.status !== "approved") {
-        functions.logger.info(
-          "Payment not approved, status:",
-          paymentData?.status,
-          "Payment ID:",
-          paymentId
-        );
-
-        // For pending/in_process payments, don't mark as processed
-        // This allows the payment.updated webhook to process it when status becomes "approved"
-        if (paymentData?.status === "pending" || paymentData?.status === "in_process") {
-          functions.logger.info(
-            "Payment is pending/in_process, waiting for approval:",
-            paymentId
-          );
-
-          // DON'T mark as processed - allow payment.updated to process when approved
-          response.status(200).send("OK");
-          return;
-        }
-
-        // For failed/rejected payments, mark as processed to prevent reprocessing
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: paymentData?.status || "unknown",
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      // Payment is approved - now check for duplicates and mark as processing
-      // Use Firestore transaction for atomic idempotency check
-      const alreadyProcessed = await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
-        const processedDoc = await transaction.get(processedPaymentsRef);
-
-        if (processedDoc.exists) {
-          const existingStatus = processedDoc.data()?.status;
-          // If it was already processed and approved, skip
-          if (existingStatus === "approved") {
-            return true; // Already processed
-          }
-          // If it exists with processing/pending/in_process status, allow reprocessing
-          // This handles the case where payment.created had status "pending" and payment.updated has status "approved"
-          // We'll update it to "processing" and continue
-        }
-
-        // Mark as processing (atomic check-and-set)
-        transaction.set(
-          processedPaymentsRef,
-          {
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "processing",
-            payment_id: paymentId,
-          },
-          {merge: true}
-        );
-
-        return false; // Not processed yet, continue
-      });
-
-      if (alreadyProcessed) {
-        functions.logger.info(
-          "Payment already processed and approved, skipping:",
-          paymentId
-        );
-        response.status(200).send("OK");
-        return;
-      }
-
-      const externalReference = paymentData.external_reference;
-
-      if (!externalReference) {
-        functions.logger.error("Missing external_reference in payment data", {
-          paymentId,
-          paymentSource,
-        });
-
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error",
-          error_type: "missing_external_reference",
-          error_message: "external_reference not provided by Mercado Pago",
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      let parsedReference: ParsedReference;
-      try {
-        parsedReference = parseExternalReference(externalReference);
-      } catch (parseError: unknown) {
-        const parseMessage = toErrorMessage(parseError);
-        functions.logger.error("Invalid external_reference", {
-          paymentId,
-          paymentSource,
-          externalReference,
-          error: parseMessage,
-        });
-
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error",
-          error_type: "invalid_external_reference",
-          error_message: parseMessage,
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      const {userId, paymentType} = parsedReference;
-      const isSubscription = paymentType === "sub" || paymentType === "bundle-sub";
-      const isBundle = paymentType === "bundle-otp" || paymentType === "bundle-sub";
-
-      if (isSubscription && webhookType !== "subscription_authorized_payment" && webhookType !== "payment") {
-        functions.logger.warn("Subscription reference received on unexpected webhook type", {
-          webhookType,
-          paymentId,
-          externalReference,
-        });
-      }
-
-      functions.logger.info("Processing approved payment", {
-        paymentId,
-        userId,
-        courseId: parsedReference.courseId ?? null,
-        bundleId: parsedReference.bundleId ?? null,
-        isSubscription,
-        paymentType,
-      });
-
-      // Validate user exists - Fix #5: Return 200 to prevent retries
-      const userDoc = await db.collection("users").doc(userId).get();
-      if (!userDoc.exists) {
-        functions.logger.error("User not found:", userId);
-        // Mark as processed with error status to prevent retries
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error",
-          error_type: "user_not_found",
-          error_message: "User not found",
-          payment_type: paymentType,
-        });
-        // Return 200 to prevent retries
-        response.status(200).send("OK");
-        return;
-      }
-
-      const userData = userDoc.data() || {};
-      const userEmail = userData?.email ?? null;
-      const userName =
-        userData?.display_name ?? userData?.name ?? userData?.fullName ?? null;
-
-      const subscriptionIdForBundle =
-        paymentData?.subscription_id || paymentData?.preapproval_id || null;
-
-      // ── Bundle branch ──
-      if (isBundle) {
-        const bundleId = parsedReference.bundleId!;
-        const bundleDoc = await db.collection("bundles").doc(bundleId).get();
-        if (!bundleDoc.exists) {
-          functions.logger.error("Bundle not found:", bundleId);
-          await processedPaymentsRef.set({
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "error",
-            error_type: "bundle_not_found",
-            error_message: "Bundle not found",
-            userId,
-            payment_type: paymentType,
-          });
-          response.status(200).send("OK");
-          return;
-        }
-
-        const existingCourses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
-        const hasPriorBundleGrant = Object.values(existingCourses).some(
-          (entry) => entry.bundleId === bundleId && entry.status === "active"
-        );
-        const isBundleRenewal = hasPriorBundleGrant && isSubscription;
-
-        let accessDuration: string | undefined;
-        if (isSubscription && subscriptionIdForBundle) {
-          const subDoc = await db.collection("users").doc(userId)
-            .collection("subscriptions").doc(subscriptionIdForBundle).get();
-          accessDuration = subDoc.exists ?
-            (subDoc.data()!.access_duration as string | undefined) :
-            undefined;
-        }
-        if (!accessDuration) {
-          const metadata = (paymentData?.metadata && typeof paymentData.metadata === "object") ?
-            paymentData.metadata as Record<string, unknown> :
-            {};
-          accessDuration = (metadata.access_duration as string | undefined) ?? "monthly";
-        }
-
-        try {
-          // Security (audit H-17): bundle grant + processed_payments
-          // finalization must commit atomically. Mirror Gen2 path.
-          await db.runTransaction(async (tx: admin.firestore.Transaction) => {
-            const r = await assignBundleToUser({
-              userId,
-              bundleId,
-              accessDuration: accessDuration as string,
-              paymentId,
-              subscriptionId: subscriptionIdForBundle,
-              isRenewal: isBundleRenewal,
-              transaction: tx,
-            });
-
-            if (isSubscription && subscriptionIdForBundle) {
-              tx.set(
-                db.collection("users").doc(userId)
-                  .collection("subscriptions").doc(subscriptionIdForBundle),
-                {
-                  status: "authorized",
-                  last_payment_id: paymentId,
-                  last_payment_date:
-                    paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-                  transaction_amount: paymentData.transaction_amount || null,
-                  currency_id: paymentData.currency_id || null,
-                  management_url:
-                    `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionIdForBundle}`,
-                  updated_at: admin.firestore.FieldValue.serverTimestamp(),
-                },
-                {merge: true}
-              );
-            }
-
-            tx.set(processedPaymentsRef, {
-              processed_at: admin.firestore.FieldValue.serverTimestamp(),
-              status: "approved",
-              userId,
-              bundleId,
-              courseIds: r.courseIdsGranted,
-              isSubscription,
-              isRenewal: isBundleRenewal,
-              payment_type: paymentType,
-              userEmail,
-              userName,
-              bundleTitle: r.bundleTitle,
-              state: "completed",
-              amount: paymentData.transaction_amount ??
-                paymentData.transaction_details?.total_paid_amount ?? null,
-              currency_id: paymentData.currency_id ?? null,
-            });
-          });
-        } catch (bundleError) {
-          functions.logger.error("Bundle assignment failed", bundleError);
-          const errType = classifyError(bundleError);
-          if (errType === "RETRYABLE") {
-            response.status(500).send("Error");
-            return;
-          }
-          await processedPaymentsRef.set({
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "error",
-            error_type: "bundle_assignment_failed",
-            error_message: toErrorMessage(bundleError),
-            userId, bundleId, payment_type: paymentType,
-          });
-        }
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      const courseId = parsedReference.courseId!;
-
-      // Validate course exists - Fix #5: Return 200 to prevent retries
-      const courseDoc = await db.collection("courses").doc(courseId).get();
-      if (!courseDoc.exists) {
-        functions.logger.error("Course not found:", courseId);
-        // Mark as processed with error status to prevent retries
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error",
-          error_type: "course_not_found",
-          error_message: "Course not found",
-          payment_type: paymentType,
-        });
-        // Return 200 to prevent retries
-        response.status(200).send("OK");
-        return;
-      }
-
-      const courseDetails = courseDoc.data();
-      const courseTitle = courseDetails?.title || "Untitled Course";
-      const courseAccessDuration = courseDetails?.access_duration;
-
-      // Check if user already owns course
-      const userCourses = userData?.courses || {};
-      const existingCourseData = userCourses[courseId];
-      const existingPurchase =
-        existingCourseData?.status === "active" &&
-        new Date(existingCourseData.expires_at) > new Date();
-      const isRenewal = existingPurchase && isSubscription;
-
-      const subscriptionId =
-        paymentData?.subscription_id || paymentData?.preapproval_id || null;
-
-      // ── Renewal ──
-      if (isRenewal) {
-        functions.logger.info("Subscription renewal detected:", userId, courseId);
-
-        const currentExpiration = existingCourseData?.expires_at ?? undefined;
-        let expirationDate: string;
-        try {
-          expirationDate = calculateExpirationDate(courseAccessDuration, {
-            from: currentExpiration,
-          });
-        } catch {
-          functions.logger.warn("Invalid expires_at on renewal, falling back to now", {
-            userId, courseId, currentExpiration,
-          });
-          expirationDate = calculateExpirationDate(courseAccessDuration);
-        }
-
-        // Security (audit H-15 / H-16): wrap renewal grant + subscription
-        // update + processed_payments finalization in a single transaction.
-        // Previously the grant ran outside any transaction, allowing two
-        // concurrent webhooks to each compute expires_at from a stale read
-        // and double-extend the access window per duplicate event.
-        await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
-          await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
-            isRenewal: true,
-            existingCourseData,
-            transaction,
-          });
-
-          if (isSubscription && subscriptionId) {
-            transaction.set(
-              db
-                .collection("users").doc(userId)
-                .collection("subscriptions").doc(subscriptionId),
-              {
-                status: "authorized",
-                last_payment_id: paymentId,
-                last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-                updated_at: admin.firestore.FieldValue.serverTimestamp(),
-              },
-              {merge: true}
-            );
-          }
-
-          transaction.set(processedPaymentsRef, {
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved", userId, courseId, isSubscription: true, isRenewal: true,
-            payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
-            amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
-            currency_id: paymentData.currency_id ?? null,
-          });
-        });
-
-        response.status(200).send("OK");
-        return;
-      }
-
-      // ── Already owned (one-time duplicate) ──
-      if (existingPurchase && !isSubscription) {
-        functions.logger.info("User already owns course, skipping:", userId, courseId);
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "already_owned", userId, courseId, userEmail, userName,
-          courseTitle, state: "already_owned", payment_type: paymentType,
-        });
-        response.status(200).send("OK");
-        return;
-      }
-
-      // ── New purchase ──
-      if (!courseAccessDuration) {
-        functions.logger.error("Course missing access_duration:", courseId);
-        await processedPaymentsRef.set({
-          processed_at: admin.firestore.FieldValue.serverTimestamp(),
-          status: "error", error_type: "missing_access_duration",
-          error_message: "Course missing access_duration",
-          userId, courseId, userEmail, userName, courseTitle,
-          state: "failed", payment_type: paymentType,
-        });
-        response.status(200).send("OK");
-        return;
-      }
-
-      const expirationDate = calculateExpirationDate(courseAccessDuration);
-
-      await db.runTransaction(async (transaction: admin.firestore.Transaction) => {
-        await assignCourseToUser(userId, courseId, courseDetails || {}, expirationDate, {
-          transaction,
-        });
-
-        if (isSubscription && subscriptionId) {
-          transaction.set(
-            db.collection("users").doc(userId).collection("subscriptions").doc(subscriptionId),
-            {
-              status: "authorized",
-              last_payment_id: paymentId,
-              last_payment_date: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
-              transaction_amount: paymentData.transaction_amount || null,
-              currency_id: paymentData.currency_id || null,
-              management_url: `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${subscriptionId}`,
-              updated_at: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            {merge: true}
-          );
-        }
-
-        transaction.set(
-          processedPaymentsRef,
-          {
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "approved", userId, courseId, isSubscription, isRenewal: false,
-            payment_type: paymentType, userEmail, userName, courseTitle, state: "completed",
-            amount: paymentData.transaction_amount ?? paymentData.transaction_details?.total_paid_amount ?? null,
-            currency_id: paymentData.currency_id ?? null,
-          },
-          {merge: true}
-        );
-      });
-
-      response.status(200).send("OK");
-    } catch (error: unknown) {
-      const message = toErrorMessage(error);
-      // Audit M-25: scrub webhook handler error (may carry MP payload).
-      functions.logger.error("Error in webhook:", safeErrorPayload(error));
-
-      // Fix #4: Classify errors and return appropriate status codes
-      const errorType = classifyError(error);
-
-      switch (errorType) {
-      case "RETRYABLE":
-        // Network errors, API timeouts, etc.
-        functions.logger.warn("Retryable error, returning 500 for retry");
-        response.status(500).send("Error");
-        break;
-
-      case "NON_RETRYABLE":
-        // Validation errors, missing data, etc.
-        functions.logger.warn("Non-retryable error, returning 200 to prevent retry");
-        // Mark as processed to prevent retries
-        try {
-          const processedPaymentsRef = db
-            .collection("processed_payments")
-            .doc(request.body?.data?.id || "unknown");
-          await processedPaymentsRef.set({
-            processed_at: admin.firestore.FieldValue.serverTimestamp(),
-            status: "error",
-            error_message: message,
-          });
-        } catch (writeError) {
-          functions.logger.error("Error writing error status:", writeError);
-        }
-
-        response.status(200).send("OK");
-        break;
-      }
-    }
-  });
-
-export const updateSubscriptionStatus = functions
-  .runWith({secrets: [mercadopagoAccessToken]})
-  .https.onRequest(async (request, response) => {
-    response.set("Access-Control-Allow-Origin", "*");
-    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    response.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
-
-    if (request.method === "OPTIONS") {
-      response.status(204).send("");
-      return;
-    }
-
-    if (request.method !== "POST") {
-      response.status(405).json({error: {code: "VALIDATION_ERROR", message: "Method not allowed"}});
-      return;
-    }
-
-    if (!(await verifyAppCheck(request))) {
-      sendAppCheckError(response);
-      return;
-    }
-
-    const userId = await verifyGen1Auth(request);
-    if (!userId) {
-      sendAuthError(response);
-      return;
-    }
-
-    if (!checkRateLimit(userId)) {
-      sendRateLimitError(response);
-      return;
-    }
-
-    try {
-      const {
-        subscriptionId,
-        action,
-        survey,
-      }: {
-        subscriptionId?: string;
-        action?: string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        survey?: any;
-      } = request.body || {};
-
-      if (!subscriptionId || typeof subscriptionId !== "string") {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "subscriptionId es requerido", field: "subscriptionId"}});
-        return;
-      }
-
-      if (!action || typeof action !== "string") {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "action es requerido", field: "action"}});
-        return;
-      }
-
-      const ALLOWED_ACTIONS = ["cancel", "pause", "resume"] as const;
-      const actionToStatus: Record<string, string> = {
-        cancel: "cancelled",
-        pause: "paused",
-        resume: "authorized",
-      };
-
-      if (!ALLOWED_ACTIONS.includes(action as typeof ALLOWED_ACTIONS[number])) {
-        response.status(400).json({error: {code: "VALIDATION_ERROR", message: "Unsupported action. Must be cancel, pause, or resume", field: "action"}});
-        return;
-      }
-
-      const targetStatus = actionToStatus[action];
-
-      const subscriptionRef = db
-        .collection("users")
-        .doc(userId)
-        .collection("subscriptions")
-        .doc(subscriptionId);
-
-      const subscriptionDoc = await subscriptionRef.get();
-
-      if (!subscriptionDoc.exists) {
-        response.status(404).json({error: {code: "NOT_FOUND", message: "Subscription not found for user"}});
-        return;
-      }
-
-      const subscriptionData = subscriptionDoc.data() ?? {};
-
-      // Audit H-20: gate transitions on the on-disk status. Without this,
-      // cancel-after-cancel rewrites cancelled_at (audit-trail loss),
-      // resume-after-cancel erases cancelled_at via FieldValue.delete(),
-      // pause-after-cancel produces drift. Reject illegal transitions before
-      // calling MP.
-      const currentStatus = (subscriptionData?.status as string | undefined) ?? null;
-      try {
-        assertAllowedSubscriptionTransition(currentStatus, targetStatus);
-      } catch (err: unknown) {
-        const errObj = err as Record<string, unknown> | null;
-        const status = typeof errObj?.status === "number" ? errObj.status : 409;
-        const message = typeof errObj?.message === "string" ?
-          errObj.message :
-          "Transición de suscripción inválida";
-        response.status(status).json({error: {code: "CONFLICT", message}});
-        return;
-      }
-
-      const client = getClient();
-      const preapproval = new PreApproval(client);
-
-      await preapproval.update({
-        id: subscriptionId,
-        body: {
-          status: targetStatus,
-        },
-      });
-
-      const updateData: Record<string, unknown> = {
-        status: targetStatus,
-        last_action: action,
-        updated_at: admin.firestore.FieldValue.serverTimestamp(),
-      };
-
-      if (targetStatus === "cancelled") {
-        // Audit H-20: only set cancelled_at if it doesn't already exist.
-        // The transition guard above already rejects cancel-after-cancel, so
-        // this is a belt-and-braces check against any future code path that
-        // bypasses the guard.
-        if (!subscriptionData.cancelled_at) {
-          updateData.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
-        }
-      } else if (targetStatus === "authorized") {
-        updateData.cancelled_at = admin.firestore.FieldValue.delete();
-      }
-
-      await subscriptionRef.set(updateData, {merge: true});
-
-      if (action === "cancel" && survey?.answers) {
-        try {
-          const courseId =
-            survey?.courseId ??
-            subscriptionData?.course_id ??
-            undefined;
-
-          const courseTitle =
-            survey?.courseTitle ??
-            subscriptionData?.course_title ??
-            undefined;
-
-          const statusBefore =
-            survey?.subscriptionStatusBefore ?? subscriptionData?.status ?? undefined;
-
-          const payerEmail = subscriptionData?.payer_email ?? survey?.payerEmail ?? undefined;
-
-          const surveyRecord: Record<string, unknown> = {
-            userId,
-            subscriptionId,
-            answers: survey.answers,
-            source: survey?.source ?? "in_app_cancel_flow_v1",
-            statusAfter: targetStatus,
-            submittedAt: admin.firestore.FieldValue.serverTimestamp(),
-          };
-
-          if (courseId !== undefined) {
-            surveyRecord.courseId = courseId;
-          }
-
-          if (courseTitle !== undefined) {
-            surveyRecord.courseTitle = courseTitle;
-          }
-
-          if (statusBefore !== undefined) {
-            surveyRecord.statusBefore = statusBefore;
-          }
-
-          if (payerEmail !== undefined) {
-            surveyRecord.payerEmail = payerEmail;
-          }
-
-          await db.collection("subscription_cancellation_feedback").add(surveyRecord);
-        } catch (surveyError) {
-          functions.logger.error(
-            "Failed to record cancellation survey feedback",
-            surveyError
-          );
-        }
-      }
-
-      response.json({data: {status: targetStatus}});
-    } catch (error: unknown) {
-      // Audit M-25: scrub MP SDK error before logging.
-      functions.logger.error("Error updating subscription status:", safeErrorPayload(error));
-      response.status(500).json({
-        error: {code: "INTERNAL_ERROR", message: "Error al actualizar la suscripción"},
-      });
-    }
-  });
-
 
 /**
  * Lookup user by email or username for creator invite (one-on-one client add).
@@ -2655,7 +1105,16 @@ export const sendVideoExchangeNotification = functions
       }
 
       const fromAddress = "Wake <no-reply@wakelab.co>";
-      const ctaUrl = isToCoach ? "https://wakelab.co/creators/inbox" : "https://wakelab.co/app";
+      // Client recipient: bake a magic-link so the bare URL doesn't land them
+      // on the InstallScreen with no path back. Deep-link to the specific
+      // exchange so a tap on the email opens the thread, not just home.
+      // App.web.js's bypass list includes /video-exchange/* so the
+      // unauthenticated browser doesn't get the install gate.
+      // Coach recipient stays on the creator dashboard (its own SPA, its
+      // own auth flow).
+      const ctaUrl = isToCoach ?
+        "https://wakelab.co/creators/inbox" :
+        await buildPurchaseSignInUrl(toEmail, `/video-exchange/${exchangeId}`);
       const subject = isToCoach ?
         `Nuevo video de ${senderName}` :
         `${senderName} respondió tu video`;
@@ -2778,7 +1237,7 @@ export const processEmailQueue = onSchedule(
     // batched retries + Resend's own backoff still drain queues promptly.
     schedule: "every 5 minutes",
     region: "us-central1",
-    secrets: [resendApiKey, unsubscribeSecret],
+    secrets: [resendApiKey, unsubscribeSecret, posthogApiKeyV2],
     memory: "256MiB",
     timeoutSeconds: 120,
   },
@@ -2990,6 +1449,23 @@ export const processEmailQueue = onSchedule(
         });
       }
 
+      if (sentThisTick > 0 && creatorId) {
+        try {
+          analyticsCapture({
+            distinctId: creatorId,
+            event: "email.batch_sent",
+            properties: {
+              send_id: sendDoc.id,
+              type: sendType,
+              count: sentThisTick,
+              failed: failedThisTick,
+            },
+          });
+        } catch {
+          // ignore — analytics is best-effort
+        }
+      }
+
       functions.logger.info("processEmailQueue: tick processed", {
         sendId: sendDoc.id,
         batches: batchesThisTick,
@@ -2998,6 +1474,7 @@ export const processEmailQueue = onSchedule(
         retried: retriedThisTick,
       });
     }
+    await flushAnalytics();
   }
 );
 
@@ -3061,42 +1538,113 @@ export const api = onRequest(
       // throws if process.env.UNSUBSCRIBE_SECRET is absent. Without this
       // binding, every unsubscribe link returns "Enlace inválido" in prod.
       unsubscribeSecret,
+      // Cost/behavior telemetry — server-side PostHog. Optional: when the
+      // secret is unset the analytics module silently no-ops.
+      posthogApiKeyV2,
     ],
   },
   app
 );
 
-// ─── Event page with dynamic OG tags ────────────────────────────────────────
+// ─── Event / creator page shared HTML loader ────────────────────────────────
+
+// 5-minute TTL — long enough to absorb most cold-start savings, short enough
+// that a hosting deploy propagates to long-lived function instances quickly.
+const INDEX_HTML_TTL_MS = 5 * 60 * 1000;
+// Hard timeout on the upstream fetch so a stuck hosting deploy can't pin a
+// 256MiB function instance for the platform default (~30s) and exceed our
+// configured timeoutSeconds.
+const INDEX_HTML_FETCH_TIMEOUT_MS = 3000;
 
 let cachedIndexHtml: string | null = null;
+let cachedIndexHtmlAt = 0;
 
-async function getIndexHtml(): Promise<string> {
-  if (cachedIndexHtml) return cachedIndexHtml;
+async function getIndexHtml(): Promise<string | null> {
+  if (cachedIndexHtml && Date.now() - cachedIndexHtmlAt < INDEX_HTML_TTL_MS) {
+    return cachedIndexHtml;
+  }
 
   // Fetch live from hosting — always in sync with deployed assets
   try {
-    const resp = await fetch("https://wakelab.co/index.html");
+    const resp = await fetch("https://wakelab.co/index.html", {
+      signal: AbortSignal.timeout(INDEX_HTML_FETCH_TIMEOUT_MS),
+    });
     if (resp.ok) {
       cachedIndexHtml = await resp.text();
+      cachedIndexHtmlAt = Date.now();
       return cachedIndexHtml;
     }
   } catch {
-    // fall through to redirect fallback
+    // fall through; null signals "serve a 503"
   }
 
-  // Fallback: redirect to homepage if fetch fails
-  cachedIndexHtml = `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Wake</title>
-</head>
-<body>
-  <script>window.location.replace("https://wakelab.co");</script>
-</body>
-</html>`;
-  return cachedIndexHtml;
+  // If we have a previously-cached copy, serve it stale rather than 503ing.
+  if (cachedIndexHtml) return cachedIndexHtml;
+  return null;
+}
+
+// CR-7: function-rewritten responses bypass the Firebase Hosting `headers`
+// rules (those apply only to static content), so every function that returns
+// SPA HTML must emit the same security headers itself. Mirrors the `/app/**`
+// CSP in firebase.json since the served bundle IS the SPA and runs the same
+// Firebase Auth, App Check, and reCAPTCHA code paths.
+const STOREFRONT_HTML_CSP =
+  "default-src 'self'; " +
+  "script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.googleapis.com https://apis.google.com https://www.google.com https://www.recaptcha.net; " +
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://firebaseappcheck.googleapis.com https://firebasestorage.googleapis.com wss://*.firebaseio.com; " +
+  "img-src 'self' data: blob: https://firebasestorage.googleapis.com https://lh3.googleusercontent.com https://*.googleusercontent.com; " +
+  "style-src 'self' 'unsafe-inline'; " +
+  "font-src 'self' data: https://fonts.gstatic.com; " +
+  "frame-src 'self' https://www.google.com https://www.recaptcha.net https://wakelab.firebaseapp.com https://wolf-20b8b.firebaseapp.com https://accounts.google.com; " +
+  "frame-ancestors 'none'; base-uri 'self'; form-action 'self';";
+
+function setStorefrontHtmlSecurityHeaders(res: {set(k: string, v: string): unknown}): void {
+  res.set("Content-Security-Policy", STOREFRONT_HTML_CSP);
+  res.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.set("X-Frame-Options", "DENY");
+  res.set(
+    "Permissions-Policy",
+    "interest-cohort=(), geolocation=(), microphone=(), camera=(), payment=(self), usb=()"
+  );
+}
+
+// H-1: lightweight per-IP throttle on the OG-rewriting functions. They sit
+// outside the Express api function (no checkIpRateLimit), so without this an
+// attacker can grind /aaaa, /aaab, ... at near-zero cost while burning
+// Firestore reads. 60 req/min/IP per function is generous for legit traffic
+// (one IP-bound IG bot scraping previews) and catches enumeration loops.
+const PAGE_FN_IP_RATE_WINDOW_MS = 60_000;
+const PAGE_FN_IP_RATE_LIMIT = 60;
+const pageFnIpHits = new Map<string, {count: number; reset: number}>();
+
+function clientIpFromReq(req: {ip?: string; ips?: string[]; get(k: string): string | undefined}): string {
+  if (req.ips && req.ips.length > 0) return req.ips[0];
+  if (req.ip) return req.ip;
+  const fwd = req.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return "unknown";
+}
+
+function pageFnRateLimited(
+  req: {ip?: string; ips?: string[]; get(k: string): string | undefined}
+): boolean {
+  const ip = clientIpFromReq(req);
+  const now = Date.now();
+  const entry = pageFnIpHits.get(ip);
+  if (!entry || now > entry.reset) {
+    pageFnIpHits.set(ip, {count: 1, reset: now + PAGE_FN_IP_RATE_WINDOW_MS});
+    // Opportunistic GC so the Map doesn't grow unbounded across cold instances.
+    if (pageFnIpHits.size > 5000) {
+      for (const [k, v] of pageFnIpHits) {
+        if (now > v.reset) pageFnIpHits.delete(k);
+      }
+    }
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > PAGE_FN_IP_RATE_LIMIT;
 }
 
 function formatEventDate(value: unknown): string {
@@ -3128,9 +1676,20 @@ export const eventPage = onRequest(
       res.status(404).send("Not found");
       return;
     }
+    if (pageFnRateLimited(req)) {
+      res.set("Retry-After", "60");
+      res.status(429).send("Too many requests");
+      return;
+    }
     const eventId = match[1];
 
     let html = await getIndexHtml();
+    if (!html) {
+      // Hosting unreachable AND no stale cache. Tell the caller to retry.
+      res.set("Retry-After", "5");
+      res.status(503).send("Service temporarily unavailable");
+      return;
+    }
 
     try {
       const eventDoc = await db.collection("events").doc(eventId).get();
@@ -3159,6 +1718,7 @@ export const eventPage = onRequest(
       // Serve fallback HTML without dynamic tags
     }
 
+    setStorefrontHtmlSecurityHeaders(res);
     res.set("Cache-Control", "public, max-age=300, s-maxage=600");
     res.status(200).send(html);
   }
@@ -3168,13 +1728,200 @@ function escapeOgAttr(s: string): string {
   // L-34: cover the full HTML special-char set so the helper stays safe if
   // a future change moves any of these meta values into a single-quoted attr
   // or inline JSON-LD where >, ' would otherwise turn into XSS sinks.
+  // Also strip ASCII control chars / null bytes which can prematurely
+  // terminate attribute parsing in some HTML parsers.
   return s
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]/g, "")
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+
+// Reject non-https URLs in places that would be rendered as <img src> or
+// crawled by social bots. A creator-controlled `image_url` set to e.g.
+// "javascript:..." would otherwise render as `<meta property="og:image"
+// content="javascript:..." />` and some crawlers do dereference it.
+function safeImageUrl(raw: unknown, fallback: string): string {
+  if (typeof raw !== "string") return fallback;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("https://")) return fallback;
+  return trimmed;
+}
+
+// ─── Creator storefront page with dynamic OG tags ───────────────────────────
+//
+// Serves wakelab.co/{username} and wakelab.co/{username}/{programId}.
+// Looks up the creator (and optionally a program), rewrites OG meta tags so
+// shared links render rich previews on WhatsApp / IG / Twitter, then returns
+// the SPA HTML for the landing app to hydrate.
+
+import {isReservedUsername} from "./api/utils/reservedUsernames.js";
+
+const CREATOR_USERNAME_RE = /^[a-z0-9_-]{1,50}$/;
+const CREATOR_PROGRAM_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+function applyOgTags(
+  html: string,
+  opts: {
+    title: string;
+    description: string;
+    image: string;
+    url: string;
+  }
+): string {
+  return html
+    .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(opts.title)}" />`)
+    .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeOgAttr(opts.description)}" />`)
+    .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeOgAttr(opts.image)}" />`)
+    .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="${escapeOgAttr(opts.url)}" />`)
+    .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeOgAttr(opts.title)}" />`)
+    .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeOgAttr(opts.description)}" />`)
+    .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeOgAttr(opts.image)}" />`)
+    .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(opts.title)} — Wake</title>`);
+}
+
+export const creatorPage = onRequest(
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 10,
+    concurrency: 80,
+  },
+  async (req, res) => {
+    if (pageFnRateLimited(req)) {
+      res.set("Retry-After", "60");
+      res.status(429).send("Too many requests");
+      return;
+    }
+
+    // Match /{username} OR /{username}/{programId}.
+    // Reject any deeper path so reserved sub-routes (/comprado etc.) handled
+    // by the SPA don't accidentally trigger this function — Hosting only
+    // rewrites two-segment paths to us anyway, but defense in depth.
+    const match = req.path.match(/^\/([^/]+)(?:\/([^/]+))?\/?$/);
+
+    // H-12: hosting rewrites accept upper- and lowercase, but usernames are
+    // canonicalized to lowercase. 301-redirect any path that contains capital
+    // letters in the username segment so OG bots see one canonical URL.
+    if (match) {
+      const rawUser = match[1] || "";
+      if (rawUser !== rawUser.toLowerCase()) {
+        const canonicalPath = "/" + rawUser.toLowerCase() +
+          (match[2] ? "/" + match[2] : "");
+        res.set("Cache-Control", "public, max-age=86400");
+        res.redirect(301, canonicalPath);
+        return;
+      }
+    }
+
+    let html = await getIndexHtml();
+    if (!html) {
+      res.set("Retry-After", "5");
+      res.status(503).send("Service temporarily unavailable");
+      return;
+    }
+
+    const fallbackImage = "https://wakelab.co/app_icon.png";
+    const send = (status = 200) => {
+      setStorefrontHtmlSecurityHeaders(res);
+      // No `Vary: User-Agent` — the response body is identical for all UAs and
+      // varying on it would shred the CDN hit rate.
+      res.set("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=86400");
+      res.status(status).send(html);
+    };
+
+    if (!match) {
+      send();
+      return;
+    }
+
+    // H-12: hosting accepts only [a-z0-9_-] but defense-in-depth lowercase
+    // here lets us still match if a future hosting rewrite admits uppercase.
+    const usernameRaw = (match[1] || "").toLowerCase();
+    const programId = match[2] || null;
+
+    if (!CREATOR_USERNAME_RE.test(usernameRaw) || isReservedUsername(usernameRaw)) {
+      send();
+      return;
+    }
+    if (programId && !CREATOR_PROGRAM_ID_RE.test(programId)) {
+      send();
+      return;
+    }
+
+    try {
+      const userSnap = await db
+        .collection("users")
+        .where("username", "==", usernameRaw)
+        .limit(1)
+        .get();
+      if (userSnap.empty) {
+        send();
+        return;
+      }
+      const userDoc = userSnap.docs[0];
+      const userData = userDoc.data();
+      if (userData.role !== "creator" && userData.role !== "admin") {
+        send();
+        return;
+      }
+
+      const displayName = (userData.displayName as string) ||
+        (userData.name as string) || usernameRaw;
+      const profileImage = safeImageUrl(
+        userData.profilePictureUrl ?? userData.profile_picture_url,
+        fallbackImage
+      );
+      const bio = (userData.bio as string) || "";
+
+      if (!programId) {
+        // Profile page
+        html = applyOgTags(html, {
+          title: `${displayName} — Wake`,
+          description: bio.slice(0, 160) || `Programas de ${displayName} en Wake`,
+          image: profileImage,
+          url: `https://wakelab.co/${usernameRaw}`,
+        });
+        send();
+        return;
+      }
+
+      // Program detail page
+      const programDoc = await db.collection("courses").doc(programId).get();
+      if (!programDoc.exists) {
+        send();
+        return;
+      }
+      const programData = programDoc.data() ?? {};
+      if (
+        programData.creator_id !== userDoc.id ||
+        programData.status !== "published"
+      ) {
+        send();
+        return;
+      }
+
+      const programTitle = (programData.title as string) || "Programa";
+      const programDescription = (programData.description as string) || "";
+      const programImage = safeImageUrl(programData.image_url, profileImage);
+
+      html = applyOgTags(html, {
+        title: `${programTitle} — ${displayName}`,
+        description: programDescription.slice(0, 160) ||
+          `${programTitle} en Wake con ${displayName}`,
+        image: programImage,
+        url: `https://wakelab.co/${usernameRaw}/${programId}`,
+      });
+      send();
+    } catch (err) {
+      functions.logger.error("creatorPage failed:", err);
+      send();
+    }
+  }
+);
 
 // ─── Scheduled: expand weekly availability templates into concrete slots ───
 export const expandWeeklyAvailability = onSchedule(
@@ -3477,6 +2224,7 @@ export const detectAbandonedSessions = onSchedule(
     region: "us-central1",
     timeoutSeconds: 300,
     memory: "256MiB",
+    secrets: [posthogApiKeyV2],
   },
   async () => {
     const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
@@ -3522,6 +2270,21 @@ export const detectAbandonedSessions = onSchedule(
         {merge: true}
       );
 
+      try {
+        analyticsCapture({
+          distinctId: userId,
+          event: "workout.session_abandoned",
+          properties: {
+            course_id: (data.courseId as string) || null,
+            elapsed_seconds: (data.elapsedSeconds as number) || 0,
+            completed_sets: completedSetsCount,
+            detected_by: "scheduled_scan",
+          },
+        });
+      } catch {
+        // ignore — analytics is best-effort
+      }
+
       batch.delete(doc.ref);
       count++;
       if (count >= 400) break;
@@ -3531,6 +2294,7 @@ export const detectAbandonedSessions = onSchedule(
       await batch.commit();
       functions.logger.info(`detectAbandonedSessions: recorded ${count} abandoned sessions`);
     }
+    await flushAnalytics();
   }
 );
 
@@ -3619,6 +2383,469 @@ export const cleanupVideoExchanges = onSchedule(
   }
 );
 
+// ─── Scheduled: reconcile MP subscriptions ────────────────────────────────
+// Backstop for dropped webhooks. MP only retries 5xx for ~3 days; after that,
+// any unfired status change (typically: user cancelled in MP portal, or a
+// recurring charge whose webhook bounced) is lost forever. This cron walks
+// every active-ish subscription daily and pulls the canonical state from MP.
+//
+// Specifically protects against:
+// - "charged after cancel": user cancels in MP portal, webhook drops → Wake
+//   shows authorized indefinitely, but more importantly Wake never sees the
+//   cancel and may surface an outdated "still active" UI.
+// - "paid but no access": authorized_payment webhook drops → Wake never
+//   extends expires_at → user paid for the month but loses access.
+//
+// Conservative scope: only touches subscriptions in {pending, authorized,
+// paused}. Reads MP preapproval, then either syncs status/next_billing_date
+// or, if MP says the preapproval is gone (404), marks the doc cancelled.
+export const reconcileSubscriptions = onSchedule(
+  {
+    schedule: "every day 03:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [mercadopagoAccessToken],
+    memory: "256MiB",
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const token = mercadopagoAccessToken.value();
+    if (!token) {
+      functions.logger.error("reconcileSubscriptions: missing access token");
+      return;
+    }
+    const client = sharedGetClient(token);
+    const preapproval = new PreApproval(client);
+
+    // Only fetch subs in states that can change. cancelled/expired are terminal.
+    const snap = await db
+      .collectionGroup("subscriptions")
+      .where("status", "in", ["pending", "authorized", "paused"])
+      .get();
+
+    if (snap.empty) {
+      functions.logger.info("reconcileSubscriptions: nothing to reconcile");
+      return;
+    }
+
+    let synced = 0;
+    let driftFixed = 0;
+    let errors = 0;
+
+    // Best-effort helper: given a bundle id, return the list of course ids
+    // it grants. Cached per-cron-tick to avoid re-reading the same bundle.
+    const bundleCourseCache = new Map<string, string[]>();
+    const resolveBundleCourseIds = async (bundleId: string): Promise<string[]> => {
+      if (bundleCourseCache.has(bundleId)) return bundleCourseCache.get(bundleId)!;
+      try {
+        const bDoc = await db.collection("bundles").doc(bundleId).get();
+        const raw = bDoc.data()?.course_ids;
+        const ids = Array.isArray(raw) ?
+          raw.filter((v): v is string => typeof v === "string" && v.length > 0) :
+          [];
+        bundleCourseCache.set(bundleId, ids);
+        return ids;
+      } catch {
+        bundleCourseCache.set(bundleId, []);
+        return [];
+      }
+    };
+
+    for (const doc of snap.docs) {
+      const data = doc.data() ?? {};
+      const subscriptionId = doc.id;
+      const localStatus = data.status as string | undefined;
+      const localNextBilling = data.next_billing_date as string | undefined;
+      const courseId = typeof data.course_id === "string" ? data.course_id : null;
+      const bundleId = typeof data.bundle_id === "string" ? data.bundle_id : null;
+      const userId = (typeof data.user_id === "string" ? data.user_id :
+        (typeof data.userId === "string" ? data.userId : null));
+
+      try {
+        const pre = (await preapproval.get({id: subscriptionId})) as unknown as {
+          status?: string | null;
+          next_payment_date?: string | null;
+          auto_recurring?: {
+            next_payment_date?: string | null;
+            transaction_amount?: number | null;
+            currency_id?: string | null;
+          };
+        };
+
+        const mpStatus = pre?.status ?? null;
+        const mpNextBilling =
+          pre?.next_payment_date ?? pre?.auto_recurring?.next_payment_date ?? null;
+
+        const update: Record<string, unknown> = {};
+        if (mpStatus && mpStatus !== localStatus) {
+          update.status = mpStatus;
+          if (mpStatus === "cancelled" && !data.cancelled_at) {
+            update.cancelled_at = admin.firestore.FieldValue.serverTimestamp();
+          }
+        }
+        if (mpNextBilling && mpNextBilling !== localNextBilling) {
+          update.next_billing_date = mpNextBilling;
+        }
+        if (typeof pre?.auto_recurring?.transaction_amount === "number") {
+          update.transaction_amount = pre.auto_recurring.transaction_amount;
+        }
+        if (typeof pre?.auto_recurring?.currency_id === "string") {
+          update.currency_id = pre.auto_recurring.currency_id;
+        }
+
+        if (Object.keys(update).length > 0) {
+          update.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          update.last_action = "reconcile";
+          await doc.ref.set(update, {merge: true});
+          driftFixed++;
+        }
+
+        // CRITICAL: when MP advances next_billing_date but the renewal webhook
+        // dropped, we still need to extend access on the user's course entry —
+        // otherwise the user paid, MP confirms, and Wake locks them out at
+        // /current-block until the next charge clears. Only bump forward
+        // (never shorten access). Skip cancelled subs so we don't extend
+        // someone who just cancelled.
+        //
+        // Also materializes the missing entry from courses/{id} when MP says
+        // authorized but the local user.courses[id] is missing entirely —
+        // covers the "paid but never granted access" failure mode where the
+        // initial trial-grant / payment-webhook never wrote to the user doc.
+        // Walks course_ids[] for bundle subscriptions too, since the sub doc
+        // for a bundle carries bundle_id but no course_id.
+        if (mpStatus === "authorized" && mpNextBilling && userId) {
+          const targetCourseIds: string[] = courseId ?
+            [courseId] :
+            (bundleId ? await resolveBundleCourseIds(bundleId) : []);
+          for (const targetCourseId of targetCourseIds) {
+            try {
+              const userRef = db.collection("users").doc(userId);
+              const mpNextMs = Date.parse(mpNextBilling);
+              if (!Number.isFinite(mpNextMs)) continue;
+              await db.runTransaction(async (tx) => {
+                const userSnap = await tx.get(userRef);
+                if (!userSnap.exists) return;
+                const courses = (userSnap.data()?.courses ?? {}) as Record<string, Record<string, unknown>>;
+                const entry = courses[targetCourseId];
+                if (entry) {
+                  // Existing entry: only bump expires_at forward.
+                  if (entry.status !== "active" && entry.status !== "expired") return;
+                  const onDiskRaw = entry.expires_at;
+                  let onDiskMs: number | null = null;
+                  if (typeof onDiskRaw === "string") {
+                    const ms = Date.parse(onDiskRaw);
+                    if (Number.isFinite(ms)) onDiskMs = ms;
+                  }
+                  if (onDiskMs !== null && onDiskMs >= mpNextMs) return;
+                  tx.update(userRef, {
+                    [`courses.${targetCourseId}.expires_at`]: mpNextBilling,
+                    [`courses.${targetCourseId}.status`]: "active",
+                    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                  });
+                } else {
+                  // No entry: materialize from courses/{id} so the buyer who
+                  // paid but never had access actually gets it. Last-resort
+                  // safety net — this is the buyer whose webhook dropped.
+                  // Carry the local sub doc's access_duration (defaults to
+                  // monthly only when truly unknown) and use the sub doc's
+                  // created_at as purchased_at when present, so the funnel
+                  // analytics keep the correct acquisition timestamp.
+                  void userSnap;
+                  const subAccessDuration = typeof data.access_duration === "string" ?
+                    data.access_duration :
+                    "monthly";
+                  // sub.created_at is a Firestore Timestamp (.toDate()) or
+                  // missing for very old docs — fall back to mpNextBilling -
+                  // 30d as a stable approximation, then to now() as last
+                  // resort.
+                  let purchasedAtIso: string;
+                  const createdAt = data.created_at;
+                  if (createdAt && typeof createdAt === "object" && typeof (createdAt as {toDate?: () => Date}).toDate === "function") {
+                    try {
+                      purchasedAtIso = (createdAt as {toDate: () => Date}).toDate().toISOString();
+                    } catch {
+                      purchasedAtIso = new Date(Math.max(0, mpNextMs - 30 * 86400000)).toISOString();
+                    }
+                  } else if (typeof createdAt === "string") {
+                    purchasedAtIso = createdAt;
+                  } else {
+                    purchasedAtIso = new Date(Math.max(0, mpNextMs - 30 * 86400000)).toISOString();
+                  }
+                  tx.update(userRef, {
+                    [`courses.${targetCourseId}`]: {
+                      access_duration: subAccessDuration,
+                      expires_at: mpNextBilling,
+                      status: "active",
+                      is_trial: false,
+                      purchased_at: purchasedAtIso,
+                      title: "",
+                      image_url: null,
+                      // Deferred metadata fill — these get hydrated by the
+                      // next charge webhook or by /users/me reads. The
+                      // important thing is that access is granted now.
+                      _materialized_from: "reconcile",
+                    },
+                    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                  });
+                }
+              });
+              // Hydrate metadata on a freshly-materialized entry outside the
+              // transaction. If this fails the user still has access.
+              try {
+                const courseDoc = await db.collection("courses").doc(targetCourseId).get();
+                const c = courseDoc.data();
+                if (c) {
+                  const userRef2 = db.collection("users").doc(userId);
+                  await userRef2.update({
+                    [`courses.${targetCourseId}.title`]: c.title ?? "Untitled Course",
+                    [`courses.${targetCourseId}.image_url`]: c.image_url ?? null,
+                    [`courses.${targetCourseId}.deliveryType`]: c.deliveryType ?? "general",
+                    [`courses.${targetCourseId}.creator_id`]: c.creator_id ?? null,
+                    [`courses.${targetCourseId}.creatorName`]: c.creatorName ?? c.creator_name ?? null,
+                  });
+                }
+              } catch {/* best-effort hydrate */}
+            } catch (extErr) {
+              functions.logger.warn("reconcileSubscriptions: course materialize/bump failed", {
+                subscriptionId, userId, courseId: targetCourseId, error: sharedToErrorMessage(extErr),
+              });
+            }
+          }
+        }
+        synced++;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // 404 from MP → preapproval no longer exists. Mark cancelled so we
+        // stop trying to reconcile.
+        if (/404|not.found/i.test(msg)) {
+          await doc.ref.set({
+            status: "cancelled",
+            last_action: "reconcile_orphan",
+            cancelled_at: data.cancelled_at ?? admin.firestore.FieldValue.serverTimestamp(),
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          }, {merge: true});
+          driftFixed++;
+        } else {
+          functions.logger.warn("reconcileSubscriptions: fetch failed", {
+            subscriptionId, error: msg,
+          });
+          errors++;
+        }
+      }
+    }
+
+    functions.logger.info("reconcileSubscriptions: done", {
+      total: snap.size, synced, driftFixed, errors,
+    });
+  }
+);
+
+// ─── Scheduled: monthly-drop block advance ───────────────────────────────
+//
+// Calendar-anchored content drops for `block_cadence: 'monthly_first_monday'`
+// courses. On the first Monday of each month at 00:00 America/Bogota, advance
+// `program_state/{courseId}.current_block_id` to the next module with
+// `published_at != null` and a higher `order`. Denormalizes the new
+// block onto the course doc so PWA fast-path reads stay single-doc.
+//
+// If no next published module exists, emits a signals alert (Felipe forgot to
+// publish). The advance is idempotent — re-runs in the same window are no-ops.
+//
+// Required Firestore schema (documented in
+// memory/project_monthly_drops.md):
+//   courses/{id}:                block_cadence, current_block_id, current_block_index
+//   courses/{id}/modules/{id}:   order (number), unlocks_at (Timestamp),
+//                                published_at (Timestamp | null)
+//   program_state/{courseId}:    current_block_id, current_block_index,
+//                                current_block_started_at, next_block_id,
+//                                next_block_index, updated_at
+//
+// Secrets and `readTopics()` are declared further down in the "Wake ops"
+// section; the cron registrations live below that block.
+
+// Returns YYYY-MM-DD for `d` in America/Bogota. Used both to gate
+// first-Monday-of-month (date-of-month 1–7) and to make the advance
+// idempotent within a single BOG calendar day (manual re-trigger + scheduled
+// fire on the same day must not double-advance).
+function bogotaDateParts(d: Date): {year: number; month: number; day: number; weekday: number} {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric", month: "2-digit", day: "2-digit", weekday: "short",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
+  const weekdayMap: Record<string, number> = {Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6};
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    weekday: weekdayMap[parts.weekday] ?? -1,
+  };
+}
+
+function isFirstMondayOfMonth(d: Date): boolean {
+  // Day-of-month 1–7 AND weekday Monday, both evaluated in America/Bogota.
+  const {day, weekday} = bogotaDateParts(d);
+  return day <= 7 && weekday === 1;
+}
+
+// Tolerant gate: returns true when `d` is the first Monday of the month in
+// BOG OR within 24h after it. Cloud Scheduler can fire seconds before the
+// nominal wallclock; without this window an invocation at 23:59:59 BOG of
+// Sunday would compute weekday=Sunday and skip the advance for an entire
+// month. Idempotence is preserved by `current_block_started_at` — re-runs
+// within the same BOG day are no-ops.
+function isWithinFirstMondayWindow(d: Date): boolean {
+  if (isFirstMondayOfMonth(d)) return true;
+  // Check the BOG calendar day that "yesterday" would land on.
+  const yesterday = new Date(d.getTime() - 24 * 60 * 60 * 1000);
+  return isFirstMondayOfMonth(yesterday);
+}
+
+async function advanceMonthlyDropCourse(
+  courseRef: admin.firestore.DocumentReference,
+  signalsCtx: {botToken: string; chatId: string; topics: import("./ops/telegram.js").TopicMap} | null
+): Promise<{
+  courseId: string;
+  outcome: "advanced" | "no_next_published" | "no_modules" | "already_current";
+  fromBlock: number;
+  toBlock: number | null;
+  toModuleId: string | null;
+}> {
+  const courseId = courseRef.id;
+  const stateRef = db.collection("program_state").doc(courseId);
+  const stateSnap = await stateRef.get();
+  const state = stateSnap.exists ? stateSnap.data() ?? {} : {};
+  // Sentinel: -1 means "no block live yet". Modules are 0-indexed on `order`
+  // (dashboard's createModule writes `order = existing.length`), so the first
+  // advance must pick order=0. Using 0 as the default would skip block 0.
+  const currentBlockIndex = typeof state.current_block_index === "number" ?
+    state.current_block_index :
+    -1;
+
+  // Idempotence guard: once this course has advanced anywhere in the current
+  // BOG month, the cron is done for the month. BOG-month keying (rather than
+  // BOG-day) is what makes the tolerant first-Monday window safe — without
+  // it, a Mon-01:00 advance followed by a Tue-01:00 re-fire (both within the
+  // tolerant window) would double-advance. Manual mid-month re-fires are
+  // also no-ops, which is the desired behavior (the cron should advance
+  // exactly once per month).
+  const startedAt = state.current_block_started_at;
+  if (startedAt && typeof (startedAt as {toDate?: () => Date}).toDate === "function") {
+    const startedDate = (startedAt as {toDate: () => Date}).toDate();
+    const startedParts = bogotaDateParts(startedDate);
+    const nowParts = bogotaDateParts(new Date());
+    if (startedParts.year === nowParts.year && startedParts.month === nowParts.month) {
+      return {
+        courseId,
+        outcome: "already_current",
+        fromBlock: currentBlockIndex,
+        toBlock: currentBlockIndex,
+        toModuleId: (state.current_block_id as string | null) ?? null,
+      };
+    }
+  }
+
+  // One server-side inequality (order) + orderBy on that field is the
+  // simplest Firestore-safe query. Filter unpublished modules client-side.
+  // Programs have ~12 blocks; 50 is a generous cap that survives long gaps
+  // of unpublished modules between current and the next published one.
+  const forwardSnap = await courseRef
+    .collection("modules")
+    .where("order", ">", currentBlockIndex)
+    .orderBy("order", "asc")
+    .limit(50)
+    .get();
+
+  const published = forwardSnap.docs.filter((d) => {
+    const p = d.data().published_at;
+    return p !== null && p !== undefined;
+  });
+
+  if (published.length === 0) {
+    if (currentBlockIndex === -1 && forwardSnap.empty) {
+      return {courseId, outcome: "no_modules", fromBlock: -1, toBlock: null, toModuleId: null};
+    }
+    return {
+      courseId,
+      outcome: "no_next_published",
+      fromBlock: currentBlockIndex,
+      toBlock: null,
+      toModuleId: null,
+    };
+  }
+
+  const advanceDoc = published[0];
+  const advanceData = advanceDoc.data();
+  const newIndex = advanceData.order as number;
+  const lookahead = published[1];
+  const nextBlockId = lookahead ? lookahead.id : null;
+  const nextBlockIndex = lookahead ?
+    (lookahead.data().order as number) :
+    null;
+
+  // Atomic write: program_state and the course-doc mirror MUST advance
+  // together. If only program_state advances and the course-doc write fails,
+  // PWA fast-path reads keep returning the old block forever (the mirror is
+  // what HoyScreen + the workout walker consult). Batched writes commit
+  // together or not at all.
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const batch = db.batch();
+  batch.set(
+    stateRef,
+    {
+      current_block_id: advanceDoc.id,
+      current_block_index: newIndex,
+      current_block_started_at: now,
+      next_block_id: nextBlockId,
+      next_block_index: nextBlockIndex,
+      updated_at: now,
+    },
+    {merge: true}
+  );
+  batch.set(
+    courseRef,
+    {current_block_id: advanceDoc.id, current_block_index: newIndex, updated_at: now},
+    {merge: true}
+  );
+  await batch.commit();
+
+  functions.logger.info("monthlyDropAdvance: advanced", {
+    courseId,
+    from: currentBlockIndex,
+    to: newIndex,
+    moduleId: advanceDoc.id,
+  });
+
+  if (signalsCtx) {
+    try {
+      await sendTo(
+        signalsCtx,
+        "signals",
+        `[monthly-drops] ${courseId}: block ${currentBlockIndex} → ${newIndex} ` +
+          `("${advanceData.title ?? advanceDoc.id}")` +
+          (nextBlockId ? ` · next queued: ${nextBlockIndex}` : " · no next block queued")
+      );
+    } catch (err) {
+      functions.logger.warn("monthlyDropAdvance: signals send failed", {
+        courseId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return {
+    courseId,
+    outcome: "advanced",
+    fromBlock: currentBlockIndex,
+    toBlock: newIndex,
+    toModuleId: advanceDoc.id,
+  };
+}
+
+// Cron registrations are placed below the Wake-ops secret declarations so
+// that `telegramSignalsBotToken`, `telegramChatId`, `telegramTopics`, and
+// `readTopics()` are in scope.
+
 // ─── Wake ops: secrets ─────────────────────────────────────────────────────
 const telegramSignalsBotToken = defineSecret("TELEGRAM_SIGNALS_BOT_TOKEN");
 const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
@@ -3639,6 +2866,260 @@ function readTopics(): import("./ops/telegram.js").TopicMap {
   // Lazy import to keep this file cheap; parseTopicMap is pure.
   return parseTopicMap(telegramTopics.value());
 }
+
+// ─── Monthly-drop cron registrations ──────────────────────────────────────
+// Helper functions `isFirstMondayOfMonth` and `advanceMonthlyDropCourse` are
+// declared earlier in this file; secrets and `readTopics()` are right above.
+
+export const monthlyDropAdvance = onSchedule(
+  {
+    // 01:00 BOG instead of 00:00 — buffers against Cloud Scheduler firing
+    // a few seconds before the wallclock day boundary, which previously
+    // could shift the BOG date back to Sunday and silently skip the advance
+    // for the entire month.
+    schedule: "every monday 01:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
+    memory: "256MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    // Cron triggers every Monday; tolerant gate accepts the first Monday OR
+    // the 24h after it, so a near-boundary invocation can still advance.
+    // Idempotence in advanceMonthlyDropCourse prevents double-advance.
+    if (!isWithinFirstMondayWindow(new Date())) {
+      functions.logger.info("monthlyDropAdvance: not within first-Monday window, skipping");
+      return;
+    }
+
+    const coursesSnap = await db
+      .collection("courses")
+      .where("block_cadence", "==", "monthly_first_monday")
+      .get();
+
+    if (coursesSnap.empty) {
+      functions.logger.info("monthlyDropAdvance: no monthly-drop courses configured");
+      return;
+    }
+
+    // Only advance published courses. Drafts/paused/archived may have stale
+    // current_block_index that would otherwise be mirrored onto the course
+    // doc and exposed to anyone who can read the course (creator, admin,
+    // or — if a draft is later flipped published — actual subscribers).
+    // In-memory filter; composite index isn't worth it for ~12 cadenced courses.
+    const eligibleDocs = coursesSnap.docs.filter((d) => d.data()?.status === "published");
+    if (eligibleDocs.length === 0) {
+      functions.logger.info("monthlyDropAdvance: no published monthly-drop courses; skipping");
+      return;
+    }
+
+    const signalsCtx = telegramSignalsBotToken.value() && telegramChatId.value() ?
+      {
+        botToken: telegramSignalsBotToken.value(),
+        chatId: telegramChatId.value(),
+        topics: readTopics(),
+      } :
+      null;
+
+    const results: Array<Awaited<ReturnType<typeof advanceMonthlyDropCourse>>> = [];
+    for (const doc of eligibleDocs) {
+      try {
+        results.push(await advanceMonthlyDropCourse(doc.ref, signalsCtx));
+      } catch (err) {
+        functions.logger.error("monthlyDropAdvance: course advance failed", {
+          courseId: doc.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        if (signalsCtx) {
+          try {
+            await sendTo(
+              signalsCtx,
+              "signals",
+              `[monthly-drops] ${doc.id}: advance FAILED — ${err instanceof Error ? err.message : String(err)}`
+            );
+          } catch {
+            // already-degraded path; logging above is sufficient
+          }
+        }
+      }
+    }
+
+    if (signalsCtx) {
+      // Carry-over: no next published block is now a normal state, not an
+      // alert. A coach may intentionally let a drop run for multiple months
+      // (memory/project_monthly_drops.md). We still emit one INFO line per
+      // course so the ops bus has a paper trail, but stop paging.
+      const carried = results.filter((r) => r.outcome === "no_next_published");
+      for (const c of carried) {
+        try {
+          await sendTo(
+            signalsCtx,
+            "signals",
+            `[monthly-drops] ${c.courseId}: carry-over · current block ${c.fromBlock} continues this month`
+          );
+        } catch {
+          // best-effort
+        }
+      }
+    }
+  }
+);
+
+// Cron-fired assertion. Re-purposed from the old day-25 publication-readiness
+// sweep (carry-over makes unauthored next blocks WAI). Now it verifies the
+// monthlyDropAdvance cron actually ran this BOG month for every published
+// cadenced course: if `program_state.current_block_started_at` is older than
+// the first day of the current BOG month, the advance silently missed and
+// every subscriber is stuck on the previous block. Emits a Telegram signal
+// so ops can manually re-fire the advance.
+//
+// Runs daily at 09:00 BOG starting day 2 of the month (so the first-Monday
+// cron has had business hours to land before we alert). A weekly cron would
+// risk waiting up to 7 days to notice a miss.
+export const monthlyDropReadinessCheck = onSchedule(
+  {
+    schedule: "0 9 2-8 * *",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
+    memory: "256MiB",
+    timeoutSeconds: 60,
+  },
+  async () => {
+    const {year: bogYear, month: bogMonth} = bogotaDateParts(new Date());
+    // First instant of the current BOG month, expressed as a UTC ms epoch.
+    // BOG = UTC-5, so 00:00 BOG of day 1 = 05:00 UTC of day 1. Anything before
+    // this means the advance is one or more months behind.
+    const monthStartMs = Date.UTC(bogYear, bogMonth - 1, 1) + 5 * 60 * 60 * 1000;
+
+    const coursesSnap = await db
+      .collection("courses")
+      .where("block_cadence", "==", "monthly_first_monday")
+      .get();
+    const published = coursesSnap.docs.filter((d) => d.data()?.status === "published");
+    if (published.length === 0) return;
+
+    const signalsCtx = telegramSignalsBotToken.value() && telegramChatId.value() ?
+      {
+        botToken: telegramSignalsBotToken.value(),
+        chatId: telegramChatId.value(),
+        topics: readTopics(),
+      } :
+      null;
+
+    for (const courseDoc of published) {
+      const stateDoc = await db.collection("program_state").doc(courseDoc.id).get();
+      // Freshly-cadenced courses have no program_state yet; the next cron
+      // run will create it. Treat as "not behind" — alerting daily for a
+      // brand-new course would be noise the creator can't act on.
+      if (!stateDoc.exists) continue;
+      const startedAt = stateDoc.data()?.current_block_started_at as
+        | {toMillis?: () => number} | undefined;
+      const startedMs = startedAt && typeof startedAt.toMillis === "function" ?
+        startedAt.toMillis() :
+        null;
+      if (startedMs === null) continue;
+      if (startedMs >= monthStartMs) continue;
+
+      functions.logger.warn("monthlyDropReadinessCheck: cron missed this month", {
+        courseId: courseDoc.id,
+        startedMs,
+        monthStartMs,
+      });
+      if (signalsCtx) {
+        try {
+          await sendTo(
+            signalsCtx,
+            "signals",
+            `[monthly-drops] ${courseDoc.id}: advance MISSED — current_block_started_at` +
+              " is older than the first day of this BOG month. Manually trigger" +
+              " monthlyDropAdvance or investigate scheduler logs."
+          );
+        } catch {
+          // already-degraded path; log above is sufficient
+        }
+      }
+    }
+  }
+);
+
+// ─── Scheduled: lapse-flip ───────────────────────────────────────────────
+// Walks every user once a day and stamps `status: "expired"` on any
+// `users/{uid}.courses[id]` entry whose `expires_at` is past the access
+// grace window AND is not already in a terminal state. Without this, a
+// `status: "active"` entry survives indefinitely after expires_at lapses,
+// and the only thing locking the user out is whatever code happens to also
+// check expires_at — which is now uniform (workout.ts) but historically
+// drifted across surfaces. The flip lets every gate reduce to a simple
+// "status active?" check and gives monthlyDropsPulse / paymentsPulse an
+// honest count of lapsed access.
+//
+// Grace window must match /current-block + /programs/:id (3 days) so we
+// don't flip a paying user out from under MP's billing retries.
+//
+// Cost: one read of the users collection daily + targeted updates only on
+// users with expirations. With wolf-20b8b's user count (~thousands), this
+// is a cheap operation; if the collection grows past ~50k, replace with
+// a sharded sweep keyed off `next_expiry_at` denormalized at write time.
+export const lapsedCoursesFlip = onSchedule(
+  {
+    schedule: "every day 04:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const ACCESS_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+    const cutoffMs = Date.now() - ACCESS_GRACE_MS;
+
+    const snap = await db.collection("users").get();
+    let usersChecked = 0;
+    let usersUpdated = 0;
+    let coursesFlipped = 0;
+    let trialsFlipped = 0;
+
+    for (const doc of snap.docs) {
+      usersChecked++;
+      const courses = (doc.data().courses ?? {}) as Record<string, Record<string, unknown>>;
+      const updates: Record<string, unknown> = {};
+      for (const [courseId, entry] of Object.entries(courses)) {
+        if (!entry || typeof entry !== "object") continue;
+        const status = entry.status;
+        // Only flip entries that are still nominally usable. Skip terminal
+        // states (cancelled / expired / refunded) and bundle-derived entries
+        // — bundles are revoked atomically by the bundle subscription path.
+        if (status !== "active" && status !== undefined) continue;
+        const exp = entry.expires_at;
+        if (typeof exp !== "string") continue;
+        const expMs = Date.parse(exp);
+        if (!Number.isFinite(expMs)) continue;
+        if (expMs >= cutoffMs) continue;
+
+        updates[`courses.${courseId}.status`] = "expired";
+        updates[`courses.${courseId}.expired_at`] = new Date().toISOString();
+        if (entry.is_trial === true) trialsFlipped++;
+        coursesFlipped++;
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.updated_at = admin.firestore.FieldValue.serverTimestamp();
+        try {
+          await doc.ref.update(updates);
+          usersUpdated++;
+        } catch (err) {
+          functions.logger.warn("lapsedCoursesFlip: user update failed", {
+            userId: doc.id, error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    functions.logger.info("lapsedCoursesFlip: done", {
+      usersChecked, usersUpdated, coursesFlipped, trialsFlipped,
+    });
+  }
+);
 
 // ─── Scheduled: wake ops daily pulse (logs + payments + client errors + quota) ──
 export const wakeDailyPulseCron = onSchedule(
@@ -3664,6 +3145,7 @@ export const wakeDailyPulseCron = onSchedule(
       ["creator-errors", () => runClientErrors(ctx, {source: "creator"})],
       ["quota", () => runQuotaWatch(ctx)],
       ["data-integrity", () => runDataIntegrity(ctx)],
+      ["monthly-drops", () => runMonthlyDropsPulse(ctx)],
     ];
     for (const [name, fn] of steps) {
       try {

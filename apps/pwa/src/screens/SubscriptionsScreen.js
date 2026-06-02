@@ -19,6 +19,7 @@ import {
 import { auth } from '../config/firebase';
 import firestoreService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
+import apiClient from '../utils/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
 import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
@@ -224,8 +225,14 @@ const SubscriptionsScreen = ({ navigation }) => {
     );
   };
 
-  // Perform action on MercadoPago subscription (cancel, pause, resume)
+  // Cancel a MercadoPago subscription via the Gen2 API.
+  // The endpoint hits MP's preapproval API, syncs local state, and is
+  // idempotent on already-cancelled subs.
   const performAction = async (subscriptionId, action, options = {}) => {
+    if (action !== 'cancel') {
+      logger.error('performAction: unsupported action', { action });
+      return;
+    }
     if (!user?.uid) {
       Alert.alert('Error', 'No hay usuario autenticado');
       return;
@@ -234,29 +241,9 @@ const SubscriptionsScreen = ({ navigation }) => {
     try {
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: true } }));
 
-      const idToken = await user.getIdToken();
-      const response = await fetch(
-        'https://us-central1-wolf-20b8b.cloudfunctions.net/updateSubscriptionStatus',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            userId: user.uid,
-            subscriptionId,
-            action,
-            survey: options.survey,
-          }),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || result?.error) {
-        throw new Error(result?.error?.message || result?.error || 'Error al procesar la acción');
-      }
+      await apiClient.post(`/payments/subscriptions/${subscriptionId}/cancel`, {
+        survey: options.survey,
+      });
 
       Alert.alert('Éxito', 'La suscripción ha sido actualizada correctamente');
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false } }));

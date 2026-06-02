@@ -23,6 +23,9 @@ import { extractAccentFromImage } from '../events/eventFieldComponents';
 import PanelShell from './PanelShell';
 import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import libraryService from '../../services/libraryService';
+import apiClient from '../../utils/apiClient';
+import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTaskContext';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
 import '../../screens/ProgramasScreen.css';
 
@@ -79,7 +82,7 @@ function computeMuscleVolumes(exercises) {
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
-function SortableSessionCard({ session, onNavigate, onDelete, index }) {
+function SortableSessionCard({ session, onNavigate, onDelete, onDuplicate, index }) {
   const {
     attributes,
     listeners,
@@ -110,6 +113,8 @@ function SortableSessionCard({ session, onNavigate, onDelete, index }) {
   const muscleVolumes = useMemo(() => computeMuscleVolumes(session.exercises), [session.exercises]);
 
   const menuItems = [
+    { label: 'Duplicar', onClick: () => onDuplicate?.(session) },
+    { divider: true },
     { label: 'Eliminar', onClick: () => onDelete?.(session), danger: true },
   ];
 
@@ -184,6 +189,8 @@ export default function SessionsPanel({ searchQuery = '', sortKey, onCreateSessi
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [sessionOrder, setSessionOrder] = useState(null);
   const reorderTimeoutRef = useRef(null);
 
@@ -242,6 +249,24 @@ export default function SessionsPanel({ searchQuery = '', sortKey, onCreateSessi
     setDeleteTarget(session);
   }, []);
 
+  const duplicateMutation = useMutation({
+    mutationFn: ({ id }) => apiClient.post(`/creator/library/sessions/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessions(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user?.uid) });
+      task.succeed(`"${name}" duplicada`);
+      const newId = res?.data?.id;
+      if (newId) navigate(`/content/sessions/${newId}`);
+    },
+    onError: (_err, { task, name }) => task.fail(`No pudimos duplicar "${name}"`),
+  });
+
+  const handleDuplicateSession = useCallback((session) => {
+    const name = session.title || 'sesión';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicateMutation.mutate({ id: session.id, task, name });
+  }, [duplicateMutation, addTask]);
+
   const confirmDelete = useCallback(() => {
     if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id);
@@ -290,6 +315,7 @@ export default function SessionsPanel({ searchQuery = '', sortKey, onCreateSessi
                     index={i}
                     onNavigate={(id) => navigate(`/content/sessions/${id}`)}
                     onDelete={handleDeleteSession}
+                    onDuplicate={handleDuplicateSession}
                   />
                 </motion.div>
               ))}

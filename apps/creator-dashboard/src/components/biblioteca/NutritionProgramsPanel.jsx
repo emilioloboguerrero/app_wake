@@ -4,10 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTaskContext';
 import { GlowingEffect, MenuDropdown, ConfirmDeleteModal } from '../ui';
 import ShimmerSkeleton from '../ui/ShimmerSkeleton';
 import PanelShell from './PanelShell';
 import * as nutritionDb from '../../services/nutritionFirestoreService';
+import apiClient from '../../utils/apiClient';
 import { cacheConfig, queryKeys } from '../../config/queryClient';
 
 const DotsIcon = () => (
@@ -23,6 +25,7 @@ export default function NutritionProgramsPanel({ searchQuery = '', sortKey, onCr
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const creatorId = user?.uid ?? '';
 
   const { data: programs = [], isLoading, isError } = useQuery({
@@ -59,6 +62,23 @@ export default function NutritionProgramsPanel({ searchQuery = '', sortKey, onCr
     if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id);
   }, [deleteTarget, deleteMutation]);
+
+  const duplicateMutation = useMutation({
+    mutationFn: ({ id }) => apiClient.post(`/creator/nutrition/programs/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.programs(creatorId) });
+      task.succeed(`"${name}" duplicado`);
+      const newId = res?.data?.id;
+      if (newId) navigate(`/nutrition/programs/${newId}`);
+    },
+    onError: (_err, { task, name }) => task.fail(`No pudimos duplicar "${name}"`),
+  });
+
+  const handleDuplicate = useCallback((program) => {
+    const name = program.name || 'plan';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicateMutation.mutate({ id: program.id, task, name });
+  }, [duplicateMutation, addTask]);
 
   const renderSkeleton = useCallback(() => (
     <div className="bib-nutri-list">
@@ -131,7 +151,11 @@ export default function NutritionProgramsPanel({ searchQuery = '', sortKey, onCr
                         <div className="bib-plan-menu" onClick={(e) => e.stopPropagation()}>
                           <MenuDropdown
                             trigger={<button type="button" className="bib-plan-menu-trigger"><DotsIcon /></button>}
-                            items={[{ label: 'Eliminar', danger: true, onClick: () => setDeleteTarget({ id: program.id, name: program.name }) }]}
+                            items={[
+                              { label: 'Duplicar', onClick: () => handleDuplicate(program) },
+                              { divider: true },
+                              { label: 'Eliminar', danger: true, onClick: () => setDeleteTarget({ id: program.id, name: program.name }) },
+                            ]}
                           />
                         </div>
                       </div>

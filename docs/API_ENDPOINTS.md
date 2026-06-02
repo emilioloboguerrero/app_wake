@@ -1151,6 +1151,52 @@ Get full course metadata and structure (modules + sessions list, not full exerci
 
 ---
 
+#### `GET /api/v1/workout/programs/{courseId}/current-block`
+Read the currently-unlocked block (module) for a `block_cadence: 'monthly_first_monday'` course. Returns the user's access state plus the full session tree of the live block. Past blocks are not exposed.
+
+**Auth:** required (any authenticated user; access is reported, not enforced — `locked: true` is a normal response when expired or never subscribed)
+**Response:**
+```json
+{
+  "data": {
+    "courseId": "string",
+    "cadence": "monthly_first_monday | null",
+    "locked": "boolean",
+    "expires_at": "ISO string | null",
+    "block": {
+      "moduleId": "string",
+      "block_index": "number",
+      "title": "string | null",
+      "unlocks_at": "Timestamp | null",
+      "sessions": [
+        {
+          "id": "string",
+          "title": "string",
+          "order": "number",
+          "exercises": [
+            {
+              "id": "string",
+              "primary": { "<libraryId>": "<exerciseId>" },
+              "displayName": "string",
+              "sets": [{ "order": "number", "reps": "number | string", "intensity": "string | null" }]
+            }
+          ]
+        }
+      ]
+    } | null,
+    "next_block_index": "number | null"
+  }
+}
+```
+- `locked: true` is returned when `users/{uid}.courses[courseId].expires_at` is in the past or absent (creator/admin always unlocked).
+- When `locked: true`, `block` is null but `expires_at` is still surfaced so the PWA can show the resubscribe CTA with context.
+- `next_block_index` lets the client show "block 4 of …" UI hints; sourced from `program_state/{courseId}.next_block_index`.
+- `block_index` mirrors `module.order` — there is no separate `block_index` field on modules. The endpoint exposes it under the `block_index` name for the client's stability.
+
+**Errors:** `NOT_FOUND` (course missing)
+
+---
+
 ### 6.2 Session Completion
 
 ---

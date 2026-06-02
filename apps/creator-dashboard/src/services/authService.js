@@ -2,6 +2,7 @@ import { auth } from '../config/firebase';
 import apiClient from '../utils/apiClient';
 import logger from '../utils/logger';
 import { queryClient } from '../config/queryClient';
+import analyticsService from './analyticsService';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -24,6 +25,9 @@ class AuthService {
     } catch (err) {
       logger.warn('[AuthService] sendEmailVerification failed (non-fatal):', err?.message || err);
     }
+
+    // identify() is handled by AuthContext's onAuthStateChanged.
+    try { analyticsService.track('auth.signup_completed', { method: 'email' }); } catch {}
 
     return user;
   }
@@ -58,6 +62,9 @@ class AuthService {
       }
     }
 
+    // identify() is handled by AuthContext's onAuthStateChanged.
+    try { analyticsService.track('auth.login', { method: 'email' }); } catch {}
+
     return user;
   }
 
@@ -67,6 +74,10 @@ class AuthService {
     } catch (logoutErr) {
       logger.warn('Server-side logout failed (non-fatal):', logoutErr?.message);
     }
+    try {
+      analyticsService.track('auth.logout');
+      analyticsService.reset();
+    } catch {}
     await signOut(auth);
     queryClient.clear();
   }

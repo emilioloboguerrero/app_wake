@@ -166,7 +166,9 @@
 
 /* List card */
 .ns-list-card {
+  position: relative;
   padding: 12px 14px;
+  padding-right: 38px;
   border-radius: var(--radius-md, 10px);
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -219,6 +221,38 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ns-list-card-duplicate {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1),
+              background 160ms cubic-bezier(0.22, 1, 0.36, 1),
+              color 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ns-list-card:hover .ns-list-card-duplicate,
+.ns-list-card--selected .ns-list-card-duplicate,
+.ns-list-card-duplicate:focus-visible {
+  opacity: 1;
+}
+
+.ns-list-card-duplicate:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* ─── Center panel ────────────────────────────────────────── */

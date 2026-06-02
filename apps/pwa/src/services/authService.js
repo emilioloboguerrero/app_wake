@@ -20,6 +20,7 @@ import logger from '../utils/logger';
 import apiClient from '../utils/apiClient';
 import { queryClient } from '../config/queryClient';
 import { isWeb } from '../utils/platform';
+import analyticsService from './analyticsService';
 
 // Check if running in Expo Go (executionEnvironment === 'storeClient' is the SDK 54+ replacement for appOwnership === 'expo')
 const isExpoGo = Constants.executionEnvironment === 'storeClient';
@@ -40,6 +41,9 @@ class AuthService {
       await updateProfile(cred.user, {
         displayName: displayName
       });
+
+      // identify() is handled by AuthContext's onAuthStateChanged.
+      try { analyticsService.track('auth.signup_completed', { method: 'email' }); } catch {}
 
       return cred.user;
     } catch (error) {
@@ -72,6 +76,9 @@ class AuthService {
           resolve();
         });
       });
+
+      // identify() is handled by AuthContext's onAuthStateChanged.
+      try { analyticsService.track('auth.login', { method: 'email' }); } catch {}
 
       return auth.currentUser || userCredential.user;
     } catch (error) {
@@ -107,6 +114,11 @@ class AuthService {
           await googleAuthService.signOut();
         }
       }
+
+      try {
+        analyticsService.track('auth.logout');
+        analyticsService.reset();
+      } catch {}
 
       // Sign out from Firebase
       await signOut(auth);

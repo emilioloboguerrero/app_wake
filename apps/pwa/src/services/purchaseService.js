@@ -1,104 +1,36 @@
 import apiClient from '../utils/apiClient';
 import apiService from './apiService';
 import logger from '../utils/logger';
+import analyticsService from './analyticsService';
+import { isCourseEntryActive } from '../utils/courseAccess';
 
 class PurchaseService {
   isCourseEntryActive(courseEntry) {
-    if (!courseEntry) return false;
-
-    const expiresAt = courseEntry.expires_at ? new Date(courseEntry.expires_at) : null;
-    const now = new Date();
-    const isNotExpired = !expiresAt || expiresAt > now;
-
-    if (!isNotExpired) return false;
-    if (courseEntry.status === 'active') return true;
-    if (courseEntry.is_trial) return true;
-
-    return false;
-  }
-
-  /**
-   * Start a local free trial for a course
-   * @param {string} userId - User ID
-   * @param {string} courseId - Course ID
-   * @param {number} durationDays - Trial duration in days
-   * @returns {Promise<Object>} Trial result
-   */
-  async startLocalTrial(userId, courseId, durationDays) {
-    try {
-      if (!durationDays || durationDays <= 0) {
-        return {
-          success: false,
-          error: 'Duración de prueba inválida',
-          code: 'INVALID_DURATION',
-        };
-      }
-
-      const { ownsCourse, trialHistory, courseData } = await this.getUserCourseState(userId, courseId);
-      if (ownsCourse && !courseData?.is_trial) {
-        return {
-          success: false,
-          error: 'Ya tienes acceso a este programa',
-          code: 'ALREADY_OWNED',
-        };
-      }
-
-      if (trialHistory?.consumed || courseData?.trial_consumed) {
-        return {
-          success: false,
-          error: 'Ya usaste la prueba gratuita de este programa',
-          code: 'TRIAL_ALREADY_USED',
-        };
-      }
-
-      const courseDetails = await apiClient.get(`/workout/programs/${courseId}`).then(r => r?.data ?? null);
-      if (!courseDetails) {
-        return {
-          success: false,
-          error: 'El programa no fue encontrado',
-          code: 'COURSE_NOT_FOUND',
-        };
-      }
-
-      const result = await apiClient.post(`/users/me/courses/${courseId}/trial`, {
-        courseDetails,
-        durationInDays: durationDays,
-      });
-      return result?.data ?? { success: false, error: 'Error al iniciar la prueba gratuita', code: 'TRIAL_ERROR' };
-    } catch (error) {
-      logger.error('❌ Error starting local trial:', error);
-      return {
-        success: false,
-        error: error.message || 'Error al iniciar la prueba gratuita',
-        code: 'TRIAL_ERROR',
-      };
-    }
+    return isCourseEntryActive(courseEntry);
   }
 
   /**
    * Get course info for a user along with ownership state
    * @param {string} userId
    * @param {string} courseId
-   * @returns {Promise<{ownsCourse: boolean, courseData: Object|null, trialHistory: Object|null}>}
+   * @returns {Promise<{ownsCourse: boolean, courseData: Object|null}>}
    */
   async getUserCourseState(userId, courseId, cachedUserDoc) {
     try {
       const userDoc = cachedUserDoc || await apiClient.get('/users/me').then(r => r?.data ?? null);
       if (!userDoc) {
-        return { ownsCourse: false, courseData: null, trialHistory: null };
+        return { ownsCourse: false, courseData: null };
       }
 
       const courseData = userDoc.courses?.[courseId] || null;
-      const trialHistory = userDoc.free_trial_history?.[courseId] || null;
 
       return {
         ownsCourse: this.isCourseEntryActive(courseData),
         courseData,
-        trialHistory,
       };
     } catch (error) {
       logger.error('Error getting user course state:', error);
-      return { ownsCourse: false, courseData: null, trialHistory: null };
+      return { ownsCourse: false, courseData: null };
     }
   }
 
@@ -177,6 +109,13 @@ class PurchaseService {
       try {
         result = await apiClient.post('/payments/subscription', { courseId, payer_email: payerEmail });
       } catch (error) {
+        if (error.code === 'CAPACITY_FULL') {
+          return {
+            success: false,
+            capacityFull: true,
+            error: error.message || "Cupos agotados",
+          };
+        }
         if (error.code === 'CONFLICT') {
           return {
             success: false,
@@ -214,6 +153,14 @@ class PurchaseService {
    */
   async preparePurchase(userId, courseId, { accessDuration, payerEmail } = {}) {
     try {
+      try {
+        analyticsService.track('program.purchase_started', {
+          course_id: courseId || null,
+          access_duration: accessDuration || 'otp',
+          kind: 'course',
+        });
+      } catch {}
+
       if (accessDuration === "monthly") {
         return await this.prepareSubscription(userId, courseId, payerEmail || null);
       }
@@ -230,6 +177,7 @@ class PurchaseService {
     } catch (error) {
       return {
         success: false,
+        capacityFull: error.code === 'CAPACITY_FULL',
         error: error.message || "Error preparing payment",
       };
     }
@@ -244,6 +192,13 @@ class PurchaseService {
    */
   async prepareBundlePurchase(bundleId) {
     try {
+      try {
+        analyticsService.track('program.purchase_started', {
+          bundle_id: bundleId || null,
+          access_duration: 'otp',
+          kind: 'bundle',
+        });
+      } catch {}
       const result = await apiClient.post('/payments/bundle-preference', { bundleId });
       const initPoint = result?.data?.init_point;
       if (!initPoint) throw new Error('Error creating bundle payment');
@@ -258,6 +213,13 @@ class PurchaseService {
    */
   async prepareBundleSubscription(bundleId, payerEmail) {
     try {
+      try {
+        analyticsService.track('program.purchase_started', {
+          bundle_id: bundleId || null,
+          access_duration: 'monthly',
+          kind: 'bundle',
+        });
+      } catch {}
       if (!payerEmail) {
         return {
           success: false,
@@ -309,11 +271,12 @@ class PurchaseService {
       const userCourses = userDoc.courses || {};
       const now = new Date();
 
-      // Return flat shape matching getUserActiveCourses
+      // Return flat shape matching getUserActiveCourses. isActive routes
+      // through the shared courseAccess helper so this list agrees with
+      // useUserCourses and HoyScreen.
       return Object.entries(userCourses).map(([courseId, e]) => {
-        const isActive = e.status === 'active';
-        const isNotExpired = e.expires_at ? new Date(e.expires_at) > now : true;
         const isCancelled = e.status === 'cancelled';
+        const isNotExpired = e.expires_at ? new Date(e.expires_at) > now : true;
 
         return {
           id: courseId,
@@ -328,7 +291,7 @@ class PurchaseService {
           purchased_at: e.purchased_at,
           deliveryType: e.deliveryType,
           is_trial: e.is_trial,
-          isActive: isActive && isNotExpired,
+          isActive: isCourseEntryActive(e),
           isExpired: !isNotExpired && !isCancelled,
           isCompleted: false,
         };

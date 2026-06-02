@@ -22,6 +22,7 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
+import { useCoursesEnriched } from '../hooks/hoy/useCoursesEnriched';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
@@ -34,12 +35,16 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
   const headerHeight = Platform.OS === 'web' ? 32 : Math.max(40, Math.min(44, screenHeight * 0.055));
   const safeAreaTopForSpacer = Platform.OS === 'web' ? Math.max(0, insets.top) : Math.max(0, insets.top - 8);
   const headerTotalHeight = headerHeight + safeAreaTopForSpacer;
-  const { data: allCourses = [], isLoading: loading, isError, refetch } = useQuery({
+  const { data: snapshotCourses = [], isLoading: loading, isError, refetch } = useQuery({
     queryKey: queryKeys.user.courses(user?.uid),
     queryFn: () => purchaseService.getUserPurchasedCourses(user.uid, true),
     enabled: !!user?.uid,
     staleTime: STALE_TIMES.programStructure,
   });
+  // Enrich with fresh display fields (image_url, title, creatorName) from
+  // /workout/courses/:id so creator updates are reflected here, not the stale
+  // snapshot frozen on users.courses at purchase time.
+  const { courses: allCourses } = useCoursesEnriched(snapshotCourses);
 
   const error = isError ? 'Error al cargar tus cursos' : null;
 

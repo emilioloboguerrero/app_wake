@@ -1,15 +1,16 @@
-import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useState, useMemo, useCallback, Suspense } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import { TubelightNavBar, FullScreenError, KeepAlivePane } from '../components/ui';
 import ClientLabTab from '../components/client/ClientLabTab';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 // Inactive tabs are lazy-loaded so their bundles (calendar, dnd-kit, recharts
 // configs, nutrition pickers) don't ship on first paint of the Lab tab.
-const ClientPlanTab = lazy(() => import('../components/client/ClientPlanTab'));
-const ClientNutritionTab = lazy(() => import('../components/client/ClientNutritionTab'));
-const ClientProfileTab = lazy(() => import('../components/client/ClientProfileTab'));
+const ClientPlanTab = lazyWithRetry(() => import('../components/client/ClientPlanTab'));
+const ClientNutritionTab = lazyWithRetry(() => import('../components/client/ClientNutritionTab'));
+const ClientProfileTab = lazyWithRetry(() => import('../components/client/ClientProfileTab'));
 import oneOnOneService from '../services/oneOnOneService';
 import apiClient from '../utils/apiClient';
 import { cacheConfig, queryKeys } from '../config/queryClient';

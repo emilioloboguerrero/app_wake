@@ -18,6 +18,7 @@ import {
   useWindowDimensions,
   Dimensions,
   Animated,
+  Easing,
   Modal,
   Pressable,
   Alert,
@@ -27,6 +28,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Vibration,
+  PanResponder,
 } from 'react-native';
 
 // Essential hooks and utilities - keep as direct imports (lightweight)
@@ -40,6 +42,7 @@ import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createStyles, confirmModalStyles, createLoadingOverlayStyles } from './WorkoutExecutionScreen.styles';
+import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 
 // Gesture handler and video - expo-video (VideoView + useVideoPlayer) with custom overlay UI on all platforms
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
@@ -224,9 +227,10 @@ const getMonitoringService = () => {
 // Components are imported directly since they no longer block (Dimensions.get moved inside)
 import TutorialOverlay from '../components/TutorialOverlay';
 import ExerciseDetailModal from '../components/ExerciseDetailModal';
-import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
+import analyticsService from '../services/analyticsService';
 
 // ============================================================================
 // ICONS - Direct imports (like working screens)
@@ -360,7 +364,7 @@ const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue
 // List view exercise card: at module level so re-renders (e.g. from useWindowDimensions when keyboard opens) do not remount rows and dismiss the focused input.
 const SKIP_SET_FIELDS = ['id','order','notes','description','title','name','created_at','updated_at','createdAt','updatedAt','type','status','category','tags','metadata'];
 
-const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, lastSavedKey, renderSetHeaders, renderSetInputFields, styles }) => {
+const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpansion, onOpenSwapModal, onAddSet, onRemoveSet, onSelectSet, setData, currentExerciseIndex, currentSetIndex, lastSavedKey, renderSetHeaders, renderSetInputFields, styles, accentColor }) => {
   const expandAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
   const chevronAnim = useRef(new Animated.Value(isExpanded ? 1 : 0)).current;
 
@@ -386,9 +390,18 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
         style={styles.exerciseCard}
         onPress={() => onToggleExpansion(exerciseIndex)}
       >
-        <Text style={styles.exerciseNumber}>{exerciseIndex + 1}</Text>
+        <Text style={[
+          styles.exerciseNumber,
+          exerciseIndex === currentExerciseIndex && accentColor && { color: accentColor },
+        ]}>{exerciseIndex + 1}</Text>
         <View style={styles.exerciseContent}>
-          <Text className="exercise-title" style={styles.exerciseItemTitle}>
+          <Text
+            className="exercise-title"
+            style={[
+              styles.exerciseItemTitle,
+              exerciseIndex === currentExerciseIndex && accentColor && { color: accentColor },
+            ]}
+          >
             {exercise.name}
           </Text>
         </View>
@@ -399,7 +412,11 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
           <SvgChevronLeft
             width={20}
             height={20}
-            stroke="#007AFF"
+            stroke={
+              exerciseIndex === currentExerciseIndex && accentColor
+                ? accentColor
+                : 'rgba(255, 255, 255, 0.6)'
+            }
           />
         </Animated.View>
       </TouchableOpacity>
@@ -449,25 +466,32 @@ const ExerciseItem = memo(({ exercise, exerciseIndex, isExpanded, onToggleExpans
             const isCurrentSet = exerciseIndex === currentExerciseIndex && setIndex === currentSetIndex;
             const justSaved = Platform.OS === 'web' && lastSavedKey === key;
             return (
-              <View
+              <TouchableOpacity
                 key={`set-${exerciseIndex}-${setIndex}-${set.id || setIndex}`}
                 className={justSaved ? 'set-row wake-set-saved' : 'set-row'}
-                style={styles.setTrackingRow}
+                style={[styles.setTrackingRow, isCurrentSet && styles.setTrackingRowActive]}
+                onPress={() => onSelectSet(exerciseIndex, setIndex)}
+                activeOpacity={1}
               >
-                {isCurrentSet && <View style={styles.currentSetOverlay} />}
                 {isCurrentSet && (
-                  <View style={{ position: 'absolute', left: 0, top: 4, bottom: 4, width: 3, backgroundColor: '#FFFFFF', borderRadius: 2 }} />
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.activeSetIndicator,
+                      { backgroundColor: accentColor || 'rgba(255, 255, 255, 0.9)' },
+                    ]}
+                  />
                 )}
-                <TouchableOpacity
-                  style={styles.setNumberContainer}
-                  onPress={() => onSelectSet(exerciseIndex, setIndex)}
-                >
-                  <Text style={styles.setNumber}>{setIndex + 1}</Text>
-                </TouchableOpacity>
+                <View style={styles.setNumberContainer}>
+                  <Text style={[
+                    styles.setNumber,
+                    !isCurrentSet && styles.setNumberInactive,
+                  ]}>{setIndex + 1}</Text>
+                </View>
                 <View style={styles.setInputsContainer}>
                   {renderSetInputFields(exerciseIndex, setIndex, set, currentSetData)}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -744,6 +768,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const checkpointApiTimerRef = useRef(null);
   const checkpointNotesTimerRef = useRef(null);
   const saveCheckpointRef = useRef(null);
+  // Set when the user voluntarily discards or successfully completes. Gates the
+  // unmount checkpoint flush so it can't resurrect a just-cleared checkpoint.
+  const sessionEndedRef = useRef(false);
 
   // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
   const focusTimeoutIdsRef = useRef([]);
@@ -812,9 +839,49 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   if (servicesDuration > 500) {
   }
   
-  const { course, workout: initialWorkout, sessionId, checkpoint: routeCheckpoint } = route.params;
+  const { course: routeCourse, workout: initialWorkout, sessionId, checkpoint: routeCheckpointFromParams } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
+
+  // Self-recovery from the durable checkpoint. When this screen is (re)mounted
+  // without route state — a PWA reload after the OS backgrounded the tab, or an
+  // ErrorBoundary "Reintentar" remount — the in-memory route params are gone but
+  // the localStorage checkpoint is not. Falling back to it restores the user's
+  // place and entered sets instead of dropping them at exercise 1 (or rendering
+  // a blank "No hay ejercicios" screen). Match userId + session so we never
+  // resurrect a stale or foreign checkpoint over a genuine fresh start.
+  const localCheckpoint = useMemo(() => {
+    if (routeCheckpointFromParams) return null;
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('wake_session_checkpoint');
+      if (!raw) return null;
+      const cp = JSON.parse(raw);
+      if (!cp || !cp.exercises) return null;
+      if (cp.savedAt && Date.now() - new Date(cp.savedAt).getTime() > 24 * 60 * 60 * 1000) return null;
+      const uid = (user && user.uid) || auth.currentUser?.uid;
+      if (uid && cp.userId && cp.userId !== uid) return null;
+      // If the full route workout is still present this is a same-session remount
+      // (ErrorBoundary retry). Only restore when the checkpoint is for that same
+      // session — never graft a different session's progress onto a fresh start.
+      const routeSessionId = sessionId || initialWorkout?.id;
+      if (initialWorkout?.exercises?.length && routeSessionId && cp.sessionId && cp.sessionId !== routeSessionId) {
+        return null;
+      }
+      return cp;
+    } catch {
+      return null;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const routeCheckpoint = routeCheckpointFromParams || localCheckpoint;
+
+  // When recovering from localStorage after a reload, route.params.course is gone
+  // too — rebuild a minimal course from the checkpoint so completion (which needs
+  // courseId) still works instead of erroring out at the finish line.
+  const course = routeCourse || (routeCheckpoint?.courseId
+    ? { courseId: routeCheckpoint.courseId, id: routeCheckpoint.courseId, title: routeCheckpoint.sessionName || '' }
+    : null);
   
   // Build workout from checkpoint if restoring an interrupted session.
   // Prefer the full initialWorkout (fetched from the program tree on resume) so
@@ -850,7 +917,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [currentSetIndex, setCurrentSetIndex] = useState(routeCheckpoint?.currentSetIndex || 0);
   const [loading, setLoading] = useState(false);
   const [sessionData, setSessionData] = useState(null);
-  const [currentView, setCurrentView] = useState(0); // 0 = exercise detail, 1 = exercise list
+  const [currentView, setCurrentView] = useState(0); // 0 = sheet closed, 1 = sheet open (exercise list)
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  // Whether the user has ever opened the exercise-list drawer (persisted). Until they
+  // have, a subtle pull-down hint pulses on the closed lid at the start of each set.
+  const [hasEverOpenedDrawer, setHasEverOpenedDrawer] = useState(() => {
+    try { return localStorage.getItem('wake_exercise_drawer_opened_v2') === 'true'; } catch { return false; }
+  });
   const [expandedExercises, setExpandedExercises] = useState({}); // Track which exercises are expanded
   const [isMenuVisible, setIsMenuVisible] = useState(false); // Menu visibility state
   const [isSetInputVisible, setIsSetInputVisible] = useState(false); // Set input popup visibility
@@ -867,6 +940,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [oneRepMaxEstimates, setOneRepMaxEstimates] = useState({}); // 1RM estimates for weight suggestions
   const [sessionNotes, setSessionNotes] = useState('');
   const [isNotesModalVisible, setIsNotesModalVisible] = useState(false);
+
+  // Accent color extracted from session/program image — drives current-exercise/set highlight
+  // and primary action buttons (Registrar + timer). Falls back to default white styling on native
+  // or when extraction fails.
+  const accentImageUrl = workout?.image_url || workout?.imageUrl || course?.image_url || course?.imageUrl || null;
+  const accent = useAccentFromImage(accentImageUrl);
+  const accentColor = accent?.accent || null;
+  const accentTextColor = accent?.accentText || '#1a1a1a';
 
   // Video-exchange submission + history overlay (one-on-one only, web only)
   const [videoSubmitTarget, setVideoSubmitTarget] = useState(null); // { exerciseKey, exerciseName } | null
@@ -1020,6 +1101,61 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // TEST VERSION 8: Re-enable useSetData hook
   // Use consolidated set data management
   const { setData, setValidationErrors, updateSetData: updateSetDataLocal, hasValidationErrors, setSetData } = useSetData(workout, routeCheckpoint, setCurrentExerciseIndex);
+
+  // ─── Recovery visibility ───────────────────────────────────────────────────
+  // Record when a session is resumed and, critically, whether recovery had to
+  // fall back to the durable localStorage checkpoint (i.e. route state was lost
+  // to a reload / boundary remount). Lets us see this failure class on PostHog.
+  useEffect(() => {
+    if (!routeCheckpoint) return;
+    try {
+      const completed = routeCheckpoint.completedSets
+        ? Object.keys(routeCheckpoint.completedSets).length : 0;
+      analyticsService.track('workout.session_recovered', {
+        source: routeCheckpointFromParams ? 'route' : 'localStorage',
+        course_id: routeCheckpoint.courseId || course?.courseId || null,
+        session_id: routeCheckpoint.sessionId || null,
+        exercise_index: routeCheckpoint.currentExerciseIndex ?? null,
+        completed_sets: completed,
+        had_full_workout: !!initialWorkout?.exercises?.length,
+        age_seconds: routeCheckpoint.savedAt
+          ? Math.round((Date.now() - new Date(routeCheckpoint.savedAt).getTime()) / 1000) : null,
+      });
+    } catch { /* never throw from analytics */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Record when we mount with nothing renderable — route params lost on reload
+  // AND no usable checkpoint. This is the blank-screen / lost-data case users
+  // reported; with self-recovery above it should be rare, so any volume here is
+  // a real signal worth alerting on.
+  const emptyStateTrackedRef = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (workout?.exercises?.length) return;
+    if (emptyStateTrackedRef.current) return;
+    emptyStateTrackedRef.current = true;
+    try {
+      analyticsService.track('workout.recovery_failed', {
+        reason: 'no_workout_on_mount',
+        had_route_workout: !!initialWorkout?.exercises?.length,
+        had_route_checkpoint: !!routeCheckpointFromParams,
+        had_local_checkpoint: !!localCheckpoint,
+        course_id: course?.courseId || null,
+      });
+    } catch { /* never throw from analytics */ }
+  }, [loading, workout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Defensive: a restored index can exceed a freshly-loaded or checkpoint-rebuilt
+  // workout if the program changed under the user. Clamp so we resume at the last
+  // valid exercise instead of falling through to the empty-state guard.
+  useEffect(() => {
+    const exs = workout?.exercises;
+    if (!exs?.length) return;
+    if (currentExerciseIndex > exs.length - 1) {
+      setCurrentExerciseIndex(exs.length - 1);
+      setCurrentSetIndex(0);
+    }
+  }, [workout, currentExerciseIndex]);
   
   // TEST VERSION 7: Re-enable swap modal video player
   // Swap modal video player callback - memoized
@@ -1113,6 +1249,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [videoSourceType, setVideoSourceType] = useState(null); // 'upload' | 'youtube' | 'vimeo'
   const [isVideoPaused, setIsVideoPaused] = useState(true); // Video pause state - start paused, wait for tutorial
   const [canStartVideo, setCanStartVideo] = useState(false); // Flag to control when video can start
+  const [videoLoadFailed, setVideoLoadFailed] = useState(false); // Exercise video failed to load (network) — show inline retry
+  const videoFailTrackedRef = useRef(new Set()); // dedupe video_load_failed events per exercise
   
   // TEST VERSION 7: Re-enable main video player
   // Video player callback - memoized to prevent recreation
@@ -1131,12 +1269,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, [isMuted]);
   
-  // Video player for workout videos - memoized URI to prevent unnecessary re-initialization
-  // Skip passing external URLs (YouTube/Vimeo) to expo-video — they use iframe instead
+  // Main exercise video.
+  // On web (PWA): plain <video> element bound to the URL via src — browser
+  // handles buffering, range requests, decoder lifecycle. No orchestration.
+  // On native: expo-video useVideoPlayer + VideoView (unchanged).
   const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
   const nativeVideoUri = isExternalVideo ? null : videoUri;
   const memoizedVideoUri = useDeferredValue(nativeVideoUri);
-  const videoPlayer = useVideoPlayer(memoizedVideoUri, videoPlayerCallback);
+  const videoPlayer = useVideoPlayer('', videoPlayerCallback);
+  const mainVideoRef = useRef(null);
   const scrollViewRef = useRef(null); // Main ScrollView reference for view switching
   const lastScrollXRef = useRef(0); // [LIST-INPUT-DEBUG] track horizontal scroll to detect reset on re-render
   const listViewInputJustFocusedRef = useRef(false); // [LIST-INPUT-DEBUG] set when input in list view focuses (to restore scroll after re-render)
@@ -1163,6 +1304,32 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Animation values for swap modal
   const swapModalOpacity = useRef(new Animated.Value(0)).current;
   const swapModalTranslateY = useRef(new Animated.Value(800)).current;
+
+  // Top-anchored sheet (exercise list drawer). The card sits below the FixedWakeHeader
+  // with all four corners rounded; height + horizontal margin animate together so the
+  // closed lid matches the videoCard width and the expanded sheet goes near full-width
+  // and tall. Closed = compact lid (exercise name + bottom grabber).
+  const CLOSED_LID_HEIGHT = 76;
+  const CLOSED_HORIZONTAL_MARGIN = Math.max(48, screenWidth * 0.12) / 2;
+  const EXPANDED_HORIZONTAL_MARGIN = 8;
+  const sheetTopOffset = useMemo(() => {
+    const isIOSDevice = isWeb && typeof navigator !== 'undefined'
+      ? /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+      : Platform.OS === 'ios';
+    const baseExtra = isIOSDevice ? 0 : 24;
+    const browserExtra = isWeb && !isPWA() ? 34 : 0;
+    return (insets?.top || 0) + 32 + baseExtra + browserExtra + 12;
+  }, [insets?.top]);
+  const sheetHeight = Math.max(
+    CLOSED_LID_HEIGHT + 200,
+    Math.round(screenHeight - sheetTopOffset - 32)
+  );
+  const sheetHeightAnim = useRef(new Animated.Value(CLOSED_LID_HEIGHT)).current;
+  const sheetMarginAnim = useRef(new Animated.Value(CLOSED_HORIZONTAL_MARGIN)).current;
+  const sheetBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetDragStartHeightRef = useRef(CLOSED_LID_HEIGHT);
+  // Pull-down hint pulse for the closed lid (native driver: transform only).
+  const lidPulseAnim = useRef(new Animated.Value(0)).current;
   
   // Simple scroll position tracking for pagination
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -1256,6 +1423,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (!isWeb) return;
     const onVisChange = () => {
+      // Skip once the session is finished/discarded — otherwise backgrounding
+      // the app right after completion resurrects a just-cleared checkpoint and
+      // the recovery banner reappears for an already-saved session. Mirrors the
+      // guard on the unmount flush below.
+      if (sessionEndedRef.current) return;
       if (document.visibilityState === 'hidden') {
         saveCheckpointToLocalStorage();
         // Cancel any pending API-checkpoint timer so it can't fire with a
@@ -1267,6 +1439,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
     };
     const onPageHide = () => {
+      if (sessionEndedRef.current) return;
       saveCheckpointToLocalStorage();
       if (checkpointApiTimerRef.current) {
         clearTimeout(checkpointApiTimerRef.current);
@@ -1294,9 +1467,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Flush checkpoint on unmount. SPA back-nav (including iOS edge-swipe) unmounts
   // the component without firing pagehide/visibilitychange, so the other handlers
-  // alone aren't enough.
+  // alone aren't enough. Skip when the user explicitly discarded or completed —
+  // otherwise the flush resurrects a just-cleared checkpoint and the recovery
+  // modal reappears on Hoy / DailyWorkout.
   useEffect(() => {
     return () => {
+      if (sessionEndedRef.current) return;
       if (saveCheckpointRef.current) saveCheckpointRef.current();
     };
   }, []);
@@ -1317,23 +1493,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Video preloading function
-  const preloadNextVideo = useCallback(async () => {
+  // Kick off byte-level preload for upcoming exercises. On web this attaches a
+  // hidden <video preload="auto"> per URL inside videoCacheService so the
+  // browser HTTP cache is warm before the real player mounts. We preload the
+  // current exercise too because users can land here without going through
+  // Warmup (skip-warmup, session recovery, deep link).
+  const preloadNextVideo = useCallback(() => {
     if (!workout?.exercises) return;
-    
-    const nextExerciseIndex = currentExerciseIndex + 1;
-    if (nextExerciseIndex < workout.exercises.length) {
-      const nextExercise = workout.exercises[nextExerciseIndex];
-      const videoUrl = nextExercise?.video_url;
-      
-      if (videoUrl && !videoPreloadCache.current.has(videoUrl)) {
-        try {
-          await videoCacheService.preloadVideo(videoUrl);
-          videoPreloadCache.current.add(videoUrl);
-        } catch (error) {
-          logger.error('❌ Error preloading video:', error);
-        }
-      }
+    const candidates = [
+      workout.exercises[currentExerciseIndex],
+      workout.exercises[currentExerciseIndex + 1],
+    ];
+    for (const ex of candidates) {
+      const videoUrl = ex?.video_url;
+      if (!videoUrl || videoPreloadCache.current.has(videoUrl)) continue;
+      videoCacheService.preloadVideo(videoUrl);
+      videoPreloadCache.current.add(videoUrl);
     }
   }, [workout, currentExerciseIndex]);
 
@@ -1453,24 +1628,19 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           if (!isMounted) return;
           const deferredStartTime = performance.now();
           try {
-            if (videoPlayer) {
-              // Only pause if video is actually playing to avoid unnecessary operations
-              try {
-                videoPlayer.pause();
-              } catch (error) {
-                // Ignore pause errors - video might already be paused
-              }
-              videoPlayer.muted = true; // Mute as extra safety
-              // Defer state update to avoid blocking
-              const timeoutId2 = setTimeout(() => {
-                if (isMounted && isMountedRef.current) {
-                  startTransition(() => {
-                    setIsVideoPaused(true); // Update local state
-                  });
-                }
-              }, 0);
-              focusTimeoutIdsRef.current.push(timeoutId2);
+            // Pause the plain <video> element (web main player).
+            if (mainVideoRef.current) {
+              try { mainVideoRef.current.pause(); } catch (_) {}
+              try { mainVideoRef.current.muted = true; } catch (_) {}
             }
+            const timeoutId2 = setTimeout(() => {
+              if (isMounted && isMountedRef.current) {
+                startTransition(() => {
+                  setIsVideoPaused(true);
+                });
+              }
+            }, 0);
+            focusTimeoutIdsRef.current.push(timeoutId2);
           } catch (error) {
           }
           
@@ -1691,6 +1861,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       };
     }
 
+    // Fire the preload synchronously: it's just attaching a hidden <video> on
+    // web (cheap, non-blocking). Deferring it via setTimeout cost real load
+    // time on the next exercise's first byte.
+    preloadNextVideo();
+
     // Defer state update to avoid blocking commit phase
     const timeoutId1 = setTimeout(() => {
       if (!isMounted) return;
@@ -1702,7 +1877,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       currentExercise.primary,
       currentExercise.video_url
       ) || null;
-      
+
       // Use startTransition to mark as non-urgent
       if (isMounted) {
         const resolvedUrl = localPath || currentExercise.video_url || null;
@@ -1711,16 +1886,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setVideoUri(resolvedUrl);
           setVideoSourceType(sourceType);
         });
-      }
-    
-      // Preload next video for better UX (also defer)
-      if (isMounted) {
-        const timeoutId2 = setTimeout(() => {
-          if (isMounted) {
-    preloadNextVideo();
-          }
-        }, 0);
-        timeoutIds.push(timeoutId2);
       }
     }, 0);
     timeoutIds.push(timeoutId1);
@@ -1735,34 +1900,45 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     };
   }, [currentExerciseIndex, workout, preloadNextVideo, course]);
 
-  // Sync video mute state
+  // Native only: push URI into the persistent player via replace() on change.
+  // On web the plain <video> element binds src directly, so this is skipped.
   useEffect(() => {
-    const effectStartTime = performance.now();
-    // CRITICAL: Defer video operations to avoid blocking React commit phase
+    if (Platform.OS === 'web') return;
+    if (!videoPlayer) return;
     let isMounted = true;
-    let timeoutId = null;
-    
-    if (videoPlayer) {
-      timeoutId = setTimeout(() => {
-        if (isMounted) {
-          const deferredStartTime = performance.now();
-          try {
-      videoPlayer.muted = isMuted;
-          } catch (error) {
-          }
-          const deferredDuration = performance.now() - deferredStartTime;
-          if (deferredDuration > 50) {
-          }
-        }
-      }, 0);
-    }
-    const effectDuration = performance.now() - effectStartTime;
-    if (effectDuration > 50) {
-    }
-    
+    const timeoutId = setTimeout(() => {
+      if (!isMounted) return;
+      try {
+        videoPlayer.replace(memoizedVideoUri || '');
+      } catch (error) {
+        logger.error('❌ Error replacing video source:', error);
+      }
+    }, 0);
     return () => {
       isMounted = false;
-      if (timeoutId) clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
+    };
+  }, [memoizedVideoUri, videoPlayer]);
+
+  // Sync video mute state.
+  // Web: HTML <video> element (mainVideoRef) — direct property set.
+  // Native: expo-video player.
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (mainVideoRef.current) {
+        try { mainVideoRef.current.muted = isMuted; } catch (_) {}
+      }
+      return;
+    }
+    if (!videoPlayer) return;
+    let isMounted = true;
+    const timeoutId = setTimeout(() => {
+      if (!isMounted) return;
+      try { videoPlayer.muted = isMuted; } catch (_) {}
+    }, 0);
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
     };
   }, [isMuted, videoPlayer]);
 
@@ -1808,27 +1984,34 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     };
   }, [selectedIntensity, intensityVideoUri, intensityVideoPlayer, isIntensityVideoPaused]);
 
-  // TEST VERSION 11: Re-enable useEffect(videoSync)
-  // Sync video with pause state - only if tutorial is complete
-  // CRITICAL: Defer entire effect to avoid blocking commit phase
+  // Sync video with pause state.
+  // Web: drive the HTML <video> element directly via mainVideoRef.
+  // Native: expo-video player with deferred play/pause to avoid commit-phase blocking.
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      const el = mainVideoRef.current;
+      if (!el || !videoUri || !canStartVideo) return;
+      if (isVideoPaused) {
+        try { el.pause(); } catch (_) {}
+      } else {
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(error => {
+            if (error?.name !== 'AbortError') {
+              logger.error('❌ Error playing video:', error.message);
+            }
+          });
+        }
+      }
+      return;
+    }
+
     let syncTimeoutId = null;
     let videoTimeoutId = null;
-    
-    // Defer all video sync logic to avoid blocking React commit phase
     syncTimeoutId = setTimeout(() => {
       const effectStartTime = performance.now();
-      // Skip if video URI is not set yet (video is still loading)
-      if (!videoUri) {
-        const effectDuration = performance.now() - effectStartTime;
-        return;
-      }
-
-      // Skip if video player is not ready
-      if (!videoPlayer) {
-        const effectDuration = performance.now() - effectStartTime;
-        return;
-      }
+      if (!videoUri) return;
+      if (!videoPlayer) return;
 
       if (canStartVideo) {
         // Use a small delay to avoid race conditions with video loading
@@ -1926,6 +2109,87 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const newView = Math.round(offsetX / screenWidth);
     setCurrentView(newView);
   };
+
+  // Bottom sheet open/close — height animation (non-native driver so the card stays
+  // bottom-anchored with all four corners rounded throughout the transition).
+  const openSheet = useCallback(() => {
+    if (!hasEverOpenedDrawer) {
+      setHasEverOpenedDrawer(true);
+      try { localStorage.setItem('wake_exercise_drawer_opened_v2', 'true'); } catch {}
+    }
+    setIsSheetOpen(true);
+    setCurrentView(1);
+    Animated.parallel([
+      Animated.spring(sheetHeightAnim, { toValue: sheetHeight, useNativeDriver: false, bounciness: 0, speed: 16 }),
+      Animated.spring(sheetMarginAnim, { toValue: EXPANDED_HORIZONTAL_MARGIN, useNativeDriver: false, bounciness: 0, speed: 16 }),
+      Animated.timing(sheetBackdropOpacity, { toValue: 1, duration: 200, useNativeDriver: false }),
+    ]).start();
+  }, [hasEverOpenedDrawer, sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, sheetHeight, EXPANDED_HORIZONTAL_MARGIN]);
+
+  // Bridge refs: closeSheet is defined here but handleSaveEditMode lives lower in
+  // the file. Using refs lets closeSheet commit pending edits without a forward ref.
+  const isEditModeRef = useRef(isEditMode);
+  useEffect(() => { isEditModeRef.current = isEditMode; }, [isEditMode]);
+  const handleSaveEditModeRef = useRef(null);
+
+  const closeSheet = useCallback(() => {
+    if (isEditModeRef.current && handleSaveEditModeRef.current) {
+      handleSaveEditModeRef.current();
+    }
+    setIsSheetOpen(false);
+    setCurrentView(0);
+    Animated.parallel([
+      Animated.spring(sheetHeightAnim, { toValue: CLOSED_LID_HEIGHT, useNativeDriver: false, bounciness: 0, speed: 16 }),
+      Animated.spring(sheetMarginAnim, { toValue: CLOSED_HORIZONTAL_MARGIN, useNativeDriver: false, bounciness: 0, speed: 16 }),
+      Animated.timing(sheetBackdropOpacity, { toValue: 0, duration: 180, useNativeDriver: false }),
+    ]).start();
+  }, [sheetHeightAnim, sheetMarginAnim, sheetBackdropOpacity, CLOSED_HORIZONTAL_MARGIN]);
+
+  const sheetPanResponder = useMemo(() => PanResponder.create({
+    // Don't capture the start — let nested Pressable receive taps. Only take over on clear vertical movement.
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderGrant: () => {
+      sheetHeightAnim.stopAnimation((v) => { sheetDragStartHeightRef.current = v; });
+    },
+    onPanResponderMove: (_, g) => {
+      // Card is top-anchored and grows downward. Drag down (g.dy > 0) → grow (open).
+      // Drag up (g.dy < 0) → shrink (close).
+      const next = Math.max(CLOSED_LID_HEIGHT, Math.min(sheetHeight, sheetDragStartHeightRef.current + g.dy));
+      sheetHeightAnim.setValue(next);
+      const t = (next - CLOSED_LID_HEIGHT) / (sheetHeight - CLOSED_LID_HEIGHT);
+      sheetBackdropOpacity.setValue(Math.max(0, Math.min(1, t)));
+    },
+    onPanResponderRelease: (_, g) => {
+      const projected = sheetDragStartHeightRef.current + g.dy;
+      const midpoint = (CLOSED_LID_HEIGHT + sheetHeight) / 2;
+      const fastOpen = g.vy > 0.4;
+      const fastClose = g.vy < -0.4;
+      const shouldOpen = fastOpen || (!fastClose && projected > midpoint);
+      if (shouldOpen) openSheet(); else closeSheet();
+    },
+    onPanResponderTerminate: () => closeSheet(),
+  }), [sheetHeightAnim, sheetBackdropOpacity, sheetHeight, openSheet, closeSheet]);
+
+  // Pull-down hint: until the user has ever opened the drawer, nudge the closed lid
+  // down and back at the start of each new set to invite the slide-down gesture.
+  useEffect(() => {
+    if (hasEverOpenedDrawer || isSheetOpen) return;
+    lidPulseAnim.setValue(0);
+    // Wait for the screen/set to settle, then nudge a few times so it's noticeable.
+    const anim = Animated.sequence([
+      Animated.delay(700),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lidPulseAnim, { toValue: 1, duration: 750, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: false }),
+          Animated.timing(lidPulseAnim, { toValue: 0, duration: 950, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: false }),
+        ]),
+        { iterations: 2 }
+      ),
+    ]);
+    anim.start();
+    return () => { anim.stop(); lidPulseAnim.setValue(0); };
+  }, [currentExerciseIndex, currentSetIndex, hasEverOpenedDrawer, isSheetOpen, lidPulseAnim]);
 
   // Render pagination indicators - exact copy from MainScreen
   // Render pagination indicators for top cards - MainScreen style
@@ -2128,11 +2392,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const selectExercise = useCallback((exerciseIndex) => {
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(0);
-    // Switch back to exercise detail view (index 0)
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ x: 0, animated: true });
-    }
-  }, []);
+    // Selecting from the list closes the bottom sheet so the user lands on detail view.
+    closeSheet();
+  }, [closeSheet]);
 
   const toggleExerciseExpansion = useCallback((exerciseIndex) => {
     setExpandedExercises(prev => ({
@@ -2144,32 +2406,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const handleSelectSet = useCallback((exerciseIndex, setIndex) => {
     setCurrentExerciseIndex(exerciseIndex);
     setCurrentSetIndex(setIndex);
-    // Switch back to exercise detail view
-    if (scrollViewRef.current) {
-      scrollViewRef.current.scrollTo({ x: 0, animated: true });
-    }
   }, []);
 
   // Restore horizontal scroll to list view (page 1). Only scroll; never call setCurrentView(1) here so we avoid re-renders that unmount the focused input (fixes keyboard closing on mobile PWA).
-  const restoreListViewModelScroll = useCallback(() => {
-    const ref = scrollViewRef.current;
-    if (!ref) return;
-    if (isWeb && typeof ref.getScrollableNode === 'function') {
-      const node = ref.getScrollableNode?.();
-      if (node && typeof node.scrollLeft !== 'undefined') {
-        const before = node.scrollLeft;
-        const scrollWasWrong = Math.abs(before - screenWidth) > 20;
-        if (scrollWasWrong) {
-          ref.scrollTo({ x: screenWidth, animated: false });
-          node.scrollLeft = screenWidth;
-        }
-      } else {
-        ref.scrollTo({ x: screenWidth, animated: false });
-      }
-    } else {
-      ref.scrollTo({ x: screenWidth, animated: false });
-    }
-  }, [screenWidth]);
+  // No-op: legacy hook from when the list lived in a horizontal pager.
+  // The list now renders inside a bottom-sheet drawer, so there is no
+  // horizontal scroll position to restore on input focus.
+  const restoreListViewModelScroll = useCallback(() => {}, []);
 
   const getFieldDisplayName = useCallback((field, exercise = null) => {
     if (exercise?.customMeasureLabels?.[field]) return exercise.customMeasureLabels[field];
@@ -2211,12 +2454,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const fieldName = getFieldDisplayName(field);
       const fieldValue = set[field]?.toString() || '';
       const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : 'NO DATA';
-      const titleWidth = fieldName.length * 8;
-      const contentWidth = placeholderText.length * 8;
+      const titleWidth = fieldName.length * 6.5;
+      const contentWidth = placeholderText.length * 6.5;
       const maxWidth = Math.max(titleWidth, contentWidth);
-      const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
-      const minWidth = fieldsToShow.length === 2 ? 80 : 60; // Higher minimum for 2 metrics
-      const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+      const extraWidth = fieldsToShow.length === 2 ? 12 : 0;
+      const minWidth = fieldsToShow.length === 2 ? 68 : 50;
+      const boxWidth = Math.max(maxWidth + 10 + extraWidth, minWidth);
       totalBoxWidth += boxWidth;
     });
     
@@ -2228,7 +2471,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     // Calculate even gaps with minimum 8px
     const numberOfGaps = fieldsToShow.length + 1; // Gaps between boxes + gaps at borders
     const totalGapSpace = availableSpace - totalBoxWidth;
-    const evenGap = Math.max(totalGapSpace / numberOfGaps, 8); // Minimum 8px gap
+    const evenGap = Math.max(totalGapSpace / numberOfGaps, 4);
     
     return { evenGap, totalBoxWidth };
   }, [getFieldDisplayName]);
@@ -2251,9 +2494,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           setConfirmModalConfig(null);
           try {
 
+            // Mark session as ended BEFORE clearing so the unmount cleanup
+            // (which fires after navigation.goBack) won't re-write the checkpoint.
+            sessionEndedRef.current = true;
             // Cancel the current session and clear local data
             await sessionManager.cancelSession();
             try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+            if (checkpointApiTimerRef.current) {
+              clearTimeout(checkpointApiTimerRef.current);
+              checkpointApiTimerRef.current = null;
+            }
             import('../utils/apiClient.js').then(mod => {
               const client = mod.default || mod.apiClient;
               client.delete('/workout/session/active').catch(() => {});
@@ -2296,9 +2546,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             onPress: async () => {
               try {
 
+                // Mark session as ended BEFORE clearing so the unmount cleanup
+                // (which fires after navigation.goBack) won't re-write the checkpoint.
+                sessionEndedRef.current = true;
                 // Cancel the current session and clear local data
                 await sessionManager.cancelSession();
                 try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
+                if (checkpointApiTimerRef.current) {
+                  clearTimeout(checkpointApiTimerRef.current);
+                  checkpointApiTimerRef.current = null;
+                }
                 import('../utils/apiClient.js').then(mod => {
                   const client = mod.default || mod.apiClient;
                   client.delete('/workout/session/active').catch(() => {});
@@ -2865,8 +3122,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setSwapModalVideoUri('');
       setIsSwapModalVideoPaused(false);
       setExpandedCardIndex(null);
+      // Release the player's source so it stops holding the video buffer
+      // (frees the iOS decoder slot for the main player).
+      try { swapModalVideoPlayer?.replace(''); } catch (_) {}
     });
-  }, [swapModalOpacity, swapModalTranslateY]);
+  }, [swapModalOpacity, swapModalTranslateY, swapModalVideoPlayer]);
 
   // Swap modal video tap handler
   const handleSwapModalVideoTap = useCallback(() => {
@@ -2912,6 +3172,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setAddExerciseModalVideoUri('');
     }
   }, [expandedAddExerciseIndex, addExerciseModalVideoPlayer]);
+
+  // Release the add-exercise modal player's source when the modal closes so
+  // it stops holding the video buffer and frees the iOS decoder slot for the
+  // main exercise player.
+  useEffect(() => {
+    if (isAddExerciseModalVisible) return;
+    if (!addExerciseModalVideoPlayer) return;
+    try { addExerciseModalVideoPlayer.replace(''); } catch (_) {}
+  }, [isAddExerciseModalVisible, addExerciseModalVideoPlayer]);
 
   // Add exercise modal video tap handler
   const handleAddExerciseModalVideoTap = useCallback(() => {
@@ -3363,6 +3632,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       setLoadingAvailableExercises(false);
     }
   }, [editingExercises, dragAnimatedValues]);
+
+  // Bridge: closeSheet (defined earlier) calls this when the user dismisses the
+  // sheet while in edit mode, so unsaved reorders/adds are committed instead of lost.
+  useEffect(() => { handleSaveEditModeRef.current = handleSaveEditMode; }, [handleSaveEditMode]);
 
   const handleCancelEditMode = useCallback(() => {
     // Simply exit edit mode without applying changes
@@ -4065,9 +4338,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     );
                      
                      if (result) {
+                       // Mark session as ended BEFORE clearing so the unmount cleanup
+                       // (which fires when navigating to WorkoutCompletion) won't
+                       // re-write the checkpoint.
+                       sessionEndedRef.current = true;
                        // Clear checkpoint on successful completion
                        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
                        sessionManager.cancelPendingCheckpoint();
+                       if (checkpointApiTimerRef.current) {
+                         clearTimeout(checkpointApiTimerRef.current);
+                         checkpointApiTimerRef.current = null;
+                       }
                        import('../utils/apiClient.js').then(mod => {
                          const client = mod.default || mod.apiClient;
                          client.delete('/workout/session/active');
@@ -4197,15 +4478,15 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const fieldName = getFieldDisplayName(field, exerciseForLabel);
       const fieldValue = set[field]?.toString() || '';
       const placeholderText = fieldValue !== undefined && fieldValue !== null && fieldValue !== '' ? fieldValue.toString() : '--';
-      const titleWidth = fieldName.length * 8;
-      const contentWidth = placeholderText.length * 8;
+      const titleWidth = fieldName.length * 6.5;
+      const contentWidth = placeholderText.length * 6.5;
       const maxWidth = Math.max(titleWidth, contentWidth);
-      const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
-      const minWidth = fieldsToShow.length === 2 ? 80 : 60; // Higher minimum for 2 metrics
-      const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
-      
+      const extraWidth = fieldsToShow.length === 2 ? 12 : 0;
+      const minWidth = fieldsToShow.length === 2 ? 68 : 50;
+      const boxWidth = Math.max(maxWidth + 10 + extraWidth, minWidth);
+
       return (
-        <View key={field} style={[styles.inputGroup, { 
+        <View key={field} style={[styles.inputGroup, {
           width: boxWidth, 
           marginLeft: fieldIndex === 0 ? evenGap : 0,
           marginRight: fieldIndex < fieldsToShow.length - 1 ? evenGap : 0 
@@ -4248,12 +4529,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       const fieldName = getFieldDisplayName(field, exercise);
       const objectiveValue = set[field];
       const placeholderText = objectiveValue?.toString() || '--';
-      const titleWidth = fieldName.length * 8;
-      const contentWidth = placeholderText.length * 8;
+      const titleWidth = fieldName.length * 6.5;
+      const contentWidth = placeholderText.length * 6.5;
       const maxWidth = Math.max(titleWidth, contentWidth);
-      const extraWidth = fieldsToShow.length === 2 ? 20 : 0; // 20px extra for 2 metrics
-      const minWidth = fieldsToShow.length === 2 ? 80 : 60;
-      const boxWidth = Math.max(maxWidth + 16 + extraWidth, minWidth);
+      const extraWidth = fieldsToShow.length === 2 ? 12 : 0;
+      const minWidth = fieldsToShow.length === 2 ? 68 : 50;
+      const boxWidth = Math.max(maxWidth + 10 + extraWidth, minWidth);
       const savedValue = currentSetData[field] || '';
       
       return (
@@ -4303,6 +4584,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         renderSetHeaders={renderSetHeaders}
         renderSetInputFields={renderSetInputFields}
         styles={styles}
+        accentColor={accentColor}
       />
     );
   }, [
@@ -4319,6 +4601,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     renderSetHeaders,
     renderSetInputFields,
     styles,
+    accentColor,
   ]);
 
   // Key extractor for FlatList
@@ -4326,10 +4609,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     return `exercise-${index}-${item.id || item.name || index}`;
   }, []);
 
-  // List header component
+  // List header component (rendered inside the bottom-sheet drawer — no fixed-header spacer needed)
   const ListHeaderComponent = useMemo(() => (
-    <WakeHeaderContent>
-      <WakeHeaderSpacer />
+    <>
       <View style={styles.exerciseListTitleSection}>
         <Text style={styles.exerciseListTitle}>
           {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
@@ -4367,7 +4649,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </View>
         )}
       </View>
-    </WakeHeaderContent>
+    </>
   ), [
     workout?.title,
     workout?.name,
@@ -4419,8 +4701,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       return (
         <ScrollView style={styles.exerciseListView} showsVerticalScrollIndicator={false}>
           <View style={styles.exerciseListContent}>
-            <WakeHeaderContent>
-              <WakeHeaderSpacer />
             <View style={styles.exerciseListTitleSection}>
               <Text style={styles.exerciseListTitle}>
                 {workout?.title || workout?.name || 'Ejercicios de la Sesión'}
@@ -4525,7 +4805,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 Terminar y guardar
               </Text>
             </TouchableOpacity>
-            </WakeHeaderContent>
           </View>
         </ScrollView>
       );
@@ -4675,14 +4954,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const getCurrentExercise = () => {
-    if (!workout?.exercises || workout.exercises.length === 0) return null;
-    return workout.exercises[currentExerciseIndex];
+    const exs = workout?.exercises;
+    if (!exs || exs.length === 0) return null;
+    // Clamp: a restored index can momentarily exceed the loaded workout. Resolve
+    // to the last valid exercise rather than returning undefined (blank screen).
+    return exs[Math.min(currentExerciseIndex, exs.length - 1)];
   };
 
   const getCurrentSet = () => {
     const exercise = getCurrentExercise();
     if (!exercise?.sets || exercise.sets.length === 0) return null;
-    return exercise.sets[currentSetIndex];
+    return exercise.sets[Math.min(currentSetIndex, exercise.sets.length - 1)];
   };
 
   // Translate metric names to Spanish and capitalize first letter (optional exercise for custom objective labels)
@@ -4900,6 +5182,37 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     );
   };
 
+  // Exercise video failed to load (distinct from the benign interrupted-play
+  // AbortError). Surface it on PostHog — deduped per exercise so a retry loop
+  // can't spam — so we can see how often coaches' videos fail for real users.
+  const trackVideoLoadFailed = useCallback((stage) => {
+    const ex = getCurrentExercise();
+    const key = `${stage}:${ex?.id || ex?.exerciseId || videoUri || ''}`;
+    if (videoFailTrackedRef.current.has(key)) return;
+    videoFailTrackedRef.current.add(key);
+    try {
+      analyticsService.track('workout.video_load_failed', {
+        stage,
+        exercise_id: ex?.id || ex?.exerciseId || null,
+        exercise_name: ex?.name || null,
+        video_url: videoUri || null,
+      });
+    } catch { /* never throw from analytics */ }
+  }, [videoUri]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Inline retry for a failed exercise video — re-fetch the source without
+  // remounting the screen (so entered sets are never lost to a video error).
+  const handleVideoReload = useCallback(() => {
+    setVideoLoadFailed(false);
+    const el = mainVideoRef.current;
+    if (!el) return;
+    try {
+      el.load();
+      const p = el.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_) {}
+  }, []);
+
   // Video tap handler
   const handleVideoTap = useCallback(() => {
     setIsVideoPaused(!isVideoPaused);
@@ -4907,24 +5220,38 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   // Video restart handler
   const handleVideoRestart = useCallback(() => {
-    if (videoPlayer) {
-      // Defer video operations to avoid blocking
-      const timeoutId = setTimeout(() => {
-        if (isMountedRef.current) {
-      videoPlayer.currentTime = 0;
-        const playPromise = videoPlayer.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            if (error.name === 'AbortError') {
-            } else {
+    if (Platform.OS === 'web') {
+      const el = mainVideoRef.current;
+      if (!el) return;
+      try {
+        el.currentTime = 0;
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(error => {
+            if (error?.name !== 'AbortError') {
               logger.error('❌ Error playing video on restart:', error.message);
             }
           });
         }
-        // Defer state update to avoid blocking
-        startTransition(() => {
+      } catch (_) {}
       setIsVideoPaused(false);
-        });
+      return;
+    }
+    if (videoPlayer) {
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          videoPlayer.currentTime = 0;
+          const playPromise = videoPlayer.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(error => {
+              if (error.name !== 'AbortError') {
+                logger.error('❌ Error playing video on restart:', error.message);
+              }
+            });
+          }
+          startTransition(() => {
+            setIsVideoPaused(false);
+          });
         }
       }, 0);
       allTimeoutIdsRef.current.push(timeoutId);
@@ -4949,15 +5276,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           </View>
         )}
 
-        {/* Reps — prefer drop-sequence display when present */}
+        {/* Reps — show the `reps` anchor only. rep_sequence encodes a
+            multi-week microcycle (W1→W4) the subscriber can't navigate
+            yet (no week-aware UI), so the array is intentionally hidden
+            here. Coaches read it via the dashboard. */}
         {set.reps && (
           <View style={styles.setDetailRow}>
             <Text style={styles.setDetailLabel}>Repeticiones:</Text>
-            <Text style={styles.setDetailValue}>
-              {Array.isArray(set.rep_sequence) && set.rep_sequence.length > 0
-                ? `${set.rep_sequence.join(' → ')} (${set.reps})`
-                : set.reps}
-            </Text>
+            <Text style={styles.setDetailValue}>{String(set.reps)}</Text>
           </View>
         )}
         
@@ -5263,21 +5589,28 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               </ScrollView>
               
               <View style={styles.setInputModalFooter}>
-                <TouchableOpacity
-                  style={[
-                    styles.saveSetButton,
-                    !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val))) && styles.saveSetButtonDisabled
-                  ]}
-                  onPress={handleSaveSetData}
-                  disabled={!Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val)))}
-                >
-                  <Text style={[
-                    styles.saveSetButtonText,
-                    !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val))) && styles.saveSetButtonTextDisabled
-                  ]}>
-                    Registrar: serie {currentSetIndex + 1} de {getCurrentExercise()?.sets?.length || 0}
-                  </Text>
-                </TouchableOpacity>
+                {(() => {
+                  const isSaveDisabled = !Object.values(currentSetInputData).some(val => val && val.trim() !== '' && !isNaN(parseFloat(val)));
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.saveSetButton,
+                        accentColor && !isSaveDisabled && { backgroundColor: accentColor },
+                        isSaveDisabled && styles.saveSetButtonDisabled
+                      ]}
+                      onPress={handleSaveSetData}
+                      disabled={isSaveDisabled}
+                    >
+                      <Text style={[
+                        styles.saveSetButtonText,
+                        accentColor && !isSaveDisabled && { color: accentTextColor },
+                        isSaveDisabled && styles.saveSetButtonTextDisabled
+                      ]}>
+                        Registrar: serie {currentSetIndex + 1} de {getCurrentExercise()?.sets?.length || 0}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })()}
               </View>
             </KeyboardAvoidingView>
               </Animated.View>
@@ -5351,6 +5684,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                               items.push({ label: 'Peso Sugerido', value: `${suggestion}kg` });
                             }
                             sortedObjectives.forEach((objective) => {
+                              if (objective === 'notes') {
+                                const setNote = currentExercise?.sets?.[currentSetIndex]?.notes;
+                                const exerciseNote = currentExercise?.notes;
+                                const noteText = (typeof setNote === 'string' && setNote.trim()) || (typeof exerciseNote === 'string' && exerciseNote.trim()) || '';
+                                if (!noteText) return;
+                                items.push({ label: 'NOTA', value: noteText, onPress: () => {
+                                  setSelectedObjectiveInfo({ title: 'Nota del coach', description: noteText });
+                                  setIsObjectiveInfoModalVisible(true);
+                                } });
+                                return;
+                              }
                               const baseLabel = translateMetric(objective, currentExercise) || 'Objetivo';
                               items.push({
                                 label: baseLabel.toUpperCase(),
@@ -5360,11 +5704,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                             const isOddCount = items.length % 2 === 1;
                             return items.map((item, index) => {
                               const isLastAndOdd = isOddCount && index === items.length - 1;
+                              const Cell = item.onPress ? TouchableOpacity : View;
                               return (
-                                <View key={`obj-card-${index}`} style={[styles.timerObjectiveCard, isLastAndOdd && styles.timerObjectiveCardFullWidth]}>
+                                <Cell
+                                  key={`obj-card-${index}`}
+                                  style={[styles.timerObjectiveCard, isLastAndOdd && styles.timerObjectiveCardFullWidth]}
+                                  {...(item.onPress ? { onPress: item.onPress, activeOpacity: 0.7 } : {})}
+                                >
                                   <Text style={styles.timerObjectiveCardLabel} numberOfLines={1}>{item.label}</Text>
-                                  <Text style={styles.timerObjectiveCardValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{item.value}</Text>
-                                </View>
+                                  <Text style={styles.timerObjectiveCardValue} numberOfLines={item.onPress ? 2 : 1} adjustsFontSizeToFit minimumFontScale={item.onPress ? 0.6 : 0.75}>{item.value}</Text>
+                                </Cell>
                               );
                             });
                           })()}
@@ -5560,28 +5909,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         </TouchableWithoutFeedback>
       </Modal>
       
-      {/* Swipeable Content */}
+      {/* Detail content (no longer a horizontal pager — list lives in a bottom sheet) */}
       <KeyboardAvoidingView style={{flex: 1}} behavior="padding" keyboardVerticalOffset={0}>
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={onScroll}
-          onMomentumScrollEnd={onMomentumScrollEnd}
-          onLayout={() => {
-            if (listViewInputJustFocusedRef.current && !isPWA()) {
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  restoreListViewModelScroll();
-                });
-              });
-            }
-          }}
-          scrollEventThrottle={16}
-          style={styles.scrollContainer}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={styles.scrollContainer}>
             {/* Exercise Detail View */}
         <View style={styles.viewContainer}>
               {(() => {
@@ -5594,35 +5924,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                 showsVerticalScrollIndicator={false}
               >
                 <WakeHeaderContent style={styles.content}>
-                  {/* Spacer for fixed header */}
-                  {(() => {
-                    const spacerStartTime = performance.now();
-                    return null;
-                  })()}
-                  <WakeHeaderSpacer />
-                  
-              {/* Exercise Title Section */}
-              <View style={styles.exerciseTitleSection}>
-                <TouchableOpacity
-                  onPress={() => {
-                    // Navigate to list view (index 1)
-                    if (scrollViewRef.current) {
-                      scrollViewRef.current.scrollTo({ x: screenWidth, animated: true });
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text 
-                    style={styles.exerciseTitle}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {workout?.exercises?.[currentExerciseIndex]?.name || 
-                     'Ejercicio'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              
+                  {/* Single in-flow spacer derived from the live lid position so the
+                      gap below the lid stays consistent across devices/safe-area timing. */}
+                  <View style={{ height: sheetTopOffset + CLOSED_LID_HEIGHT + 4 }} />
+
               {/* Swipeable Top Cards */}
               <ScrollView
                 horizontal
@@ -5662,6 +5967,25 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       onPress={handleVideoTap}
                       activeOpacity={1}
                     >
+                      {Platform.OS === 'web' ? (
+                        <video
+                          ref={mainVideoRef}
+                          src={videoUri}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, backgroundColor: '#000' }}
+                          autoPlay
+                          loop
+                          muted={isMuted}
+                          playsInline
+                          preload="auto"
+                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            logger.error('[VIDEO] [ERROR] <video> error:', e?.nativeEvent || e);
+                            trackVideoLoadFailed('execution');
+                            setVideoLoadFailed(true);
+                          }}
+                          onLoadedData={() => setVideoLoadFailed(false)}
+                        />
+                      ) : (
                       <VideoView
                         player={videoPlayer}
                         style={styles.video}
@@ -5671,17 +5995,18 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         nativeControls={false}
                         showsTimecodes={false}
                         playsInline
-                        onLoadStart={() => {
-                          const loadStartTime = performance.now();
-                        }}
-                        onLoad={() => {
-                          const loadTime = performance.now();
-                        }}
-                        onError={(error) => {
-                          const errorTime = performance.now();
-                          logger.error(`[VIDEO] [ERROR] VideoView onError at ${errorTime.toFixed(2)}ms:`, error);
-                        }}
                       />
+                      )}
+                      {videoLoadFailed && (
+                        <VideoOverlayWebWrapper>
+                          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 12 }}>
+                            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '600', marginBottom: 12, textAlign: 'center' }}>No pudimos cargar el video</Text>
+                            <TouchableOpacity onPress={handleVideoReload} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.85)' }}>
+                              <Text style={{ color: '#1a1a1a', fontSize: 13, fontWeight: '700' }}>Reintentar</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </VideoOverlayWebWrapper>
+                      )}
                       {isVideoPaused && (
                         <VideoOverlayWebWrapper pointerEvents="none">
                           <View style={styles.videoDimmingLayer} pointerEvents="none" />
@@ -5755,6 +6080,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         <MuscleSilhouetteSVG
                           muscleVolumes={muscleVolumesForCurrentExercise}
                           useWorkoutExecutionColors={true}
+                          accentRgb={accent ? [accent.accentR, accent.accentG, accent.accentB] : null}
                           height={
                             currentExercise?.implements && currentExercise.implements.length > 0
                               ? Math.max(260, screenHeight * 0.32)
@@ -5884,8 +6210,36 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       
                       {/* Objectives Cards (sorted: reps, previous, then rest) */}
                       {sortedObjectives.map((objective, index) => {
-                        const hasInfo = objectivesInfoService.hasInfo(objective);
                         const currentExercise = workout?.exercises?.[currentExerciseIndex];
+                        // Notes objective: render only when content exists; tap opens modal with the note text
+                        if (objective === 'notes') {
+                          const setNote = currentExercise?.sets?.[currentSetIndex]?.notes;
+                          const exerciseNote = currentExercise?.notes;
+                          const noteText = (typeof setNote === 'string' && setNote.trim()) || (typeof exerciseNote === 'string' && exerciseNote.trim()) || '';
+                          if (!noteText) return null;
+                          const _idx = _cardIdx++;
+                          return (
+                            <TouchableOpacity
+                              key={`objective-${currentExerciseIndex}-${index}-notes`}
+                              style={styles.horizontalCard}
+                              onPress={() => {
+                                setSelectedObjectiveInfo({ title: 'Nota del coach', description: noteText });
+                                setIsObjectiveInfoModalVisible(true);
+                              }}
+                              activeOpacity={0.7}
+                              {...(isWeb && showPostSave ? { className: `wake-obj-cascade wake-obj-i${_idx}` } : {})}
+                            >
+                              <Text style={styles.metricTitle}>NOTA</Text>
+                              <Text style={styles.metricValue} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.6}>
+                                {noteText}
+                              </Text>
+                              <View style={styles.infoIconContainer}>
+                                <SvgInfo width={14} height={14} color="rgba(255, 255, 255, 0.6)" />
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        }
+                        const hasInfo = objectivesInfoService.hasInfo(objective);
                         const _idx = _cardIdx++;
                         return (
                           <TouchableOpacity
@@ -5908,7 +6262,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                               const rpe = prevSet?.intensity ? parseFloat(prevSet.intensity) : null;
                               if (!rpe || rpe < 1 || rpe > 10) return null;
                               return (
-                                <Text style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 3 }}>
+                                <Text style={{ position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>
                                   RPE: {rpe}
                                 </Text>
                               );
@@ -5953,6 +6307,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     <TouchableOpacity
                       style={[
                         styles.inputSetButton,
+                        accentColor && !isEditMode && { backgroundColor: accentColor },
                         isEditMode && styles.inputSetButtonDisabled
                       ]}
                       onPress={handleOpenSetInput}
@@ -5961,37 +6316,93 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           >
                       <Text style={[
                         styles.inputSetButtonText,
+                        accentColor && !isEditMode && { color: accentTextColor },
                         isEditMode && styles.inputSetButtonTextDisabled
                       ]}>
                         Registrar: serie {currentSetIndex + 1} de {workout?.exercises?.[currentExerciseIndex]?.sets?.length || 0}
                       </Text>
                     </TouchableOpacity>
-                    
+
                     {/* Timer Button - opens timer modal */}
                     <TouchableOpacity
-                      style={styles.timerButton}
+                      style={[
+                        styles.timerButton,
+                        accentColor && { backgroundColor: accentColor },
+                      ]}
                       onPress={handleOpenTimerModal}
                       accessibilityLabel="Abrir cronómetro de descanso"
                     >
-                      <SvgTimer width={24} height={24} color="#1a1a1a" />
+                      <SvgTimer width={24} height={24} color={accentColor ? accentTextColor : '#1a1a1a'} />
                     </TouchableOpacity>
                   </View>
                 </WakeHeaderContent>
                   <BottomSpacer />
               </ScrollView>
         </View>
-            
-            {/* Exercise List View */}
-        <View style={styles.viewContainer}>
-              {renderExerciseListView()}
         </View>
-      </ScrollView>
       </KeyboardAvoidingView>
-      
-      {/* Animated Pagination Indicators */}
-      <View style={styles.screenIndicator}>
-        {renderPaginationIndicators()}
-      </View>
+
+      {/* Bottom-sheet drawer: exercise list. Closed = handle bar visible; open = full-height sheet. */}
+      <Animated.View
+        pointerEvents={isSheetOpen ? 'auto' : 'none'}
+        style={[styles.bottomSheetBackdrop, { opacity: sheetBackdropOpacity }]}
+      >
+        <Pressable style={{ flex: 1 }} onPress={closeSheet} />
+      </Animated.View>
+      <Animated.View
+        style={[
+          styles.bottomSheet,
+          {
+            top: sheetTopOffset,
+            height: sheetHeightAnim,
+            left: sheetMarginAnim,
+            right: sheetMarginAnim,
+            transform: [{ translateY: lidPulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 12] }) }],
+          },
+        ]}
+      >
+        {isSheetOpen ? (
+          <>
+            <View style={styles.bottomSheetContent}>
+              {renderExerciseListView()}
+            </View>
+            <View
+              style={styles.bottomSheetFooter}
+              {...sheetPanResponder.panHandlers}
+            >
+              <Pressable
+                onPress={closeSheet}
+                style={styles.bottomSheetFooterPressable}
+                accessibilityRole="button"
+                accessibilityLabel="Cerrar lista de ejercicios"
+              >
+                <View style={styles.bottomSheetFooterGrabber} />
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <View
+            style={styles.bottomSheetHandleArea}
+            {...sheetPanResponder.panHandlers}
+          >
+            <Pressable
+              onPress={openSheet}
+              style={styles.bottomSheetHandlePressable}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir lista de ejercicios"
+            >
+              <Text
+                style={styles.bottomSheetTitle}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {workout?.exercises?.[currentExerciseIndex]?.name || 'Ejercicio'}
+              </Text>
+              <View style={styles.bottomSheetGrabber} />
+            </Pressable>
+          </View>
+        )}
+      </Animated.View>
 
       {/* Swap Exercise Modal */}
       <Modal
@@ -6647,22 +7058,6 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               />
             </View>
           </View>
-
-          {/* Warm-up VideoView when no card expanded: keeps player attached on web so video works when user expands a card */}
-          {expandedAddExerciseIndex === null && (
-            <View style={[styles.addExerciseVideoContainer, { height: 1, marginBottom: 0, overflow: 'hidden', opacity: 0 }]}>
-              <VideoView
-                player={addExerciseModalVideoPlayer}
-                style={styles.addExerciseVideo}
-                contentFit="cover"
-                fullscreenOptions={{ allowed: false }}
-                allowsPictureInPicture={false}
-                nativeControls={false}
-                showsTimecodes={false}
-                playsInline
-              />
-            </View>
-          )}
 
           <ScrollView style={styles.addExerciseModalContent}>
             {loadingAvailableExercises ? (

@@ -1,6 +1,7 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import * as crypto from "node:crypto";
 import {db, FieldValue} from "../firestore.js";
 import type {Query} from "../firestore.js";
 import {validateAuth, validateAuthAndRateLimit} from "../middleware/auth.js";
@@ -10,14 +11,15 @@ import {
   assertAllowedDownloadPath,
   assertAllowedUserCourseStatus,
   assertHttpsUrl,
-  clampTrialDurationDays,
   isFreeGrantAllowed,
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
+import {identify} from "../../lib/analytics.js";
 import {calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
+import {isReservedUsername} from "../utils/reservedUsernames.js";
 
 const router = Router();
 
@@ -40,25 +42,74 @@ router.get("/users/me", async (req, res) => {
     data = {...bootstrap, created_at: new Date()};
   }
 
-  // Auto-heal: if no pinned nutrition assignment, check for active ones
-  let pinnedNutritionAssignmentId = data.pinnedNutritionAssignmentId ?? null;
+  // Auto-heal pinnedNutritionAssignmentId. Two failure modes to cover:
+  //   (1) No pin set — find an active assignment.
+  //   (2) Pin points to a missing/inactive doc — same heal path. (The deactivation
+  //       flow doesn't currently re-pin, so stale pins do occur in prod.)
+  const originalPinned = (data.pinnedNutritionAssignmentId as string | null) ?? null;
+  let pinnedNutritionAssignmentId: string | null = originalPinned;
+
+  if (pinnedNutritionAssignmentId) {
+    const pinDoc = await db.collection("nutrition_assignments").doc(pinnedNutritionAssignmentId).get();
+    const pinStatus = pinDoc.exists ? (pinDoc.data()?.status as string | undefined) : undefined;
+    // Treat any non-active status (e.g. "inactive") as a stale pin.
+    if (!pinDoc.exists || (pinStatus && pinStatus !== "active")) {
+      pinnedNutritionAssignmentId = null;
+    }
+  }
+
   if (!pinnedNutritionAssignmentId) {
+    // limit:10 instead of 1 — covers the case where the most recently created
+    // assignment is inactive (creator unenrolled and re-enrolled the client),
+    // without requiring a new composite index on (userId, status, createdAt).
     const assignSnap = await db
       .collection("nutrition_assignments")
       .where("userId", "==", auth.userId)
       .orderBy("createdAt", "desc")
-      .limit(1)
+      .limit(10)
       .get();
     const activeDoc = assignSnap.docs.find((d) => {
       const s = d.data().status;
       return !s || s === "active";
     });
-    if (activeDoc) {
-      pinnedNutritionAssignmentId = activeDoc.id;
-      // Persist so future calls skip the extra query
-      db.collection("users").doc(auth.userId).set({pinnedNutritionAssignmentId}, {merge: true})
-        .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
+    if (activeDoc) pinnedNutritionAssignmentId = activeDoc.id;
+  }
+
+  if (pinnedNutritionAssignmentId !== originalPinned) {
+    // Fire-and-forget — don't delay the response, but persist so future calls skip the heal.
+    db.collection("users").doc(auth.userId)
+      .set({pinnedNutritionAssignmentId}, {merge: true})
+      .catch((err) => functions.logger.warn("profile:pinned-nutrition-persist-failed", err));
+  }
+
+  // Enrich the PostHog person with profile attributes the analytics middleware
+  // doesn't see (it only carries role + coach attribution). Fire-and-forget; the
+  // Firebase UID is the shared distinct_id, so these $set onto the same person.
+  try {
+    const courses = (data.courses ?? {}) as Record<string, {deliveryType?: string}>;
+    const deliveryTypes = [
+      ...new Set(Object.values(courses).map((c) => c?.deliveryType).filter(Boolean)),
+    ];
+    const createdAtRaw = data.created_at as {toDate?: () => Date} | Date | null;
+    let createdAtIso: string | null = null;
+    if (createdAtRaw && typeof (createdAtRaw as {toDate?: () => Date}).toDate === "function") {
+      createdAtIso = (createdAtRaw as {toDate: () => Date}).toDate().toISOString();
+    } else if (createdAtRaw instanceof Date) {
+      createdAtIso = createdAtRaw.toISOString();
     }
+    identify(auth.userId, {
+      role: data.role ?? "user",
+      country: data.country ?? null,
+      onboarding_completed: !!data.onboardingCompleted,
+      profile_completed: !!data.profileCompleted,
+      web_onboarding_completed: !!data.webOnboardingCompleted,
+      course_count: Object.keys(courses).length,
+      delivery_types: deliveryTypes,
+      acquired_via: data.acquiredVia ?? null,
+      created_at: createdAtIso,
+    });
+  } catch (err) {
+    functions.logger.warn("profile:identify-enrich-failed", {error: String(err)});
   }
 
   res.json({
@@ -82,6 +133,8 @@ router.get("/users/me", async (req, res) => {
       webOnboardingCompleted: data.webOnboardingCompleted ?? false,
       profileCompleted: data.profileCompleted ?? false,
       onboardingCompleted: data.onboardingCompleted ?? false,
+      onboardingDeferred: data.onboardingDeferred ?? false,
+      acquiredVia: data.acquiredVia ?? null,
       bibliotecaGuideCompleted: data.bibliotecaGuideCompleted ?? false,
       courses: data.courses ?? {},
       bio: data.bio ?? null,
@@ -93,6 +146,7 @@ router.get("/users/me", async (req, res) => {
       goalWeight: data.goalWeight ?? null,
       weightUnit: data.weightUnit ?? null,
       activityStreak: data.activityStreak ?? null,
+      readinessOptIn: typeof data.readinessOptIn === "boolean" ? data.readinessOptIn : null,
     },
   });
 });
@@ -147,6 +201,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
     "bio", "creatorNavPreferences",
     "creatorSpecializations", "creatorExperience", "creatorCertifications",
     "websiteUrl", "socialLinks", "profilePictureUrl",
+    "readinessOptIn",
   ];
 
   const stringFields = new Set([
@@ -159,7 +214,7 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   ]);
   const urlFields = new Set(["websiteUrl", "profilePictureUrl"]);
   const numberFields = new Set(["height", "weight", "goalWeight"]);
-  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted"]);
+  const booleanFields = new Set(["webOnboardingCompleted", "profileCompleted", "onboardingCompleted", "bibliotecaGuideCompleted", "readinessOptIn"]);
   const objectFields = new Set(["creatorOnboardingData", "onboardingData", "creatorNavPreferences", "socialLinks"]);
   const arrayFields = new Set(["creatorSpecializations"]);
 
@@ -237,6 +292,11 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
   if (updates.username) {
     const normalized = (updates.username as string).toLowerCase().trim();
     updates.username = normalized;
+    if (isReservedUsername(normalized)) {
+      throw new WakeApiServerError(
+        "CONFLICT", 409, "Este username está reservado", "username"
+      );
+    }
     const existing = await db.collection("users")
       .where("username", "==", normalized)
       .limit(1)
@@ -246,6 +306,13 @@ router.patch(["/users/me", "/users/me/full"], async (req, res) => {
         "CONFLICT", 409, "Este username ya esta en uso", "username"
       );
     }
+  }
+
+  // H-5: when the user voluntarily finishes onboarding, clear the storefront
+  // deferral flag so it doesn't stay sticky forever and corrupt the
+  // PWA gate / analytics.
+  if (updates.onboardingCompleted === true) {
+    updates.onboardingDeferred = false;
   }
 
   updates.updated_at = FieldValue.serverTimestamp();
@@ -308,9 +375,14 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
     );
   }
 
-  await applyLongCacheControl(file);
+  // Storage rules require request.auth.uid == userId for reads on
+  // profile_pictures/{userId}/, and browsers don't attach Firebase ID tokens
+  // to <img> requests. Issue a download token so the resulting URL bypasses
+  // rules — same pattern as /creator/media/upload-url/confirm.
+  const downloadToken = crypto.randomUUID();
+  await applyLongCacheControl(file, {firebaseStorageDownloadTokens: downloadToken});
 
-  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;
+  const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media&token=${downloadToken}`;
 
   await db.collection("users").doc(auth.userId).update({
     profilePictureUrl: publicUrl,
@@ -350,84 +422,6 @@ router.get("/users/:userId/public-profile", async (req, res) => {
       cards: data.cards ?? null,
     },
   });
-});
-
-// POST /users/me/courses/:courseId/trial — start a trial for a course
-//
-// Security (audit C-06, H-07):
-//   - durationInDays clamped server-side via course config + 14d hard cap
-//   - title/image_url/deliveryType read from course doc, NOT request body
-//   - trial_used flag persisted to prevent delete+recreate trial farming
-//   - course must declare free_trial.active === true
-router.post("/users/me/courses/:courseId/trial", async (req, res) => {
-  const auth = await validateAuthAndRateLimit(req);
-
-  const body = validateBody<{
-    durationInDays?: number;
-  }>(
-    {
-      durationInDays: "optional_number",
-    },
-    req.body
-  );
-
-  const courseId = req.params.courseId;
-
-  // Verify course exists AND has trial enabled
-  const courseDoc = await db.collection("courses").doc(courseId).get();
-  if (!courseDoc.exists) {
-    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
-  }
-  const course = courseDoc.data()!;
-  const freeTrial = (course.free_trial ?? {}) as { active?: boolean; duration_days?: number };
-  if (freeTrial.active !== true) {
-    throw new WakeApiServerError(
-      "FORBIDDEN", 403, "Este programa no ofrece prueba gratuita"
-    );
-  }
-
-  // Block if user has ever started a trial for this course (survives delete)
-  const userData = auth.userData ?? {};
-  const trialUsed = (userData.trial_used ?? {}) as Record<string, unknown>;
-  if (trialUsed[courseId]) {
-    throw new WakeApiServerError(
-      "CONFLICT", 409, "Ya usaste la prueba gratuita para este programa"
-    );
-  }
-
-  // Block concurrent active trial
-  const courses = (userData.courses ?? {}) as Record<string, Record<string, unknown>>;
-  if (courses[courseId]?.status === "trial") {
-    throw new WakeApiServerError(
-      "CONFLICT", 409, "Ya tienes un trial activo para este programa"
-    );
-  }
-
-  // Clamp duration: max(course.free_trial.duration_days, 14d)
-  const requested = body.durationInDays ?? freeTrial.duration_days ?? 7;
-  const durationDays = clampTrialDurationDays(requested, freeTrial.duration_days);
-
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
-
-  await db.collection("users").doc(auth.userId).update({
-    [`courses.${courseId}`]: {
-      status: "trial",
-      title: course.title ?? "",
-      image_url: course.image_url ?? "",
-      deliveryType: course.deliveryType ?? "low_ticket",
-      purchased_at: now.toISOString(),
-      expires_at: expiresAt.toISOString(),
-      access_duration: "trial",
-    },
-    [`trial_used.${courseId}`]: {
-      started_at: now.toISOString(),
-      duration_days: durationDays,
-    },
-    updated_at: FieldValue.serverTimestamp(),
-  });
-
-  res.json({data: {success: true, expirationDate: expiresAt.toISOString()}});
 });
 
 // POST /users/me/move-course — add a course to the user's courses map
@@ -871,6 +865,11 @@ router.get("/users/me/username-check", async (req, res) => {
     );
   }
 
+  if (isReservedUsername(normalized)) {
+    res.json({data: {available: false, reason: "reserved"}});
+    return;
+  }
+
   const snapshot = await db
     .collection("users")
     .where("username", "==", normalized)
@@ -1084,6 +1083,14 @@ router.get("/courses", async (req, res) => {
       bundleOnly: data.visibility === "bundle-only",
     } as Record<string, unknown>;
   });
+
+  // Hide drafts from anyone who is not the owning creator. The /creator/programs
+  // endpoint exists for creators to manage their own drafts; this listing is for
+  // discovery and should never expose unpublished courses to other users.
+  const isOwnerProfileRequest = creatorId && creatorId === auth.userId;
+  if (!isOwnerProfileRequest) {
+    docs = docs.filter((d) => d.status === "published");
+  }
 
   // Global library only: hide rival creators' one-on-one programs while locked
   if (lock) {

@@ -16,6 +16,7 @@ import './PlanWeeksGrid.css';
 import './ProgramWeeksGrid.css';
 
 const SLOTS = [1, 2, 3, 4, 5, 6, 7];
+const DAY_NUMBER_LABELS = SLOTS.map((d) => `Día ${d}`);
 const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
 
 /**
@@ -24,6 +25,7 @@ const DRAG_TYPE_PROGRAM_SESSION = 'program-session';
  */
 const ProgramWeeksGrid = ({
   programId,
+  program = null,
   modules = [],
   onAddWeek,
   onDeleteWeek,
@@ -38,6 +40,9 @@ const ProgramWeeksGrid = ({
   queryClient = null,
   queryKeys = null,
 }) => {
+  // Cadenced (monthly-drop) courses no longer reach this component — they
+  // route to ProgramCadenceCalendar in ProgramTrainingTab. This grid is the
+  // legacy week editor for low_ticket / general / one_on_one programs only.
   const { showToast } = useToast();
   const [isAddSessionModalOpen, setIsAddSessionModalOpen] = useState(false);
   const [addSessionModuleId, setAddSessionModuleId] = useState(null);
@@ -137,14 +142,14 @@ const ProgramWeeksGrid = ({
         newSessionName.trim(),
         null,
         imageUrl,
-        librarySessionRef
+        librarySessionRef,
+        null,
       );
       const modId = addSessionModuleId;
       const newSessionId = created?.id;
       if (newSessionId && addSessionSlotIndex >= 0 && addSessionSlotIndex <= 6) {
-        await programService.updateSessionOrder(programId, modId, [
-          { sessionId: newSessionId, order: addSessionSlotIndex },
-        ]);
+        const orderPatch = { sessionId: newSessionId, order: addSessionSlotIndex };
+        await programService.updateSessionOrder(programId, modId, [orderPatch]);
       }
       setAddSessionModuleId(null);
       setAddSessionSlotIndex(0);
@@ -183,7 +188,8 @@ const ProgramWeeksGrid = ({
           title,
           null,
           imageUrl,
-          data.librarySessionRef
+          data.librarySessionRef,
+          null,
         );
         if (created?.id && slotIndex >= 0 && slotIndex <= 6) {
           await programService.updateSessionOrder(programId, moduleId, [
@@ -262,11 +268,12 @@ const ProgramWeeksGrid = ({
     setDeleteConfirmTarget({ type: 'session', mod, modIndex, session, moduleId });
   };
 
-  // Slot = day index (0-6). Each session has order = the day it's on; empty days have no session.
+  // Slot = positional order. Cadenced courses bucket by dayIndex in
+  // ProgramCadenceCalendar; this grid is positional only.
   const getSessionForSlot = (module, slotIndex) => {
     const sessions = module?.sessions || [];
-    const orderVal = slotIndex >= 0 && slotIndex <= 6 ? slotIndex : 99;
-    return sessions.find((s) => (s.order !== undefined && s.order !== null ? s.order : 99) === orderVal) ?? null;
+    if (slotIndex < 0 || slotIndex > 6) return null;
+    return sessions.find((s) => (s.order !== undefined && s.order !== null ? s.order : 99) === slotIndex) ?? null;
   };
 
   const getSortedSessionsForModule = (module) => {
@@ -564,15 +571,20 @@ const ProgramWeeksGrid = ({
       <div className="plan-weeks-list-wrap">
         {modules.length > 0 && (
           <div className="plan-weeks-days-header">
-            {SLOTS.map((d) => (
-              <div key={d} className="plan-weeks-days-header-cell">Día {d}</div>
+            {DAY_NUMBER_LABELS.map((label, i) => (
+              <div key={i} className="plan-weeks-days-header-cell">{label}</div>
             ))}
           </div>
         )}
         {modules.length === 0 ? (
-          <div className="plan-weeks-empty">No hay semanas. Pulsa «Añadir semana» para crear la primera.</div>
+          <div className="plan-weeks-empty">
+            No hay semanas. Pulsa «Añadir semana» para crear la primera.
+          </div>
         ) : (
-          modules.map((mod, modIndex) => (
+          modules.map((mod, modIndex) => {
+            const blockTitle = mod.title || `Semana ${modIndex + 1}`;
+
+            return (
             <div key={mod.id} className="plan-weeks-week-block">
               <GlowingEffect spread={25} proximity={80} borderWidth={1} />
               <div
@@ -581,7 +593,9 @@ const ProgramWeeksGrid = ({
                 onDragLeave={handleDragLeaveWeek}
                 onDrop={(e) => handleDropOnWeekHeader(e, mod, modIndex)}
               >
-                <span className="plan-weeks-week-title">Semana {modIndex + 1}</span>
+                <div className="plan-weeks-week-header__left">
+                  <span className="plan-weeks-week-title">{blockTitle}</span>
+                </div>
                 <div className="plan-weeks-week-menu-wrap">
                   <button
                     type="button"
@@ -741,7 +755,8 @@ const ProgramWeeksGrid = ({
                 })}
               </div>
             </div>
-          ))
+            );
+          })
         )}
         {modules.length > 0 && (
           <div

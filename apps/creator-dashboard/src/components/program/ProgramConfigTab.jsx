@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { queryKeys } from '../../config/queryClient';
 import programService from '../../services/programService';
 import libraryService from '../../services/libraryService';
@@ -87,6 +87,33 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       .catch((err) => logger.error(err))
       .finally(() => setIsLoadingLibraries(false));
   }, [program?.id, user?.uid]);
+
+  // Heal legacy monthly programs where `price` holds the monthly amount but
+  // `subscription_price` was never written. Without this, /payments/subscription
+  // returns 400 ("Este programa no ofrece suscripción") because that endpoint
+  // only reads subscription_price. Mirror once per program load.
+  const mirroredRef = useRef(new Set());
+  useEffect(() => {
+    if (!program?.id) return;
+    if (mirroredRef.current.has(program.id)) return;
+    const needsMirror = program.access_duration === 'monthly'
+      && typeof program.price === 'number'
+      && program.price > 0
+      && (program.subscription_price === undefined || program.subscription_price === null);
+    if (!needsMirror) return;
+    mirroredRef.current.add(program.id);
+    const amount = program.price;
+    programService.updateProgram(program.id, { subscription_price: amount })
+      .then(() => {
+        queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) =>
+          old ? { ...old, subscription_price: amount } : old
+        );
+      })
+      .catch((err) => {
+        mirroredRef.current.delete(program.id);
+        logger.error('legacy subscription_price mirror failed', err);
+      });
+  }, [program?.id, program?.access_duration, program?.price, program?.subscription_price, queryClient]);
 
   const isOneTimePayment = () => program?.access_duration !== 'monthly';
 

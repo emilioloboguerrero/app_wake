@@ -48,13 +48,15 @@ export default function CreatePlanOverlay({ isOpen, onClose, onCreated }) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const trimmedTitle = title.trim();
+      const trimmedDesc = description.trim();
       const plan = await plansService.createPlan(user?.uid, null, {
-        title: title.trim(),
-        description: description.trim(),
+        title: trimmedTitle,
+        description: trimmedDesc,
       });
       const planId = plan?.id;
       if (!planId) throw new Error('No plan ID returned');
-      return { id: planId };
+      return { id: planId, title: trimmedTitle, description: trimmedDesc };
     },
     onSuccess: (data) => {
       setStep('success');

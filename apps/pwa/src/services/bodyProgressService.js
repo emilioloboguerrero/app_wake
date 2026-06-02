@@ -33,7 +33,12 @@ class BodyProgressService {
     const body = {};
     if (weight !== undefined) body.weight = weight;
     if (note !== undefined) body.note = note;
-    return apiClient.put(`/progress/body-log/${dateStr}`, body);
+    const res = await apiClient.put(`/progress/body-log/${dateStr}`, body);
+    try {
+      const analyticsService = (await import('./analyticsService')).default;
+      analyticsService.track('progress.body_log_added');
+    } catch {}
+    return res;
   }
 
   async getEntry(userId, dateStr) {

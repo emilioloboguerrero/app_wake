@@ -1,10 +1,11 @@
 // Web-specific App entry point
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import './styles/global.css'; // Load Inter + global styles for all screens (including InstallScreen when !isPWA)
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { queryClient } from './config/queryClient';
+import { persistOptions } from './config/queryPersistence.web';
 import LoginScreen from './screens/LoginScreen.web';
 import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
@@ -14,6 +15,43 @@ import { reportError as reportClientError } from './utils/errorReporter';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
+import analyticsService from './services/analyticsService';
+
+// Initialize analytics as early as possible (no-op when key missing or opted out).
+analyticsService.init();
+
+// expo-video's web player calls HTMLVideoElement.play() without handling the
+// returned promise (VideoPlayer.web.js). On iOS Safari an interrupted
+// play()/replace()/replay() (loop restart, pause-after-play, source swap,
+// unmount on navigation) rejects with a benign "AbortError: The operation was
+// aborted." Since player.play() returns void, it can't be caught at the call
+// site — mark it handled here so it doesn't surface as an unhandled rejection.
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    if (event?.reason?.name === 'AbortError') event.preventDefault();
+  });
+}
+
+// Normalize a trailing slash on the entry path before BrowserRouter reads
+// location.pathname. React Router v6 treats `/app/payment/success/` as
+// distinct from `/app/payment/success` and falls through to the catch-all
+// when no route declares the slash form. External links (email CTAs,
+// pasted URLs) sometimes carry a trailing slash; rewriting it once here
+// keeps the bypass-gate check and the router agreeing on the canonical
+// path. Uses replaceState so back-button history is unaffected.
+if (typeof window !== 'undefined') {
+  const _p = window.location.pathname;
+  if (_p.length > 1 && _p.endsWith('/')) {
+    const normalized = _p.replace(/\/+$/, '') || '/';
+    if (normalized !== _p) {
+      window.history.replaceState(
+        null,
+        '',
+        normalized + window.location.search + window.location.hash
+      );
+    }
+  }
+}
 
 // Extra top padding for non-iOS so Mac/Android browser layout matches iOS (safe area is 0 there).
 const CONTENT_TOP_PADDING_NON_IOS = 0;
@@ -31,9 +69,51 @@ const getIsLoginPath = (basePath) => {
   return window.location.pathname === loginPath;
 };
 
+// /email-link consumes a Firebase email-link oobCode and signs the user in.
+// MUST bypass the install gate (shouldShowAppFlow) — the link is clicked from
+// the buyer's email client which opens in a regular browser, not the
+// installed PWA. If we let InstallScreen intercept, sign-in never happens.
+const getIsEmailLinkPath = (basePath) => {
+  if (typeof window === 'undefined') return false;
+  const emailLinkPath = basePath ? (basePath.replace(/\/$/, '') + '/email-link') : '/email-link';
+  return window.location.pathname === emailLinkPath;
+};
+
+// Paths that must remain reachable from any browser, not just an installed
+// PWA. These are post-payment landings and the deep-link destinations the
+// confirmation emails point to. Without this, buyers clicking their email
+// get the "install Wake" screen instead of the page they expect. Keep this
+// list aligned with anywhere we generate `${APP_BASE}/...` URLs in emails.
+const getBypassesInstallGate = (basePath) => {
+  if (typeof window === 'undefined') return false;
+  const base = basePath ? basePath.replace(/\/$/, '') : '';
+  // Normalize trailing slash so external links like `/app/payment/success/`
+  // match the same routes as `/app/payment/success`.
+  const rawPath = window.location.pathname;
+  const path = (rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath) || '/';
+  // Exact-match routes
+  const exact = new Set([
+    `${base}/payment/success`,
+    `${base}/payment/cancelled`,
+  ]);
+  if (exact.has(path)) return true;
+  // Prefix-match routes for deep-links that include an id segment.
+  const prefixes = [
+    `${base}/library/manage`,  // subscription management
+    `${base}/course`,          // /course/:courseId (one-time confirmation CTA)
+    `${base}/bundle`,          // /bundle/:bundleId (bundle CTA)
+    `${base}/video-exchange`,  // /video-exchange/:exchangeId (coach reply email)
+  ];
+  for (const root of prefixes) {
+    if (path === root || path.startsWith(`${root}/`)) return true;
+  }
+  return false;
+};
+
 // Always import BrowserRouter and AuthProvider (needed for LoginScreen)
 const BrowserRouter = require('react-router-dom').BrowserRouter;
 const AuthProvider = require('./contexts/AuthContext').AuthProvider;
+
 const ActivityStreakProvider = require('./contexts/ActivityStreakContext').ActivityStreakProvider;
 const WakeDebugPanel = require('./components/WakeDebugPanel.web').default;
 
@@ -222,6 +302,8 @@ export default function App() {
   const fontsLoadedFromHook = useInterFontsWeb();
   // Check login path AFTER all hooks are called (basename-aware)
   const isLoginPath = getIsLoginPath(webBasePath);
+  const isEmailLinkPath = getIsEmailLinkPath(webBasePath);
+  const bypassesInstallGate = getBypassesInstallGate(webBasePath);
 
   // Determine final fonts loaded state (after hooks are called)
   // CRITICAL: Always use fontsLoadedFromHook to maintain consistent hook order
@@ -457,12 +539,10 @@ export default function App() {
       }
 
       try {
-        // Initialize React Query IndexedDB persistence (non-blocking)
-        try {
-          const { initQueryPersistence } = require('./config/queryPersistence.web');
-          initQueryPersistence(queryClient);
-        } catch (persistError) {
-        }
+        // React Query IndexedDB persistence is now wired via PersistQueryClientProvider
+        // at the root, which gates rendering until the cache is restored. The legacy
+        // initQueryPersistence call here was non-blocking and let queries fire before
+        // restoration completed — we removed it to avoid double-initializing.
 
         // Request persistent storage for better quota (non-blocking with timeout)
         if (navigator.storage && navigator.storage.persist) {
@@ -532,8 +612,10 @@ export default function App() {
       if (isPWA()) bottom = 0;
       // Standalone but env(safe-area-inset-top) is 0 (e.g. iOS localhost PWA). Use fallback so dev layout matches production.
       // iPhone 17 / Dynamic Island devices: ~59px; older notched iPhones ~47px. Use 59 so iPhone 17 is covered.
+      // iOS-only: on Android the system status bar lives outside the viewport, so env() returns 0 correctly — forcing 59 there creates phantom top padding.
+      const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent || '');
       const standaloneOrIOSHomeScreen =
-        isPWA() || (typeof navigator !== 'undefined' && navigator.standalone === true);
+        isIOS && (isPWA() || (typeof navigator !== 'undefined' && navigator.standalone === true));
       if (top === 0 && standaloneOrIOSHomeScreen) top = 59;
       const metrics = { frame: { x: 0, y: 0, width, height }, insets: { top, left, right, bottom } };
       setInitialMetrics(metrics);
@@ -655,7 +737,6 @@ export default function App() {
     }}>
       <View style={{ alignItems: 'center', justifyContent: 'center' }}>
         <WakeLoader size={80} />
-        <Text style={{ marginTop: 16, fontSize: 16, color: '#ffffff' }}>Cargando...</Text>
       </View>
     </div>
   );
@@ -663,7 +744,37 @@ export default function App() {
   // Single AuthProvider for entire app so auth state persists when navigating from /login to /
   // (Previously two providers caused the main app to see user=null after redirect and bounce back to login.)
   let content;
-  if (!shouldShowAppFlow()) {
+  if (isEmailLinkPath || bypassesInstallGate) {
+    // Render through WebAppNavigator so the route-level handler picks up
+    // /email-link (and the email-CTA landings: /payment/success,
+    // /payment/cancelled, /library/manage/:courseId, /course/:courseId,
+    // /bundle/:bundleId, /video-exchange/:exchangeId). Skips InstallScreen
+    // entirely — these are clicked from the buyer's email in a regular
+    // browser, not the installed PWA. WebAppNavigator is lazy-loaded by
+    // loadHeavyComponents; show the loading frame until it's ready rather
+    // than rendering undefined. The sync-load block above tries to require
+    // WebAppNavigator on every render, so on first paint it's usually
+    // defined; fall back to the loading frame only if both async and sync
+    // loads haven't finished.
+    //
+    // Must wrap in VideoProvider/VideoUploadProvider — same as the main app
+    // branch below — because some bypass routes (CourseDetailScreen) call
+    // useVideo() and would crash with "must be used within VideoProvider"
+    // otherwise.
+    if (!WebAppNavigator) {
+      content = loadingMarkup;
+    } else if (VideoProvider) {
+      const inner = (
+        <VideoProvider>
+          <WebAppNavigator />
+          {VideoUploadStatusPill && <VideoUploadStatusPill />}
+        </VideoProvider>
+      );
+      content = VideoUploadProvider ? <VideoUploadProvider>{inner}</VideoUploadProvider> : inner;
+    } else {
+      content = <WebAppNavigator />;
+    }
+  } else if (!shouldShowAppFlow()) {
     content = <InstallScreen />;
   } else if (isLoginPath) {
     content = <LoginScreen />;
@@ -732,7 +843,7 @@ export default function App() {
         v7_relativeSplatPath: true,
       }}
     >
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <SafeAreaProvider initialMetrics={initialMetrics}>
           <AuthProvider>
             <ActivityStreakProvider>
@@ -746,7 +857,7 @@ export default function App() {
             </ActivityStreakProvider>
           </AuthProvider>
         </SafeAreaProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </BrowserRouter>
   );
 }

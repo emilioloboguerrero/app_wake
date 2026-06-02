@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'rea
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { MediaUploadProvider } from './contexts/MediaUploadContext';
+import { BackgroundTaskProvider } from './contexts/BackgroundTaskContext';
 import UploadStatusCard from './components/ui/UploadStatusCard';
+import BackgroundTaskCard from './components/ui/BackgroundTaskCard';
 import LoginScreen from './screens/LoginScreen';
 import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
 import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
@@ -362,8 +364,11 @@ function App() {
       <AuthProvider>
         <ToastProvider>
           <MediaUploadProvider>
-            <AppContent />
-            <UploadStatusCard />
+            <BackgroundTaskProvider>
+              <AppContent />
+              <UploadStatusCard />
+              <BackgroundTaskCard />
+            </BackgroundTaskProvider>
           </MediaUploadProvider>
         </ToastProvider>
       </AuthProvider>

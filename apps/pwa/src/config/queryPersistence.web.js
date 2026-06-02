@@ -3,13 +3,14 @@ import { persistQueryClient } from '@tanstack/react-query-persist-client';
 
 const IDB_KEY = 'wake-react-query-cache';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const BUSTER = 'api-migration-v8-idb-clone-fix';
 
 // apiService._wrapTimestamp attaches toDate/toMillis closures to cached
 // subscription/timestamp objects. IndexedDB's structured clone rejects
 // functions ("The object can not be cloned."), poisoning the whole cache
 // on every persist tick. JSON round-trip strips closures; callers that
 // check `typeof x.toDate === 'function'` fall through safely.
-const idbPersister = {
+export const idbPersister = {
   persistClient: async (client) => {
     await set(IDB_KEY, JSON.parse(JSON.stringify(client)));
   },
@@ -21,11 +22,17 @@ const idbPersister = {
   },
 };
 
+export const persistOptions = {
+  persister: idbPersister,
+  maxAge: MAX_AGE_MS,
+  buster: BUSTER,
+};
+
 export function initQueryPersistence(queryClient) {
   return persistQueryClient({
     queryClient,
     persister: idbPersister,
     maxAge: MAX_AGE_MS,
-    buster: 'api-migration-v8-idb-clone-fix',
+    buster: BUSTER,
   });
 }

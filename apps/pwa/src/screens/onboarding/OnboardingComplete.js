@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../../components/WakeHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import analyticsService from '../../services/analyticsService';
 
 const GOAL_LABELS = {
   fat_loss: 'Perder grasa corporal',
@@ -54,7 +55,20 @@ const OnboardingComplete = ({ onComplete, answers }) => {
       </WakeHeaderContent>
 
       <View style={styles.bottomBar}>
-        <TouchableOpacity style={styles.startButton} onPress={onComplete}>
+        <TouchableOpacity
+          style={styles.startButton}
+          onPress={() => {
+            try {
+              analyticsService.track('onboarding.completed', {
+                primary_goal: answers?.primaryGoal || null,
+                training_experience: answers?.trainingExperience || null,
+                training_days_per_week: answers?.trainingDaysPerWeek || null,
+                equipment: answers?.equipment || null,
+              });
+            } catch {}
+            onComplete?.();
+          }}
+        >
           <Text style={styles.startButtonText}>Entrar a Wake</Text>
         </TouchableOpacity>
       </View>

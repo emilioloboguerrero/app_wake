@@ -68,6 +68,15 @@
       "collectionGroup": "call_bookings",
       "queryScope": "COLLECTION",
       "fields": [
+        {"fieldPath": "clientUserId", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "slotStartUtc", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "call_bookings",
+      "queryScope": "COLLECTION",
+      "fields": [
         {"fieldPath": "creatorId", "order": "ASCENDING"},
         {"fieldPath": "status", "order": "ASCENDING"},
         {"fieldPath": "slotStartUtc", "order": "ASCENDING"}
@@ -162,6 +171,14 @@
         {"fieldPath": "creator_id", "order": "ASCENDING"},
         {"fieldPath": "deliveryType", "order": "ASCENDING"},
         {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "courses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creator_id", "order": "ASCENDING"},
+        {"fieldPath": "status", "order": "ASCENDING"}
       ]
     },
     {
@@ -336,6 +353,24 @@
     {
       "collectionGroup": "ops_client_errors",
       "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rate_limit_first_party",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rate_limit_windows",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "system_email_budget",
+      "fieldPath": "expires_at",
       "ttl": true,
       "indexes": []
     },

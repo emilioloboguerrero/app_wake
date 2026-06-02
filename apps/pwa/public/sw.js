@@ -18,13 +18,17 @@ registerRoute(
 
 // ─── Cache strategies ─────────────────────────────────────────────────────
 
-// Static images from Firebase Storage — cache-first, 30-day TTL
+// Static images from Firebase Storage — cache-first, 30-day TTL.
+// Scoped to image requests only: video <video> elements use HTTP range
+// requests (206 Partial Content) which CacheFirst mangles on iOS standalone
+// PWA, leaving the player stuck on a black frame. Videos must bypass the SW.
 registerRoute(
-  ({ url }) =>
-    url.hostname === 'firebasestorage.googleapis.com' ||
-    url.hostname.includes('storage.googleapis.com'),
+  ({ request, url }) =>
+    request.destination === 'image' &&
+    (url.hostname === 'firebasestorage.googleapis.com' ||
+     url.hostname.includes('storage.googleapis.com')),
   new CacheFirst({
-    cacheName: 'wake-storage-images-v2',
+    cacheName: 'wake-storage-images-v3',
     plugins: [
       new CacheableResponsePlugin({ statuses: [200] }),
       new ExpirationPlugin({
@@ -120,7 +124,7 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((key) => key !== 'wake-storage-images-v2')
+          .filter((key) => key !== 'wake-storage-images-v3')
           .map((key) => caches.delete(key))
       );
       await self.clients.claim();

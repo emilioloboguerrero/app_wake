@@ -21,6 +21,8 @@ import plansService from '../../services/plansService';
 import apiClient from '../../utils/apiClient';
 import useProgramEditor from '../../hooks/useProgramEditor';
 import MediaDropZone from '../ui/MediaDropZone';
+import programService from '../../services/programService';
+import { useToast } from '../../contexts/ToastContext';
 import './GroupProgramView.css';
 
 const TAB_ITEMS = [
@@ -77,17 +79,27 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   };
 
   // ── Price & trial state (GroupProgramView-specific) ───────────
+  // For cadenced (monthly-drop) programs the only price that matters is
+  // `subscription_price` — payments.ts requires it to create a PreApproval and
+  // refuses the OTP path entirely. The price card below switches its target
+  // field based on cadenceActive so the creator never sets the wrong field.
   const [priceValue, setPriceValue] = useState(program?.price != null ? String(program.price) : '');
+  const [subscriptionPriceValue, setSubscriptionPriceValue] = useState(program?.subscription_price != null ? String(program.subscription_price) : '');
   const [compareAtPriceValue, setCompareAtPriceValue] = useState(program?.compare_at_price != null ? String(program.compare_at_price) : '');
   const [freeTrialActive, setFreeTrialActive] = useState(!!program?.free_trial?.active);
   const [freeTrialDays, setFreeTrialDays] = useState(String(program?.free_trial?.duration_days ?? 0));
+  // Beta cap: max unique purchasers. Empty = uncapped. Buyers past the cap land
+  // on a waitlist (see the waitlist panel below).
+  const [capacityValue, setCapacityValue] = useState(program?.capacity != null ? String(program.capacity) : '');
 
   useEffect(() => {
     setPriceValue(program?.price != null ? String(program.price) : '');
+    setSubscriptionPriceValue(program?.subscription_price != null ? String(program.subscription_price) : '');
     setCompareAtPriceValue(program?.compare_at_price != null ? String(program.compare_at_price) : '');
     setFreeTrialActive(!!program?.free_trial?.active);
     setFreeTrialDays(String(program?.free_trial?.duration_days ?? 0));
-  }, [program?.price, program?.compare_at_price, program?.free_trial]);
+    setCapacityValue(program?.capacity != null ? String(program.capacity) : '');
+  }, [program?.price, program?.subscription_price, program?.compare_at_price, program?.free_trial, program?.capacity]);
 
   // ── Content tab state ─────────────────────────────────────────
   const [mediaPickerContext, setMediaPickerContext] = useState('program');
@@ -125,6 +137,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     staleTime: 15 * 60 * 1000,
   });
 
+  // Beta cap: load the waitlist only for capped programs so uncapped ones pay
+  // nothing. Powers the "X/cap vendidos" count and the admit list.
+  const isCapped = program?.capacity != null && Number(program.capacity) >= 1;
+  const { data: waitlistData, refetch: refetchWaitlist } = useQuery({
+    queryKey: ['creator', 'programWaitlist', programId],
+    queryFn: () => programService.getWaitlist(programId),
+    enabled: !!programId && isCapped,
+    staleTime: 60 * 1000,
+  });
+
   const programAdherence = useMemo(() => {
     if (!adherenceData?.byProgram) return null;
     return adherenceData.byProgram.find((p) => p.programId === programId) ?? null;
@@ -152,6 +174,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     await editor.saveField({ price: numericPrice });
   }, [priceValue, program?.price, editor]);
 
+  const saveSubscriptionPrice = useCallback(async () => {
+    const numeric = subscriptionPriceValue === '' ? null : parseInt(String(subscriptionPriceValue).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 2000) {
+      setSubscriptionPriceValue(program?.subscription_price != null ? String(program.subscription_price) : '');
+      return;
+    }
+    if (numeric === program?.subscription_price) return;
+    await editor.saveField({ subscription_price: numeric });
+  }, [subscriptionPriceValue, program?.subscription_price, editor]);
+
   const saveCompareAtPrice = useCallback(async () => {
     const numeric = compareAtPriceValue === '' ? null : parseInt(String(compareAtPriceValue).replace(/\D/g, ''), 10);
     if (numeric !== null && numeric < 2000) {
@@ -166,6 +198,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     await editor.saveField({ compare_at_price: numeric });
   }, [compareAtPriceValue, program?.compare_at_price, program?.price, editor]);
 
+  const saveCapacity = useCallback(async () => {
+    const numeric = capacityValue === '' ? null : parseInt(String(capacityValue).replace(/\D/g, ''), 10);
+    if (numeric !== null && numeric < 1) {
+      setCapacityValue(program?.capacity != null ? String(program.capacity) : '');
+      return;
+    }
+    if (numeric === (program?.capacity ?? null)) return;
+    await editor.saveField({ capacity: numeric });
+  }, [capacityValue, program?.capacity, editor]);
+
   const saveTrialDays = useCallback(async () => {
     const days = Math.max(0, parseInt(freeTrialDays, 10) || 0);
     const free_trial = { active: !!freeTrialActive, duration_days: days };
@@ -177,6 +219,96 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     const days = Math.max(0, parseInt(freeTrialDays, 10) || 0);
     await editor.saveField({ free_trial: { active, duration_days: days } });
   }, [freeTrialDays, editor]);
+
+  // ── Monthly drops (memory/project_monthly_drops.md) ──────────
+  // Cohort-synced calendar-anchored content. Cron flips the live block on the
+  // first Monday of every month. Felipe opts a program in here; the per-module
+  // Publicado chip in ProgramContentTab writes published_at, which is the
+  // cron's gate. module.order doubles as the block ordinal.
+  const cadenceActive = program?.block_cadence === 'monthly_first_monday';
+
+  const handleCadenceToggle = useCallback(async (active) => {
+    await editor.saveField({ block_cadence: active ? 'monthly_first_monday' : null });
+  }, [editor]);
+
+  // Weekly scheduling: pins each session to a weekday (dayIndex 1..7 = Lun..Dom)
+  // so the Hoy carousel shows the right session per day and surfaces "Descanso"
+  // on rest days, instead of the legacy "next incomplete" walker.
+  const weeklyScheduling = program?.scheduling === 'weekly';
+  const handleWeeklyToggle = useCallback(async (active) => {
+    await editor.saveField({ scheduling: active ? 'weekly' : null });
+  }, [editor]);
+
+  // Initialize program_state so the monthly-drop cron has something to advance.
+  // The button is the dashboard replacement for seed-bejarano-program-state.js;
+  // it's disabled until at least one module is published, and refuses to
+  // overwrite an existing state doc (server-side 409 ALREADY_INITIALIZED).
+  const { showToast } = useToast();
+
+  const handleAdmitFromWaitlist = useCallback(async (waitlistId) => {
+    try {
+      await programService.admitFromWaitlist(programId, waitlistId);
+      showToast('Cupo abierto. Avísale a la persona para que lo tome.', 'success');
+      await refetchWaitlist();
+      await refetchProgram?.();
+    } catch {
+      showToast('No pudimos admitir desde la lista. Intenta de nuevo.', 'error');
+    }
+  }, [programId, refetchWaitlist, refetchProgram, showToast]);
+
+  const [isInitializingCadence, setIsInitializingCadence] = useState(false);
+  const hasProgramState = typeof program?.current_block_index === 'number';
+  const handleInitializeCadence = useCallback(async () => {
+    if (!programId || isInitializingCadence) return;
+    setIsInitializingCadence(true);
+    try {
+      await programService.initializeCadence(programId);
+      showToast('Cadencia iniciada. El primer bloque ya está en vivo.', 'success');
+      await refetchProgram?.();
+      queryClient.invalidateQueries({ queryKey: ['program', 'modules', programId, 'cadence'] });
+    } catch (err) {
+      const code = err?.code || err?.error?.code;
+      if (code === 'ALREADY_INITIALIZED') {
+        showToast('Esta cadencia ya estaba iniciada.', 'info');
+      } else if (code === 'NO_PUBLISHED_MODULES') {
+        showToast('Publica al menos un bloque antes de iniciar la cadencia.', 'error');
+      } else if (code === 'CADENCE_NOT_ENABLED') {
+        showToast('Activa "Bloques mensuales" antes de iniciar la cadencia.', 'error');
+      } else {
+        showToast(err?.message || 'No pudimos iniciar la cadencia. Intenta de nuevo.', 'error');
+      }
+    } finally {
+      setIsInitializingCadence(false);
+    }
+  }, [programId, isInitializingCadence, showToast, refetchProgram, queryClient]);
+
+  // Cadence telemetry surfaced to the creator: which block is live, when the
+  // next drop happens, and whether the next module is ready. Without these
+  // the cadence calendar in Entrenamiento owns per-block telemetry; this
+  // card only surfaces the currently-live block's title.
+  const { data: cadenceModulesRes } = useQuery({
+    queryKey: ['program', 'modules', programId, 'cadence'],
+    queryFn: () => apiClient.get(`/creator/programs/${programId}/modules`).then((r) => r?.data ?? []),
+    enabled: !!programId && cadenceActive,
+    staleTime: 60 * 1000,
+  });
+  const cadenceModules = useMemo(() => {
+    const list = Array.isArray(cadenceModulesRes) ? cadenceModulesRes :
+      (cadenceModulesRes?.data ?? []);
+    return [...list].sort((a, b) => (a?.order ?? 0) - (b?.order ?? 0));
+  }, [cadenceModulesRes]);
+
+  const cadenceInfo = useMemo(() => {
+    if (!cadenceActive) return null;
+    const currentIdx = typeof program?.current_block_index === 'number'
+      ? program.current_block_index
+      : -1;
+    const currentModule = cadenceModules.find((m) => m?.order === currentIdx) ?? null;
+    return {
+      currentIdx,
+      currentTitle: currentModule?.title ?? null,
+    };
+  }, [cadenceActive, cadenceModules, program?.current_block_index]);
 
   // ── Image handler wrapper (handles mediaPickerContext) ────────
   const handleMediaPickerSelect = useCallback(async (item) => {
@@ -405,43 +537,57 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
               <h2 className="gp-section-title gp-section-title--config">Configuracion</h2>
               <div className="gp-config__grid">
 
-                {/* Price */}
+                {/* Price — switches input target to subscription_price when
+                    monthly cadence is on. payments.ts requires
+                    subscription_price (not price) to issue a PreApproval for
+                    cadenced programs, so without this branch a creator would
+                    silently leave the program unsubscribable. */}
                 <BentoCard className="gp-config__card">
                   <GlowingEffect spread={24} proximity={60} />
-                  <h3>Precio</h3>
+                  <h3>{cadenceActive ? 'Precio mensual' : 'Precio'}</h3>
                   <div className="gp-price-field">
                     <span className="gp-price-field__currency">$</span>
                     <input
                       className="gp-price-field__input"
                       type="text"
                       inputMode="numeric"
-                      value={priceValue ? Number(priceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
-                      onChange={(e) => setPriceValue(e.target.value.replace(/\D/g, ''))}
-                      onBlur={savePrice}
-                      placeholder="Gratis"
+                      value={cadenceActive
+                        ? (subscriptionPriceValue ? Number(subscriptionPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : '')
+                        : (priceValue ? Number(priceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : '')}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, '');
+                        if (cadenceActive) setSubscriptionPriceValue(raw);
+                        else setPriceValue(raw);
+                      }}
+                      onBlur={cadenceActive ? saveSubscriptionPrice : savePrice}
+                      placeholder={cadenceActive ? 'Sin precio' : 'Gratis'}
                     />
-                    <span className="gp-price-field__hint">COP</span>
+                    <span className="gp-price-field__hint">{cadenceActive ? 'COP / mes' : 'COP'}</span>
                   </div>
                 </BentoCard>
 
-                {/* Compare at price */}
-                <BentoCard className="gp-config__card">
-                  <GlowingEffect spread={24} proximity={60} />
-                  <h3>Precio comparativo</h3>
-                  <div className="gp-price-field">
-                    <span className="gp-price-field__currency">$</span>
-                    <input
-                      className="gp-price-field__input"
-                      type="text"
-                      inputMode="numeric"
-                      value={compareAtPriceValue ? Number(compareAtPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
-                      onChange={(e) => setCompareAtPriceValue(e.target.value.replace(/\D/g, ''))}
-                      onBlur={saveCompareAtPrice}
-                      placeholder="Opcional"
-                    />
-                    <span className="gp-price-field__hint">COP</span>
-                  </div>
-                </BentoCard>
+                {/* Compare at price — only meaningful for OTP. Hidden when
+                    monthly cadence is on so the creator isn't tempted to set a
+                    value that the subscription path silently ignores. */}
+                {!cadenceActive && (
+                  <BentoCard className="gp-config__card">
+                    <GlowingEffect spread={24} proximity={60} />
+                    <h3>Precio comparativo</h3>
+                    <div className="gp-price-field">
+                      <span className="gp-price-field__currency">$</span>
+                      <input
+                        className="gp-price-field__input"
+                        type="text"
+                        inputMode="numeric"
+                        value={compareAtPriceValue ? Number(compareAtPriceValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
+                        onChange={(e) => setCompareAtPriceValue(e.target.value.replace(/\D/g, ''))}
+                        onBlur={saveCompareAtPrice}
+                        placeholder="Opcional"
+                      />
+                      <span className="gp-price-field__hint">COP</span>
+                    </div>
+                  </BentoCard>
+                )}
 
                 {/* Free trial */}
                 <BentoCard className="gp-config__card">
@@ -470,6 +616,143 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                       </>
                     )}
                   </div>
+                </BentoCard>
+
+                {/* Cupos (beta cap) — max unique purchasers. Empty = sin
+                    límite. Once full, the buy button on every surface turns
+                    into a waitlist that captures email + name. */}
+                <BentoCard className="gp-config__card">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <h3>Cupos</h3>
+                  <div className="gp-price-field">
+                    <input
+                      className="gp-price-field__input"
+                      type="text"
+                      inputMode="numeric"
+                      value={capacityValue ? Number(capacityValue).toLocaleString('es-CO', { maximumFractionDigits: 0 }) : ''}
+                      onChange={(e) => setCapacityValue(e.target.value.replace(/\D/g, ''))}
+                      onBlur={saveCapacity}
+                      placeholder="Sin límite"
+                    />
+                    <span className="gp-price-field__hint">personas</span>
+                  </div>
+                  {isCapped && waitlistData && (
+                    <p className="gp-capacity-count">
+                      {waitlistData.seatsTaken}/{waitlistData.capacity} vendidos
+                    </p>
+                  )}
+                </BentoCard>
+
+                {/* Waitlist — only shown when capped and people are waiting.
+                    Admitir abre un cupo (capacity += 1); the freed seat goes to
+                    whoever checks out next, so reach out to the person. */}
+                {isCapped && waitlistData?.waitlist?.length > 0 && (
+                  <BentoCard className="gp-config__card gp-config__card--span-2">
+                    <GlowingEffect spread={24} proximity={60} />
+                    <h3>
+                      Lista de espera{' '}
+                      <span className="gp-waitlist-count">{waitlistData.waitlist.length}</span>
+                    </h3>
+                    <div className="gp-waitlist">
+                      {waitlistData.waitlist.map((w) => (
+                        <div key={w.id} className="gp-waitlist__row">
+                          <div className="gp-waitlist__info">
+                            <span className="gp-waitlist__name">{w.name || 'Sin nombre'}</span>
+                            <span className="gp-waitlist__email">{w.email}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="gp-waitlist__admit"
+                            onClick={() => handleAdmitFromWaitlist(w.id)}
+                          >
+                            Admitir
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="gp-waitlist__hint">
+                      Admitir abre un cupo. Avísale a la persona para que lo tome.
+                    </p>
+                  </BentoCard>
+                )}
+
+                {/* Bloques mensuales — structural toggle. Per-block authoring,
+                    publish state, and unlock dates live in the cadence
+                    calendar (ProgramCadenceCalendar) under Contenido →
+                    Entrenamiento. Carry-over is now a normal state, so
+                    there's nothing to warn about here. */}
+                <BentoCard className="gp-config__card gp-config__card--span-2 gp-cadence-card">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <div className="gp-cadence-card__header">
+                    <h3>Bloques mensuales</h3>
+                    <button
+                      type="button"
+                      className={`gp-trial__toggle ${cadenceActive ? 'gp-trial__toggle--active' : ''}`}
+                      onClick={() => handleCadenceToggle(!cadenceActive)}
+                    >
+                      <span className="gp-trial__toggle-dot" />
+                      <span>{cadenceActive ? 'Activos' : 'Inactivos'}</span>
+                    </button>
+                  </div>
+
+                  {!cadenceActive && (
+                    <p className="gp-config__hint">
+                      Programas mensuales que se renuevan solos. Activa para que tus suscriptores reciban un bloque nuevo cada primer lunes.
+                    </p>
+                  )}
+
+                  {cadenceActive && !hasProgramState && (
+                    <div className="gp-cadence-card__init">
+                      <button
+                        type="button"
+                        className="gp-cadence-card__init-btn"
+                        onClick={handleInitializeCadence}
+                        disabled={isInitializingCadence}
+                      >
+                        {isInitializingCadence ? 'Iniciando…' : 'Iniciar cadencia desde el primer bloque publicado'}
+                      </button>
+                      <p className="gp-cadence-card__init-hint">
+                        Publica al menos un bloque desde Contenido → Entrenamiento y pulsa este botón para que el cron lo entregue en vivo.
+                      </p>
+                    </div>
+                  )}
+
+                  {cadenceActive && hasProgramState && cadenceInfo && (
+                    <p className="gp-config__hint">
+                      {cadenceInfo.currentIdx >= 0 && cadenceInfo.currentTitle
+                        ? `En vivo: ${cadenceInfo.currentTitle}. Edita los próximos drops desde Contenido → Entrenamiento.`
+                        : 'Edita los próximos drops desde Contenido → Entrenamiento.'}
+                    </p>
+                  )}
+                </BentoCard>
+
+                {/* Calendario semanal — pins each session to a weekday so Hoy
+                    shows the right session per day and "Descanso" on rest days.
+                    Cadence programs already author dayIndex via the drag-drop
+                    calendar; non-cadence weekly programs fall back to
+                    order-as-weekday (Lun=order 0). */}
+                <BentoCard className="gp-config__card gp-config__card--span-2">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <div className="gp-cadence-card__header">
+                    <h3>Calendario semanal</h3>
+                    <button
+                      type="button"
+                      className={`gp-trial__toggle ${weeklyScheduling ? 'gp-trial__toggle--active' : ''}`}
+                      onClick={() => handleWeeklyToggle(!weeklyScheduling)}
+                    >
+                      <span className="gp-trial__toggle-dot" />
+                      <span>{weeklyScheduling ? 'Activo' : 'Inactivo'}</span>
+                    </button>
+                  </div>
+                  {!weeklyScheduling ? (
+                    <p className="gp-config__hint">
+                      Hoy avanza la siguiente sesión sin completar, sin importar el día. Activa para asignar cada sesión a un día de la semana y mostrar "Descanso" en los días libres.
+                    </p>
+                  ) : (
+                    <p className="gp-config__hint">
+                      Cada sesión se ancla a un día (Lun–Dom). Hoy muestra la sesión del día y "Descanso" en los días sin sesión.
+                    </p>
+                  )}
                 </BentoCard>
 
                 {/* Weight suggestions */}
@@ -597,6 +880,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                 <ProgramTrainingTab
                   programId={programId}
                   creatorId={user.uid}
+                  program={program}
                 />
             </KeepAlivePane>
             <KeepAlivePane active={contenidoSubtab === 'nutricion'}>

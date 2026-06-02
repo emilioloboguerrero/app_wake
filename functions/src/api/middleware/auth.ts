@@ -101,6 +101,12 @@ export interface AuthResult {
   scope?: string[];
   keyId?: string;
   userData?: FirebaseFirestore.DocumentData | null;
+  // Decoded ID-token claims, when available (firebase auth path only).
+  // Lets routes read email / displayName without a separate
+  // admin.auth().getUser() round-trip.
+  email?: string | null;
+  emailVerified?: boolean;
+  displayName?: string | null;
 }
 
 declare global {
@@ -246,6 +252,9 @@ export async function validateAuthAndRateLimit(
     role,
     authType: "firebase",
     userData,
+    email: (decoded.email as string | undefined) ?? null,
+    emailVerified: (decoded.email_verified as boolean | undefined) ?? false,
+    displayName: (decoded.name as string | undefined) ?? null,
   };
   req.auth = result;
   return result;
@@ -356,5 +365,8 @@ async function validateFirebaseToken(
     role,
     authType: "firebase",
     userData,
+    email: (decoded.email as string | undefined) ?? null,
+    emailVerified: (decoded.email_verified as boolean | undefined) ?? false,
+    displayName: (decoded.name as string | undefined) ?? null,
   };
 }

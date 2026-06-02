@@ -23,6 +23,13 @@ export interface MercadoPagoPreapproval {
     start_date?: string | null;
     transaction_amount?: number | null;
     currency_id?: string | null;
+    // MP echoes back the trial configuration we sent at preapproval-create
+    // time. Used by the webhook handler to synthesize a trial expiry when
+    // next_payment_date isn't populated on the first authorized event.
+    free_trial?: {
+      frequency?: number | null;
+      frequency_type?: string | null;
+    };
   };
   reason?: string | null;
   status?: string | null;
@@ -116,23 +123,34 @@ export function calculateExpirationDate(accessDuration: string, fromDate?: strin
 
 // ─── Error classification ────────────────────────────────────────────────────
 
+// Default to RETRYABLE so a user who paid never silently loses access on a
+// transient error. Only mark NON_RETRYABLE when the error is structurally
+// known to be non-transient — never on substring heuristics over the message,
+// because Firestore transient errors ("Cannot read properties...", "5 NOT_FOUND
+// for deadline") would be misclassified and the webhook would 200 + mark the
+// payment errored, with no retry.
 export function classifyError(error: unknown): "RETRYABLE" | "NON_RETRYABLE" {
   if (!error || typeof error !== "object") return "RETRYABLE";
-  const err = error as { code?: string; message?: string };
+  const err = error as { code?: string | number; status?: number; httpStatusCode?: number };
+
+  // Network-class errors: definitely retry
   if (
     err.code === "ECONNRESET" ||
     err.code === "ETIMEDOUT" ||
     err.code === "ENOTFOUND" ||
-    err.message?.includes("network") ||
-    err.message?.includes("timeout")
+    err.code === "ECONNREFUSED" ||
+    err.code === "EAI_AGAIN"
   ) return "RETRYABLE";
-  if (
-    err.message?.includes("not found") ||
-    err.message?.includes("missing") ||
-    err.message?.includes("invalid") ||
-    err.message?.includes("required")
-  ) return "NON_RETRYABLE";
-  if (err.code === "permission-denied" || err.code === "not-found") return "NON_RETRYABLE";
+
+  // Firebase / gRPC permission codes — these will not change on retry
+  if (err.code === "permission-denied") return "NON_RETRYABLE";
+
+  // 4xx from MP (other than 429) — bad request data, retry won't help
+  const httpStatus = err.status ?? err.httpStatusCode;
+  if (typeof httpStatus === "number" && httpStatus >= 400 && httpStatus < 500 && httpStatus !== 429) {
+    return "NON_RETRYABLE";
+  }
+
   return "RETRYABLE";
 }
 

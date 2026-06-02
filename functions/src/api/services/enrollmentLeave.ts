@@ -3,6 +3,7 @@ import {PreApproval} from "mercadopago";
 import {db, FieldValue} from "../firestore.js";
 import {WakeApiServerError} from "../errors.js";
 import {getClient} from "./paymentHelpers.js";
+import {assertAllowedSubscriptionTransition} from "../middleware/securityHelpers.js";
 
 export type LeaveReason =
   | "no_time"
@@ -18,7 +19,7 @@ export const LEAVE_REASONS: ReadonlyArray<LeaveReason> = [
 
 export interface LeaveCascadeResult {
   cascade: {
-    subscription: "cancelled" | "none" | "failed";
+    subscription: "cancelled" | "already_cancelled" | "none" | "failed";
     nutritionAssignments: number;
     bookingsCancelled: number;
     oneOnOneClientFlipped: boolean;
@@ -56,33 +57,93 @@ async function findActiveSubscription(userId: string, courseId: string): Promise
 export async function cancelMpSubscription(
   userId: string,
   subscriptionId: string
-): Promise<"cancelled" | "failed"> {
+): Promise<"cancelled" | "already_cancelled" | "failed"> {
   const subscriptionRef = db
     .collection("users").doc(userId)
     .collection("subscriptions").doc(subscriptionId);
 
-  try {
-    const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
-    if (token) {
-      const client = getClient(token);
-      const preapproval = new PreApproval(client);
-      await preapproval.update({id: subscriptionId, body: {status: "cancelled"}});
-    }
+  // ── Fail loud if MP token is unbound. The previous behaviour silently
+  // skipped the MP API call and only updated the local doc, which is the
+  // worst possible failure mode: user sees "cancelled" in the UI while MP
+  // keeps charging them every month.
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!token) {
+    functions.logger.error("cancelMpSubscription: missing MERCADOPAGO_ACCESS_TOKEN", {
+      userId, subscriptionId,
+    });
+    return "failed";
+  }
 
+  // Read current status for transition guard + already-cancelled fast path.
+  const snapshot = await subscriptionRef.get();
+  const currentStatus = (snapshot.data()?.status as string | undefined) ?? null;
+
+  // Already cancelled locally? Don't re-hit MP — preapproval.update on an
+  // already-cancelled sub may throw "transition not allowed", which would
+  // surface as a 503 to the user and prompt them to retry indefinitely.
+  if (currentStatus === "cancelled") {
+    return "already_cancelled";
+  }
+
+  try {
+    assertAllowedSubscriptionTransition(currentStatus, "cancelled");
+  } catch (err: unknown) {
+    functions.logger.warn("cancelMpSubscription: illegal transition", {
+      userId, subscriptionId, currentStatus, error: String(err),
+    });
+    return "failed";
+  }
+
+  try {
+    const client = getClient(token);
+    const preapproval = new PreApproval(client);
+    await preapproval.update({id: subscriptionId, body: {status: "cancelled"}});
+  } catch (err: unknown) {
+    // MP returns an error if the preapproval is already cancelled on their
+    // side (e.g. user cancelled in customer portal but webhook hasn't synced
+    // yet). Treat that case — and only that case — as success. The earlier
+    // pattern `/already.*cancel|status.*cancel|400/i` matched any error whose
+    // stringification contained "400" (including a URL with port :400 or a
+    // stack frame at line 400), which would silently swallow real failures
+    // and let MP keep billing the user. Match against the structured MP
+    // error shape: status === 400 AND a message/cause that names the
+    // already-cancelled state explicitly.
+    const errObj = (err && typeof err === "object" ? err : {}) as Record<string, unknown>;
+    const raw = err instanceof Error ? err.message :
+      (typeof errObj.message === "string" ? errObj.message : String(err));
+    const status = typeof errObj.status === "number" ? errObj.status :
+      (typeof errObj.statusCode === "number" ? errObj.statusCode : null);
+    const looksAlreadyCancelled = status === 400 &&
+      /\balready\s+cancel|preapproval.*cancel|status.*cancel/i.test(raw);
+    if (!looksAlreadyCancelled) {
+      functions.logger.error("cancelMpSubscription: MP update failed", {
+        userId, subscriptionId, status, error: raw,
+      });
+      return "failed";
+    }
+    functions.logger.info("cancelMpSubscription: MP reports already cancelled", {
+      userId, subscriptionId,
+    });
+  }
+
+  try {
     await subscriptionRef.set({
       status: "cancelled",
       last_action: "cancel",
       cancelled_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     }, {merge: true});
-
-    return "cancelled";
-  } catch (err) {
-    functions.logger.error("cancelMpSubscription failed", {
+  } catch (err: unknown) {
+    // MP cancelled but Firestore write failed. MP is the source of truth
+    // for charges, so this is recoverable: webhook (subscription_preapproval
+    // with status=cancelled) or reconcile cron will sync the doc later.
+    functions.logger.error("cancelMpSubscription: local write failed (MP already cancelled)", {
       userId, subscriptionId, error: String(err),
     });
     return "failed";
   }
+
+  return "cancelled";
 }
 
 /**
@@ -340,7 +401,7 @@ export async function leaveOneOnOneEnrollment(params: {
   }
 
   // 7. Cancel MP subscription if any (best-effort)
-  let subscriptionResult: "cancelled" | "none" | "failed" = "none";
+  let subscriptionResult: "cancelled" | "already_cancelled" | "none" | "failed" = "none";
   if (subscriptionId) {
     subscriptionResult = await cancelMpSubscription(userId, subscriptionId);
   }

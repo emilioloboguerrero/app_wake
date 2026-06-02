@@ -26,10 +26,10 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   scrollView: {
     flex: 1,
   },
-  // Reserve bottom space inside scroll (like DailyWorkoutScreen) so content is never covered; extra padding for screenIndicator overlay
+  // Reserve just enough bottom space to clear the closed bottom-sheet handle bar (36px tall).
   scrollContentContainer: {
     flexGrow: 1,
-    paddingBottom: 0,
+    paddingBottom: 36,
     overflow: 'visible',
   },
   content: {
@@ -63,7 +63,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
         shadowOpacity: 1,
         shadowRadius: 2,
         elevation: 2,
-        height: Math.max(400, screenHeight * 0.525), // 400px min, 50% of screen
+        height: Math.max(395, screenHeight * 0.51),
         width: screenWidth - Math.max(48, screenWidth * 0.12), // Match videoCard width
         overflow: 'visible',
         position: 'relative', // Match videoCard position
@@ -268,6 +268,86 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     paddingTop: Math.max(10, screenHeight * 0.012),
     paddingBottom: Math.max(15, screenHeight * 0.018),
   },
+  bottomSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  // Single rounded card anchored below the FixedWakeHeader. Closed = grabber + exercise
+  // name visible; opens by growing DOWNWARD into a full sheet with the list.
+  // `left`/`right` are driven inline by an animated margin (videoCard width when closed,
+  // near full-width when expanded).
+  bottomSheet: {
+    position: 'absolute',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    ...Platform.select({
+      web: { boxShadow: '0px 8px 24px rgba(0, 0, 0, 0.45)' },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.45,
+        shadowRadius: 24,
+        elevation: 16,
+      },
+    }),
+  },
+  // Closed lid: exercise name at top (left-aligned), drag grabber pinned to the bottom edge.
+  bottomSheetHandleArea: {
+    height: 76,
+    width: '100%',
+  },
+  bottomSheetHandlePressable: {
+    flex: 1,
+    width: '100%',
+  },
+  bottomSheetGrabber: {
+    position: 'absolute',
+    bottom: 8,
+    left: '50%',
+    marginLeft: -20,
+    width: 40,
+    height: 4.5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.30)',
+  },
+  bottomSheetTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: -0.5,
+    paddingHorizontal: 22,
+    marginTop: 14,
+  },
+  bottomSheetContent: {
+    flex: 1,
+    overflow: 'hidden',
+    paddingTop: 28,
+  },
+  // Footer area shown when the sheet is expanded — grabber to swipe up / tap to close.
+  bottomSheetFooter: {
+    height: 32,
+    width: '100%',
+    flexShrink: 0,
+  },
+  bottomSheetFooterPressable: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomSheetFooterGrabber: {
+    width: 40,
+    height: 4.5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.30)',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'flex-start',
@@ -421,7 +501,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
   },
   exerciseListContent: {
     paddingHorizontal: Math.max(24, screenWidth * 0.06),
-    paddingTop: Math.max(10, screenHeight * 0.012), // Match main content padding
+    paddingTop: 4, // tight: handle area already provides breathing room
     paddingBottom: 24,
   },
   exerciseListTitleSection: {
@@ -1161,36 +1241,38 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     paddingVertical: Math.max(4, screenHeight * 0.005),
     position: 'relative',
   },
-  currentSetOverlay: {
+  setTrackingRowActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  activeSetIndicator: {
     position: 'absolute',
-    top: 0,
     left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
-    zIndex: 1,
-    pointerEvents: 'none',
+    top: 8,
+    bottom: 8,
+    width: 2,
+    borderRadius: 2,
   },
   setNumberSpace: {
-    width: Math.max(20, screenWidth * 0.05),
-    marginRight: Math.max(20, screenWidth * 0.05),
-    marginLeft: Math.max(26, screenWidth * 0.065),
+    width: 32,
+    marginRight: Math.max(12, screenWidth * 0.03),
+    marginLeft: 4,
   },
   setNumber: {
-    fontSize: Math.min(screenWidth * 0.045, 18),
+    fontSize: Math.min(screenWidth * 0.04, 16),
     fontWeight: '600',
     color: '#ffffff',
-    marginRight: Math.max(20, screenWidth * 0.05),
-    minWidth: Math.max(20, screenWidth * 0.05),
-    textAlign: 'left',
+    textAlign: 'center',
+  },
+  setNumberInactive: {
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   setNumberContainer: {
+    width: 32,
+    height: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: Math.max(8, screenHeight * 0.01),
-    paddingHorizontal: Math.max(4, screenWidth * 0.01),
-    marginLeft: Math.max(26, screenWidth * 0.065),
+    marginLeft: 4,
+    marginRight: Math.max(12, screenWidth * 0.03),
   },
   setInputsContainer: {
     flexDirection: 'row',
@@ -1682,7 +1764,7 @@ const createStyles = (screenWidth, screenHeight, insets = { top: 0 }) => StyleSh
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    height: Math.max(400, screenHeight * 0.525), // 400px min, 50% of screen (matches muscles card)
+    height: Math.max(395, screenHeight * 0.51),
     overflow: 'visible',
     position: 'relative',
     width: screenWidth - Math.max(48, screenWidth * 0.12),

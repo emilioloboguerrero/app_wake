@@ -19,10 +19,8 @@ const DAYS_TO_KEEP = 14;
 const googleAuth = new GoogleAuth({scopes: [LOGGING_SCOPE]});
 
 const MP_FUNCTIONS = [
-  "createPaymentPreference",
-  "createSubscriptionCheckout",
-  "processPaymentWebhook",
-  "updateSubscriptionStatus",
+  "api",
+  "reconcileSubscriptions",
 ];
 
 interface LogEntry {

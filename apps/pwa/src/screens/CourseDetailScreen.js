@@ -26,6 +26,7 @@ import SvgVolumeMax from '../components/icons/SvgVolumeMax';
 import SvgVolumeOff from '../components/icons/SvgVolumeOff';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
 import firestoreService from '../services/apiService';
+import apiClient from '../utils/apiClient';
 import purchaseService from '../services/purchaseService';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import courseDownloadService from '../data-management/courseDownloadService';
@@ -47,10 +48,17 @@ import VideoOverlayWebWrapper from '../components/VideoOverlayWebWrapper';
 import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import LeaveProgramModal from '../components/program/LeaveProgramModal';
 import { queryKeys } from '../config/queryClient';
+import { useCourseMeta } from '../hooks/workout/useCourseMeta';
+import { useBlocksOverview } from '../hooks/hoy/useBlocksOverview';
+import { useCurrentBlock } from '../hooks/hoy/useCurrentBlock';
+import MonthlyBlockMiniStrip from '../components/program/MonthlyBlockMiniStrip.jsx';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { course } = route.params;
+  // Read display fields (image_url, title, creatorName, …) from the live course
+  // doc instead of the snapshot stored on users.courses — so image/title edits
+  // by the creator surface immediately and stale storage tokens self-heal.
+  const course = useCourseMeta(route.params.course);
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const { isMuted, toggleMute } = useVideo();
@@ -74,8 +82,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [failedImages, setFailedImages] = useState(new Set());
   const scrollX = useRef(new Animated.Value(0)).current;
   const [showTopGradient, setShowTopGradient] = useState(false);
-  const [showModulesTopGradient, setShowModulesTopGradient] = useState(false); // Modules top gradient visibility
-  const [expandedModules, setExpandedModules] = useState(new Set());
   const [processingPurchase, setProcessingPurchase] = useState(false); // Processing purchase flag
   const processingPurchaseRef = useRef(false); // Fix #8: Use ref for timeout
   const postPurchaseFlowTriggeredRef = useRef(false); // Prevent duplicate post-purchase flow
@@ -92,7 +98,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [creatorProfileImage, setCreatorProfileImage] = useState(null);
   const [creatorDisplayName, setCreatorDisplayName] = useState('');
   const [userCourseEntry, setUserCourseEntry] = useState(null);
-  const [userTrialHistory, setUserTrialHistory] = useState(null);
   const [ownershipReady, setOwnershipReady] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [checkoutURL, setCheckoutURL] = useState(null);
@@ -100,10 +105,18 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [mercadoPagoEmail, setMercadoPagoEmail] = useState('');
   const [emailModalError, setEmailModalError] = useState('');
+  const [preCheckout, setPreCheckout] = useState(null); // { checkoutURL, mode: 'web'|'native' }
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
   const [simulateUserRole, setSimulateUserRole] = useState(false);
   const [refreshingOwnership, setRefreshingOwnership] = useState(false);
+  // Sold-out waitlist (beta cap)
+  const [showWaitlistModal, setShowWaitlistModal] = useState(false);
+  const [waitlistName, setWaitlistName] = useState('');
+  const [waitlistEmail, setWaitlistEmail] = useState('');
+  const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
+  const [waitlistError, setWaitlistError] = useState('');
+  const [waitlistDone, setWaitlistDone] = useState(false);
 
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
@@ -118,44 +131,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const trialDurationDays = trialConfig?.duration_days || 0;
   const isTrialFeatureEnabled = Boolean(trialConfig?.active && trialDurationDays > 0);
 
-  const trialStatus = useMemo(() => {
-    const hasConsumed = Boolean(
-      userTrialHistory?.consumed ||
-      userCourseEntry?.trial_consumed
-    );
 
-    const isTrialCourse = userCourseEntry?.is_trial === true;
-    const expiresAt = userCourseEntry?.trial_expires_at ||
-      userCourseEntry?.expires_at ||
-      null;
-
-    let isActive = false;
-    let isExpired = false;
-
-    if (isTrialCourse && expiresAt) {
-      try {
-        const expirationTime = new Date(expiresAt).getTime();
-        const now = Date.now();
-        isActive = expirationTime > now;
-        isExpired = expirationTime <= now;
-      } catch (error) {
-      }
-    }
-
-    return {
-      hasConsumed,
-      isTrialCourse,
-      expiresAt,
-      isActive,
-      isExpired,
-    };
-  }, [userCourseEntry, userTrialHistory]);
-
-  const canShowTrialCta = isTrialFeatureEnabled &&
-    !trialStatus.hasConsumed &&
-    !trialStatus.isTrialCourse &&
-    !userOwnsCourse;
-  
   const creatorId = useMemo(() => {
     return (
       course?.creator_id ||
@@ -169,16 +145,39 @@ const CourseDetailScreen = ({ navigation, route }) => {
     () => (course?.deliveryType || course?.delivery_type) === 'one_on_one',
     [course?.deliveryType, course?.delivery_type]
   );
+
+  // Monthly-drop pre-purchase strip: shows the next 3 blocks as a calendar.
+  // The shape IS the explanation — no instructional copy elsewhere on the page.
+  const isMonthlyDrop = course?.block_cadence === 'monthly_first_monday';
+  const { blocks: cadenceBlocks } = useBlocksOverview(course?.id, {
+    enabled: !!course?.id && isMonthlyDrop,
+  });
+  const { block: cadenceCurrentBlock } = useCurrentBlock(course?.id, {
+    enabled: !!course?.id && isMonthlyDrop,
+  });
   
-  // Initialize video player — skip external URLs (YouTube/Vimeo use iframe)
+  // Initialize video player — skip external URLs (YouTube/Vimeo use iframe).
+  // Pass '' as the source so the player instance survives URI changes and we
+  // update via player.replace(). Passing the URI directly causes expo-video
+  // to dispose and recreate the player, killing any in-flight buffer.
   const isExternalVideo = videoSourceType === 'youtube' || videoSourceType === 'vimeo';
-  const videoPlayer = useVideoPlayer(isExternalVideo ? null : videoUri, (player) => {
+  const videoPlayer = useVideoPlayer('', (player) => {
     if (player) {
       player.loop = false;
       player.muted = isMuted;
       player.volume = 1.0;
     }
   });
+
+  useEffect(() => {
+    if (!videoPlayer) return;
+    const nextSource = isExternalVideo ? '' : (videoUri || '');
+    try {
+      videoPlayer.replace(nextSource);
+    } catch (error) {
+      logger.error('❌ Error replacing course video source:', error);
+    }
+  }, [videoUri, isExternalVideo, videoPlayer]);
 
   // Define functions with useCallback before using them in effects
   // Note: handlePostPurchaseFlow needs to be defined first as it's used by checkCourseOwnership
@@ -370,7 +369,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
       }
 
       setUserCourseEntry(courseState.courseData);
-      setUserTrialHistory(courseState.trialHistory);
       setUserOwnsCourse(courseState.ownsCourse);
       
       // Set ownershipReady to true if user owns course and not processing purchase
@@ -692,6 +690,38 @@ useEffect(() => {
     return isDraft || isAdminUser || isCreatorOwnProgram;
   };
 
+  const openWaitlist = () => {
+    const effectiveUser = user || auth.currentUser;
+    setWaitlistName((prev) => prev || effectiveUser?.displayName || '');
+    setWaitlistEmail((prev) => prev || effectiveUser?.email || '');
+    setWaitlistError('');
+    setWaitlistDone(false);
+    setShowWaitlistModal(true);
+  };
+
+  const submitWaitlist = async () => {
+    const name = waitlistName.trim();
+    const email = waitlistEmail.trim().toLowerCase();
+    if (!name) {
+      setWaitlistError('Ingresa tu nombre.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setWaitlistError('Ingresa un correo válido.');
+      return;
+    }
+    setWaitlistSubmitting(true);
+    setWaitlistError('');
+    try {
+      await apiClient.post(`/public/programs/${course.id}/waitlist`, { email, name });
+      setWaitlistDone(true);
+    } catch (err) {
+      setWaitlistError('No pudimos guardarte. Intenta de nuevo.');
+    } finally {
+      setWaitlistSubmitting(false);
+    }
+  };
+
   const handlePurchaseCourse = async () => {
     // Get effective user (from context or Firebase auth)
     const effectiveUser = user || auth.currentUser;
@@ -813,6 +843,16 @@ useEffect(() => {
       });
 
       if (!purchaseResult.success) {
+        // Filled up between load and tap — flip to the waitlist instead of a
+        // dead-end error.
+        if (purchaseResult.capacityFull) {
+          setPurchasing(false);
+          setProcessingPurchase(false);
+          processingPurchaseRef.current = false;
+          pendingPostPurchaseRef.current = false;
+          openWaitlist();
+          return;
+        }
         // Handle special case: requires alternate email for subscription
         if (purchaseResult.requiresAlternateEmail) {
           setPurchasing(false);
@@ -834,15 +874,13 @@ useEffect(() => {
         return;
       }
 
-      // On web: redirect directly — more reliable than going through EpaycoWebView's useEffect
-      if (isWeb) {
-        window.location.href = purchaseResult.checkoutURL;
-        return;
-      }
-
-      // Native: open in-app WebView modal
-      setCheckoutURL(purchaseResult.checkoutURL);
-      setShowPaymentModal(true);
+      // Show pre-checkout confirmation so the user sees which email to use
+      // when MercadoPago asks for one. The actual redirect happens on
+      // "Continuar al pago" inside the modal.
+      setPreCheckout({
+        checkoutURL: purchaseResult.checkoutURL,
+        mode: isWeb ? 'web' : 'native',
+      });
       setPurchasing(false);
       
     } catch (error) {
@@ -853,6 +891,29 @@ useEffect(() => {
       processingPurchaseRef.current = false;
       pendingPostPurchaseRef.current = false;
     }
+  };
+
+  // User confirmed the pre-checkout email reminder — actually open MP now.
+  const handleConfirmPreCheckout = () => {
+    if (!preCheckout) return;
+    const { checkoutURL, mode } = preCheckout;
+    setPreCheckout(null);
+    if (mode === 'web') {
+      const opened = window.open(checkoutURL, '_blank', 'noopener,noreferrer');
+      if (!opened) {
+        window.location.href = checkoutURL;
+      }
+      return;
+    }
+    setCheckoutURL(checkoutURL);
+    setShowPaymentModal(true);
+  };
+
+  const handleCancelPreCheckout = () => {
+    setPreCheckout(null);
+    setProcessingPurchase(false);
+    processingPurchaseRef.current = false;
+    pendingPostPurchaseRef.current = false;
   };
 
   // Handle email submission for Mercado Pago subscription
@@ -913,9 +974,12 @@ useEffect(() => {
         return;
       }
 
-      // On web: redirect directly
+      // On web: open MP in a new tab so installed PWAs (iOS standalone) work.
       if (isWeb) {
-        window.location.href = subscriptionResult.checkoutURL;
+        const opened = window.open(subscriptionResult.checkoutURL, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          window.location.href = subscriptionResult.checkoutURL;
+        }
         return;
       }
 
@@ -930,81 +994,6 @@ useEffect(() => {
       setProcessingPurchase(false);
       processingPurchaseRef.current = false;
       pendingPostPurchaseRef.current = false;
-    }
-  };
-
-  const handleStartTrial = async () => {
-    if (!user?.uid) {
-      Alert.alert('Error', 'Debes iniciar sesión para iniciar la prueba gratuita');
-      return;
-    }
-
-    if (!isTrialFeatureEnabled || !canShowTrialCta) {
-      return;
-    }
-
-    try {
-      if (postPurchaseTimeoutRef.current) {
-        clearTimeout(postPurchaseTimeoutRef.current);
-        postPurchaseTimeoutRef.current = null;
-      }
-      if (postPurchaseTimeoutSecondRef.current) {
-        clearTimeout(postPurchaseTimeoutSecondRef.current);
-        postPurchaseTimeoutSecondRef.current = null;
-      }
-      pendingPostPurchaseRef.current = false;
-      processingPurchaseRef.current = false;
-      readyNotificationSentRef.current = false;
-      setProcessingPurchase(false);
-
-      setPurchasing(true);
-
-      const result = await purchaseService.startLocalTrial(
-        user.uid,
-        course.id,
-        trialDurationDays
-      );
-
-      if (!result.success) {
-        Alert.alert('No se pudo iniciar la prueba', result.error || 'Intenta de nuevo más tarde.');
-        return;
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ['programs'] });
-      await queryClient.invalidateQueries({ queryKey: ['user', user.uid] });
-      purchaseEventManager.notifyPurchaseComplete(course.id);
-
-      try {
-        await courseDownloadService.downloadCourse(course.id, user?.uid, {
-          cachedCourseData: course,
-          cachedModules: modules,
-          isOneOnOne,
-        });
-      } catch (downloadError) {
-        logger.error('Error downloading course after starting trial:', downloadError);
-      }
-
-      await checkCourseOwnership();
-
-      Alert.alert(
-        'Prueba iniciada',
-        `Tienes ${trialDurationDays} días para explorar este programa.`,
-        [
-          {
-            text: 'Ir a Página Principal',
-            onPress: () => navigation.navigate('MainScreen')
-          },
-          {
-            text: 'Aceptar',
-            style: 'cancel'
-          }
-        ]
-      );
-    } catch (error) {
-      logger.error('❌ Error starting trial:', error);
-      Alert.alert('Error', 'No pudimos iniciar la prueba gratuita. Intenta de nuevo.');
-    } finally {
-      setPurchasing(false);
     }
   };
 
@@ -1143,33 +1132,16 @@ useEffect(() => {
       );
     }
 
-    if (canShowTrialCta && !simulateUserRole) {
-      const currencyCode = course.currency || course.currency_id || 'COP';
-      const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
+    // Beta cap: program is sold out → waitlist instead of buy. Owners,
+    // creators and free-flow previews are handled above and never reach here.
+    if (course.isFull && !simulateUserRole) {
       return (
-        <View>
-          <TouchableOpacity
-            style={[styles.primaryButton, purchasing && styles.disabledButton]}
-            onPress={handleStartTrial}
-            disabled={purchasing}
-          >
-            {purchasing ? (
-              <>
-                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
-                <Text style={styles.primaryButtonText}>Activando prueba...</Text>
-              </>
-            ) : (
-              <Text style={styles.primaryButtonText}>
-                {`Prueba gratis - ${trialDurationDays} dias`}
-              </Text>
-            )}
-          </TouchableOpacity>
-          {course.price > 0 && (
-            <Text style={styles.trialPriceText}>
-              {`Luego ${formatPrice(course.price)} ${currencyCode}`}
-            </Text>
-          )}
-        </View>
+        <TouchableOpacity
+          style={[styles.primaryButton, styles.soldOutButton]}
+          onPress={openWaitlist}
+        >
+          <Text style={styles.primaryButtonText}>Cupos agotados · Lista de espera</Text>
+        </TouchableOpacity>
       );
     }
 
@@ -1190,6 +1162,44 @@ useEffect(() => {
     const formatPrice = (amount) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: currencyCode, minimumFractionDigits: 0 }).format(amount);
     const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
     const discountPercent = hasCompareAt ? Math.round((1 - course.price / course.compare_at_price) * 100) : 0;
+
+    // Trial CTA — only for subscription courses (MP free_trial requires a
+    // recurring preapproval). Card collected at MP checkout, no charge until
+    // the trial ends, then MP starts the monthly billing automatically.
+    const isSubscription = course.access_duration === 'monthly';
+    const showTrialCta = isTrialFeatureEnabled && isSubscription && !simulateUserRole;
+    if (showTrialCta) {
+      const monthlyPrice = (typeof course.subscription_price === 'number' && course.subscription_price > 0)
+        ? course.subscription_price
+        : course.price;
+      return (
+        <View>
+          <TouchableOpacity
+            className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
+            style={[styles.primaryButton, purchasing && styles.disabledButton]}
+            onPress={handlePurchaseCourse}
+            disabled={purchasing}
+          >
+            {purchasing ? (
+              <>
+                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryButtonText}>Procesando...</Text>
+              </>
+            ) : (
+              <Text style={styles.primaryButtonText}>
+                {`Empezar prueba de ${trialDurationDays} días`}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {monthlyPrice > 0 && (
+            <Text style={styles.trialPriceText}>
+              {`Luego ${formatPrice(monthlyPrice)} ${currencyCode}/mes`}
+            </Text>
+          )}
+        </View>
+      );
+    }
+
     const purchaseButtonText = course.price
       ? `Comprar - ${formatPrice(course.price)} ${currencyCode}`
       : 'Comprar';
@@ -1533,85 +1543,19 @@ useEffect(() => {
                     </Text>
                   </View>
                 </View>
-
-                {/* Modules Card */}
-                <View style={styles.modulesCard}>
-                  {/* Top gradient - only show when scrolled */}
-                  {showModulesTopGradient && <View style={styles.topGradient} />}
-                  
-                  {/* Fixed Title */}
-                  <Text style={styles.modulesTitle}>Módulos</Text>
-                  
-                  <ScrollView 
-                    style={styles.modulesScrollView}
-                    showsVerticalScrollIndicator={true}
-                    nestedScrollEnabled={true}
-                    onScroll={(event) => {
-                      const scrollY = event.nativeEvent.contentOffset.y;
-                      setShowModulesTopGradient(scrollY > 10);
-                    }}
-                    scrollEventThrottle={16}
-                  >
-                    {modules.length > 0 ? (
-                      modules.map((module, index) => {
-                        const moduleKey = module.id || String(index);
-                        const isExpanded = expandedModules.has(moduleKey);
-                        const hasSessions = Array.isArray(module.sessions) && module.sessions.length > 0;
-                        return (
-                          <View key={moduleKey} style={styles.simpleModuleItem}>
-                            <TouchableOpacity
-                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-                              onPress={() => {
-                                setExpandedModules(prev => {
-                                  const next = new Set(prev);
-                                  if (next.has(moduleKey)) next.delete(moduleKey);
-                                  else next.add(moduleKey);
-                                  return next;
-                                });
-                              }}
-                              activeOpacity={hasSessions ? 0.7 : 1}
-                            >
-                              <Text style={[styles.simpleModuleText, { flex: 1 }]} numberOfLines={1} ellipsizeMode="tail">
-                                {module.title || `Módulo ${index + 1}`}{module.description ? `: ${module.description}` : ''}
-                              </Text>
-                              {hasSessions && Platform.OS === 'web' && (
-                                <div className={`wake-module-chevron${isExpanded ? ' rotated' : ''}`}>›</div>
-                              )}
-                            </TouchableOpacity>
-                            {hasSessions && Platform.OS === 'web' && (
-                              <div className={`wake-module-sessions${isExpanded ? ' expanded' : ''}`}>
-                                {module.sessions.map((session, sIdx) => (
-                                  <div key={session.id || sIdx} style={{ paddingVertical: 6, paddingLeft: 8, borderLeft: '2px solid rgba(255,255,255,0.15)', marginTop: 6, marginLeft: 4 }}>
-                                    <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
-                                      {session.title || session.name || `Sesión ${sIdx + 1}`}
-                                    </Text>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </View>
-                        );
-                      })
-                    ) : (
-                      <View style={styles.simpleModuleItem}>
-                        <Text style={styles.simpleModuleText}>
-                          No hay módulos disponibles para este programa
-                        </Text>
-                      </View>
-                    )}
-                  </ScrollView>
-                  
-                  {/* Scroll indicator */}
-                  <View style={styles.scrollIndicator}>
-                    <Text style={styles.scrollIndicatorText}>Desliza</Text>
-                  </View>
-                </View>
               </View>
             </ScrollView>
             
             {/* Animated Card Indicators */}
             {renderPaginationIndicators()}
           </View>
+
+          {/* Monthly-drop calendar strip (web only) — above the CTA */}
+          {Platform.OS === 'web' && isMonthlyDrop && cadenceBlocks?.length > 0 ? (
+            <View style={{ marginBottom: 12 }}>
+              <MonthlyBlockMiniStrip blocks={cadenceBlocks} currentBlock={cadenceCurrentBlock} />
+            </View>
+          ) : null}
 
           {/* Action Buttons */}
           <View style={styles.actionsSection}>
@@ -1669,7 +1613,7 @@ useEffect(() => {
           <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.emailModalTitle}>Correo de Mercado Pago</Text>
             <Text style={styles.emailModalDescription}>
-              Necesitamos el correo de tu cuenta de Mercado Pago para procesar la suscripción.
+              Mercado Pago necesita un correo distinto para la suscripción. Tu compra se vinculará automáticamente a tu cuenta Wake.
             </Text>
             
             <TextInput
@@ -1713,6 +1657,139 @@ useEffect(() => {
                 ) : (
                   <Text style={styles.emailModalButtonSubmitText}>Continuar</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Sold-out waitlist (beta cap): capture name + email so we can reach out
+          when a seat opens. No payment — mirrors the event waitlist. */}
+      <Modal
+        visible={showWaitlistModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowWaitlistModal(false)}
+      >
+        <Pressable
+          style={styles.emailModalOverlay}
+          onPress={() => setShowWaitlistModal(false)}
+        >
+          <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
+            {waitlistDone ? (
+              <>
+                <Text style={styles.emailModalTitle}>¡Estás en la lista!</Text>
+                <Text style={styles.emailModalDescription}>
+                  Te avisaremos en {waitlistEmail} si se libera un cupo.
+                </Text>
+                <View style={styles.emailModalButtons}>
+                  <TouchableOpacity
+                    style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
+                    onPress={() => setShowWaitlistModal(false)}
+                  >
+                    <Text style={styles.emailModalButtonSubmitText}>Listo</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.emailModalTitle}>Lista de espera</Text>
+                <Text style={styles.emailModalDescription}>
+                  Cupos agotados. Déjanos tus datos y te avisamos si se abre un cupo.
+                </Text>
+
+                <TextInput
+                  style={styles.emailModalInput}
+                  placeholder="Tu nombre"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={waitlistName}
+                  onChangeText={(text) => {
+                    setWaitlistName(text);
+                    setWaitlistError('');
+                  }}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                />
+
+                <TextInput
+                  style={[styles.emailModalInput, waitlistError && styles.emailModalInputError]}
+                  placeholder="Tu correo"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={waitlistEmail}
+                  onChangeText={(text) => {
+                    setWaitlistEmail(text);
+                    setWaitlistError('');
+                  }}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                {waitlistError ? (
+                  <Text style={styles.emailModalErrorText}>{waitlistError}</Text>
+                ) : null}
+
+                <View style={styles.emailModalButtons}>
+                  <TouchableOpacity
+                    style={[styles.emailModalButton, styles.emailModalButtonCancel]}
+                    onPress={() => setShowWaitlistModal(false)}
+                  >
+                    <Text style={styles.emailModalButtonCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
+                    onPress={submitWaitlist}
+                    disabled={waitlistSubmitting}
+                  >
+                    {waitlistSubmitting ? (
+                      <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" />
+                    ) : (
+                      <Text style={styles.emailModalButtonSubmitText}>Unirme</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Pre-checkout reminder: show the user's account email so they use the
+          same one when MercadoPago asks at the end of checkout. */}
+      <Modal
+        visible={!!preCheckout}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelPreCheckout}
+      >
+        <Pressable style={styles.emailModalOverlay} onPress={handleCancelPreCheckout}>
+          <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.emailModalTitle}>Usa este correo en Mercado Pago</Text>
+            <Text style={styles.emailModalDescription}>
+              Al final del pago, Mercado Pago te pedirá un correo. Usa el mismo de tu cuenta Wake para que tu compra quede vinculada.
+            </Text>
+
+            <View style={styles.preCheckoutEmailCard}>
+              <Text style={styles.preCheckoutEmailLabel}>Tu correo Wake</Text>
+              <Text style={styles.preCheckoutEmailValue} numberOfLines={1}>
+                {(user || auth.currentUser)?.email || ''}
+              </Text>
+            </View>
+
+            <View style={styles.emailModalButtons}>
+              <TouchableOpacity
+                style={[styles.emailModalButton, styles.emailModalButtonCancel]}
+                onPress={handleCancelPreCheckout}
+              >
+                <Text style={styles.emailModalButtonCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
+                onPress={handleConfirmPreCheckout}
+              >
+                <Text style={styles.emailModalButtonSubmitText}>Continuar al pago</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -1988,7 +2065,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   infoCardsStackContainer: {
     width: screenWidth - Math.max(48, screenWidth * 0.12),
-    height: Math.max(550, screenHeight * 0.70), // Match taller image card height
+    height: Math.max(500, screenHeight * 0.63), // Match image card height exactly
     gap: Math.max(15, screenHeight * 0.02),
     overflow: 'visible', // Ensure shadows are not clipped
   },
@@ -2035,21 +2112,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'center',
-  },
-  modulesCard: {
-    backgroundColor: '#2a2a2a',
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    flex: 1,
-    overflow: 'visible', // Changed from 'hidden' to match other cards
-    padding: Math.max(20, screenWidth * 0.05),
-    position: 'relative',
   },
   descriptionScrollView: {
     flex: 1,
@@ -2098,32 +2160,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     fontWeight: '500',
     color: '#ffffff',
     textAlign: 'center',
-  },
-  modulesScrollView: {
-    flex: 1,
-    paddingBottom: 20, // Add padding to prevent text from being covered by overlay
-  },
-  noModulesText: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#ffffff',
-    textAlign: 'center',
-    marginTop: 50,
-  },
-  modulesTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 20,
-  },
-  simpleModuleItem: {
-    marginBottom: 12,
-  },
-  simpleModuleText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#ffffff',
-    lineHeight: 22,
   },
   courseInfoSection: {
     backgroundColor: '#2a2a2a',
@@ -2398,12 +2434,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     marginTop: 2,
   },
   trialPriceText: {
-    color: 'rgba(255, 255, 255, 1)',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
-    marginTop: 4,
-    opacity: 0.9,
+    marginTop: 6,
   },
   disabledButton: {
     backgroundColor: '#666666',
@@ -2412,6 +2447,11 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   ownedButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
     opacity: 0.45,
+  },
+  soldOutButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.24)',
   },
   refreshOwnershipButton: {
     flexDirection: 'row',
@@ -2666,6 +2706,28 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     flexDirection: 'row',
     gap: Math.max(12, screenWidth * 0.03),
     marginTop: Math.max(16, screenHeight * 0.02),
+  },
+  preCheckoutEmailCard: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: Math.max(10, screenWidth * 0.025),
+    paddingVertical: Math.max(12, screenHeight * 0.015),
+    paddingHorizontal: Math.max(14, screenWidth * 0.035),
+    marginBottom: Math.max(4, screenHeight * 0.005),
+  },
+  preCheckoutEmailLabel: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  preCheckoutEmailValue: {
+    color: '#ffffff',
+    fontSize: Math.min(screenWidth * 0.04, 16),
+    fontWeight: '600',
   },
   emailModalButton: {
     flex: 1,

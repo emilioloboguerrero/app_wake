@@ -47,6 +47,8 @@ const OBJECTIVES_INFO = {
       'Consulta nuestros términos y condiciones'
     ]
   },
+  // 'notes' is intentionally not registered here — WorkoutExecutionScreen
+  // builds the modal payload inline so it can show the actual note text.
   // Add more objectives here as needed...
 };
 

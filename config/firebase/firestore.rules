@@ -253,6 +253,13 @@ service cloud.firestore {
           }
         }
       }
+
+      // Beta purchase-cap waitlist — captures email + name of users who joined
+      // a sold-out program's list. Contains PII and is managed exclusively
+      // through the API (admin SDK). No direct client access.
+      match /waitlist/{waitId} {
+        allow read, write: if false;
+      }
     }
     
     // ============================================

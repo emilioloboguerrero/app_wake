@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { isWeb } from '../utils/platform';
+import analyticsService from '../services/analyticsService';
 
 const AuthContext = createContext({});
 
@@ -20,6 +21,11 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
       setUser(authUser);
       setLoading(false);
+      if (authUser?.uid) {
+        analyticsService.identify(authUser.uid, {
+          email_domain: authUser.email ? String(authUser.email).split('@')[1] || null : null,
+        });
+      }
     }, () => {
       setUser(null);
       setLoading(false);

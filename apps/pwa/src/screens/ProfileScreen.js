@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import analyticsService from '../services/analyticsService';
 import apiService from '../services/apiService';
 import purchaseService from '../services/purchaseService';
 import * as nutritionFirestoreService from '../services/nutritionFirestoreService';
@@ -45,6 +46,7 @@ import SvgFileBlank from '../components/icons/SvgFileBlank';
 import SvgCreditCard from '../components/icons/SvgCreditCard';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
 import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
+import BookOpen from '../components/icons/vectors_fig/File/BookOpen';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
 
 import logger from '../utils/logger.js';
@@ -498,6 +500,29 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     } catch (e) {
       logger.error('[Profile] pinnedNutritionAssignmentId update failed', e);
       Alert.alert('Error', 'No se pudo guardar la preferencia.');
+    }
+  };
+
+  const readinessOptIn = profileQueryData?.readinessOptIn === true;
+  const toggleReadinessOptIn = async () => {
+    const next = !readinessOptIn;
+    try {
+      await apiClient.patch('/users/me', { readinessOptIn: next });
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
+    } catch (e) {
+      logger.error('[Profile] readinessOptIn update failed', e);
+      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+    }
+  };
+
+  const [analyticsOptedOut, setAnalyticsOptedOut] = useState(() => analyticsService.isOptedOut());
+  const toggleAnalyticsOptOut = () => {
+    if (analyticsOptedOut) {
+      analyticsService.optIn();
+      setAnalyticsOptedOut(false);
+    } else {
+      analyticsService.optOut();
+      setAnalyticsOptedOut(true);
     }
   };
 
@@ -1076,6 +1101,42 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                     <SvgChevronRight width={16} height={16} stroke="#ffffff" style={styles.dropdownChevron} />
                   </TouchableOpacity>
                 </View>
+
+                <View style={styles.inputGroup}>
+                  <TouchableOpacity
+                    style={styles.toggleRow}
+                    onPress={toggleReadinessOptIn}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.toggleRowText}>
+                      <Text style={styles.toggleRowTitle}>Registro de bienestar</Text>
+                      <Text style={styles.toggleRowSubtitle}>
+                        Pregunta diaria sobre energía, sueño y cuerpo.
+                      </Text>
+                    </View>
+                    <View style={[styles.toggleTrack, readinessOptIn && styles.toggleTrackActive]}>
+                      <View style={[styles.toggleThumb, readinessOptIn && styles.toggleThumbActive]} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <TouchableOpacity
+                    style={styles.toggleRow}
+                    onPress={toggleAnalyticsOptOut}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.toggleRowText}>
+                      <Text style={styles.toggleRowTitle}>Compartir uso anónimo</Text>
+                      <Text style={styles.toggleRowSubtitle}>
+                        Nos ayuda a mejorar Wake. Sin datos personales.
+                      </Text>
+                    </View>
+                    <View style={[styles.toggleTrack, !analyticsOptedOut && styles.toggleTrackActive]}>
+                      <View style={[styles.toggleThumb, !analyticsOptedOut && styles.toggleThumbActive]} />
+                    </View>
+                  </TouchableOpacity>
+                </View>
               </View>
               
                   {/* Sign Out Button */}
@@ -1461,7 +1522,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
 
           {/* User Profile Card */}
           <View style={styles.userProfileCard}>
-            {onOpenReadinessModal ? (
+            {onOpenReadinessModal && readinessOptIn ? (
               <TouchableOpacity
                 style={styles.readinessIconButton}
                 onPress={onOpenReadinessModal}
@@ -1506,28 +1567,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             </Animated.View>
           </View>
 
-        {/* Programs and Subscriptions Section */}
-        <View style={styles.programsSubscriptionsContainer}>
-          <TouchableOpacity 
-            className="profile-menu-row"
-            style={styles.programCard} 
-            onPress={() => navigation.navigate('AllPurchasedCourses')}
-            activeOpacity={0.7}
-          >
-            <SvgListChecklist width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.programCardIcon} />
-            <Text style={styles.programCardTitle}>Programas</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            className="profile-menu-row"
-            style={styles.subscriptionCard} 
-            onPress={() => navigation.navigate('Subscriptions')}
-            activeOpacity={0.7}
-          >
-            <SvgCreditCard width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.subscriptionCardIcon} />
-            <Text style={styles.subscriptionCardTitle}>Suscripciones</Text>
-          </TouchableOpacity>
-          </View>
-
         {/* Configuration and Legal Section */}
         <View style={styles.interestsProgramsContainer}>
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={showSettingsModal}>
@@ -1537,6 +1576,19 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
             <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
             <Text style={styles.smallCardTitle}>Legal</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Library Hero */}
+        <View style={styles.libraryHeroContainer}>
+          <TouchableOpacity
+            className="profile-menu-row"
+            style={styles.libraryHeroCard}
+            onPress={() => navigation.navigate('Library')}
+            activeOpacity={0.7}
+          >
+            <BookOpen width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.libraryHeroIcon} />
+            <Text style={styles.libraryHeroTitle}>Biblioteca</Text>
           </TouchableOpacity>
         </View>
 
@@ -1698,6 +1750,53 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     borderRadius: 8,
     zIndex: 1,
   },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  toggleRowText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  toggleRowTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 2,
+  },
+  toggleRowSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 16,
+  },
+  toggleTrack: {
+    width: 40,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleTrackActive: {
+    backgroundColor: '#ffffff',
+  },
+  toggleThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ffffff',
+    transform: [{ translateX: 0 }],
+  },
+  toggleThumbActive: {
+    backgroundColor: '#1a1a1a',
+    transform: [{ translateX: 18 }],
+  },
   programsSubscriptionsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1781,6 +1880,45 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   smallCardIcon: {
     marginBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.4)',
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+    marginBottom: 10,
+  },
+  libraryHeroContainer: {
+    marginBottom: Math.max(20, screenHeight * 0.028),
+    marginHorizontal: Math.max(24, screenWidth * 0.06),
+  },
+  libraryHeroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(14, screenWidth * 0.045),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    paddingVertical: Math.max(22, screenWidth * 0.055),
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
+    width: '100%',
+    minHeight: Math.max(96, screenHeight * 0.12),
+  },
+  libraryHeroIcon: {
+    marginRight: 12,
+  },
+  libraryHeroTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
   displayName: {
     fontSize: 24,

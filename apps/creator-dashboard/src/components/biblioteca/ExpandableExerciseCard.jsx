@@ -7,7 +7,7 @@ import ExercisePicker from './ExercisePicker';
 import './ExpandableExerciseCard.css';
 
 const DEFAULT_MEASURE_LABELS = { reps: 'Repeticiones', weight: 'Peso', intensity: 'RPE' };
-const DEFAULT_OBJECTIVE_LABELS = { reps: 'Repeticiones', intensity: 'RPE', previous: 'Anterior' };
+const DEFAULT_OBJECTIVE_LABELS = { reps: 'Repeticiones', intensity: 'RPE', previous: 'Anterior', notes: 'Notas' };
 
 const getMeasureLabel = (key, custom = {}) => custom[key] || DEFAULT_MEASURE_LABELS[key] || key;
 const getObjectiveLabel = (key, custom = {}) => custom[key] || DEFAULT_OBJECTIVE_LABELS[key] || key;
@@ -501,7 +501,7 @@ const ExpandableExerciseCard = ({
 
                     {/* Default values for objectives */}
                     <div className="exc-card-defaults">
-                      {fields.map((field) => (
+                      {fields.filter((f) => f !== 'notes').map((field) => (
                         <div key={field} className="exc-card-default-field">
                           <div className="exc-card-field-label-row">
                             <span className="exc-card-field-label">{getObjectiveLabel(field, customObjectiveLabels)}</span>
@@ -609,6 +609,15 @@ const ExpandableExerciseCard = ({
                                               />
                                               <span className="exc-card-intensity-suffix">/10</span>
                                             </div>
+                                          ) : f === 'notes' ? (
+                                            <textarea
+                                              className="exc-card-input exc-card-table-input exc-card-notes-input"
+                                              placeholder="Nota para esta serie…"
+                                              maxLength={500}
+                                              rows={1}
+                                              value={set[f] != null ? String(set[f]) : ''}
+                                              onChange={(e) => setsHook.updateSetValue(idx, f, e.target.value)}
+                                            />
                                           ) : (
                                             <input
                                               type="text"

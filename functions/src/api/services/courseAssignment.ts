@@ -100,11 +100,15 @@ function buildCourseEntry(
       expires_at: expiresAt,
       status: "active",
       purchased_at: existing.purchased_at ?? new Date().toISOString(),
-      deliveryType: existing.deliveryType ?? courseData.deliveryType ?? "low_ticket",
+      deliveryType: existing.deliveryType ?? courseData.deliveryType ?? "general",
       title: existing.title ?? courseData.title ?? "Untitled Course",
       image_url: existing.image_url ?? courseData.image_url ?? null,
       discipline: existing.discipline ?? courseData.discipline ?? "General",
       creatorName: existing.creatorName ?? courseData.creatorName ?? courseData.creator_name ?? null,
+      // Persist creator_id so the PWA's Hoy screen doesn't have to re-fetch
+      // it per-course at every load (useCoursesEnriched workaround).
+      creator_id: existing.creator_id ?? courseData.creator_id ?? null,
+      block_cadence: courseData.block_cadence ?? existing.block_cadence ?? null,
       completedTutorials: existing.completedTutorials ?? {
         dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [],
       },
@@ -116,11 +120,13 @@ function buildCourseEntry(
     expires_at: expiresAt,
     status: "active",
     purchased_at: new Date().toISOString(),
-    deliveryType: courseData.deliveryType ?? "low_ticket",
+    deliveryType: courseData.deliveryType ?? "general",
     title: courseData.title ?? "Untitled Course",
     image_url: courseData.image_url ?? null,
     discipline: courseData.discipline ?? "General",
     creatorName: courseData.creatorName ?? courseData.creator_name ?? null,
+    creator_id: courseData.creator_id ?? null,
+    block_cadence: courseData.block_cadence ?? null,
     completedTutorials: {
       dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [],
     },

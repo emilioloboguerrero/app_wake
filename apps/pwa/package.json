@@ -65,6 +65,7 @@
     "html5-qrcode": "^2.3.8",
     "idb-keyval": "^6.2.2",
     "motion": "^12.38.0",
+    "posthog-js": "^1.205.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",

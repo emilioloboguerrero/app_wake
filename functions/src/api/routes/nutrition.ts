@@ -297,6 +297,7 @@ router.get("/nutrition/foods/search", async (req, res) => {
     language: "es",
   });
 
+  if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
   const fsRes = await fetch(
     `https://platform.fatsecret.com/rest/foods/search/v4?${params}`,
     {headers: {Authorization: `Bearer ${fsToken}`}}
@@ -358,6 +359,7 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
     language: "es",
   });
 
+  if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
   const fsRes = await fetch(
     `https://platform.fatsecret.com/rest/food/v5?${params}`,
     {headers: {Authorization: `Bearer ${fsToken}`}}
@@ -414,6 +416,7 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
     language: "es",
   });
 
+  if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
   const fsRes = await fetch(
     `https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`,
     {headers: {Authorization: `Bearer ${fsToken}`}}

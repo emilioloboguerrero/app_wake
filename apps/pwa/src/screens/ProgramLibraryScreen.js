@@ -36,10 +36,13 @@ import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/
 import SvgFilter from '../components/icons/vectors_fig/Interface/FilterIcon';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgInfo from '../components/icons/SvgInfo';
+import SvgListChecklist from '../components/icons/SvgListChecklist';
+import SvgCreditCard from '../components/icons/SvgCreditCard';
 import logger from '../utils/logger.js';
 const LIBRARY_TAB_CONFIG = [
   { key: 'creators', title: 'Creadores' },
   { key: 'programs', title: 'Programas' },
+  { key: 'mystuff', title: 'Mis cosas' },
 ];
 
 const CreatorCard = React.memo(({ creator, onPress, styles }) => {
@@ -634,8 +637,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
                       transform: [
                         {
                           translateX: scrollX.interpolate({
-                            inputRange: [0, screenWidth],
-                            outputRange: [0, tabIndicatorStep],
+                            inputRange: LIBRARY_TAB_CONFIG.map((_, i) => i * screenWidth),
+                            outputRange: LIBRARY_TAB_CONFIG.map((_, i) => i * tabIndicatorStep),
                             extrapolate: 'clamp',
                           }),
                         },
@@ -645,8 +648,8 @@ const ProgramLibraryScreen = ({ navigation }) => {
                 />
                 {LIBRARY_TAB_CONFIG.map((tab, index) => {
                   const tabOpacity = scrollX.interpolate({
-                    inputRange: [0, screenWidth],
-                    outputRange: index === 0 ? [1, 0.45] : [0.45, 1],
+                    inputRange: LIBRARY_TAB_CONFIG.map((_, i) => i * screenWidth),
+                    outputRange: LIBRARY_TAB_CONFIG.map((_, i) => (i === index ? 1 : 0.45)),
                     extrapolate: 'clamp',
                   });
                   return (
@@ -758,6 +761,48 @@ const ProgramLibraryScreen = ({ navigation }) => {
               )}
               <BottomSpacer />
             </ScrollView>
+
+            {/* Page 2: Mis cosas */}
+            <ScrollView
+              style={[styles.libraryPage, { width: screenWidth }]}
+              contentContainerStyle={styles.libraryPageContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.myStuffContainer}>
+                <TouchableOpacity
+                  className={Platform.OS === 'web' ? 'profile-menu-row' : undefined}
+                  style={styles.myStuffCard}
+                  onPress={() => navigation.navigate('AllPurchasedCourses')}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.myStuffIconWrap}>
+                    <SvgListChecklist width={22} height={22} stroke="#ffffff" strokeWidth={2} />
+                  </View>
+                  <View style={styles.myStuffTextWrap}>
+                    <Text style={styles.myStuffTitle}>Mis programas</Text>
+                    <Text style={styles.myStuffSubtitle}>Cursos activos e historial</Text>
+                  </View>
+                  <SvgChevronRight width={18} height={18} stroke="rgba(255,255,255,0.5)" strokeWidth={2} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className={Platform.OS === 'web' ? 'profile-menu-row' : undefined}
+                  style={styles.myStuffCard}
+                  onPress={() => navigation.navigate('Subscriptions')}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.myStuffIconWrap}>
+                    <SvgCreditCard width={22} height={22} stroke="#ffffff" strokeWidth={2} />
+                  </View>
+                  <View style={styles.myStuffTextWrap}>
+                    <Text style={styles.myStuffTitle}>Suscripciones</Text>
+                    <Text style={styles.myStuffSubtitle}>Pagos y renovaciones</Text>
+                  </View>
+                  <SvgChevronRight width={18} height={18} stroke="rgba(255,255,255,0.5)" strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+              <BottomSpacer />
+            </ScrollView>
           </Animated.ScrollView>
           </View>
         </WakeHeaderContent>
@@ -839,6 +884,52 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   libraryPageContent: {
     paddingBottom: 20,
     flexGrow: 1,
+  },
+  myStuffContainer: {
+    paddingTop: 12,
+    paddingHorizontal: Math.max(20, screenWidth * 0.05),
+    flexDirection: 'column',
+    gap: 12,
+  },
+  myStuffCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#2a2a2a',
+    borderRadius: Math.max(14, screenWidth * 0.045),
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: 'rgba(255, 255, 255, 0.4)',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 2,
+    elevation: 2,
+    paddingVertical: Math.max(18, screenWidth * 0.045),
+    paddingHorizontal: Math.max(18, screenWidth * 0.045),
+  },
+  myStuffIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  myStuffTextWrap: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  myStuffTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#ffffff',
+    letterSpacing: -0.2,
+  },
+  myStuffSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.55)',
+    marginTop: 3,
   },
   content: {
     paddingBottom: 20,

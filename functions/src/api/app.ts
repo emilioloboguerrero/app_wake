@@ -5,6 +5,7 @@ import {generateOpenApiSpec} from "../openapi.js";
 import {WakeApiServerError} from "./errors.js";
 import {validateAuth, enforceScope} from "./middleware/auth.js";
 import {checkDailyRateLimit, checkIpRateLimit} from "./middleware/rateLimit.js";
+import {analyticsMiddleware} from "./middleware/analytics.js";
 
 import profileRouter from "./routes/profile.js";
 import nutritionRouter from "./routes/nutrition.js";
@@ -22,6 +23,8 @@ import videoExchangesRouter from "./routes/videoExchanges.js";
 import emailRouter from "./routes/email.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 import bundlesRouter from "./routes/bundles.js";
+import publicRouter from "./routes/public.js";
+import authRouter from "./routes/auth.js";
 
 export const app = express();
 
@@ -128,6 +131,18 @@ const PUBLIC_PATHS = [
   /^\/email\/unsubscribe$/, // GET /email/unsubscribe (public one-click unsub)
   /^\/bundles$/, // GET /bundles?creatorId=X (published only)
   /^\/bundles\/[^/]+$/, // GET /bundles/:bundleId (published only)
+  /^\/public\/creators\/[^/]+$/, // GET /public/creators/:username
+  /^\/public\/creators\/[^/]+\/programs\/[^/]+$/, // GET /public/creators/:username/programs/:programId
+  /^\/public\/storefront\/creators$/, // GET /public/storefront/creators
+  /^\/public\/programs\/[^/]+\/availability$/, // GET program seat availability
+  /^\/public\/programs\/[^/]+\/waitlist$/, // POST join sold-out waitlist
+  /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
+  // MP webhook authenticates via HMAC signature, not Firebase token (the
+  // handler verifies x-signature / x-hmac-signature before doing any work).
+  // Without this entry, the auth middleware 401s the webhook before it ever
+  // reaches the signature check — MP does not retry 4xx, so every recurring
+  // charge would silently fail to grant access.
+  /^\/payments\/webhook$/,
 ];
 
 const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
@@ -156,6 +171,7 @@ const authMiddleware = async (req: Request, _res: Response, next: NextFunction) 
 
 // Mount under both /v1 (direct Cloud Run) and /api/v1 (Firebase Hosting rewrite)
 for (const prefix of ["/v1", "/api/v1"]) {
+  app.use(prefix, analyticsMiddleware);
   app.use(prefix, authMiddleware);
   app.use(prefix, profileRouter);
   app.use(prefix, nutritionRouter);
@@ -173,6 +189,8 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, emailRouter);
   app.use(prefix, enrollmentsRouter);
   app.use(prefix, bundlesRouter);
+  app.use(prefix, publicRouter);
+  app.use(prefix, authRouter);
 }
 
 // ─── 404 catch-all ─────────────────────────────────────────────────────────
@@ -202,12 +220,26 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     return;
   }
 
-  const message = err instanceof Error ? err.message : String(err);
+  let message = err instanceof Error ? err.message : String(err);
+  if (message === "[object Object]") {
+    try {
+      message = JSON.stringify(err);
+    } catch {
+      // ignore
+    }
+  }
   const stack = err instanceof Error ? err.stack : undefined;
   const userId = req.auth?.userId ?? "anon";
+  const detail: Record<string, unknown> = {};
+  if (err && typeof err === "object") {
+    for (const k of ["status", "cause", "error", "name", "code"] as const) {
+      const v = (err as Record<string, unknown>)[k];
+      if (v !== undefined) detail[k] = v;
+    }
+  }
   console.error(
     `[api] ${req.method} ${req.path} — ${message} (user=${userId})`,
-    stack ? {stack} : undefined
+    {...(stack ? {stack} : {}), ...(Object.keys(detail).length ? {detail} : {})}
   );
   res.status(500).json({
     error: {code: "INTERNAL_ERROR", message: "Error interno del servidor"},

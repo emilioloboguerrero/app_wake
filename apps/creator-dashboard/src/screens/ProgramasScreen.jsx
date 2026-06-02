@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useBackgroundTasks } from '../contexts/BackgroundTaskContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {
@@ -38,7 +39,7 @@ const TABS = [
 
 // ─── Programa card ────────────────────────────────────────────────────────────
 
-const ProgramaCard = ({ program, index, onClick, onDelete, onToggleBundleOnly }) => {
+const ProgramaCard = ({ program, index, onClick, onDelete, onToggleBundleOnly, onDuplicate }) => {
   const enrollments = program.enrollmentCount ?? 0;
   const [accent, setAccent] = useState(null);
 
@@ -53,6 +54,7 @@ const ProgramaCard = ({ program, index, onClick, onDelete, onToggleBundleOnly })
   const bundleOnly = program.bundleOnly ?? (program.visibility === 'bundle-only');
 
   const menuItems = [
+    { label: 'Duplicar', onClick: () => onDuplicate(program) },
     {
       label: bundleOnly ? 'Vender también como programa standalone' : 'Vender solo dentro de bundles',
       onClick: () => onToggleBundleOnly(program, !bundleOnly),
@@ -221,6 +223,7 @@ const ProgramasScreen = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = searchParams.get('tab') === 'bundles' ? 'bundles' : 'programas';
@@ -262,6 +265,25 @@ const ProgramasScreen = () => {
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: programsQueryKey }),
   });
+
+  const duplicateMutation = useMutation({
+    mutationFn: ({ id }) => apiClient.post(`/creator/programs/${id}/duplicate`),
+    onSuccess: (res, { task, name }) => {
+      queryClient.invalidateQueries({ queryKey: programsQueryKey });
+      task.succeed(`"${name}" duplicado`);
+      const newId = res?.data?.id;
+      if (newId) navigate(`/programs/${newId}`);
+    },
+    onError: (_err, { task, name }) => {
+      task.fail(`No pudimos duplicar "${name}"`);
+    },
+  });
+
+  const handleDuplicate = useCallback((program) => {
+    const name = program.title || 'programa';
+    const task = addTask({ label: `Duplicando "${name}"…` });
+    duplicateMutation.mutate({ id: program.id, task, name });
+  }, [duplicateMutation, addTask]);
 
   const bundleOnlyMutation = useMutation({
     mutationFn: ({ programId, bundleOnly }) =>
@@ -431,6 +453,7 @@ const ProgramasScreen = () => {
                           onClick={handleProgramCardClick}
                           onDelete={handleDelete}
                           onToggleBundleOnly={handleToggleBundleOnly}
+                          onDuplicate={handleDuplicate}
                         />
                       </motion.div>
                     ))}

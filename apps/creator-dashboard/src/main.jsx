@@ -5,8 +5,12 @@ import { queryClient } from './config/queryClient';
 import wakeDebug from './utils/wakeDebug';
 import { apiClient } from './utils/apiClient';
 import { installGlobalHooks as installClientErrorHooks } from './utils/errorReporter';
+import analyticsService from './services/analyticsService';
 import App from './App';
 import './index.css';
+
+// Initialize analytics as early as possible (no-op when key missing or opted out).
+analyticsService.init();
 
 // Global boot timer — tracks time from JS execution to first meaningful render
 window.__WAKE_BOOT = performance.now();

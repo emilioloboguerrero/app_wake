@@ -63,8 +63,11 @@ export default function RevenueCard({
   const [expanded, setExpanded] = useState(false);
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
 
+  // `low_ticket` and `general` collapsed into one product type; bucket by
+  // not-1:1 so new general subscriptions (e.g. Bejarano) show up alongside
+  // historical low_ticket programs in the revenue widget.
   const lowTicketPrograms = useMemo(
-    () => programs.filter((p) => p.deliveryType === 'low_ticket'),
+    () => programs.filter((p) => p.deliveryType !== 'one_on_one'),
     [programs]
   );
 

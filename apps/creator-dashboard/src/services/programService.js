@@ -1,4 +1,5 @@
 import apiClient from '../utils/apiClient';
+import analyticsService from './analyticsService';
 
 class ProgramService {
   async getProgramsByCreator() {
@@ -12,13 +13,17 @@ class ProgramService {
   }
 
   async createProgram(_creatorId, _creatorName, programData) {
+    const deliveryType = programData.deliveryType || 'general';
     const res = await apiClient.post('/creator/programs', {
       title: programData.title || '',
       description: programData.description || null,
       imageUrl: programData.imageUrl || null,
       discipline: programData.discipline || null,
-      deliveryType: programData.deliveryType || 'low_ticket',
+      deliveryType,
     });
+    try {
+      analyticsService.track('creator.program_created', { delivery_type: deliveryType });
+    } catch {}
     return res.data;
   }
 
@@ -27,8 +32,22 @@ class ProgramService {
     return res.data;
   }
 
+  async getWaitlist(programId) {
+    const res = await apiClient.get(`/creator/programs/${programId}/waitlist`);
+    return res.data;
+  }
+
+  async admitFromWaitlist(programId, waitlistId) {
+    const res = await apiClient.post(
+      `/creator/programs/${programId}/waitlist/${waitlistId}/admit`,
+      {}
+    );
+    return res.data;
+  }
+
   async releaseProgram(programId) {
     const res = await apiClient.patch(`/creator/programs/${programId}/status`, { status: 'published' });
+    try { analyticsService.track('creator.program_published'); } catch {}
     return res.data;
   }
 
@@ -102,7 +121,7 @@ class ProgramService {
     const existing = await this.getModulesByProgram(programId);
     const order = existing.length;
     const res = await apiClient.post(`/creator/programs/${programId}/modules`, {
-      title: `Semana ${order + 1}`,
+      title: moduleName || `Semana ${order + 1}`,
       order,
     });
     return res.data;
@@ -123,6 +142,28 @@ class ProgramService {
     );
   }
 
+  // Bootstrap program_state for a monthly-drop course. Server requires the
+  // course's block_cadence flag + at least one published module. Idempotent
+  // refusal on re-run (409 ALREADY_INITIALIZED). Replaces the legacy
+  // seed-bejarano-program-state.js script for coaches.
+  async initializeCadence(programId) {
+    const res = await apiClient.post(`/creator/programs/${programId}/initialize-cadence`, {});
+    return res.data;
+  }
+
+  // Generic module field updater. Server allowlist permits:
+  //   title, order, unlocks_at (ISO), published_at (ISO | null)
+  // Used by the Bloques editor for monthly-drop programs
+  // (memory/project_monthly_drops.md). module.order doubles as the block
+  // ordinal; there is no separate block_index field.
+  async updateModule(programId, moduleId, updates) {
+    const res = await apiClient.patch(
+      `/creator/programs/${programId}/modules/${moduleId}`,
+      updates
+    );
+    return res.data;
+  }
+
   async getSessionsByModule(programId, moduleId) {
     const res = await apiClient.get(`/creator/programs/${programId}/modules/${moduleId}/sessions`);
     return res.data;
@@ -133,7 +174,7 @@ class ProgramService {
       title: sessionName || 'Sesion',
       order: order ?? 0,
     };
-    if (librarySessionRef) body.librarySessionRef = librarySessionRef;
+    if (librarySessionRef) body.source_library_session_id = librarySessionRef;
     if (imageUrl) body.image_url = imageUrl;
     if (dayIndex != null) body.dayIndex = dayIndex;
     const res = await apiClient.post(
@@ -143,11 +184,11 @@ class ProgramService {
     return res.data;
   }
 
-  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null, imageUrl = null, dayIndex = null) {
+  async createSessionFromLibrary(programId, moduleId, librarySessionRef, order = null, imageUrl = null, dayIndex = null, title = null) {
     const body = {
-      title: 'Sesion',
+      title: title || 'Sesion',
       order: order ?? 0,
-      librarySessionRef,
+      source_library_session_id: librarySessionRef,
     };
     if (imageUrl) body.image_url = imageUrl;
     if (dayIndex != null) body.dayIndex = dayIndex;

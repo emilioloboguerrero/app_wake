@@ -1,0 +1,230 @@
+.pp-root {
+  min-height: 100vh;
+  background: #1a1a1a;
+  color: rgba(255, 255, 255, 0.95);
+  padding-top: 96px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-content {
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  text-align: center;
+  flex: 1;
+  animation: pp-fade-in 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pp-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pp-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 28px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.pp-title {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.pp-program {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.pp-program strong {
+  font-weight: 600;
+}
+
+.pp-program span {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.pp-message {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.6;
+  margin: 0 0 32px;
+}
+
+.pp-poll-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 8px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: pp-spin 0.8s linear infinite;
+  vertical-align: -1px;
+}
+
+@keyframes pp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pp-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.pp-cta {
+  display: block;
+  padding: 14px 22px;
+  border-radius: 12px;
+  font-size: 14.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  border: none;
+  cursor: pointer;
+}
+
+.pp-cta-primary {
+  background: rgba(255, 255, 255, 0.95);
+  color: #1a1a1a;
+}
+
+.pp-cta-primary:hover {
+  background: #fff;
+  transform: translateY(-1px);
+}
+
+.pp-cta-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.pp-cta-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pp-email-block {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  text-align: left;
+}
+
+.pp-email-note {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.pp-email-block .pp-email-note:last-child {
+  margin-bottom: 0;
+}
+
+.pp-email-note strong {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 600;
+}
+
+.pp-spam-note {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.pp-spam-note strong {
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 600;
+}
+
+.pp-fallback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pp-fallback-input {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.pp-fallback-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.pp-fallback-error {
+  color: #ff6b6b;
+  font-size: 13px;
+  margin: 0;
+}
+
+.pp-inline-link {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+}
+
+.pp-inline-link:hover {
+  color: #ffffff;
+  text-decoration-color: rgba(255, 255, 255, 0.6);
+}
+
+.pp-help {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+}
+
+.pp-help a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  transition: color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pp-help a:hover {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+@media (max-width: 640px) {
+  .pp-root {
+    padding-top: 80px;
+  }
+  .pp-content {
+    padding: 32px 20px 48px;
+  }
+  .pp-title {
+    font-size: 26px;
+  }
+  .pp-message {
+    font-size: 14.5px;
+  }
+}
