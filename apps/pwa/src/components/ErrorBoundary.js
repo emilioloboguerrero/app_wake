@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { currentConfig } from '../config/environment';
 import logger from '../utils/logger';
 import { reportError as reportClientError } from '../utils/errorReporter';
+import analyticsService from '../services/analyticsService';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -32,6 +33,18 @@ class ErrorBoundary extends React.Component {
           (errorInfo?.componentStack ?
             ` [react:${errorInfo.componentStack.trim().split('\n')[0]?.trim()}]` :
             ''),
+      });
+    } catch (_) {}
+
+    // Surface render crashes on PostHog. A boundary trip is what users see as the
+    // "Algo salió mal / Reintentar" screen, and tapping retry remounts the screen
+    // — the exact path that reset a user back to exercise 1. Visibility here lets
+    // us catch a regression in that flow without waiting for a manual report.
+    try {
+      analyticsService.track('app.screen_crashed', {
+        screen: this.props.screenName || 'unknown',
+        message: error?.message ? String(error.message).slice(0, 300) : String(error).slice(0, 300),
+        path: typeof location !== 'undefined' ? location.pathname : null,
       });
     } catch (_) {}
   }

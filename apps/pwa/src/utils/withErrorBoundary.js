@@ -10,7 +10,7 @@ import ErrorBoundary from '../components/ErrorBoundary';
 export const withErrorBoundary = (Component, screenName = 'Screen') => {
   const WrappedComponent = (props) => {
     return (
-      <ErrorBoundary>
+      <ErrorBoundary screenName={screenName}>
         <Component {...props} />
       </ErrorBoundary>
     );

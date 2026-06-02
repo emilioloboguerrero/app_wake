@@ -230,6 +230,7 @@ import ExerciseDetailModal from '../components/ExerciseDetailModal';
 import { FixedWakeHeader, WakeHeaderContent } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
+import analyticsService from '../services/analyticsService';
 
 // ============================================================================
 // ICONS - Direct imports (like working screens)
@@ -838,9 +839,49 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   if (servicesDuration > 500) {
   }
   
-  const { course, workout: initialWorkout, sessionId, checkpoint: routeCheckpoint } = route.params;
+  const { course: routeCourse, workout: initialWorkout, sessionId, checkpoint: routeCheckpointFromParams } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
+
+  // Self-recovery from the durable checkpoint. When this screen is (re)mounted
+  // without route state — a PWA reload after the OS backgrounded the tab, or an
+  // ErrorBoundary "Reintentar" remount — the in-memory route params are gone but
+  // the localStorage checkpoint is not. Falling back to it restores the user's
+  // place and entered sets instead of dropping them at exercise 1 (or rendering
+  // a blank "No hay ejercicios" screen). Match userId + session so we never
+  // resurrect a stale or foreign checkpoint over a genuine fresh start.
+  const localCheckpoint = useMemo(() => {
+    if (routeCheckpointFromParams) return null;
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('wake_session_checkpoint');
+      if (!raw) return null;
+      const cp = JSON.parse(raw);
+      if (!cp || !cp.exercises) return null;
+      if (cp.savedAt && Date.now() - new Date(cp.savedAt).getTime() > 24 * 60 * 60 * 1000) return null;
+      const uid = (user && user.uid) || auth.currentUser?.uid;
+      if (uid && cp.userId && cp.userId !== uid) return null;
+      // If the full route workout is still present this is a same-session remount
+      // (ErrorBoundary retry). Only restore when the checkpoint is for that same
+      // session — never graft a different session's progress onto a fresh start.
+      const routeSessionId = sessionId || initialWorkout?.id;
+      if (initialWorkout?.exercises?.length && routeSessionId && cp.sessionId && cp.sessionId !== routeSessionId) {
+        return null;
+      }
+      return cp;
+    } catch {
+      return null;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const routeCheckpoint = routeCheckpointFromParams || localCheckpoint;
+
+  // When recovering from localStorage after a reload, route.params.course is gone
+  // too — rebuild a minimal course from the checkpoint so completion (which needs
+  // courseId) still works instead of erroring out at the finish line.
+  const course = routeCourse || (routeCheckpoint?.courseId
+    ? { courseId: routeCheckpoint.courseId, id: routeCheckpoint.courseId, title: routeCheckpoint.sessionName || '' }
+    : null);
   
   // Build workout from checkpoint if restoring an interrupted session.
   // Prefer the full initialWorkout (fetched from the program tree on resume) so
@@ -1060,6 +1101,61 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // TEST VERSION 8: Re-enable useSetData hook
   // Use consolidated set data management
   const { setData, setValidationErrors, updateSetData: updateSetDataLocal, hasValidationErrors, setSetData } = useSetData(workout, routeCheckpoint, setCurrentExerciseIndex);
+
+  // ─── Recovery visibility ───────────────────────────────────────────────────
+  // Record when a session is resumed and, critically, whether recovery had to
+  // fall back to the durable localStorage checkpoint (i.e. route state was lost
+  // to a reload / boundary remount). Lets us see this failure class on PostHog.
+  useEffect(() => {
+    if (!routeCheckpoint) return;
+    try {
+      const completed = routeCheckpoint.completedSets
+        ? Object.keys(routeCheckpoint.completedSets).length : 0;
+      analyticsService.track('workout.session_recovered', {
+        source: routeCheckpointFromParams ? 'route' : 'localStorage',
+        course_id: routeCheckpoint.courseId || course?.courseId || null,
+        session_id: routeCheckpoint.sessionId || null,
+        exercise_index: routeCheckpoint.currentExerciseIndex ?? null,
+        completed_sets: completed,
+        had_full_workout: !!initialWorkout?.exercises?.length,
+        age_seconds: routeCheckpoint.savedAt
+          ? Math.round((Date.now() - new Date(routeCheckpoint.savedAt).getTime()) / 1000) : null,
+      });
+    } catch { /* never throw from analytics */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Record when we mount with nothing renderable — route params lost on reload
+  // AND no usable checkpoint. This is the blank-screen / lost-data case users
+  // reported; with self-recovery above it should be rare, so any volume here is
+  // a real signal worth alerting on.
+  const emptyStateTrackedRef = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    if (workout?.exercises?.length) return;
+    if (emptyStateTrackedRef.current) return;
+    emptyStateTrackedRef.current = true;
+    try {
+      analyticsService.track('workout.recovery_failed', {
+        reason: 'no_workout_on_mount',
+        had_route_workout: !!initialWorkout?.exercises?.length,
+        had_route_checkpoint: !!routeCheckpointFromParams,
+        had_local_checkpoint: !!localCheckpoint,
+        course_id: course?.courseId || null,
+      });
+    } catch { /* never throw from analytics */ }
+  }, [loading, workout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Defensive: a restored index can exceed a freshly-loaded or checkpoint-rebuilt
+  // workout if the program changed under the user. Clamp so we resume at the last
+  // valid exercise instead of falling through to the empty-state guard.
+  useEffect(() => {
+    const exs = workout?.exercises;
+    if (!exs?.length) return;
+    if (currentExerciseIndex > exs.length - 1) {
+      setCurrentExerciseIndex(exs.length - 1);
+      setCurrentSetIndex(0);
+    }
+  }, [workout, currentExerciseIndex]);
   
   // TEST VERSION 7: Re-enable swap modal video player
   // Swap modal video player callback - memoized
@@ -1153,6 +1249,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const [videoSourceType, setVideoSourceType] = useState(null); // 'upload' | 'youtube' | 'vimeo'
   const [isVideoPaused, setIsVideoPaused] = useState(true); // Video pause state - start paused, wait for tutorial
   const [canStartVideo, setCanStartVideo] = useState(false); // Flag to control when video can start
+  const [videoLoadFailed, setVideoLoadFailed] = useState(false); // Exercise video failed to load (network) — show inline retry
+  const videoFailTrackedRef = useRef(new Set()); // dedupe video_load_failed events per exercise
   
   // TEST VERSION 7: Re-enable main video player
   // Video player callback - memoized to prevent recreation
@@ -1325,6 +1423,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   useEffect(() => {
     if (!isWeb) return;
     const onVisChange = () => {
+      // Skip once the session is finished/discarded — otherwise backgrounding
+      // the app right after completion resurrects a just-cleared checkpoint and
+      // the recovery banner reappears for an already-saved session. Mirrors the
+      // guard on the unmount flush below.
+      if (sessionEndedRef.current) return;
       if (document.visibilityState === 'hidden') {
         saveCheckpointToLocalStorage();
         // Cancel any pending API-checkpoint timer so it can't fire with a
@@ -1336,6 +1439,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
     };
     const onPageHide = () => {
+      if (sessionEndedRef.current) return;
       saveCheckpointToLocalStorage();
       if (checkpointApiTimerRef.current) {
         clearTimeout(checkpointApiTimerRef.current);
@@ -4850,14 +4954,17 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   };
 
   const getCurrentExercise = () => {
-    if (!workout?.exercises || workout.exercises.length === 0) return null;
-    return workout.exercises[currentExerciseIndex];
+    const exs = workout?.exercises;
+    if (!exs || exs.length === 0) return null;
+    // Clamp: a restored index can momentarily exceed the loaded workout. Resolve
+    // to the last valid exercise rather than returning undefined (blank screen).
+    return exs[Math.min(currentExerciseIndex, exs.length - 1)];
   };
 
   const getCurrentSet = () => {
     const exercise = getCurrentExercise();
     if (!exercise?.sets || exercise.sets.length === 0) return null;
-    return exercise.sets[currentSetIndex];
+    return exercise.sets[Math.min(currentSetIndex, exercise.sets.length - 1)];
   };
 
   // Translate metric names to Spanish and capitalize first letter (optional exercise for custom objective labels)
@@ -5074,6 +5181,37 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       </View>
     );
   };
+
+  // Exercise video failed to load (distinct from the benign interrupted-play
+  // AbortError). Surface it on PostHog — deduped per exercise so a retry loop
+  // can't spam — so we can see how often coaches' videos fail for real users.
+  const trackVideoLoadFailed = useCallback((stage) => {
+    const ex = getCurrentExercise();
+    const key = `${stage}:${ex?.id || ex?.exerciseId || videoUri || ''}`;
+    if (videoFailTrackedRef.current.has(key)) return;
+    videoFailTrackedRef.current.add(key);
+    try {
+      analyticsService.track('workout.video_load_failed', {
+        stage,
+        exercise_id: ex?.id || ex?.exerciseId || null,
+        exercise_name: ex?.name || null,
+        video_url: videoUri || null,
+      });
+    } catch { /* never throw from analytics */ }
+  }, [videoUri]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Inline retry for a failed exercise video — re-fetch the source without
+  // remounting the screen (so entered sets are never lost to a video error).
+  const handleVideoReload = useCallback(() => {
+    setVideoLoadFailed(false);
+    const el = mainVideoRef.current;
+    if (!el) return;
+    try {
+      el.load();
+      const p = el.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    } catch (_) {}
+  }, []);
 
   // Video tap handler
   const handleVideoTap = useCallback(() => {
@@ -5842,7 +5980,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                           crossOrigin="anonymous"
                           onError={(e) => {
                             logger.error('[VIDEO] [ERROR] <video> error:', e?.nativeEvent || e);
+                            trackVideoLoadFailed('execution');
+                            setVideoLoadFailed(true);
                           }}
+                          onLoadedData={() => setVideoLoadFailed(false)}
                         />
                       ) : (
                       <VideoView
@@ -5855,6 +5996,16 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         showsTimecodes={false}
                         playsInline
                       />
+                      )}
+                      {videoLoadFailed && (
+                        <VideoOverlayWebWrapper>
+                          <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 12 }}>
+                            <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '600', marginBottom: 12, textAlign: 'center' }}>No pudimos cargar el video</Text>
+                            <TouchableOpacity onPress={handleVideoReload} style={{ paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.85)' }}>
+                              <Text style={{ color: '#1a1a1a', fontSize: 13, fontWeight: '700' }}>Reintentar</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </VideoOverlayWebWrapper>
                       )}
                       {isVideoPaused && (
                         <VideoOverlayWebWrapper pointerEvents="none">
