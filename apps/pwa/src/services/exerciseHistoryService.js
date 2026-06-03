@@ -7,7 +7,7 @@ class ExerciseHistoryService {
    * Add session data to both exercise and session history.
    * All writes are handled server-side by POST /workout/complete.
    */
-  async addSessionData(userId, sessionData, plannedSnapshot = null) {
+  async addSessionData(userId, sessionData, plannedSnapshot = null, replacesCompletionId = null) {
     if (!sessionData || !sessionData.exercises || !Array.isArray(sessionData.exercises)) {
       throw new Error('Invalid session data structure');
     }
@@ -24,6 +24,9 @@ class ExerciseHistoryService {
       planned: plannedSnapshot ? {
         exercises: plannedSnapshot.exercises,
       } : undefined,
+      // Present only when re-finishing a reopened session: the server replaces
+      // this completion's footprint instead of appending a duplicate.
+      replacesCompletionId: replacesCompletionId || undefined,
     };
 
     const res = await apiClient.post('/workout/complete', body);

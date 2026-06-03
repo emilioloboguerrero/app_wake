@@ -403,6 +403,7 @@ class SessionService {
    * @param {Object} sessionData - Session/workout data with performed exercises
    * @param {Object} [options] - Optional options
    * @param {Object} [options.plannedWorkout] - Original workout template (before user merge) for planned snapshot
+   * @param {string} [options.replacesCompletionId] - When re-finishing a reopened session, the original completion id to replace instead of appending a new one
    */
   async completeSession(userId, courseId, sessionData, options = {}) {
     try {
@@ -440,8 +441,15 @@ class SessionService {
         ? this.buildPlannedSnapshot(options.plannedWorkout)
         : null;
 
-      // Submit session — server handles course progress, 1RM, streak atomically
-      const serverResult = await this.addSessionData(userId, actualSessionData, plannedSnapshot);
+      // Submit session — server handles course progress, 1RM, streak atomically.
+      // replacesCompletionId tells the server to replace a reopened session's
+      // footprint instead of appending a duplicate.
+      const serverResult = await this.addSessionData(
+        userId,
+        actualSessionData,
+        plannedSnapshot,
+        options.replacesCompletionId ?? null
+      );
       const personalRecords = serverResult?.personalRecords ?? [];
       if (serverResult?.completionId) {
         actualSessionData.completionDocId = serverResult.completionId;
@@ -629,15 +637,98 @@ class SessionService {
    * @param {Object} sessionData - Session data with exercises (performed)
    * @param {Object} [plannedSnapshot] - Optional snapshot of planned session at completion time
    */
-  async addSessionData(userId, sessionData, plannedSnapshot = null) {
+  async addSessionData(userId, sessionData, plannedSnapshot = null, replacesCompletionId = null) {
     try {
-      const result = await exerciseHistoryService.addSessionData(userId, sessionData, plannedSnapshot);
+      const result = await exerciseHistoryService.addSessionData(userId, sessionData, plannedSnapshot, replacesCompletionId);
       return result;
-      
+
     } catch (error) {
       logger.error('Error adding session data:', error);
       throw error;
     }
+  }
+
+  /**
+   * Find the most recent completion of a given program session on a given day.
+   * Used by the Hoy "Continuar sesión" flow to locate which completed session
+   * record to reopen. Sessions come back newest-first, so the first match wins.
+   * @returns {Promise<Object|null>} the sessionHistory record (with completionId) or null
+   */
+  async getLatestCompletionForSession(userId, courseId, sessionId, date) {
+    try {
+      const res = await apiClient.get('/workout/sessions', { params: { courseId, limit: 20 } });
+      const docs = res?.data ?? [];
+      // Sessions come back newest-first. Prefer a completion on the given date,
+      // but fall back to the most recent completion of this session so reopen
+      // still works when it was finished on an earlier day.
+      const sameSession = docs.filter((d) => d.sessionId === sessionId);
+      if (sameSession.length === 0) return null;
+      const onDate = date
+        ? sameSession.find((d) => (d.date || d.completedAt || '').slice(0, 10) === date)
+        : null;
+      const match = onDate || sameSession[0];
+      return { ...match, completionId: match.completionId || match.id };
+    } catch (error) {
+      logger.error('Error fetching latest completion for session:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Reshape a completed sessionHistory record into the checkpoint format the
+   * execution screen already understands, so reopening reuses the same recovery
+   * machinery. `completedSets` is keyed by the SAVED exercise order; the screen
+   * remaps it to the current program order by exerciseId.
+   * @param {Object} completion - sessionHistory record (performed exercises/sets)
+   * @param {Object} workout - the planned workout (for naming fallbacks)
+   * @returns {Object} checkpoint
+   */
+  buildReopenCheckpoint(completion, workout) {
+    const SKIP_FIELDS = new Set([
+      'id', 'order', 'notes', 'description', 'title', 'name',
+      'created_at', 'updated_at', 'createdAt', 'updatedAt',
+      'type', 'status', 'category', 'tags', 'metadata', 'plannedIntensity',
+    ]);
+    const savedExercises = Array.isArray(completion?.exercises) ? completion.exercises : [];
+    const completedSets = {};
+    const exercises = [];
+    savedExercises.forEach((ex, exIdx) => {
+      exercises.push({ exerciseId: ex.exerciseId || ex.id || null, exerciseName: ex.exerciseName || null });
+      const sets = Array.isArray(ex.sets) ? ex.sets : [];
+      sets.forEach((set, setIdx) => {
+        const fields = {};
+        Object.keys(set || {}).forEach((field) => {
+          if (SKIP_FIELDS.has(field)) return;
+          const v = set[field];
+          if (v === null || v === undefined || v === '') return;
+          fields[field] = typeof v === 'number' ? String(v) : v;
+        });
+        completedSets[`${exIdx}_${setIdx}`] = fields;
+      });
+    });
+
+    // The completion's stored duration is in SECONDS (named durationMs in storage
+    // but treated as seconds everywhere, e.g. analytics' duration_seconds). When
+    // it's absent/zero the timer simply resumes from 0 — sets still restore fully.
+    const elapsedSeconds = Math.max(0, Math.round(Number(completion?.durationMs ?? completion?.duration ?? 0) || 0));
+
+    return {
+      userId: completion?.userId ?? null,
+      sessionId: completion?.sessionId ?? null,
+      courseId: completion?.courseId ?? null,
+      sessionName: completion?.sessionName ?? workout?.name ?? workout?.title ?? null,
+      completedSets,
+      exercises,
+      currentExerciseIndex: 0,
+      currentSetIndex: 0,
+      elapsedSeconds,
+      userNotes: completion?.userNotes ?? '',
+      // Anchor the running timer to the already-elapsed time so it continues
+      // from where the session left off rather than restarting at zero.
+      startedAt: new Date(Date.now() - elapsedSeconds * 1000).toISOString(),
+      savedAt: new Date().toISOString(),
+      reopen: true,
+    };
   }
 
   /**

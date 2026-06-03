@@ -353,9 +353,42 @@ const HoyScreen = () => {
     });
   }, [navigate]);
 
-  const handleBeginWorkout = useCallback(({ course, workout, sessionId }) => {
-    navigate('/warmup', { state: { course, workout, sessionId } });
-  }, [navigate]);
+  const handleBeginWorkout = useCallback(async ({ course, workout, sessionId, mode }) => {
+    // "Empezar de nuevo" (and the normal first start) → warmup then a fresh session.
+    if (mode !== 'reopen') {
+      navigate('/warmup', { state: { course, workout, sessionId } });
+      return;
+    }
+
+    // "Continuar sesión" → reopen the already-completed session. Find its saved
+    // record, reshape it into a checkpoint, and drop straight into execution
+    // (skipping warmup, like the recovery flow). On finish, the execution screen
+    // sends reopenCompletionId so the server replaces it instead of duplicating.
+    const cId = course?.courseId || course?.id;
+    if (!cId || !user?.uid) return;
+    const today = new Date().toISOString().slice(0, 10);
+    let completion = null;
+    try {
+      completion = await sessionService.getLatestCompletionForSession(user.uid, cId, sessionId, today);
+    } catch {
+      completion = null;
+    }
+    if (!completion) {
+      // Couldn't locate the completed session — fall back to a fresh start.
+      navigate('/warmup', { state: { course, workout, sessionId } });
+      return;
+    }
+    const checkpoint = sessionService.buildReopenCheckpoint(completion, workout);
+    navigate(`/course/${cId}/workout/execution`, {
+      state: {
+        course,
+        workout,
+        sessionId,
+        checkpoint,
+        reopenCompletionId: completion.completionId || completion.id,
+      },
+    });
+  }, [navigate, user?.uid]);
 
   const handleRenewCourse = useCallback((course) => {
     const id = course?.courseId || course?.id;

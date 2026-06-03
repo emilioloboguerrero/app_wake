@@ -357,6 +357,11 @@ const styles = {
     color: 'rgba(255,255,255,0.4)',
     cursor: 'not-allowed',
   },
+  beginSecondary: {
+    backgroundColor: 'transparent',
+    color: 'rgba(255,255,255,0.85)',
+    border: '1px solid rgba(255,255,255,0.18)',
+  },
   loaderOverlay: {
     position: 'absolute',
     inset: 0,
@@ -531,21 +536,24 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
     setFlipped((f) => !f);
   };
 
-  const handleBegin = (e) => {
+  const handleBegin = (e, mode = 'new') => {
     e?.stopPropagation?.();
     if (isExpired) {
       onRenew?.(course);
       return;
     }
-    if (!canBegin || !onBegin) return;
+    // Completed sessions offer both modes; otherwise require the normal begin gate.
+    if (!sessionState?.workout || !onBegin) return;
+    if (!isCompleted && !canBegin) return;
     onBegin({
       course,
       workout: sessionState?.workout,
       sessionId: sessionState?.session?.sessionId,
+      mode,
     });
   };
 
-  const beginAccentStyle = accent && (canBegin || isExpired)
+  const beginAccentStyle = accent && (canBegin || isExpired || isCompleted)
     ? { backgroundColor: accent.accent, color: accent.accentText }
     : null;
   const beginStyle = canBegin
@@ -699,15 +707,34 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
             </div>
 
             <div style={styles.beginRow}>
-              <button
-                style={canBegin || isExpired
-                  ? { ...styles.beginButton, ...(beginAccentStyle || {}) }
-                  : beginStyle}
-                onClick={handleBegin}
-                disabled={(!canBegin && !isExpired) || sessionLoading}
-              >
-                {beginLabel}
-              </button>
+              {isCompleted && !isExpired ? (
+                <>
+                  <button
+                    style={{ ...styles.beginButton, ...(beginAccentStyle || {}) }}
+                    onClick={(e) => handleBegin(e, 'reopen')}
+                    disabled={sessionLoading || !sessionState?.workout}
+                  >
+                    Continuar sesión
+                  </button>
+                  <button
+                    style={{ ...styles.beginButton, ...styles.beginSecondary }}
+                    onClick={(e) => handleBegin(e, 'new')}
+                    disabled={sessionLoading || !sessionState?.workout}
+                  >
+                    Empezar de nuevo
+                  </button>
+                </>
+              ) : (
+                <button
+                  style={canBegin || isExpired
+                    ? { ...styles.beginButton, ...(beginAccentStyle || {}) }
+                    : beginStyle}
+                  onClick={(e) => handleBegin(e, 'new')}
+                  disabled={(!canBegin && !isExpired) || sessionLoading}
+                >
+                  {beginLabel}
+                </button>
+              )}
             </div>
 
           </div>

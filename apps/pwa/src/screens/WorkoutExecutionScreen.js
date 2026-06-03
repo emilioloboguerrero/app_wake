@@ -839,7 +839,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   if (servicesDuration > 500) {
   }
   
-  const { course: routeCourse, workout: initialWorkout, sessionId, checkpoint: routeCheckpointFromParams } = route.params;
+  const { course: routeCourse, workout: initialWorkout, sessionId, checkpoint: routeCheckpointFromParams, reopenCompletionId } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
 
@@ -4349,7 +4349,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       currentUser.uid,
                       course.courseId,
                       workoutWithSetData,
-                      { plannedWorkout: workout, userNotes: sessionNotes }
+                      { plannedWorkout: workout, userNotes: sessionNotes, replacesCompletionId: reopenCompletionId || null }
                     );
                      
                      if (result) {
