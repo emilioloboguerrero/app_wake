@@ -314,15 +314,43 @@ const createStableInputHandler = (exerciseIndex, setIndex, field, updateSetData)
   };
 };
 
+// Merge in-flight input values (typed but not yet flushed to setData via blur)
+// over a setData snapshot. Used at every persistence point so a value that never
+// fired onBlur — row unmounted, app backgrounded, iOS PWA swallowed the blur — is
+// still saved instead of silently dropped.
+const mergeSetData = (base, pending) => {
+  const keys = pending ? Object.keys(pending) : [];
+  if (keys.length === 0) return base;
+  const next = { ...base };
+  keys.forEach(key => {
+    if (pending[key]) next[key] = { ...next[key], ...pending[key] };
+  });
+  return next;
+};
+
 const listInputWrapperStyle = { flex: 1, minWidth: 0 };
 // List view set input: keeps value in local state while focused and flushes to parent on blur.
 // Prevents parent setData updates on every keystroke, which was causing full re-renders and input blur.
 // Freeze on touch/pointer down (before focus) so viewport resize from keyboard doesn't trigger
 // dimension-driven re-renders that dismiss the keyboard on iOS PWA.
-const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue, updateSetData, style, placeholderText, listViewInputJustFocusedRef, restoreListViewModelScroll, freezeDimsForListInput, unfreezeDimsForListInput }) => {
+const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue, updateSetData, style, placeholderText, listViewInputJustFocusedRef, restoreListViewModelScroll, freezeDimsForListInput, unfreezeDimsForListInput, pendingInputRef }) => {
   const [localValue, setLocalValue] = useState(null);
   const isEditing = localValue !== null;
   const displayValue = isEditing ? localValue : savedValue;
+  // Mirror each keystroke into a screen-level ref synchronously (no re-render, so
+  // it can't dismiss the keyboard). Persistence points read this, so the value is
+  // safe even if onBlur never fires. Cleared once committed to setData on blur.
+  const writePending = useCallback((value) => {
+    if (!pendingInputRef) return;
+    const key = `${exerciseIndex}_${setIndex}`;
+    if (!pendingInputRef.current) pendingInputRef.current = {};
+    pendingInputRef.current[key] = { ...pendingInputRef.current[key], [field]: value };
+  }, [pendingInputRef, exerciseIndex, setIndex, field]);
+  const clearPending = useCallback(() => {
+    if (!pendingInputRef?.current) return;
+    const key = `${exerciseIndex}_${setIndex}`;
+    if (pendingInputRef.current[key]) delete pendingInputRef.current[key][field];
+  }, [pendingInputRef, exerciseIndex, setIndex, field]);
   const onPointerDown = useCallback(() => {
     if (freezeDimsForListInput) freezeDimsForListInput();
   }, [freezeDimsForListInput]);
@@ -339,14 +367,17 @@ const ListViewSetInputField = memo(({ exerciseIndex, setIndex, field, savedValue
     if (unfreezeDimsForListInput) unfreezeDimsForListInput();
     const final = localValue !== null ? localValue : savedValue;
     if (final !== savedValue) updateSetData(exerciseIndex, setIndex, field, final);
+    // Committed to setData (or unchanged) — drop the in-flight copy so it can't
+    // later shadow an edit made through another path (e.g. the set-detail modal).
+    clearPending();
     setLocalValue(null);
-  }, [unfreezeDimsForListInput, localValue, savedValue, exerciseIndex, setIndex, field, updateSetData]);
+  }, [unfreezeDimsForListInput, localValue, savedValue, exerciseIndex, setIndex, field, updateSetData, clearPending]);
   return (
     <View style={listInputWrapperStyle} onPointerDown={onPointerDown} onTouchStart={onPointerDown}>
       <TextInput
         style={style}
         value={displayValue}
-        onChangeText={(value) => setLocalValue(value)}
+        onChangeText={(value) => { setLocalValue(value); writePending(value); }}
         onFocus={onFocus}
         onBlur={onBlur}
         keyboardType="numeric"
@@ -771,6 +802,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // Set when the user voluntarily discards or successfully completes. Gates the
   // unmount checkpoint flush so it can't resurrect a just-cleared checkpoint.
   const sessionEndedRef = useRef(false);
+  // Holds set-input values typed but not yet flushed to setData on blur, keyed by
+  // `${exerciseIndex}_${setIndex}` → { field: value }. Merged into setData at every
+  // persistence point so an un-flushed weight is never lost.
+  const pendingInputRef = useRef({});
 
   // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
   const focusTimeoutIdsRef = useRef([]);
@@ -1355,6 +1390,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     const currentUser = user || auth.currentUser;
     if (!currentUser || !course || !workout) return null;
     const startTime = workoutStartTimeRef.current || Date.now();
+    const effectiveSetData = mergeSetData(setData, pendingInputRef.current);
     return {
       version: 1,
       userId: currentUser.uid,
@@ -1375,7 +1411,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         })),
       })),
       completedSets: Object.fromEntries(
-        Object.entries(setData).filter(([, v]) =>
+        Object.entries(effectiveSetData).filter(([, v]) =>
           v && typeof v === 'object' && Object.values(v).some(val => val !== '' && val !== null && val !== undefined)
         )
       ),
@@ -2475,6 +2511,14 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     return { evenGap, totalBoxWidth };
   }, [getFieldDisplayName]);
+
+  // Leave the session without discarding: persist a checkpoint (which now folds
+  // in any value typed but not yet flushed on blur) so the user can resume from
+  // Hoy / DailyWorkout. Gives a frustrated user a safe exit that isn't "discard".
+  const handleExitKeepProgress = useCallback(() => {
+    try { saveCheckpointToLocalStorage(); } catch {}
+    navigation.goBack();
+  }, [saveCheckpointToLocalStorage, navigation]);
 
   const handleDiscardWorkout = useCallback(async () => {
     // Use custom modal on web, Alert.alert on native
@@ -4261,10 +4305,13 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const executeEndWorkout = useCallback(async () => {
                  try {
                    setIsSavingWorkout(true);
-                   
+
                    // Get user from useAuth hook, fallback to Firebase auth.currentUser if needed
                    const currentUser = user || auth.currentUser;
-                   
+                   // Fold in any value typed but not yet flushed on blur so the final
+                   // save can't drop the last set the user was editing.
+                   const effectiveSetData = mergeSetData(setData, pendingInputRef.current);
+
                    if (currentUser?.uid && course?.courseId) {
                      // Save only exercises that have actual user data before completing
                      for (let exerciseIndex = 0; exerciseIndex < workout.exercises.length; exerciseIndex++) {
@@ -4274,7 +4321,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
                        for (let setIndex = 0; setIndex < exercise.sets.length; setIndex++) {
                          const setKey = `${exerciseIndex}_${setIndex}`;
-                         const currentSetData = setData[setKey] || {};
+                         const currentSetData = effectiveSetData[setKey] || {};
                          allSets.push(currentSetData);
                          const hasReps = currentSetData.reps && currentSetData.reps !== '' && (!isNaN(parseFloat(currentSetData.reps)) || String(currentSetData.reps).trim().toUpperCase() === 'AMRAP');
                          const hasWeight = currentSetData.weight && currentSetData.weight !== '' && !isNaN(parseFloat(currentSetData.weight));
@@ -4295,7 +4342,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       exercises: workout.exercises.map((exercise, exerciseIndex) => {
                         const setsWithData = exercise.sets.map((set, setIndex) => {
                           const key = `${exerciseIndex}_${setIndex}`;
-                          const actualSetData = setData[key] || {};
+                          const actualSetData = effectiveSetData[key] || {};
 
                           return {
                             ...set,
@@ -4332,10 +4379,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                     // This catches index-alignment bugs on the resume path.
                     if (
                       workoutWithSetData.exercises.length === 0 &&
-                      Object.values(setData).some(v => v && (v.reps || v.weight || v.time || v.distance || v.duration))
+                      Object.values(effectiveSetData).some(v => v && (v.reps || v.weight || v.time || v.distance || v.duration))
                     ) {
                       logger.error('❌ completeSession aborted: setData present but all exercises filtered out', {
-                        setDataKeys: Object.keys(setData).length,
+                        setDataKeys: Object.keys(effectiveSetData).length,
                         workoutExerciseCount: workout.exercises?.length,
                       });
                       Alert.alert(
@@ -4573,11 +4620,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             restoreListViewModelScroll={restoreListViewModelScroll}
             freezeDimsForListInput={freezeDimsForListInput}
             unfreezeDimsForListInput={unfreezeDimsForListInput}
+            pendingInputRef={pendingInputRef}
           />
         </View>
       );
     });
-  }, [workout, setValidationErrors, updateSetData, restoreListViewModelScroll, freezeDimsForListInput, unfreezeDimsForListInput]);
+  }, [workout, setValidationErrors, updateSetData, restoreListViewModelScroll, freezeDimsForListInput, unfreezeDimsForListInput, pendingInputRef]);
 
   // Render function for FlatList exercise items
   const renderExerciseItem = useCallback(({ item: exercise, index: exerciseIndex }) => {
@@ -5478,24 +5526,36 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
               style={styles.menuOption}
               onPress={() => {
                 setIsMenuVisible(false);
-                handleDiscardWorkout();
-              }}
-            >
-              <View style={styles.menuOptionContent}>
-                <SvgFileRemove width={20} height={20} color="#ffffff" />
-                <Text style={styles.menuOptionText}>Salir y Descartar Entrenamiento</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuOptionLast}
-              onPress={() => {
-                setIsMenuVisible(false);
                 handleEndWorkout();
               }}
             >
               <View style={styles.menuOptionContent}>
                 <SvgFileUpload width={20} height={20} color="#ffffff" />
                 <Text style={styles.menuOptionText}>Guardar y Subir Entrenamiento</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuOption}
+              onPress={() => {
+                setIsMenuVisible(false);
+                handleExitKeepProgress();
+              }}
+            >
+              <View style={styles.menuOptionContent}>
+                <SvgFileUpload width={20} height={20} color="#ffffff" style={{ opacity: 0.7, transform: [{ rotate: '180deg' }] }} />
+                <Text style={styles.menuOptionText}>Salir y continuar después</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuOptionLast}
+              onPress={() => {
+                setIsMenuVisible(false);
+                handleDiscardWorkout();
+              }}
+            >
+              <View style={styles.menuOptionContent}>
+                <SvgFileRemove width={20} height={20} color="#ffffff" />
+                <Text style={styles.menuOptionText}>Salir y Descartar Entrenamiento</Text>
               </View>
             </TouchableOpacity>
           </View>
