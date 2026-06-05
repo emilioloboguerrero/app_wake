@@ -95,7 +95,7 @@ class PurchaseService {
    * @param {string} payerEmail - Mercado Pago email from login
    * @returns {Promise<Object>} Checkout result
    */
-  async prepareSubscription(userId, courseId, payerEmail) {
+  async prepareSubscription(userId, courseId, payerEmail, surface) {
     try {
       if (!payerEmail) {
         return {
@@ -107,7 +107,11 @@ class PurchaseService {
 
       let result;
       try {
-        result = await apiClient.post('/payments/subscription', { courseId, payer_email: payerEmail });
+        result = await apiClient.post('/payments/subscription', {
+          courseId,
+          payer_email: payerEmail,
+          ...(surface ? { surface } : {}),
+        });
       } catch (error) {
         if (error.code === 'CAPACITY_FULL') {
           return {
@@ -134,6 +138,7 @@ class PurchaseService {
       return {
         success: true,
         checkoutURL: initPoint,
+        subscriptionId: result?.data?.subscription_id || null,
       };
     } catch (error) {
       logger.error('❌ [prepareSubscription] Exception:', error.message);
@@ -211,7 +216,7 @@ class PurchaseService {
   /**
    * Prepare a bundle subscription checkout. Always monthly recurring.
    */
-  async prepareBundleSubscription(bundleId, payerEmail) {
+  async prepareBundleSubscription(bundleId, payerEmail, surface) {
     try {
       try {
         analyticsService.track('program.purchase_started', {
@@ -232,6 +237,7 @@ class PurchaseService {
         result = await apiClient.post('/payments/bundle-subscription', {
           bundleId,
           payer_email: payerEmail,
+          ...(surface ? { surface } : {}),
         });
       } catch (error) {
         if (error.code === 'CONFLICT') {
@@ -245,7 +251,11 @@ class PurchaseService {
       }
       const initPoint = result?.data?.init_point;
       if (!initPoint) throw new Error('Error creating bundle subscription checkout');
-      return { success: true, checkoutURL: initPoint };
+      return {
+        success: true,
+        checkoutURL: initPoint,
+        subscriptionId: result?.data?.subscription_id || null,
+      };
     } catch (error) {
       return { success: false, error: error.message || 'Error preparing bundle subscription' };
     }

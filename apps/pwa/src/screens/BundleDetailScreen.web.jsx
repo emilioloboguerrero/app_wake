@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import apiClient from '../utils/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import purchaseService from '../services/purchaseService';
+import analyticsService from '../services/analyticsService';
+import logger from '../utils/logger';
 import LoadingScreen from './LoadingScreen';
 import BundleCoverWeb from '../components/bundles/BundleCover.web';
 
@@ -29,6 +31,8 @@ const BundleDetailScreen = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [checkoutState, setCheckoutState] = useState({ kind: null, key: null, loading: false, error: null });
+  // Proactive subscription email step: { email, useCustom, error, submitting } or null.
+  const [emailStep, setEmailStep] = useState(null);
 
   const { data: bundle, isLoading, error } = useQuery({
     queryKey: ['bundle', bundleId],
@@ -60,15 +64,20 @@ const BundleDetailScreen = () => {
       navigate('/login');
       return;
     }
+    // Subscriptions: confirm the Mercado Pago email BEFORE creating the
+    // preapproval (it binds to that email and can't be re-bound). One-time
+    // payments skip this.
+    if (kind === 'sub') {
+      setEmailStep({ email: user?.email || '', useCustom: false, error: null, submitting: false });
+      try {
+        analyticsService.track('subscription.email_step.shown', { bundle_id: bundleId, surface: 'pwa_web' });
+      } catch {}
+      logger.info('[subscription] email step shown (bundle)', { bundleId });
+      return;
+    }
     setCheckoutState({ kind, loading: true, error: null });
     try {
-      let result;
-      if (kind === 'otp') {
-        result = await purchaseService.prepareBundlePurchase(bundleId);
-      } else {
-        const payerEmail = user?.email || null;
-        result = await purchaseService.prepareBundleSubscription(bundleId, payerEmail);
-      }
+      const result = await purchaseService.prepareBundlePurchase(bundleId);
       if (result.success && result.checkoutURL) {
         window.location.href = result.checkoutURL;
       } else {
@@ -79,6 +88,52 @@ const BundleDetailScreen = () => {
       }
     } catch (err) {
       setCheckoutState({ kind, loading: false, error: err.message || 'Error' });
+    }
+  };
+
+  const confirmSubEmail = async () => {
+    if (!emailStep) return;
+    const chosen = (emailStep.email || '').trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(chosen)) {
+      setEmailStep((s) => ({ ...s, error: 'Correo inválido.' }));
+      return;
+    }
+    const accountEmail = (user?.email || '').trim();
+    const emailsDiffer = chosen.toLowerCase() !== accountEmail.toLowerCase();
+    try {
+      analyticsService.track('subscription.email_step.choice', {
+        bundle_id: bundleId,
+        surface: 'pwa_web',
+        choice: emailStep.useCustom ? 'custom' : 'account',
+        emails_differ: emailsDiffer,
+      });
+    } catch {}
+    logger.info('[subscription] email step choice (bundle)', {
+      bundleId, choice: emailStep.useCustom ? 'custom' : 'account', emailsDiffer,
+    });
+    setEmailStep((s) => ({ ...s, submitting: true, error: null }));
+    try {
+      const result = await purchaseService.prepareBundleSubscription(bundleId, chosen, 'pwa_web');
+      if (result.success && result.checkoutURL) {
+        try {
+          analyticsService.track('subscription.checkout.redirected', {
+            bundle_id: bundleId, surface: 'pwa_web', subscription_id: result.subscriptionId || null,
+          });
+        } catch {}
+        logger.info('[subscription] checkout redirected (bundle)', {
+          bundleId, subscriptionId: result.subscriptionId || null,
+        });
+        window.location.href = result.checkoutURL;
+        return;
+      }
+      if (result.requiresAlternateEmail) {
+        setEmailStep((s) => ({ ...s, useCustom: true, submitting: false, error: result.error || 'Ingresa tu correo de Mercado Pago.' }));
+      } else {
+        setEmailStep((s) => ({ ...s, submitting: false, error: result.error || 'No pudimos iniciar el pago.' }));
+      }
+    } catch (err) {
+      setEmailStep((s) => ({ ...s, submitting: false, error: err.message || 'Error' }));
     }
   };
 
@@ -155,6 +210,49 @@ const BundleDetailScreen = () => {
           <div style={styles.loadingBanner}>Preparando el pago…</div>
         )}
       </div>
+
+      {emailStep && (
+        <div style={styles.modalOverlay} onClick={() => setEmailStep(null)}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>Confirma tu correo de Mercado Pago</h3>
+            <p style={styles.modalDesc}>
+              Usa este mismo correo al iniciar sesión en Mercado Pago para completar tu suscripción.
+            </p>
+            {emailStep.useCustom ? (
+              <input
+                style={styles.modalInput}
+                type="email"
+                placeholder="correo@mercadopago.com"
+                value={emailStep.email}
+                onChange={(e) => setEmailStep((s) => ({ ...s, email: e.target.value, error: null }))}
+                autoFocus
+              />
+            ) : (
+              <div style={styles.emailCard}>
+                <span style={styles.emailCardLabel}>Tu correo</span>
+                <span style={styles.emailCardValue}>{emailStep.email}</span>
+              </div>
+            )}
+            {emailStep.error && <p style={styles.modalError}>{emailStep.error}</p>}
+            <div style={styles.modalButtons}>
+              <button style={styles.modalCancel} onClick={() => setEmailStep(null)} disabled={emailStep.submitting}>
+                Cancelar
+              </button>
+              <button style={styles.modalConfirm} onClick={confirmSubEmail} disabled={emailStep.submitting}>
+                {emailStep.submitting ? 'Procesando…' : (emailStep.useCustom ? 'Continuar' : 'Continuar con este correo')}
+              </button>
+            </div>
+            {!emailStep.useCustom && (
+              <button
+                style={styles.modalSecondary}
+                onClick={() => setEmailStep((s) => ({ ...s, useCustom: true, email: '', error: null }))}
+              >
+                Usar otro correo de Mercado Pago
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -328,6 +426,110 @@ const styles = {
     color: 'rgba(255,255,255,0.75)',
     fontSize: 13,
     textAlign: 'center',
+  },
+  modalOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+    padding: 20,
+  },
+  modalCard: {
+    background: '#222',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 380,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 700,
+    margin: '0 0 8px',
+  },
+  modalDesc: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    margin: '0 0 16px',
+    lineHeight: 1.5,
+  },
+  modalInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '12px 14px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.18)',
+    borderRadius: 10,
+    color: '#fff',
+    fontSize: 15,
+  },
+  emailCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    padding: '12px 14px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10,
+  },
+  emailCardLabel: {
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    color: 'rgba(255,255,255,0.4)',
+  },
+  emailCardValue: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.95)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  modalError: {
+    color: 'rgba(255,180,180,0.95)',
+    fontSize: 13,
+    margin: '12px 0 0',
+  },
+  modalButtons: {
+    display: 'flex',
+    gap: 10,
+    marginTop: 20,
+  },
+  modalCancel: {
+    flex: 1,
+    padding: '12px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: 100,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  modalConfirm: {
+    flex: 2,
+    padding: '12px',
+    background: 'rgba(255,255,255,0.92)',
+    border: 'none',
+    borderRadius: 100,
+    color: '#111',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
+  modalSecondary: {
+    display: 'block',
+    width: '100%',
+    marginTop: 14,
+    background: 'none',
+    border: 'none',
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
 };
 

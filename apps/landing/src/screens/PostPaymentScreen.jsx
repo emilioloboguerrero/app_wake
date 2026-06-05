@@ -6,6 +6,7 @@ import { getCreatorProgram } from '../services/creatorStorefrontService';
 import { getCheckoutStatus } from '../services/storefrontCheckoutService';
 import { requestMagicLink } from '../services/magicLinkService';
 import { getCurrentIdToken } from '../services/storefrontAuthService';
+import analyticsService from '../services/analyticsService';
 import { getDownloadUrl, getDownloadLabel } from '../utils/smartDownload';
 import './PostPaymentScreen.css';
 
@@ -74,6 +75,7 @@ export default function PostPaymentScreen() {
   // access async; we don't wait).
   const [magicLinkState, setMagicLinkState] = useState('idle'); // idle | sending | sent | failed
   const magicLinkFiredRef = useRef(false);
+  const returnedFiredRef = useRef(false);
   // Firebase restores persisted auth asynchronously; until the first
   // onAuthStateChanged fires we don't know whether the user is signed in
   // or signed out. We must NOT trust the first `null` callback as
@@ -87,6 +89,22 @@ export default function PostPaymentScreen() {
   const [fallbackEmail, setFallbackEmail] = useState('');
   const [fallbackState, setFallbackState] = useState('idle'); // idle | sending | sent | error
   const [fallbackError, setFallbackError] = useState('');
+
+  // Fire once when the buyer lands back from MercadoPago on a subscription
+  // checkout — the "returned" end of the funnel (pairs with
+  // subscription.email_step.shown / choice / .checkout.redirected). Both PWA
+  // and storefront subscriptions redirect here.
+  useEffect(() => {
+    if (!isSubscription || returnedFiredRef.current) return;
+    returnedFiredRef.current = true;
+    try {
+      analyticsService.track('subscription.checkout.returned', {
+        course_id: courseId,
+        surface: 'post_payment',
+        status: status || null,
+      });
+    } catch { /* analytics is best-effort */ }
+  }, [isSubscription, courseId, status]);
 
   // Subscribe to auth state — `auth.currentUser` is null until Firebase
   // restores the session asynchronously after a hard reload. Use a grace
