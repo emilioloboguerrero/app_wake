@@ -36,6 +36,8 @@ import { useCourseDownloadStatus } from '../hooks/hoy/useCourseDownloadStatus';
 import { useCoachProfileImages } from '../hooks/hoy/useCoachProfileImages';
 import { getUpcomingBookingsForUser } from '../services/callBookingService';
 import sessionService from '../services/sessionService';
+import { shouldAskLevel } from '../utils/levelGate';
+import LevelPickerModal from '../components/hoy/LevelPickerModal.web.jsx';
 import purchaseEventManager from '../services/purchaseEventManager';
 import updateEventManager from '../services/updateEventManager';
 import tutorialManager from '../services/tutorialManager';
@@ -395,6 +397,14 @@ const HoyScreen = () => {
     if (id) navigate(`/course/${id}`);
   }, [navigate]);
 
+  // Level picker — surfaces for the first workout course in the selected coach env
+  // that has a levels config and no chosen level yet. Non-leveled courses are
+  // unaffected (shouldAskLevel returns false when course.levels is absent).
+  const levelPickerCourse = useMemo(() => {
+    if (!selectedCoach?.workouts?.length) return null;
+    return selectedCoach.workouts.find((c) => shouldAskLevel(c, { level: c.level })) || null;
+  }, [selectedCoach]);
+
   // Slides — workouts → optional nutrition → week/coach card.
   const slides = useMemo(() => {
     const items = [];
@@ -753,6 +763,17 @@ const HoyScreen = () => {
           />
         </SafeAreaView>
       </Animated.View>
+
+      {/* Level picker — appears when the active course is level-gated and the
+          user has not chosen a level yet. Non-dismissible (closeOnBackdropClick
+          would bypass the gate); auto-hides once setLevel invalidates the query
+          and shouldAskLevel returns false. */}
+      <LevelPickerModal
+        course={levelPickerCourse}
+        courseEntry={levelPickerCourse ? { level: levelPickerCourse.level } : null}
+        visible={!!levelPickerCourse}
+        onClose={() => {}}
+      />
     </div>
   );
 };

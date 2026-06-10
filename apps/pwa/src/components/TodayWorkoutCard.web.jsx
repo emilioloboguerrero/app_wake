@@ -7,14 +7,24 @@
 // Tap Begin -> /warmup. Tap on an expired card -> renew flow (onRenew handler).
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import sessionService from '../services/sessionService';
+import courseLevelService from '../services/courseLevelService';
 import MuscleSilhouetteSVG from './MuscleSilhouetteSVG';
 import { useAccentFromImage } from '../hooks/hoy/useAccentFromImage';
 import WakeLoader from './WakeLoader.web.jsx';
+import { effectiveLevel } from '../utils/levelGate';
+import { queryKeys } from '../config/queryClient';
+import logger from '../utils/logger';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+const LEVEL_LABELS = {
+  principiante: 'Principiante',
+  intermedio: 'Intermedio',
+  avanzado: 'Avanzado',
+};
 
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -203,6 +213,47 @@ const styles = {
     color: '#fff',
   },
 
+  // Level switcher (back face)
+  levelRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  levelLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.45)',
+  },
+  levelSelect: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: 1.0,
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.85)',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 8,
+    padding: '4px 8px',
+    cursor: 'pointer',
+    outline: 'none',
+    fontFamily: 'inherit',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    paddingRight: 20,
+  },
+  levelSelectDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  levelError: {
+    fontSize: 11,
+    color: 'rgba(255,100,100,0.85)',
+    marginTop: 2,
+  },
+
   // Back face
   backHeader: {
     padding: '24px 24px 0 24px',
@@ -380,6 +431,7 @@ const styles = {
 const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, selectedDate, onBegin, onRenew }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const courseId = course?.courseId || course?.id;
   const programTitle = course?.title || '';
   const isTrial = course?.is_trial === true;
@@ -389,6 +441,27 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
     if (!Number.isFinite(t)) return null;
     return Math.max(0, Math.ceil((t - Date.now()) / (24 * 60 * 60 * 1000)));
   }, [isTrial, course?.expires_at]);
+
+  // Level-gating — only active for courses with course.levels.options.
+  // effectiveLevel returns null for non-leveled courses so the switcher is hidden.
+  const courseEntry = useMemo(() => ({ level: course?.level ?? null }), [course?.level]);
+  const activeLevel = effectiveLevel(course, courseEntry);
+  const levelOptions = course?.levels?.options;
+
+  const levelMutation = useMutation({
+    mutationFn: (level) => courseLevelService.setLevel(courseId, level),
+    onSuccess: (_data, level) => {
+      // Refresh the user profile (carries entry.level) and the daily session cache
+      // so the card immediately reflects the newly chosen level's content.
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
+      queryClient.invalidateQueries({ queryKey: ['preview', 'todaySession', user?.uid, courseId] });
+      queryClient.invalidateQueries({ queryKey: ['preview', 'courseDetail', courseId] });
+      logger.log('Nivel cambiado:', level);
+    },
+    onError: (err) => {
+      logger.error('Error al cambiar el nivel:', err);
+    },
+  });
 
   const [flipped, setFlipped] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -627,6 +700,49 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
                 <span style={styles.backKicker}>{dateLabel}</span>
               ) : null}
               <span style={styles.backTitle}>{headlineTitle}</span>
+
+              {/* Level switcher — only for leveled courses */}
+              {activeLevel && Array.isArray(levelOptions) && levelOptions.length > 1 ? (
+                <div
+                  style={styles.levelRow}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span style={styles.levelLabel}>Nivel</span>
+                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                    <select
+                      value={levelMutation.isPending ? (levelMutation.variables ?? activeLevel) : activeLevel}
+                      disabled={levelMutation.isPending}
+                      onChange={(e) => {
+                        const newLevel = e.target.value;
+                        if (newLevel !== activeLevel) levelMutation.mutate(newLevel);
+                      }}
+                      style={levelMutation.isPending
+                        ? { ...styles.levelSelect, ...styles.levelSelectDisabled }
+                        : styles.levelSelect}
+                    >
+                      {levelOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {LEVEL_LABELS[opt] || opt}
+                        </option>
+                      ))}
+                    </select>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        right: 6,
+                        pointerEvents: 'none',
+                        color: 'rgba(255,255,255,0.5)',
+                        fontSize: 9,
+                      }}
+                    >
+                      v
+                    </span>
+                  </div>
+                  {levelMutation.isError ? (
+                    <span style={styles.levelError}>Error al cambiar</span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div style={styles.backScrollWrap}>

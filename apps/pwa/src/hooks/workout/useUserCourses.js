@@ -29,6 +29,9 @@ function transformCourses(userData) {
       },
       purchasedAt: e.purchased_at || null,
       isTrialCourse: e.is_trial === true,
+      // Level chosen by the user for level-gated programs (e.g. Código ABS).
+      // Used by shouldAskLevel / effectiveLevel in levelGate.js.
+      level: e.level ?? null,
     };
   });
 }

@@ -522,6 +522,10 @@ export const PUBLIC_COURSE_FIELDS = [
   // plannedDate from session.dayIndex and WeekCoachCard renders day-pinned
   // sessions. Public so the PWA can branch enrichment + week-strip logic.
   "scheduling",
+  // Level selection: courses with level_plans branch the workout walker by
+  // user level. The PWA reads levels.options to render the level-picker modal
+  // and level_plans to resolve the plan used for the chosen level.
+  "levels", "level_plans",
   // Timestamps
   "created_at", "updated_at",
 ];
