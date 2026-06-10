@@ -1358,9 +1358,11 @@ const LibrarySessionDetailScreen = () => {
     instanceService.updateSession(instanceId, instanceModuleId, sessionId, { weekIndex })
       .then(() => {
         setHasMadeChanges(true);
+        // Unlike handleTitleChange, weekIndex does not appear on session-list cards — no need to invalidate library.sessions or library.sessionsSlim.
         queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
       })
       .catch((err) => {
+        setLocalWeekIndex(undefined); // revert optimistic override -> falls back to session.weekIndex
         logger.error('Error saving weekIndex:', err);
         showToast('No pudimos guardar la semana. Intenta de nuevo.', 'error');
       });
