@@ -443,6 +443,23 @@ const styles = {
     gap: 8,
     width: '100%',
   },
+  programDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    flexShrink: 0,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  programDotImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+    display: 'block',
+  },
   weekRowRight: {
     flexShrink: 0,
     display: 'flex',
@@ -531,6 +548,21 @@ const CoachAvatar = ({ imageUrl, name, small = false }) => {
         <span style={styles.coachAvatarFallback}>{initialsFor(name)}</span>
       )}
     </div>
+  );
+};
+
+// Small round program image shown on stacked multi-program day lines so each
+// session is attributable to its program. Falls back to a neutral dot.
+const ProgramDot = ({ imageUrl }) => {
+  const [errored, setErrored] = useState(false);
+  useEffect(() => { setErrored(false); }, [imageUrl]);
+  const showImage = imageUrl && !errored;
+  return (
+    <span style={styles.programDot}>
+      {showImage ? (
+        <img src={imageUrl} alt="" style={styles.programDotImg} loading="lazy" onError={() => setErrored(true)} />
+      ) : null}
+    </span>
   );
 };
 
@@ -665,6 +697,7 @@ const WeekCoachCard = ({
     };
     envCourses.forEach((course, idx) => {
       const courseId = course.courseId || course.id;
+      const image = course.image_url || null;
       const sessionState = sessionStateQueries[idx]?.data;
       // Branch on the actual data shape, not the course flag. /workout/daily
       // returns plannedDate per session for any date-scheduled program
@@ -688,7 +721,7 @@ const WeekCoachCard = ({
             planned.set(ymd, course);
           }
           if (s.title && !titles.has(ymd)) titles.set(ymd, s.title);
-          pushEntry(ymd, { courseId, title: s.title || null, status: isDone ? 'completed' : 'planned' });
+          pushEntry(ymd, { courseId, image, title: s.title || null, status: isDone ? 'completed' : 'planned' });
         });
       } else {
         const dates = Array.isArray(moduleCalendarQueries[idx]?.data)
@@ -697,14 +730,14 @@ const WeekCoachCard = ({
         dates.forEach((ymd) => {
           if (!completed.has(ymd)) completed.set(ymd, course);
           // Past/other completed dates carry no per-day title for legacy programs.
-          if (ymd !== todayYmd) pushEntry(ymd, { courseId, title: null, status: 'completed' });
+          if (ymd !== todayYmd) pushEntry(ymd, { courseId, image, title: null, status: 'completed' });
         });
         // Legacy programs only expose a title for today (via the daily session).
         const todayTitle = sessionState?.session?.title || null;
         const doneToday = dates.includes(todayYmd);
         if (todayTitle && !titles.has(todayYmd)) titles.set(todayYmd, todayTitle);
         if (todayTitle || doneToday) {
-          pushEntry(todayYmd, { courseId, title: todayTitle, status: doneToday ? 'completed' : 'planned' });
+          pushEntry(todayYmd, { courseId, image, title: todayTitle, status: doneToday ? 'completed' : 'planned' });
         }
       }
     });
@@ -842,6 +875,7 @@ const WeekCoachCard = ({
                   // line per program, each with its own name and completed/planned status.
                   bodyNode = namedEntries.map((e, idx) => (
                     <div key={e.courseId || idx} style={styles.weekSessionLine}>
+                      <ProgramDot imageUrl={e.image} />
                       <span style={isSelected
                         ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected, flex: 1, minWidth: 0 }
                         : { ...styles.weekRowTitle, flex: 1, minWidth: 0 }}>
