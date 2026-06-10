@@ -8,6 +8,7 @@ import {checkRateLimit} from "../middleware/rateLimit.js";
 import {pickPublicCourseFields} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
+import {resolveLevelPlanId, computeWeekInBlock, sessionMatchesWeek, maxWeekIndexOf} from "../services/levelResolution.js";
 
 const router = Router();
 
@@ -686,6 +687,161 @@ router.get("/workout/daily", async (req, res) => {
         targetModuleId = assignment.moduleId;
         targetSessionId = nextSession.sessionId;
       }
+    } else if (resolveLevelPlanId(course, courseAccess)) {
+      // ── Level-plan branch: course has level_plans; route by user level → plan → month → week ──
+      const planId = resolveLevelPlanId(course, courseAccess)!;
+      const currentBlockIndex = typeof course.current_block_index === "number" ? course.current_block_index : null;
+
+      const emptyLevelResponse = {
+        data: {
+          hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week",
+          session: null,
+          progress: {completed: 0, total: null, allSessionsCompleted: []},
+          allSessions: [],
+        },
+      };
+
+      if (currentBlockIndex === null) {
+        res.json(emptyLevelResponse);
+        return;
+      }
+
+      // Find the live-month module in the level plan: order == currentBlockIndex
+      const liveMonthSnap = await db
+        .collection("plans").doc(planId)
+        .collection("modules")
+        .where("order", "==", currentBlockIndex)
+        .limit(1)
+        .get();
+
+      if (liveMonthSnap.empty) {
+        res.json(emptyLevelResponse);
+        return;
+      }
+
+      const liveMonthDoc = liveMonthSnap.docs[0];
+      const liveMonthModuleId = liveMonthDoc.id;
+      const liveMonthTitle = (liveMonthDoc.data().title as string) ?? "";
+
+      // Read program_state for current_block_started_at
+      const programStateDoc = await db.collection("program_state").doc(courseId).get();
+      const programStateData = programStateDoc.exists ? (programStateDoc.data() ?? {}) : {};
+      const startedAtRaw = programStateData.current_block_started_at;
+      let startedAtMs: number | null = null;
+      if (startedAtRaw && typeof startedAtRaw === "object" && typeof (startedAtRaw as {toMillis?: () => number}).toMillis === "function") {
+        startedAtMs = (startedAtRaw as {toMillis: () => number}).toMillis();
+      } else if (typeof startedAtRaw === "number") {
+        startedAtMs = startedAtRaw;
+      } else if (typeof startedAtRaw === "string") {
+        const ms = Date.parse(startedAtRaw);
+        if (Number.isFinite(ms)) startedAtMs = ms;
+      }
+
+      // Read sessions from the live-month module
+      const liveSessionsSnap = await db.collection("plans").doc(planId)
+        .collection("modules").doc(liveMonthModuleId)
+        .collection("sessions")
+        .orderBy("order", "asc")
+        .limit(MAX_SESSIONS_PER_MODULE)
+        .get();
+
+      const allModSessions = liveSessionsSnap.docs.map((sDoc) => {
+        const sData = sDoc.data();
+        return {
+          sessionId: sDoc.id,
+          moduleId: liveMonthModuleId,
+          moduleTitle: liveMonthTitle,
+          order: (sData.order as number) ?? 0,
+          title: (sData.title as string) ?? "",
+          image_url: (sData.image_url as string) ?? null,
+          dayIndex: typeof sData.dayIndex === "number" ? (sData.dayIndex as number) : null,
+          weekIndex: typeof sData.weekIndex === "number" ? (sData.weekIndex as number) : null,
+        };
+      });
+
+      const maxWeek = maxWeekIndexOf(allModSessions);
+      const weekInBlock = computeWeekInBlock(startedAtMs, Date.now(), maxWeek);
+
+      // Filter to this week's sessions (sessionMatchesWeek: wi === weekInBlock OR no wi)
+      const weekSessions = allModSessions.filter((s) => sessionMatchesWeek(s, weekInBlock));
+
+      // Apply dayIndex → plannedDate (same weekly branch convention: 1..7 = Lun..Dom)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const requestedDate = (req.query.date as string) ?? null;
+      const todayWeekdayIdx = ((today.getDay() + 6) % 7) + 1; // 1..7 Lun..Dom
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - (todayWeekdayIdx - 1));
+      const weekStartIso = weekStart.toISOString();
+
+      // Re-scope completed IDs to this week only (sessions repeat week-to-week)
+      const weekLevelCompletedSnap = await db.collection("users").doc(auth.userId)
+        .collection("sessionHistory")
+        .where("courseId", "==", courseId)
+        .where("completedAt", ">=", weekStartIso)
+        .get();
+      completedSessionIds = new Set(
+        weekLevelCompletedSnap.docs
+          .map((d) => d.data().sessionId as string | undefined)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      );
+
+      const sessionsWithDate = weekSessions.map((s) => {
+        const dayIdx = s.dayIndex ?? (s.order ?? 0) + 1;
+        const date = new Date(weekStart.getTime() + (dayIdx - 1) * 86400000);
+        return {...s, dayIndex: dayIdx, plannedDate: toLocalDateISO(date)};
+      });
+      sessionsWithDate.sort((a, b) => a.dayIndex - b.dayIndex);
+
+      resolvedAllSessions = sessionsWithDate.map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title,
+        moduleId: s.moduleId,
+        moduleTitle: s.moduleTitle,
+        order: s.order,
+        image_url: s.image_url,
+        plannedDate: s.plannedDate,
+      }));
+
+      if (sessionsWithDate.length === 0) {
+        res.json(emptyLevelResponse);
+        return;
+      }
+
+      const targetDate = requestedDate ?? toLocalDateISO(today);
+      const targetWeekday = (() => {
+        const d = new Date(`${targetDate}T12:00:00`);
+        return ((d.getDay() + 6) % 7) + 1;
+      })();
+      const dateInThisWeek = sessionsWithDate.some((s) => s.plannedDate === targetDate);
+      const todayLevelSession = requestedSessionId ?
+        sessionsWithDate.find((s) => s.sessionId === requestedSessionId) :
+        dateInThisWeek ?
+          sessionsWithDate.find((s) => s.plannedDate === targetDate) :
+          sessionsWithDate.find((s) => s.dayIndex === targetWeekday);
+
+      if (!todayLevelSession) {
+        res.json({
+          data: {
+            hasSession: false,
+            isRestDay: true,
+            emptyReason: "no_session_today",
+            session: null,
+            progress: {
+              completed: completedSessionIds.size,
+              total: sessionsWithDate.length,
+              allSessionsCompleted: [...completedSessionIds],
+            },
+            allSessions: resolvedAllSessions,
+          },
+        });
+        return;
+      }
+
+      targetModuleId = todayLevelSession.moduleId;
+      targetSessionId = todayLevelSession.sessionId;
+      sessionCollection = "plans";
+      sessionCollectionId = planId;
     } else {
       // ── Legacy low-ticket / general: resolve from course modules structure ──
       const allModulesSnap = await db
@@ -1309,13 +1465,16 @@ router.get("/workout/session-exercises", async (req, res) => {
         throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada");
       }
     } else {
+      const levelPlanId = resolveLevelPlanId(course, courseAccess);
       if (!moduleId) {
         throw new WakeApiServerError("VALIDATION_ERROR", 400, "moduleId es requerido");
       }
-      sessionDocRef = db.collection("courses").doc(courseId)
+      const baseCollection = levelPlanId ? "plans" : "courses";
+      const baseDocId = levelPlanId ?? courseId;
+      sessionDocRef = db.collection(baseCollection).doc(baseDocId)
         .collection("modules").doc(moduleId)
         .collection("sessions").doc(sessionId);
-      const modDoc = await db.collection("courses").doc(courseId)
+      const modDoc = await db.collection(baseCollection).doc(baseDocId)
         .collection("modules").doc(moduleId).get();
       moduleTitle = modDoc.exists ? ((modDoc.data()!.title as string) ?? "") : "";
     }
@@ -2789,10 +2948,59 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
 
   // Check for plan-based programs first
   const courseData = courseDoc.data()!;
+  const includeSessions = req.query.include === "sessions";
+
+  // Level-plan branch: if the course has level_plans, list modules from the user's level plan
+  const modulesLevelPlanId = resolveLevelPlanId(courseData, courseAccess as {level?: string | null} | null | undefined);
+  if (modulesLevelPlanId) {
+    const currentBlockIndex = typeof courseData.current_block_index === "number" ? courseData.current_block_index : null;
+    const modulesSnap = await db
+      .collection("plans").doc(modulesLevelPlanId)
+      .collection("modules")
+      .orderBy("order", "asc")
+      .limit(MAX_MODULES_PER_COURSE)
+      .get();
+
+    let visibleModuleDocs = modulesSnap.docs;
+    const monthlyDrop = courseData.block_cadence === "monthly_first_monday";
+    if (monthlyDrop && !isCreator && !isAdmin) {
+      if (currentBlockIndex === null) {
+        visibleModuleDocs = [];
+      } else {
+        visibleModuleDocs = modulesSnap.docs.filter((d) => {
+          const ord = d.data().order;
+          return typeof ord !== "number" || ord <= currentBlockIndex;
+        });
+      }
+    }
+
+    if (!includeSessions) {
+      res.json({data: visibleModuleDocs.map((doc) => ({...doc.data(), id: doc.id}))});
+      return;
+    }
+
+    const modules = await Promise.all(
+      visibleModuleDocs.map(async (mDoc) => {
+        const sessionsSnap = await mDoc.ref
+          .collection("sessions")
+          .orderBy("order", "asc")
+          .limit(MAX_SESSIONS_PER_MODULE)
+          .get();
+        const sessions = await Promise.all(
+          sessionsSnap.docs.map(async (sDoc) => {
+            const exercises = await loadExerciseTree(sDoc.ref);
+            return {...sDoc.data(), id: sDoc.id, exercises};
+          })
+        );
+        return {...mDoc.data(), id: mDoc.id, sessions};
+      })
+    );
+    res.json({data: modules});
+    return;
+  }
+
   const planAssignments = (courseData.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; moduleIndex?: number }>;
   const planWeekKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId);
-
-  const includeSessions = req.query.include === "sessions";
 
   if (planWeekKeys.length > 0) {
     // Plan-based: return virtual modules from planAssignments, sorted by week key
@@ -3013,7 +3221,11 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
     return;
   }
 
-  const moduleRef = courseDoc.ref.collection("modules").doc(currentBlockId);
+  // For level-plan courses, modules live in the plan, not courses/{id}/modules
+  const currentBlockLevelPlanId = resolveLevelPlanId(course, userCourseEntry as {level?: string | null} | null | undefined);
+  const moduleRef = currentBlockLevelPlanId ?
+    db.collection("plans").doc(currentBlockLevelPlanId).collection("modules").doc(currentBlockId) :
+    courseDoc.ref.collection("modules").doc(currentBlockId);
   const moduleDoc = await moduleRef.get();
   if (!moduleDoc.exists) {
     // State doc points at a module that no longer exists. Treat as no block.
