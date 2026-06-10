@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import programService from '../../services/programService';
 import plansService from '../../services/plansService';
@@ -20,6 +20,13 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
   const [enabled, setEnabled] = useState(!!initial?.levels);
   const [def, setDef] = useState(initial?.levels?.default ?? 'principiante');
   const [mapping, setMapping] = useState(initial?.level_plans ?? {});
+  const [disabling, setDisabling] = useState(false);
+
+  useEffect(() => {
+    setEnabled(!!initial?.levels);
+    setDef(initial?.levels?.default ?? 'principiante');
+    setMapping(initial?.level_plans ?? {});
+  }, [initial]);
 
   const { data: plans = [], isLoading: plansLoading } = useQuery({
     queryKey: ['library', 'plans', creatorId],
@@ -40,14 +47,23 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
   });
 
   const handleDisable = async () => {
+    setDisabling(true);
     setEnabled(false);
     try {
       await programService.updateProgram(programId, { levels: null, level_plans: null });
       qc.invalidateQueries({ queryKey: queryKeys.programs.detail(programId) });
     } catch {
-      // silently reset — the toggle visual already flipped; user can retry
+      setEnabled(true);
+    } finally {
+      setDisabling(false);
     }
   };
+
+  useEffect(() => {
+    if (!save.isSuccess) return;
+    const t = setTimeout(() => save.reset(), 2500);
+    return () => clearTimeout(t);
+  }, [save.isSuccess]);
 
   const isComplete = isLevelConfigComplete(OPTIONS, mapping);
 
@@ -59,6 +75,7 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
         <button
           type="button"
           className={`gp-trial__toggle ${enabled ? 'gp-trial__toggle--active' : ''}`}
+          disabled={disabling}
           onClick={() => (enabled ? handleDisable() : setEnabled(true))}
         >
           <span className="gp-trial__toggle-dot" />
@@ -85,8 +102,9 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
               <div className="lpc-rows">
                 {OPTIONS.map((opt) => (
                   <div key={opt} className="lpc-row">
-                    <span className="lpc-row__label">{LEVEL_LABELS[opt]}</span>
+                    <label htmlFor={`lpc-select-${opt}`} className="lpc-row__label">{LEVEL_LABELS[opt]}</label>
                     <select
+                      id={`lpc-select-${opt}`}
                       className="lpc-row__select"
                       value={mapping[opt] ?? ''}
                       onChange={(e) =>
@@ -105,8 +123,9 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
               </div>
 
               <div className="lpc-row lpc-row--default">
-                <span className="lpc-row__label">Nivel por defecto</span>
+                <label htmlFor="lpc-default" className="lpc-row__label">Nivel por defecto</label>
                 <select
+                  id="lpc-default"
                   className="lpc-row__select"
                   value={def}
                   onChange={(e) => setDef(e.target.value)}
@@ -135,7 +154,7 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
                 )}
                 {save.isError && (
                   <p className="lpc-error" role="alert">
-                    No pudimos guardar los niveles. Revisa tu conexion e intenta de nuevo.
+                    No pudimos guardar los niveles. Revisa tu conexión e intenta de nuevo.
                   </p>
                 )}
                 {save.isSuccess && (
