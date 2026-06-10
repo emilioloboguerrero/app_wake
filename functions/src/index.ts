@@ -2803,6 +2803,18 @@ async function advanceMonthlyDropCourse(
       .get();
     const canonicalModuleId = defaultModuleSnap.empty ? `block-${nextIndex}` : defaultModuleSnap.docs[0].id;
 
+    // Look one further ahead for the next-block chip on Hoy. All level plans
+    // share the same module doc-id per month, so the default plan is representative.
+    const lookaheadSnap = await db
+      .collection("plans")
+      .doc(defaultPlanId)
+      .collection("modules")
+      .where("order", "==", nextIndex + 1)
+      .limit(1)
+      .get();
+    const lookaheadNextBlockId = lookaheadSnap.empty ? null : lookaheadSnap.docs[0].id;
+    const lookaheadNextBlockIndex = lookaheadSnap.empty ? null : nextIndex + 1;
+
     const now = admin.firestore.FieldValue.serverTimestamp();
     const batch = db.batch();
     batch.set(
@@ -2811,6 +2823,8 @@ async function advanceMonthlyDropCourse(
         current_block_id: canonicalModuleId,
         current_block_index: nextIndex,
         current_block_started_at: now,
+        next_block_id: lookaheadNextBlockId,
+        next_block_index: lookaheadNextBlockIndex,
         updated_at: now,
       },
       {merge: true}

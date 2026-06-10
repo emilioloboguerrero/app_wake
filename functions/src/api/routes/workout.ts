@@ -3194,9 +3194,16 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
   const startedAtIso = timestampToIso(stateData.current_block_started_at);
   const startedAtDate = startedAtIso ? new Date(startedAtIso) : null;
 
+  // Resolve level plan id early so it can be used for both the next-block
+  // lookup below and the current-block module read further down.
+  const currentBlockLevelPlanId = resolveLevelPlanId(course, userCourseEntry as {level?: string | null} | null | undefined);
+
   let nextBlockUnlocksAtIso: string | null = null;
   if (nextBlockId && nextBlockIndex !== null) {
-    const nextModuleDoc = await courseDoc.ref.collection("modules").doc(nextBlockId).get();
+    const nextModuleRef = currentBlockLevelPlanId ?
+      db.collection("plans").doc(currentBlockLevelPlanId).collection("modules").doc(nextBlockId) :
+      courseDoc.ref.collection("modules").doc(nextBlockId);
+    const nextModuleDoc = await nextModuleRef.get();
     const moduleData = nextModuleDoc.exists ? nextModuleDoc.data() ?? {} : {};
     nextBlockUnlocksAtIso = resolveBlockUnlocksAt({
       unlocksAtRaw: moduleData.unlocks_at,
@@ -3222,7 +3229,6 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
   }
 
   // For level-plan courses, modules live in the plan, not courses/{id}/modules
-  const currentBlockLevelPlanId = resolveLevelPlanId(course, userCourseEntry as {level?: string | null} | null | undefined);
   const moduleRef = currentBlockLevelPlanId ?
     db.collection("plans").doc(currentBlockLevelPlanId).collection("modules").doc(currentBlockId) :
     courseDoc.ref.collection("modules").doc(currentBlockId);
