@@ -213,45 +213,80 @@ const styles = {
     color: '#fff',
   },
 
-  // Level switcher (back face)
-  levelRow: {
+  // Level tag + toggle (front, top-right)
+  levelControl: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 4,
     display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 6,
   },
-  levelLabel: {
-    fontSize: 11,
-    fontWeight: 700,
+  levelTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    padding: '6px 12px',
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    border: '1px solid rgba(255,255,255,0.22)',
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 10,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.45)',
-  },
-  levelSelect: {
-    fontSize: 11,
     fontWeight: 700,
-    letterSpacing: 1.0,
-    textTransform: 'uppercase',
-    color: 'rgba(255,255,255,0.85)',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 8,
-    padding: '4px 8px',
+    fontFamily: 'inherit',
     cursor: 'pointer',
     outline: 'none',
-    fontFamily: 'inherit',
-    appearance: 'none',
-    WebkitAppearance: 'none',
-    paddingRight: 20,
   },
-  levelSelectDisabled: {
-    opacity: 0.5,
+  levelTagDisabled: {
+    opacity: 0.55,
     cursor: 'not-allowed',
   },
-  levelError: {
-    fontSize: 11,
-    color: 'rgba(255,100,100,0.85)',
-    marginTop: 2,
+  levelTagDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: 'var(--accent, rgba(255,255,255,0.85))',
+  },
+  levelTagChevron: {
+    fontSize: 8,
+    opacity: 0.7,
+  },
+  levelMenu: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+    padding: 4,
+    minWidth: 140,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255,255,255,0.14)',
+  },
+  levelMenuItem: {
+    padding: '9px 12px',
+    borderRadius: 8,
+    border: 'none',
+    background: 'transparent',
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12,
+    fontWeight: 500,
+    fontFamily: 'inherit',
+    textAlign: 'left',
+    cursor: 'pointer',
+    outline: 'none',
+    transition: `background-color 160ms ${SPRING}`,
+  },
+  levelMenuItemActive: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    color: '#fff',
+    fontWeight: 700,
   },
 
   // Back face
@@ -464,6 +499,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
   });
 
   const [flipped, setFlipped] = useState(false);
+  const [levelMenuOpen, setLevelMenuOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
   const [scrollState, setScrollState] = useState({ scrollable: false, thumbTop: 0, thumbHeight: 0 });
@@ -606,6 +642,7 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
       onRenew?.(course);
       return;
     }
+    setLevelMenuOpen(false);
     setFlipped((f) => !f);
   };
 
@@ -682,6 +719,41 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
             ) : downloadStatus === 'failed' ? (
               <div style={{ ...styles.statusPill, ...styles.statusPillFailed }}>Error</div>
             ) : null}
+            {/* Level tag + toggle (top-right) — leveled courses only */}
+            {activeLevel && Array.isArray(levelOptions) && levelOptions.length > 1 && !isExpired ? (
+              <div style={styles.levelControl} onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  style={levelMutation.isPending ? { ...styles.levelTag, ...styles.levelTagDisabled } : styles.levelTag}
+                  disabled={levelMutation.isPending}
+                  onClick={() => setLevelMenuOpen((o) => !o)}
+                >
+                  <span style={styles.levelTagDot} />
+                  {LEVEL_LABELS[levelMutation.isPending ? (levelMutation.variables ?? activeLevel) : activeLevel] || activeLevel}
+                  <span style={styles.levelTagChevron}>{levelMenuOpen ? '▴' : '▾'}</span>
+                </button>
+                {levelMenuOpen ? (
+                  <div style={styles.levelMenu}>
+                    {levelOptions.map((opt) => {
+                      const isActive = opt === activeLevel;
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          style={isActive ? { ...styles.levelMenuItem, ...styles.levelMenuItemActive } : styles.levelMenuItem}
+                          onClick={() => {
+                            setLevelMenuOpen(false);
+                            if (opt !== activeLevel) levelMutation.mutate(opt);
+                          }}
+                        >
+                          {LEVEL_LABELS[opt] || opt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {sessionLoading && !isExpired ? (
               <div style={styles.loaderOverlay}>
                 <WakeLoader size={56} />
@@ -700,49 +772,6 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
                 <span style={styles.backKicker}>{dateLabel}</span>
               ) : null}
               <span style={styles.backTitle}>{headlineTitle}</span>
-
-              {/* Level switcher — only for leveled courses */}
-              {activeLevel && Array.isArray(levelOptions) && levelOptions.length > 1 ? (
-                <div
-                  style={styles.levelRow}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <span style={styles.levelLabel}>Nivel</span>
-                  <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-                    <select
-                      value={levelMutation.isPending ? (levelMutation.variables ?? activeLevel) : activeLevel}
-                      disabled={levelMutation.isPending}
-                      onChange={(e) => {
-                        const newLevel = e.target.value;
-                        if (newLevel !== activeLevel) levelMutation.mutate(newLevel);
-                      }}
-                      style={levelMutation.isPending
-                        ? { ...styles.levelSelect, ...styles.levelSelectDisabled }
-                        : styles.levelSelect}
-                    >
-                      {levelOptions.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {LEVEL_LABELS[opt] || opt}
-                        </option>
-                      ))}
-                    </select>
-                    <span
-                      style={{
-                        position: 'absolute',
-                        right: 6,
-                        pointerEvents: 'none',
-                        color: 'rgba(255,255,255,0.5)',
-                        fontSize: 9,
-                      }}
-                    >
-                      v
-                    </span>
-                  </div>
-                  {levelMutation.isError ? (
-                    <span style={styles.levelError}>Error al cambiar</span>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
 
             <div style={styles.backScrollWrap}>
