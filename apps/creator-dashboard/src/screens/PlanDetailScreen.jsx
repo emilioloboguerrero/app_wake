@@ -90,8 +90,9 @@ const PlanDetailSkeleton = () => (
   </DashboardLayout>
 );
 
-const PlanDetailScreen = () => {
-  const { planId } = useParams();
+const PlanDetailScreen = ({ planId: planIdProp, embedded = false }) => {
+  const params = useParams();
+  const planId = planIdProp || params.planId;
   const { user } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -153,14 +154,16 @@ const PlanDetailScreen = () => {
   const error = planError?.message ?? null;
 
   const planSeededRef = useRef(false);
+  const seededForPlanId = useRef(null);
   useEffect(() => {
-    if (plan && !planSeededRef.current) {
+    if (plan && (seededForPlanId.current !== planId)) {
       planSeededRef.current = true;
+      seededForPlanId.current = planId;
       setPlanTitle(plan.title || '');
       setPlanDescription(plan.description || '');
       setPlanDiscipline(plan.discipline || 'Fuerza');
     }
-  }, [plan]);
+  }, [plan, planId]);
 
   useEffect(() => {
     if (modulesData) {
@@ -378,6 +381,7 @@ const PlanDetailScreen = () => {
 
 
   if (!user) {
+    if (embedded) return null;
     return <PlanDetailSkeleton />;
   }
 
@@ -387,10 +391,18 @@ const PlanDetailScreen = () => {
   }
 
   if (loading) {
+    if (embedded) return (
+      <div style={{ padding: '32px 0', color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Cargando plan...</div>
+    );
     return <PlanDetailSkeleton />;
   }
 
   if (error || (!loading && !plan)) {
+    if (embedded) return (
+      <div style={{ padding: '32px 0', color: 'rgba(255,68,68,0.8)', fontSize: 13 }}>
+        {error || 'No pudimos cargar este plan.'}
+      </div>
+    );
     return (
       <DashboardLayout screenName="Plan">
         <div className="plan-page">
@@ -407,6 +419,145 @@ const PlanDetailScreen = () => {
         </div>
       </DashboardLayout>
     );
+  }
+
+  // Shared content body — used in both standalone and embedded modes
+  const contentBody = (
+    <>
+      <div className="plan-structure-layout">
+        <div className="plan-structure-sidebars">
+          <GlowingEffect spread={30} proximity={100} borderWidth={1} />
+          <PlanStructureSidebar
+            creatorId={user.uid}
+            searchQuery={structureSearchQuery}
+            onSearchChange={setStructureSearchQuery}
+          />
+        </div>
+        <div className="plan-structure-main">
+          <PlanWeeksGrid
+            planId={planId}
+            modules={modulesWithSessions}
+            onAddWeek={handleAddWeek}
+            onDeleteWeek={handleDeleteWeek}
+            onModulesChange={handleModulesChange}
+            onSessionClick={(moduleId, sessionId) =>
+              navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`)
+            }
+            plansService={plansService}
+            libraryService={libraryService}
+            creatorId={user.uid}
+            isAddingWeek={isAddingWeek}
+            onOpenWeekVolume={openWeekVolumeDrawer}
+          />
+        </div>
+      </div>
+
+      <WeekVolumeDrawer
+        isOpen={weekVolumeDrawerOpen}
+        onClose={() => setWeekVolumeDrawerOpen(false)}
+        title="Volumen de la semana"
+        subtitle="Series efectivas por músculo (intensidad ≥7) para esta semana."
+        weekOptions={weekVolumeWeekOptions}
+        selectedWeekValue={selectedWeekModuleIdForVolume}
+        onWeekChange={setSelectedWeekModuleIdForVolume}
+        loading={weekVolumeLoading}
+        plannedMuscleVolumes={weekVolumeMuscleVolumes}
+        emptyMessage="Añade sesiones con ejercicios (e intensidad ≥7) a esta semana para ver el volumen por músculo."
+        variant="card"
+        weekSelectorStyle="list"
+        compareWeekValue={compareWeekModuleId}
+        onCompareWeekChange={setCompareWeekModuleId}
+        compareVolumes={compareVolumes}
+        compareLoading={compareLoading}
+      />
+      {isEditModalOpen && (
+        <div className="cfo-overlay" onClick={!isSaving ? () => setIsEditModalOpen(false) : undefined}>
+          <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
+            <GlowingEffect spread={40} borderWidth={1} />
+            <div className="cfo-topbar">
+              <div />
+              {!isSaving && (
+                <button type="button" className="cfo-close" onClick={() => setIsEditModalOpen(false)} aria-label="Cerrar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </button>
+              )}
+            </div>
+            <div className="cfo-body">
+              <div className="cfo-step" key="edit-plan">
+                <div className="cfo-step__header">
+                  <h1 className="cfo-step__title">Editar plan</h1>
+                  <p className="cfo-step__desc">Actualiza el nombre, descripción o disciplina.</p>
+                </div>
+                <div className="cfo-step__content">
+                  <input
+                    className="cfo-name-input"
+                    type="text"
+                    placeholder="Título del plan"
+                    value={planTitle}
+                    onChange={(e) => setPlanTitle(e.target.value)}
+                    maxLength={80}
+                    autoFocus
+                  />
+                  <textarea
+                    className="cfo-desc-input"
+                    placeholder="Descripción (opcional)"
+                    value={planDescription}
+                    onChange={(e) => setPlanDescription(e.target.value)}
+                    rows={2}
+                  />
+                  <input
+                    className="cfo-name-input"
+                    type="text"
+                    placeholder="Disciplina — Ej: Fuerza"
+                    value={planDiscipline}
+                    onChange={(e) => setPlanDiscipline(e.target.value)}
+                    maxLength={40}
+                    style={{ fontSize: 'clamp(13px, 3vw, 15px)', fontWeight: 500 }}
+                  />
+                </div>
+                <div className="cfo-footer" style={{ justifyContent: 'center' }}>
+                  <button
+                    type="button"
+                    className="cfo-next-btn"
+                    onClick={handleSavePlan}
+                    disabled={!planTitle.trim() || isSaving}
+                  >
+                    {isSaving ? 'Guardando...' : 'Guardar cambios'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!embedded && (
+        <PropagateNavigateModal
+          isOpen={isNavigateModalOpen}
+          onClose={() => setIsNavigateModalOpen(false)}
+          type="plan"
+          itemName={plan?.title || 'Este plan'}
+          affectedCount={propagateAffectedCount}
+          affectedUsers={propagateAffectedUsers}
+          programCount={propagateProgramCount}
+          isPropagating={isPropagating}
+          onPropagate={async () => {
+            await handlePropagate();
+            setIsNavigateModalOpen(false);
+            navigate('/biblioteca', { state: contentReturnState });
+          }}
+          onLeaveWithoutPropagate={() => {
+            setHasMadeChanges(false);
+            setIsNavigateModalOpen(false);
+            navigate('/biblioteca', { state: contentReturnState });
+          }}
+        />
+      )}
+    </>
+  );
+
+  if (embedded) {
+    return <div className="plan-structure-layout--embedded">{contentBody}</div>;
   }
 
   return (
@@ -449,133 +600,7 @@ const PlanDetailScreen = () => {
         transition={{ duration: 0.42, ease: SPRING_EASE }}
       >
         <div className="plan-page-toolbar" />
-        <div className="plan-structure-layout">
-          <div className="plan-structure-sidebars">
-            <GlowingEffect spread={30} proximity={100} borderWidth={1} />
-            <PlanStructureSidebar
-              creatorId={user.uid}
-              searchQuery={structureSearchQuery}
-              onSearchChange={setStructureSearchQuery}
-            />
-          </div>
-          <div className="plan-structure-main">
-            <PlanWeeksGrid
-              planId={planId}
-              modules={modulesWithSessions}
-              onAddWeek={handleAddWeek}
-              onDeleteWeek={handleDeleteWeek}
-              onModulesChange={handleModulesChange}
-              onSessionClick={(moduleId, sessionId) =>
-                navigate(`/plans/${planId}/modules/${moduleId}/sessions/${sessionId}/edit`)
-              }
-              plansService={plansService}
-              libraryService={libraryService}
-              creatorId={user.uid}
-              isAddingWeek={isAddingWeek}
-              onOpenWeekVolume={openWeekVolumeDrawer}
-            />
-          </div>
-        </div>
-
-        <WeekVolumeDrawer
-          isOpen={weekVolumeDrawerOpen}
-          onClose={() => setWeekVolumeDrawerOpen(false)}
-          title="Volumen de la semana"
-          subtitle="Series efectivas por músculo (intensidad ≥7) para esta semana."
-          weekOptions={weekVolumeWeekOptions}
-          selectedWeekValue={selectedWeekModuleIdForVolume}
-          onWeekChange={setSelectedWeekModuleIdForVolume}
-          loading={weekVolumeLoading}
-          plannedMuscleVolumes={weekVolumeMuscleVolumes}
-          emptyMessage="Añade sesiones con ejercicios (e intensidad ≥7) a esta semana para ver el volumen por músculo."
-          variant="card"
-          weekSelectorStyle="list"
-          compareWeekValue={compareWeekModuleId}
-          onCompareWeekChange={setCompareWeekModuleId}
-          compareVolumes={compareVolumes}
-          compareLoading={compareLoading}
-        />
-        {isEditModalOpen && (
-          <div className="cfo-overlay" onClick={!isSaving ? () => setIsEditModalOpen(false) : undefined}>
-            <div className="cfo-card" onClick={(e) => e.stopPropagation()}>
-              <GlowingEffect spread={40} borderWidth={1} />
-              <div className="cfo-topbar">
-                <div />
-                {!isSaving && (
-                  <button type="button" className="cfo-close" onClick={() => setIsEditModalOpen(false)} aria-label="Cerrar">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                  </button>
-                )}
-              </div>
-              <div className="cfo-body">
-                <div className="cfo-step" key="edit-plan">
-                  <div className="cfo-step__header">
-                    <h1 className="cfo-step__title">Editar plan</h1>
-                    <p className="cfo-step__desc">Actualiza el nombre, descripción o disciplina.</p>
-                  </div>
-                  <div className="cfo-step__content">
-                    <input
-                      className="cfo-name-input"
-                      type="text"
-                      placeholder="Título del plan"
-                      value={planTitle}
-                      onChange={(e) => setPlanTitle(e.target.value)}
-                      maxLength={80}
-                      autoFocus
-                    />
-                    <textarea
-                      className="cfo-desc-input"
-                      placeholder="Descripción (opcional)"
-                      value={planDescription}
-                      onChange={(e) => setPlanDescription(e.target.value)}
-                      rows={2}
-                    />
-                    <input
-                      className="cfo-name-input"
-                      type="text"
-                      placeholder="Disciplina — Ej: Fuerza"
-                      value={planDiscipline}
-                      onChange={(e) => setPlanDiscipline(e.target.value)}
-                      maxLength={40}
-                      style={{ fontSize: 'clamp(13px, 3vw, 15px)', fontWeight: 500 }}
-                    />
-                  </div>
-                  <div className="cfo-footer" style={{ justifyContent: 'center' }}>
-                    <button
-                      type="button"
-                      className="cfo-next-btn"
-                      onClick={handleSavePlan}
-                      disabled={!planTitle.trim() || isSaving}
-                    >
-                      {isSaving ? 'Guardando...' : 'Guardar cambios'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <PropagateNavigateModal
-          isOpen={isNavigateModalOpen}
-          onClose={() => setIsNavigateModalOpen(false)}
-          type="plan"
-          itemName={plan?.title || 'Este plan'}
-          affectedCount={propagateAffectedCount}
-          affectedUsers={propagateAffectedUsers}
-          programCount={propagateProgramCount}
-          isPropagating={isPropagating}
-          onPropagate={async () => {
-            await handlePropagate();
-            setIsNavigateModalOpen(false);
-            navigate('/biblioteca', { state: contentReturnState });
-          }}
-          onLeaveWithoutPropagate={() => {
-            setHasMadeChanges(false);
-            setIsNavigateModalOpen(false);
-            navigate('/biblioteca', { state: contentReturnState });
-          }}
-        />
+        {contentBody}
       </motion.div>
       <ContextualHint screenKey="plan-detail" />
     </DashboardLayout>
