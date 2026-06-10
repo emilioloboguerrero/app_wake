@@ -8,6 +8,10 @@ import { queryClient } from '../config/queryClient';
 import analyticsService from './analyticsService';
 import { parseTotalReps } from '../utils/repsParser';
 
+export function buildSessionCacheKey({ userId, courseId, targetDate, level }) {
+  return [userId, courseId, targetDate || '', level || ''].join('|');
+}
+
 class SessionService {
   constructor() {
     this.cache = new Map();
@@ -23,10 +27,11 @@ class SessionService {
       forceRefresh = false,
       manualSessionId = null,
       manualSessionIndex = null,
-      targetDate = null
+      targetDate = null,
+      level = null,
     } = options;
 
-    const cacheKey = targetDate ? `${userId}|${courseId}|${targetDate}` : `${userId}|${courseId}`;
+    const cacheKey = buildSessionCacheKey({ userId, courseId, targetDate, level });
 
     logger.debug('[SessionService.getCurrentSession] called', {
       userId, courseId, options: { forceRefresh, manualSessionId, manualSessionIndex, targetDate },
@@ -365,7 +370,7 @@ class SessionService {
       };
 
       // Update cache with the new session state
-      const cacheKey = `${userId}|${courseId}`;
+      const cacheKey = buildSessionCacheKey({ userId, courseId });
       this.cache.set(cacheKey, { data: sessionState, timestamp: Date.now() });
 
       return sessionState;
