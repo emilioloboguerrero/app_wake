@@ -437,6 +437,12 @@ const styles = {
     height: 12,
     borderRadius: 6,
   },
+  weekSessionLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
   weekRowRight: {
     flexShrink: 0,
     display: 'flex',
@@ -642,11 +648,23 @@ const WeekCoachCard = ({
   // sessionTitleByDate is populated for one_on_one (via plannedDate) and for the
   // current day on any deliveryType (via the primary session state).
   const todayYmd = useMemo(() => toYYYYMMDD(today), [today]);
-  const { completedDateMap, plannedDateMap, sessionTitleByDate } = useMemo(() => {
+  const { completedDateMap, plannedDateMap, sessionTitleByDate, sessionsByDate } = useMemo(() => {
     const completed = new Map();
     const planned = new Map();
     const titles = new Map();
+    // Per-date list of every program's session, so days where multiple programs
+    // from the same coach overlap can stack one line each (name + own status).
+    // Additive: completed/planned/titles keep their single-value, first-wins shape
+    // for the month grid and date navigation.
+    const sessions = new Map();
+    const pushEntry = (ymd, entry) => {
+      const list = sessions.get(ymd);
+      if (!list) { sessions.set(ymd, [entry]); return; }
+      if (list.some((e) => e.courseId === entry.courseId)) return; // one line per program per day
+      list.push(entry);
+    };
     envCourses.forEach((course, idx) => {
+      const courseId = course.courseId || course.id;
       const sessionState = sessionStateQueries[idx]?.data;
       // Branch on the actual data shape, not the course flag. /workout/daily
       // returns plannedDate per session for any date-scheduled program
@@ -663,23 +681,39 @@ const WeekCoachCard = ({
         allSessionsList.forEach((s) => {
           if (!s.plannedDate) return;
           const ymd = String(s.plannedDate).slice(0, 10);
-          if (completedIds.has(s.sessionId)) {
+          const isDone = completedIds.has(s.sessionId);
+          if (isDone) {
             if (!completed.has(ymd)) completed.set(ymd, course);
           } else if (!planned.has(ymd)) {
             planned.set(ymd, course);
           }
           if (s.title && !titles.has(ymd)) titles.set(ymd, s.title);
+          pushEntry(ymd, { courseId, title: s.title || null, status: isDone ? 'completed' : 'planned' });
         });
       } else {
-        const dates = moduleCalendarQueries[idx]?.data;
-        (Array.isArray(dates) ? dates : []).forEach((ymd) => {
+        const dates = Array.isArray(moduleCalendarQueries[idx]?.data)
+          ? moduleCalendarQueries[idx].data
+          : [];
+        dates.forEach((ymd) => {
           if (!completed.has(ymd)) completed.set(ymd, course);
+          // Past/other completed dates carry no per-day title for legacy programs.
+          if (ymd !== todayYmd) pushEntry(ymd, { courseId, title: null, status: 'completed' });
         });
-        const todayTitle = sessionState?.session?.title;
+        // Legacy programs only expose a title for today (via the daily session).
+        const todayTitle = sessionState?.session?.title || null;
+        const doneToday = dates.includes(todayYmd);
         if (todayTitle && !titles.has(todayYmd)) titles.set(todayYmd, todayTitle);
+        if (todayTitle || doneToday) {
+          pushEntry(todayYmd, { courseId, title: todayTitle, status: doneToday ? 'completed' : 'planned' });
+        }
       }
     });
-    return { completedDateMap: completed, plannedDateMap: planned, sessionTitleByDate: titles };
+    return {
+      completedDateMap: completed,
+      plannedDateMap: planned,
+      sessionTitleByDate: titles,
+      sessionsByDate: sessions,
+    };
   }, [envCourses, sessionStateQueries, moduleCalendarQueries, todayYmd]);
 
   // While the session queries are still resolving and we have no week data yet
@@ -785,6 +819,9 @@ const WeekCoachCard = ({
                 const isSelected = selectedDate === ymd;
                 const title = sessionTitleByDate.get(ymd) || null;
                 const isWeekend = i >= 5; // Sat/Sun
+                const entries = sessionsByDate.get(ymd) || [];
+                const namedEntries = entries.filter((e) => e.title);
+                const isMulti = !weekResolving && namedEntries.length >= 2;
                 const rowStyle = {
                   ...styles.weekRow,
                   ...(isTodayCell && !isSelected ? styles.weekRowToday : {}),
@@ -798,55 +835,81 @@ const WeekCoachCard = ({
                 const dayNumberStyle = isSelected
                   ? { ...styles.weekRowDayNumber, ...styles.weekRowDayNumberSelected }
                   : styles.weekRowDayNumber;
-                let titleNode;
-                if (weekResolving) {
-                  titleNode = (
-                    <span className="wake-skeleton" style={styles.weekRowTitleSkeleton} />
-                  );
-                } else if (title) {
-                  titleNode = (
-                    <span style={isSelected
-                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
-                      : styles.weekRowTitle}>
-                      {title}
-                    </span>
-                  );
-                } else if (status === 'completed') {
-                  titleNode = (
-                    <span style={isSelected
-                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
-                      : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
-                      Sesión completada
-                    </span>
-                  );
-                } else if (isWeekend) {
-                  titleNode = (
-                    <span style={isSelected
-                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
-                      : styles.weekRowTitleRest}>
-                      Descanso
-                    </span>
-                  );
-                } else {
-                  titleNode = (
-                    <span style={isSelected
-                      ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
-                      : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
-                      {status === 'planned' ? 'Sesión planeada' : 'Sin sesión'}
-                    </span>
-                  );
-                }
+                let bodyNode;
                 let rightNode = null;
-                if (status === 'completed') {
-                  rightNode = <span style={styles.weekCheck}>✓</span>;
-                } else if (isTodayCell && !isSelected) {
-                  rightNode = <span style={styles.weekTodayPill}>Hoy</span>;
-                } else if (isTodayCell && isSelected) {
-                  rightNode = (
-                    <span style={{ ...styles.weekTodayPill, ...styles.weekTodayPillSelected }}>
-                      Hoy
-                    </span>
-                  );
+                if (isMulti) {
+                  // Multiple programs from the same coach land on this day — stack a
+                  // line per program, each with its own name and completed/planned status.
+                  bodyNode = namedEntries.map((e, idx) => (
+                    <div key={e.courseId || idx} style={styles.weekSessionLine}>
+                      <span style={isSelected
+                        ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected, flex: 1, minWidth: 0 }
+                        : { ...styles.weekRowTitle, flex: 1, minWidth: 0 }}>
+                        {e.title}
+                      </span>
+                      {e.status === 'completed'
+                        ? <span style={styles.weekCheck}>✓</span>
+                        : null}
+                    </div>
+                  ));
+                  if (isTodayCell) {
+                    rightNode = (
+                      <span style={isSelected
+                        ? { ...styles.weekTodayPill, ...styles.weekTodayPillSelected }
+                        : styles.weekTodayPill}>
+                        Hoy
+                      </span>
+                    );
+                  }
+                } else {
+                  if (weekResolving) {
+                    bodyNode = (
+                      <span className="wake-skeleton" style={styles.weekRowTitleSkeleton} />
+                    );
+                  } else if (title) {
+                    bodyNode = (
+                      <span style={isSelected
+                        ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                        : styles.weekRowTitle}>
+                        {title}
+                      </span>
+                    );
+                  } else if (status === 'completed') {
+                    bodyNode = (
+                      <span style={isSelected
+                        ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                        : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
+                        Sesión completada
+                      </span>
+                    );
+                  } else if (isWeekend) {
+                    bodyNode = (
+                      <span style={isSelected
+                        ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                        : styles.weekRowTitleRest}>
+                        Descanso
+                      </span>
+                    );
+                  } else {
+                    bodyNode = (
+                      <span style={isSelected
+                        ? { ...styles.weekRowTitle, ...styles.weekRowTitleSelected }
+                        : { ...styles.weekRowTitle, ...styles.weekRowTitleMuted }}>
+                        {status === 'planned' ? 'Sesión planeada' : 'Sin sesión'}
+                      </span>
+                    );
+                  }
+                  if (status === 'completed') {
+                    rightNode = <span style={styles.weekCheck}>✓</span>;
+                  } else if (isTodayCell && !isSelected) {
+                    rightNode = <span style={styles.weekTodayPill}>Hoy</span>;
+                  } else if (isTodayCell && isSelected) {
+                    rightNode = (
+                      <span style={{ ...styles.weekTodayPill, ...styles.weekTodayPillSelected }}>
+                        Hoy
+                      </span>
+                    );
+                  }
                 }
                 return (
                   <div
@@ -864,7 +927,7 @@ const WeekCoachCard = ({
                       <span style={dayNumberStyle}>{d.getDate()}</span>
                     </div>
                     <div style={styles.weekRowBody}>
-                      {titleNode}
+                      {bodyNode}
                     </div>
                     <div style={styles.weekRowRight}>
                       {rightNode}
