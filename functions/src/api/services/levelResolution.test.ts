@@ -7,6 +7,8 @@ import {
   maxWeekIndexOf,
   isValidLevelChoice,
   allLevelPlansPublishAt,
+  weeksSinceBlockStart,
+  repsForBlockWeek,
 } from "./levelResolution";
 
 // ---------------------------------------------------------------------------
@@ -256,5 +258,63 @@ describe("allLevelPlansPublishAt", () => {
 
   it("returns false for a single plan that is not published", () => {
     expect(allLevelPlansPublishAt({principiante: false})).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// weeksSinceBlockStart
+// ---------------------------------------------------------------------------
+describe("weeksSinceBlockStart", () => {
+  const start = 1_000_000_000_000;
+
+  it("returns 0 when startedAt is null", () => {
+    expect(weeksSinceBlockStart(null, start)).toBe(0);
+  });
+
+  it("returns 0 within the first week", () => {
+    expect(weeksSinceBlockStart(start, start + 3 * DAY_MS)).toBe(0);
+  });
+
+  it("floors to whole weeks elapsed", () => {
+    expect(weeksSinceBlockStart(start, start + WEEK_MS + 2 * DAY_MS)).toBe(1);
+    expect(weeksSinceBlockStart(start, start + 3 * WEEK_MS)).toBe(3);
+  });
+
+  it("is uncapped beyond 4 weeks (clamping happens at rep_sequence indexing)", () => {
+    expect(weeksSinceBlockStart(start, start + 6 * WEEK_MS)).toBe(6);
+  });
+
+  it("returns 0 when now precedes the start", () => {
+    expect(weeksSinceBlockStart(start, start - WEEK_MS)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// repsForBlockWeek
+// ---------------------------------------------------------------------------
+describe("repsForBlockWeek", () => {
+  const seq = [12, 12, 15, 15];
+
+  it("falls back to static reps when blockWeek is null", () => {
+    expect(repsForBlockWeek("12-15", seq, null)).toBe("12-15");
+  });
+
+  it("falls back to static reps when there is no sequence", () => {
+    expect(repsForBlockWeek("AMRAP", null, 1)).toBe("AMRAP");
+    expect(repsForBlockWeek("10-12", [], 1)).toBe("10-12");
+  });
+
+  it("picks the entry for the current block-week", () => {
+    expect(repsForBlockWeek("12-15", seq, 0)).toBe("12");
+    expect(repsForBlockWeek("12-15", seq, 2)).toBe("15");
+  });
+
+  it("clamps to the last entry past the array end", () => {
+    expect(repsForBlockWeek("12-15", seq, 9)).toBe("15");
+  });
+
+  it("returns null when neither sequence nor static reps resolve", () => {
+    expect(repsForBlockWeek(null, null, 0)).toBe(null);
+    expect(repsForBlockWeek(undefined, undefined, 2)).toBe(null);
   });
 });

@@ -295,7 +295,14 @@ const LibrarySessionDetailScreen = () => {
   const instanceId = isPlanInstanceEdit ? planInstancePlanId : programInstanceProgramId;
   const instanceModuleId = planInstanceModuleId;
   const instanceService = isPlanInstanceEdit ? plansService : isProgramInstanceEdit ? programService : null;
-  const backPath = isPlanInstanceEdit ? `/plans/${planInstancePlanId}` : isProgramInstanceEdit ? `/programs/${programInstanceProgramId}` : (location.state?.returnTo || '/biblioteca?domain=entrenamiento&tab=sesiones');
+  // returnTo wins when provided so a plan session opened from a shell course's
+  // drops calendar (Código ABS) returns to the program, not the plan's library
+  // page. Falls back to the plan/program/library default otherwise.
+  const backPath = location.state?.returnTo
+    ? location.state.returnTo
+    : isPlanInstanceEdit ? `/plans/${planInstancePlanId}`
+      : isProgramInstanceEdit ? `/programs/${programInstanceProgramId}`
+        : '/biblioteca?domain=entrenamiento&tab=sesiones';
   const backState = location.state?.returnState ?? (isProgramInstanceEdit ? { tab: 'contenido', subtab: 'entrenamiento' } : {});
   const editScope = location.state?.editScope;
   const clientSessionId = location.state?.clientSessionId;

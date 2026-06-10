@@ -8,7 +8,7 @@ import {checkRateLimit} from "../middleware/rateLimit.js";
 import {pickPublicCourseFields} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
-import {resolveLevelPlanId, computeWeekInBlock, sessionMatchesWeek, maxWeekIndexOf} from "../services/levelResolution.js";
+import {resolveLevelPlanId, computeWeekInBlock, sessionMatchesWeek, maxWeekIndexOf, weeksSinceBlockStart, repsForBlockWeek} from "../services/levelResolution.js";
 
 const router = Router();
 
@@ -313,6 +313,10 @@ router.get("/workout/daily", async (req, res) => {
   // For one-on-one, exercises live in plans/ subcollections, not courses/
   let sessionCollection = "courses";
   let sessionCollectionId: string = courseId;
+  // Block-week index for the level-plan branch — drives per-week rep_sequence
+  // resolution at set-serialization time. null = not a level-plan course (no
+  // per-week reps; the Método and others keep their authored static reps).
+  let levelPlanBlockWeek: number | null = null;
   // Hoisted so we can include it in the response
   let resolvedAllSessions: Array<{
     sessionId: string; title: string;
@@ -761,6 +765,10 @@ router.get("/workout/daily", async (req, res) => {
 
       const maxWeek = maxWeekIndexOf(allModSessions);
       const weekInBlock = computeWeekInBlock(startedAtMs, Date.now(), maxWeek);
+      // Uncapped block-week (0,1,2,3…) for rep_sequence progression — distinct
+      // from weekInBlock, which clamps to maxWeekIndex (0 here, since ABS has no
+      // per-session weekIndex). Surfaces the W1→W4 rep arc the data already holds.
+      levelPlanBlockWeek = weeksSinceBlockStart(startedAtMs, Date.now());
 
       // Filter to this week's sessions (sessionMatchesWeek: wi === weekInBlock OR no wi)
       const weekSessions = allModSessions.filter((s) => sessionMatchesWeek(s, weekInBlock));
@@ -1179,7 +1187,7 @@ router.get("/workout/daily", async (req, res) => {
           const setData = setDoc.data();
           return {
             setId: setDoc.id,
-            reps: setData.reps ?? null,
+            reps: repsForBlockWeek(setData.reps, setData.rep_sequence, levelPlanBlockWeek),
             weight: setData.weight ?? null,
             intensity: setData.intensity ?? null,
             rir: setData.rir ?? null,
@@ -1407,6 +1415,9 @@ router.get("/workout/session-exercises", async (req, res) => {
   // Resolve session doc reference based on delivery type and moduleId
   let sessionDocRef: FirebaseFirestore.DocumentReference;
   let moduleTitle = "";
+  // Block-week for per-week rep_sequence resolution (level-plan courses only);
+  // mirrors the daily-workout endpoint so execution shows the same week's reps.
+  let levelPlanBlockWeek: number | null = null;
 
   if (deliveryType === "one_on_one") {
     const plansSnap = await db.collection("plans")
@@ -1477,6 +1488,23 @@ router.get("/workout/session-exercises", async (req, res) => {
       const modDoc = await db.collection(baseCollection).doc(baseDocId)
         .collection("modules").doc(moduleId).get();
       moduleTitle = modDoc.exists ? ((modDoc.data()!.title as string) ?? "") : "";
+
+      // Level-plan course: resolve the block-week so this session's sets show
+      // the current week's rep_sequence value (matching the daily endpoint).
+      if (levelPlanId) {
+        const stateSnap = await db.collection("program_state").doc(courseId).get();
+        const startedRaw = stateSnap.exists ? stateSnap.data()?.current_block_started_at : null;
+        let startedMs: number | null = null;
+        if (startedRaw && typeof (startedRaw as {toMillis?: () => number}).toMillis === "function") {
+          startedMs = (startedRaw as {toMillis: () => number}).toMillis();
+        } else if (typeof startedRaw === "number") {
+          startedMs = startedRaw;
+        } else if (typeof startedRaw === "string") {
+          const ms = Date.parse(startedRaw);
+          if (Number.isFinite(ms)) startedMs = ms;
+        }
+        levelPlanBlockWeek = weeksSinceBlockStart(startedMs, Date.now());
+      }
     }
   }
 
@@ -1523,7 +1551,7 @@ router.get("/workout/session-exercises", async (req, res) => {
           const setData = setDoc.data();
           return {
             setId: setDoc.id,
-            reps: setData.reps ?? null,
+            reps: repsForBlockWeek(setData.reps, setData.rep_sequence, levelPlanBlockWeek),
             weight: setData.weight ?? null,
             intensity: setData.intensity ?? null,
             rir: setData.rir ?? null,

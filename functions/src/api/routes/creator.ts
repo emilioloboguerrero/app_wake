@@ -1399,9 +1399,32 @@ router.get("/creator/programs/:programId", async (req, res) => {
   }
 
   const programData = doc.data()!;
+
+  // Cadence state (current_block_*) is the source of truth in program_state;
+  // the course doc only mirrors id/index and never carries
+  // current_block_started_at. The drops calendar needs started_at to anchor
+  // the live block to its real month — without it the calendar falls back to
+  // "next first Monday" and shows the wrong month (e.g. July instead of the
+  // June block that's actually live). Overlay program_state for cadenced
+  // programs; serialize the Timestamp to ISO so the client can parse it.
+  const cadenceOverlay: Record<string, unknown> = {};
+  if (programData.block_cadence) {
+    const stateSnap = await db.collection("program_state").doc(req.params.programId).get();
+    const stateData = stateSnap.exists ? stateSnap.data() ?? {} : {};
+    for (const f of ["current_block_id", "current_block_index"] as const) {
+      if (stateData[f] !== undefined) cadenceOverlay[f] = stateData[f];
+    }
+    const startedRaw = stateData.current_block_started_at;
+    if (startedRaw) {
+      cadenceOverlay.current_block_started_at =
+        typeof startedRaw?.toDate === "function" ? startedRaw.toDate().toISOString() : startedRaw;
+    }
+  }
+
   res.json({data: {
     id: doc.id,
     ...programData,
+    ...cadenceOverlay,
     imageUrl: programData.image_url ?? null,
     bundleOnly: programData.visibility === "bundle-only",
   }});
@@ -4955,12 +4978,37 @@ router.patch("/creator/plans/:planId/modules/:moduleId", async (req, res) => {
   const doc = await ref.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Módulo no encontrado");
 
-  // Allowlist: title, order
-  const allowedFields = ["title", "order"];
-  const updates = pickFields(req.body, allowedFields);
+  // unlocks_at + published_at are monthly-drop fields, identical to the
+  // course module route (PATCH /programs/:id/modules/:mid). Plans backing a
+  // `level_plans` shell carry the same cadence semantics: published_at is the
+  // gate the cron filters by per level plan (index.ts advanceMonthlyDropCourse),
+  // unlocks_at is the calendar activation anchor.
+  const updates = pickFields(req.body, [
+    "title", "order",
+    "unlocks_at", "published_at",
+  ]);
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  // unlocks_at / published_at accepted as ISO strings (converted to
+  // Timestamp at write time) or null to clear. Anything else is rejected.
+  for (const field of ["unlocks_at", "published_at"] as const) {
+    const v = updates[field];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== "string" || Number.isNaN(Date.parse(v))) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        `${field} debe ser una fecha ISO válida o null`,
+        field
+      );
+    }
+  }
+  for (const field of ["unlocks_at", "published_at"] as const) {
+    if (typeof updates[field] === "string") {
+      updates[field] = Timestamp.fromDate(new Date(updates[field] as string));
+    }
   }
 
   await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});

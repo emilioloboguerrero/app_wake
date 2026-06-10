@@ -17,8 +17,6 @@ import {
   unlocksAtToIso,
 } from '../../utils/cadence';
 import { DRAG_TYPE_LIBRARY_SESSION } from '../PlanningLibrarySidebar';
-import programService from '../../services/programService';
-import apiClient from '../../utils/apiClient';
 import { useToast } from '../../contexts/ToastContext';
 import './ProgramCadenceCalendar.css';
 
@@ -31,11 +29,20 @@ const DEFAULT_MONTHS_AHEAD = 6;
 // previous one. First week of each drop is the canonical edit surface;
 // subsequent weeks render as dimmed mirrors so coaches can't accidentally
 // author intra-month variation the data model can't express.
+//
+// The module/session writes and the session-edit navigation target are
+// injected via `ops` so the same calendar can edit either a course's
+// modules (`courses/{id}/modules`, the Método) or a level plan's modules
+// (`plans/{planId}/modules`, Código ABS). `program` is always the shell
+// course — it supplies the cadence baseline (current_block_started_at /
+// _index) and the live drop id, which stay on the shell even when content
+// lives in a per-level plan. See buildProgramOps/buildPlanOps in
+// ProgramTrainingTab.
 export default function ProgramCadenceCalendar({
-  programId,
   program,
   modules,
   onModulesChange,
+  ops,
 }) {
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -163,7 +170,7 @@ export default function ProgramCadenceCalendar({
     if (!mod || publishBusyId === mod.id) return;
     setPublishBusyId(mod.id);
     try {
-      await programService.updateModule(programId, mod.id, {
+      await ops.updateModule(mod.id, {
         published_at: mod.published_at ? null : new Date().toISOString(),
       });
       refresh();
@@ -172,62 +179,60 @@ export default function ProgramCadenceCalendar({
     } finally {
       setPublishBusyId(null);
     }
-  }, [programId, publishBusyId, refresh, showToast]);
+  }, [ops, publishBusyId, refresh, showToast]);
 
   const handleEditTitle = useCallback(async (mod, newTitle) => {
     const trimmed = (newTitle || '').trim();
     if (!trimmed || trimmed === mod.title) return;
     try {
-      await programService.updateModule(programId, mod.id, { title: trimmed });
+      await ops.updateModule(mod.id, { title: trimmed });
       refresh();
     } catch (err) {
       showToast(err?.message || 'No pudimos guardar el título.', 'error');
     }
-  }, [programId, refresh, showToast]);
+  }, [ops, refresh, showToast]);
 
   const handleSaveUnlock = useCallback(async (mod) => {
     const iso = ymdToMondayIso(unlockDraftYmd);
     setUnlockEditingId(null);
     setUnlockAnchorRect(null);
     try {
-      await programService.updateModule(programId, mod.id, { unlocks_at: iso });
+      await ops.updateModule(mod.id, { unlocks_at: iso });
       refresh();
     } catch (err) {
       showToast(err?.message || 'No pudimos guardar la fecha.', 'error');
     }
-  }, [programId, unlockDraftYmd, refresh, showToast]);
+  }, [ops, unlockDraftYmd, refresh, showToast]);
 
   const handleClearUnlock = useCallback(async (mod) => {
     setUnlockEditingId(null);
     setUnlockAnchorRect(null);
     try {
-      await programService.updateModule(programId, mod.id, { unlocks_at: null });
+      await ops.updateModule(mod.id, { unlocks_at: null });
       refresh();
     } catch (err) {
       showToast(err?.message || 'No pudimos limpiar la fecha.', 'error');
     }
-  }, [programId, refresh, showToast]);
+  }, [ops, refresh, showToast]);
 
   const handleDeleteDrop = useCallback(async (mod) => {
     setMenuOpenId(null);
     setMenuAnchorRect(null);
     if (!window.confirm(`¿Eliminar "${mod.title}"? Los meses que lo usaban volverán al drop anterior.`)) return;
     try {
-      await programService.deleteModule(programId, mod.id);
+      await ops.deleteModule(mod.id);
       refresh();
     } catch (err) {
       showToast(err?.message || 'No pudimos eliminar el bloque.', 'error');
     }
-  }, [programId, refresh, showToast]);
+  }, [ops, refresh, showToast]);
 
   // ─── Create drop for an empty month ───────────────────────────
   // Anchors the new module's unlocks_at to the first Monday of `monthDate`
-  // so the cron picks it up at the right calendar moment. Uses
-  // `modules.length` from the already-loaded prop instead of a fresh
-  // network round-trip; on slow connections the legacy
-  // `programService.createModule` re-fetched modules+sessions (1+N reads)
-  // before posting, which on Bogotá networks could exceed the apiClient
-  // timeout mid-drop and silently abort the chain.
+  // so the cron picks it up at the right calendar moment. Module creation +
+  // the unlocks_at write are delegated to `ops` (course vs plan); the title
+  // is computed here from the already-loaded `modules` length so we don't pay
+  // a fresh network round-trip just to derive the next ordinal.
   const handleCreateDropForMonth = useCallback(async (monthDate) => {
     if (pendingDropId) return;
     const monthMonday = firstMondayOfMonth(monthDate);
@@ -235,18 +240,12 @@ export default function ProgramCadenceCalendar({
     const monthName = monthShortSentence(monthDate);
     setPendingDropId(`new-${monthDate.getTime()}`);
     try {
-      // POST validateBody only accepts title+order (creator.ts:7889) — set
-      // unlocks_at in a follow-up PATCH. Two round-trips, but still saves the
-      // 1+N fan-out the legacy programService.createModule did before posting.
-      const created = await apiClient.post(`/creator/programs/${programId}/modules`, {
-        title: `Mes ${order + 1} — ${monthName}`,
-        order,
-      });
-      const newId = created?.data?.id ?? created?.data?.moduleId ?? created?.id;
+      // createDrop only sets title+order — set unlocks_at in a follow-up
+      // updateModule. Two round-trips, but the next ordinal comes from the
+      // loaded prop so we skip a modules refetch before creating.
+      const newId = await ops.createDrop(`Mes ${order + 1} — ${monthName}`, order);
       if (!newId) throw new Error('No se pudo crear el bloque');
-      await apiClient.patch(`/creator/programs/${programId}/modules/${newId}`, {
-        unlocks_at: monthMonday.toISOString(),
-      });
+      await ops.updateModule(newId, { unlocks_at: monthMonday.toISOString() });
       // No refresh here — caller (handleDropOnDay) refreshes once after the
       // session POST so we don't fire two back-to-back modules refetches.
       return newId;
@@ -256,12 +255,15 @@ export default function ProgramCadenceCalendar({
     } finally {
       setPendingDropId(null);
     }
-  }, [programId, modules, refresh, showToast, pendingDropId]);
+  }, [ops, modules, showToast, pendingDropId]);
 
   // ─── Session interactions ─────────────────────────────────────
   const handleSessionClick = useCallback((mod, session) => {
-    navigate(`/programs/${programId}/modules/${mod.id}/sessions/${session.id}/edit`);
-  }, [navigate, programId]);
+    navigate(
+      ops.sessionEditPath(mod.id, session.id),
+      ops.sessionEditState ? { state: ops.sessionEditState } : undefined,
+    );
+  }, [navigate, ops]);
 
   const handleSessionDragStart = useCallback((e, mod, session) => {
     e.stopPropagation();
@@ -308,10 +310,7 @@ export default function ProgramCadenceCalendar({
       try {
         const libRef = data.librarySessionRef || data.sourceLibrarySessionId;
         console.log('[CADENCE-DROP] POST sessions (empty-month)', { newModuleId: newId, librarySessionRef: libRef, targetDayIndex, title: data.title });
-        await programService.createSessionFromLibrary(
-          programId, newId, libRef,
-          targetDayIndex - 1, null, targetDayIndex, data.title || null,
-        );
+        await ops.addLibrarySession(newId, libRef, targetDayIndex, data.title || null);
         console.log('[CADENCE-DROP] POST sessions OK (empty-month) → refresh');
         refresh();
       } catch (err) {
@@ -329,10 +328,7 @@ export default function ProgramCadenceCalendar({
       if (!libSessionId) { console.log('[CADENCE-DROP] abort: library payload missing librarySessionRef', data); return; }
       console.log('[CADENCE-DROP] branch: existing drop ← library session', { moduleId: activeDrop.id, librarySessionRef: libSessionId, targetDayIndex, title: data.title });
       try {
-        await programService.createSessionFromLibrary(
-          programId, activeDrop.id, libSessionId,
-          targetDayIndex - 1, null, targetDayIndex, data.title || null,
-        );
+        await ops.addLibrarySession(activeDrop.id, libSessionId, targetDayIndex, data.title || null);
         console.log('[CADENCE-DROP] POST sessions OK → refresh');
         refresh();
       } catch (err) {
@@ -348,8 +344,8 @@ export default function ProgramCadenceCalendar({
       if (data.moduleId !== activeDrop.id) { console.log('[CADENCE-DROP] abort: cross-drop reorder not supported'); return; }
       if (data.fromDayIndex === targetDayIndex) { console.log('[CADENCE-DROP] abort: same dayIndex'); return; }
       try {
-        await programService.updateSession(
-          programId, activeDrop.id, data.sessionId,
+        await ops.updateSession(
+          activeDrop.id, data.sessionId,
           { dayIndex: targetDayIndex, order: targetDayIndex - 1 },
         );
         console.log('[CADENCE-DROP] PATCH session OK → refresh');
@@ -362,18 +358,18 @@ export default function ProgramCadenceCalendar({
     }
 
     console.log('[CADENCE-DROP] abort: payload type not recognized', data?.type);
-  }, [programId, handleCreateDropForMonth, refresh, showToast]);
+  }, [ops, handleCreateDropForMonth, refresh, showToast]);
 
   const handleDeleteSession = useCallback(async (e, mod, session) => {
     e.stopPropagation();
     if (!window.confirm(`¿Eliminar "${session.title || 'Sesión'}" del template?`)) return;
     try {
-      await programService.deleteSession(programId, mod.id, session.id);
+      await ops.deleteSession(mod.id, session.id);
       refresh();
     } catch (err) {
       showToast(err?.message || 'No pudimos eliminar la sesión.', 'error');
     }
-  }, [programId, refresh, showToast]);
+  }, [ops, refresh, showToast]);
 
   // ─── Rendering helpers ────────────────────────────────────────
   const today = useMemo(() => {

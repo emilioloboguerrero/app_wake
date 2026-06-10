@@ -31,6 +31,37 @@ export function computeWeekInBlock(startedAtMs: number | null, nowMs: number, ma
   return raw;
 }
 
+/**
+ * Whole weeks elapsed since the block started (>= 0, uncapped). Unlike
+ * computeWeekInBlock (which clamps to maxWeekIndex for session-variety
+ * filtering), this is for indexing a set's `rep_sequence` — the 4-week rep
+ * progression within a month. Cohort-synced off current_block_started_at.
+ */
+export function weeksSinceBlockStart(startedAtMs: number | null, nowMs: number): number {
+  if (startedAtMs === null || !Number.isFinite(startedAtMs)) return 0;
+  const raw = Math.floor((nowMs - startedAtMs) / WEEK_MS);
+  return raw < 0 ? 0 : raw;
+}
+
+/**
+ * The rep target to show for the current block-week. When a `rep_sequence`
+ * (per-week progression) exists, picks the entry for this week (clamped to the
+ * last entry past the array end) so weeks 1→4 of a month show progressing reps
+ * instead of an identical static range. Falls back to the authored `reps` when
+ * there's no sequence or no block-week context (e.g. non-cadenced courses).
+ */
+export function repsForBlockWeek(
+  staticReps: unknown,
+  repSequence: unknown,
+  blockWeek: number | null
+): string | null {
+  if (blockWeek !== null && Array.isArray(repSequence) && repSequence.length > 0) {
+    const v = repSequence[Math.min(blockWeek, repSequence.length - 1)];
+    if (v !== undefined && v !== null) return String(v);
+  }
+  return (staticReps as string | null) ?? null;
+}
+
 /** True if the session belongs to the current week, or has no weekIndex (legacy). */
 export function sessionMatchesWeek(session: { weekIndex?: number | null }, weekInBlock: number): boolean {
   const wi = session.weekIndex;
