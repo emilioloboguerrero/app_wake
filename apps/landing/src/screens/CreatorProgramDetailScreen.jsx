@@ -8,6 +8,7 @@ import {
   StorefrontCheckoutError,
 } from '../services/storefrontCheckoutService';
 import { getCurrentUser } from '../services/storefrontAuthService';
+import analyticsService from '../services/analyticsService';
 import { useAccentFromImage } from '../utils/accentColor';
 import AuthModal from '../components/AuthModal';
 import './CreatorProgramDetailScreen.css';
@@ -131,6 +132,10 @@ export default function CreatorProgramDetailScreen() {
   const [checkoutError, setCheckoutError] = useState(null);
   const [altEmail, setAltEmail] = useState('');
   const [needsAltEmail, setNeedsAltEmail] = useState(false);
+  // Proactive subscription email confirm step: false = hidden; when true,
+  // one-tap confirm of the account email or switch to a custom MP email.
+  const [emailStep, setEmailStep] = useState(false);
+  const [useCustomEmail, setUseCustomEmail] = useState(false);
   const [alreadyOwned, setAlreadyOwned] = useState(null);
   // Sold-out waitlist: 'hidden' (just the CTA) | 'form' | 'done'.
   const [waitlistPhase, setWaitlistPhase] = useState('hidden');
@@ -284,6 +289,15 @@ export default function CreatorProgramDetailScreen() {
             window.sessionStorage.setItem(`wake_payer_${program.id}`, payer);
           }
         } catch { /* private mode — fall through */ }
+        if (mode === 'subscription') {
+          try {
+            analyticsService.track('subscription.checkout.redirected', {
+              course_id: program.id,
+              surface: 'landing',
+              subscription_id: result.subscriptionId || null,
+            });
+          } catch { /* analytics is best-effort */ }
+        }
         window.location.href = result.initPoint;
         return;
       }
@@ -308,9 +322,21 @@ export default function CreatorProgramDetailScreen() {
     window.location.href = url;
   };
 
+  // Subscriptions: confirm the Mercado Pago email BEFORE creating the
+  // preapproval (it binds to that email and can't be re-bound). One-time
+  // payments go straight to checkout.
+  const startForMode = (mode) => {
+    if (mode === 'subscription') {
+      openEmailStep();
+    } else {
+      runCheckout(mode);
+    }
+  };
+
   const handleBuy = (mode) => {
     setCheckoutError(null);
     setNeedsAltEmail(false);
+    setEmailStep(false);
     setAlreadyOwned(null);
     setAltEmail('');
     setPendingMode(mode);
@@ -325,7 +351,7 @@ export default function CreatorProgramDetailScreen() {
       return;
     }
     if (getCurrentUser()) {
-      runCheckout(mode);
+      startForMode(mode);
     } else {
       setAuthOpen(true);
     }
@@ -338,8 +364,43 @@ export default function CreatorProgramDetailScreen() {
       return;
     }
     if (pendingMode) {
-      runCheckout(pendingMode);
+      startForMode(pendingMode);
     }
+  };
+
+  const openEmailStep = () => {
+    setEmailStep(true);
+    setUseCustomEmail(false);
+    setAltEmail('');
+    setCheckoutError(null);
+    try {
+      analyticsService.track('subscription.email_step.shown', {
+        course_id: program.id,
+        surface: 'landing',
+      });
+    } catch { /* analytics is best-effort */ }
+  };
+
+  const confirmEmailStep = (e) => {
+    if (e) e.preventDefault();
+    const accountEmail = (getCurrentUser()?.email || '').trim().toLowerCase();
+    const chosen = useCustomEmail ? altEmail.trim().toLowerCase() : accountEmail;
+    if (!EMAIL_RE.test(chosen)) {
+      setCheckoutError('Correo inválido.');
+      return;
+    }
+    try {
+      analyticsService.track('subscription.email_step.choice', {
+        course_id: program.id,
+        surface: 'landing',
+        choice: useCustomEmail ? 'custom' : 'account',
+        emails_differ: chosen !== accountEmail,
+      });
+    } catch { /* analytics is best-effort */ }
+    setEmailStep(false);
+    // Pass an override only for a custom email; undefined lets the backend
+    // default to the account email (and tag emailType "account").
+    runCheckout('subscription', useCustomEmail ? chosen : undefined);
   };
 
   const submitAltEmail = (e) => {
@@ -543,7 +604,7 @@ export default function CreatorProgramDetailScreen() {
                 </>
               )}
             </div>
-          ) : needsAltEmail ? null : (
+          ) : (needsAltEmail || emailStep) ? null : (
             // Hide the primary CTAs while the alt-email form is showing. Both
             // buttons remained visible and clickable, so a user could re-fire
             // a subscription attempt with the wrong email and loop the same
@@ -597,6 +658,67 @@ export default function CreatorProgramDetailScreen() {
                 <span className="cpd-cta-label">Abrir en la app</span>
               </a>
             </div>
+          ) : null}
+
+          {emailStep ? (
+            <form className="cpd-alt-email" onSubmit={confirmEmailStep}>
+              <p className="cpd-alt-email-label">
+                Usa este mismo correo al iniciar sesión en Mercado Pago para completar tu suscripción.
+              </p>
+              {useCustomEmail ? (
+                <input
+                  type="email"
+                  className="cpd-alt-email-input"
+                  placeholder="correo@mercadopago.com"
+                  value={altEmail}
+                  onChange={(e) => setAltEmail(e.target.value)}
+                  maxLength={254}
+                  required
+                  autoFocus
+                  disabled={busyMode !== null}
+                />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '12px 14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'rgba(255,255,255,0.4)' }}>Tu correo</span>
+                  <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.95)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {getCurrentUser()?.email || ''}
+                  </span>
+                </div>
+              )}
+              <button
+                type="submit"
+                className="cpd-cta cpd-cta-primary"
+                disabled={busyMode !== null}
+              >
+                <span className="cpd-cta-label">
+                  {busyMode !== null ? 'Procesando…' : (useCustomEmail ? 'Continuar' : 'Continuar con este correo')}
+                </span>
+              </button>
+              {!useCustomEmail ? (
+                <button
+                  type="button"
+                  className="cpd-alt-email-cancel"
+                  onClick={() => { setUseCustomEmail(true); setAltEmail(''); setCheckoutError(null); }}
+                  disabled={busyMode !== null}
+                >
+                  Usar otro correo de Mercado Pago
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="cpd-alt-email-cancel"
+                onClick={() => {
+                  setEmailStep(false);
+                  setUseCustomEmail(false);
+                  setAltEmail('');
+                  setCheckoutError(null);
+                  setPendingMode(null);
+                }}
+                disabled={busyMode !== null}
+              >
+                Cancelar
+              </button>
+            </form>
           ) : null}
 
           {needsAltEmail ? (

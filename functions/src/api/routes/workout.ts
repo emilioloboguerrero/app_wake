@@ -8,6 +8,7 @@ import {checkRateLimit} from "../middleware/rateLimit.js";
 import {pickPublicCourseFields} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
+import {resolveLevelPlanId, computeWeekInBlock, sessionMatchesWeek, maxWeekIndexOf} from "../services/levelResolution.js";
 
 const router = Router();
 
@@ -157,6 +158,78 @@ function calculate1RM(weight: number, reps: number, intensity: number | null): n
   if (intensity === null) return numerator;
   const denominator = 1 - 0.025 * (10 - intensity);
   return numerator / denominator;
+}
+
+// History key shape: ${libraryId}_${libraryExerciseId} — keys to the *library's*
+// stable exercise id (the value of primary[libId] post-migration), NOT the session-
+// exercise doc id. Returns null when neither an explicit key nor primary[libId] is
+// available; callers skip the history write rather than persist a wrong-shape key.
+function deriveExerciseKey(ex: Record<string, unknown>): string | null {
+  if (typeof ex.exerciseKey === "string" && ex.exerciseKey) return ex.exerciseKey;
+  const primary = ex.primary as Record<string, string> | undefined;
+  const libId = (ex.libraryId as string | undefined) ?? (primary ? Object.keys(primary)[0] : null);
+  const libraryExId = libId && primary ? primary[libId] : null;
+  if (libId && libraryExId) return `${libId}_${libraryExId}`;
+  return null;
+}
+
+// Best estimated 1RM across a set list, plus the set that produced it.
+function computeBest1RM(
+  sets: Array<Record<string, unknown>>
+): { estimate: number; bestSet: { weight: number; reps: number; intensity: string | null } | null } {
+  let estimate = 0;
+  let bestSet: { weight: number; reps: number; intensity: string | null } | null = null;
+  for (const set of sets) {
+    const weight = Number(set.weight) || 0;
+    const reps = Number(set.reps) || 0;
+    if (weight <= 0 || reps <= 0) continue;
+    const intensity =
+      parseReportedIntensity(set.intensity as string) ??
+      parsePlannedIntensity(set.plannedIntensity as string) ??
+      null;
+    const est = calculate1RM(weight, reps, intensity);
+    if (est > estimate) {
+      estimate = est;
+      bestSet = {weight, reps, intensity: (set.intensity as string) ?? null};
+    }
+  }
+  return {estimate, bestSet};
+}
+
+// Heaviest set in a list (matches the prod lastPerformance.bestSet rule).
+function bestSetByWeight(
+  sets: Array<Record<string, unknown>>
+): Record<string, unknown> | null {
+  if (!sets.length) return null;
+  return sets.reduce((best, s) =>
+    (parseFloat(String(s.weight ?? 0)) > parseFloat(String(best.weight ?? 0)) ? s : best), sets[0]);
+}
+
+// Best estimated 1RM across a history `sessions` array, excluding one session —
+// used on reopen so a re-finish's PR check compares against the user's OTHER
+// sessions for that exercise, not against the session being replaced.
+function bestEstimateFromSessions(
+  sessions: Array<{ sessionId?: string; sets?: Array<Record<string, unknown>> }>,
+  excludeSessionId: string
+): number {
+  let best = 0;
+  for (const s of sessions) {
+    if (s.sessionId === excludeSessionId) continue;
+    const {estimate} = computeBest1RM(s.sets ?? []);
+    if (estimate > best) best = estimate;
+  }
+  return best;
+}
+
+// Most-recent session in a history array (latest date; ties resolved by array
+// order, since arrayUnion appends — later index is the more recent completion).
+function mostRecentSession<T extends { date?: string }>(sessions: T[]): T | null {
+  if (!sessions.length) return null;
+  let best = sessions[0];
+  for (const s of sessions) {
+    if ((s.date ?? "") >= (best.date ?? "")) best = s;
+  }
+  return best;
 }
 
 // ─── Week helpers (must match creator.ts and client-side getMondayWeek) ──────
@@ -614,6 +687,161 @@ router.get("/workout/daily", async (req, res) => {
         targetModuleId = assignment.moduleId;
         targetSessionId = nextSession.sessionId;
       }
+    } else if (resolveLevelPlanId(course, courseAccess)) {
+      // ── Level-plan branch: course has level_plans; route by user level → plan → month → week ──
+      const planId = resolveLevelPlanId(course, courseAccess)!;
+      const currentBlockIndex = typeof course.current_block_index === "number" ? course.current_block_index : null;
+
+      const emptyLevelResponse = {
+        data: {
+          hasSession: false, isRestDay: false, emptyReason: "no_planning_this_week",
+          session: null,
+          progress: {completed: 0, total: null, allSessionsCompleted: []},
+          allSessions: [],
+        },
+      };
+
+      if (currentBlockIndex === null) {
+        res.json(emptyLevelResponse);
+        return;
+      }
+
+      // Find the live-month module in the level plan: order == currentBlockIndex
+      const liveMonthSnap = await db
+        .collection("plans").doc(planId)
+        .collection("modules")
+        .where("order", "==", currentBlockIndex)
+        .limit(1)
+        .get();
+
+      if (liveMonthSnap.empty) {
+        res.json(emptyLevelResponse);
+        return;
+      }
+
+      const liveMonthDoc = liveMonthSnap.docs[0];
+      const liveMonthModuleId = liveMonthDoc.id;
+      const liveMonthTitle = (liveMonthDoc.data().title as string) ?? "";
+
+      // Read program_state for current_block_started_at
+      const programStateDoc = await db.collection("program_state").doc(courseId).get();
+      const programStateData = programStateDoc.exists ? (programStateDoc.data() ?? {}) : {};
+      const startedAtRaw = programStateData.current_block_started_at;
+      let startedAtMs: number | null = null;
+      if (startedAtRaw && typeof startedAtRaw === "object" && typeof (startedAtRaw as {toMillis?: () => number}).toMillis === "function") {
+        startedAtMs = (startedAtRaw as {toMillis: () => number}).toMillis();
+      } else if (typeof startedAtRaw === "number") {
+        startedAtMs = startedAtRaw;
+      } else if (typeof startedAtRaw === "string") {
+        const ms = Date.parse(startedAtRaw);
+        if (Number.isFinite(ms)) startedAtMs = ms;
+      }
+
+      // Read sessions from the live-month module
+      const liveSessionsSnap = await db.collection("plans").doc(planId)
+        .collection("modules").doc(liveMonthModuleId)
+        .collection("sessions")
+        .orderBy("order", "asc")
+        .limit(MAX_SESSIONS_PER_MODULE)
+        .get();
+
+      const allModSessions = liveSessionsSnap.docs.map((sDoc) => {
+        const sData = sDoc.data();
+        return {
+          sessionId: sDoc.id,
+          moduleId: liveMonthModuleId,
+          moduleTitle: liveMonthTitle,
+          order: (sData.order as number) ?? 0,
+          title: (sData.title as string) ?? "",
+          image_url: (sData.image_url as string) ?? null,
+          dayIndex: typeof sData.dayIndex === "number" ? (sData.dayIndex as number) : null,
+          weekIndex: typeof sData.weekIndex === "number" ? (sData.weekIndex as number) : null,
+        };
+      });
+
+      const maxWeek = maxWeekIndexOf(allModSessions);
+      const weekInBlock = computeWeekInBlock(startedAtMs, Date.now(), maxWeek);
+
+      // Filter to this week's sessions (sessionMatchesWeek: wi === weekInBlock OR no wi)
+      const weekSessions = allModSessions.filter((s) => sessionMatchesWeek(s, weekInBlock));
+
+      // Apply dayIndex → plannedDate (same weekly branch convention: 1..7 = Lun..Dom)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const requestedDate = (req.query.date as string) ?? null;
+      const todayWeekdayIdx = ((today.getDay() + 6) % 7) + 1; // 1..7 Lun..Dom
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - (todayWeekdayIdx - 1));
+      const weekStartIso = weekStart.toISOString();
+
+      // Re-scope completed IDs to this week only (sessions repeat week-to-week)
+      const weekLevelCompletedSnap = await db.collection("users").doc(auth.userId)
+        .collection("sessionHistory")
+        .where("courseId", "==", courseId)
+        .where("completedAt", ">=", weekStartIso)
+        .get();
+      completedSessionIds = new Set(
+        weekLevelCompletedSnap.docs
+          .map((d) => d.data().sessionId as string | undefined)
+          .filter((id): id is string => typeof id === "string" && id.length > 0)
+      );
+
+      const sessionsWithDate = weekSessions.map((s) => {
+        const dayIdx = s.dayIndex ?? (s.order ?? 0) + 1;
+        const date = new Date(weekStart.getTime() + (dayIdx - 1) * 86400000);
+        return {...s, dayIndex: dayIdx, plannedDate: toLocalDateISO(date)};
+      });
+      sessionsWithDate.sort((a, b) => a.dayIndex - b.dayIndex);
+
+      resolvedAllSessions = sessionsWithDate.map((s) => ({
+        sessionId: s.sessionId,
+        title: s.title,
+        moduleId: s.moduleId,
+        moduleTitle: s.moduleTitle,
+        order: s.order,
+        image_url: s.image_url,
+        plannedDate: s.plannedDate,
+      }));
+
+      if (sessionsWithDate.length === 0) {
+        res.json(emptyLevelResponse);
+        return;
+      }
+
+      const targetDate = requestedDate ?? toLocalDateISO(today);
+      const targetWeekday = (() => {
+        const d = new Date(`${targetDate}T12:00:00`);
+        return ((d.getDay() + 6) % 7) + 1;
+      })();
+      const dateInThisWeek = sessionsWithDate.some((s) => s.plannedDate === targetDate);
+      const todayLevelSession = requestedSessionId ?
+        sessionsWithDate.find((s) => s.sessionId === requestedSessionId) :
+        dateInThisWeek ?
+          sessionsWithDate.find((s) => s.plannedDate === targetDate) :
+          sessionsWithDate.find((s) => s.dayIndex === targetWeekday);
+
+      if (!todayLevelSession) {
+        res.json({
+          data: {
+            hasSession: false,
+            isRestDay: true,
+            emptyReason: "no_session_today",
+            session: null,
+            progress: {
+              completed: completedSessionIds.size,
+              total: sessionsWithDate.length,
+              allSessionsCompleted: [...completedSessionIds],
+            },
+            allSessions: resolvedAllSessions,
+          },
+        });
+        return;
+      }
+
+      targetModuleId = todayLevelSession.moduleId;
+      targetSessionId = todayLevelSession.sessionId;
+      sessionCollection = "plans";
+      sessionCollectionId = planId;
     } else {
       // ── Legacy low-ticket / general: resolve from course modules structure ──
       const allModulesSnap = await db
@@ -1117,6 +1345,10 @@ router.get("/workout/daily", async (req, res) => {
       hasSession: true,
       isRestDay: false,
       emptyReason: null,
+      // True when the session being returned has already been completed (lifetime,
+      // for this course). Lets the Hoy card offer "Continuar sesión" (reopen) vs
+      // "Empezar de nuevo" instead of a plain start.
+      todaySessionAlreadyCompleted: completedSessionIds.has(targetSessionId),
       session: {
         sessionId: targetSessionId,
         moduleId: targetModuleId,
@@ -1233,13 +1465,16 @@ router.get("/workout/session-exercises", async (req, res) => {
         throw new WakeApiServerError("NOT_FOUND", 404, "Sesion no encontrada");
       }
     } else {
+      const levelPlanId = resolveLevelPlanId(course, courseAccess);
       if (!moduleId) {
         throw new WakeApiServerError("VALIDATION_ERROR", 400, "moduleId es requerido");
       }
-      sessionDocRef = db.collection("courses").doc(courseId)
+      const baseCollection = levelPlanId ? "plans" : "courses";
+      const baseDocId = levelPlanId ?? courseId;
+      sessionDocRef = db.collection(baseCollection).doc(baseDocId)
         .collection("modules").doc(moduleId)
         .collection("sessions").doc(sessionId);
-      const modDoc = await db.collection("courses").doc(courseId)
+      const modDoc = await db.collection(baseCollection).doc(baseDocId)
         .collection("modules").doc(moduleId).get();
       moduleTitle = modDoc.exists ? ((modDoc.data()!.title as string) ?? "") : "";
     }
@@ -1450,6 +1685,7 @@ router.post("/workout/complete", async (req, res) => {
     plannedSnapshot?: unknown;
     courseName?: string;
     sessionName?: string;
+    replacesCompletionId?: string;
   }>(
     {
       courseId: "string",
@@ -1461,6 +1697,7 @@ router.post("/workout/complete", async (req, res) => {
       plannedSnapshot: "optional_object",
       courseName: "optional_string",
       sessionName: "optional_string",
+      replacesCompletionId: "optional_string",
     },
     raw,
     {maxArrayLength: 50}
@@ -1492,24 +1729,76 @@ router.post("/workout/complete", async (req, res) => {
     }
   }
 
-  // Pre-fetch existing PRs for all exercises to compare.
-  // History key shape: ${libraryId}_${libraryExerciseId} — keys to the *library's*
-  // stable exercise id (the value of primary[libId] post-migration), NOT the session-
-  // exercise doc id. This survives renames since the id is stable.
+  // Pre-fetch existing PRs for all exercises to compare. See deriveExerciseKey
+  // for the key shape; it returns null (skip) rather than persist a wrong-shape
+  // key, which would corrupt post-migration history.
   const exerciseKeys = exercises
-    .map((ex) => {
-      if (ex.exerciseKey) return ex.exerciseKey;
-      const primary = (ex as Record<string, unknown>).primary as Record<string, string> | undefined;
-      const libId = ex.libraryId ?? (primary ? Object.keys(primary)[0] : null);
-      const libraryExId = libId && primary ? primary[libId] : null;
-      if (libId && libraryExId) return `${libId}_${libraryExId}`;
-      // Do NOT fall back to ${libId}_${ex.exerciseName} — that was the pre-migration shape.
-      // Writing it post-migration corrupts history because rekeyed docs use ${libId}_${exerciseId}.
-      // Any caller missing both exerciseKey and primary[libId] indicates a bug; skip the
-      // history write rather than persist a wrong-shape key.
-      return null;
-    })
+    .map((ex) => deriveExerciseKey(ex as Record<string, unknown>))
     .filter(Boolean) as string[];
+
+  // ── Reopen handling ──────────────────────────────────────────────────────
+  // When replacesCompletionId is set, the client is re-finishing a session that
+  // was already completed (un-finished from the Hoy card). We must REPLACE that
+  // session's footprint, not append a duplicate: reuse its id + original date,
+  // and read the old session plus every affected history/lastPerformance doc so
+  // we can swap this session's contribution and recompute the derived aggregates.
+  const replaceId = body.replacesCompletionId;
+  let effectiveCompletionId = completionId;
+  let effectiveCompletionDate = completionDate;
+  let oldCompletedAt: string | null = null;
+  let isReopen = false;
+  let oldKeys: string[] = [];
+  const oldMuscleVolumes: Record<string, number> = {};
+  const exerciseHistoryMap: Record<string, {
+    sessions: Array<{ date?: string; sessionId?: string; sets?: Array<Record<string, unknown>> }>;
+    exerciseName?: string;
+  }> = {};
+  const reopenLastPerfMap: Record<string, Record<string, unknown>> = {};
+
+  if (replaceId) {
+    const oldDoc = await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .doc(replaceId)
+      .get();
+    if (!oldDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
+    }
+    const oldData = oldDoc.data()!;
+    isReopen = true;
+    effectiveCompletionId = replaceId;
+    // Keep the session anchored to its original day — the week bucket and streak
+    // day must not move just because it was re-finished later.
+    effectiveCompletionDate = (oldData.date as string) ?? completionDate;
+    oldCompletedAt = (oldData.completedAt as string) ?? null;
+
+    const oldExercises = (oldData.exercises as Array<Record<string, unknown>>) ?? [];
+    oldKeys = oldExercises
+      .map((ex) => deriveExerciseKey(ex))
+      .filter(Boolean) as string[];
+    for (const ex of oldExercises) {
+      const muscles = (ex.primaryMuscles as string[]) ?? [];
+      const setCount = ((ex.sets as unknown[]) ?? []).length;
+      for (const m of muscles) oldMuscleVolumes[m] = (oldMuscleVolumes[m] ?? 0) + setCount;
+    }
+
+    const unionKeys = Array.from(new Set([...exerciseKeys, ...oldKeys]));
+    const [histDocs, lpDocs] = await Promise.all([
+      Promise.all(unionKeys.map((k) =>
+        db.collection("users").doc(auth.userId).collection("exerciseHistory").doc(k).get())),
+      Promise.all(unionKeys.map((k) =>
+        db.collection("users").doc(auth.userId).collection("exerciseLastPerformance").doc(k).get())),
+    ]);
+    histDocs.forEach((d, i) => {
+      exerciseHistoryMap[unionKeys[i]] = d.exists ?
+        (d.data() as typeof exerciseHistoryMap[string]) :
+        {sessions: []};
+    });
+    lpDocs.forEach((d, i) => {
+      if (d.exists) reopenLastPerfMap[unionKeys[i]] = d.data()!;
+    });
+  }
 
   // Fetch library docs to hydrate displayName for sessionHistory.exercises (W-7) and
   // lastPerformance.exerciseName (W-4). Without this, both surfaces persist whatever the
@@ -1598,9 +1887,12 @@ router.post("/workout/complete", async (req, res) => {
   const userDoc = await db.collection("users").doc(auth.userId).get();
   const userData = userDoc.data() ?? {};
 
-  // Update streak via shared function (full read already done, pass lastKnown to avoid re-read)
+  // Update streak via shared function (full read already done, pass lastKnown to avoid re-read).
+  // Reopen re-finishes an existing day, which is already counted — skip so we don't double-count.
   const storedLastActivity = userData.activityStreak?.lastActivityDate ?? userData.lastSessionDate ?? null;
-  const streakResult = await updateStreak(auth.userId, completionDate, storedLastActivity);
+  const streakResult = isReopen ?
+    {updated: false} :
+    await updateStreak(auth.userId, completionDate, storedLastActivity);
 
   // Compute 1RM per exercise and detect PRs
   const personalRecords: Array<{
@@ -1612,20 +1904,22 @@ router.post("/workout/complete", async (req, res) => {
 
   const batch = db.batch();
 
-  // 1. Session history
+  // 1. Session history. On reopen this overwrites the original doc in place
+  // (same id), preserving its original date + completedAt so it stays ordered
+  // where it was; only the performed exercises, duration and notes change.
   const sessionHistoryRef = db
     .collection("users")
     .doc(auth.userId)
     .collection("sessionHistory")
-    .doc(completionId);
+    .doc(effectiveCompletionId);
 
   batch.set(sessionHistoryRef, {
     courseId: body.courseId,
     sessionId: body.sessionId,
     exercises: hydratedExercises,
     durationMs: body.durationMs,
-    date: completionDate,
-    completedAt: body.completedAt,
+    date: effectiveCompletionDate,
+    completedAt: isReopen && oldCompletedAt ? oldCompletedAt : body.completedAt,
     userNotes: body.userNotes ?? null,
     plannedSnapshot: body.plannedSnapshot ?? null,
     ...(body.courseName ? {courseName: body.courseName} : {}),
@@ -1633,39 +1927,38 @@ router.post("/workout/complete", async (req, res) => {
     completed_at: FieldValue.serverTimestamp(),
   });
 
-  // 2. Exercise history + last performance + 1RM per exercise
+  // 2. Exercise history + last performance + 1RM per exercise.
+  // `notes` is the coach's prescriptive instruction for the upcoming set — not a
+  // record of what the user did. Strip it before persisting so history docs don't
+  // bloat with up-to-500-char strings the user never authored.
+  const stripNotes = (s: Record<string, unknown>): Record<string, unknown> => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const {notes: _n, ...rest} = s;
+    return rest;
+  };
+  const newKeySet = new Set<string>();
+
   for (let i = 0; i < hydratedExercises.length; i++) {
     const exercise = hydratedExercises[i];
     const exerciseKey = exerciseKeys[i];
     if (!exerciseKey) continue;
+    newKeySet.add(exerciseKey);
 
-    let bestEstimate1RM = 0;
-    let bestSet: { weight: number; reps: number; intensity: string | null } | null = null;
+    const historySets = (exercise.sets ?? []).map(stripNotes);
+    const {estimate: bestEstimate1RM, bestSet} = computeBest1RM(historySets);
 
-    for (const set of exercise.sets ?? []) {
-      const weight = set.weight ?? 0;
-      const reps = set.reps ?? 0;
-      if (weight <= 0 || reps <= 0) continue;
+    // PR detection. Normal path compares against the stored lastPerformance
+    // estimate; reopen compares against the best of the user's OTHER sessions for
+    // this exercise (excluding the one being replaced) so the check isn't circular.
+    const comparisonEstimate = isReopen ?
+      bestEstimateFromSessions(exerciseHistoryMap[exerciseKey]?.sessions ?? [], effectiveCompletionId) :
+      (existingPrMap[exerciseKey]?.estimate1RM ?? 0);
+    const hadPrior = isReopen ? comparisonEstimate > 0 : !!existingPrMap[exerciseKey];
 
-      const intensity =
-        parseReportedIntensity(set.intensity) ??
-        parsePlannedIntensity(set.plannedIntensity) ??
-        null;
-      const estimate = calculate1RM(weight, reps, intensity);
-
-      if (estimate > bestEstimate1RM) {
-        bestEstimate1RM = estimate;
-        bestSet = {weight, reps, intensity: set.intensity ?? null};
-      }
-    }
-
-    const existingPr = existingPrMap[exerciseKey];
-    const existingEstimate = existingPr?.estimate1RM ?? 0;
-
-    // Only count as PR if there's a previous record to beat (not first-time exercises)
-    if (existingPr && bestEstimate1RM > existingEstimate && bestSet) {
-      // exercise.exerciseName is hydrated above. Don't fall through to exerciseKey
-      // (which is `${libId}_${exerciseId}`) — that surfaces a 20-char id in the PR card.
+    // Only count as PR if there's a previous record to beat (not first-time exercises).
+    // exercise.exerciseName is hydrated above; don't fall through to exerciseKey
+    // (which is `${libId}_${exerciseId}`) — that surfaces a 20-char id in the PR card.
+    if (hadPrior && bestEstimate1RM > comparisonEstimate && bestSet) {
       personalRecords.push({
         exerciseKey,
         exerciseName: exercise.exerciseName ?? "Ejercicio",
@@ -1679,64 +1972,104 @@ router.post("/workout/complete", async (req, res) => {
       .doc(auth.userId)
       .collection("exerciseHistory")
       .doc(exerciseKey);
-
-    // `notes` is the coach's prescriptive instruction for the upcoming set —
-    // not a record of what the user did. Strip it before persisting into
-    // exerciseHistory/lastPerformance so historical records don't bloat with
-    // up-to-500-char strings the user never authored.
-    const stripNotes = (s: Record<string, unknown>): Record<string, unknown> => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const {notes: _n, ...rest} = s;
-      return rest;
-    };
-    const historySets = (exercise.sets ?? []).map(stripNotes);
-
-    batch.set(
-      historyRef,
-      {
-        // Store the display name on the history doc so downstream readers
-        // (analytics, PR cards) don't need to cross-reference lastPerformance.
-        exerciseName: exercise.exerciseName ?? null,
-        sessions: FieldValue.arrayUnion({
-          date: completionDate,
-          sessionId: completionId,
-          sets: historySets,
-        }),
-        updated_at: FieldValue.serverTimestamp(),
-      },
-      {merge: true}
-    );
-
     const lastPerfRef = db
       .collection("users")
       .doc(auth.userId)
       .collection("exerciseLastPerformance")
       .doc(exerciseKey);
+    const newEntry = {date: effectiveCompletionDate, sessionId: effectiveCompletionId, sets: historySets};
 
-    // Production format: exerciseId, exerciseName, libraryId, lastSessionId, lastPerformedAt, totalSets, bestSet
-    const exerciseSets = historySets;
-    const prodBestSet = exerciseSets.length > 0 ?
-      exerciseSets.reduce((best: Record<string, unknown>, s: Record<string, unknown>) => {
-        const bw = parseFloat(String(best.weight ?? 0));
-        const sw = parseFloat(String(s.weight ?? 0));
-        return sw > bw ? s : best;
-      }, exerciseSets[0]) :
-      null;
+    if (isReopen) {
+      // Swap this session's entry in the shared history list (filter the old one
+      // out by id, append the new), then recompute lastPerformance from whatever
+      // is now the most-recent session — which correctly leaves a newer session's
+      // lastPerformance untouched if this isn't the latest.
+      const prior = exerciseHistoryMap[exerciseKey]?.sessions ?? [];
+      const rebuilt = [...prior.filter((s) => s.sessionId !== effectiveCompletionId), newEntry];
+      batch.set(historyRef, {
+        exerciseName: exercise.exerciseName ?? null,
+        sessions: rebuilt,
+        updated_at: FieldValue.serverTimestamp(),
+      }, {merge: true});
 
-    batch.set(lastPerfRef, {
-      exerciseId: exercise.exerciseId ?? null,
-      // exercise.exerciseName was hydrated from library above. Avoid fallback to
-      // exercise.exerciseKey or exerciseKey — those are `${libId}_${exerciseId}` and
-      // would persist a 20-char id where the UI expects a display name.
-      exerciseName: exercise.exerciseName ?? null,
-      libraryId: exercise.libraryId ?? null,
-      lastSessionId: completionId,
-      lastPerformedAt: completionDate,
-      totalSets: exerciseSets.length,
-      bestSet: prodBestSet,
-      estimate1RM: bestEstimate1RM > 0 ? Math.round(bestEstimate1RM * 100) / 100 : existingEstimate,
-      updated_at: FieldValue.serverTimestamp(),
-    });
+      const recent = mostRecentSession(rebuilt);
+      const recentSets = recent?.sets ?? [];
+      const {estimate} = computeBest1RM(recentSets);
+      batch.set(lastPerfRef, {
+        exerciseId: exercise.exerciseId ?? null,
+        exerciseName: exercise.exerciseName ?? null,
+        libraryId: exercise.libraryId ?? null,
+        lastSessionId: recent?.sessionId ?? effectiveCompletionId,
+        lastPerformedAt: recent?.date ?? effectiveCompletionDate,
+        totalSets: recentSets.length,
+        bestSet: bestSetByWeight(recentSets),
+        estimate1RM: estimate > 0 ? Math.round(estimate * 100) / 100 : 0,
+        updated_at: FieldValue.serverTimestamp(),
+      });
+    } else {
+      // Store the display name on the history doc so downstream readers
+      // (analytics, PR cards) don't need to cross-reference lastPerformance.
+      batch.set(historyRef, {
+        exerciseName: exercise.exerciseName ?? null,
+        sessions: FieldValue.arrayUnion(newEntry),
+        updated_at: FieldValue.serverTimestamp(),
+      }, {merge: true});
+
+      const existingEstimate = existingPrMap[exerciseKey]?.estimate1RM ?? 0;
+      batch.set(lastPerfRef, {
+        exerciseId: exercise.exerciseId ?? null,
+        exerciseName: exercise.exerciseName ?? null,
+        libraryId: exercise.libraryId ?? null,
+        lastSessionId: effectiveCompletionId,
+        lastPerformedAt: effectiveCompletionDate,
+        totalSets: historySets.length,
+        bestSet: bestSetByWeight(historySets),
+        estimate1RM: bestEstimate1RM > 0 ? Math.round(bestEstimate1RM * 100) / 100 : existingEstimate,
+        updated_at: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  // 2b. Reopen only: exercises that were in the OLD session but removed in this
+  // re-finish. Pull this session out of their history and re-point (or clear)
+  // lastPerformance so nothing references a contribution that no longer exists.
+  if (isReopen) {
+    const removedKeys = oldKeys.filter((k) => !newKeySet.has(k));
+    for (const exerciseKey of removedKeys) {
+      const prior = exerciseHistoryMap[exerciseKey]?.sessions ?? [];
+      const rebuilt = prior.filter((s) => s.sessionId !== effectiveCompletionId);
+      const historyRef = db
+        .collection("users")
+        .doc(auth.userId)
+        .collection("exerciseHistory")
+        .doc(exerciseKey);
+      const lastPerfRef = db
+        .collection("users")
+        .doc(auth.userId)
+        .collection("exerciseLastPerformance")
+        .doc(exerciseKey);
+      batch.set(historyRef, {sessions: rebuilt, updated_at: FieldValue.serverTimestamp()}, {merge: true});
+
+      const recent = mostRecentSession(rebuilt);
+      if (recent) {
+        const recentSets = recent.sets ?? [];
+        const {estimate} = computeBest1RM(recentSets);
+        const existing = reopenLastPerfMap[exerciseKey] ?? {};
+        batch.set(lastPerfRef, {
+          exerciseId: existing.exerciseId ?? null,
+          exerciseName: existing.exerciseName ?? null,
+          libraryId: existing.libraryId ?? null,
+          lastSessionId: recent.sessionId ?? null,
+          lastPerformedAt: recent.date ?? null,
+          totalSets: recentSets.length,
+          bestSet: bestSetByWeight(recentSets),
+          estimate1RM: estimate > 0 ? Math.round(estimate * 100) / 100 : 0,
+          updated_at: FieldValue.serverTimestamp(),
+        });
+      } else {
+        batch.delete(lastPerfRef);
+      }
+    }
   }
 
   // 3. Compute muscle volumes from exercises
@@ -1749,36 +2082,30 @@ router.post("/workout/complete", async (req, res) => {
     }
   }
 
-  // 3b. Compute week key for weeklyMuscleVolume persistence
-  // Must match client-side getMondayWeek() in apps/pwa/src/utils/weekCalculation.js
-  const completionDateObj = new Date(completionDate);
-  completionDateObj.setHours(0, 0, 0, 0);
-  const dayOfWeek = completionDateObj.getDay();
-  const mondayOffset = completionDateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-  const monday = new Date(completionDateObj);
-  monday.setDate(mondayOffset);
-  const year = monday.getFullYear();
-  const jan1 = new Date(year, 0, 1);
-  const jan1Day = jan1.getDay();
-  const daysToFirstMonday = jan1Day === 0 ? 1 : 8 - jan1Day;
-  const firstMonday = new Date(jan1.getTime());
-  firstMonday.setDate(jan1.getDate() + daysToFirstMonday);
-  const daysDiff = Math.floor((monday.getTime() - firstMonday.getTime()) / (24 * 60 * 60 * 1000));
-  const weekNumber = Math.floor(daysDiff / 7) + 1;
-  const weekKey = `${year}-W${String(weekNumber).padStart(2, "0")}`;
+  // 3b. Week key for weeklyMuscleVolume persistence — anchored to the session's
+  // effective date (its original day on reopen). getMondayWeek matches the
+  // client-side getMondayWeek() in apps/pwa/src/utils/weekCalculation.js.
+  const weekKey = getMondayWeek(new Date(effectiveCompletionDate));
 
-  // Merge session volumes into existing weekly volumes (additive)
+  // Apply the session's volume to the week bucket. On reopen this is a delta —
+  // the old contribution is subtracted and the new one added (same bucket, since
+  // the date is preserved) — so a re-finish never double-counts. Normal path has
+  // no old volume, so delta === the new volume (plain additive, unchanged).
   const weeklyVolumeUpdate: Record<string, unknown> = {};
-  const existingWeeklyVolume = userData.weeklyMuscleVolume?.[weekKey] ?? {};
-  for (const [muscle, sets] of Object.entries(muscleVolumes)) {
-    const existing = (existingWeeklyVolume as Record<string, number>)[muscle] ?? 0;
-    weeklyVolumeUpdate[`weeklyMuscleVolume.${weekKey}.${muscle}`] = existing + sets;
+  const existingWeeklyVolume = (userData.weeklyMuscleVolume?.[weekKey] ?? {}) as Record<string, number>;
+  const volumeMuscles = new Set([...Object.keys(muscleVolumes), ...Object.keys(oldMuscleVolumes)]);
+  for (const muscle of volumeMuscles) {
+    const delta = (muscleVolumes[muscle] ?? 0) - (isReopen ? (oldMuscleVolumes[muscle] ?? 0) : 0);
+    if (delta === 0) continue;
+    const next = (existingWeeklyVolume[muscle] ?? 0) + delta;
+    weeklyVolumeUpdate[`weeklyMuscleVolume.${weekKey}.${muscle}`] = next < 0 ? 0 : next;
   }
 
-  // 4. Update user last session + weekly volume (streak already updated by updateStreak above)
+  // 4. Update user weekly volume (+ lastSessionDate, except on reopen — re-finishing
+  // an older session must not move the user's last-activity day backward).
   const userRef = db.collection("users").doc(auth.userId);
   batch.update(userRef, {
-    lastSessionDate: completionDate,
+    ...(isReopen ? {} : {lastSessionDate: completionDate}),
     ...weeklyVolumeUpdate,
     updated_at: FieldValue.serverTimestamp(),
   });
@@ -1797,7 +2124,7 @@ router.post("/workout/complete", async (req, res) => {
 
   res.json({
     data: {
-      completionId,
+      completionId: effectiveCompletionId,
       personalRecords,
       streakUpdated: streakResult.updated,
       muscleVolumes,
@@ -2621,10 +2948,59 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
 
   // Check for plan-based programs first
   const courseData = courseDoc.data()!;
+  const includeSessions = req.query.include === "sessions";
+
+  // Level-plan branch: if the course has level_plans, list modules from the user's level plan
+  const modulesLevelPlanId = resolveLevelPlanId(courseData, courseAccess as {level?: string | null} | null | undefined);
+  if (modulesLevelPlanId) {
+    const currentBlockIndex = typeof courseData.current_block_index === "number" ? courseData.current_block_index : null;
+    const modulesSnap = await db
+      .collection("plans").doc(modulesLevelPlanId)
+      .collection("modules")
+      .orderBy("order", "asc")
+      .limit(MAX_MODULES_PER_COURSE)
+      .get();
+
+    let visibleModuleDocs = modulesSnap.docs;
+    const monthlyDrop = courseData.block_cadence === "monthly_first_monday";
+    if (monthlyDrop && !isCreator && !isAdmin) {
+      if (currentBlockIndex === null) {
+        visibleModuleDocs = [];
+      } else {
+        visibleModuleDocs = modulesSnap.docs.filter((d) => {
+          const ord = d.data().order;
+          return typeof ord !== "number" || ord <= currentBlockIndex;
+        });
+      }
+    }
+
+    if (!includeSessions) {
+      res.json({data: visibleModuleDocs.map((doc) => ({...doc.data(), id: doc.id}))});
+      return;
+    }
+
+    const modules = await Promise.all(
+      visibleModuleDocs.map(async (mDoc) => {
+        const sessionsSnap = await mDoc.ref
+          .collection("sessions")
+          .orderBy("order", "asc")
+          .limit(MAX_SESSIONS_PER_MODULE)
+          .get();
+        const sessions = await Promise.all(
+          sessionsSnap.docs.map(async (sDoc) => {
+            const exercises = await loadExerciseTree(sDoc.ref);
+            return {...sDoc.data(), id: sDoc.id, exercises};
+          })
+        );
+        return {...mDoc.data(), id: mDoc.id, sessions};
+      })
+    );
+    res.json({data: modules});
+    return;
+  }
+
   const planAssignments = (courseData.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string; moduleIndex?: number }>;
   const planWeekKeys = Object.keys(planAssignments).filter((k) => planAssignments[k]?.planId);
-
-  const includeSessions = req.query.include === "sessions";
 
   if (planWeekKeys.length > 0) {
     // Plan-based: return virtual modules from planAssignments, sorted by week key
@@ -2818,9 +3194,16 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
   const startedAtIso = timestampToIso(stateData.current_block_started_at);
   const startedAtDate = startedAtIso ? new Date(startedAtIso) : null;
 
+  // Resolve level plan id early so it can be used for both the next-block
+  // lookup below and the current-block module read further down.
+  const currentBlockLevelPlanId = resolveLevelPlanId(course, userCourseEntry as {level?: string | null} | null | undefined);
+
   let nextBlockUnlocksAtIso: string | null = null;
   if (nextBlockId && nextBlockIndex !== null) {
-    const nextModuleDoc = await courseDoc.ref.collection("modules").doc(nextBlockId).get();
+    const nextModuleRef = currentBlockLevelPlanId ?
+      db.collection("plans").doc(currentBlockLevelPlanId).collection("modules").doc(nextBlockId) :
+      courseDoc.ref.collection("modules").doc(nextBlockId);
+    const nextModuleDoc = await nextModuleRef.get();
     const moduleData = nextModuleDoc.exists ? nextModuleDoc.data() ?? {} : {};
     nextBlockUnlocksAtIso = resolveBlockUnlocksAt({
       unlocksAtRaw: moduleData.unlocks_at,
@@ -2845,7 +3228,10 @@ router.get("/workout/programs/:courseId/current-block", async (req, res) => {
     return;
   }
 
-  const moduleRef = courseDoc.ref.collection("modules").doc(currentBlockId);
+  // For level-plan courses, modules live in the plan, not courses/{id}/modules
+  const moduleRef = currentBlockLevelPlanId ?
+    db.collection("plans").doc(currentBlockLevelPlanId).collection("modules").doc(currentBlockId) :
+    courseDoc.ref.collection("modules").doc(currentBlockId);
   const moduleDoc = await moduleRef.get();
   if (!moduleDoc.exists) {
     // State doc points at a module that no longer exists. Treat as no block.

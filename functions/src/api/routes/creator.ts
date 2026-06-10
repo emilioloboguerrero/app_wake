@@ -1607,8 +1607,45 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     // Enforced at checkout via capacity.ts; counts buyers past the cap into a
     // waitlist instead.
     "capacity",
+    // Código ABS niveles: level key → planId mapping and level option metadata.
+    "level_plans",
+    "levels",
   ];
   const updates = pickFields(req.body, allowedFields);
+
+  if (updates.level_plans !== undefined && updates.level_plans !== null) {
+    const v = updates.level_plans;
+    if (
+      typeof v !== "object" ||
+      Array.isArray(v) ||
+      Object.values(v as Record<string, unknown>).some((val) => typeof val !== "string")
+    ) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "level_plans debe ser un objeto con valores string (nivel → planId)",
+        "level_plans"
+      );
+    }
+  }
+
+  if (updates.levels !== undefined && updates.levels !== null) {
+    const v = updates.levels as { options?: unknown; default?: unknown };
+    if (
+      typeof v !== "object" ||
+      Array.isArray(v) ||
+      !Array.isArray(v.options) ||
+      (v.options as unknown[]).length === 0 ||
+      (v.options as unknown[]).some((o) => typeof o !== "string") ||
+      typeof v.default !== "string" ||
+      !(v.options as string[]).includes(v.default as string)
+    ) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "levels debe tener options (array de strings no vacío) y default (string incluido en options)",
+        "levels"
+      );
+    }
+  }
 
   if (updates.capacity !== undefined && updates.capacity !== null) {
     const v = updates.capacity;
@@ -5092,6 +5129,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
   const body = validateBody<{
     title: string; order: number; isRestDay?: boolean;
     source_library_session_id?: string; dayIndex?: number; image_url?: string;
+    weekIndex?: number | null;
   }>(
     {
       title: "string",
@@ -5100,9 +5138,21 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
       source_library_session_id: "optional_string",
       dayIndex: "optional_number",
       image_url: "optional_string",
+      weekIndex: "optional_number",
     },
     req.body
   );
+
+  // weekIndex must be null or a non-negative integer when provided
+  if (body.weekIndex !== undefined && body.weekIndex !== null) {
+    if (!Number.isInteger(body.weekIndex) || body.weekIndex < 0) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "weekIndex debe ser un entero mayor o igual a 0, o null",
+        "weekIndex"
+      );
+    }
+  }
 
   // Support legacy field name from old clients
   const sourceLibSessionId = body.source_library_session_id ?? (req.body.librarySessionRef as string | undefined) ?? null;
@@ -5114,6 +5164,7 @@ router.post("/creator/plans/:planId/modules/:moduleId/sessions", async (req, res
     ...(sourceLibSessionId && {source_library_session_id: sourceLibSessionId}),
     ...(body.dayIndex !== undefined && {dayIndex: body.dayIndex}),
     ...(body.image_url !== undefined && {image_url: body.image_url}),
+    ...(body.weekIndex !== undefined && {weekIndex: body.weekIndex}),
     created_at: FieldValue.serverTimestamp(),
     updated_at: FieldValue.serverTimestamp(),
   };
@@ -5292,11 +5343,22 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
   const doc = await ref.get();
   if (!doc.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Sesión no encontrada");
 
-  const allowedFields = ["title", "order", "isRestDay", "source_library_session_id", "dayIndex", "image_url", "defaultDataTemplate"];
+  const allowedFields = ["title", "order", "isRestDay", "source_library_session_id", "dayIndex", "image_url", "defaultDataTemplate", "weekIndex"];
   const updates = pickFields(req.body, allowedFields);
 
   if (Object.keys(updates).length === 0) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "No se proporcionaron campos para actualizar");
+  }
+
+  if (updates.weekIndex !== undefined && updates.weekIndex !== null) {
+    const v = updates.weekIndex;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "weekIndex debe ser un entero mayor o igual a 0, o null",
+        "weekIndex"
+      );
+    }
   }
 
   await ref.update({...updates, updated_at: FieldValue.serverTimestamp()});

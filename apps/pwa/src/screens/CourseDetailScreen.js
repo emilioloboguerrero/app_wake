@@ -39,6 +39,7 @@ import EpaycoWebView from '../components/EpaycoWebView';
 import BookCallSlotModal from '../components/BookCallSlotModal';
 import { getBookingForUser } from '../services/callBookingService';
 import logger from '../utils/logger.js';
+import analyticsService from '../services/analyticsService';
 import { STALE_TIMES } from '../config/queryConfig';
 import { auth } from '../config/firebase';
 import profilePictureService from '../services/profilePictureService';
@@ -105,6 +106,9 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [mercadoPagoEmail, setMercadoPagoEmail] = useState('');
   const [emailModalError, setEmailModalError] = useState('');
+  // Proactive subscription email step: false = one-tap confirm of the account
+  // email; true = user chose to type a different Mercado Pago email.
+  const [useCustomEmail, setUseCustomEmail] = useState(false);
   const [preCheckout, setPreCheckout] = useState(null); // { checkoutURL, mode: 'web'|'native' }
   const [showBookCallModal, setShowBookCallModal] = useState(false);
   const [userCallBooking, setUserCallBooking] = useState(null);
@@ -826,6 +830,26 @@ useEffect(() => {
       return; // Exit early - free flow handled
     }
 
+    // Subscriptions: choose/confirm the Mercado Pago email BEFORE creating the
+    // preapproval, so it binds to the email the user will actually authorize
+    // with (the preapproval can't be re-bound afterwards). One-time payments
+    // skip this — MP's preference checkout accepts any email.
+    const isSubscriptionPurchase = course.access_duration === 'monthly';
+    if (isSubscriptionPurchase) {
+      setMercadoPagoEmail(effectiveUser.email || '');
+      setUseCustomEmail(false);
+      setEmailModalError('');
+      setShowEmailModal(true);
+      try {
+        analyticsService.track('subscription.email_step.shown', {
+          course_id: course.id,
+          surface: isWeb ? 'pwa_web' : 'pwa_native',
+        });
+      } catch {}
+      logger.info('[subscription] email step shown', { courseId: course.id });
+      return;
+    }
+
     // Regular purchase flow - open payment modal
     try {
       setPurchasing(true);
@@ -941,8 +965,26 @@ useEffect(() => {
 
     setEmailModalError('');
     setShowEmailModal(false);
-    
-    // Retry purchase with the provided email
+
+    const chosenEmail = mercadoPagoEmail.trim();
+    const accountEmail = (effectiveUser.email || '').trim();
+    const emailsDiffer = chosenEmail.toLowerCase() !== accountEmail.toLowerCase();
+    const surface = isWeb ? 'pwa_web' : 'pwa_native';
+    try {
+      analyticsService.track('subscription.email_step.choice', {
+        course_id: course.id,
+        surface,
+        choice: useCustomEmail ? 'custom' : 'account',
+        emails_differ: emailsDiffer,
+      });
+    } catch {}
+    logger.info('[subscription] email step choice', {
+      courseId: course.id,
+      choice: useCustomEmail ? 'custom' : 'account',
+      emailsDiffer,
+    });
+
+    // Proceed to subscription checkout with the chosen email.
     try {
       setPurchasing(true);
       setProcessingPurchase(true);
@@ -952,16 +994,19 @@ useEffect(() => {
       readyNotificationSentRef.current = false;
       successAlertShownRef.current = false;
 
-      // Call prepareSubscription directly with the provided email
+      // Call prepareSubscription directly with the chosen email.
       const subscriptionResult = await purchaseService.prepareSubscription(
         effectiveUser.uid,
         course.id,
-        mercadoPagoEmail.trim()
+        chosenEmail,
+        surface
       );
 
       if (!subscriptionResult.success) {
         if (subscriptionResult.requiresAlternateEmail) {
-          // Still requires alternate email - show modal again
+          // MP rejected the email at creation — re-prompt, forcing the custom
+          // input so the user can correct it.
+          setUseCustomEmail(true);
           setShowEmailModal(true);
           setEmailModalError(subscriptionResult.error || 'Este correo no es válido para Mercado Pago. Por favor intenta con otro.');
         } else {
@@ -973,6 +1018,18 @@ useEffect(() => {
         pendingPostPurchaseRef.current = false;
         return;
       }
+
+      try {
+        analyticsService.track('subscription.checkout.redirected', {
+          course_id: course.id,
+          surface,
+          subscription_id: subscriptionResult.subscriptionId || null,
+        });
+      } catch {}
+      logger.info('[subscription] checkout redirected', {
+        courseId: course.id,
+        subscriptionId: subscriptionResult.subscriptionId || null,
+      });
 
       // On web: open MP in a new tab so installed PWAs (iOS standalone) work.
       if (isWeb) {
@@ -1611,42 +1668,51 @@ useEffect(() => {
           }}
         >
           <Pressable style={styles.emailModalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.emailModalTitle}>Correo de Mercado Pago</Text>
+            <Text style={styles.emailModalTitle}>Confirma tu correo de Mercado Pago</Text>
             <Text style={styles.emailModalDescription}>
-              Mercado Pago necesita un correo distinto para la suscripción. Tu compra se vinculará automáticamente a tu cuenta Wake.
+              Usa este mismo correo al iniciar sesión en Mercado Pago para completar tu suscripción.
             </Text>
-            
-            <TextInput
-              style={[styles.emailModalInput, emailModalError && styles.emailModalInputError]}
-              placeholder="correo@mercadopago.com"
-              placeholderTextColor="rgba(255, 255, 255, 0.5)"
-              value={mercadoPagoEmail}
-              onChangeText={(text) => {
-                setMercadoPagoEmail(text);
-                setEmailModalError('');
-              }}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus={true}
-            />
-            
+
+            {useCustomEmail ? (
+              <TextInput
+                style={[styles.emailModalInput, emailModalError && styles.emailModalInputError]}
+                placeholder="correo@mercadopago.com"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={mercadoPagoEmail}
+                onChangeText={(text) => {
+                  setMercadoPagoEmail(text);
+                  setEmailModalError('');
+                }}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus={true}
+              />
+            ) : (
+              <View style={styles.preCheckoutEmailCard}>
+                <Text style={styles.preCheckoutEmailLabel}>Tu correo</Text>
+                <Text style={styles.preCheckoutEmailValue} numberOfLines={1}>
+                  {mercadoPagoEmail}
+                </Text>
+              </View>
+            )}
+
             {emailModalError ? (
               <Text style={styles.emailModalErrorText}>{emailModalError}</Text>
             ) : null}
-            
+
             <View style={styles.emailModalButtons}>
               <TouchableOpacity
                 style={[styles.emailModalButton, styles.emailModalButtonCancel]}
                 onPress={() => {
                   setShowEmailModal(false);
                   setEmailModalError('');
-                  setMercadoPagoEmail('');
+                  setUseCustomEmail(false);
                 }}
               >
                 <Text style={styles.emailModalButtonCancelText}>Cancelar</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={[styles.emailModalButton, styles.emailModalButtonSubmit]}
                 onPress={handleEmailSubmit}
@@ -1655,10 +1721,25 @@ useEffect(() => {
                 {purchasing ? (
                   <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" />
                 ) : (
-                  <Text style={styles.emailModalButtonSubmitText}>Continuar</Text>
+                  <Text style={styles.emailModalButtonSubmitText}>
+                    {useCustomEmail ? 'Continuar' : 'Continuar con este correo'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
+
+            {!useCustomEmail ? (
+              <TouchableOpacity
+                style={styles.emailModalSecondaryLink}
+                onPress={() => {
+                  setUseCustomEmail(true);
+                  setMercadoPagoEmail('');
+                  setEmailModalError('');
+                }}
+              >
+                <Text style={styles.emailModalSecondaryLinkText}>Usar otro correo de Mercado Pago</Text>
+              </TouchableOpacity>
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>
@@ -2755,6 +2836,15 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 1)',
     fontSize: Math.min(screenWidth * 0.045, 18),
     fontWeight: '700',
+  },
+  emailModalSecondaryLink: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  emailModalSecondaryLinkText: {
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: Math.min(screenWidth * 0.038, 15),
+    fontWeight: '600',
   },
   videoTabBar: {
     flexDirection: 'row',

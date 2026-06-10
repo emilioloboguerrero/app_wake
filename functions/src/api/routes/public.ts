@@ -412,6 +412,13 @@ function truncateMpTitle(raw: string | undefined, fallback: string): string {
   return value.length > 200 ? value.slice(0, 197) + "…" : value;
 }
 
+// Mirror of payments.ts logCheckout: full-fidelity checkout-step logging under
+// `checkout.<step>` so storefront subscriptions can also be reconstructed from
+// Cloud Logging. MP payloads are logged verbatim (no card data, no secrets).
+function logCheckout(step: string, data: Record<string, unknown>): void {
+  functions.logger.info(`checkout.${step}`, {flow: "checkout", step, ...data});
+}
+
 router.post("/public/checkout/start", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
@@ -421,6 +428,7 @@ router.post("/public/checkout/start", async (req, res) => {
     courseId: string;
     mode: "one_time" | "subscription";
     payerEmail?: string;
+    surface?: string;
   }>(
     {
       username: "string",
@@ -429,9 +437,11 @@ router.post("/public/checkout/start", async (req, res) => {
       // CR-5: must be declared in the schema or validateBody strips it,
       // breaking the alternate-email retry flow.
       payerEmail: "optional_string",
+      surface: "optional_string",
     },
     req.body
   );
+  const surface = typeof body.surface === "string" ? body.surface : "storefront";
 
   const username = (body.username || "").toLowerCase().trim();
   if (!USERNAME_RE.test(username)) {
@@ -679,9 +689,22 @@ router.post("/public/checkout/start", async (req, res) => {
   }
 
   const externalRef = buildExternalReference(auth.userId, body.courseId, "sub");
+  const emailType: "account" | "custom" =
+    payerEmailRaw === buyerEmail ? "account" : "custom";
   const client = getMpClient();
   const preapproval = new PreApproval(client);
   const startDate = new Date(Date.now() + 5 * 60 * 1000);
+
+  logCheckout("subscription.create.attempt", {
+    userId: auth.userId,
+    courseId: body.courseId,
+    externalReference: externalRef,
+    surface,
+    emailType,
+    payerEmail: payerEmailRaw,
+    accountEmail: buyerEmail,
+    monthlyPrice,
+  });
 
   let result;
   try {
@@ -702,12 +725,25 @@ router.post("/public/checkout/start", async (req, res) => {
       },
     });
   } catch (error: unknown) {
-    const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    const msg = rawMsg.toLowerCase();
     const needsAltEmail =
       msg.includes("cannot operate between different") ||
       msg.includes("payer_email") ||
       msg.includes("belongs to another user") ||
       msg.includes("must belong to this site");
+
+    logCheckout("subscription.create.fail", {
+      userId: auth.userId,
+      courseId: body.courseId,
+      externalReference: externalRef,
+      surface,
+      emailType,
+      payerEmail: payerEmailRaw,
+      needsAltEmail,
+      mpMessage: rawMsg,
+      mp: error instanceof Error ? {name: error.name, message: error.message} : error,
+    });
 
     if (needsAltEmail) {
       res.status(409).json({
@@ -778,6 +814,18 @@ router.post("/public/checkout/start", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     }, {merge: true});
+
+  logCheckout("subscription.create.ok", {
+    userId: auth.userId,
+    courseId: body.courseId,
+    externalReference: externalRef,
+    subscriptionId: result.id,
+    surface,
+    emailType,
+    status: result.status ?? null,
+    nextBillingDate,
+    mp: result,
+  });
 
   res.json({
     data: {

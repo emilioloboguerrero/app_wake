@@ -54,6 +54,9 @@ export function useCoursesEnriched(courses) {
         current_block_id: apiData?.current_block_id ?? null,
         current_block_index: typeof apiData?.current_block_index === 'number' ? apiData.current_block_index : null,
         scheduling: apiData?.scheduling ?? c.scheduling ?? null,
+        // Level-gating fields — set by creator, read by level-picker modal + workout walker.
+        levels: apiData?.levels ?? c.levels ?? null,
+        level_plans: apiData?.level_plans ?? c.level_plans ?? null,
       };
     }),
   };

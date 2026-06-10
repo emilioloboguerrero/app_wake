@@ -12,6 +12,7 @@ import NumberTicker from '../ui/NumberTicker';
 import ProgramRevenueCard from './ProgramRevenueCard';
 import ProgramTrainingTab from './ProgramTrainingTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
+import LevelPlansConfig from './LevelPlansConfig';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
 import { detectVideoSource, getEmbedUrl } from '../../utils/videoUtils';
@@ -754,6 +755,16 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     </p>
                   )}
                 </BentoCard>
+
+                {/* Level plans config — maps principiante/intermedio/avanzado
+                    each to an existing plan. Writes levels + level_plans on
+                    the program shell doc. Toggle off = no-op (program behaves
+                    as today). */}
+                <LevelPlansConfig
+                  programId={programId}
+                  creatorId={user?.uid}
+                  initial={{ levels: program?.levels, level_plans: program?.level_plans }}
+                />
 
                 {/* Weight suggestions */}
                 <BentoCard className="gp-config__card">

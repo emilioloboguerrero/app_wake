@@ -1113,6 +1113,10 @@ const LibrarySessionDetailScreen = () => {
   const titleSaveTimerRef = useRef(null);
   const effectiveTitle = localTitle ?? session?.title ?? '';
 
+  // Editable weekIndex (plan instance only)
+  const [localWeekIndex, setLocalWeekIndex] = useState(undefined);
+  const effectiveWeekIndex = localWeekIndex !== undefined ? localWeekIndex : (session?.weekIndex ?? null);
+
   // Sync localTitle when session data loads for the first time
   useEffect(() => {
     if (session?.title && localTitle === null) {
@@ -1346,6 +1350,23 @@ const LibrarySessionDetailScreen = () => {
         });
     }, 500);
   }, [user, sessionId, contentApi, queryClient, showToast]);
+
+  const handleWeekIndexChange = useCallback((value) => {
+    const weekIndex = value === '' ? null : Number(value);
+    setLocalWeekIndex(weekIndex);
+    if (!user || !sessionId || !instanceService || !instanceId || !instanceModuleId) return;
+    instanceService.updateSession(instanceId, instanceModuleId, sessionId, { weekIndex })
+      .then(() => {
+        setHasMadeChanges(true);
+        // Unlike handleTitleChange, weekIndex does not appear on session-list cards — no need to invalidate library.sessions or library.sessionsSlim.
+        queryClient.invalidateQueries({ queryKey: ['library', 'session', sessionId] });
+      })
+      .catch((err) => {
+        setLocalWeekIndex(undefined); // revert optimistic override -> falls back to session.weekIndex
+        logger.error('Error saving weekIndex:', err);
+        showToast('No pudimos guardar la semana. Intenta de nuevo.', 'error');
+      });
+  }, [user, sessionId, instanceService, instanceId, instanceModuleId, queryClient, showToast]);
 
   useEffect(() => {
     if (isPresetSelectorOpen && user?.uid) {
@@ -3764,6 +3785,25 @@ const LibrarySessionDetailScreen = () => {
                     onClick={(e) => e.stopPropagation()}
                   />
                 </div>
+                {isPlanInstanceEdit && (
+                  <div className="lss-title-row">
+                    <label className="lss-title-label" htmlFor="lss-week-index-select">Semana del mes</label>
+                    <select
+                      id="lss-week-index-select"
+                      className="lss-select"
+                      value={effectiveWeekIndex === null || effectiveWeekIndex === undefined ? '' : String(effectiveWeekIndex)}
+                      onChange={(e) => handleWeekIndexChange(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="">Todas las semanas</option>
+                      <option value="0">Semana 1</option>
+                      <option value="1">Semana 2</option>
+                      <option value="2">Semana 3</option>
+                      <option value="3">Semana 4</option>
+                      <option value="4">Semana 5</option>
+                    </select>
+                  </div>
+                )}
                 <div className="lss-expanded">
                 {/* Card 1: Image */}
                 <div className="lsd-glow-wrap lsd-glow-wrap--card lsd-glow-wrap--image">

@@ -48,6 +48,42 @@ function pickRecipientEmail(
   return null;
 }
 
+// ── Checkout observability ────────────────────────────────────────────────
+// Full-fidelity logging so any subscription checkout can be reconstructed end
+// to end from Cloud Logging. Every step emits a structured entry under
+// `checkout.<step>` tagged with `flow:"checkout"` and a correlation id
+// (subscriptionId / external_reference). MercadoPago request + response
+// payloads are logged VERBATIM under `mp` — they carry no card data (neither
+// the redirect nor the transparent flow exposes a PAN to us) and no secrets
+// (access token / webhook secret never appear in MP payloads). The buyer email
+// IS present in MP payloads and in `payerEmail`/`accountEmail` fields: this is
+// intentional — the whole investigation is an account-vs-payer email mismatch,
+// so the addresses are the signal. Keep these logs access-controlled.
+function logCheckout(step: string, data: Record<string, unknown>): void {
+  functions.logger.info(`checkout.${step}`, {flow: "checkout", step, ...data});
+}
+
+// Pull a usable {status, message, raw} out of whatever MP threw. The SDK throws
+// plain objects ({message, status, cause}) as often as Error instances.
+function describeMpError(error: unknown): {
+  mpStatus: number | string | null;
+  mpMessage: string;
+  mpRaw: unknown;
+} {
+  if (error instanceof Error) {
+    return {mpStatus: null, mpMessage: error.message, mpRaw: {name: error.name, message: error.message}};
+  }
+  if (error && typeof error === "object") {
+    const o = error as {message?: unknown; status?: unknown; cause?: unknown; error?: unknown};
+    return {
+      mpStatus: (typeof o.status === "number" || typeof o.status === "string") ? o.status : null,
+      mpMessage: typeof o.message === "string" ? o.message : JSON.stringify(o),
+      mpRaw: o,
+    };
+  }
+  return {mpStatus: null, mpMessage: String(error), mpRaw: String(error)};
+}
+
 // MercadoPago redirects the buyer back to one of these URLs after checkout.
 // We derive the host from the caller's Origin header when it's in the trusted
 // allowlist (so staging redirects to staging, custom-domain redirects to the
@@ -288,10 +324,11 @@ router.post("/payments/subscription", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
 
-  const body = validateBody<{ courseId: string; payer_email: string }>(
-    {courseId: "string", payer_email: "string"},
+  const body = validateBody<{ courseId: string; payer_email: string; surface?: string }>(
+    {courseId: "string", payer_email: "string", surface: "optional_string"},
     req.body
   );
+  const surface = typeof body.surface === "string" ? body.surface : "unknown";
 
   if (!COURSE_ID_RE.test(body.courseId)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
@@ -352,6 +389,16 @@ router.post("/payments/subscription", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Usuario no encontrado");
   }
 
+  // Classify the email the client chose so we can later compare strand-rates of
+  // "account" vs "custom" choosers. Account email comes from the verified user
+  // doc; payer_email is whatever the proactive email step sent.
+  const accountEmail =
+    typeof userDoc.data()?.email === "string" ?
+      (userDoc.data()?.email as string).trim().toLowerCase() :
+      null;
+  const emailType: "account" | "custom" =
+    accountEmail && accountEmail === body.payer_email ? "account" : "custom";
+
   const client = getMPClient();
   const preapproval = new PreApproval(client);
   const startDate = new Date(Date.now() + 5 * 60 * 1000);
@@ -371,6 +418,19 @@ router.post("/payments/subscription", async (req, res) => {
   // Without this, MP falls back to the account-level URL configured in the
   // dashboard — silently dropping webhooks if that URL is wrong/missing.
   const notificationUrl = resolveWebhookUrl();
+
+  logCheckout("subscription.create.attempt", {
+    userId: auth.userId,
+    courseId: body.courseId,
+    externalReference: externalRef,
+    surface,
+    emailType,
+    payerEmail: body.payer_email,
+    accountEmail,
+    monthlyPrice,
+    trialDays,
+    deliveryType: course.deliveryType ?? null,
+  });
 
   let result;
   try {
@@ -402,22 +462,27 @@ router.post("/payments/subscription", async (req, res) => {
       },
     });
   } catch (error: unknown) {
-    // MP SDK throws plain objects ({message, status}), not Error instances —
-    // pull .message off the object directly so the alt-email patterns still match.
-    let rawMsg: string;
-    if (error instanceof Error) {
-      rawMsg = error.message;
-    } else if (error && typeof error === "object" && typeof (error as {message?: unknown}).message === "string") {
-      rawMsg = (error as {message: string}).message;
-    } else {
-      rawMsg = String(error);
-    }
-    const msg = rawMsg.toLowerCase();
+    // MP SDK throws plain objects ({message, status}), not Error instances.
+    const {mpStatus, mpMessage, mpRaw} = describeMpError(error);
+    const msg = mpMessage.toLowerCase();
     const needsAltEmail =
       msg.includes("cannot operate between different") ||
       msg.includes("payer_email") ||
       msg.includes("belongs to another user") ||
       msg.includes("must belong to this site");
+
+    logCheckout("subscription.create.fail", {
+      userId: auth.userId,
+      courseId: body.courseId,
+      externalReference: externalRef,
+      surface,
+      emailType,
+      payerEmail: body.payer_email,
+      needsAltEmail,
+      mpStatus,
+      mpMessage,
+      mp: mpRaw,
+    });
 
     if (needsAltEmail) {
       res.status(409).json({
@@ -428,6 +493,16 @@ router.post("/payments/subscription", async (req, res) => {
     }
     throw error;
   }
+
+  logCheckout("subscription.create.mp_response", {
+    userId: auth.userId,
+    courseId: body.courseId,
+    externalReference: externalRef,
+    subscriptionId: result.id ?? null,
+    surface,
+    emailType,
+    mp: result,
+  });
 
   if (!result.init_point || !result.id) {
     throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
@@ -470,6 +545,18 @@ router.post("/payments/subscription", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     }, {merge: true});
+
+  logCheckout("subscription.create.ok", {
+    userId: auth.userId,
+    courseId: body.courseId,
+    externalReference: externalRef,
+    subscriptionId: result.id,
+    surface,
+    emailType,
+    status: result.status ?? null,
+    trialDays,
+    nextBillingDate,
+  });
 
   res.json({data: {init_point: result.init_point, subscription_id: result.id, free_trial_days: trialDays}});
 });
@@ -547,10 +634,13 @@ router.post("/payments/bundle-subscription", async (req, res) => {
   const body = validateBody<{
     bundleId: string;
     payer_email: string;
+    surface?: string;
   }>({
     bundleId: "string",
     payer_email: "string",
+    surface: "optional_string",
   }, req.body);
+  const surface = typeof body.surface === "string" ? body.surface : "unknown";
 
   if (!COURSE_ID_RE.test(body.bundleId)) {
     throw new WakeApiServerError("VALIDATION_ERROR", 400, "bundleId inválido", "bundleId");
@@ -591,6 +681,25 @@ router.post("/payments/bundle-subscription", async (req, res) => {
   const frequencyType = "months";
   const frequency = 1;
 
+  const accountEmail =
+    typeof userDoc.data()?.email === "string" ?
+      (userDoc.data()?.email as string).trim().toLowerCase() :
+      null;
+  const emailType: "account" | "custom" =
+    accountEmail && accountEmail === body.payer_email ? "account" : "custom";
+
+  logCheckout("subscription.create.attempt", {
+    userId: auth.userId,
+    bundleId: body.bundleId,
+    externalReference: externalRef,
+    kind: "bundle",
+    surface,
+    emailType,
+    payerEmail: body.payer_email,
+    accountEmail,
+    monthlyPrice: price,
+  });
+
   let result;
   try {
     result = await preapproval.create({
@@ -615,22 +724,27 @@ router.post("/payments/bundle-subscription", async (req, res) => {
       },
     });
   } catch (error: unknown) {
-    // MP SDK throws plain objects ({message, status}), not Error instances —
-    // pull .message off the object directly so the alt-email patterns still match.
-    let rawMsg: string;
-    if (error instanceof Error) {
-      rawMsg = error.message;
-    } else if (error && typeof error === "object" && typeof (error as {message?: unknown}).message === "string") {
-      rawMsg = (error as {message: string}).message;
-    } else {
-      rawMsg = String(error);
-    }
-    const msg = rawMsg.toLowerCase();
+    const {mpStatus, mpMessage, mpRaw} = describeMpError(error);
+    const msg = mpMessage.toLowerCase();
     const needsAltEmail =
       msg.includes("cannot operate between different") ||
       msg.includes("payer_email") ||
       msg.includes("belongs to another user") ||
       msg.includes("must belong to this site");
+
+    logCheckout("subscription.create.fail", {
+      userId: auth.userId,
+      bundleId: body.bundleId,
+      externalReference: externalRef,
+      kind: "bundle",
+      surface,
+      emailType,
+      payerEmail: body.payer_email,
+      needsAltEmail,
+      mpStatus,
+      mpMessage,
+      mp: mpRaw,
+    });
 
     if (needsAltEmail) {
       res.status(409).json({
@@ -683,6 +797,19 @@ router.post("/payments/bundle-subscription", async (req, res) => {
       created_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     }, {merge: true});
+
+  logCheckout("subscription.create.ok", {
+    userId: auth.userId,
+    bundleId: body.bundleId,
+    externalReference: externalRef,
+    subscriptionId: result.id,
+    kind: "bundle",
+    surface,
+    emailType,
+    status: result.status ?? null,
+    nextBillingDate,
+    mp: result,
+  });
 
   res.json({data: {init_point: result.init_point, subscription_id: result.id}});
 });
@@ -843,6 +970,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
   const webhookType = req.body?.type;
   const webhookAction = req.body?.action;
 
+  // Full raw capture of every signature-valid webhook MercadoPago sends, so a
+  // checkout can be reconstructed from logs. Correlation id is the MP resource
+  // id in data.id (a preapproval or payment id depending on type).
+  logCheckout("webhook.received", {
+    webhookType,
+    webhookAction,
+    dataId: req.body?.data?.id ?? null,
+    liveMode: req.body?.live_mode ?? null,
+    query: req.query ?? null,
+    mp: req.body,
+  });
+
   // ── subscription_preapproval (status updates only) ──
   if (webhookType === "subscription_preapproval") {
     const preapprovalId = req.body?.data?.id;
@@ -855,6 +994,13 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const preapproval = new PreApproval(client);
       const preapprovalData = await preapproval.get({id: preapprovalId}) as unknown as MercadoPagoPreapproval;
       const externalReference = preapprovalData?.external_reference;
+      logCheckout("webhook.preapproval.fetched", {
+        preapprovalId,
+        externalReference: externalReference ?? null,
+        mpStatus: preapprovalData?.status ?? null,
+        payerEmail: preapprovalData?.payer_email ?? null,
+        mp: preapprovalData,
+      });
       if (!externalReference) {
         res.status(200).send("OK");
         return;
@@ -943,6 +1089,17 @@ router.post("/payments/webhook", async (req: Request, res) => {
         res.status(200).send("OK");
         return;
       }
+
+      logCheckout("webhook.preapproval.status", {
+        subscriptionId: preapprovalId,
+        userId: parsed.userId,
+        courseId: parsed.courseId ?? null,
+        bundleId: parsed.bundleId ?? null,
+        from: existingSubData.status ?? null,
+        to: preapprovalData?.status ?? null,
+        payerEmail: preapprovalData?.payer_email ?? null,
+        trialDays: Number(existingSubData.free_trial_days) || 0,
+      });
 
       await subRef.set(updateData, {merge: true});
 
@@ -1139,6 +1296,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
   // Fetch payment from MercadoPago
   interface MercadoPagoPaymentData {
     status?: string;
+    status_detail?: string;
     external_reference?: string;
     subscription_id?: string;
     preapproval_id?: string;
@@ -1146,6 +1304,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     date_created?: string;
     transaction_amount?: number;
     currency_id?: string;
+    payer?: { email?: string };
     preapproval?: { id?: string; external_reference?: string };
     payment?: { status?: string };
   }
@@ -1173,6 +1332,14 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const client = getMPClient();
       const payment = new Payment(client);
       paymentData = (await payment.get({id: paymentId}) as MercadoPagoPaymentData) || {};
+      logCheckout("webhook.payment.fetched", {
+        paymentId,
+        externalReference: paymentData?.external_reference ?? null,
+        mpStatus: paymentData?.status ?? null,
+        statusDetail: paymentData?.status_detail ?? null,
+        payerEmail: paymentData?.payer?.email ?? null,
+        mp: paymentData,
+      });
     }
   } catch (apiError: unknown) {
     const errType = classifyError(apiError);

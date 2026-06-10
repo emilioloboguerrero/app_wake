@@ -1367,3 +1367,84 @@
   line-height: 1.45;
   margin: 0;
 }
+
+/* ─── LevelPlansConfig ───────────────────────────────────────── */
+.lpc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lpc-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lpc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lpc-row--default {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lpc-row__label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+}
+
+.lpc-row__select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  outline: none;
+  font-family: inherit;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  transition: border-color 200ms cubic-bezier(0.22, 1, 0.36, 1);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.lpc-row__select:focus {
+  border-color: rgba(var(--gp-accent-r), var(--gp-accent-g), var(--gp-accent-b), 0.4);
+}
+
+.lpc-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lpc-save-btn {
+  flex-shrink: 0;
+}
+
+.lpc-save-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lpc-error {
+  font-size: 12px;
+  color: rgba(255, 100, 100, 0.9);
+  margin: 0;
+}
+
+.lpc-success {
+  font-size: 12px;
+  color: rgba(100, 220, 130, 0.9);
+  margin: 0;
+}

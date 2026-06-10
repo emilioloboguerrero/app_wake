@@ -48,6 +48,7 @@ const WorkoutExecutionScreen = () => {
       workout: location.state?.workout || null,
       sessionId: location.state?.sessionId || null,
       checkpoint: location.state?.checkpoint || null,
+      reopenCompletionId: location.state?.reopenCompletionId || null,
     }
   }), [location.state]);
 
