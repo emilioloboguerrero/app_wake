@@ -112,6 +112,7 @@ function buildCourseEntry(
       completedTutorials: existing.completedTutorials ?? {
         dailyWorkout: [], warmup: [], workoutExecution: [], workoutCompletion: [],
       },
+      ...(existing.level !== undefined ? {level: existing.level} : {}),
     };
   }
 

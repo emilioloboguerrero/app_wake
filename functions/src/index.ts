@@ -41,6 +41,7 @@ import {
 } from "./api/services/emailHelpers.js";
 import {buildSignInUrl as buildPurchaseSignInUrl} from "./api/services/purchaseEmails.js";
 import {capture as analyticsCapture, flushAnalytics} from "./lib/analytics.js";
+import {allLevelPlansPublishAt} from "./api/services/levelResolution.js";
 
 const db = admin.firestore();
 
@@ -2744,6 +2745,115 @@ async function advanceMonthlyDropCourse(
       };
     }
   }
+
+  // ── Level-plans branch ───────────────────────────────────────────────────
+  // Courses with `level_plans` carry per-level plan trees (plans/{planId}).
+  // The advance gate requires every level's plan to have a published module at
+  // the next index before any user sees a new block.
+  const courseSnap = await courseRef.get();
+  const courseDoc = courseSnap.exists ? courseSnap.data() ?? {} : {};
+  const levelPlans = courseDoc.level_plans as Record<string, string> | undefined;
+
+  if (levelPlans && typeof levelPlans === "object" && Object.keys(levelPlans).length > 0) {
+    const nextIndex = currentBlockIndex + 1;
+
+    // Query each level plan's modules collection for a doc at nextIndex.
+    const perPlanPublished: Record<string, boolean> = {};
+    await Promise.all(
+      Object.entries(levelPlans).map(async ([level, planId]) => {
+        const snap = await db
+          .collection("plans")
+          .doc(planId)
+          .collection("modules")
+          .where("order", "==", nextIndex)
+          .limit(1)
+          .get();
+        const moduleExists = !snap.empty;
+        const published = moduleExists && snap.docs[0].data().published_at != null;
+        perPlanPublished[level] = published;
+      })
+    );
+
+    if (!allLevelPlansPublishAt(perPlanPublished)) {
+      functions.logger.info("monthlyDropAdvance: level_plans gate blocked", {
+        courseId,
+        nextIndex,
+        perPlanPublished,
+      });
+      return {
+        courseId,
+        outcome: "no_next_published",
+        fromBlock: currentBlockIndex,
+        toBlock: null,
+        toModuleId: null,
+      };
+    }
+
+    // All level plans have the next block published. Use the default level's
+    // plan module id as the canonical block id (by convention all level plans
+    // share the same module doc-id per month, e.g. "mes-2").
+    const defaultLevel = (courseDoc.levels as {default?: string} | undefined)?.default;
+    const defaultPlanId = defaultLevel ? levelPlans[defaultLevel] : Object.values(levelPlans)[0];
+    const defaultModuleSnap = await db
+      .collection("plans")
+      .doc(defaultPlanId)
+      .collection("modules")
+      .where("order", "==", nextIndex)
+      .limit(1)
+      .get();
+    const canonicalModuleId = defaultModuleSnap.empty ? `block-${nextIndex}` : defaultModuleSnap.docs[0].id;
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.set(
+      stateRef,
+      {
+        current_block_id: canonicalModuleId,
+        current_block_index: nextIndex,
+        current_block_started_at: now,
+        updated_at: now,
+      },
+      {merge: true}
+    );
+    batch.set(
+      courseRef,
+      {current_block_id: canonicalModuleId, current_block_index: nextIndex, updated_at: now},
+      {merge: true}
+    );
+    await batch.commit();
+
+    functions.logger.info("monthlyDropAdvance: level_plans advanced", {
+      courseId,
+      from: currentBlockIndex,
+      to: nextIndex,
+      moduleId: canonicalModuleId,
+    });
+
+    if (signalsCtx) {
+      try {
+        await sendTo(
+          signalsCtx,
+          "signals",
+          `[monthly-drops] ${courseId} (level_plans): block ${currentBlockIndex} → ${nextIndex} ` +
+            `("${canonicalModuleId}")`
+        );
+      } catch (err) {
+        functions.logger.warn("monthlyDropAdvance: signals send failed (level_plans)", {
+          courseId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return {
+      courseId,
+      outcome: "advanced",
+      fromBlock: currentBlockIndex,
+      toBlock: nextIndex,
+      toModuleId: canonicalModuleId,
+    };
+  }
+  // ── End level-plans branch ───────────────────────────────────────────────
 
   // One server-side inequality (order) + orderBy on that field is the
   // simplest Firestore-safe query. Filter unpublished modules client-side.

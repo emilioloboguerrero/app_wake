@@ -18,6 +18,7 @@ import {identify} from "../../lib/analytics.js";
 import {calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
+import {isValidLevelChoice} from "../services/levelResolution.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
 import {isReservedUsername} from "../utils/reservedUsernames.js";
 
@@ -1044,6 +1045,23 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
   await db.collection("users").doc(auth.userId).update(updates);
 
   res.json({data: {updated: true}});
+});
+
+// PATCH /users/me/courses/:courseId/level — set the user's level choice for a levelled program
+router.patch("/users/me/courses/:courseId/level", async (req, res) => {
+  const auth = await validateAuth(req);
+  const {courseId} = req.params;
+  const level = (req.body?.level ?? "") as string;
+  const [userSnap, courseSnap] = await Promise.all([
+    db.collection("users").doc(auth.userId).get(),
+    db.collection("courses").doc(courseId).get(),
+  ]);
+  if (!courseSnap.exists) throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  const entry = (userSnap.data()?.courses ?? {})[courseId];
+  if (!entry) throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  if (!isValidLevelChoice(courseSnap.data()!, level)) throw new WakeApiServerError("VALIDATION_ERROR", 400, "Nivel inválido", "level");
+  await db.collection("users").doc(auth.userId).update({[`courses.${courseId}.level`]: level});
+  res.status(200).json({data: {courseId, level}});
 });
 
 // GET /courses — course listing, optional ?creatorId=X filter
