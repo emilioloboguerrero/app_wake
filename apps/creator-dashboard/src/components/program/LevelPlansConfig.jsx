@@ -22,11 +22,19 @@ export default function LevelPlansConfig({ programId, initial, creatorId }) {
   const [mapping, setMapping] = useState(initial?.level_plans ?? {});
   const [disabling, setDisabling] = useState(false);
 
+  // Re-sync from the server ONLY when the persisted value actually changes —
+  // not on every parent render. `initial` is a fresh object literal each render,
+  // so depending on it directly would revert the user's toggle/edits constantly.
+  const serverSig = JSON.stringify({
+    levels: initial?.levels ?? null,
+    level_plans: initial?.level_plans ?? null,
+  });
   useEffect(() => {
     setEnabled(!!initial?.levels);
     setDef(initial?.levels?.default ?? 'principiante');
     setMapping(initial?.level_plans ?? {});
-  }, [initial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverSig]);
 
   const { data: plans = [], isLoading: plansLoading } = useQuery({
     queryKey: ['library', 'plans', creatorId],
