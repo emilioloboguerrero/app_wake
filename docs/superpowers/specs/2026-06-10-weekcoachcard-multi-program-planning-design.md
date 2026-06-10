@@ -67,6 +67,7 @@ Sustituir el bloque que arma `titleNode` (un solo nodo) por un render de **lista
    - Nombre de sesión (flex, `text-overflow: ellipsis`, una línea).
    - Indicador propio a la derecha: `✓` si `status === 'completed'`; si es `planned`, estilo de texto "planeada" (igual que hoy) sin `✓`.
    - Orden = orden de `entries` (pinned-first).
+   - **Entradas sin título cuando ya existe ≥1 nombrada:** no generan línea propia (no se pueden nombrar de forma útil y su estado ya está implícito). No se muestra un contador numérico de "programas ocultos". En la práctica el caso multi-programa real son programas date-scheduled que siempre traen `title`, así que esto solo afecta bordes legacy.
 4. **Si `named.length === 0`** → exactamente la lógica de fallback actual:
    - `status === 'completed'` → "Sesión completada"
    - fin de semana → "Descanso"
