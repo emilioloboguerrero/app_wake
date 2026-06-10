@@ -5352,7 +5352,7 @@ router.patch("/creator/plans/:planId/modules/:moduleId/sessions/:sessionId", asy
 
   if (updates.weekIndex !== undefined && updates.weekIndex !== null) {
     const v = updates.weekIndex;
-    if (!Number.isInteger(v) || (v as number) < 0) {
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0) {
       throw new WakeApiServerError(
         "VALIDATION_ERROR", 400,
         "weekIndex debe ser un entero mayor o igual a 0, o null",
