@@ -187,7 +187,7 @@ const LevelPickerModal = ({ course, courseEntry, visible, onClose }) => {
                 lineHeight: 1.2,
               }}
             >
-              A que nivel quieres entrenar?
+              ¿A qué nivel quieres entrenar?
             </span>
           </div>
 
