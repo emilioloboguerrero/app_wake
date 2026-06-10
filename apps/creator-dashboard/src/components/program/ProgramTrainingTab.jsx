@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ProgramWeeksGrid from '../ProgramWeeksGrid';
 import ProgramCadenceCalendar from './ProgramCadenceCalendar';
+import LevelPlanSelector from './LevelPlanSelector';
 import PlanningLibrarySidebar from '../PlanningLibrarySidebar';
 import programService from '../../services/programService';
 import libraryService from '../../services/libraryService';
@@ -66,6 +67,9 @@ export default function ProgramTrainingTab({ programId, creatorId, program = nul
   }, [navigate, programId]);
 
   const cadenceActive = program?.block_cadence === 'monthly_first_monday';
+
+  const hasLevelPlans = program?.level_plans && Object.keys(program.level_plans).length > 0;
+  if (hasLevelPlans) return <LevelPlanSelector program={program} />;
 
   return (
     <div className="plan-structure-layout">
