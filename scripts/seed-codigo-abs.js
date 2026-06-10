@@ -239,10 +239,15 @@ async function createPlan(level, nameToKey) {
   }, { merge: true });
   log(`\nlevel_plans: ${JSON.stringify(levelPlans)}`);
 
-  // program_state -> Mes 1 live (index 0)
-  if (WRITE) await db.collection('program_state').doc(courseRef.id).set({
-    current_block_index: 0, current_block_id: 'mes-1', current_block_started_at: NOW, updated_at: NOW,
-  }, { merge: true });
+  // program_state -> Mes 1 live (index 0). Also mirror current_block_* onto the
+  // course doc — the workout read resolves the live month from course.current_block_index
+  // (same contract the monthly cron writes). Without this the program serves no sessions.
+  if (WRITE) {
+    await db.collection('program_state').doc(courseRef.id).set({
+      current_block_index: 0, current_block_id: 'mes-1', current_block_started_at: NOW, updated_at: NOW,
+    }, { merge: true });
+    await courseRef.set({ current_block_index: 0, current_block_id: 'mes-1', updated_at: NOW }, { merge: true });
+  }
 
   log(`\n${WRITE ? '✓ written' : 'DRY-RUN (no writes). Re-run with --write.'}  course=${courseRef.id}`);
   process.exit(0);
