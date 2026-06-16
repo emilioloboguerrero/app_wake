@@ -49,6 +49,7 @@ import TodayWorkoutCard from '../components/TodayWorkoutCard.web.jsx';
 import TodayNutritionCard from '../components/TodayNutritionCard.web.jsx';
 import WeekCoachCard from '../components/WeekCoachCard.web.jsx';
 import HoyBanners from '../components/HoyBanners.web.jsx';
+import HoyEmptyState from '../components/hoy/HoyEmptyState.web.jsx';
 
 const LIBRARY_MOVED_FLAG = 'wake:preview_library_moved_seen';
 const SELECTED_COACH_KEY = (uid) => `wake:hoy:selectedCoachId:${uid}`;
@@ -591,59 +592,30 @@ const HoyScreen = () => {
   const isEmpty = !coachEnvironments.length;
 
   if (isEmpty) {
+    // Banners must render above the empty state so a one-on-one invitee — who
+    // has no programs until they accept — can still see and act on the invite.
     return (
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <SafeAreaView
-          style={containerStyle}
-          edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
-        >
-          <FixedWakeHeader />
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-            <WakeHeaderContent>
-              <WakeHeaderSpacer />
-              {/* Banners must render before the empty state so a one-on-one
-                  invitee — who has no programs until they accept — can still
-                  see and act on the pending invite. */}
-              <HoyBanners
-                recoveryCheckpoint={recoveryCheckpoint}
-                onResumeRecovery={handleResumeRecovery}
-                onDiscardRecovery={dismissRecovery}
-                pendingInvites={pendingInvites}
-                onAcceptInvite={handleAcceptInvite}
-                onDeclineInvite={handleDeclineInvite}
-                inviteActionId={inviteActionId}
-                upcomingCalls={upcomingCalls}
-                onOpenCall={handleOpenCall}
-                showLibraryMoved={showLibraryMoved}
-                onDismissLibraryMoved={handleDismissLibraryMoved}
-                onOpenLibrary={() => navigate('/profile')}
-                showProgramUpdate={hasPendingUpdates}
-                onApplyProgramUpdate={handleApplyProgramUpdate}
-              />
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, minHeight: 400 }}>
-                <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff', marginBottom: 8, textAlign: 'center' }}>
-                  Aún no tienes un programa
-                </Text>
-                <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', marginBottom: 24, maxWidth: 320, lineHeight: 20, textAlign: 'center' }}>
-                  Explora la biblioteca para empezar a entrenar con un coach.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => navigate('/library')}
-                  style={{
-                    paddingHorizontal: 28,
-                    paddingVertical: 14,
-                    borderRadius: 999,
-                    backgroundColor: '#fff',
-                  }}
-                >
-                  <Text style={{ color: '#1a1a1a', fontWeight: '600', fontSize: 14 }}>Explorar programas</Text>
-                </TouchableOpacity>
-              </View>
-              <BottomSpacer />
-            </WakeHeaderContent>
-          </ScrollView>
-        </SafeAreaView>
-      </div>
+      <HoyEmptyState
+        onExplore={() => navigate('/library')}
+        banners={
+          <HoyBanners
+            recoveryCheckpoint={recoveryCheckpoint}
+            onResumeRecovery={handleResumeRecovery}
+            onDiscardRecovery={dismissRecovery}
+            pendingInvites={pendingInvites}
+            onAcceptInvite={handleAcceptInvite}
+            onDeclineInvite={handleDeclineInvite}
+            inviteActionId={inviteActionId}
+            upcomingCalls={upcomingCalls}
+            onOpenCall={handleOpenCall}
+            showLibraryMoved={showLibraryMoved}
+            onDismissLibraryMoved={handleDismissLibraryMoved}
+            onOpenLibrary={() => navigate('/profile')}
+            showProgramUpdate={hasPendingUpdates}
+            onApplyProgramUpdate={handleApplyProgramUpdate}
+          />
+        }
+      />
     );
   }
 

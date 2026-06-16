@@ -326,15 +326,51 @@ export default function NutritionScreen({ clientId = null }) {
                   />
                 </div>
               ) : filtered.length === 0 ? (
-                <div className="ns-list-empty">
-                  {searchQuery ? (
+                searchQuery ? (
+                  <div className="ns-list-empty">
                     <p>Sin resultados para «{searchQuery}»</p>
-                  ) : activeTab === 'recetas' ? (
-                    <p>Tu biblioteca de recetas esta vacia. Crea tu primera receta y empieza a armar planes.</p>
-                  ) : (
-                    <p>Todavia no tienes planes de nutricion. Crea uno y asignalo a tus clientes.</p>
-                  )}
-                </div>
+                  </div>
+                ) : activeTab === 'recetas' ? (
+                  <div className="ns-empty-state">
+                    <div className="ns-empty-state__icon" aria-hidden="true">
+                      <svg width="54" height="54" viewBox="0 0 56 56" fill="none">
+                        <path d="M20 8v14a4 4 0 0 1-4 4 4 4 0 0 1-4-4V8M16 8v40" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" strokeLinecap="round" />
+                        <path d="M40 8c-3.314 0-6 4.03-6 9s2.686 9 6 9V8zM40 26v22" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <p className="ns-empty-state__title">Tu biblioteca de recetas está vacía</p>
+                    <button
+                      type="button"
+                      className="ns-empty-state__cta"
+                      onClick={() => { setNewMealName(''); setIsNewMealModalOpen(true); }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      Crear primera receta
+                    </button>
+                  </div>
+                ) : (
+                  <div className="ns-empty-state">
+                    <div className="ns-empty-state__icon" aria-hidden="true">
+                      <svg width="54" height="54" viewBox="0 0 56 56" fill="none">
+                        <rect x="12" y="8" width="32" height="40" rx="4" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
+                        <path d="M20 20h16M20 28h16M20 36h10" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <p className="ns-empty-state__title">Todavía no tienes planes de nutrición</p>
+                    <button
+                      type="button"
+                      className="ns-empty-state__cta"
+                      onClick={() => { setPlanFormName(''); setIsPlanModalOpen(true); }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                      Crear primer plan
+                    </button>
+                  </div>
+                )
               ) : (
                 <AnimatedList stagger={50}>
                   {filtered.map((item) => {

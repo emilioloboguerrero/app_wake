@@ -2508,9 +2508,8 @@ const NutritionScreen = () => {
 
               {plan && diaryEntries.length === 0 && hasLoaded && !loading && (
                 <WakeEmptyState
-                  icon={<SvgListChecklist width={40} height={40} color="rgba(255,255,255,0.45)" />}
+                  icon={<SvgListChecklist width={44} height={44} color="rgba(255,255,255,0.4)" />}
                   title="Sin registros hoy"
-                  subtitle="Registra tu primera comida del día"
                   ctaLabel="Agregar comida"
                   onCta={() => {
                     setAddModalCategoryIndex(0);
@@ -2522,9 +2521,10 @@ const NutritionScreen = () => {
               )}
 
               {!plan && hasLoaded && !loading && (
-                <View style={styles.noPlan}>
-                  <Text style={styles.noPlanText}>No tienes un plan de nutrición asignado.</Text>
-                </View>
+                <WakeEmptyState
+                  icon={<SvgListChecklist width={44} height={44} color="rgba(255,255,255,0.4)" />}
+                  title="Aún no tienes un plan de nutrición"
+                />
               )}
 
               <View style={styles.fatsecretAttributionWeb}>
@@ -4820,14 +4820,6 @@ const styles = StyleSheet.create({
   mealAddButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.6)',
-  },
-  noPlan: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  noPlanText: {
-    fontSize: 15,
     color: 'rgba(255,255,255,0.6)',
   },
   addModalWrapper: {

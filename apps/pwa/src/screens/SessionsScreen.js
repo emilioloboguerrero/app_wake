@@ -18,6 +18,7 @@ import { auth } from '../config/firebase';
 import exerciseHistoryService from '../services/exerciseHistoryService';
 import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
+import SvgTimer from '../components/icons/vectors_fig/Calendar/Timer';
 import logger from '../utils/logger.js';
 import { getMondayWeek, isDateInWeek } from '../utils/weekCalculation';
 
@@ -280,10 +281,15 @@ const SessionsScreen = ({ navigation }) => {
             </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No hay sesiones</Text>
-              <Text style={styles.emptyDescription}>
-                Completa tu primer entrenamiento para ver tus sesiones aquí.
-              </Text>
+              <SvgTimer width={48} height={48} color="rgba(255,255,255,0.4)" />
+              <Text style={styles.emptyTitle}>Aún no tienes sesiones</Text>
+              <TouchableOpacity
+                style={styles.emptyCta}
+                onPress={() => navigation.navigate('Main')}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.emptyCtaText}>Ir a entrenar</Text>
+              </TouchableOpacity>
             </View>
           )
         )}
@@ -363,21 +369,32 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     opacity: 0.7,
   },
   emptyContainer: {
-    paddingVertical: Math.max(60, screenHeight * 0.075),
+    paddingVertical: Math.max(72, screenHeight * 0.09),
+    paddingHorizontal: 24,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyTitle: {
     color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.05, 20),
-    fontWeight: '600',
-    marginBottom: Math.max(8, screenHeight * 0.01),
-  },
-  emptyDescription: {
-    color: '#ffffff',
-    fontSize: Math.min(screenWidth * 0.04, 16),
-    opacity: 0.7,
+    fontSize: Math.min(screenWidth * 0.05, 19),
+    fontWeight: '700',
+    letterSpacing: -0.2,
     textAlign: 'center',
-    lineHeight: Math.max(24, screenHeight * 0.03),
+    marginTop: 18,
+    marginBottom: 22,
+  },
+  emptyCta: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 28,
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  emptyCtaText: {
+    color: '#1a1a1a',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   sessionsList: {
     gap: Math.max(12, screenWidth * 0.03),

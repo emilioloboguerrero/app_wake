@@ -22,6 +22,7 @@ import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import LoadingSpinner from '../components/LoadingSpinner';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
+import SvgBookOpen from '../components/icons/vectors_fig/File/BookOpen';
 import { useCoursesEnriched } from '../hooks/hoy/useCoursesEnriched';
 const AllPurchasedCoursesScreen = ({ navigation }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -186,11 +187,12 @@ const AllPurchasedCoursesScreen = ({ navigation }) => {
             </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>No tienes ningún programa... todavía.</Text>
-              <TouchableOpacity 
-                style={styles.exploreButton} 
+              <SvgBookOpen width={48} height={48} stroke="rgba(255,255,255,0.4)" strokeWidth={1.6} />
+              <Text style={styles.emptyTitle}>Aún no tienes programas</Text>
+              <TouchableOpacity
+                style={styles.exploreButton}
                 onPress={() => navigation.navigate('Main', { screen: 'ProgramLibrary' })}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
                 delayPressIn={0}
               >
                 <Text style={styles.exploreButtonText}>Explorar biblioteca</Text>
@@ -496,45 +498,31 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingVertical: 60,
-    backgroundColor: '#2a2a2a',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    ...(Platform.OS === 'web' ? { boxShadow: '0 0 2px rgba(255,255,255,0.4)' } : { shadowColor: 'rgba(255, 255, 255, 0.4)', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 1, shadowRadius: 2 }),
-    elevation: 2,
-    overflow: 'visible',
+    justifyContent: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 24,
   },
   emptyTitle: {
     color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 50,
+    fontSize: 19,
+    fontWeight: '700',
+    letterSpacing: -0.2,
     textAlign: 'center',
-  },
-  emptyText: {
-    color: '#cccccc',
-    fontSize: 14,
-    fontWeight: '400',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-    paddingHorizontal: 20,
+    marginTop: 18,
+    marginBottom: 22,
   },
   exploreButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingHorizontal: 24,
-    paddingVertical: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 28,
+    paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 0,
-    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 8px rgba(255,255,255,0.22)' } : { shadowColor: 'rgba(255, 255, 255, 0.72)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 }),
-    elevation: 8,
   },
   exploreButtonText: {
-    color: 'rgba(255, 255, 255, 1)',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#1a1a1a',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });
 

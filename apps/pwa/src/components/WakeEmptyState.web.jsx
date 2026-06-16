@@ -1,6 +1,22 @@
 // Reusable empty-state component (web only).
-// Renders icon → title → subtitle → optional CTA with staggered fade-up animation.
+// Renders icon → title → optional CTA with a staggered fade-up entrance.
+// Per the Wake design language: dark canvas, white tones (no accent without an
+// image), no explanatory subtext — the title carries the message. The `subtitle`
+// prop is kept for backward compatibility but should be left unset.
 import React from 'react';
+
+if (typeof document !== 'undefined') {
+  const ID = 'wake-empty-css';
+  if (!document.getElementById(ID)) {
+    const s = document.createElement('style');
+    s.id = ID;
+    s.textContent = `
+      @keyframes wakeEmptyUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+      .wake-empty-state__anim { animation: wakeEmptyUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+    `;
+    document.head.appendChild(s);
+  }
+}
 
 const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
   <div
@@ -10,26 +26,31 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 10,
-      padding: '32px 24px',
+      gap: 14,
+      padding: '48px 24px',
       textAlign: 'center',
       ...style,
     }}
   >
     {icon && (
-      <div className="wake-empty-icon wake-empty-state__icon" style={{ fontSize: 40, lineHeight: 1 }}>
+      <div
+        className="wake-empty-icon wake-empty-state__icon wake-empty-state__anim"
+        style={{ lineHeight: 1, opacity: 0.9 }}
+      >
         {icon}
       </div>
     )}
     {title && (
       <p
-        className="wake-empty-title wake-empty-state__title"
+        className="wake-empty-title wake-empty-state__title wake-empty-state__anim"
         style={{
           margin: 0,
           color: '#ffffff',
-          fontSize: 15,
+          fontSize: 18,
           fontWeight: 700,
+          letterSpacing: -0.2,
           fontFamily: 'Inter, sans-serif',
+          animationDelay: '0.06s',
         }}
       >
         {title}
@@ -37,7 +58,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
     )}
     {subtitle && (
       <p
-        className="wake-empty-sub wake-empty-state__subtitle"
+        className="wake-empty-sub wake-empty-state__subtitle wake-empty-state__anim"
         style={{
           margin: 0,
           color: 'rgba(255,255,255,0.5)',
@@ -45,6 +66,7 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
           fontFamily: 'Inter, sans-serif',
           lineHeight: 1.5,
           maxWidth: 260,
+          animationDelay: '0.1s',
         }}
       >
         {subtitle}
@@ -52,20 +74,22 @@ const WakeEmptyState = ({ icon, title, subtitle, ctaLabel, onCta, style }) => (
     )}
     {ctaLabel && onCta && (
       <button
-        className="wake-empty-cta wake-empty-state__cta wake-btn-primary"
+        className="wake-empty-cta wake-empty-state__cta wake-btn-primary wake-empty-state__anim"
         onClick={onCta}
         style={{
-          marginTop: 8,
-          padding: '10px 24px',
-          borderRadius: 8,
-          background: 'rgba(255,255,255,0.85)',
+          marginTop: 6,
+          padding: '14px 28px',
+          borderRadius: 12,
+          background: 'rgba(255,255,255,0.92)',
           border: 'none',
           color: '#1a1a1a',
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 700,
           fontFamily: 'Inter, sans-serif',
           cursor: 'pointer',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.02em',
+          WebkitTapHighlightColor: 'transparent',
+          animationDelay: '0.12s',
         }}
       >
         {ctaLabel}

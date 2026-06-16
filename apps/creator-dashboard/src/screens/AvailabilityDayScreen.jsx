@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
@@ -55,6 +55,7 @@ export default function AvailabilityDayScreen() {
   const slots = dayData?.slots ?? [];
   const timezone = dayData?.timezone ?? '';
   const error = mutationError ?? dayError?.message ?? null;
+  const addCardRef = useRef(null);
 
   const handleAddSlots = async () => {
     if (!user?.uid || !dateStr) return;
@@ -145,7 +146,25 @@ export default function AvailabilityDayScreen() {
               <ShimmerSkeleton height="54px" width="70%" borderRadius="12px" />
             </div>
           ) : slots.length === 0 ? (
-            <p className="avday-empty">Sin horarios para este dia. Agrega uno o usa la creacion por lotes.</p>
+            <div className="avday-empty-state">
+              <div className="avday-empty-state__icon" aria-hidden="true">
+                <svg width="54" height="54" viewBox="0 0 56 56" fill="none">
+                  <circle cx="28" cy="28" r="20" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+                  <path d="M28 16v12l8 5" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <p className="avday-empty-state__title">Sin horarios este día</p>
+              <button
+                type="button"
+                className="avday-empty-state__cta"
+                onClick={() => addCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Añadir franjas
+              </button>
+            </div>
           ) : (
             <ul className="avday-slot-list" role="list">
               <AnimatedList stagger={55} initialDelay={40}>
@@ -174,7 +193,7 @@ export default function AvailabilityDayScreen() {
         </div>
 
         {/* Add slots card */}
-        <div className="avday-card avday-card--add">
+        <div className="avday-card avday-card--add" ref={addCardRef}>
           <GlowingEffect spread={26} borderWidth={1} />
           <p className="avday-card-label">Añadir franjas</p>
           <p className="avday-card-desc">

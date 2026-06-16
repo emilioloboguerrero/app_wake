@@ -50,9 +50,6 @@ import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import LeaveProgramModal from '../components/program/LeaveProgramModal';
 import { queryKeys } from '../config/queryClient';
 import { useCourseMeta } from '../hooks/workout/useCourseMeta';
-import { useBlocksOverview } from '../hooks/hoy/useBlocksOverview';
-import { useCurrentBlock } from '../hooks/hoy/useCurrentBlock';
-import MonthlyBlockMiniStrip from '../components/program/MonthlyBlockMiniStrip.jsx';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -150,16 +147,6 @@ const CourseDetailScreen = ({ navigation, route }) => {
     [course?.deliveryType, course?.delivery_type]
   );
 
-  // Monthly-drop pre-purchase strip: shows the next 3 blocks as a calendar.
-  // The shape IS the explanation — no instructional copy elsewhere on the page.
-  const isMonthlyDrop = course?.block_cadence === 'monthly_first_monday';
-  const { blocks: cadenceBlocks } = useBlocksOverview(course?.id, {
-    enabled: !!course?.id && isMonthlyDrop,
-  });
-  const { block: cadenceCurrentBlock } = useCurrentBlock(course?.id, {
-    enabled: !!course?.id && isMonthlyDrop,
-  });
-  
   // Initialize video player — skip external URLs (YouTube/Vimeo use iframe).
   // Pass '' as the source so the player instance survives URI changes and we
   // update via player.replace(). Passing the URI directly causes expo-video
@@ -1606,13 +1593,6 @@ useEffect(() => {
             {/* Animated Card Indicators */}
             {renderPaginationIndicators()}
           </View>
-
-          {/* Monthly-drop calendar strip (web only) — above the CTA */}
-          {Platform.OS === 'web' && isMonthlyDrop && cadenceBlocks?.length > 0 ? (
-            <View style={{ marginBottom: 12 }}>
-              <MonthlyBlockMiniStrip blocks={cadenceBlocks} currentBlock={cadenceCurrentBlock} />
-            </View>
-          ) : null}
 
           {/* Action Buttons */}
           <View style={styles.actionsSection}>

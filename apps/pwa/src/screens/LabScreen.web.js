@@ -1458,6 +1458,37 @@ function ProgresoScreen({ bodyLogEntries, weightUnit, goalWeightDisplay, trainin
 
 // ─── LabScreen ────────────────────────────────────────────────────────────────
 
+// Shown when the user has no logged data at all (no sessions, diary, readiness,
+// body log or PRs). Replaces the empty tabs with one intentional hero. No photo —
+// the Lab is an instrument surface, so it uses the no-image cinematic treatment
+// (radial accent gradient + ambient orbs, per STANDARDS §3/§4) tinted by the
+// same readiness accent the rest of the Lab uses.
+function LabEmptyHero({ accentRGB, onRegister, minHeight }) {
+  const [r, g, b] = accentRGB;
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', minHeight, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px 32px' }}>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at 50% 40%, rgba(${r},${g},${b},0.22) 0%, rgba(26,26,26,0) 62%)` }} />
+      <div style={{ position: 'absolute', top: '6%', right: '-60px', width: 300, height: 300, borderRadius: '50%', background: `rgba(${r},${g},${b},0.14)`, filter: 'blur(72px)', animation: 'labOrbDrift1 13s ease-in-out infinite alternate', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', bottom: '10%', left: '-70px', width: 260, height: 260, borderRadius: '50%', background: `rgba(${r},${g},${b},0.12)`, filter: 'blur(72px)', opacity: 0.85, animation: 'labOrbDrift2 17s ease-in-out infinite alternate', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', top: '48%', right: '8%', width: 200, height: 200, borderRadius: '50%', background: `rgba(${r},${g},${b},0.10)`, filter: 'blur(72px)', opacity: 0.65, animation: 'labOrbDrift3 21s ease-in-out infinite alternate', pointerEvents: 'none' }} />
+      <div className="lab-screen-anim" style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', maxWidth: 340 }}>
+        <Text style={{ fontSize: 30, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 36, textAlign: 'center' }}>Tu progreso empieza aquí</Text>
+        <button
+          onClick={onRegister}
+          style={{
+            marginTop: 28, padding: '15px 30px', border: 'none', borderRadius: 14,
+            background: '#fff', color: '#111', fontSize: 15, fontWeight: 700, letterSpacing: '0.02em',
+            cursor: 'pointer', fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
+            '--lab-fab-glow': `rgba(${r},${g},${b},0.5)`, animation: 'labFabPulse 2.6s ease-in-out infinite',
+          }}
+        >
+          Registra tu peso
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const LabScreen = () => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const { user: contextUser } = useAuth();
@@ -2868,6 +2899,15 @@ const LabScreen = () => {
 
   // ─── main render ───────────────────────────────────────────────────────────
 
+  // Zero-data hero gate. Wait for every dataset that feeds the Lab (sessions,
+  // diary, readiness, body log, PRs) to settle before deciding, so a brand-new
+  // user sees loader → hero with no flash, and a populated user never waits on
+  // body/PRs once any data has already arrived.
+  const dataSettled = !mainQuery.isLoading && !userQuery.isLoading && !bodyQuery.isLoading && !prsQuery.isLoading;
+  const hasAnyData = sessionList.length > 0 || diaryEntries.length > 0 || readinessEntries.length > 0 || bodyLogEntries.length > 0 || topExercises.length > 0;
+  const showEmptyHero = dataSettled && !hasAnyData;
+  const showLoader = loading || (!dataSettled && !hasAnyData);
+
   return (
     <SafeAreaView style={{ flex:1, backgroundColor:'#1a1a1a' }} edges={['left','right']}>
       <FixedWakeHeader />
@@ -2878,6 +2918,14 @@ const LabScreen = () => {
             <Text style={{ fontSize:28, fontWeight:'600', color:'#fff', paddingLeft:screenWidth*0.12 }}>Lab</Text>
           </View>
 
+          {showEmptyHero ? (
+            <LabEmptyHero
+              accentRGB={accentRGB}
+              onRegister={openBodyEntryModal}
+              minHeight={Math.max(screenHeight * 0.58, 420)}
+            />
+          ) : (
+          <>
           {/* 2-screen nav */}
           <div style={{ display:'flex', gap:8, padding:'0 24px 20px', overflowX:'auto' }}>
             {[['estado','Estado'],['historial','Historial']].map(([s,l])=>(
@@ -2892,7 +2940,7 @@ const LabScreen = () => {
             ))}
           </div>
 
-          {loading ? (
+          {showLoader ? (
             <View style={{ flex:1, alignItems:'center', justifyContent:'center', paddingTop:60 }}>
               <WakeLoader />
             </View>
@@ -2943,6 +2991,8 @@ const LabScreen = () => {
                 </div>
               )}
             </>
+          )}
+          </>
           )}
 
           <BottomSpacer />
@@ -3007,7 +3057,7 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   card: { marginHorizontal:CARD_MARGIN, marginBottom:Math.max(14,screenHeight*0.018), backgroundColor:'#2a2a2a', borderRadius:Math.max(12,screenWidth*0.04), borderWidth:1, borderColor:'rgba(255,255,255,0.08)', padding:Math.max(16,screenWidth*0.04) },
   cardHeader: { flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:14 },
   cardTitle: { fontSize:16, fontWeight:'600', color:'#ffffff', flex:1, marginRight:8 },
-  emptyText: { fontSize:13, color:'rgba(255,255,255,0.5)', lineHeight:20 },
+  emptyText: { fontSize:13, color:'rgba(255,255,255,0.45)', lineHeight:20, textAlign:'center' },
   insightCaption: { fontSize:12, color:'rgba(255,255,255,0.5)', fontStyle:'italic', marginTop:10, lineHeight:17 },
   contextLine: { fontSize:12, color:'rgba(255,255,255,0.4)', marginTop:8 },
   chartSubtitle: { fontSize:12, color:'rgba(255,255,255,0.4)', marginBottom:10, marginTop:-4 },
