@@ -48,6 +48,45 @@ function pickRecipientEmail(
   return null;
 }
 
+// ── Cancellation survey record builder (exported for unit tests) ─────────
+export function buildCancellationSurveyRecord(args: {
+  userId: string;
+  subscriptionId: string;
+  survey: Record<string, unknown>;
+  subscriptionData: Record<string, unknown>;
+  statusAfter: string;
+  proceededToPortal?: boolean;
+}): Record<string, unknown> {
+  const {userId, subscriptionId, survey, subscriptionData, statusAfter, proceededToPortal} = args;
+  const answers = survey.answers;
+  if (!Array.isArray(answers) || answers.length > 20) {
+    throw new Error("Invalid survey answers");
+  }
+  for (const answer of answers) {
+    if (typeof answer === "string" && answer.length > 500) {
+      throw new Error("Survey answer too long");
+    }
+  }
+  const rec: Record<string, unknown> = {
+    userId,
+    subscriptionId,
+    answers,
+    source: (survey.source as string) ?? "in_app_cancel_flow_v1",
+    statusAfter,
+    submittedAt: FieldValue.serverTimestamp(),
+  };
+  if (proceededToPortal !== undefined) rec.proceeded_to_portal = proceededToPortal;
+  const courseId = (survey.courseId as string | undefined) ?? subscriptionData.course_id;
+  if (courseId) rec.courseId = courseId;
+  const courseTitle = (survey.courseTitle as string | undefined) ?? subscriptionData.course_title;
+  if (courseTitle) rec.courseTitle = courseTitle;
+  const statusBefore = (survey.subscriptionStatusBefore as string | undefined) ?? subscriptionData.status;
+  if (statusBefore) rec.statusBefore = statusBefore;
+  const payerEmail = subscriptionData.payer_email ?? (survey.payerEmail as string | undefined);
+  if (payerEmail) rec.payerEmail = payerEmail;
+  return rec;
+}
+
 // ── Checkout observability ────────────────────────────────────────────────
 // Full-fidelity logging so any subscription checkout can be reconstructed end
 // to end from Cloud Logging. Every step emits a structured entry under
@@ -1103,6 +1142,31 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
       await subRef.set(updateData, {merge: true});
 
+      // Analytics: fire subscription.cancelled when status transitions to cancelled
+      if (preapprovalData?.status === "cancelled" && existingSubData.status !== "cancelled") {
+        const createdMs = (existingSubData.created_at as {toMillis?: () => number} | null)?.toMillis?.() ?? null;
+        const daysActive = createdMs ? Math.floor((Date.now() - createdMs) / 86400000) : null;
+        let hadSurvey = false;
+        try {
+          const fb = await db.collection("subscription_cancellation_feedback")
+            .where("subscriptionId", "==", preapprovalId)
+            .limit(1).get();
+          hadSurvey = !fb.empty;
+        } catch {/* non-critical */}
+        try {
+          analyticsCapture({
+            distinctId: parsed.userId,
+            event: "subscription.cancelled",
+            properties: {
+              course_id: existingSubData.course_id ?? null,
+              had_survey: hadSurvey,
+              days_active: daysActive,
+              source: "webhook",
+            },
+          });
+        } catch {/* non-critical */}
+      }
+
       // Trial-grant: when a free-trial preapproval becomes authorized, grant
       // course access immediately so the user has the program during the
       // trial window. The first real charge fires only after the trial,
@@ -1397,6 +1461,30 @@ router.post("/payments/webhook", async (req: Request, res) => {
       processed_at: FieldValue.serverTimestamp(),
       status: paymentData?.status || "unknown",
     });
+    // Fire payment_rejected for terminal non-approved statuses (rejected / cancelled)
+    if (paymentData?.status === "rejected" || paymentData?.status === "cancelled") {
+      let rejectedCourseId: string | null = null;
+      let rejectedUserId: string | null = null;
+      try {
+        const ref = paymentData?.external_reference;
+        if (ref) {
+          const p = parseExternalReference(ref);
+          rejectedCourseId = p.courseId ?? null;
+          rejectedUserId = p.userId ?? null;
+        }
+      } catch {/* non-critical */}
+      try {
+        analyticsCapture({
+          distinctId: rejectedUserId ?? "anonymous",
+          event: "subscription.payment_rejected",
+          properties: {
+            course_id: rejectedCourseId,
+            mp_status: paymentData?.status ?? null,
+            status_detail: paymentData?.status_detail ?? null,
+          },
+        });
+      } catch {/* non-critical */}
+    }
     res.status(200).send("OK");
     return;
   }
@@ -1965,37 +2053,13 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
 
   if (survey?.answers) {
     try {
-      const answers = survey.answers;
-      if (!Array.isArray(answers) || answers.length > 20) {
-        throw new Error("Invalid survey answers");
-      }
-      for (const answer of answers) {
-        if (typeof answer === "string" && answer.length > 500) {
-          throw new Error("Survey answer too long");
-        }
-      }
-
-      const surveyRecord: Record<string, unknown> = {
+      const surveyRecord = buildCancellationSurveyRecord({
         userId: auth.userId,
         subscriptionId,
-        answers,
-        source: (survey.source as string) ?? "in_app_cancel_flow_v1",
+        survey,
+        subscriptionData,
         statusAfter: "cancelled",
-        submittedAt: FieldValue.serverTimestamp(),
-      };
-
-      const courseId = (survey.courseId as string | undefined) ?? subscriptionData.course_id;
-      if (courseId) surveyRecord.courseId = courseId;
-
-      const courseTitle = (survey.courseTitle as string | undefined) ?? subscriptionData.course_title;
-      if (courseTitle) surveyRecord.courseTitle = courseTitle;
-
-      const statusBefore = (survey.subscriptionStatusBefore as string | undefined) ?? subscriptionData.status;
-      if (statusBefore) surveyRecord.statusBefore = statusBefore;
-
-      const payerEmail = subscriptionData.payer_email ?? (survey.payerEmail as string | undefined);
-      if (payerEmail) surveyRecord.payerEmail = payerEmail;
-
+      });
       await db.collection("subscription_cancellation_feedback").add(surveyRecord);
     } catch {/* non-critical */}
   }
@@ -2041,6 +2105,49 @@ router.post("/payments/subscriptions/:subscriptionId/cancel", async (req, res) =
   }
 
   res.json({data: {status: "cancelled"}});
+});
+
+// ─── POST /payments/subscriptions/:subscriptionId/cancel-survey ──────────────
+// Records the pre-portal survey without cancelling. The MercadoPago portal
+// performs the actual cancel; this endpoint captures intent + reasons only.
+
+router.post("/payments/subscriptions/:subscriptionId/cancel-survey", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const {subscriptionId} = req.params;
+  const survey = req.body?.survey as Record<string, unknown> | undefined;
+  const proceededToPortal = req.body?.proceeded_to_portal === true;
+
+  const subscriptionRef = db
+    .collection("users").doc(auth.userId)
+    .collection("subscriptions").doc(subscriptionId);
+  const subscriptionDoc = await subscriptionRef.get();
+  if (!subscriptionDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Suscripción no encontrada");
+  }
+  const subscriptionData = subscriptionDoc.data() ?? {};
+
+  let recorded = false;
+  if (survey?.answers) {
+    try {
+      const surveyRecord = buildCancellationSurveyRecord({
+        userId: auth.userId,
+        subscriptionId,
+        survey,
+        subscriptionData,
+        statusAfter: "intent",
+        proceededToPortal,
+      });
+      await db.collection("subscription_cancellation_feedback").add(surveyRecord);
+      recorded = true;
+    } catch (err) {
+      functions.logger.warn("cancel-survey record failed (non-blocking)", {
+        userId: auth.userId, subscriptionId, error: String(err),
+      });
+    }
+  }
+  res.json({data: {recorded}});
 });
 
 export default router;
