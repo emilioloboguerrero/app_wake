@@ -127,6 +127,10 @@ class PurchaseService {
             error: error.message || "Por favor ingresa tu correo de Mercado Pago",
           };
         }
+        analyticsService.track('subscription.checkout.create_failed', {
+          course_id: courseId, surface: surface || null, kind: 'course',
+          error_code: error?.code || error?.message || 'unknown',
+        });
         throw error;
       }
 
@@ -134,6 +138,11 @@ class PurchaseService {
       if (!initPoint) {
         throw new Error("Error creating subscription checkout");
       }
+
+      analyticsService.track('subscription.checkout.created', {
+        course_id: courseId, surface: surface || null, kind: 'course',
+        subscription_id: result?.data?.subscription_id ?? null,
+      });
 
       return {
         success: true,
@@ -247,10 +256,18 @@ class PurchaseService {
             error: error.message || 'Por favor ingresa tu correo de Mercado Pago',
           };
         }
+        analyticsService.track('subscription.checkout.create_failed', {
+          bundle_id: bundleId, surface: surface || null, kind: 'bundle',
+          error_code: error?.code || error?.message || 'unknown',
+        });
         throw error;
       }
       const initPoint = result?.data?.init_point;
       if (!initPoint) throw new Error('Error creating bundle subscription checkout');
+      analyticsService.track('subscription.checkout.created', {
+        bundle_id: bundleId, surface: surface || null, kind: 'bundle',
+        subscription_id: result?.data?.subscription_id ?? null,
+      });
       return {
         success: true,
         checkoutURL: initPoint,

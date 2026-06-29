@@ -1010,6 +1010,7 @@ useEffect(() => {
         analyticsService.track('subscription.checkout.redirected', {
           course_id: course.id,
           surface,
+          kind: 'course',
           subscription_id: subscriptionResult.subscriptionId || null,
         });
       } catch {}
