@@ -806,6 +806,11 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   // `${exerciseIndex}_${setIndex}` → { field: value }. Merged into setData at every
   // persistence point so an un-flushed weight is never lost.
   const pendingInputRef = useRef({});
+  // Timestamp captured at component mount — used to measure recovery render time (D1).
+  const recoveryMountTsRef = useRef(performance.now());
+  // Guards workout.session_interrupted so it fires at most once per hidden/pagehide
+  // transition. Reset when the page becomes visible again (D2).
+  const interruptedFiredRef = useRef(false);
 
   // Ref for focus effect timeout tracking (must be at top level, not inside conditional)
   const focusTimeoutIdsRef = useRef([]);
@@ -1146,6 +1151,20 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     try {
       const completed = routeCheckpoint.completedSets
         ? Object.keys(routeCheckpoint.completedSets).length : 0;
+      // D1: compute enrichment props for this recovery event.
+      const cpExIdx = routeCheckpoint.currentExerciseIndex ?? 0;
+      const cpSetIdx = routeCheckpoint.currentSetIndex ?? 0;
+      const inProgressKey = `${cpExIdx}_${cpSetIdx}`;
+      const inProgressEntry = routeCheckpoint.completedSets?.[inProgressKey];
+      const inProgressHasData = inProgressEntry && typeof inProgressEntry === 'object'
+        && Object.values(inProgressEntry).some(v => v !== '' && v !== null && v !== undefined);
+      const lostCurrentSetProgress = !inProgressHasData;
+      const recoveryTrigger = routeCheckpointFromParams
+        ? 'route'
+        : (typeof document !== 'undefined' && document.visibilityState !== 'visible'
+          ? 'visibility'
+          : 'reload');
+      const recoveryRenderMs = Math.round(performance.now() - recoveryMountTsRef.current);
       analyticsService.track('workout.session_recovered', {
         source: routeCheckpointFromParams ? 'route' : 'localStorage',
         course_id: routeCheckpoint.courseId || course?.courseId || null,
@@ -1155,6 +1174,9 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         had_full_workout: !!initialWorkout?.exercises?.length,
         age_seconds: routeCheckpoint.savedAt
           ? Math.round((Date.now() - new Date(routeCheckpoint.savedAt).getTime()) / 1000) : null,
+        recovery_render_ms: recoveryRenderMs,
+        lost_current_set_progress: lostCurrentSetProgress,
+        trigger: recoveryTrigger,
       });
     } catch { /* never throw from analytics */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1472,6 +1494,24 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
           clearTimeout(checkpointApiTimerRef.current);
           checkpointApiTimerRef.current = null;
         }
+        // D2: fire workout.session_interrupted at most once per hidden transition.
+        if (!interruptedFiredRef.current) {
+          interruptedFiredRef.current = true;
+          try {
+            const cp = buildCheckpoint();
+            analyticsService.track('workout.session_interrupted', {
+              course_id: cp?.courseId ?? null,
+              session_id: cp?.sessionId ?? null,
+              trigger: 'visibility',
+              exercise_index: cp?.currentExerciseIndex ?? null,
+              completed_sets: cp?.completedSets ? Object.keys(cp.completedSets).length : 0,
+              elapsed_seconds: cp?.elapsedSeconds ?? null,
+            });
+          } catch { /* never throw from analytics */ }
+        }
+      } else if (document.visibilityState === 'visible') {
+        // Reset the guard so the next backgrounding fires the event again.
+        interruptedFiredRef.current = false;
       }
     };
     const onPageHide = () => {
@@ -1480,6 +1520,22 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (checkpointApiTimerRef.current) {
         clearTimeout(checkpointApiTimerRef.current);
         checkpointApiTimerRef.current = null;
+      }
+      // D2: fire workout.session_interrupted at most once per pagehide (guard shared
+      // with visibilitychange so a simultaneous hidden + pagehide pair fires once).
+      if (!interruptedFiredRef.current) {
+        interruptedFiredRef.current = true;
+        try {
+          const cp = buildCheckpoint();
+          analyticsService.track('workout.session_interrupted', {
+            course_id: cp?.courseId ?? null,
+            session_id: cp?.sessionId ?? null,
+            trigger: 'pagehide',
+            exercise_index: cp?.currentExerciseIndex ?? null,
+            completed_sets: cp?.completedSets ? Object.keys(cp.completedSets).length : 0,
+            elapsed_seconds: cp?.elapsedSeconds ?? null,
+          });
+        } catch { /* never throw from analytics */ }
       }
     };
     document.addEventListener('visibilitychange', onVisChange);
@@ -1490,7 +1546,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       if (checkpointApiTimerRef.current) clearTimeout(checkpointApiTimerRef.current);
       if (checkpointNotesTimerRef.current) clearTimeout(checkpointNotesTimerRef.current);
     };
-  }, [saveCheckpointToLocalStorage]);
+  }, [saveCheckpointToLocalStorage, buildCheckpoint]);
 
   // Debounced checkpoint on notes change (2s)
   useEffect(() => {
