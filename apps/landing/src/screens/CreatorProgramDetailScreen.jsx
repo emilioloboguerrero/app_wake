@@ -291,6 +291,14 @@ export default function CreatorProgramDetailScreen() {
         } catch { /* private mode — fall through */ }
         if (mode === 'subscription') {
           try {
+            analyticsService.track('subscription.checkout.created', {
+              course_id: program.id,
+              surface: 'landing',
+              kind: 'course',
+              subscription_id: result.subscriptionId ?? null,
+            });
+          } catch { /* analytics is best-effort */ }
+          try {
             analyticsService.track('subscription.checkout.redirected', {
               course_id: program.id,
               surface: 'landing',
@@ -309,6 +317,16 @@ export default function CreatorProgramDetailScreen() {
       if (err?.code === 'CAPACITY_FULL') {
         openWaitlist();
         return;
+      }
+      if (mode === 'subscription') {
+        try {
+          analyticsService.track('subscription.checkout.create_failed', {
+            course_id: program?.id ?? null,
+            surface: 'landing',
+            kind: 'course',
+            error_code: err?.code || err?.message || 'unknown',
+          });
+        } catch { /* analytics is best-effort */ }
       }
       setCheckoutError(err?.message || 'No se pudo iniciar el pago');
     }

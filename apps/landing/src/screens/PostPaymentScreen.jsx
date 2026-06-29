@@ -76,6 +76,7 @@ export default function PostPaymentScreen() {
   const [magicLinkState, setMagicLinkState] = useState('idle'); // idle | sending | sent | failed
   const magicLinkFiredRef = useRef(false);
   const returnedFiredRef = useRef(false);
+  const activatedFiredRef = useRef(false);
   // Firebase restores persisted auth asynchronously; until the first
   // onAuthStateChanged fires we don't know whether the user is signed in
   // or signed out. We must NOT trust the first `null` callback as
@@ -206,6 +207,16 @@ export default function PostPaymentScreen() {
       if (cancelled) return;
       if (result?.active) {
         setAccessState('active');
+        if (!activatedFiredRef.current) {
+          activatedFiredRef.current = true;
+          try {
+            analyticsService.track('subscription.activated', {
+              course_id: courseId,
+              surface: 'landing',
+              kind: 'course',
+            });
+          } catch { /* analytics is best-effort */ }
+        }
         return;
       }
       // null result = network/server failure; consecutive failures get
