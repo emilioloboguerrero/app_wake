@@ -22,6 +22,7 @@ import purchaseService from '../services/purchaseService';
 import apiClient from '../utils/apiClient';
 import { useAuth } from '../contexts/AuthContext';
 import logger from '../utils/logger';
+import analyticsService from '../services/analyticsService';
 import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../components/WakeHeader';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
@@ -192,24 +193,12 @@ const SubscriptionsScreen = ({ navigation }) => {
     }
 
     // MercadoPago subscriptions - show manage button
-    const handleManageSubscription = async () => {
-      // If subscription has a management URL, open it
-      if (subscription.management_url) {
-        try {
-          const canOpen = await Linking.canOpenURL(subscription.management_url);
-          if (canOpen) {
-            await Linking.openURL(subscription.management_url);
-          } else {
-            Alert.alert('Error', 'No se pudo abrir la página de gestión de suscripciones');
-          }
-        } catch (error) {
-          logger.error('Error opening management URL:', error);
-          Alert.alert('Error', 'No se pudo abrir la página de gestión de suscripciones');
-        }
-      } else {
-        // Fallback: Show cancel survey flow if no management URL
-        handleCancelIntent(subscription);
-      }
+    const handleManageSubscription = () => {
+      analyticsService.track('subscription.cancel_intent', {
+        course_id: subscription.course_id ?? subscription.courseId ?? null,
+        has_management_url: !!subscription.management_url,
+      });
+      handleCancelIntent(subscription);
     };
 
     return (
@@ -322,10 +311,51 @@ const SubscriptionsScreen = ({ navigation }) => {
     setShowCancelSurvey(true);
   };
 
-  const handleSurveySubmit = () => {
+  const handleSurveySubmit = async () => {
     if (!isSurveyComplete) return;
-    setShowCancelSurvey(false);
-    setShowCancelConfirm(true);
+
+    const subscription = pendingCancelSubscription;
+    const surveyPayload = {
+      answers: [
+        cancelSurveyAnswers.reason,
+        cancelSurveyAnswers.satisfaction,
+        cancelSurveyAnswers.resubscribeLikelihood,
+        cancelSurveyAnswers.improvement,
+      ],
+      source: subscription.management_url ? 'pre_portal_survey_v1' : 'in_app_cancel_flow_v1',
+      courseId: subscription.course_id ?? subscription.courseId ?? null,
+      courseTitle: subscription.course_title ?? null,
+      subscriptionStatusBefore: subscription.status ?? null,
+    };
+
+    analyticsService.track('subscription.cancel_survey_submitted', {
+      course_id: surveyPayload.courseId,
+      reason: cancelSurveyAnswers.reason,
+      satisfaction: cancelSurveyAnswers.satisfaction,
+      resubscribe_likelihood: cancelSurveyAnswers.resubscribeLikelihood,
+      improvement: cancelSurveyAnswers.improvement,
+      proceeded_to_portal: !!subscription.management_url,
+    });
+
+    if (subscription.management_url) {
+      setShowCancelSurvey(false);
+      try {
+        await apiClient.post(`/payments/subscriptions/${subscription.id}/cancel-survey`, {
+          survey: surveyPayload,
+          proceeded_to_portal: true,
+        });
+      } catch (e) {
+        logger.error('cancel-survey record failed', e);
+      }
+      analyticsService.track('subscription.manage_portal_opened', {
+        course_id: surveyPayload.courseId,
+      });
+      resetCancelFlow();
+      await Linking.openURL(subscription.management_url);
+    } else {
+      setShowCancelSurvey(false);
+      setShowCancelConfirm(true);
+    }
   };
 
   const handleCancelConfirm = () => {
