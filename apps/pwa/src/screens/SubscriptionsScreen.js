@@ -364,9 +364,6 @@ const SubscriptionsScreen = ({ navigation }) => {
       return;
     }
 
-    const courseId = pendingCancelSubscription?.course_id || null;
-    const courseTitle = pendingCancelSubscription?.course_title || null;
-
     const surveyPayload = {
       answers: [
         cancelSurveyAnswers.reason,
