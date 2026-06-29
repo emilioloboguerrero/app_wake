@@ -4,11 +4,12 @@
 // the LANDING'S `/{username}/comprado`). Has to work for both authenticated
 // and unauthenticated visitors — cookies often don't survive the
 // cross-origin MP redirect on Safari.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import apiClient from '../utils/apiClient';
 import { auth } from '../config/firebase';
+import analyticsService from '../services/analyticsService';
 
 // Inline magic-link request rather than introduce a new shared service —
 // it's a single fetch and the only PWA caller is this screen. Mirrors the
@@ -77,6 +78,31 @@ const PaymentSuccessScreen = () => {
   // 'verifying' | 'active' | 'timeout' | 'soft'
   const [state, setState] = useState(courseId || bundleId ? 'verifying' : 'soft');
   const [pollFailedTicks, setPollFailedTicks] = useState(0);
+  const activatedFiredRef = useRef(false);
+
+  // Fire once on mount: buyer has returned from MP checkout.
+  useEffect(() => {
+    analyticsService.track('subscription.checkout.returned', {
+      surface: 'pwa_web',
+      course_id: courseId ?? null,
+      bundle_id: bundleId ?? null,
+      kind: courseId ? 'course' : (bundleId ? 'bundle' : null),
+      status: 'verifying',
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fire once when polling confirms access is active.
+  useEffect(() => {
+    if (state === 'active' && !activatedFiredRef.current) {
+      activatedFiredRef.current = true;
+      analyticsService.track('subscription.activated', {
+        surface: 'pwa_web',
+        course_id: courseId ?? null,
+        bundle_id: bundleId ?? null,
+        kind: courseId ? 'course' : (bundleId ? 'bundle' : null),
+      });
+    }
+  }, [state, courseId, bundleId]);
 
   // Magic-link fallback for cookie-loss across the MP redirect — buyer
   // enters their email and we re-send a fresh sign-in link instead of

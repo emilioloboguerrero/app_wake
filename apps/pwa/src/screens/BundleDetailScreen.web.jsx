@@ -118,7 +118,7 @@ const BundleDetailScreen = () => {
       if (result.success && result.checkoutURL) {
         try {
           analyticsService.track('subscription.checkout.redirected', {
-            bundle_id: bundleId, surface: 'pwa_web', subscription_id: result.subscriptionId || null,
+            bundle_id: bundleId, surface: 'pwa_web', kind: 'bundle', subscription_id: result.subscriptionId || null,
           });
         } catch {}
         logger.info('[subscription] checkout redirected (bundle)', {
