@@ -1175,7 +1175,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         age_seconds: routeCheckpoint.savedAt
           ? Math.round((Date.now() - new Date(routeCheckpoint.savedAt).getTime()) / 1000) : null,
         recovery_render_ms: recoveryRenderMs,
-        lost_current_set_progress: lostCurrentSetProgress,
+        current_set_empty_on_recovery: lostCurrentSetProgress,
         trigger: recoveryTrigger,
       });
     } catch { /* never throw from analytics */ }

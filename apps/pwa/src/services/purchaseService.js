@@ -128,7 +128,7 @@ class PurchaseService {
           };
         }
         analyticsService.track('subscription.checkout.create_failed', {
-          course_id: courseId, surface: surface || null, kind: 'course',
+          course_id: courseId, surface: surface || 'pwa_web', kind: 'course',
           error_code: error?.code || error?.message || 'unknown',
         });
         throw error;
@@ -140,7 +140,7 @@ class PurchaseService {
       }
 
       analyticsService.track('subscription.checkout.created', {
-        course_id: courseId, surface: surface || null, kind: 'course',
+        course_id: courseId, surface: surface || 'pwa_web', kind: 'course',
         subscription_id: result?.data?.subscription_id ?? null,
       });
 
@@ -257,7 +257,7 @@ class PurchaseService {
           };
         }
         analyticsService.track('subscription.checkout.create_failed', {
-          bundle_id: bundleId, surface: surface || null, kind: 'bundle',
+          bundle_id: bundleId, surface: surface || 'pwa_web', kind: 'bundle',
           error_code: error?.code || error?.message || 'unknown',
         });
         throw error;
@@ -265,7 +265,7 @@ class PurchaseService {
       const initPoint = result?.data?.init_point;
       if (!initPoint) throw new Error('Error creating bundle subscription checkout');
       analyticsService.track('subscription.checkout.created', {
-        bundle_id: bundleId, surface: surface || null, kind: 'bundle',
+        bundle_id: bundleId, surface: surface || 'pwa_web', kind: 'bundle',
         subscription_id: result?.data?.subscription_id ?? null,
       });
       return {

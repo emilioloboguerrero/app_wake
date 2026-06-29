@@ -367,14 +367,20 @@ const SubscriptionsScreen = ({ navigation }) => {
     const courseId = pendingCancelSubscription?.course_id || null;
     const courseTitle = pendingCancelSubscription?.course_title || null;
 
+    const surveyPayload = {
+      answers: [
+        cancelSurveyAnswers.reason,
+        cancelSurveyAnswers.satisfaction,
+        cancelSurveyAnswers.resubscribeLikelihood,
+        cancelSurveyAnswers.improvement,
+      ],
+      source: 'in_app_cancel_flow_v1',
+      courseId: pendingCancelSubscription?.course_id ?? pendingCancelSubscription?.courseId ?? null,
+      courseTitle: pendingCancelSubscription?.course_title ?? null,
+      subscriptionStatusBefore: pendingCancelSubscription?.status ?? null,
+    };
     performAction(pendingCancelSubscription.id, 'cancel', {
-      survey: {
-        answers: cancelSurveyAnswers,
-        source: 'in_app_cancel_flow_v1',
-        courseId,
-        courseTitle,
-        subscriptionStatusBefore: pendingCancelSubscription?.status || null,
-      },
+      survey: surveyPayload,
     });
     resetCancelFlow();
   };

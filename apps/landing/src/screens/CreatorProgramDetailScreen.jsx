@@ -302,6 +302,7 @@ export default function CreatorProgramDetailScreen() {
             analyticsService.track('subscription.checkout.redirected', {
               course_id: program.id,
               surface: 'landing',
+              kind: 'course',
               subscription_id: result.subscriptionId || null,
             });
           } catch { /* analytics is best-effort */ }
