@@ -203,13 +203,9 @@ export default function ResourcesScreen() {
   const handleTap = (resource) => {
     if (!resource?.url) return;
     if (resource.type === 'pdf') {
-      // A bare iframe can't render a PDF on mobile (iOS Safari / standalone PWA
-      // show a blank frame). Google's lightweight viewer renders it inline with
-      // zero dependencies.
-      setOpenResource({
-        ...resource,
-        embedUrl: `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(resource.url)}`,
-      });
+      // Mobile browsers can't render a PDF inline reliably, so hand it to the
+      // device's browser, which renders PDFs natively.
+      window.open(resource.url, '_blank', 'noopener');
       return;
     }
     if (resource.type === 'youtube') {
