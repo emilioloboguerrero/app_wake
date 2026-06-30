@@ -1633,6 +1633,10 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     // Código ABS niveles: level key → planId mapping and level option metadata.
     "level_plans",
     "levels",
+    // Optional buy-page "landing sections" (What's Included / What's New).
+    // Array of {heading, blocks[]}; validated below, sanitized again on the
+    // public read path before display.
+    "landing_sections",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -1678,6 +1682,67 @@ router.patch("/creator/programs/:programId", async (req, res) => {
         "capacity debe ser un entero mayor o igual a 1, o null para quitar el límite",
         "capacity"
       );
+    }
+  }
+
+  // Buy-page landing sections. null clears the field; otherwise an array of
+  // {heading, blocks[]} with sane caps to prevent bloat/abuse. Stored as-is;
+  // the public read path sanitizes again before display.
+  if (updates.landing_sections !== undefined && updates.landing_sections !== null) {
+    const fail = (message: string): never => {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, message, "landing_sections"
+      );
+    };
+    const sections = updates.landing_sections;
+    if (!Array.isArray(sections)) {
+      fail("landing_sections debe ser un array o null");
+    }
+    const sectionsArr = sections as unknown[];
+    if (sectionsArr.length > 20) {
+      fail("landing_sections admite como máximo 20 secciones");
+    }
+    for (const section of sectionsArr) {
+      if (typeof section !== "object" || section === null || Array.isArray(section)) {
+        fail("cada sección debe ser un objeto con heading y blocks");
+      }
+      const s = section as Record<string, unknown>;
+      if (typeof s.heading !== "string" || s.heading.trim().length === 0) {
+        fail("cada sección necesita un heading de texto no vacío");
+      }
+      if ((s.heading as string).trim().length > 120) {
+        fail("el heading de una sección no puede superar 120 caracteres");
+      }
+      if (!Array.isArray(s.blocks)) {
+        fail("cada sección debe tener un array blocks");
+      }
+      const blocks = s.blocks as unknown[];
+      if (blocks.length > 30) {
+        fail("cada sección admite como máximo 30 bloques");
+      }
+      for (const block of blocks) {
+        if (typeof block !== "object" || block === null || Array.isArray(block)) {
+          fail("cada bloque debe ser un objeto");
+        }
+        const b = block as Record<string, unknown>;
+        if (b.type === "text") {
+          if (typeof b.value !== "string" || b.value.length === 0) {
+            fail("un bloque de tipo text necesita value de texto no vacío");
+          }
+          if ((b.value as string).length > 5000) {
+            fail("el value de un bloque text no puede superar 5000 caracteres");
+          }
+        } else if (b.type === "image" || b.type === "youtube" || b.type === "video") {
+          if (typeof b.url !== "string" || b.url.length === 0) {
+            fail(`un bloque de tipo ${b.type} necesita url de texto no vacío`);
+          }
+          if ((b.url as string).length > 2000) {
+            fail("la url de un bloque no puede superar 2000 caracteres");
+          }
+        } else {
+          fail("type de bloque inválido (text, image, youtube o video)");
+        }
+      }
     }
   }
 

@@ -85,11 +85,11 @@ const ExerciseProgressChart = ({ sessions, loading, selectedPeriod = 'month', on
 
   // Filter sessions to only show those with valid data
   const hasSetData = (set) => {
-    const hasReps = set.reps && 
-                    set.reps !== '' && 
-                    !isNaN(parseFloat(set.reps)) && 
-                    !set.reps.includes('-') && 
-                    !set.reps.includes('FALLO');
+    const hasReps = set.reps &&
+                    set.reps !== '' &&
+                    !isNaN(parseFloat(set.reps)) &&
+                    !String(set.reps).includes('-') &&
+                    !String(set.reps).includes('FALLO');
     
     const hasWeight = set.weight && 
                       set.weight !== '' && 

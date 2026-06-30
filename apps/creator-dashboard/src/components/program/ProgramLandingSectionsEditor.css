@@ -1,0 +1,401 @@
+/* ─── Landing sections editor ────────────────────────────────────
+   Authors the optional "secciones de la landing" that render on the
+   public buy page. Lives inside the Programa → Configuracion bento,
+   reusing gp- tokens (accent vars, spring easing). */
+
+.pls-card {
+  gap: 14px;
+}
+
+.pls-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pls-card__header h3 {
+  margin: 0;
+}
+
+.pls-dirty {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 200, 120, 0.9);
+  background: rgba(255, 160, 50, 0.12);
+  border: 1px solid rgba(255, 180, 80, 0.25);
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ─── Empty state ─────────────────────────────────────────────── */
+.pls-empty {
+  padding: 22px 16px;
+  text-align: center;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.pls-empty__title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pls-empty__sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ─── Sections ────────────────────────────────────────────────── */
+.pls-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pls-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.pls-section__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pls-section__heading {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 200ms var(--gp-spring, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.pls-section__heading::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+  font-weight: 500;
+}
+
+.pls-section__heading:focus {
+  border-color: rgba(var(--gp-accent-r, 255), var(--gp-accent-g, 255), var(--gp-accent-b, 255), 0.4);
+}
+
+.pls-section__controls,
+.pls-block__controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ─── Icon / control buttons ──────────────────────────────────── */
+.pls-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.55);
+  transition: all 180ms var(--gp-spring, cubic-bezier(0.22, 1, 0.36, 1));
+  font-family: inherit;
+}
+
+.pls-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.pls-icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.pls-icon-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pls-icon-btn--danger {
+  color: rgba(255, 120, 120, 0.7);
+  border-color: rgba(255, 100, 100, 0.14);
+}
+
+.pls-icon-btn--danger:hover:not(:disabled) {
+  background: rgba(255, 100, 100, 0.12);
+  color: rgba(255, 130, 130, 0.95);
+}
+
+/* ─── Blocks ──────────────────────────────────────────────────── */
+.pls-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pls-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pls-block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pls-block__type {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ─── Text block ──────────────────────────────────────────────── */
+.pls-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.88);
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 200ms var(--gp-spring, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.pls-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.pls-textarea:focus {
+  border-color: rgba(var(--gp-accent-r, 255), var(--gp-accent-g, 255), var(--gp-accent-b, 255), 0.4);
+}
+
+/* ─── Media blocks (image / video) ────────────────────────────── */
+.pls-media {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.pls-media__img,
+.pls-media__video {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.pls-media__actions {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.pls-media-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 88px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 200ms ease, color 200ms ease;
+}
+
+.pls-media-empty:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* ─── YouTube block ───────────────────────────────────────────── */
+.pls-youtube {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pls-url-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.88);
+  outline: none;
+  font-family: inherit;
+  transition: border-color 200ms var(--gp-spring, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.pls-url-input::placeholder {
+  color: rgba(255, 255, 255, 0.22);
+}
+
+.pls-url-input:focus {
+  border-color: rgba(var(--gp-accent-r, 255), var(--gp-accent-g, 255), var(--gp-accent-b, 255), 0.4);
+}
+
+.pls-url-hint {
+  font-size: 11.5px;
+}
+
+.pls-url-hint--bad {
+  color: rgba(255, 140, 140, 0.85);
+}
+
+.pls-youtube__preview {
+  border-radius: 9px;
+  overflow: hidden;
+  max-width: 240px;
+}
+
+.pls-youtube__thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ─── Add-block row ───────────────────────────────────────────── */
+.pls-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pls-add-btn {
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 180ms var(--gp-spring, cubic-bezier(0.22, 1, 0.36, 1));
+  font-family: inherit;
+}
+
+.pls-add-btn:hover {
+  background: rgba(var(--gp-accent-r, 255), var(--gp-accent-g, 255), var(--gp-accent-b, 255), 0.12);
+  border-color: rgba(var(--gp-accent-r, 255), var(--gp-accent-g, 255), var(--gp-accent-b, 255), 0.28);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* ─── Footer (presets + save) ─────────────────────────────────── */
+.pls-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pls-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pls-preset-btn {
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.55);
+  transition: all 180ms var(--gp-spring, cubic-bezier(0.22, 1, 0.36, 1));
+  font-family: inherit;
+}
+
+.pls-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.pls-save-btn {
+  flex-shrink: 0;
+}
+
+.pls-save-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .pls-section__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pls-section__controls {
+    justify-content: flex-end;
+  }
+
+  .pls-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pls-save-btn {
+    width: 100%;
+  }
+}

@@ -624,6 +624,110 @@
   }
 }
 
+/* ── Landing sections ──────────────────────────────────────────────────── */
+/* Optional creator-authored content (text / image / youtube / video) below the
+   hero+CTA. Constrained to a comfortable reading width — narrower than the
+   content grid so prose never spans ultra-wide. Each section fades + rises in. */
+.cpd-sections {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 8px 24px 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 52px;
+}
+
+.cpd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  animation: cpd-section-rise 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cpd-section-rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cpd-section-heading {
+  position: relative;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0;
+  padding-bottom: 12px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Thin accent underline — the only place the accent appears in content. */
+.cpd-section-heading::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 36px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--cpd-accent);
+}
+
+.cpd-section-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cpd-section-text {
+  font-size: 15px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.cpd-section-img,
+.cpd-section-video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 14px;
+  background: #0a0a0a;
+}
+
+.cpd-section-video {
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+}
+
+/* Responsive 16:9 YouTube embed. */
+.cpd-section-embed {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.cpd-section-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .cpd-sections {
+    padding: 0 16px 44px;
+    gap: 44px;
+  }
+  .cpd-section-heading {
+    font-size: 21px;
+  }
+}
+
 /* ── Loading / empty ───────────────────────────────────────────────────── */
 .cpd-loading {
   min-height: 60vh;

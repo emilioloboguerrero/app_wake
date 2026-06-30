@@ -11,4 +11,11 @@ Execution: parallel subagents over disjoint files; controller commits centrally.
 - [x] Stream E (PWA session): D1 enrich recovered, D2 session_interrupted
 - [x] Centralized verification + commits
 - [x] Final whole-branch review + fixes
-- [ ] Deploy (E2, user-gated) + PostHog verification (E3)
+- [x] Deploy (E2, user-gated) + PostHog verification (E3)
+
+## DONE 2026-06-28
+- Merged to main, deployed functions+hosting to wolf-20b8b (prod-bundle guard passed).
+- PostHog insights created on dashboard 1651049:
+  - Purchase funnel (short_id pOcRGSYK)
+  - Session reliability (short_id dKof9jFB)
+- New events not yet in PostHog schema (no post-deploy traffic). Confirm event arrival in ~24h.

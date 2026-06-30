@@ -13,6 +13,7 @@ import ProgramRevenueCard from './ProgramRevenueCard';
 import ProgramTrainingTab from './ProgramTrainingTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
 import LevelPlansConfig from './LevelPlansConfig';
+import ProgramLandingSectionsEditor from './ProgramLandingSectionsEditor';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
 import { extractAccentFromImage } from '../events/eventFieldComponents';
 import { detectVideoSource, getEmbedUrl } from '../../utils/videoUtils';
@@ -874,6 +875,14 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                     );
                   })}
                 </BentoCard>
+
+                {/* Página de venta — optional "Qué incluye / Qué hay de nuevo"
+                    sections rendered on the public buy page. Persists the full
+                    array verbatim under courses/{id}.landing_sections. */}
+                <ProgramLandingSectionsEditor
+                  program={program}
+                  onSave={(arr) => editor.saveField({ landing_sections: arr })}
+                />
 
               </div>
             </div>

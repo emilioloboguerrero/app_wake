@@ -143,11 +143,83 @@ function shapePublicProgramCard(
   };
 }
 
+// Optional creator-authored "landing sections" on the buy page (like Jeff
+// Nippard's "What's Included" / "What's New"). Stored on courses.landing_sections
+// and edited via PATCH /creator/programs. Sanitized server-side before display.
+type PublicLandingBlock =
+  | {type: "text"; value: string}
+  | {type: "image"; url: string}
+  | {type: "youtube"; url: string}
+  | {type: "video"; url: string};
+
+interface PublicLandingSection {
+  heading: string;
+  blocks: PublicLandingBlock[];
+}
+
+// Sanitize the raw courses.landing_sections value into a display-safe shape.
+// Drops malformed sections/blocks, trims strings, never leaks extra fields, and
+// returns null (not []) when nothing valid survives so the client can check
+// truthiness.
+function sanitizeLandingSections(
+  raw: unknown
+): PublicLandingSection[] | null {
+  if (!Array.isArray(raw)) return null;
+
+  const sections: PublicLandingSection[] = [];
+
+  for (const rawSection of raw) {
+    if (
+      typeof rawSection !== "object" ||
+      rawSection === null ||
+      Array.isArray(rawSection)
+    ) {
+      continue;
+    }
+
+    const section = rawSection as Record<string, unknown>;
+    const heading = String(section.heading ?? "").trim();
+    if (!heading) continue;
+
+    if (!Array.isArray(section.blocks)) continue;
+
+    const blocks: PublicLandingBlock[] = [];
+    for (const rawBlock of section.blocks) {
+      if (
+        typeof rawBlock !== "object" ||
+        rawBlock === null ||
+        Array.isArray(rawBlock)
+      ) {
+        continue;
+      }
+
+      const block = rawBlock as Record<string, unknown>;
+      if (block.type === "text") {
+        const value = typeof block.value === "string" ? block.value.trim() : "";
+        if (value) blocks.push({type: "text", value});
+      } else if (
+        block.type === "image" ||
+        block.type === "youtube" ||
+        block.type === "video"
+      ) {
+        const url = typeof block.url === "string" ? block.url.trim() : "";
+        if (url) blocks.push({type: block.type, url});
+      }
+    }
+
+    if (blocks.length === 0) continue;
+    sections.push({heading, blocks});
+  }
+
+  return sections.length > 0 ? sections : null;
+}
+
 interface PublicProgramDetail extends PublicProgramCard {
   description: string | null;
   videoIntroUrl: string | null;
   duration: string | null;
   tags: string[] | null;
+  sections: PublicLandingSection[] | null;
 }
 
 function shapePublicProgramDetail(
@@ -160,6 +232,7 @@ function shapePublicProgramDetail(
     videoIntroUrl: (data.video_intro_url as string) ?? null,
     duration: (data.duration as string) ?? null,
     tags: Array.isArray(data.tags) ? (data.tags as string[]) : null,
+    sections: sanitizeLandingSections(data.landing_sections),
   };
 }
 

@@ -76,6 +76,79 @@ function RelatedCard({ username, program }) {
   );
 }
 
+// Pulls the 11-char video id out of any common YouTube URL shape:
+// youtube.com/watch?v=ID, youtu.be/ID, /embed/ID, /shorts/ID.
+function youtubeId(url) {
+  if (typeof url !== 'string') return null;
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function SectionBlock({ block }) {
+  if (block.type === 'text') {
+    return <p className="cpd-section-text">{block.value}</p>;
+  }
+  if (block.type === 'image') {
+    return (
+      <img
+        className="cpd-section-img"
+        src={block.url}
+        alt=""
+        loading="lazy"
+        decoding="async"
+      />
+    );
+  }
+  if (block.type === 'youtube') {
+    const id = youtubeId(block.url);
+    if (!id) return null;
+    return (
+      <div className="cpd-section-embed">
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${id}?rel=0&modestbranding=1&playsinline=1`}
+          title="Video"
+          loading="lazy"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+  if (block.type === 'video') {
+    return (
+      <video
+        className="cpd-section-video"
+        src={block.url}
+        controls
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
+  return null;
+}
+
+// Optional creator-authored "landing sections" (e.g. "Qué incluye",
+// "Novedades") rendered below the hero/CTA. Server-sanitized; each section is
+// guaranteed a non-empty heading and at least one valid block.
+function ProgramSections({ sections }) {
+  if (!Array.isArray(sections) || sections.length === 0) return null;
+  return (
+    <section className="cpd-sections" aria-label="Sobre el programa">
+      {sections.map((section, i) => (
+        <div className="cpd-section" key={i}>
+          <h2 className="cpd-section-heading">{section.heading}</h2>
+          <div className="cpd-section-blocks">
+            {section.blocks.map((block, j) => (
+              <SectionBlock block={block} key={j} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function BackArrow() {
   // Same chevron-left as the PWA's FixedWakeHeader.
   return (
@@ -794,6 +867,8 @@ export default function CreatorProgramDetailScreen() {
           </div>
         </div>
       </article>
+
+      <ProgramSections sections={program.sections} />
 
       {related.length > 0 ? (
         <section className="cpd-related" aria-label={`Más programas de ${creator.displayName}`}>
