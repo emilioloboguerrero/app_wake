@@ -17,6 +17,9 @@ export const STALE_TIMES = {
   // already wrote `current_block_id` on the course doc and the API echoes it
   // back, or it didn't and there's no new content yet either way.
   currentBlock: 5 * 60 * 1000,
+  // Additional resources attached to a program (PDFs, videos, links). Creators
+  // edit these infrequently and refetchOnWindowFocus picks up changes anyway.
+  courseResources: 15 * 60 * 1000,
 };
 
 export const GC_TIMES = {

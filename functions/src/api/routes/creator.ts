@@ -1637,6 +1637,10 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     // Array of {heading, blocks[]}; validated below, sanitized again on the
     // public read path before display.
     "landing_sections",
+    // Recursos adicionales: extra program resources (PDFs / YouTube / links).
+    // Lives only on the course doc — never propagated to user course entries.
+    // Only the count is exposed publicly; full list gated behind active access.
+    "additional_resources",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -1744,6 +1748,59 @@ router.patch("/creator/programs/:programId", async (req, res) => {
         }
       }
     }
+  }
+
+  // Recursos adicionales. If present it must be an array (max 50). Each item is
+  // normalized to a clean { id, type, title, url, storage_path?, order } shape —
+  // unknown keys are dropped. Only lives on the course doc.
+  if (updates.additional_resources !== undefined) {
+    const fail = (message: string): never => {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400, message, "additional_resources"
+      );
+    };
+    const resources = updates.additional_resources;
+    if (!Array.isArray(resources)) {
+      fail("additional_resources debe ser un array");
+    }
+    const resourcesArr = resources as unknown[];
+    if (resourcesArr.length > 50) {
+      fail("additional_resources admite como máximo 50 elementos");
+    }
+    const validTypes = ["pdf", "youtube", "link"];
+    const cleaned = resourcesArr.map((item) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        fail("cada recurso debe ser un objeto");
+      }
+      const r = item as Record<string, unknown>;
+      if (typeof r.id !== "string" || r.id.trim().length === 0) {
+        fail("cada recurso necesita un id de texto no vacío");
+      }
+      if (typeof r.type !== "string" || !validTypes.includes(r.type)) {
+        fail("cada recurso necesita un type válido (pdf, youtube o link)");
+      }
+      if (typeof r.title !== "string" || r.title.trim().length === 0) {
+        fail("cada recurso necesita un title de texto no vacío");
+      }
+      if (typeof r.url !== "string" || r.url.trim().length === 0) {
+        fail("cada recurso necesita una url de texto no vacío");
+      }
+      if (typeof r.order !== "number" || !Number.isFinite(r.order)) {
+        fail("cada recurso necesita un order numérico");
+      }
+      const clean: Record<string, unknown> = {
+        id: r.id as string,
+        type: r.type as string,
+        title: (r.title as string).trim(),
+        url: r.url as string,
+        order: r.order as number,
+      };
+      if (r.type === "pdf" && typeof r.storage_path === "string" && r.storage_path.length > 0) {
+        clean.storage_path = r.storage_path;
+      }
+      return clean;
+    });
+    updates.additional_resources = cleaned;
   }
 
   if (updates.block_cadence !== undefined) {
@@ -8012,8 +8069,12 @@ router.post("/creator/media/upload-url", async (req, res) => {
     req.body
   );
 
-  if (!contentType.startsWith("image/") && !contentType.startsWith("video/")) {
-    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Solo se permiten imágenes y videos");
+  if (
+    !contentType.startsWith("image/") &&
+    !contentType.startsWith("video/") &&
+    contentType !== "application/pdf"
+  ) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Solo se permiten imágenes, videos y PDFs");
   }
 
   const ext = filename.split(".").pop() || "bin";

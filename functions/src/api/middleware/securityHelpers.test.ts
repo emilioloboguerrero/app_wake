@@ -823,7 +823,18 @@ describe("pickPublicCourseFields", () => {
 
   it("does not invent fields that aren't on the input", () => {
     const out = pickPublicCourseFields({title: "Only"});
-    expect(Object.keys(out)).toEqual(["title"]);
+    // additional_resources_count is always computed (defaults to 0).
+    expect(Object.keys(out)).toEqual(["title", "additional_resources_count"]);
+    expect(out.additional_resources_count).toBe(0);
+  });
+
+  it("computes additional_resources_count from the array length without leaking the array", () => {
+    const out = pickPublicCourseFields({
+      title: "X",
+      additional_resources: [{id: "a"}, {id: "b"}, {id: "c"}],
+    });
+    expect(out.additional_resources_count).toBe(3);
+    expect(out.additional_resources).toBeUndefined();
   });
 
   it("PUBLIC_COURSE_FIELDS does not include creator_email or payout fields", () => {

@@ -47,6 +47,7 @@ import BottomSpacer from '../components/BottomSpacer';
 import SkeletonCard from '../components/SkeletonCard.web.jsx';
 import TodayWorkoutCard from '../components/TodayWorkoutCard.web.jsx';
 import TodayNutritionCard from '../components/TodayNutritionCard.web.jsx';
+import AdditionalResourcesCard from '../components/AdditionalResourcesCard.web.jsx';
 import WeekCoachCard from '../components/WeekCoachCard.web.jsx';
 import HoyBanners from '../components/HoyBanners.web.jsx';
 import HoyEmptyState from '../components/hoy/HoyEmptyState.web.jsx';
@@ -411,6 +412,9 @@ const HoyScreen = () => {
     const items = [];
     (selectedCoach?.workouts || []).forEach((course) => {
       items.push({ id: `workout_${course.courseId || course.id}`, type: 'workout', course });
+      if (Number(course.additional_resources_count) > 0) {
+        items.push({ id: `resources_${course.courseId || course.id}`, type: 'resources', course });
+      }
     });
     if (selectedCoach?.hasNutrition) {
       items.push({ id: 'nutrition', type: 'nutrition' });
@@ -479,6 +483,14 @@ const HoyScreen = () => {
           selectedDate={selectedDate}
           onBegin={handleBeginWorkout}
           onRenew={handleRenewCourse}
+        />
+      );
+    } else if (item.type === 'resources') {
+      inner = (
+        <AdditionalResourcesCard
+          course={item.course}
+          count={item.course.additional_resources_count}
+          onOpen={() => navigate(`/course/${item.course.courseId || item.course.id}/resources`)}
         />
       );
     } else if (item.type === 'nutrition') {

@@ -12,6 +12,7 @@ import NumberTicker from '../ui/NumberTicker';
 import ProgramRevenueCard from './ProgramRevenueCard';
 import ProgramTrainingTab from './ProgramTrainingTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
+import ProgramResourcesTab from './ProgramResourcesTab';
 import LevelPlansConfig from './LevelPlansConfig';
 import ProgramLandingSectionsEditor from './ProgramLandingSectionsEditor';
 import { ResponsiveContainer, AreaChart, Area, YAxis } from 'recharts';
@@ -35,6 +36,7 @@ const TAB_ITEMS = [
 const CONTENIDO_SUBTABS = [
   { id: 'entrenamiento', label: 'Entrenamiento' },
   { id: 'nutricion', label: 'Nutricion' },
+  { id: 'recursos', label: 'Recursos' },
 ];
 
 const TUTORIAL_SCREENS = [
@@ -907,6 +909,13 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                 <ProgramNutritionTab
                   programId={programId}
                   creatorId={user.uid}
+                />
+            </KeepAlivePane>
+            <KeepAlivePane active={contenidoSubtab === 'recursos'}>
+                <ProgramResourcesTab
+                  programId={programId}
+                  initialResources={program?.additional_resources || []}
+                  onSaved={editor.saveField}
                 />
             </KeepAlivePane>
         </KeepAlivePane>

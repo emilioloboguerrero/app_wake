@@ -1689,6 +1689,36 @@ router.get("/workout/courses/:courseId", async (req, res) => {
   res.json({data: {...pickPublicCourseFields(data), id: courseDoc.id}});
 });
 
+// GET /workout/courses/:courseId/resources — gated additional resources
+// Full additional_resources list, only for users with active access to the
+// program. The public course endpoint exposes just the count.
+router.get("/workout/courses/:courseId/resources", async (req, res) => {
+  const auth = await validateAuth(req);
+  await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+  const userDoc = await db.collection("users").doc(auth.userId).get();
+  const courses = userDoc.data()?.courses ?? {};
+  const courseAccess = courses[req.params.courseId];
+
+  if (!courseAccessIsActive(courseAccess as Record<string, unknown> | undefined)) {
+    throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+  }
+
+  const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
+  }
+
+  const course = courseDoc.data() ?? {};
+  const resources = Array.isArray(course.additional_resources) ?
+    [...course.additional_resources].sort(
+      (a, b) => ((a as {order?: number}).order || 0) - ((b as {order?: number}).order || 0)
+    ) :
+    [];
+
+  res.status(200).json({data: {resources}});
+});
+
 // POST /workout/complete — atomic session completion
 router.post("/workout/complete", async (req, res) => {
   const auth = await validateAuth(req);

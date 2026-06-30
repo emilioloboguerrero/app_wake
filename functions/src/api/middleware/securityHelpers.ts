@@ -537,6 +537,12 @@ export function pickPublicCourseFields(
   for (const k of PUBLIC_COURSE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(data, k)) out[k] = data[k];
   }
+  // Recursos adicionales: expose only the count publicly. The full
+  // additional_resources array is gated behind active access via
+  // GET /workout/courses/:courseId/resources.
+  out.additional_resources_count = Array.isArray(data.additional_resources) ?
+    data.additional_resources.length :
+    0;
   return out;
 }
 

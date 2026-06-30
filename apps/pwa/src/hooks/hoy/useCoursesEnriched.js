@@ -53,6 +53,12 @@ export function useCoursesEnriched(courses) {
         block_cadence: apiData?.block_cadence ?? null,
         current_block_id: apiData?.current_block_id ?? null,
         current_block_index: typeof apiData?.current_block_index === 'number' ? apiData.current_block_index : null,
+        // Count of "Recursos adicionales" attached to the program — drives the
+        // resources card in the Hoy carousel.
+        additional_resources_count:
+          typeof apiData?.additional_resources_count === 'number'
+            ? apiData.additional_resources_count
+            : (c.additional_resources_count ?? 0),
         scheduling: apiData?.scheduling ?? c.scheduling ?? null,
         // Level-gating fields — set by creator, read by level-picker modal + workout walker.
         levels: apiData?.levels ?? c.levels ?? null,
