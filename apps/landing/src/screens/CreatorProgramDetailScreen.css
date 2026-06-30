@@ -731,6 +731,60 @@
   object-fit: contain;
 }
 
+/* Multi-image fan — same stacked-cover look as the bundle BundleCover: the
+   center card sits in front, the side cards spread out with a slight rotation,
+   so all three covers (and their labels) stay visible. */
+.cpd-section-fan {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+}
+
+.cpd-section-fan-tile {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46%;
+  aspect-ratio: 4 / 5;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1a1a1a;
+  box-shadow:
+    0 16px 32px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.cpd-section-fan-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.cpd-section-fan--3 .cpd-section-fan-tile--0 {
+  transform: translate(-50%, -50%) translateX(-56%) rotate(-8deg);
+  z-index: 1;
+}
+.cpd-section-fan--3 .cpd-section-fan-tile--1 {
+  transform: translate(-50%, -50%) rotate(0deg);
+  z-index: 3;
+}
+.cpd-section-fan--3 .cpd-section-fan-tile--2 {
+  transform: translate(-50%, -50%) translateX(56%) rotate(8deg);
+  z-index: 2;
+}
+
+.cpd-section-fan--2 .cpd-section-fan-tile--0 {
+  transform: translate(-50%, -50%) translateX(-30%) rotate(-6deg);
+  z-index: 1;
+}
+.cpd-section-fan--2 .cpd-section-fan-tile--1 {
+  transform: translate(-50%, -50%) translateX(30%) rotate(6deg);
+  z-index: 2;
+}
+
 /* Responsive 16:9 YouTube embed. */
 .cpd-section-embed {
   position: relative;

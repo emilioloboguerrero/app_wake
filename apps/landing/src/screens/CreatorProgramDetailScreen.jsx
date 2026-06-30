@@ -146,9 +146,18 @@ function ProgramSections({ sections }) {
           <div className={className} key={i}>
             {media.length > 0 ? (
               <div className="cpd-section-media">
-                {media.map((block, j) => (
-                  <SectionBlock block={block} key={j} />
-                ))}
+                {media.length >= 2 && media.every((b) => b.type === 'image') ? (
+                  // Multiple images fan out like the bundle cover stack.
+                  <div className={`cpd-section-fan cpd-section-fan--${Math.min(media.length, 3)}`}>
+                    {media.slice(0, 3).map((block, j) => (
+                      <div className={`cpd-section-fan-tile cpd-section-fan-tile--${j}`} key={j}>
+                        <img src={block.url} alt="" loading="lazy" decoding="async" />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  media.map((block, j) => <SectionBlock block={block} key={j} />)
+                )}
               </div>
             ) : null}
             <div className="cpd-section-copy">
