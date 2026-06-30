@@ -737,14 +737,14 @@
 .cpd-section-fan {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 6 / 5;
 }
 
 .cpd-section-fan-tile {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 46%;
+  width: 45%;
   aspect-ratio: 4 / 5;
   border-radius: 14px;
   overflow: hidden;
@@ -764,7 +764,7 @@
 }
 
 .cpd-section-fan--3 .cpd-section-fan-tile--0 {
-  transform: translate(-50%, -50%) translateX(-56%) rotate(-8deg);
+  transform: translate(-50%, -50%) translateX(-62%) translateY(13%) rotate(-9deg);
   z-index: 1;
 }
 .cpd-section-fan--3 .cpd-section-fan-tile--1 {
@@ -772,16 +772,16 @@
   z-index: 3;
 }
 .cpd-section-fan--3 .cpd-section-fan-tile--2 {
-  transform: translate(-50%, -50%) translateX(56%) rotate(8deg);
+  transform: translate(-50%, -50%) translateX(62%) translateY(13%) rotate(9deg);
   z-index: 2;
 }
 
 .cpd-section-fan--2 .cpd-section-fan-tile--0 {
-  transform: translate(-50%, -50%) translateX(-30%) rotate(-6deg);
+  transform: translate(-50%, -50%) translateX(-33%) translateY(7%) rotate(-7deg);
   z-index: 1;
 }
 .cpd-section-fan--2 .cpd-section-fan-tile--1 {
-  transform: translate(-50%, -50%) translateX(30%) rotate(6deg);
+  transform: translate(-50%, -50%) translateX(33%) translateY(7%) rotate(7deg);
   z-index: 2;
 }
 
