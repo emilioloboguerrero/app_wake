@@ -148,7 +148,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    padding: '14px 18px',
+    padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 18px 14px',
     borderBottom: '1px solid rgba(255,255,255,0.08)',
   },
   overlayTitle: {
@@ -203,10 +203,13 @@ export default function ResourcesScreen() {
   const handleTap = (resource) => {
     if (!resource?.url) return;
     if (resource.type === 'pdf') {
-      // Mobile browsers (iOS Safari / standalone PWA) don't render a PDF inside an
-      // iframe — it shows a blank frame. Open in a new tab so the device's native
-      // PDF viewer handles it reliably.
-      window.open(resource.url, '_blank', 'noopener');
+      // A bare iframe can't render a PDF on mobile (iOS Safari / standalone PWA
+      // show a blank frame). Google's lightweight viewer renders it inline with
+      // zero dependencies.
+      setOpenResource({
+        ...resource,
+        embedUrl: `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(resource.url)}`,
+      });
       return;
     }
     if (resource.type === 'youtube') {
