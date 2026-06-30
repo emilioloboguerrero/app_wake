@@ -20,6 +20,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WakeLoader from '../components/WakeLoader';
@@ -53,6 +54,7 @@ import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
 import { getAverageColorFromImageUrl } from '../utils/imageColorUtils';
+import { whatsappUrl } from '../config/support';
 
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
 
@@ -1138,7 +1140,29 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                   </TouchableOpacity>
                 </View>
               </View>
-              
+
+                  {/* WhatsApp Support Row */}
+                  <View style={styles.inputGroup}>
+                    <TouchableOpacity
+                      style={styles.toggleRow}
+                      onPress={() => {
+                        const name = userProfile?.displayName?.trim();
+                        const prefill = name
+                          ? `Hola, soy ${name}. Necesito ayuda con Wake.`
+                          : 'Hola, necesito ayuda con Wake.';
+                        Linking.openURL(whatsappUrl(prefill)).catch(() => {});
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.toggleRowText}>
+                        <Text style={styles.toggleRowTitle}>Soporte por WhatsApp</Text>
+                        <Text style={styles.toggleRowSubtitle}>
+                          ¿Necesitas ayuda? Escríbenos.
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+
                   {/* Sign Out Button */}
                   <TouchableOpacity
                     className={Platform.OS === 'web' ? 'sign-out-btn' : undefined}

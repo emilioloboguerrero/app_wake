@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { ASSET_BASE } from '../config/assets';
+import { whatsappUrl } from '../config/support';
 import { useNavigate, useLocation } from 'react-router-dom';
 import StickyHeader from './StickyHeader';
 import { submitCreatorFeedback } from '../services/creatorFeedbackService';
@@ -20,6 +21,7 @@ import {
   CalendarCheck,
   KeyRound,
   Shield,
+  LifeBuoy,
 } from 'lucide-react';
 
 const TYPE_BUG = 'bug';
@@ -426,6 +428,17 @@ const DashboardLayout = ({
               </div>
             )}
           </div>
+
+          {/* Soporte por WhatsApp */}
+          <a
+            className="dl-support-link"
+            href={whatsappUrl(`Hola, soy ${user?.displayName || 'un coach'}, coach en Wake. Necesito ayuda.`)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <LifeBuoy size={12} />
+            <span>Soporte</span>
+          </a>
 
           {/* User profile */}
           <Tooltip label="Tu perfil" placement="right">

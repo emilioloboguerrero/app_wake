@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import CascadeText from '../components/CascadeText';
+import { whatsappUrl, SUPPORT_WHATSAPP_DISPLAY } from '../config/support';
 import './SupportScreen.css';
 
 const SupportScreen = () => {
@@ -14,7 +15,7 @@ const SupportScreen = () => {
   const faqs = [
     {
       question: '¿Cómo puedo contactar al equipo de soporte?',
-      answer: 'Puedes contactarnos enviando un correo electrónico a emilioloboguerrero@gmail.com. Nuestro equipo responderá en un plazo de 24-48 horas durante días hábiles.'
+      answer: 'La vía más rápida es WhatsApp al +57 313 4950869: te respondemos directo desde el chat. También puedes escribirnos por correo electrónico a emilioloboguerrero@gmail.com, donde respondemos en un plazo de 24-48 horas durante días hábiles.'
     },
     {
       question: '¿Cuál es el tiempo de respuesta del soporte?',
@@ -69,15 +70,24 @@ const SupportScreen = () => {
             </div>
 
             <div className="support-contact-box">
-              <div className="support-contact-label">Correo Electrónico de Soporte</div>
               <a
-                href={`mailto:${supportEmail}?subject=Soporte Wake - Consulta`}
-                className="support-contact-email"
+                href={whatsappUrl('Hola, necesito ayuda con Wake.')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="support-whatsapp-button"
               >
-                {supportEmail}
+                <span className="support-whatsapp-button-label">Escríbenos por WhatsApp</span>
+                <span className="support-whatsapp-button-number">{SUPPORT_WHATSAPP_DISPLAY}</span>
               </a>
-              <div className="support-contact-note">
-                Haz clic en el correo para abrir tu cliente de email predeterminado
+
+              <div className="support-contact-alt">
+                <div className="support-contact-label">O escríbenos por correo</div>
+                <a
+                  href={`mailto:${supportEmail}?subject=Soporte Wake - Consulta`}
+                  className="support-contact-email"
+                >
+                  {supportEmail}
+                </a>
               </div>
             </div>
 
@@ -305,6 +315,14 @@ const SupportScreen = () => {
             <div className="support-footer-section">
               <h4 className="support-footer-title">Soporte</h4>
               <div className="support-footer-contact">
+                <a
+                  href={whatsappUrl('Hola, necesito ayuda con Wake.')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="support-footer-email"
+                >
+                  WhatsApp {SUPPORT_WHATSAPP_DISPLAY}
+                </a>
                 <a href={`mailto:${supportEmail}`} className="support-footer-email">
                   {supportEmail}
                 </a>

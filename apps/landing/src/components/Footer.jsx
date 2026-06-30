@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
+import { whatsappUrl, SUPPORT_WHATSAPP_DISPLAY } from '../config/support';
 import './Footer.css';
 
 const Footer = () => (
@@ -18,8 +19,8 @@ const Footer = () => (
         <a href="mailto:emilioloboguerrero@gmail.com" className="footer-contact-item">
           emilioloboguerrero@gmail.com
         </a>
-        <a href="tel:+573178751956" className="footer-contact-item">
-          +57 317 8751956
+        <a href={whatsappUrl('Hola, necesito ayuda con Wake.')} target="_blank" rel="noopener noreferrer" className="footer-contact-item">
+          WhatsApp {SUPPORT_WHATSAPP_DISPLAY}
         </a>
       </div>
       <p className="footer-copy">© {new Date().getFullYear()} Wake</p>
