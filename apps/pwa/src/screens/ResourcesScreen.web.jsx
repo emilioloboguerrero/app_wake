@@ -203,7 +203,10 @@ export default function ResourcesScreen() {
   const handleTap = (resource) => {
     if (!resource?.url) return;
     if (resource.type === 'pdf') {
-      setOpenResource({ ...resource, embedUrl: resource.url });
+      // Mobile browsers (iOS Safari / standalone PWA) don't render a PDF inside an
+      // iframe — it shows a blank frame. Open in a new tab so the device's native
+      // PDF viewer handles it reliably.
+      window.open(resource.url, '_blank', 'noopener');
       return;
     }
     if (resource.type === 'youtube') {
