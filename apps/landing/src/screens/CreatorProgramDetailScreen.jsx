@@ -135,16 +135,31 @@ function ProgramSections({ sections }) {
   if (!Array.isArray(sections) || sections.length === 0) return null;
   return (
     <section className="cpd-sections" aria-label="Sobre el programa">
-      {sections.map((section, i) => (
-        <div className="cpd-section" key={i}>
-          <h2 className="cpd-section-heading">{section.heading}</h2>
-          <div className="cpd-section-blocks">
-            {section.blocks.map((block, j) => (
-              <SectionBlock block={block} key={j} />
-            ))}
+      {sections.map((section, i) => {
+        // Image is the protagonist; the copy (heading + text) sits beside it.
+        // Split blocks into a media column and a text column, then alternate
+        // the image side every other section for the editorial rhythm.
+        const media = section.blocks.filter((b) => b.type !== 'text');
+        const texts = section.blocks.filter((b) => b.type === 'text');
+        const className = `cpd-section${media.length === 0 ? ' cpd-section--text-only' : ''}${i % 2 === 1 ? ' cpd-section--reverse' : ''}`;
+        return (
+          <div className={className} key={i}>
+            {media.length > 0 ? (
+              <div className="cpd-section-media">
+                {media.map((block, j) => (
+                  <SectionBlock block={block} key={j} />
+                ))}
+              </div>
+            ) : null}
+            <div className="cpd-section-copy">
+              <h2 className="cpd-section-heading">{section.heading}</h2>
+              {texts.map((block, j) => (
+                <SectionBlock block={block} key={j} />
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }

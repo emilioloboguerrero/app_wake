@@ -629,19 +629,34 @@
    hero+CTA. Constrained to a comfortable reading width — narrower than the
    content grid so prose never spans ultra-wide. Each section fades + rises in. */
 .cpd-sections {
-  max-width: 720px;
+  max-width: 1040px;
   margin: 0 auto;
-  padding: 8px 24px 56px;
+  padding: 8px 24px 64px;
   display: flex;
   flex-direction: column;
-  gap: 52px;
+  gap: 72px;
 }
 
+/* Side-by-side editorial rows (image | text), with the image as the
+   protagonist and the copy beside it. The image alternates sides every other
+   section, like a premium product page. */
 .cpd-section {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: center;
   animation: cpd-section-rise 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Every other section flips the image to the opposite side. */
+.cpd-section--reverse .cpd-section-media {
+  order: 2;
+}
+
+/* Sections with no image read as a single centered column, not a half. */
+.cpd-section--text-only {
+  grid-template-columns: minmax(0, 720px);
+  justify-content: center;
 }
 
 @keyframes cpd-section-rise {
@@ -649,14 +664,28 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+.cpd-section-media {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cpd-section-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
 .cpd-section-heading {
   position: relative;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.2;
   margin: 0;
-  padding-bottom: 12px;
+  padding-bottom: 14px;
   color: rgba(255, 255, 255, 0.95);
 }
 
@@ -672,16 +701,10 @@
   background: var(--cpd-accent);
 }
 
-.cpd-section-blocks {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
 .cpd-section-text {
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.7;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.72);
   margin: 0;
   white-space: pre-wrap;
 }
@@ -691,8 +714,16 @@
   display: block;
   width: 100%;
   max-width: 100%;
-  border-radius: 14px;
+  border-radius: 16px;
   background: #0a0a0a;
+}
+
+/* Image is the protagonist: a tall editorial portrait crop, anchored to the
+   top so the face and abs stay in frame while legs/floor are cropped out. */
+.cpd-section-img {
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  object-position: center top;
 }
 
 .cpd-section-video {
@@ -705,7 +736,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
   background: #0a0a0a;
 }
@@ -718,13 +749,26 @@
   border: 0;
 }
 
+/* Below the hero's own breakpoint, the side-by-side rows stack into a single
+   column with the image always on top — even on the reversed rows. */
+@media (max-width: 860px) {
+  .cpd-section,
+  .cpd-section--text-only {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .cpd-section--reverse .cpd-section-media {
+    order: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .cpd-sections {
-    padding: 0 16px 44px;
-    gap: 44px;
+    padding: 0 16px 48px;
+    gap: 48px;
   }
   .cpd-section-heading {
-    font-size: 21px;
+    font-size: 22px;
   }
 }
 
