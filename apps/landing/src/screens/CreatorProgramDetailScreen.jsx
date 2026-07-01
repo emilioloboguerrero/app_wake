@@ -84,6 +84,13 @@ function youtubeId(url) {
   return m ? m[1] : null;
 }
 
+// Renders a cta label, emphasizing **bold** segments (odd split indices).
+function renderCtaLabel(label) {
+  return String(label).split('**').map((part, i) =>
+    (i % 2 === 1 ? <strong key={i}>{part}</strong> : part)
+  );
+}
+
 function SectionBlock({ block, program, onCtaClick }) {
   if (block.type === 'text') {
     return <p className="cpd-section-text">{block.value}</p>;
@@ -178,7 +185,7 @@ function SectionBlock({ block, program, onCtaClick }) {
     const isSub = typeof program?.subscriptionPrice === 'number' && program.subscriptionPrice > 0;
     return (
       <button type="button" className="cpd-cta cpd-cta-primary cpd-section-cta" onClick={onCtaClick}>
-        <span className="cpd-cta-label">{block.label}</span>
+        <span className="cpd-cta-label">{renderCtaLabel(block.label)}</span>
         {isSub ? (
           sub ? (
             <span className="cpd-cta-price">

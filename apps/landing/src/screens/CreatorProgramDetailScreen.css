@@ -307,6 +307,10 @@
   letter-spacing: -0.005em;
 }
 
+.cpd-cta-label strong {
+  font-weight: 800;
+}
+
 .cpd-cta-price {
   font-weight: 700;
   letter-spacing: -0.015em;
