@@ -4650,6 +4650,10 @@ router.get("/creator/clients/:clientId/client-sessions/:clientSessionId/content"
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
   await verifyClientAccess(auth.userId, req.params.clientId);
+  // Security (audit H-13): the write siblings (PUT/PATCH) verify session
+  // ownership, but this read path did not — anyone with one client could read
+  // ANY client_session_content doc by passing that id. Mirror the write guard.
+  await verifyClientSessionOwnership(auth.userId, req.params.clientSessionId);
 
   const docRef = db.collection("client_session_content").doc(req.params.clientSessionId);
   const doc = await docRef.get();

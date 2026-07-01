@@ -33,7 +33,7 @@
     "mercadopago": "^2.10.0",
     "posthog-node": "^4.10.0",
     "resend": "^6.9.3",
-    "sanitize-html": "^2.17.3",
+    "sanitize-html": "^2.17.5",
     "sharp": "^0.34.5",
     "source-map": "^0.7.6",
     "swagger-ui-express": "^5.0.1",
