@@ -150,7 +150,14 @@ type PublicLandingBlock =
   | {type: "text"; value: string}
   | {type: "image"; url: string}
   | {type: "youtube"; url: string}
-  | {type: "video"; url: string};
+  | {type: "video"; url: string}
+  | {type: "faq"; items: {q: string; a: string}[]}
+  | {
+      type: "compare";
+      mineLabel: string;
+      othersLabel: string;
+      rows: {label: string; mine: boolean; others: boolean}[];
+    };
 
 interface PublicLandingSection {
   heading: string;
@@ -204,6 +211,55 @@ function sanitizeLandingSections(
       ) {
         const url = typeof block.url === "string" ? block.url.trim() : "";
         if (url) blocks.push({type: block.type, url});
+      } else if (block.type === "faq") {
+        if (!Array.isArray(block.items)) continue;
+        const items: {q: string; a: string}[] = [];
+        for (const rawItem of block.items) {
+          if (
+            typeof rawItem !== "object" ||
+            rawItem === null ||
+            Array.isArray(rawItem)
+          ) {
+            continue;
+          }
+          const item = rawItem as Record<string, unknown>;
+          const q = typeof item.q === "string" ? item.q.trim() : "";
+          const a = typeof item.a === "string" ? item.a.trim() : "";
+          if (q && a) items.push({q, a});
+          if (items.length >= 20) break;
+        }
+        if (items.length > 0) blocks.push({type: "faq", items});
+      } else if (block.type === "compare") {
+        if (!Array.isArray(block.rows)) continue;
+        const rows: {label: string; mine: boolean; others: boolean}[] = [];
+        for (const rawRow of block.rows) {
+          if (
+            typeof rawRow !== "object" ||
+            rawRow === null ||
+            Array.isArray(rawRow)
+          ) {
+            continue;
+          }
+          const row = rawRow as Record<string, unknown>;
+          const label = typeof row.label === "string" ? row.label.trim() : "";
+          if (!label) continue;
+          rows.push({
+            label,
+            mine: row.mine === true,
+            others: row.others === true,
+          });
+          if (rows.length >= 20) break;
+        }
+        if (rows.length === 0) continue;
+        const mineLabel =
+          typeof block.mineLabel === "string" && block.mineLabel.trim() ?
+            block.mineLabel.trim() :
+            "Código ABS";
+        const othersLabel =
+          typeof block.othersLabel === "string" && block.othersLabel.trim() ?
+            block.othersLabel.trim() :
+            "Otros";
+        blocks.push({type: "compare", mineLabel, othersLabel, rows});
       }
     }
 
@@ -220,6 +276,7 @@ interface PublicProgramDetail extends PublicProgramCard {
   duration: string | null;
   tags: string[] | null;
   sections: PublicLandingSection[] | null;
+  compareAtPrice: number | null;
 }
 
 function shapePublicProgramDetail(
@@ -233,6 +290,12 @@ function shapePublicProgramDetail(
     duration: (data.duration as string) ?? null,
     tags: Array.isArray(data.tags) ? (data.tags as string[]) : null,
     sections: sanitizeLandingSections(data.landing_sections),
+    compareAtPrice:
+      typeof data.compare_at_price === "number" &&
+      Number.isInteger(data.compare_at_price) &&
+      data.compare_at_price > 0 ?
+        (data.compare_at_price as number) :
+        null,
   };
 }
 

@@ -125,7 +125,68 @@ function SectionBlock({ block }) {
       />
     );
   }
+  if (block.type === 'faq') {
+    if (!Array.isArray(block.items) || block.items.length === 0) return null;
+    return (
+      <div className="cpd-faq">
+        {block.items.map((item, i) => (
+          <details className="cpd-faq-item" key={i}>
+            <summary className="cpd-faq-q">
+              <span className="cpd-faq-q-text">{item.q}</span>
+              <span className="cpd-faq-indicator" aria-hidden="true" />
+            </summary>
+            <p className="cpd-faq-a">{item.a}</p>
+          </details>
+        ))}
+      </div>
+    );
+  }
+  if (block.type === 'compare') {
+    if (!Array.isArray(block.rows) || block.rows.length === 0) return null;
+    return (
+      <div className="cpd-compare" role="table" aria-label="Comparación">
+        <div className="cpd-compare-head" role="row">
+          <div className="cpd-compare-cell cpd-compare-cell--label" role="columnheader" />
+          <div className="cpd-compare-cell cpd-compare-cell--mine" role="columnheader">
+            {block.mineLabel}
+          </div>
+          <div className="cpd-compare-cell cpd-compare-cell--others" role="columnheader">
+            {block.othersLabel}
+          </div>
+        </div>
+        {block.rows.map((row, i) => (
+          <div className="cpd-compare-row" role="row" key={i}>
+            <div className="cpd-compare-cell cpd-compare-cell--label" role="cell">
+              {row.label}
+            </div>
+            <div className="cpd-compare-cell cpd-compare-cell--mine" role="cell">
+              {row.mine ? <CompareCheck /> : <CompareCross />}
+            </div>
+            <div className="cpd-compare-cell cpd-compare-cell--others" role="cell">
+              {row.others ? <CompareCheck /> : <CompareCross />}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return null;
+}
+
+function CompareCheck() {
+  return (
+    <svg className="cpd-compare-icon cpd-compare-icon--yes" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-label="Sí">
+      <path d="m5 12.5 4.5 4.5L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CompareCross() {
+  return (
+    <svg className="cpd-compare-icon cpd-compare-icon--no" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-label="No">
+      <path d="M7 7l10 10M17 7 7 17" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 // Optional creator-authored "landing sections" (e.g. "Qué incluye",
@@ -136,6 +197,21 @@ function ProgramSections({ sections }) {
   return (
     <section className="cpd-sections" aria-label="Sobre el programa">
       {sections.map((section, i) => {
+        // faq/compare blocks want the full section width, not a 50% column.
+        // Render the whole section as a single stacked column: heading on top,
+        // then every block in order (text as paragraphs, the special block full
+        // width). This bypasses the side-by-side editorial grid entirely.
+        const isFull = section.blocks.some((b) => b.type === 'faq' || b.type === 'compare');
+        if (isFull) {
+          return (
+            <div className="cpd-section cpd-section--full" key={i}>
+              <h2 className="cpd-section-heading">{section.heading}</h2>
+              {section.blocks.map((block, j) => (
+                <SectionBlock block={block} key={j} />
+              ))}
+            </div>
+          );
+        }
         // Image is the protagonist; the copy (heading + text) sits beside it.
         // Split blocks into a media column and a text column, then alternate
         // the image side every other section for the editorial rhythm.
@@ -755,6 +831,9 @@ export default function CreatorProgramDetailScreen() {
                   </span>
                   {subPrice ? (
                     <span className="cpd-cta-price">
+                      {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.subscriptionPrice ? (
+                        <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+                      ) : null}
                       {subPrice}<span className="cpd-cta-suffix">/mes</span>
                     </span>
                   ) : null}
@@ -771,7 +850,12 @@ export default function CreatorProgramDetailScreen() {
                     {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
                   </span>
                   {oneTimePrice ? (
-                    <span className="cpd-cta-price">{oneTimePrice}</span>
+                    <span className="cpd-cta-price">
+                      {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.price ? (
+                        <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+                      ) : null}
+                      {oneTimePrice}
+                    </span>
                   ) : null}
                 </button>
               ) : null}

@@ -1743,8 +1743,73 @@ router.patch("/creator/programs/:programId", async (req, res) => {
           if ((b.url as string).length > 2000) {
             fail("la url de un bloque no puede superar 2000 caracteres");
           }
+        } else if (b.type === "faq") {
+          if (!Array.isArray(b.items)) {
+            fail("un bloque de tipo faq necesita un array items");
+          }
+          const items = b.items as unknown[];
+          if (items.length > 20) {
+            fail("un bloque faq admite como máximo 20 preguntas");
+          }
+          for (const item of items) {
+            if (typeof item !== "object" || item === null || Array.isArray(item)) {
+              fail("cada item de un bloque faq debe ser un objeto con q y a");
+            }
+            const it = item as Record<string, unknown>;
+            if (typeof it.q !== "string" || it.q.trim().length === 0) {
+              fail("cada pregunta de un bloque faq necesita q de texto no vacío");
+            }
+            if ((it.q as string).length > 300) {
+              fail("la pregunta (q) de un faq no puede superar 300 caracteres");
+            }
+            if (typeof it.a !== "string" || it.a.trim().length === 0) {
+              fail("cada pregunta de un bloque faq necesita a de texto no vacío");
+            }
+            if ((it.a as string).length > 2000) {
+              fail("la respuesta (a) de un faq no puede superar 2000 caracteres");
+            }
+          }
+        } else if (b.type === "compare") {
+          if (!Array.isArray(b.rows)) {
+            fail("un bloque de tipo compare necesita un array rows");
+          }
+          const rows = b.rows as unknown[];
+          if (rows.length > 20) {
+            fail("un bloque compare admite como máximo 20 filas");
+          }
+          for (const row of rows) {
+            if (typeof row !== "object" || row === null || Array.isArray(row)) {
+              fail("cada fila de un bloque compare debe ser un objeto");
+            }
+            const r = row as Record<string, unknown>;
+            if (typeof r.label !== "string" || r.label.trim().length === 0) {
+              fail("cada fila de un bloque compare necesita label de texto no vacío");
+            }
+            if ((r.label as string).length > 200) {
+              fail("el label de una fila compare no puede superar 200 caracteres");
+            }
+            if (typeof r.mine !== "boolean" || typeof r.others !== "boolean") {
+              fail("cada fila de un bloque compare necesita mine y others booleanos");
+            }
+          }
+          if (b.mineLabel !== undefined) {
+            if (typeof b.mineLabel !== "string") {
+              fail("mineLabel de un bloque compare debe ser texto");
+            }
+            if ((b.mineLabel as string).length > 60) {
+              fail("mineLabel de un bloque compare no puede superar 60 caracteres");
+            }
+          }
+          if (b.othersLabel !== undefined) {
+            if (typeof b.othersLabel !== "string") {
+              fail("othersLabel de un bloque compare debe ser texto");
+            }
+            if ((b.othersLabel as string).length > 60) {
+              fail("othersLabel de un bloque compare no puede superar 60 caracteres");
+            }
+          }
         } else {
-          fail("type de bloque inválido (text, image, youtube o video)");
+          fail("type de bloque inválido (text, image, youtube, video, faq o compare)");
         }
       }
     }

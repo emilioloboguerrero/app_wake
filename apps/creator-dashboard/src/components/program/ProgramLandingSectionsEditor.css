@@ -307,6 +307,94 @@
   height: auto;
 }
 
+/* ─── FAQ block ───────────────────────────────────────────────── */
+.pls-faq {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pls-faq__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pls-faq__item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pls-faq__q {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.pls-faq__a {
+  min-height: 48px;
+}
+
+.pls-faq__add {
+  align-self: flex-start;
+}
+
+/* ─── Compare block ───────────────────────────────────────────── */
+.pls-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pls-compare__labels {
+  display: flex;
+  gap: 8px;
+}
+
+.pls-compare__labels .pls-url-input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.pls-compare__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pls-compare__label {
+  flex: 1;
+  min-width: 120px;
+}
+
+.pls-compare__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.pls-compare__check input {
+  accent-color: rgba(var(--gp-accent-r, 255), var(--gp-accent-g, 255), var(--gp-accent-b, 255), 0.9);
+  cursor: pointer;
+}
+
+.pls-compare__add {
+  align-self: flex-start;
+}
+
 /* ─── Add-block row ───────────────────────────────────────────── */
 .pls-add-row {
   display: flex;
@@ -397,5 +485,13 @@
 
   .pls-save-btn {
     width: 100%;
+  }
+
+  .pls-compare__labels {
+    flex-direction: column;
+  }
+
+  .pls-compare__label {
+    flex-basis: 100%;
   }
 }

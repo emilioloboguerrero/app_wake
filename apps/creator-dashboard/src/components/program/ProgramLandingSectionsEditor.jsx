@@ -12,6 +12,8 @@ const newBlock = (type) => {
     case 'image': return { type: 'image', url: '' };
     case 'youtube': return { type: 'youtube', url: '' };
     case 'video': return { type: 'video', url: '' };
+    case 'faq': return { type: 'faq', items: [{ q: '', a: '' }] };
+    case 'compare': return { type: 'compare', mineLabel: 'Código ABS', othersLabel: 'Otros', rows: [{ label: '', mine: true, others: false }] };
     default: return { type: 'text', value: '' };
   }
 };
@@ -22,10 +24,20 @@ const PRESETS = [
 ];
 
 // Deep clone so local edits never mutate the React Query cache object.
+const cloneBlock = (b) => {
+  if (b?.type === 'faq') {
+    return { ...b, items: (b.items || []).map((it) => ({ ...it })) };
+  }
+  if (b?.type === 'compare') {
+    return { ...b, rows: (b.rows || []).map((r) => ({ ...r })) };
+  }
+  return { ...b };
+};
+
 const cloneSections = (sections) =>
   (sections || []).map((s) => ({
     heading: s?.heading ?? '',
-    blocks: (s?.blocks || []).map((b) => ({ ...b })),
+    blocks: (s?.blocks || []).map(cloneBlock),
   }));
 
 // Drop empty headings + empty blocks so we never persist junk.
@@ -33,10 +45,33 @@ const sanitize = (sections) =>
   sections
     .map((s) => ({
       heading: (s.heading || '').trim(),
-      blocks: (s.blocks || []).filter((b) => {
-        if (b.type === 'text') return (b.value || '').trim() !== '';
-        return (b.url || '').trim() !== '';
-      }),
+      blocks: (s.blocks || [])
+        .map((b) => {
+          if (b.type === 'faq') {
+            const items = (b.items || [])
+              .map((it) => ({ q: (it.q || '').trim(), a: (it.a || '').trim() }))
+              .filter((it) => it.q !== '' && it.a !== '');
+            return { ...b, items };
+          }
+          if (b.type === 'compare') {
+            const rows = (b.rows || [])
+              .map((r) => ({ label: (r.label || '').trim(), mine: !!r.mine, others: !!r.others }))
+              .filter((r) => r.label !== '');
+            return {
+              ...b,
+              mineLabel: (b.mineLabel || '').trim(),
+              othersLabel: (b.othersLabel || '').trim(),
+              rows,
+            };
+          }
+          return b;
+        })
+        .filter((b) => {
+          if (b.type === 'text') return (b.value || '').trim() !== '';
+          if (b.type === 'faq') return b.items.length > 0;
+          if (b.type === 'compare') return b.rows.length > 0;
+          return (b.url || '').trim() !== '';
+        }),
     }))
     .filter((s) => s.heading !== '' || s.blocks.length > 0);
 
@@ -276,6 +311,7 @@ export default function ProgramLandingSectionsEditor({ program, onSave }) {
                         onUrlChange={(url) => updateBlock(si, bi, { url })}
                         onReplace={() => openReplacePicker(si, bi, block.type)}
                         onClearMedia={() => updateBlock(si, bi, { url: '' })}
+                        onPatch={(patch) => updateBlock(si, bi, patch)}
                       />
                     </div>
                   ))}
@@ -287,6 +323,8 @@ export default function ProgramLandingSectionsEditor({ program, onSave }) {
                 <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'image')}>+ Imagen</button>
                 <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'youtube')}>+ YouTube</button>
                 <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'video')}>+ Video</button>
+                <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'faq')}>+ Preguntas</button>
+                <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'compare')}>+ Comparación</button>
               </div>
             </div>
           ))}
@@ -334,9 +372,11 @@ const BLOCK_LABELS = {
   image: 'Imagen',
   youtube: 'YouTube',
   video: 'Video',
+  faq: 'Preguntas',
+  compare: 'Comparación',
 };
 
-function BlockBody({ block, onTextChange, onUrlChange, onReplace, onClearMedia }) {
+function BlockBody({ block, onTextChange, onUrlChange, onReplace, onClearMedia, onPatch }) {
   if (block.type === 'text') {
     return (
       <textarea
@@ -383,6 +423,121 @@ function BlockBody({ block, onTextChange, onUrlChange, onReplace, onClearMedia }
           <button type="button" className="gp-config__btn" onClick={onReplace}>Cambiar</button>
           <button type="button" className="gp-config__btn gp-config__btn--danger" onClick={onClearMedia}>Eliminar</button>
         </div>
+      </div>
+    );
+  }
+
+  if (block.type === 'faq') {
+    const items = block.items || [];
+    const setItem = (idx, patch) =>
+      onPatch({ items: items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) });
+    const removeItem = (idx) =>
+      onPatch({ items: items.filter((_, i) => i !== idx) });
+    const addItem = () =>
+      onPatch({ items: [...items, { q: '', a: '' }] });
+    return (
+      <div className="pls-faq">
+        {items.map((item, i) => (
+          <div key={i} className="pls-faq__item">
+            <div className="pls-faq__item-head">
+              <input
+                className="pls-url-input pls-faq__q"
+                type="text"
+                value={item.q || ''}
+                onChange={(e) => setItem(i, { q: e.target.value })}
+                placeholder="Pregunta"
+              />
+              <button
+                type="button"
+                className="pls-icon-btn pls-icon-btn--danger"
+                onClick={() => removeItem(i)}
+                aria-label="Eliminar pregunta"
+                title="Eliminar"
+              >
+                ✕
+              </button>
+            </div>
+            <textarea
+              className="pls-textarea pls-faq__a"
+              value={item.a || ''}
+              onChange={(e) => setItem(i, { a: e.target.value })}
+              placeholder="Respuesta"
+              rows={2}
+            />
+          </div>
+        ))}
+        <button type="button" className="pls-add-btn pls-faq__add" onClick={addItem}>
+          + Pregunta
+        </button>
+      </div>
+    );
+  }
+
+  if (block.type === 'compare') {
+    const rows = block.rows || [];
+    const setRow = (idx, patch) =>
+      onPatch({ rows: rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)) });
+    const removeRow = (idx) =>
+      onPatch({ rows: rows.filter((_, i) => i !== idx) });
+    const addRow = () =>
+      onPatch({ rows: [...rows, { label: '', mine: true, others: false }] });
+    return (
+      <div className="pls-compare">
+        <div className="pls-compare__labels">
+          <input
+            className="pls-url-input"
+            type="text"
+            value={block.mineLabel || ''}
+            onChange={(e) => onPatch({ mineLabel: e.target.value })}
+            placeholder="Columna mía, ej. Código ABS"
+          />
+          <input
+            className="pls-url-input"
+            type="text"
+            value={block.othersLabel || ''}
+            onChange={(e) => onPatch({ othersLabel: e.target.value })}
+            placeholder="Otra columna, ej. Otros"
+          />
+        </div>
+        {rows.map((row, i) => (
+          <div key={i} className="pls-compare__row">
+            <input
+              className="pls-url-input pls-compare__label"
+              type="text"
+              value={row.label || ''}
+              onChange={(e) => setRow(i, { label: e.target.value })}
+              placeholder="Característica"
+            />
+            <label className="pls-compare__check">
+              <input
+                type="checkbox"
+                checked={!!row.mine}
+                onChange={(e) => setRow(i, { mine: e.target.checked })}
+              />
+              {block.mineLabel?.trim() || 'Mío'}
+            </label>
+            <label className="pls-compare__check">
+              <input
+                type="checkbox"
+                checked={!!row.others}
+                onChange={(e) => setRow(i, { others: e.target.checked })}
+              />
+              {block.othersLabel?.trim() || 'Otros'}
+            </label>
+            <button
+              type="button"
+              className="pls-icon-btn pls-icon-btn--danger"
+              onClick={() => removeRow(i)}
+              aria-label="Eliminar fila"
+              title="Eliminar"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        <button type="button" className="pls-add-btn pls-compare__add" onClick={addRow}>
+          + Fila
+        </button>
       </div>
     );
   }

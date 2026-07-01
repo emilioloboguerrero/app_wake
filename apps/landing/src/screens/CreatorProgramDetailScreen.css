@@ -322,6 +322,15 @@
   margin-left: 2px;
 }
 
+/* Struck-through "was" price shown just before the active price when the
+   program carries a compareAtPrice higher than what's being charged. */
+.cpd-cta-compare {
+  text-decoration: line-through;
+  opacity: 0.55;
+  margin-right: 8px;
+  font-weight: 500;
+}
+
 .cpd-ctas {
   display: flex;
   flex-direction: column;
@@ -664,6 +673,22 @@
   justify-content: center;
 }
 
+/* faq / compare sections break out of the side-by-side grid and span the full
+   section width: heading on top, then the block(s) below as one stacked
+   column. Centered within the same max-width as the sections container. */
+.cpd-section--full {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.cpd-section--full .cpd-section-text {
+  max-width: 720px;
+}
+
 @keyframes cpd-section-rise {
   from { opacity: 0; transform: translateY(24px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -808,6 +833,194 @@
   border: 0;
 }
 
+/* ── FAQ accordion ─────────────────────────────────────────────────────── */
+/* Native <details>/<summary> rows so the toggle is keyboard-accessible with
+   zero JS. Rounded bordered cards on the dark canvas; the +/× indicator on the
+   right rotates open. */
+.cpd-faq {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.cpd-faq-item {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  transition: border-color 200ms cubic-bezier(0.22, 1, 0.36, 1),
+              background 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-faq-item:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.cpd-faq-item[open] {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--cpd-accent-line);
+}
+
+.cpd-faq-q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Kill the default disclosure triangle across engines. */
+.cpd-faq-q::-webkit-details-marker {
+  display: none;
+}
+.cpd-faq-q::marker {
+  content: '';
+}
+
+.cpd-faq-item:focus-within {
+  outline: none;
+}
+
+.cpd-faq-q:focus-visible {
+  outline: 2px solid var(--cpd-accent);
+  outline-offset: -2px;
+  border-radius: 14px;
+}
+
+/* +/× indicator: two bars forming a plus that collapses to a minus (× via
+   rotation) when the item is open. */
+.cpd-faq-indicator {
+  position: relative;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.cpd-faq-indicator::before,
+.cpd-faq-indicator::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.7);
+  transform: translate(-50%, -50%);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-faq-indicator::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+/* Open: the vertical bar hides so the plus becomes a minus. */
+.cpd-faq-item[open] .cpd-faq-indicator::after {
+  transform: translate(-50%, -50%) rotate(0deg);
+  opacity: 0;
+}
+
+.cpd-faq-a {
+  margin: 0;
+  padding: 0 22px 20px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.68);
+  white-space: pre-wrap;
+}
+
+/* ── Compare table ─────────────────────────────────────────────────────── */
+/* A three-column table: feature label, "mine" column (emphasized with the
+   accent), and "others". Check / cross icons mark each cell. Built with CSS
+   grid so the columns stay aligned across rows. */
+.cpd-compare {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cpd-compare-head,
+.cpd-compare-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+}
+
+.cpd-compare-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Zebra striping for scan-ability. */
+.cpd-compare-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.cpd-compare-cell {
+  padding: 16px 18px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.cpd-compare-cell--label {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.cpd-compare-cell--mine,
+.cpd-compare-cell--others {
+  justify-content: center;
+}
+
+/* Column headers: labels above each side. */
+.cpd-compare-head .cpd-compare-cell {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: center;
+}
+
+.cpd-compare-head .cpd-compare-cell--mine {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* The "mine" column is emphasized with a soft accent wash + a left/right
+   accent border so it reads as the winning side. */
+.cpd-compare-cell--mine {
+  background: var(--cpd-accent-soft);
+  box-shadow:
+    inset 1px 0 0 var(--cpd-accent-line),
+    inset -1px 0 0 var(--cpd-accent-line);
+}
+
+.cpd-compare-icon {
+  display: block;
+}
+
+.cpd-compare-icon--yes {
+  color: #3ddc84;
+}
+
+.cpd-compare-icon--no {
+  color: #e5484d;
+  opacity: 0.75;
+}
+
 /* Below the hero's own breakpoint, the side-by-side rows stack into a single
    column with the image always on top — even on the reversed rows. */
 @media (max-width: 860px) {
@@ -828,6 +1041,23 @@
   }
   .cpd-section-heading {
     font-size: 22px;
+  }
+  .cpd-faq-q {
+    padding: 16px 18px;
+    font-size: 15px;
+    gap: 14px;
+  }
+  .cpd-faq-a {
+    padding: 0 18px 16px;
+    font-size: 14px;
+  }
+  .cpd-compare-cell {
+    padding: 13px 12px;
+    font-size: 13px;
+  }
+  .cpd-compare-head .cpd-compare-cell {
+    font-size: 11px;
+    padding: 12px 8px;
   }
 }
 
