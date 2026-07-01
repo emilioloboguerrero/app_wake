@@ -336,6 +336,9 @@ export default function CreatorProgramDetailScreen() {
 
   const { creator, program } = data;
   const isOneOnOne = program.deliveryType === 'one_on_one';
+  // The intro video field accepts an uploaded file (played via <video>) or a
+  // YouTube link (embedded). youtubeId() returns null for uploaded-file URLs.
+  const introYtId = youtubeId(program.videoIntroUrl);
   const hasOneTime =
     typeof program.price === 'number' && program.price > 0;
   const hasSubscription =
@@ -577,6 +580,18 @@ export default function CreatorProgramDetailScreen() {
       <article className="cpd-content">
         <div className="cpd-media">
           {program.videoIntroUrl ? (
+            introYtId ? (
+              <div className="cpd-video-shell cpd-video-shell-embed">
+                <iframe
+                  className="cpd-video"
+                  src={`https://www.youtube-nocookie.com/embed/${introYtId}?rel=0&modestbranding=1&playsinline=1`}
+                  title="Video intro"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
             <div
               className="cpd-video-shell"
               role="button"
@@ -627,6 +642,7 @@ export default function CreatorProgramDetailScreen() {
                 </>
               ) : null}
             </div>
+            )
           ) : program.imageUrl ? (
             <img
               src={program.imageUrl}

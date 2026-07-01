@@ -12,19 +12,20 @@ Last updated: 2026-06-30. Single source of truth for all unimplemented, partial,
 
 ## Product Quality
 
-### Recursos adicionales — visor PDF en móvil `IN PROGRESS`
+### Recursos adicionales — visor PDF en móvil `COMPLETED`
 
-Feature "Recursos adicionales" (PDF / YouTube / link por programa, tarjeta "Recursos" en el carrusel del Hoy → pantalla de lista → visor) **SHIPPED a prod 2026-06-30**. Bug abierto: el visor de PDF no carga bien en el dispositivo del usuario.
+Feature "Recursos adicionales" (PDF / YouTube / link por programa, tarjeta "Recursos" en el carrusel del Hoy → pantalla de lista → visor) **SHIPPED a prod 2026-06-30**. Visor PDF **in-app con pdf.js** desplegado 2026-06-30.
 
-- **Modelo:** array `additional_resources` en `courses/{courseId}` → `{ id, type:'pdf'|'youtube'|'link', title, url, storage_path?, order }`. Endpoint gateado `GET /workout/courses/:id/resources`; campo público `additional_resources_count` dispara la tarjeta. Creador lo edita en el subtab "Recursos" de `ProgramResourcesTab.jsx`. PDFs suben por `/creator/media/upload-url` (ahora acepta `application/pdf`, `storage.rules` permite <25MB).
-- **Datos sembrados:** curso `ezJWUr3wJvaeptIM5f86` (Código ABS, Felipe Bejarano) tiene el "Manuscrito" (PDF 13.8MB).
-- **Comportamiento actual desplegado:** PDF → `window.open(url, '_blank', 'noopener')` (navegador externo). Antes se probó iframe in-app (blanco en móvil) y Google gview (funciona en aislado pero el usuario no quiere terceros).
-- **Síntoma:** el usuario reporta que "abre mal dentro de la app" aun con el código nuevo en prod.
-- **Verificado / descartado:** prod sirve el bundle más reciente (hash local = en vivo); la URL del PDF responde 200 `application/pdf` **sin** `Content-Disposition` (no fuerza descarga); App Check enforced en `/api/v1/*` (scripts con solo ID token → 401).
-- **Sospechas:** (1) service worker sirviendo bundle viejo + `index.html` con `cache-control: max-age=3600`; (2) en PWA iOS standalone `window.open` abre una hoja SFSafariViewController (no Safari externo).
-- **Candidatos de fix:** bajar `cache-control` del `index.html` a `no-cache` (firebase.json headers); visor PDF.js propio empaquetado; ajustar cómo se dispara la apertura (`<a target="_blank">` con gesto directo vs `window.open`).
+- **Modelo:** array `additional_resources` en `courses/{courseId}` → `{ id, type:'pdf'|'youtube'|'link', title, url, storage_path?, order }`. Endpoint gateado `GET /workout/courses/:id/resources`; campo público `additional_resources_count` dispara la tarjeta. Creador lo edita en el subtab "Recursos" de `ProgramResourcesTab.jsx`. PDFs suben por `/creator/media/upload-url` (acepta `application/pdf`, `storage.rules` permite <25MB).
+- **Datos sembrados:** curso `ezJWUr3wJvaeptIM5f86` (Código ABS, Felipe Bejarano) tiene el "Manuscrito" (PDF 13.8MB, 17 páginas).
+- **Root cause del bug:** el dispositivo del usuario servía el bundle **v1** cacheado por el PWA instalado. v1 abría el PDF en un `<iframe>` (blanco en móvil WebKit/Chrome — limitación del navegador, no bug de Wake) y su barra de cierre no usaba `env(safe-area-inset-top)` → quedaba bajo el notch. Las "correcciones" posteriores (gview, luego `window.open` externo) nunca fueron lo que el usuario quería (quería dentro de la app) y además no habían propagado al dispositivo.
+- **Fix desplegado:** visor in-app con **pdf.js** (`pdfjs-dist` 3.x legacy) que renderiza el PDF en `<canvas>` — única forma confiable de verlo dentro de la app en móvil. Sin terceros.
+  - Componente: `apps/pwa/src/components/resources/PdfViewerOverlay.web.jsx`. Carga pdf.js on-demand desde assets estáticos same-origin (`/app/pdf.min.js` + worker), copiados de `node_modules` por `apps/pwa/scripts/copy-pdf-assets.js` (via `postinstall` + `build:pwa`; gitignored, fuera del bundle principal → main bundle sigue en ~7MB).
+  - Renderizado lazy por página (IntersectionObserver, ventana ±1.5 viewports, DPR≤2) → memoria acotada para el PDF de 13.8MB. Barra superior notch-safe. Fallback "Abrir en el navegador" si algo falla.
+  - CSP: no requirió cambios — el worker es same-origin (cubierto por `default-src 'self'`) y el fetch del PDF va a `firebasestorage.googleapis.com` (ya en `connect-src`; CORS del bucket permite `wakelab.co` + Range).
+- **Verificado:** build de prod OK; Playwright renderizó el Manuscrito real (17 páginas, canvas no-blanco). Assets live en `wakelab.co/app/pdf.min.js` + worker (200). **Pendiente confirmación on-device:** el usuario debe cerrar y reabrir (o reinstalar) el PWA instalado para soltar el bundle v1 cacheado y recibir el visor nuevo.
 
-Archivo principal: `apps/pwa/src/screens/ResourcesScreen.web.jsx`.
+Archivos: `apps/pwa/src/components/resources/PdfViewerOverlay.web.jsx`, `apps/pwa/src/screens/ResourcesScreen.web.jsx`.
 
 ---
 

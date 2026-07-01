@@ -86,6 +86,11 @@
   object-fit: contain;
 }
 
+.cpd-video-shell-embed .cpd-video {
+  /* YouTube intro embed — fill the shell, no iframe chrome. */
+  border: 0;
+}
+
 .cpd-cover-placeholder {
   background: linear-gradient(
     180deg,
