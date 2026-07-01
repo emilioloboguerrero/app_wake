@@ -201,6 +201,17 @@ router.post("/progress/body-log/:date/photos/confirm", async (req, res) => {
     throw new WakeApiServerError("NOT_FOUND", 404, "Archivo no encontrado en Storage");
   }
 
+  // H4: signed-URL uploads bypass storage.rules — enforce the 500KB/image limit
+  // here before the photo is recorded; delete violations.
+  const [meta] = await file.getMetadata();
+  if (Number(meta.size || 0) > 500 * 1024 || !String(meta.contentType || "").startsWith("image/")) {
+    await file.delete().catch(() => {});
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "La foto debe ser una imagen de máximo 500KB", "file"
+    );
+  }
+
   await applyLongCacheControl(file);
 
   const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(storagePath)}?alt=media`;

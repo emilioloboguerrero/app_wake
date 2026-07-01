@@ -228,25 +228,34 @@ service cloud.firestore {
       // parent course doc. Previously `isCreator() || isAdmin()` allowed any
       // creator to mutate or delete any other creator's program content.
       match /modules/{moduleId} {
-        allow read: if isSignedIn();
+        // H1: the program content tree (module/session/exercise/set) is paid IP.
+        // Client-SDK reads are restricted to the owning creator/admin (mirrors
+        // write); everyone else reads via the entitlement-checked Admin-SDK API.
+        // Previously `if isSignedIn()` let ANY logged-in user read any published
+        // course's full exercise/set tree directly, bypassing the paywall.
+        allow read: if isAdmin() || (isCreator() &&
+          get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
         allow write: if isAdmin() || (isCreator() &&
           get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
 
         // Sessions subcollection - nested under modules
         match /sessions/{sessionId} {
-          allow read: if isSignedIn();
+          allow read: if isAdmin() || (isCreator() &&
+            get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
           allow write: if isAdmin() || (isCreator() &&
             get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
 
           // Exercises subcollection - nested under sessions
           match /exercises/{exerciseId} {
-            allow read: if isSignedIn();
+            allow read: if isAdmin() || (isCreator() &&
+              get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
             allow write: if isAdmin() || (isCreator() &&
               get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
 
             // Sets subcollection - nested under exercises
             match /sets/{setId} {
-              allow read: if isSignedIn();
+              allow read: if isAdmin() || (isCreator() &&
+                get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
               allow write: if isAdmin() || (isCreator() &&
                 get(/databases/$(database)/documents/courses/$(courseId)).data.get('creator_id', '') == request.auth.uid);
             }

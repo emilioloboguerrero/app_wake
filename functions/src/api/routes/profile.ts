@@ -376,6 +376,18 @@ router.post("/users/me/profile-picture/confirm", async (req, res) => {
     );
   }
 
+  // H4: signed-URL uploads are Admin-SDK-signed and bypass storage.rules, so the
+  // 200KB/image-type limits are not enforced on upload. Enforce them here before
+  // the file is used; delete violations so oversized objects don't linger.
+  const [meta] = await file.getMetadata();
+  if (Number(meta.size || 0) > 200 * 1024 || !String(meta.contentType || "").startsWith("image/")) {
+    await file.delete().catch(() => {});
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "La imagen debe ser JPEG, PNG o WebP de máximo 200KB", "file"
+    );
+  }
+
   // Storage rules require request.auth.uid == userId for reads on
   // profile_pictures/{userId}/, and browsers don't attach Firebase ID tokens
   // to <img> requests. Issue a download token so the resulting URL bypasses

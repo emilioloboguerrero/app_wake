@@ -3008,6 +3008,16 @@ router.get("/workout/programs/:courseId/modules", async (req, res) => {
   const courseData = courseDoc.data()!;
   const includeSessions = req.query.include === "sessions";
 
+  // H1: `published` is enough to browse module titles (discovery), but the full
+  // exercise/set tree is paid content. Serving sessions requires real entitlement
+  // (active access for cadenced, a courses-map entry otherwise) or creator/admin.
+  if (includeSessions && !isCreator && !isAdmin) {
+    const entitled = isCadenced ? accessActive : !!courseAccess;
+    if (!entitled) {
+      throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
+    }
+  }
+
   // Level-plan branch: if the course has level_plans, list modules from the user's level plan
   const modulesLevelPlanId = resolveLevelPlanId(courseData, courseAccess as {level?: string | null} | null | undefined);
   if (modulesLevelPlanId) {
