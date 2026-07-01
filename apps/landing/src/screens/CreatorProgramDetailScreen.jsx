@@ -84,7 +84,7 @@ function youtubeId(url) {
   return m ? m[1] : null;
 }
 
-function SectionBlock({ block }) {
+function SectionBlock({ block, program, onCtaClick }) {
   if (block.type === 'text') {
     return <p className="cpd-section-text">{block.value}</p>;
   }
@@ -170,6 +170,37 @@ function SectionBlock({ block }) {
       </div>
     );
   }
+  if (block.type === 'cta') {
+    if (!block.label) return null;
+    // Mirror the hero CTA: subscription price wins when present, else one-time.
+    const sub = formatPrice(program?.subscriptionPrice, program?.currency);
+    const otp = formatPrice(program?.price, program?.currency);
+    const isSub = typeof program?.subscriptionPrice === 'number' && program.subscriptionPrice > 0;
+    return (
+      <button type="button" className="cpd-cta cpd-cta-primary cpd-section-cta" onClick={onCtaClick}>
+        <span className="cpd-cta-label">{block.label}</span>
+        {isSub ? (
+          sub ? (
+            <span className="cpd-cta-price">
+              {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.subscriptionPrice ? (
+                <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+              ) : null}
+              {sub}<span className="cpd-cta-suffix">/mes</span>
+            </span>
+          ) : null
+        ) : (
+          otp ? (
+            <span className="cpd-cta-price">
+              {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.price ? (
+                <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+              ) : null}
+              {otp}
+            </span>
+          ) : null
+        )}
+      </button>
+    );
+  }
   return null;
 }
 
@@ -192,22 +223,22 @@ function CompareCross() {
 // Optional creator-authored "landing sections" (e.g. "Qué incluye",
 // "Novedades") rendered below the hero/CTA. Server-sanitized; each section is
 // guaranteed a non-empty heading and at least one valid block.
-function ProgramSections({ sections }) {
+function ProgramSections({ sections, program, onCtaClick }) {
   if (!Array.isArray(sections) || sections.length === 0) return null;
   return (
     <section className="cpd-sections" aria-label="Sobre el programa">
       {sections.map((section, i) => {
-        // faq/compare blocks want the full section width, not a 50% column.
+        // faq/compare/cta blocks want the full section width, not a 50% column.
         // Render the whole section as a single stacked column: heading on top,
         // then every block in order (text as paragraphs, the special block full
         // width). This bypasses the side-by-side editorial grid entirely.
-        const isFull = section.blocks.some((b) => b.type === 'faq' || b.type === 'compare');
+        const isFull = section.blocks.some((b) => b.type === 'faq' || b.type === 'compare' || b.type === 'cta');
         if (isFull) {
           return (
             <div className="cpd-section cpd-section--full" key={i}>
               <h2 className="cpd-section-heading">{section.heading}</h2>
               {section.blocks.map((block, j) => (
-                <SectionBlock block={block} key={j} />
+                <SectionBlock block={block} program={program} onCtaClick={onCtaClick} key={j} />
               ))}
             </div>
           );
@@ -232,14 +263,14 @@ function ProgramSections({ sections }) {
                     ))}
                   </div>
                 ) : (
-                  media.map((block, j) => <SectionBlock block={block} key={j} />)
+                  media.map((block, j) => <SectionBlock block={block} program={program} onCtaClick={onCtaClick} key={j} />)
                 )}
               </div>
             ) : null}
             <div className="cpd-section-copy">
               <h2 className="cpd-section-heading">{section.heading}</h2>
               {texts.map((block, j) => (
-                <SectionBlock block={block} key={j} />
+                <SectionBlock block={block} program={program} onCtaClick={onCtaClick} key={j} />
               ))}
             </div>
           </div>
@@ -414,7 +445,9 @@ export default function CreatorProgramDetailScreen() {
   const isOneOnOne = program.deliveryType === 'one_on_one';
   // The intro video field accepts an uploaded file (played via <video>) or a
   // YouTube link (embedded). youtubeId() returns null for uploaded-file URLs.
-  const introYtId = youtubeId(program.videoIntroUrl);
+  // A dedicated storefront video, when present, takes precedence over the intro.
+  const heroVideoUrl = program.storefrontVideoUrl || program.videoIntroUrl;
+  const introYtId = youtubeId(heroVideoUrl);
   const hasOneTime =
     typeof program.price === 'number' && program.price > 0;
   const hasSubscription =
@@ -552,6 +585,14 @@ export default function CreatorProgramDetailScreen() {
     }
   };
 
+  // Landing-section CTA blocks fire the same primary purchase action as the
+  // hero button, choosing the mode by the program's delivery/pricing shape.
+  const handlePrimaryCta = () => {
+    if (isOneOnOne) { handleBuy('book_call'); return; }
+    if (hasSubscription) { handleBuy('subscription'); return; }
+    if (hasOneTime) { handleBuy('one_time'); return; }
+  };
+
   const handleAuthenticated = () => {
     setAuthOpen(false);
     if (pendingMode === 'book_call') {
@@ -655,7 +696,7 @@ export default function CreatorProgramDetailScreen() {
 
       <article className="cpd-content">
         <div className="cpd-media">
-          {program.videoIntroUrl ? (
+          {heroVideoUrl ? (
             introYtId ? (
               <div className="cpd-video-shell cpd-video-shell-embed">
                 <iframe
@@ -684,7 +725,7 @@ export default function CreatorProgramDetailScreen() {
               <video
                 ref={videoRef}
                 className="cpd-video"
-                src={program.videoIntroUrl}
+                src={heroVideoUrl}
                 poster={program.imageUrl || undefined}
                 playsInline
                 preload="metadata"
@@ -992,7 +1033,7 @@ export default function CreatorProgramDetailScreen() {
         </div>
       </article>
 
-      <ProgramSections sections={program.sections} />
+      <ProgramSections sections={program.sections} program={program} onCtaClick={handlePrimaryCta} />
 
       {related.length > 0 ? (
         <section className="cpd-related" aria-label={`Más programas de ${creator.displayName}`}>

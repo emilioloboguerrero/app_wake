@@ -32,6 +32,7 @@ export default function useProgramEditor(programId, program) {
   const [selectedLibraryIds, setSelectedLibraryIds] = useState(new Set(program?.availableLibraries || []));
   const [isMediaPickerOpen, setIsMediaPickerOpen] = useState(false);
   const [isIntroVideoPickerOpen, setIsIntroVideoPickerOpen] = useState(false);
+  const [isStorefrontVideoPickerOpen, setIsStorefrontVideoPickerOpen] = useState(false);
   const [isMensajePickerOpen, setIsMensajePickerOpen] = useState(false);
   const [mensajePickerScreenKey, setMensajePickerScreenKey] = useState(null);
 
@@ -185,6 +186,43 @@ export default function useProgramEditor(programId, program) {
     }
   }, [program?.video_intro_url, programId, queryClient, showToast, confirm, detailKey]);
 
+  const handleStorefrontVideoSelect = useCallback(async (item) => {
+    try {
+      await programService.updateProgram(programId, { storefront_video_url: item.url });
+      queryClient.setQueryData(detailKey, (old) => ({ ...old, storefront_video_url: item.url }));
+    } catch (err) {
+      logger.error(err);
+      showToast('No pudimos guardar el video.', 'error');
+    }
+    setIsStorefrontVideoPickerOpen(false);
+  }, [programId, queryClient, showToast, detailKey]);
+
+  const handleStorefrontVideoDelete = useCallback(async () => {
+    if (!program?.storefront_video_url) return;
+    const ok = await confirm('Vas a eliminar el video de la página de compra. Seguro?');
+    if (!ok) return;
+    try {
+      await programService.updateProgram(programId, { storefront_video_url: null });
+      queryClient.setQueryData(detailKey, (old) => ({ ...old, storefront_video_url: null }));
+    } catch (err) {
+      logger.error(err);
+      showToast('Los cambios no se guardaron.', 'error');
+    }
+  }, [program?.storefront_video_url, programId, queryClient, showToast, confirm, detailKey]);
+
+  const handleStorefrontVideoUrl = useCallback(async (url) => {
+    const trimmed = (url || '').trim();
+    const next = trimmed || null;
+    if (next === (program?.storefront_video_url || null)) return;
+    try {
+      await programService.updateProgram(programId, { storefront_video_url: next });
+      queryClient.setQueryData(detailKey, (old) => ({ ...old, storefront_video_url: next }));
+    } catch (err) {
+      logger.error(err);
+      showToast('No pudimos guardar el video.', 'error');
+    }
+  }, [program?.storefront_video_url, programId, queryClient, showToast, detailKey]);
+
   const handleMensajeMediaSelect = useCallback(async (item) => {
     if (!mensajePickerScreenKey) return;
     try {
@@ -241,6 +279,7 @@ export default function useProgramEditor(programId, program) {
     isUpdatingStatus: updateStatusMutation.isPending,
     isMediaPickerOpen, setIsMediaPickerOpen,
     isIntroVideoPickerOpen, setIsIntroVideoPickerOpen,
+    isStorefrontVideoPickerOpen, setIsStorefrontVideoPickerOpen,
     isMensajePickerOpen, setIsMensajePickerOpen,
     mensajePickerScreenKey, setMensajePickerScreenKey,
     // Handlers
@@ -248,6 +287,7 @@ export default function useProgramEditor(programId, program) {
     saveWeightSuggestions, handleToggleLibrary,
     handleProgramImageSelect, handleImageDelete,
     handleIntroVideoSelect, handleIntroVideoDelete,
+    handleStorefrontVideoSelect, handleStorefrontVideoDelete, handleStorefrontVideoUrl,
     handleMensajeMediaSelect, handleTutorialVideoDelete,
     handleTitleKeyDown, handleDescKeyDown,
     // Mutation state

@@ -152,6 +152,7 @@ type PublicLandingBlock =
   | {type: "youtube"; url: string}
   | {type: "video"; url: string}
   | {type: "faq"; items: {q: string; a: string}[]}
+  | {type: "cta"; label: string}
   | {
       type: "compare";
       mineLabel: string;
@@ -229,6 +230,9 @@ function sanitizeLandingSections(
           if (items.length >= 20) break;
         }
         if (items.length > 0) blocks.push({type: "faq", items});
+      } else if (block.type === "cta") {
+        const label = typeof block.label === "string" ? block.label.trim() : "";
+        if (label) blocks.push({type: "cta", label: label.slice(0, 80)});
       } else if (block.type === "compare") {
         if (!Array.isArray(block.rows)) continue;
         const rows: {label: string; mine: boolean; others: boolean}[] = [];
@@ -273,6 +277,7 @@ function sanitizeLandingSections(
 interface PublicProgramDetail extends PublicProgramCard {
   description: string | null;
   videoIntroUrl: string | null;
+  storefrontVideoUrl: string | null;
   duration: string | null;
   tags: string[] | null;
   sections: PublicLandingSection[] | null;
@@ -287,6 +292,7 @@ function shapePublicProgramDetail(
     ...shapePublicProgramCard(id, data),
     description: (data.description as string) ?? null,
     videoIntroUrl: (data.video_intro_url as string) ?? null,
+    storefrontVideoUrl: (data.storefront_video_url as string) ?? null,
     duration: (data.duration as string) ?? null,
     tags: Array.isArray(data.tags) ? (data.tags as string[]) : null,
     sections: sanitizeLandingSections(data.landing_sections),

@@ -1615,7 +1615,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     "title", "description", "deliveryType", "weekly", "price", "subscription_price",
     "access_duration", "discipline", "image_url", "image_path",
     "creatorName", "weight_suggestions", "free_trial", "duration",
-    "video_intro_url", "tutorials", "availableLibraries", "content_plan_id",
+    "video_intro_url", "storefront_video_url", "tutorials", "availableLibraries", "content_plan_id",
     "compare_at_price", "visibility", "bundleOnly",
     // Monthly-drop cadence (memory/project_monthly_drops.md). Only the
     // creator can opt a program into cadence; current_block_id /
@@ -1769,6 +1769,13 @@ router.patch("/creator/programs/:programId", async (req, res) => {
               fail("la respuesta (a) de un faq no puede superar 2000 caracteres");
             }
           }
+        } else if (b.type === "cta") {
+          if (typeof b.label !== "string" || b.label.trim().length === 0) {
+            fail("un bloque de tipo cta necesita label de texto no vacío");
+          }
+          if ((b.label as string).trim().length > 80) {
+            fail("el label de un bloque cta no puede superar 80 caracteres");
+          }
         } else if (b.type === "compare") {
           if (!Array.isArray(b.rows)) {
             fail("un bloque de tipo compare necesita un array rows");
@@ -1809,7 +1816,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
             }
           }
         } else {
-          fail("type de bloque inválido (text, image, youtube, video, faq o compare)");
+          fail("type de bloque inválido (text, image, youtube, video, faq, cta o compare)");
         }
       }
     }

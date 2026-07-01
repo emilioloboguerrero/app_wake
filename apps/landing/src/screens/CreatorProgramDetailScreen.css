@@ -350,6 +350,16 @@
   margin: 0;
 }
 
+/* CTA block inside a full-width landing section. Centered and constrained so it
+   reads as a focused call to action rather than a full-bleed bar. */
+.cpd-section-cta {
+  width: auto;
+  min-width: 280px;
+  max-width: 420px;
+  margin: 0 auto;
+  align-self: center;
+}
+
 .cpd-error {
   font-size: 13px;
   color: #ff7676;

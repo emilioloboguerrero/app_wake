@@ -820,18 +820,19 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                   )}
                 </BentoCard>
 
-                {/* Video intro */}
+                {/* Video de bienvenida — se ve dentro de la app al abrir el programa */}
                 <MediaDropZone onSelect={editor.handleIntroVideoSelect} accept="video/*">
                 <BentoCard className="gp-config__card gp-config__card--tall">
                   <GlowingEffect spread={24} proximity={60} />
-                  <h3>Video intro</h3>
+                  <h3>Video de bienvenida</h3>
+                  <p className="gp-config__hint">Se ve dentro de la app al abrir el programa.</p>
                   {program?.video_intro_url ? (
                     <div className="gp-config__media-wrap">
                       {(() => {
                         const source = detectVideoSource(program.video_intro_url);
                         const isExternal = source === 'youtube' || source === 'vimeo';
                         if (isExternal) {
-                          return <iframe src={getEmbedUrl(program.video_intro_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video intro" style={{ width: '100%', height: '100%', border: 'none' }} />;
+                          return <iframe src={getEmbedUrl(program.video_intro_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video de bienvenida" style={{ width: '100%', height: '100%', border: 'none' }} />;
                         }
                         return <video src={program.video_intro_url} controls playsInline />;
                       })()}
@@ -846,6 +847,46 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                       <span>Elegir video</span>
                     </button>
                   )}
+                </BentoCard>
+                </MediaDropZone>
+
+                {/* Video de la página de compra — se ve en la página pública de venta */}
+                <MediaDropZone onSelect={editor.handleStorefrontVideoSelect} accept="video/*">
+                <BentoCard className="gp-config__card gp-config__card--tall">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <h3>Video de la página de compra</h3>
+                  <p className="gp-config__hint">Se ve en la página pública de venta. Si está vacío, se usa el de bienvenida.</p>
+                  {program?.storefront_video_url ? (
+                    <div className="gp-config__media-wrap">
+                      {(() => {
+                        const source = detectVideoSource(program.storefront_video_url);
+                        const isExternal = source === 'youtube' || source === 'vimeo';
+                        if (isExternal) {
+                          return <iframe src={getEmbedUrl(program.storefront_video_url, source)} allow="autoplay; encrypted-media" allowFullScreen title="Video de la página de compra" style={{ width: '100%', height: '100%', border: 'none' }} />;
+                        }
+                        return <video src={program.storefront_video_url} controls playsInline />;
+                      })()}
+                      <div className="gp-config__media-actions">
+                        <button type="button" className="gp-config__media-action-btn" onClick={() => editor.setIsStorefrontVideoPickerOpen(true)}>Cambiar</button>
+                        <button type="button" className="gp-config__media-action-btn gp-config__media-action-btn--danger" onClick={editor.handleStorefrontVideoDelete}>Eliminar</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" className="gp-config__upload-label" onClick={() => editor.setIsStorefrontVideoPickerOpen(true)}>
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.724c.281-.169.628-.169.909 0 .281.169.538.52.538.842v7.764c0 .322-.257.673-.538.842-.281.169-.628.169-.909 0L15 14M5 18h8c.53 0 1.039-.211 1.414-.586C14.789 17.039 15 16.53 15 16V8c0-.53-.211-1.039-.586-1.414C14.039 6.211 13.53 6 13 6H5c-.53 0-1.039.211-1.414.586C3.211 6.961 3 7.47 3 8v8c0 .53.211 1.039.586 1.414C3.961 17.789 4.47 18 5 18z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      <span>Elegir video</span>
+                    </button>
+                  )}
+                  <label className="gp-config__hint" style={{ marginTop: 12, display: 'block' }}>O pega un link de YouTube</label>
+                  <input
+                    className="gp-price-field__input"
+                    type="url"
+                    defaultValue={program?.storefront_video_url || ''}
+                    key={program?.storefront_video_url || ''}
+                    onBlur={(e) => editor.handleStorefrontVideoUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    placeholder="https://youtube.com/watch?v=…"
+                  />
                 </BentoCard>
                 </MediaDropZone>
 
@@ -944,6 +985,13 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
         isOpen={editor.isIntroVideoPickerOpen}
         onClose={() => editor.setIsIntroVideoPickerOpen(false)}
         onSelect={editor.handleIntroVideoSelect}
+        accept="video/*"
+      />
+
+      <MediaPickerModal
+        isOpen={editor.isStorefrontVideoPickerOpen}
+        onClose={() => editor.setIsStorefrontVideoPickerOpen(false)}
+        onSelect={editor.handleStorefrontVideoSelect}
         accept="video/*"
       />
 

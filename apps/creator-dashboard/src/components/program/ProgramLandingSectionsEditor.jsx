@@ -14,6 +14,7 @@ const newBlock = (type) => {
     case 'video': return { type: 'video', url: '' };
     case 'faq': return { type: 'faq', items: [{ q: '', a: '' }] };
     case 'compare': return { type: 'compare', mineLabel: 'Código ABS', othersLabel: 'Otros', rows: [{ label: '', mine: true, others: false }] };
+    case 'cta': return { type: 'cta', label: '' };
     default: return { type: 'text', value: '' };
   }
 };
@@ -64,12 +65,16 @@ const sanitize = (sections) =>
               rows,
             };
           }
+          if (b.type === 'cta') {
+            return { ...b, label: (b.label || '').trim() };
+          }
           return b;
         })
         .filter((b) => {
           if (b.type === 'text') return (b.value || '').trim() !== '';
           if (b.type === 'faq') return b.items.length > 0;
           if (b.type === 'compare') return b.rows.length > 0;
+          if (b.type === 'cta') return (b.label || '').trim() !== '';
           return (b.url || '').trim() !== '';
         }),
     }))
@@ -325,6 +330,7 @@ export default function ProgramLandingSectionsEditor({ program, onSave }) {
                 <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'video')}>+ Video</button>
                 <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'faq')}>+ Preguntas</button>
                 <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'compare')}>+ Comparación</button>
+                <button type="button" className="pls-add-btn" onClick={() => addBlock(si, 'cta')}>+ CTA</button>
               </div>
             </div>
           ))}
@@ -374,6 +380,7 @@ const BLOCK_LABELS = {
   video: 'Video',
   faq: 'Preguntas',
   compare: 'Comparación',
+  cta: 'CTA',
 };
 
 function BlockBody({ block, onTextChange, onUrlChange, onReplace, onClearMedia, onPatch }) {
@@ -470,6 +477,19 @@ function BlockBody({ block, onTextChange, onUrlChange, onReplace, onClearMedia, 
           + Pregunta
         </button>
       </div>
+    );
+  }
+
+  if (block.type === 'cta') {
+    return (
+      <input
+        className="pls-url-input"
+        type="text"
+        value={block.label || ''}
+        onChange={(e) => onPatch({ label: e.target.value })}
+        placeholder="Inscríbete hoy con nuestro precio especial de lanzamiento"
+        maxLength={80}
+      />
     );
   }
 
