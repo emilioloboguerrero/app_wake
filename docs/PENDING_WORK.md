@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-05-10. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-06-30. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -11,6 +11,22 @@ Last updated: 2026-05-10. Single source of truth for all unimplemented, partial,
 ---
 
 ## Product Quality
+
+### Recursos adicionales — visor PDF en móvil `IN PROGRESS`
+
+Feature "Recursos adicionales" (PDF / YouTube / link por programa, tarjeta "Recursos" en el carrusel del Hoy → pantalla de lista → visor) **SHIPPED a prod 2026-06-30**. Bug abierto: el visor de PDF no carga bien en el dispositivo del usuario.
+
+- **Modelo:** array `additional_resources` en `courses/{courseId}` → `{ id, type:'pdf'|'youtube'|'link', title, url, storage_path?, order }`. Endpoint gateado `GET /workout/courses/:id/resources`; campo público `additional_resources_count` dispara la tarjeta. Creador lo edita en el subtab "Recursos" de `ProgramResourcesTab.jsx`. PDFs suben por `/creator/media/upload-url` (ahora acepta `application/pdf`, `storage.rules` permite <25MB).
+- **Datos sembrados:** curso `ezJWUr3wJvaeptIM5f86` (Código ABS, Felipe Bejarano) tiene el "Manuscrito" (PDF 13.8MB).
+- **Comportamiento actual desplegado:** PDF → `window.open(url, '_blank', 'noopener')` (navegador externo). Antes se probó iframe in-app (blanco en móvil) y Google gview (funciona en aislado pero el usuario no quiere terceros).
+- **Síntoma:** el usuario reporta que "abre mal dentro de la app" aun con el código nuevo en prod.
+- **Verificado / descartado:** prod sirve el bundle más reciente (hash local = en vivo); la URL del PDF responde 200 `application/pdf` **sin** `Content-Disposition` (no fuerza descarga); App Check enforced en `/api/v1/*` (scripts con solo ID token → 401).
+- **Sospechas:** (1) service worker sirviendo bundle viejo + `index.html` con `cache-control: max-age=3600`; (2) en PWA iOS standalone `window.open` abre una hoja SFSafariViewController (no Safari externo).
+- **Candidatos de fix:** bajar `cache-control` del `index.html` a `no-cache` (firebase.json headers); visor PDF.js propio empaquetado; ajustar cómo se dispara la apertura (`<a target="_blank">` con gesto directo vs `window.open`).
+
+Archivo principal: `apps/pwa/src/screens/ResourcesScreen.web.jsx`.
+
+---
 
 ### 5b. Download Screen Refresh `NOT STARTED`
 

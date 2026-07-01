@@ -5,6 +5,7 @@
   "main": "index.js",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/copy-pdf-assets.js",
     "start": "expo start",
     "start:tunnel": "expo start --tunnel --clear",
     "start:dev": "expo start --dev-client",
@@ -91,6 +92,7 @@
     "@svgr/cli": "^8.1.0",
     "adm-zip": "^0.5.16",
     "jsdom": "^28.1.0",
+    "pdfjs-dist": "^3.11.174",
     "vitest": "^4.1.0"
   }
 }

@@ -25,3 +25,7 @@ yarn-error.log*
 # Native (if generated)
 ios/
 android/
+
+# pdf.js vendor assets (copied from node_modules by scripts/copy-pdf-assets.js)
+public/pdf.min.js
+public/pdf.worker.min.js

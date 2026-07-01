@@ -2,7 +2,7 @@
 // videos, links). Reached from the resources card in the Hoy carousel.
 //
 // Tapping a resource:
-//   pdf     → in-screen full-screen iframe overlay
+//   pdf     → in-app PDF.js canvas viewer (PdfViewerOverlay)
 //   youtube → in-screen full-screen embed overlay (parsed video id)
 //   link    → opens in a new tab
 //
@@ -11,6 +11,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useCourseResources } from '../hooks/hoy/useCourseResources';
 import WakeLoader from '../components/WakeLoader.web.jsx';
+import PdfViewerOverlay from '../components/resources/PdfViewerOverlay.web.jsx';
 import logger from '../utils/logger';
 
 const SPRING = 'cubic-bezier(0.22, 1, 0.36, 1)';
@@ -203,9 +204,8 @@ export default function ResourcesScreen() {
   const handleTap = (resource) => {
     if (!resource?.url) return;
     if (resource.type === 'pdf') {
-      // Mobile browsers can't render a PDF inline reliably, so hand it to the
-      // device's browser, which renders PDFs natively.
-      window.open(resource.url, '_blank', 'noopener');
+      // Render in-app with pdf.js — see PdfViewerOverlay.
+      setOpenResource(resource);
       return;
     }
     if (resource.type === 'youtube') {
@@ -262,7 +262,13 @@ export default function ResourcesScreen() {
         )}
       </div>
 
-      {openResource ? (
+      {openResource && openResource.type === 'pdf' ? (
+        <PdfViewerOverlay
+          url={openResource.url}
+          title={openResource.title}
+          onClose={() => setOpenResource(null)}
+        />
+      ) : openResource ? (
         <div style={styles.overlay}>
           <div style={styles.overlayBar}>
             <span style={styles.overlayTitle}>{openResource.title}</span>

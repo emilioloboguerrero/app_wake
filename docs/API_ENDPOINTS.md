@@ -1149,6 +1149,33 @@ Get full course metadata and structure (modules + sessions list, not full exerci
 ```
 **Errors:** `NOT_FOUND`, `FORBIDDEN`
 
+> The public course response also includes `additional_resources_count` (number) — a count of attached extra resources used to decide whether to show the "Recursos" card, without exposing the resource list itself.
+
+---
+
+#### `GET /api/v1/workout/courses/{courseId}/resources`
+Get the additional resources (PDFs, YouTube videos, external links) attached to a program. Gated by active course access — the resource list is only returned to users who own the program. The public `GET /workout/courses/{courseId}` exposes only `additional_resources_count`. Resources are stored as an `additional_resources` array on `courses/{courseId}`.
+
+**Auth:** required, must have active access (`courseAccessIsActive`)
+**Response:**
+```json
+{
+  "data": {
+    "resources": [
+      {
+        "id": "string",
+        "type": "pdf | youtube | link",
+        "title": "string",
+        "url": "string",
+        "storage_path": "string | undefined",
+        "order": "number"
+      }
+    ]
+  }
+}
+```
+**Errors:** `FORBIDDEN` (no active access), `NOT_FOUND` (course missing)
+
 ---
 
 #### `GET /api/v1/workout/programs/{courseId}/current-block`
