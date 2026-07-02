@@ -118,6 +118,8 @@ const CourseDetailScreen = ({ navigation, route }) => {
   const [waitlistSubmitting, setWaitlistSubmitting] = useState(false);
   const [waitlistError, setWaitlistError] = useState('');
   const [waitlistDone, setWaitlistDone] = useState(false);
+  // null = auto (by country); 'mercadopago' | 'polar' = user override via toggle
+  const [paymentProviderOverride, setPaymentProviderOverride] = useState(null);
 
   const effectiveUserUid = (user || auth.currentUser)?.uid;
   const { data: userDocData } = useQuery({
@@ -127,6 +129,13 @@ const CourseDetailScreen = ({ navigation, route }) => {
     staleTime: STALE_TIMES.userProfile,
     refetchInterval: processingPurchase ? 2000 : false,
   });
+
+  // Payment provider: Colombia → MercadoPago (PSE/Nequi/COP); elsewhere and
+  // unknown → Polar (international cards, USD). A discreet toggle overrides it.
+  const paymentProvider = useMemo(
+    () => paymentProviderOverride || purchaseService.resolveDefaultProvider(userDocData?.country),
+    [paymentProviderOverride, userDocData?.country]
+  );
 
   const trialConfig = course?.free_trial || {};
   const trialDurationDays = trialConfig?.duration_days || 0;
@@ -821,6 +830,57 @@ useEffect(() => {
     // preapproval, so it binds to the email the user will actually authorize
     // with (the preapproval can't be re-bound afterwards). One-time payments
     // skip this — MP's preference checkout accepts any email.
+    // International path: Polar hosted checkout. Skips the MercadoPago email
+    // step entirely — Polar collects payment details on its own checkout.
+    if (paymentProvider === 'polar') {
+      try {
+        setPurchasing(true);
+        setProcessingPurchase(true);
+        processingPurchaseRef.current = true;
+        pendingPostPurchaseRef.current = true;
+        postPurchaseFlowTriggeredRef.current = false;
+        readyNotificationSentRef.current = false;
+        successAlertShownRef.current = false;
+
+        const polarResult = await purchaseService.preparePurchase(effectiveUser.uid, course.id, {
+          accessDuration: course.access_duration,
+          provider: 'polar',
+        });
+
+        if (!polarResult.success) {
+          setPurchasing(false);
+          setProcessingPurchase(false);
+          processingPurchaseRef.current = false;
+          pendingPostPurchaseRef.current = false;
+          if (polarResult.capacityFull) {
+            openWaitlist();
+            return;
+          }
+          Alert.alert('Error', polarResult.error || 'Error al preparar el pago');
+          return;
+        }
+
+        if (isWeb) {
+          const opened = window.open(polarResult.checkoutURL, '_blank', 'noopener,noreferrer');
+          if (!opened) window.location.href = polarResult.checkoutURL;
+          setPurchasing(false);
+          return;
+        }
+        setCheckoutURL(polarResult.checkoutURL);
+        setShowPaymentModal(true);
+        setPurchasing(false);
+        return;
+      } catch (error) {
+        logger.error('❌ Error preparing Polar purchase:', error);
+        Alert.alert('Error', 'Error al preparar el pago. Intenta de nuevo.');
+        setPurchasing(false);
+        setProcessingPurchase(false);
+        processingPurchaseRef.current = false;
+        pendingPostPurchaseRef.current = false;
+        return;
+      }
+    }
+
     const isSubscriptionPurchase = course.access_duration === 'monthly';
     if (isSubscriptionPurchase) {
       setMercadoPagoEmail(effectiveUser.email || '');
@@ -1208,6 +1268,47 @@ useEffect(() => {
     const hasCompareAt = course.compare_at_price && course.price && course.compare_at_price > course.price;
     const discountPercent = hasCompareAt ? Math.round((1 - course.price / course.compare_at_price) * 100) : 0;
 
+    // International (Polar) checkout: price shown in USD, single CTA for both
+    // subscription and one-time. Trials are configured on the Polar product, so
+    // no separate trial CTA here. A toggle switches back to Colombian payment.
+    if (paymentProvider === 'polar') {
+      const polarCfg = course.polar || {};
+      const isSubPolar = course.access_duration === 'monthly';
+      const usdAmount = isSubPolar ? polarCfg.price_usd_monthly : polarCfg.price_usd_onetime;
+      const formatUsd = (a) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(a || 0);
+      const polarLabel = usdAmount
+        ? `Comprar - ${formatUsd(usdAmount)} USD${isSubPolar ? '/mes' : ''}`
+        : 'Comprar';
+      return (
+        <View>
+          <TouchableOpacity
+            className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
+            style={[styles.primaryButton, purchasing && styles.disabledButton]}
+            onPress={handlePurchaseCourse}
+            disabled={purchasing}
+          >
+            {purchasing ? (
+              <>
+                <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
+                <Text style={styles.primaryButtonText}>Procesando...</Text>
+              </>
+            ) : (
+              <Text style={styles.primaryButtonText}>{polarLabel}</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setPaymentProviderOverride('mercadopago')}
+            disabled={purchasing}
+            style={{ marginTop: 12, alignItems: 'center' }}
+          >
+            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, textDecorationLine: 'underline' }}>
+              Pagar en Colombia (COP)
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     // Trial CTA — only for subscription courses (MP free_trial requires a
     // recurring preapproval). Card collected at MP checkout, no charge until
     // the trial ends, then MP starts the monthly billing automatically.
@@ -1271,23 +1372,34 @@ useEffect(() => {
     }
 
     return (
-      <TouchableOpacity
-        className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
-        style={[styles.primaryButton, purchasing && styles.disabledButton]}
-        onPress={handlePurchaseCourse}
-        disabled={purchasing}
-      >
-        {purchasing ? (
-          <>
-            <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
-            <Text style={styles.primaryButtonText}>Procesando compra...</Text>
-          </>
-        ) : (
-          <Text style={styles.primaryButtonText}>
-            {purchaseButtonText}
+      <View>
+        <TouchableOpacity
+          className={isWeb && !purchasing ? 'course-cta-pulse' : undefined}
+          style={[styles.primaryButton, purchasing && styles.disabledButton]}
+          onPress={handlePurchaseCourse}
+          disabled={purchasing}
+        >
+          {purchasing ? (
+            <>
+              <ActivityIndicator size="small" color="rgba(255, 255, 255, 1)" style={{ marginRight: 8 }} />
+              <Text style={styles.primaryButtonText}>Procesando compra...</Text>
+            </>
+          ) : (
+            <Text style={styles.primaryButtonText}>
+              {purchaseButtonText}
+            </Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setPaymentProviderOverride('polar')}
+          disabled={purchasing}
+          style={{ marginTop: 12, alignItems: 'center' }}
+        >
+          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, textDecorationLine: 'underline' }}>
+            Pagar con tarjeta internacional (USD)
           </Text>
-        )}
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
     );
   };
 

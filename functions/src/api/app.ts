@@ -14,6 +14,7 @@ import progressRouter from "./routes/progress.js";
 import creatorRouter from "./routes/creator.js";
 import eventsRouter from "./routes/events.js";
 import paymentsRouter from "./routes/payments.js";
+import polarRouter from "./routes/polar.js";
 import analyticsRouter from "./routes/analytics.js";
 import apiKeysRouter from "./routes/apiKeys.js";
 import appResourcesRouter from "./routes/appResources.js";
@@ -143,6 +144,10 @@ const PUBLIC_PATHS = [
   // reaches the signature check — MP does not retry 4xx, so every recurring
   // charge would silently fail to grant access.
   /^\/payments\/webhook$/,
+  // Polar webhook authenticates via Standard Webhooks signature (verified in
+  // the handler before any work), not a Firebase token — same rationale as the
+  // MercadoPago webhook above.
+  /^\/payments\/polar\/webhook$/,
 ];
 
 const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
@@ -180,6 +185,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, creatorRouter);
   app.use(prefix, eventsRouter);
   app.use(prefix, paymentsRouter);
+  app.use(prefix, polarRouter);
   app.use(prefix, analyticsRouter);
   app.use(prefix, apiKeysRouter);
   app.use(prefix, appResourcesRouter);

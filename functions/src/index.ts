@@ -1513,6 +1513,11 @@ const fatSecretClientSecretV2 = defineSecret("FATSECRET_CLIENT_SECRET");
 const resendApiKeyV2 = defineSecret("RESEND_API_KEY");
 const mercadopagoAccessTokenV2 = defineSecret("MERCADOPAGO_ACCESS_TOKEN");
 const mercadopagoWebhookSecretV2 = defineSecret("MERCADOPAGO_WEBHOOK_SECRET");
+// Polar (merchant-of-record) — international card subscriptions. MercadoPago
+// stays for Colombia; provider is routed per-country in the PWA. See
+// docs/superpowers/specs/2026-07-01-polar-international-payments-design.md
+const polarAccessTokenV2 = defineSecret("POLAR_ACCESS_TOKEN");
+const polarWebhookSecretV2 = defineSecret("POLAR_WEBHOOK_SECRET");
 
 export const api = onRequest(
   {
@@ -1532,6 +1537,8 @@ export const api = onRequest(
       resendApiKeyV2,
       mercadopagoAccessTokenV2,
       mercadopagoWebhookSecretV2,
+      polarAccessTokenV2,
+      polarWebhookSecretV2,
       vapidPublicKey,
       vapidPrivateKey,
       // F-FUNCS-20: /email/unsubscribe lives in this Gen2 export and calls

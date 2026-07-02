@@ -10,6 +10,46 @@ class PurchaseService {
   }
 
   /**
+   * Default payment provider by country. Colombia keeps MercadoPago (PSE/Nequi/
+   * COP); everyone else — including unknown/empty country — goes to Polar
+   * (international cards, USD). A UI toggle can override this per-purchase.
+   * @param {string|null|undefined} country ISO2 code from users/{id}.country
+   * @returns {'mercadopago'|'polar'}
+   */
+  resolveDefaultProvider(country) {
+    return (typeof country === 'string' && country.trim().toUpperCase() === 'CO')
+      ? 'mercadopago'
+      : 'polar';
+  }
+
+  /**
+   * Create a Polar hosted-checkout session (international cards, USD).
+   * @param {string} courseId
+   * @param {'subscription'|'one_time'} paymentType
+   * @returns {Promise<Object>} { success, checkoutURL } | { success:false, ... }
+   */
+  async preparePolarCheckout(courseId, paymentType) {
+    try {
+      const result = await apiClient.post('/payments/polar/checkout', { courseId, paymentType });
+      const checkoutURL = result?.data?.checkout_url;
+      if (!checkoutURL) throw new Error('Error creating international checkout');
+      analyticsService.track('subscription.checkout.created', {
+        course_id: courseId, surface: 'pwa_web', kind: 'course', provider: 'polar',
+      });
+      return { success: true, checkoutURL };
+    } catch (error) {
+      if (error.code === 'CAPACITY_FULL') {
+        return { success: false, capacityFull: true, error: error.message || 'Cupos agotados' };
+      }
+      analyticsService.track('subscription.checkout.create_failed', {
+        course_id: courseId, surface: 'pwa_web', kind: 'course', provider: 'polar',
+        error_code: error?.code || error?.message || 'unknown',
+      });
+      return { success: false, error: error.message || 'Error preparing payment' };
+    }
+  }
+
+  /**
    * Get course info for a user along with ownership state
    * @param {string} userId
    * @param {string} courseId
@@ -165,15 +205,24 @@ class PurchaseService {
    * @param {Object} opts - { accessDuration, payerEmail } — pass from component to skip API round-trips
    * @returns {Promise<Object>} Checkout result
    */
-  async preparePurchase(userId, courseId, { accessDuration, payerEmail } = {}) {
+  async preparePurchase(userId, courseId, { accessDuration, payerEmail, provider } = {}) {
     try {
       try {
         analyticsService.track('program.purchase_started', {
           course_id: courseId || null,
           access_duration: accessDuration || 'otp',
           kind: 'course',
+          provider: provider || 'mercadopago',
         });
       } catch {}
+
+      // International path: Polar hosted checkout (subscription or one-time).
+      if (provider === 'polar') {
+        return await this.preparePolarCheckout(
+          courseId,
+          accessDuration === 'monthly' ? 'subscription' : 'one_time'
+        );
+      }
 
       if (accessDuration === "monthly") {
         return await this.prepareSubscription(userId, courseId, payerEmail || null);
