@@ -7,7 +7,6 @@
 import {Router} from "express";
 import type {Request} from "express";
 import * as functions from "firebase-functions";
-import {Polar} from "@polar-sh/sdk";
 import {validateEvent, WebhookVerificationError} from "@polar-sh/sdk/webhooks";
 import {db, FieldValue} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
@@ -18,6 +17,7 @@ import {EMAIL_RE, COURSE_ID_RE, calculateExpirationDate} from "../services/payme
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {assertCourseHasSeat} from "../services/capacity.js";
 import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
+import {getPolarClient} from "../services/polarClient.js";
 import {buildCancellationSurveyRecord} from "./payments.js";
 import {
   type PolarPaymentType,
@@ -37,19 +37,6 @@ import {
 } from "../services/purchaseEmails.js";
 
 const router = Router();
-
-// ─── Polar client ───────────────────────────────────────────────────────────
-function getPolarClient(): Polar {
-  const accessToken = process.env.POLAR_ACCESS_TOKEN;
-  if (!accessToken) {
-    throw new WakeApiServerError(
-      "SERVICE_UNAVAILABLE", 503, "Servicio de pago internacional no configurado"
-    );
-  }
-  // Sandbox and production tokens are distinct; POLAR_SERVER selects the base.
-  const server = process.env.POLAR_SERVER === "sandbox" ? "sandbox" : "production";
-  return new Polar({accessToken, server});
-}
 
 // ─── Post-payment redirect (mirrors payments.ts; kept local to avoid touching
 // the MercadoPago file). Buyers land on the landing's /:username/comprado

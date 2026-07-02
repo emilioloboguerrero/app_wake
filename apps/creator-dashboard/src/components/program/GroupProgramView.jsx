@@ -95,6 +95,14 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
   // Beta cap: max unique purchasers. Empty = uncapped. Buyers past the cap land
   // on a waitlist (see the waitlist panel below).
   const [capacityValue, setCapacityValue] = useState(program?.capacity != null ? String(program.capacity) : '');
+  // Polar international price (USD). Prefills a suggested default from the COP
+  // price (creator can override). On save, creator.ts auto-provisions the Polar
+  // product and writes polar.* — no manual Polar dashboard step.
+  const [priceUsdValue, setPriceUsdValue] = useState(() => {
+    if (program?.price_usd != null) return String(program.price_usd);
+    const cop = program?.subscription_price ?? program?.price;
+    return cop > 0 ? String(Math.max(1, Math.round(cop / 4000))) : '';
+  });
 
   useEffect(() => {
     setPriceValue(program?.price != null ? String(program.price) : '');
@@ -103,7 +111,13 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     setFreeTrialActive(!!program?.free_trial?.active);
     setFreeTrialDays(String(program?.free_trial?.duration_days ?? 0));
     setCapacityValue(program?.capacity != null ? String(program.capacity) : '');
-  }, [program?.price, program?.subscription_price, program?.compare_at_price, program?.free_trial, program?.capacity]);
+    if (program?.price_usd != null) {
+      setPriceUsdValue(String(program.price_usd));
+    } else {
+      const cop = program?.subscription_price ?? program?.price;
+      setPriceUsdValue(cop > 0 ? String(Math.max(1, Math.round(cop / 4000))) : '');
+    }
+  }, [program?.price, program?.subscription_price, program?.compare_at_price, program?.free_trial, program?.capacity, program?.price_usd]);
 
   // ── Content tab state ─────────────────────────────────────────
   const [mediaPickerContext, setMediaPickerContext] = useState('program');
@@ -187,6 +201,17 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
     if (numeric === program?.subscription_price) return;
     await editor.saveField({ subscription_price: numeric });
   }, [subscriptionPriceValue, program?.subscription_price, editor]);
+
+  const savePriceUsd = useCallback(async () => {
+    const numeric = priceUsdValue === '' ? null : parseInt(String(priceUsdValue).replace(/\D/g, ''), 10);
+    // Below Polar's minimum (~$0.50) — revert to the stored value.
+    if (numeric !== null && numeric < 1) {
+      setPriceUsdValue(program?.price_usd != null ? String(program.price_usd) : '');
+      return;
+    }
+    if (numeric === (program?.price_usd ?? null)) return;
+    await editor.saveField({ price_usd: numeric });
+  }, [priceUsdValue, program?.price_usd, editor]);
 
   const saveCompareAtPrice = useCallback(async () => {
     const numeric = compareAtPriceValue === '' ? null : parseInt(String(compareAtPriceValue).replace(/\D/g, ''), 10);
@@ -567,6 +592,27 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                       placeholder={cadenceActive ? 'Sin precio' : 'Gratis'}
                     />
                     <span className="gp-price-field__hint">{cadenceActive ? 'COP / mes' : 'COP'}</span>
+                  </div>
+                </BentoCard>
+
+                {/* International price (USD) — Polar. On save, the server
+                    auto-provisions the Polar product and stores polar.*. The
+                    value prefills a suggested default derived from the COP price. */}
+                <BentoCard className="gp-config__card">
+                  <GlowingEffect spread={24} proximity={60} />
+                  <h3>Precio internacional</h3>
+                  <div className="gp-price-field">
+                    <span className="gp-price-field__currency">$</span>
+                    <input
+                      className="gp-price-field__input"
+                      type="text"
+                      inputMode="numeric"
+                      value={priceUsdValue}
+                      onChange={(e) => setPriceUsdValue(e.target.value.replace(/\D/g, ''))}
+                      onBlur={savePriceUsd}
+                      placeholder="USD"
+                    />
+                    <span className="gp-price-field__hint">{cadenceActive ? 'USD / mes' : 'USD'}</span>
                   </div>
                 </BentoCard>
 

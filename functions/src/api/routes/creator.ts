@@ -19,6 +19,7 @@ import {
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {countCourseSeatsTaken} from "../services/capacity.js";
+import {provisionPolarProduct} from "../services/polarProducts.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
 import {isReservedUsername} from "../utils/reservedUsernames.js";
@@ -1641,6 +1642,9 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     // Lives only on the course doc — never propagated to user course entries.
     // Only the count is exposed publicly; full list gated behind active access.
     "additional_resources",
+    // Polar international price (USD, whole dollars). On save the server
+    // provisions the Polar product and writes polar.* — see polarProducts.ts.
+    "price_usd",
   ];
   const updates = pickFields(req.body, allowedFields);
 
@@ -1948,6 +1952,19 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     }
   }
 
+  // Polar international price: whole USD dollars, >= 1 (Polar minimum ~$0.50).
+  // null clears it (the course simply isn't sold internationally).
+  if (updates.price_usd !== undefined && updates.price_usd !== null) {
+    const v = updates.price_usd;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 1) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "price_usd debe ser un entero en dólares (USD) mayor o igual a 1",
+        "price_usd"
+      );
+    }
+  }
+
   // Safety belt: a positive subscription_price implies monthly billing, but the
   // checkout endpoint refuses to run without access_duration (the webhook needs
   // it to compute expires_at). If this PATCH lands a subscription_price on a
@@ -1967,6 +1984,43 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     updated_at: FieldValue.serverTimestamp(),
     last_update: FieldValue.serverTimestamp(),
   });
+
+  // Polar auto-provisioning: when the creator sets/changes the international USD
+  // price, create the Polar product and store its id on the course. Best-effort
+  // — a Polar failure (or unconfigured token) never blocks the price save; the
+  // creator can re-save to retry. On a price change we provision a fresh product
+  // and repoint; existing subscribers keep their price on the old product.
+  let polarProvisioning: "ok" | "failed" | undefined;
+  if (typeof updates.price_usd === "number" && updates.price_usd > 0) {
+    const merged = {...doc.data(), ...updates};
+    const isSub = (typeof merged.subscription_price === "number" && merged.subscription_price > 0) ||
+      merged.access_duration === "monthly";
+    const mode = isSub ? "subscription" as const : "one_time" as const;
+    const existingPolar = (doc.data()?.polar ?? {}) as Record<string, unknown>;
+    const storedUsd = isSub ? existingPolar.price_usd_monthly : existingPolar.price_usd_onetime;
+    const storedId = isSub ? existingPolar.subscription_product_id : existingPolar.onetime_product_id;
+    if (storedUsd !== updates.price_usd || typeof storedId !== "string" || !storedId) {
+      try {
+        const provisioned = await provisionPolarProduct({
+          courseId: req.params.programId,
+          course: merged,
+          priceUsd: updates.price_usd,
+          mode,
+        });
+        const polarUpdate: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(provisioned)) {
+          polarUpdate[`polar.${k}`] = val;
+        }
+        await docRef.update(polarUpdate);
+        polarProvisioning = "ok";
+      } catch (err) {
+        functions.logger.error("polar.provision failed", {
+          courseId: req.params.programId, error: String(err),
+        });
+        polarProvisioning = "failed";
+      }
+    }
+  }
 
   // When a creator turns cadence OFF, clean up program_state so a stale
   // current_block_id can't gate content if cadence is later re-enabled or
@@ -2012,7 +2066,7 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     }
   }
 
-  res.json({data: {updated: true}});
+  res.json({data: {updated: true, ...(polarProvisioning ? {polar_provisioning: polarProvisioning} : {})}});
 });
 
 // GET /creator/programs/:programId/waitlist
