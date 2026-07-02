@@ -1171,3 +1171,68 @@
     font-size: 14px;
   }
 }
+
+/* ── Floating support (WhatsApp) ───────────────────────────────────────── */
+/* Neutral white-tone glass pill, bottom-right. Stays off the program accent
+   so it never competes with the primary purchase CTA. Sits below the
+   AuthModal (z-index 9000). */
+.cpd-support-fab {
+  position: fixed;
+  right: 20px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px 12px 15px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: rgba(255, 255, 255, 0.92);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  animation: cpdSupportFabIn 500ms cubic-bezier(0.22, 1, 0.36, 1) 400ms backwards;
+  transition:
+    background-color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-support-fab:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.30);
+  transform: translateY(-1px);
+}
+
+.cpd-support-fab:active {
+  transform: scale(0.97);
+}
+
+.cpd-support-fab svg {
+  flex-shrink: 0;
+}
+
+@keyframes cpdSupportFabIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  .cpd-support-fab {
+    right: 16px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    padding: 11px 16px 11px 13px;
+    font-size: 13px;
+  }
+}
