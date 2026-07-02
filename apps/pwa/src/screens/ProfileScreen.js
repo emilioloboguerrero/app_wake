@@ -49,6 +49,7 @@ import SvgListChecklist from '../components/icons/SvgListChecklist';
 import Heart01 from '../components/icons/vectors_fig/Interface/Heart01';
 import BookOpen from '../components/icons/vectors_fig/File/BookOpen';
 import SvgArrowReload from '../components/icons/SvgArrowReload';
+import SvgCircleHelp from '../components/icons/SvgCircleHelp';
 
 import logger from '../utils/logger.js';
 import { validateDisplayName, validateUsername as validateUsernameFormat, validatePhoneNumber } from '../utils/inputValidation';
@@ -1141,28 +1142,6 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                 </View>
               </View>
 
-                  {/* WhatsApp Support Row */}
-                  <View style={styles.inputGroup}>
-                    <TouchableOpacity
-                      style={styles.toggleRow}
-                      onPress={() => {
-                        const name = userProfile?.displayName?.trim();
-                        const prefill = name
-                          ? `Hola, soy ${name}. Necesito ayuda con Wake.`
-                          : 'Hola, necesito ayuda con Wake.';
-                        Linking.openURL(whatsappUrl(prefill)).catch(() => {});
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <View style={styles.toggleRowText}>
-                        <Text style={styles.toggleRowTitle}>Soporte por WhatsApp</Text>
-                        <Text style={styles.toggleRowSubtitle}>
-                          ¿Necesitas ayuda? Escríbenos.
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-
                   {/* Sign Out Button */}
                   <TouchableOpacity
                     className={Platform.OS === 'web' ? 'sign-out-btn' : undefined}
@@ -1600,6 +1579,24 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
             <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
             <Text style={styles.smallCardTitle}>Legal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            className="profile-menu-row"
+            style={styles.smallCard}
+            onPress={() => {
+              if (Platform.OS === 'web') {
+                navigation.navigate('Support');
+              } else {
+                const name = userProfile?.displayName?.trim();
+                const prefill = name
+                  ? `Hola, soy ${name}. Necesito ayuda con Wake.`
+                  : 'Hola, necesito ayuda con Wake.';
+                Linking.openURL(whatsappUrl(prefill)).catch(() => {});
+              }
+            }}
+          >
+            <SvgCircleHelp width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
+            <Text style={styles.smallCardTitle}>Soporte</Text>
           </TouchableOpacity>
         </View>
 

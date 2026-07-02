@@ -14,6 +14,7 @@ import LoginScreen from '../screens/LoginScreen.web';
 import EmailLinkSignInScreen from '../screens/EmailLinkSignInScreen.web.jsx';
 import HoyScreen from '../screens/HoyScreen.web.jsx';
 import ProfileScreen from '../screens/ProfileScreen.web.jsx';
+import SupportScreen from '../screens/SupportScreen.web.jsx';
 // Import AllPurchasedCoursesScreen directly (not lazy) to avoid hook order issues with fonts.js
 import AllPurchasedCoursesScreen from '../screens/AllPurchasedCoursesScreen.web';
 // Import SubscriptionsScreen directly - using require in web wrapper causes Metro issues with lazy loading
@@ -505,6 +506,15 @@ const WebAppNavigator = () => {
         element={
           <AuthenticatedLayout>
             {React.createElement(withErrorBoundary(ProfileScreen, 'Profile'))}
+          </AuthenticatedLayout>
+        }
+      />
+
+      <Route
+        path="/support"
+        element={
+          <AuthenticatedLayout>
+            {React.createElement(withErrorBoundary(SupportScreen, 'Support'))}
           </AuthenticatedLayout>
         }
       />
