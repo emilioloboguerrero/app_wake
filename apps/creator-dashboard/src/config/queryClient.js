@@ -17,18 +17,40 @@
 // 14. Listener conflicts: Only one set of listeners active at a time
 // 15. Completeness flags: Denormalized flags prevent N+1 queries
 //
-import { QueryClient, QueryCache } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
 import { WakeApiError } from '../utils/apiClient';
 import authService from '../services/authService';
+import { emitToast } from '../utils/toastBridge';
+
+const isAuthError = (error) =>
+  error instanceof WakeApiError &&
+  (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED');
 
 // Create query client with optimized defaults
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
-      if (error instanceof WakeApiError &&
-          (error.code === 'UNAUTHENTICATED' || error.code === 'APP_CHECK_FAILED')) {
+      if (isAuthError(error)) {
         authService.signOutUser();
       }
+    },
+  }),
+  // Global mutation error surface. Client-management and nutrition-assignment
+  // mutations had no onError handlers, so failed saves were completely silent.
+  // Any mutation without its own onError now shows a toast; auth errors still
+  // route to sign-out instead.
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (isAuthError(error)) {
+        authService.signOutUser();
+        return;
+      }
+      if (mutation.options.onError) return; // caller handles its own feedback
+      const message =
+        (error instanceof WakeApiError && error.message) ||
+        error?.message ||
+        'No se pudo completar la acción. Inténtalo de nuevo.';
+      emitToast(message, 'error');
     },
   }),
   defaultOptions: {

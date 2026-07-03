@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { ToastContainer } from '../components/ui/Toast';
+import { registerToastHandler } from '../utils/toastBridge';
 
 const ToastContext = createContext(null);
 
@@ -23,6 +24,13 @@ export const ToastProvider = ({ children }) => {
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
+
+  // Bridge showToast to the module-level queryClient MutationCache, which can't
+  // use this hook. Registers once on mount.
+  useEffect(() => {
+    registerToastHandler((message, type = 'error') => showToast(message, type));
+    return () => registerToastHandler(null);
+  }, [showToast]);
 
   return (
     <ToastContext.Provider value={{ showToast }}>

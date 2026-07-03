@@ -1317,8 +1317,38 @@ export const processEmailQueue = onSchedule(
         const batchDocs = readyDocs.slice(0, BATCH_SIZE);
         batchesThisTick++;
 
+        // Resend rejects the ENTIRE batch call if a single recipient address is
+        // malformed, which previously failed all ~100 valid recipients in the
+        // batch. Partition out invalid addresses, mark just those failed, and
+        // send only the valid ones.
+        const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const isValidEmail = (d: admin.firestore.QueryDocumentSnapshot) =>
+          EMAIL_RE.test(String(d.data().email ?? "").trim());
+        const invalidDocs = batchDocs.filter((d) => !isValidEmail(d));
+        const validDocs = batchDocs.filter(isValidEmail);
+
+        if (invalidDocs.length > 0) {
+          const invalidBatch = db.batch();
+          for (const doc of invalidDocs) {
+            invalidBatch.update(doc.ref, {
+              status: "failed",
+              attemptCount: ((doc.data().attemptCount as number | undefined) || 0) + 1,
+              error: "Correo inválido",
+              lastError: "Correo inválido",
+            });
+          }
+          await invalidBatch.commit();
+          failedThisTick += invalidDocs.length;
+        }
+
+        if (validDocs.length === 0) {
+          // Nothing sendable in this slice; the invalid docs are now failed and
+          // won't be re-fetched as pending. Move to the next batch.
+          continue;
+        }
+
         // Build the Resend batch payload
-        const batchPayload = batchDocs.map((doc) => {
+        const batchPayload = validDocs.map((doc) => {
           const r = doc.data();
           const email = r.email as string;
           const name = (r.name as string) || "";
@@ -1378,20 +1408,20 @@ export const processEmailQueue = onSchedule(
         const writeBatch = db.batch();
         if (!batchErrorMsg) {
           // All succeeded
-          for (const doc of batchDocs) {
+          for (const doc of validDocs) {
             writeBatch.update(doc.ref, {
               status: "sent",
               sentAt: admin.firestore.FieldValue.serverTimestamp(),
             });
           }
           await writeBatch.commit();
-          sentThisTick += batchDocs.length;
+          sentThisTick += validDocs.length;
         } else {
           // Classify and either schedule retry or mark failed
           const errorKind = classifyResendError(batchErrorMsg);
           let retriedNow = 0;
           let failedNow = 0;
-          for (const doc of batchDocs) {
+          for (const doc of validDocs) {
             const data = doc.data();
             const prevAttempts = (data.attemptCount as number | undefined) || 0;
             const newAttemptCount = prevAttempts + 1;
