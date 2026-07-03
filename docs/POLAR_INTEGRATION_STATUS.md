@@ -21,13 +21,16 @@ Shipped + deployed to prod (commit `6dd670f`, `functions:api` + hosting):
 - **Polar sub management = single "Gestionar suscripción" → Polar portal** (`2afefe4`). PWA `SubscriptionsScreen.js`: dropped the Polar in-app cancel + card-update buttons for one portal action (cancel, resume/un-cancel, card, invoices; org `allow_customer_updates:true`). Portal actions sync back via `subscription.updated`. MP keeps its in-app cancel. `e30c0ab`: show that button for cancelled-at-period-end Polar subs (was hidden by a `status==='cancelled' → null` early-return) and relabel "Próximo cobro" → "Acceso hasta" when cancelled. **In-app cancel verified live** (200 → Firestore `cancelled` + Polar `cancel_at_period_end:true`).
 - **Hosting cache fix** (`firebase.json`): the service worker was served `max-age=31536000` (frozen) and the PWA entry `/app/` fell to the default `max-age=3600`, so deploys weren't reaching installed PWAs. Firebase Hosting = **last-matching header rule wins**; reordered so SPA scopes + `sw.js` + HTML are `no-cache` and hashed assets stay 1-year. Verified live. See [[reference_pwa_appcheck_and_cache_gotchas]].
 
+**DONE (this session, later):**
+- **$4 test sub refunded** — order `540b5044…` refunded ($4, `succeeded`); the `order.refunded` webhook revoked access (course `cancelled`) and wrote `payment_ledger/polar_refund_540b5044…` (net $3.24). All Polar webhook paths now verified live (order.paid, subscription.updated, subscription.canceled, order.refunded).
+- **apiClient App Check resilience** — fixed + deployed (`#withTimeout` on token fetches, bounded App Check getter, force-refresh App Check on 401 retry). See [[reference_pwa_appcheck_and_cache_gotchas]].
+- **Hosting cache-header bug** — fixed + verified (frozen `sw.js` / `/app/` at 3600 → deploys now reach installed PWAs).
+- **Cancellation-reason** — NO config needed: Polar captures it natively in the portal cancel flow (`customer_cancellation_reason` on the subscription, visible in the Polar dashboard).
+
 **Still OPEN:**
-- **$4 test sub cleanup** (`2f4f3fce-2acf-4c19-8a1e-8e5d5b72f065`, product `d14bd62f`): user chose to test in-app first (done ✓); can now reactivate via the portal or refund order `540b5044…` (also exercises the untested `order.refunded` path).
 - **`PLATFORM_COMMISSION_RATE`** still `null` (fill when the owner decides Polar vs MP commission).
-- **Polar portal cancellation-reason** — enable in the Polar org settings to keep churn data now that cancel goes through the portal (the in-app survey no longer fires for Polar).
-- **apiClient App Check resilience** — surfaces as a hung "Procesando" on transient App Check failure; see [[reference_pwa_appcheck_and_cache_gotchas]].
-- Trial CTA on the Polar path (cosmetic).
-- Dev helpers in `scripts/`: `backfill-polar-international.js`, `polar-inspect.js`, `polar-test-sub-updated.js` (read-only / reversible).
+- Trial CTA on the Polar path — intentionally not built (no Polar course uses a free trial today; would be speculative).
+- Dev helpers in `scripts/`: `backfill-polar-international.js`, `polar-inspect.js`, `polar-test-sub-updated.js`, `polar-refund-test-sub.js`.
 
 ---
 
