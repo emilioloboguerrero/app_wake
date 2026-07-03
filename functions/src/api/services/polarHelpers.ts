@@ -22,6 +22,7 @@ export const POLAR_EVENTS = {
   REFUND_CREATED: "refund.created",
   SUBSCRIPTION_CREATED: "subscription.created",
   SUBSCRIPTION_ACTIVE: "subscription.active",
+  SUBSCRIPTION_UPDATED: "subscription.updated",
   SUBSCRIPTION_CANCELED: "subscription.canceled",
   SUBSCRIPTION_REVOKED: "subscription.revoked",
 } as const;

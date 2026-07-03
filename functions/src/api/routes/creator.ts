@@ -19,7 +19,7 @@ import {
 } from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {countCourseSeatsTaken} from "../services/capacity.js";
-import {provisionPolarProduct} from "../services/polarProducts.js";
+import {provisionPolarProduct, deriveUsdFromCop, archivePolarProduct} from "../services/polarProducts.js";
 import {escapeHtml} from "../services/emailHelpers.js";
 import {applyLongCacheControl} from "../services/storageMetadata.js";
 import {isReservedUsername} from "../utils/reservedUsernames.js";
@@ -1985,34 +1985,70 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
-  // Polar auto-provisioning: when the creator sets/changes the international USD
-  // price, create the Polar product and store its id on the course. Best-effort
-  // — a Polar failure (or unconfigured token) never blocks the price save; the
-  // creator can re-save to retry. On a price change we provision a fresh product
-  // and repoint; existing subscribers keep their price on the old product.
+  // Polar international pricing — ON BY DEFAULT. Every published course with a
+  // COP price gets a Polar product whose USD price is derived from the COP price
+  // (deriveUsdFromCop). The creator can override the USD amount per program with
+  // an explicit `price_usd`; that pins it "manual" and stops auto re-derivation.
+  // On a price change we provision a fresh product, repoint the course, and
+  // archive the old product. Best-effort throughout — a Polar failure (or an
+  // unconfigured token) never blocks the price save; the creator can re-save.
   let polarProvisioning: "ok" | "failed" | undefined;
-  if (typeof updates.price_usd === "number" && updates.price_usd > 0) {
+  {
     const merged = {...doc.data(), ...updates};
     const isSub = (typeof merged.subscription_price === "number" && merged.subscription_price > 0) ||
       merged.access_duration === "monthly";
     const mode = isSub ? "subscription" as const : "one_time" as const;
+    const copPrice = isSub ?
+      (typeof merged.subscription_price === "number" ? merged.subscription_price : null) :
+      (typeof merged.price === "number" ? merged.price : null);
+
     const existingPolar = (doc.data()?.polar ?? {}) as Record<string, unknown>;
-    const storedUsd = isSub ? existingPolar.price_usd_monthly : existingPolar.price_usd_onetime;
     const storedId = isSub ? existingPolar.subscription_product_id : existingPolar.onetime_product_id;
-    if (storedUsd !== updates.price_usd || typeof storedId !== "string" || !storedId) {
+    const storedUsd = isSub ? existingPolar.price_usd_monthly : existingPolar.price_usd_onetime;
+    const storedSource = isSub ? existingPolar.price_source_monthly : existingPolar.price_source_onetime;
+    const hasStoredProduct = typeof storedId === "string" && storedId.trim() !== "";
+    // A product provisioned before source-tracking existed, or one the creator
+    // explicitly pinned, counts as manual — never auto-override its USD.
+    const isPinnedManual = storedSource === "manual" || (storedSource === undefined && hasStoredProduct);
+
+    // Resolve the target USD price + whether it's creator-pinned.
+    let targetUsd: number | null = null;
+    let source: "manual" | "auto" | null = null;
+    if (typeof updates.price_usd === "number" && updates.price_usd > 0) {
+      targetUsd = updates.price_usd;
+      source = "manual";
+    } else if (!isPinnedManual && merged.status === "published" &&
+      typeof copPrice === "number" && copPrice > 0) {
+      targetUsd = deriveUsdFromCop(copPrice);
+      source = "auto";
+    }
+
+    if (targetUsd !== null && source !== null &&
+      (!hasStoredProduct || storedUsd !== targetUsd)) {
       try {
         const provisioned = await provisionPolarProduct({
           courseId: req.params.programId,
           course: merged,
-          priceUsd: updates.price_usd,
+          priceUsd: targetUsd,
           mode,
         });
-        const polarUpdate: Record<string, unknown> = {};
+        const polarUpdate: Record<string, unknown> = {
+          [isSub ? "polar.price_source_monthly" : "polar.price_source_onetime"]: source,
+        };
         for (const [k, val] of Object.entries(provisioned)) {
           polarUpdate[`polar.${k}`] = val;
         }
         await docRef.update(polarUpdate);
         polarProvisioning = "ok";
+        // Archive the now-orphaned old product (best-effort — never blocks).
+        if (hasStoredProduct && storedId !== provisioned.subscription_product_id &&
+          storedId !== provisioned.onetime_product_id) {
+          await archivePolarProduct(storedId as string).catch((err) => {
+            functions.logger.warn("polar.archive failed", {
+              courseId: req.params.programId, productId: storedId, error: String(err),
+            });
+          });
+        }
       } catch (err) {
         functions.logger.error("polar.provision failed", {
           courseId: req.params.programId, error: String(err),

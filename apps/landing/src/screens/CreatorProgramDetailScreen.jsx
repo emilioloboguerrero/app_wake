@@ -668,6 +668,24 @@ export default function CreatorProgramDetailScreen() {
     }
   };
 
+  // Dedicated international (USD) purchase, fired from the "precio internacional"
+  // section below the hero. Forces the Polar path regardless of the resolved
+  // default provider: pins the override to 'polar' so a post-auth resume also
+  // goes through Polar, then runs the checkout directly when already signed in.
+  const handleInternationalBuy = (mode) => {
+    setCheckoutError(null);
+    setNeedsAltEmail(false);
+    setEmailStep(false);
+    setAlreadyOwned(null);
+    setPendingMode(mode);
+    setProviderOverride('polar');
+    if (getCurrentUser()) {
+      runPolarCheckout(mode);
+    } else {
+      setAuthOpen(true);
+    }
+  };
+
   // Landing-section CTA blocks fire the same primary purchase action as the
   // hero button, choosing the mode by the program's delivery/pricing shape.
   const handlePrimaryCta = () => {
@@ -1180,6 +1198,52 @@ export default function CreatorProgramDetailScreen() {
           </div>
         </div>
       </article>
+
+      {!isOneOnOne && !(program.isFull || waitlistPhase !== 'hidden') && !alreadyOwned &&
+        provider === 'mercadopago' && polarAvailable && (polarHasSub || polarHasOtp) ? (
+          <section className="cpd-intl" aria-label="Precio internacional">
+            <div className="cpd-intl-card">
+              <div className="cpd-intl-head">
+                <GlobeIcon size={20} />
+                <h2 className="cpd-intl-title">Suscríbete con precio internacional</h2>
+              </div>
+              <div className="cpd-intl-ctas">
+                {polarHasSub ? (
+                  <button
+                    type="button"
+                    className="cpd-cta cpd-cta-primary"
+                    onClick={() => handleInternationalBuy('subscription')}
+                    disabled={busyMode !== null}
+                  >
+                    <span className="cpd-cta-label">
+                      {busyMode === 'subscription' ? 'Procesando…' : 'Suscríbete'}
+                    </span>
+                    {polarSubPrice ? (
+                      <span className="cpd-cta-price">
+                        {polarSubPrice}<span className="cpd-cta-suffix">/mes</span>
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
+                {polarHasOtp ? (
+                  <button
+                    type="button"
+                    className={`cpd-cta ${polarHasSub ? 'cpd-cta-secondary' : 'cpd-cta-primary'}`}
+                    onClick={() => handleInternationalBuy('one_time')}
+                    disabled={busyMode !== null}
+                  >
+                    <span className="cpd-cta-label">
+                      {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
+                    </span>
+                    {polarOtpPrice ? (
+                      <span className="cpd-cta-price">{polarOtpPrice}</span>
+                    ) : null}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
       <ProgramSections sections={program.sections} program={program} onCtaClick={handlePrimaryCta} />
 

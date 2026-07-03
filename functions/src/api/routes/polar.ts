@@ -266,6 +266,9 @@ async function handlePolarEvent(type: string, data: Record<string, unknown>): Pr
     // matching order.paid that does the grant. Ignoring it avoids double work.
     if (isTrialingSubscription(data)) await handleTrialActivated(data);
     break;
+  case POLAR_EVENTS.SUBSCRIPTION_UPDATED:
+    await handleSubscriptionUpdated(data);
+    break;
   case POLAR_EVENTS.SUBSCRIPTION_CANCELED:
     await handleSubscriptionCanceled(data);
     break;
@@ -548,6 +551,46 @@ async function handleSubscriptionCanceled(subscription: Record<string, unknown>)
       cancelled_at: FieldValue.serverTimestamp(),
       updated_at: FieldValue.serverTimestamp(),
     }, {merge: true});
+}
+
+// subscription.updated fires for any change to the sub — crucially when a user
+// cancels (or un-cancels) from the Polar customer portal, which does NOT emit
+// subscription.canceled. Reflect the pending cancellation locally so the PWA
+// card matches Polar; a re-activation (cancel_at_period_end back to false)
+// flips it back to active. Access itself is unchanged here — it's retained
+// until expires_at (grace to period end); revoked/refund events end access.
+async function handleSubscriptionUpdated(subscription: Record<string, unknown>): Promise<void> {
+  const meta = parsePolarMetadata(subscription.metadata);
+  const subId = typeof subscription.id === "string" ? subscription.id : null;
+  if (!subId) return;
+
+  const status = subscription.status;
+  const cancelAtPeriodEnd = subscription.cancelAtPeriodEnd === true;
+  const subRef = db.collection("users").doc(meta.userId)
+    .collection("subscriptions").doc(subId);
+
+  // Terminal or scheduled-to-cancel → mark cancelled (keep access until expiry).
+  if (status === "canceled" || status === "revoked" || cancelAtPeriodEnd) {
+    await subRef.set({
+      status: "cancelled",
+      cancel_at_period_end: cancelAtPeriodEnd,
+      cancelled_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp(),
+    }, {merge: true});
+    return;
+  }
+
+  // Active/trialing and not scheduled to cancel → (re)activate; covers an
+  // un-cancel from the portal.
+  if (status === "active" || status === "trialing") {
+    const periodEnd = toIsoDate(subscription.currentPeriodEnd);
+    await subRef.set({
+      status: status === "trialing" ? "trialing" : "active",
+      cancel_at_period_end: false,
+      ...(periodEnd ? {next_billing_date: periodEnd} : {}),
+      updated_at: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  }
 }
 
 // Revoked = access ends now (immediate cancel, or trial abandoned).
