@@ -179,30 +179,17 @@ const SubscriptionsScreen = ({ navigation }) => {
 
   const renderActions = (subscription) => {
     const currentStatus = subscription.status || 'pending';
-
-    if (currentStatus === 'cancelled' || currentStatus === 'expired') {
-      return null;
-    }
-
     const subCourseId = subscription.course_id || subscription.courseId;
     const isOneOnOne = subCourseId && oneOnOneCourseIds.has(subCourseId);
 
-    // For one-on-one programs, the cancel survey is replaced by the leave-program flow
-    if (isOneOnOne) {
-      return (
-        <View style={styles.actionsRow}>
-          <Text style={styles.oneOnOneRedirect}>
-            Para terminar este programa, ve a <Text style={styles.oneOnOneRedirectLink}>Mis Programas</Text>.
-          </Text>
-        </View>
-      );
-    }
-
-    // Polar subscriptions — a single "Gestionar suscripción" action hands off to
-    // the Polar customer portal, which covers cancel, resume (un-cancel), card
-    // update and invoices. Whatever the customer does there syncs back to us via
-    // the subscription.updated webhook, so we don't need our own cancel UI.
+    // Polar — a single "Gestionar suscripción" hands off to the Polar customer
+    // portal (cancel, resume/un-cancel, card, invoices). Keep it available even
+    // when the sub is cancelled-at-period-end: it's still active until access
+    // ends, so the user can reactivate from the portal. Whatever they do there
+    // syncs back via the subscription.updated webhook. Only drop the action once
+    // the sub is fully expired (nothing left to manage).
     if (subscription.provider === 'polar') {
+      if (currentStatus === 'expired') return null;
       const busy = actionState[subscription.id]?.loading;
       return (
         <View style={styles.actionsRow}>
@@ -216,6 +203,22 @@ const SubscriptionsScreen = ({ navigation }) => {
               {busy ? 'Abriendo…' : 'Gestionar suscripción'}
             </Text>
           </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // Non-Polar (MercadoPago): no actions once cancelled or expired.
+    if (currentStatus === 'cancelled' || currentStatus === 'expired') {
+      return null;
+    }
+
+    // For one-on-one programs, the cancel survey is replaced by the leave-program flow
+    if (isOneOnOne) {
+      return (
+        <View style={styles.actionsRow}>
+          <Text style={styles.oneOnOneRedirect}>
+            Para terminar este programa, ve a <Text style={styles.oneOnOneRedirectLink}>Mis Programas</Text>.
+          </Text>
         </View>
       );
     }
@@ -774,7 +777,9 @@ const SubscriptionsScreen = ({ navigation }) => {
                 )}
                 {!subscription.renewal_date && !subscription.expires_at && subscription.next_billing_date && (
                 <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Próximo cobro:</Text>
+                  <Text style={styles.infoLabel}>
+                    {subscription.status === 'cancelled' ? 'Acceso hasta:' : 'Próximo cobro:'}
+                  </Text>
                   <Text style={styles.infoValue}>
                     {formatDate(subscription.next_billing_date)}
                   </Text>
