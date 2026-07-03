@@ -1720,17 +1720,27 @@ router.get("/workout/courses/:courseId/resources", async (req, res) => {
     throw new WakeApiServerError("FORBIDDEN", 403, "No tienes acceso a este programa");
   }
 
-  const courseDoc = await db.collection("courses").doc(req.params.courseId).get();
+  // Resources now live in the gated course_private_resources/{id} doc (paid URLs
+  // must not sit on the client-readable course doc). Dual-read: prefer the
+  // private doc; fall back to the legacy course-doc field for any course not yet
+  // migrated, so this is safe to deploy before the backfill runs.
+  const [courseDoc, privResDoc] = await Promise.all([
+    db.collection("courses").doc(req.params.courseId).get(),
+    db.collection("course_private_resources").doc(req.params.courseId).get(),
+  ]);
   if (!courseDoc.exists) {
     throw new WakeApiServerError("NOT_FOUND", 404, "Programa no encontrado");
   }
 
   const course = courseDoc.data() ?? {};
-  const resources = Array.isArray(course.additional_resources) ?
-    [...course.additional_resources].sort(
-      (a, b) => ((a as {order?: number}).order || 0) - ((b as {order?: number}).order || 0)
-    ) :
-    [];
+  const privItems = privResDoc.exists && Array.isArray(privResDoc.data()?.items) ?
+    privResDoc.data()!.items as unknown[] :
+    null;
+  const rawResources = privItems ??
+    (Array.isArray(course.additional_resources) ? course.additional_resources : []);
+  const resources = [...rawResources].sort(
+    (a, b) => ((a as {order?: number}).order || 0) - ((b as {order?: number}).order || 0)
+  );
 
   res.status(200).json({data: {resources}});
 });

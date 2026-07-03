@@ -32,6 +32,75 @@ function requireCreator(auth: { role: string }): void {
   }
 }
 
+// Provision (or re-provision) the Polar international-USD product for a course,
+// writing courses/{id}.polar.*. Shared by BOTH the price editor
+// (PATCH /creator/programs/:id) and the publish toggle
+// (PATCH /creator/programs/:id/status) — the latter is how the dashboard
+// actually publishes, and it previously skipped provisioning entirely, so a
+// program published without an explicit price_usd never got a USD product and
+// international buyers couldn't check out.
+//   course: current/merged course data (status already applied)
+//   explicitPriceUsd: creator's manual price_usd (pins "manual"), else undefined
+async function syncPolarProduct(
+  courseId: string,
+  course: Record<string, unknown>,
+  explicitPriceUsd: number | undefined
+): Promise<"ok" | "failed" | undefined> {
+  const isSub = (typeof course.subscription_price === "number" && course.subscription_price > 0) ||
+    course.access_duration === "monthly";
+  const mode = isSub ? "subscription" as const : "one_time" as const;
+  const copPrice = isSub ?
+    (typeof course.subscription_price === "number" ? course.subscription_price : null) :
+    (typeof course.price === "number" ? course.price : null);
+
+  const existingPolar = (course.polar ?? {}) as Record<string, unknown>;
+  const storedId = isSub ? existingPolar.subscription_product_id : existingPolar.onetime_product_id;
+  const storedUsd = isSub ? existingPolar.price_usd_monthly : existingPolar.price_usd_onetime;
+  const storedSource = isSub ? existingPolar.price_source_monthly : existingPolar.price_source_onetime;
+  const hasStoredProduct = typeof storedId === "string" && storedId.trim() !== "";
+  const isPinnedManual = storedSource === "manual" || (storedSource === undefined && hasStoredProduct);
+
+  let targetUsd: number | null = null;
+  let source: "manual" | "auto" | null = null;
+  if (typeof explicitPriceUsd === "number" && explicitPriceUsd > 0) {
+    targetUsd = explicitPriceUsd;
+    source = "manual";
+  } else if (!isPinnedManual && course.status === "published" &&
+    typeof copPrice === "number" && copPrice > 0) {
+    targetUsd = deriveUsdFromCop(copPrice);
+    source = "auto";
+  }
+
+  if (targetUsd === null || source === null || (hasStoredProduct && storedUsd === targetUsd)) {
+    return undefined;
+  }
+
+  try {
+    const provisioned = await provisionPolarProduct({
+      courseId, course, priceUsd: targetUsd, mode,
+    });
+    const polarUpdate: Record<string, unknown> = {
+      [isSub ? "polar.price_source_monthly" : "polar.price_source_onetime"]: source,
+    };
+    for (const [k, val] of Object.entries(provisioned)) {
+      polarUpdate[`polar.${k}`] = val;
+    }
+    await db.collection("courses").doc(courseId).update(polarUpdate);
+    if (hasStoredProduct && storedId !== provisioned.subscription_product_id &&
+      storedId !== provisioned.onetime_product_id) {
+      await archivePolarProduct(storedId as string).catch((err) => {
+        functions.logger.warn("polar.archive failed", {
+          courseId, productId: storedId, error: String(err),
+        });
+      });
+    }
+    return "ok";
+  } catch (err) {
+    functions.logger.error("polar.provision failed", {courseId, error: String(err)});
+    return "failed";
+  }
+}
+
 // Security (audit C-05): nutrition assignment content body validator with
 // per-field caps that hold total payload under the 1 MiB Firestore doc limit
 // without rejecting legitimate rich plans (multiple meals per category, each
@@ -1651,6 +1720,11 @@ router.patch("/creator/programs/:programId", async (req, res) => {
   ];
   const updates = pickFields(req.body, allowedFields);
 
+  // Set when the request updates additional_resources: the validated array is
+  // written to the gated course_private_resources/{id} doc after the course
+  // update, never to the public course doc.
+  let resourcesToPersist: Record<string, unknown>[] | null = null;
+
   if (updates.level_plans !== undefined && updates.level_plans !== null) {
     const v = updates.level_plans;
     if (
@@ -1879,7 +1953,14 @@ router.patch("/creator/programs/:programId", async (req, res) => {
       }
       return clean;
     });
-    updates.additional_resources = cleaned;
+    // Paywall-leak fix (launch hardening): the resource list (paid PDF/link URLs)
+    // must NOT live on the courses/{id} doc — that doc is client-readable for any
+    // published course, so a non-purchaser could read the URLs directly via the
+    // SDK. Store the array in the gated course_private_resources/{id} doc
+    // (API/Admin-SDK only) and keep just the public count on the course doc.
+    resourcesToPersist = cleaned;
+    updates.additional_resources_count = cleaned.length;
+    updates.additional_resources = FieldValue.delete();
   }
 
   if (updates.block_cadence !== undefined) {
@@ -1988,78 +2069,25 @@ router.patch("/creator/programs/:programId", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
-  // Polar international pricing — ON BY DEFAULT. Every published course with a
-  // COP price gets a Polar product whose USD price is derived from the COP price
-  // (deriveUsdFromCop). The creator can override the USD amount per program with
-  // an explicit `price_usd`; that pins it "manual" and stops auto re-derivation.
-  // On a price change we provision a fresh product, repoint the course, and
-  // archive the old product. Best-effort throughout — a Polar failure (or an
-  // unconfigured token) never blocks the price save; the creator can re-save.
-  let polarProvisioning: "ok" | "failed" | undefined;
-  {
-    const merged = {...doc.data(), ...updates};
-    const isSub = (typeof merged.subscription_price === "number" && merged.subscription_price > 0) ||
-      merged.access_duration === "monthly";
-    const mode = isSub ? "subscription" as const : "one_time" as const;
-    const copPrice = isSub ?
-      (typeof merged.subscription_price === "number" ? merged.subscription_price : null) :
-      (typeof merged.price === "number" ? merged.price : null);
-
-    const existingPolar = (doc.data()?.polar ?? {}) as Record<string, unknown>;
-    const storedId = isSub ? existingPolar.subscription_product_id : existingPolar.onetime_product_id;
-    const storedUsd = isSub ? existingPolar.price_usd_monthly : existingPolar.price_usd_onetime;
-    const storedSource = isSub ? existingPolar.price_source_monthly : existingPolar.price_source_onetime;
-    const hasStoredProduct = typeof storedId === "string" && storedId.trim() !== "";
-    // A product provisioned before source-tracking existed, or one the creator
-    // explicitly pinned, counts as manual — never auto-override its USD.
-    const isPinnedManual = storedSource === "manual" || (storedSource === undefined && hasStoredProduct);
-
-    // Resolve the target USD price + whether it's creator-pinned.
-    let targetUsd: number | null = null;
-    let source: "manual" | "auto" | null = null;
-    if (typeof updates.price_usd === "number" && updates.price_usd > 0) {
-      targetUsd = updates.price_usd;
-      source = "manual";
-    } else if (!isPinnedManual && merged.status === "published" &&
-      typeof copPrice === "number" && copPrice > 0) {
-      targetUsd = deriveUsdFromCop(copPrice);
-      source = "auto";
-    }
-
-    if (targetUsd !== null && source !== null &&
-      (!hasStoredProduct || storedUsd !== targetUsd)) {
-      try {
-        const provisioned = await provisionPolarProduct({
-          courseId: req.params.programId,
-          course: merged,
-          priceUsd: targetUsd,
-          mode,
-        });
-        const polarUpdate: Record<string, unknown> = {
-          [isSub ? "polar.price_source_monthly" : "polar.price_source_onetime"]: source,
-        };
-        for (const [k, val] of Object.entries(provisioned)) {
-          polarUpdate[`polar.${k}`] = val;
-        }
-        await docRef.update(polarUpdate);
-        polarProvisioning = "ok";
-        // Archive the now-orphaned old product (best-effort — never blocks).
-        if (hasStoredProduct && storedId !== provisioned.subscription_product_id &&
-          storedId !== provisioned.onetime_product_id) {
-          await archivePolarProduct(storedId as string).catch((err) => {
-            functions.logger.warn("polar.archive failed", {
-              courseId: req.params.programId, productId: storedId, error: String(err),
-            });
-          });
-        }
-      } catch (err) {
-        functions.logger.error("polar.provision failed", {
-          courseId: req.params.programId, error: String(err),
-        });
-        polarProvisioning = "failed";
-      }
-    }
+  // Persist the gated resource list (paid URLs) to its own deny-all-client doc.
+  // Written after the course update so the public count and the private list
+  // move together. Empty array clears it.
+  if (resourcesToPersist !== null) {
+    await db.collection("course_private_resources").doc(req.params.programId).set({
+      items: resourcesToPersist,
+      updated_at: FieldValue.serverTimestamp(),
+    });
   }
+
+  // Polar international pricing — ON BY DEFAULT. Provisioning logic is shared
+  // with the publish toggle via syncPolarProduct (see its docstring). An
+  // explicit price_usd pins "manual"; otherwise a published course with a COP
+  // price auto-derives USD. Best-effort: a Polar failure never blocks the save.
+  const polarProvisioning = await syncPolarProduct(
+    req.params.programId,
+    {...doc.data(), ...updates},
+    typeof updates.price_usd === "number" ? updates.price_usd : undefined
+  );
 
   // When a creator turns cadence OFF, clean up program_state so a stale
   // current_block_id can't gate content if cadence is later re-enabled or
@@ -2218,7 +2246,20 @@ router.patch("/creator/programs/:programId/status", async (req, res) => {
     last_update: FieldValue.serverTimestamp(),
   });
 
-  res.json({data: {status}});
+  // Provision the Polar USD product on publish. This is how the dashboard
+  // actually publishes, and it previously skipped provisioning — a program
+  // published here (without ever opening the price editor) never got a USD
+  // product, so international checkout failed. Best-effort; never blocks.
+  let polarProvisioning: "ok" | "failed" | undefined;
+  if (status === "published") {
+    polarProvisioning = await syncPolarProduct(
+      req.params.programId,
+      {...doc.data(), status},
+      undefined
+    );
+  }
+
+  res.json({data: {status, ...(polarProvisioning ? {polar_provisioning: polarProvisioning} : {})}});
 });
 
 // DELETE /creator/programs/:programId

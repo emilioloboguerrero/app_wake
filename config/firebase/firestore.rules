@@ -762,6 +762,14 @@ service cloud.firestore {
     // SERVER-ONLY COLLECTIONS (never client-accessible)
     // ============================================
 
+    // Gated program resources (paid PDF/link URLs). Moved off the client-
+    // readable courses/{id} doc so a non-purchaser can't read the URLs via the
+    // SDK. Server-only (Admin SDK); clients fetch via the entitlement-checked
+    // GET /workout/courses/:id/resources.
+    match /course_private_resources/{courseId} {
+      allow read, write: if false;
+    }
+
     // API keys — SHA-256 hashes, must never be readable from clients
     match /api_keys/{keyId} {
       allow read, write: if false;

@@ -837,6 +837,12 @@ describe("pickPublicCourseFields", () => {
     expect(out.additional_resources).toBeUndefined();
   });
 
+  it("prefers the explicit additional_resources_count field (post-migration, array gone)", () => {
+    const out = pickPublicCourseFields({title: "X", additional_resources_count: 4});
+    expect(out.additional_resources_count).toBe(4);
+    expect(out.additional_resources).toBeUndefined();
+  });
+
   it("PUBLIC_COURSE_FIELDS does not include creator_email or payout fields", () => {
     expect(PUBLIC_COURSE_FIELDS).not.toContain("creator_email");
     expect(PUBLIC_COURSE_FIELDS.find((f) => f.includes("payout"))).toBeUndefined();
