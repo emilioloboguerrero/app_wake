@@ -86,6 +86,9 @@ DerivedData/
 .env.test.local
 .env.production.local
 .env.ops
+# Firebase Functions per-project env (e.g. POLAR_SERVER) — set locally, never commit
+functions/.env.wolf-20b8b
+functions/.env.wake-staging
 
 # ============================================
 # macOS
