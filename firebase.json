@@ -109,15 +109,29 @@
         ]
       },
       {
-        "source": "/app/sw.js",
+        "source": "/app/**",
         "headers": [
           {
-            "key": "Content-Type",
-            "value": "application/javascript; charset=utf-8"
-          },
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/creators/**",
+        "headers": [
           {
             "key": "Cache-Control",
-            "value": "no-cache"
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/developers/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       },
@@ -127,6 +141,19 @@
           {
             "key": "Cache-Control",
             "value": "max-age=31536000"
+          }
+        ]
+      },
+      {
+        "source": "**/sw.js",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/javascript; charset=utf-8"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       },
