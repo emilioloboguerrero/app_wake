@@ -1574,11 +1574,11 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         <View style={styles.interestsProgramsContainer}>
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={showSettingsModal}>
             <Settings width={20} height={20} stroke="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
-            <Text style={styles.smallCardTitle}>Configuración</Text>
+            <Text style={styles.smallCardTitle} numberOfLines={1} adjustsFontSizeToFit>Configuración</Text>
           </TouchableOpacity>
           <TouchableOpacity className="profile-menu-row" style={styles.smallCard} onPress={() => setIsLegalWebViewVisible(true)}>
             <SvgFileBlank width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
-            <Text style={styles.smallCardTitle}>Legal</Text>
+            <Text style={styles.smallCardTitle} numberOfLines={1} adjustsFontSizeToFit>Legal</Text>
           </TouchableOpacity>
           <TouchableOpacity
             className="profile-menu-row"
@@ -1596,7 +1596,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
             }}
           >
             <SvgCircleHelp width={20} height={20} color="#ffffff" strokeWidth={2} style={styles.smallCardIcon} />
-            <Text style={styles.smallCardTitle}>Soporte</Text>
+            <Text style={styles.smallCardTitle} numberOfLines={1} adjustsFontSizeToFit>Soporte</Text>
           </TouchableOpacity>
         </View>
 
@@ -1874,11 +1874,12 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
   },
   interestsProgramsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 10,
     marginBottom: Math.max(15, screenHeight * 0.02), // Responsive margin
     marginHorizontal: Math.max(24, screenWidth * 0.06), // Responsive horizontal margin
   },
   smallCard: {
+    flex: 1, // Three cards share the row evenly (Configuración / Legal / Soporte)
     backgroundColor: '#2a2a2a',
     borderRadius: Math.max(12, screenWidth * 0.04), // Responsive border radius
     borderWidth: 1,
@@ -1888,16 +1889,17 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 2,
     elevation: 2,
-    padding: Math.max(12, screenWidth * 0.03), // Responsive padding
-    width: '48%',
+    paddingVertical: Math.max(12, screenWidth * 0.03),
+    paddingHorizontal: 8,
     minHeight: Math.max(55, screenHeight * 0.07), // Responsive min height
     justifyContent: 'center',
     alignItems: 'center',
   },
   smallCardTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
     color: '#ffffff',
+    textAlign: 'center',
   },
   smallCardIcon: {
     marginBottom: 8,
