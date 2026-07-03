@@ -1,6 +1,21 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const PaymentCancelledScreen = () => {
+  const navigate = useNavigate();
+
+  // MercadoPago can redirect back in the SAME tab, so "cierra esta ventana"
+  // left the buyer stranded with no way back into the app. Navigate to the
+  // library within the app; fall back to a hard redirect if the router isn't
+  // mounted for some reason.
+  const goBackToApp = () => {
+    try {
+      navigate('/library');
+    } catch {
+      window.location.replace('/app/library');
+    }
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -14,7 +29,9 @@ const PaymentCancelledScreen = () => {
         </div>
         <h1 style={styles.title}>Pago cancelado</h1>
         <p style={styles.subtitle}>No se realizó ningún cobro.</p>
-        <p style={styles.close}>Cierra esta ventana y regresa a la app para intentarlo de nuevo.</p>
+        <button type="button" style={styles.button} onClick={goBackToApp}>
+          Volver a la app
+        </button>
       </div>
     </div>
   );
@@ -56,11 +73,17 @@ const styles = {
     textAlign: 'center',
     lineHeight: '1.5',
   },
-  close: {
-    margin: 0,
-    fontSize: '14px',
-    color: 'rgba(255,255,255,0.25)',
-    textAlign: 'center',
+  button: {
+    marginTop: '8px',
+    padding: '13px 28px',
+    borderRadius: '12px',
+    border: 'none',
+    background: '#fff',
+    color: '#111',
+    fontWeight: 600,
+    fontSize: '15px',
+    fontFamily: 'inherit',
+    cursor: 'pointer',
   },
 };
 

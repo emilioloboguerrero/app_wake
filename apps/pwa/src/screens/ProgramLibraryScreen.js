@@ -246,7 +246,7 @@ const ProgramLibraryScreen = ({ navigation }) => {
     }
   }, [user?.uid]);
 
-  const { data: fetchedCourses, isLoading: coursesLoading, isError: coursesError } = useQuery({
+  const { data: fetchedCourses, isLoading: coursesLoading, isError: coursesError, refetch: refetchCourses } = useQuery({
     queryKey: ['programs', 'library', userId, userRole],
     queryFn: async () => {
       // TODO: no endpoint for getCourses — no REST endpoint; courses are in the users/me courses map
@@ -406,13 +406,13 @@ const ProgramLibraryScreen = ({ navigation }) => {
   }, []);
 
   const handleRefresh = async () => {
+    // Courses come from React Query (see the useQuery above). The old
+    // fetchCourses() no longer exists — calling it threw, so "Reintentar" did
+    // nothing. Refetch the query instead.
     try {
-      // Reload courses directly from database
-      await fetchCourses();
-      
+      await refetchCourses();
     } catch (error) {
-      logger.error('❌ Error refreshing courses:', error);
-      await fetchCourses();
+      logger.error('Error refreshing courses:', error);
     }
   };
 

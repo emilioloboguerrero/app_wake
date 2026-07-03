@@ -124,6 +124,19 @@ class AuthService {
       await signOut(auth);
       queryClient.clear();
 
+      // clear() only empties the in-memory cache. On web the query cache is
+      // also persisted to IndexedDB, so without this the NEXT account signing
+      // in on the same device restored the previous user's cached data before
+      // fresh fetches landed. Purge the persisted snapshot too.
+      if (isWeb) {
+        try {
+          const { idbPersister } = require('../config/queryPersistence.web');
+          await idbPersister.removeClient();
+        } catch (e) {
+          logger.error('[AUTH] failed to purge persisted query cache:', e);
+        }
+      }
+
       // Clear auth state
       await authStorage.clearAuthState();
       

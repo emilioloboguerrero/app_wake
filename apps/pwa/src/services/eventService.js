@@ -7,6 +7,15 @@ class EventService {
     return { id: d.eventId, ...d };
   }
 
+  // Creator-scoped single-event detail. Unlike the public getEvent, this is
+  // owner-gated and returns creator_id + image_url — required by the check-in
+  // screen, which must verify ownership and can't from the public payload.
+  async getCreatorEvent(eventId) {
+    const res = await apiClient.get(`/creator/events/${eventId}`);
+    const d = res.data;
+    return { id: d.eventId, ...d };
+  }
+
   async #fetchAllPages(basePath) {
     const all = [];
     let pageToken = null;
@@ -28,7 +37,9 @@ class EventService {
   }
 
   async checkInByToken(eventId, token) {
-    const result = await apiClient.post(`/events/${eventId}/check-in-by-token`, { token });
+    // Endpoint is /creator/events/:id/checkin-by-token (owner-gated). The old
+    // path /events/:id/check-in-by-token doesn't exist — every scan 404'd.
+    const result = await apiClient.post(`/creator/events/${eventId}/checkin-by-token`, { token });
     return result?.data ?? null;
   }
 

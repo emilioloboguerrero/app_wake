@@ -188,7 +188,11 @@ export async function addDiaryEntry(_userId, data) {
       ...body,
       createdAt: new Date().toISOString(),
     };
-    queryClient.setQueryData(['nutrition', 'diary', body.date], (old) =>
+    // Key MUST include userId — the read hook uses ['nutrition','diary',userId,date]
+    // (queryKeys.nutrition.diary). Writing without userId landed the optimistic
+    // entry in a key nothing reads, so offline-logged food was invisible and got
+    // re-added as a duplicate.
+    queryClient.setQueryData(['nutrition', 'diary', _userId, body.date], (old) =>
       [...(old ?? []), optimisticEntry]
     );
     trackFirstMealOnce();

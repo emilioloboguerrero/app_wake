@@ -41,6 +41,37 @@ class ApiClient {
     return token;
   }
 
+  #withTimeout(promise, ms, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new WakeApiError('REQUEST_TIMEOUT', `${label} timed out`, 0)),
+        ms
+      );
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  // Resilient App Check token fetch (parity with the PWA fix). A hung or failed
+  // token fetch used to either block the request forever or bubble an
+  // APP_CHECK_FAILED that the global QueryCache handler turned into a forced
+  // sign-out. Time-box it and degrade to no token — the server still validates
+  // the Firebase ID token, and a transient App Check hiccup no longer logs the
+  // creator out mid-session.
+  async #getAppCheckToken(forceRefresh = false) {
+    if (!appCheck) return null;
+    try {
+      const { token } = await this.#withTimeout(
+        getToken(appCheck, forceRefresh),
+        8000,
+        'App Check'
+      );
+      return token;
+    } catch {
+      return null;
+    }
+  }
+
   async #refreshToken() {
     if (this.#refreshPromise) return this.#refreshPromise;
     this.#refreshPromise = (async () => {
@@ -80,15 +111,9 @@ class ApiClient {
     };
 
     if (includeAuth) {
-      headers['Authorization'] = `Bearer ${await this.#getToken()}`;
-      if (appCheck) {
-        try {
-          const { token } = await getToken(appCheck, false);
-          headers['X-Firebase-AppCheck'] = token;
-        } catch {
-          // emulator — skip silently
-        }
-      }
+      headers['Authorization'] = `Bearer ${await this.#withTimeout(this.#getToken(), 10000, 'Auth token')}`;
+      const appCheckToken = await this.#getAppCheckToken();
+      if (appCheckToken) headers['X-Firebase-AppCheck'] = appCheckToken;
     }
 
     const controller = new AbortController();

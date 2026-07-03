@@ -27,10 +27,15 @@ export default function EventCheckinScreen() {
   const processingRef = useRef(false);
   const resetTimerRef = useRef(null);
 
+  // Use the creator-scoped detail (owner-gated, returns creator_id). The public
+  // getEvent omits creator_id, so the ownership check below always failed and
+  // every creator saw "Acceso no autorizado". A non-owner gets a 403 → isError
+  // → denied, which is exactly the gate we want.
   const { data: eventData, isLoading: eventLoading, isError: eventError } = useQuery({
-    queryKey: ['events', eventId],
-    queryFn: () => eventService.getEvent(eventId),
+    queryKey: ['creator', 'events', eventId],
+    queryFn: () => eventService.getCreatorEvent(eventId),
     enabled: !!user && !!eventId,
+    retry: false,
     staleTime: STALE_TIMES.userProfile,
   });
 

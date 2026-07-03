@@ -28,15 +28,22 @@ router.get("/nutrition/diary", async (req, res) => {
     .doc(auth.userId)
     .collection("diary");
 
+  // A single day rarely exceeds a couple dozen entries, but a multi-day RANGE
+  // (Hoy's weekly chart, Lab's 56-day analytics) does: a user logging ~15
+  // foods/day fills 30 in two days, so the flat .limit(30) silently truncated
+  // every range query and understated the analytics. Cap the range generously
+  // but still bounded (56 days × ~18/day ≈ 1000) to keep read cost predictable.
+  let resultLimit = 50;
   if (date) {
     query = query.where("date", "==", date);
   } else if (startDate && endDate) {
     query = query
       .where("date", ">=", startDate)
       .where("date", "<=", endDate);
+    resultLimit = 1000;
   }
 
-  query = query.orderBy("date", "desc").limit(30);
+  query = query.orderBy("date", "desc").limit(resultLimit);
   const snapshot = await query.get();
 
   const entries = snapshot.docs.map((doc) => ({

@@ -1123,16 +1123,19 @@ router.get("/creator/clients/:clientId", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
   requireCreator(auth);
 
-  const hintUserId = req.query.userId as string | undefined;
-
   // resolveClientRow accepts either form (relationship doc id or user uid),
   // so the dashboard's two navigation paths (ClientesScreen passes the row
   // id, OneOnOneProgramView passes the user uid) both reach the same row.
   const doc = await resolveClientRow(auth.userId, req.params.clientId);
   const resolvedUserId = (doc.data()!.clientUserId ?? doc.data()!.userId) as string;
 
+  // IDOR fix (launch hardening): the profile fetch used to honor a
+  // client-supplied `?userId` hint, unverified against the resolved
+  // relationship — a creator could pass any victim's uid and read their full
+  // profile. resolvedUserId is derived from the ownership-checked relationship
+  // row, so it is the only trustworthy source; the hint is dropped.
   const [userDoc, creatorPrograms, notesSnap] = await Promise.all([
-    db.collection("users").doc(hintUserId ?? resolvedUserId).get(),
+    db.collection("users").doc(resolvedUserId).get(),
     db.collection("courses")
       .where("creator_id", "==", auth.userId)
       .where("deliveryType", "==", "one_on_one")
