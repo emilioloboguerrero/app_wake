@@ -137,3 +137,16 @@ The Polar product is configured with a trial period consistent with `course.free
 - Exact Polar webhook event names/payload shape (confirm against Polar docs).
 - Whether one-time and subscription require separate Polar products or one product with multiple prices.
 - Polar's trial configuration mechanism (product-level vs checkout-level override).
+
+## Follow-ups (post-deploy, 2026-07-02)
+Deployed to prod on 2026-07-02 with Polar in SANDBOX (`POLAR_SERVER=sandbox`, sandbox secrets) so the flow can be tested on prod infra with test cards. Known gaps to close:
+
+1. **Product cleanup on price change.** `provisionPolarProduct` (creator.ts PATCH) creates a NEW Polar product every time the creator changes `price_usd`, leaving the old product orphaned (verified live: a $20 Código ABS product was orphaned when the price moved to $21). Existing subscribers correctly keep their old price, but the old product should be **archived** (`PATCH /v1/products/{id}` `{is_archived:true}`) when the course is repointed to the new product. Store the previous product id and archive it after the successful repoint.
+
+2. **Public buy page not wired for Polar.** The international routing + USD toggle live ONLY in the in-app PWA `CourseDetailScreen` (`apps/pwa`). The PUBLIC storefront buy page `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` — the main surface a creator shares publicly — has NO Polar handling, so international buyers can't pay from it. Wire the same provider routing + USD price display + "pagar con tarjeta internacional" affordance there (reads `course.polar.price_usd_monthly` / `price_usd_onetime`, calls the Polar checkout endpoint). This is required for a real international launch.
+
+3. **Trial CTA on the Polar path.** The in-app Polar branch shows a single "Comprar - $X/mes" button; it does not surface the "Empezar prueba de N días" CTA even when the course has a trial (Polar handles the trial on its product). Cosmetic parity gap.
+
+4. **Portal button not wired in the UI.** `POST /payments/polar/subscriptions/:id/portal` exists (returns a fresh customer-portal URL) but no UI button calls it yet for card update / history.
+
+5. **Go-live flip.** To charge real money: complete prod Polar org + payout KYC at polar.sh, create prod access token + webhook, swap `POLAR_ACCESS_TOKEN`/`POLAR_WEBHOOK_SECRET` to live values, set `POLAR_SERVER=production` (edit `functions/.env.wolf-20b8b` or delete it), redeploy functions, and re-enter international prices (provisions live products).
