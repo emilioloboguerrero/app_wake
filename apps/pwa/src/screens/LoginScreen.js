@@ -22,6 +22,7 @@ import googleAuthService from '../services/googleAuthService';
 import logger from '../utils/logger';
 import SvgEye from '../components/icons/vectors_fig/Interface/Eye';
 import SvgEyeSlash from '../components/icons/vectors_fig/Interface/EyeSlash';
+import { wakeAlert } from '../utils/wakeAlert';
 
 const LoginScreen = ({ navigation }) => {
   const { user, loading } = useAuth();
@@ -318,13 +319,13 @@ const LoginScreen = ({ navigation }) => {
     try {
       await authService.resetPassword(email);
       setAuthError(null);
-      Alert.alert('Listo', genericResetSuccess);
+      wakeAlert('Listo', genericResetSuccess);
     } catch (error) {
       const code = error?.code;
       if (code === 'auth/user-not-found') {
         // Don't disclose existence — show the same success state.
         setAuthError(null);
-        Alert.alert('Listo', genericResetSuccess);
+        wakeAlert('Listo', genericResetSuccess);
         return;
       }
       logger.error('Password Reset Error:', error);

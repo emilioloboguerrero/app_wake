@@ -139,8 +139,19 @@ class ApiClient {
       }
       const priority = getQueuePriority(path);
       if (priority) {
-        enqueue({ method, path, body, priority, ...(options.tempId ? { tempId: options.tempId } : {}) });
-        return { queued: true };
+        const queuedId = enqueue({ method, path, body, priority, ...(options.tempId ? { tempId: options.tempId } : {}) });
+        // enqueue returns null when the offline queue is full (or the op is
+        // invalid). Previously we returned { queued: true } regardless, so a
+        // dropped write — e.g. a completed workout — looked saved but vanished.
+        // Surface it as a network error so the mutation's onError fires.
+        if (!queuedId) {
+          throw new WakeApiError(
+            'NETWORK_ERROR',
+            'No pudimos guardar esto sin conexión. Conéctate a internet para sincronizar.',
+            0
+          );
+        }
+        return { queued: true, queuedId };
       }
       throw new WakeApiError('NETWORK_ERROR', 'No network connection', 0);
     }

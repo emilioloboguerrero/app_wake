@@ -27,6 +27,7 @@ import { FixedWakeHeader, WakeHeaderSpacer, getGapAfterHeader } from '../compone
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import WakeLoader from '../components/WakeLoader';
+import { wakeAlert } from '../utils/wakeAlert';
 
 const statusLabels = {
   pending: 'Pendiente',
@@ -254,7 +255,7 @@ const SubscriptionsScreen = ({ navigation }) => {
       return;
     }
     if (!user?.uid) {
-      Alert.alert('Error', 'No hay usuario autenticado');
+      wakeAlert('Error', 'No hay usuario autenticado');
       return;
     }
 
@@ -270,14 +271,14 @@ const SubscriptionsScreen = ({ navigation }) => {
       // Refetch so the card flips to "Cancelada" right away — no ambiguity.
       queryClient.invalidateQueries({ queryKey: queryKeys.user.subscriptions(user.uid) });
 
-      Alert.alert(
+      wakeAlert(
         'Suscripción cancelada',
         'Mantienes el acceso hasta el final del periodo actual. Puedes volver a suscribirte cuando quieras.',
       );
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false } }));
     } catch (error) {
       logger.error('Error performing subscription action:', error);
-      Alert.alert('Error', error.message || 'No se pudo procesar la acción');
+      wakeAlert('Error', error.message || 'No se pudo procesar la acción');
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false, error: error.message } }));
     }
   };
@@ -300,7 +301,7 @@ const SubscriptionsScreen = ({ navigation }) => {
       await Linking.openURL(url);
     } catch (error) {
       logger.error('openPolarPortal failed', error);
-      Alert.alert('Error', error.message || 'No se pudo abrir el portal de gestión');
+      wakeAlert('Error', error.message || 'No se pudo abrir el portal de gestión');
       setActionState((prev) => ({ ...prev, [subscription.id]: { loading: false } }));
     }
   };

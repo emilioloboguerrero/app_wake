@@ -50,6 +50,7 @@ import { detectVideoSource, getEmbedUrl } from '../utils/videoUtils';
 import LeaveProgramModal from '../components/program/LeaveProgramModal';
 import { queryKeys } from '../config/queryClient';
 import { useCourseMeta } from '../hooks/workout/useCourseMeta';
+import { wakeAlert } from '../utils/wakeAlert';
 
 const CourseDetailScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -274,7 +275,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
           if (Platform.OS === 'web') {
             setShowPurchaseSuccess(true);
           } else {
-          Alert.alert(
+          wakeAlert(
             '¡Compra exitosa!',
             'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
             [
@@ -302,7 +303,7 @@ const CourseDetailScreen = ({ navigation, route }) => {
       postPurchaseFlowTriggeredRef.current = false;
       pendingPostPurchaseRef.current = false;
       
-      Alert.alert(
+      wakeAlert(
         'Error',
         'Hubo un problema al procesar tu compra. El programa debería estar disponible en breve.',
         [
@@ -539,7 +540,7 @@ useEffect(() => {
     
     // Small delay to ensure UI has updated
     setTimeout(() => {
-      Alert.alert(
+      wakeAlert(
         '¡Compra exitosa!', 
         'Tu programa ha sido agregado a tu biblioteca. ¡Disfruta tu entrenamiento!',
         [
@@ -727,12 +728,12 @@ useEffect(() => {
     const effectiveUser = user || auth.currentUser;
     
     if (!effectiveUser?.uid) {
-      Alert.alert('Error', 'Debes iniciar sesión para comprar cursos');
+      wakeAlert('Error', 'Debes iniciar sesión para comprar cursos');
       return;
     }
 
     if (userOwnsCourse && !simulateUserRole) {
-      Alert.alert('Ya tienes este curso', 'Este curso ya está en tu biblioteca');
+      wakeAlert('Ya tienes este curso', 'Este curso ya está en tu biblioteca');
       return;
     }
 
@@ -796,7 +797,7 @@ useEffect(() => {
             alertMessage = 'Tienes acceso administrativo a este programa.';
           }
           
-          Alert.alert(
+          wakeAlert(
             alertTitle,
             alertMessage,
             [
@@ -815,11 +816,11 @@ useEffect(() => {
           );
           setUserOwnsCourse(true);
         } else {
-          Alert.alert('Error', result.error);
+          wakeAlert('Error', result.error);
         }
       } catch (error) {
         logger.error('Error granting free access:', error);
-        Alert.alert('Error', 'Error al otorgar acceso gratuito');
+        wakeAlert('Error', 'Error al otorgar acceso gratuito');
       } finally {
         setPurchasing(false);
       }
@@ -856,7 +857,7 @@ useEffect(() => {
             openWaitlist();
             return;
           }
-          Alert.alert('Error', polarResult.error || 'Error al preparar el pago');
+          wakeAlert('Error', polarResult.error || 'Error al preparar el pago');
           return;
         }
 
@@ -872,7 +873,7 @@ useEffect(() => {
         return;
       } catch (error) {
         logger.error('❌ Error preparing Polar purchase:', error);
-        Alert.alert('Error', 'Error al preparar el pago. Intenta de nuevo.');
+        wakeAlert('Error', 'Error al preparar el pago. Intenta de nuevo.');
         setPurchasing(false);
         setProcessingPurchase(false);
         processingPurchaseRef.current = false;
@@ -936,7 +937,7 @@ useEffect(() => {
           setShowEmailModal(true);
           return;
         } else {
-          Alert.alert('Error', purchaseResult.error || 'Error al preparar el pago');
+          wakeAlert('Error', purchaseResult.error || 'Error al preparar el pago');
         }
         setPurchasing(false);
         setProcessingPurchase(false);
@@ -956,7 +957,7 @@ useEffect(() => {
       
     } catch (error) {
       logger.error('❌ Error preparing purchase:', error);
-      Alert.alert('Error', 'Error al preparar el pago. Intenta de nuevo.');
+      wakeAlert('Error', 'Error al preparar el pago. Intenta de nuevo.');
       setPurchasing(false);
       setProcessingPurchase(false);
       processingPurchaseRef.current = false;
@@ -993,7 +994,7 @@ useEffect(() => {
     const effectiveUser = user || auth.currentUser;
     
     if (!effectiveUser?.uid) {
-      Alert.alert('Error', 'Debes iniciar sesión para comprar cursos');
+      wakeAlert('Error', 'Debes iniciar sesión para comprar cursos');
       setShowEmailModal(false);
       return;
     }
@@ -1057,7 +1058,7 @@ useEffect(() => {
           setShowEmailModal(true);
           setEmailModalError(subscriptionResult.error || 'Este correo no es válido para Mercado Pago. Por favor intenta con otro.');
         } else {
-          Alert.alert('Error', subscriptionResult.error || 'Error al preparar el pago');
+          wakeAlert('Error', subscriptionResult.error || 'Error al preparar el pago');
         }
         setPurchasing(false);
         setProcessingPurchase(false);
@@ -1094,7 +1095,7 @@ useEffect(() => {
       setPurchasing(false);
     } catch (error) {
       logger.error('❌ Error retrying purchase with email:', error);
-      Alert.alert('Error', 'Error al preparar el pago. Intenta de nuevo.');
+      wakeAlert('Error', 'Error al preparar el pago. Intenta de nuevo.');
       setPurchasing(false);
       setProcessingPurchase(false);
       processingPurchaseRef.current = false;
@@ -1135,7 +1136,7 @@ useEffect(() => {
     setProcessingPurchase(false);
     processingPurchaseRef.current = false;
     pendingPostPurchaseRef.current = false;
-    Alert.alert('Pago cancelado', 'El pago fue cancelado. Puedes intentar de nuevo cuando quieras.');
+    wakeAlert('Pago cancelado', 'El pago fue cancelado. Puedes intentar de nuevo cuando quieras.');
   };
 
   // Detect active subscription for this course (used by leave-program copy)
@@ -1168,7 +1169,7 @@ useEffect(() => {
       queryClient.invalidateQueries({ queryKey: queryKeys.user.subscriptions(user?.uid) });
       queryClient.invalidateQueries({ queryKey: queryKeys.user.courses(user?.uid) });
       queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.assignment(user?.uid) });
-      Alert.alert('Programa terminado', 'Has terminado tu programa con éxito.');
+      wakeAlert('Programa terminado', 'Has terminado tu programa con éxito.');
       navigation.goBack();
     } catch (err) {
       logger.error('Leave enrollment failed', err);
@@ -1991,7 +1992,7 @@ useEffect(() => {
         existingBooking={userCallBooking && new Date(userCallBooking.slotEndUtc) > new Date() ? userCallBooking : undefined}
         onSuccess={() => {
           getBookingForUser(creatorId, clientUserId, course?.id).then(setUserCallBooking);
-          Alert.alert('¡Listo!', 'Tu reserva ha sido actualizada.');
+          wakeAlert('¡Listo!', 'Tu reserva ha sido actualizada.');
         }}
       />
 

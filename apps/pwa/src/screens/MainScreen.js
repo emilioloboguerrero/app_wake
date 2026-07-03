@@ -34,6 +34,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
 import { useUserCourses } from '../hooks/workout/useUserCourses';
+import { wakeAlert } from '../utils/wakeAlert';
 import {
   useClientRelationships,
   useAcceptRelationship,
@@ -945,7 +946,7 @@ const MainScreen = ({ navigation, route }) => {
 
   // Alert dialogs shown when a course card is in updating or failed state
   const showUpdateInProgressModal = (course) => {
-    Alert.alert(
+    wakeAlert(
       "Actualizando programa",
       `"${course.title}" se está actualizando con la última versión. Por favor espera un momento.`,
       [
@@ -958,7 +959,7 @@ const MainScreen = ({ navigation, route }) => {
   };
   
   const showUpdateFailedModal = (course) => {
-    Alert.alert(
+    wakeAlert(
       "Error en actualización",
       `No se pudo actualizar "${course.title}". Verifica tu conexión a internet e inténtalo de nuevo.`,
       [

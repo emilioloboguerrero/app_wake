@@ -21,6 +21,7 @@ import * as nutritionApi from '../services/nutritionApiService';
 import WakeLoader from '../components/WakeLoader';
 import logger from '../utils/logger';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
+import { wakeAlert } from '../utils/wakeAlert';
 
 const MEAL_OPTIONS = [
   { id: 'breakfast', label: 'Desayuno' },
@@ -167,7 +168,7 @@ export function NutritionScreenBase({ navigation }) {
     },
     onError: (e) => {
       logger.error('[NutritionScreen] addDiaryEntry error:', e);
-      Alert.alert('Error', 'No se pudo añadir el alimento. Inténtalo de nuevo.');
+      wakeAlert('Error', 'No se pudo añadir el alimento. Inténtalo de nuevo.');
     },
   });
 
@@ -178,7 +179,7 @@ export function NutritionScreenBase({ navigation }) {
     },
     onError: (e) => {
       logger.error('[NutritionScreen] deleteDiaryEntry error:', e);
-      Alert.alert('Error', 'No se pudo eliminar el alimento. Inténtalo de nuevo.');
+      wakeAlert('Error', 'No se pudo eliminar el alimento. Inténtalo de nuevo.');
     },
   });
 
@@ -197,7 +198,7 @@ export function NutritionScreenBase({ navigation }) {
     } catch (e) {
       logger.error('[NutritionScreen] nutritionFoodSearch error:', e);
       setSearchResults([]);
-      Alert.alert('Error', 'No se pudo buscar alimentos. Inténtalo de nuevo.');
+      wakeAlert('Error', 'No se pudo buscar alimentos. Inténtalo de nuevo.');
     } finally {
       setSearchLoading(false);
     }

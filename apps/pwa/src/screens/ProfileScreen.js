@@ -56,6 +56,7 @@ import { validateDisplayName, validateUsername as validateUsernameFormat, valida
 import LegalDocumentsWebView from '../components/LegalDocumentsWebView';
 import { getAverageColorFromImageUrl } from '../utils/imageColorUtils';
 import { whatsappUrl } from '../config/support';
+import { wakeAlert } from '../utils/wakeAlert';
 
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
 
@@ -383,7 +384,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   // Handle profile picture change
   const handleChangeProfilePicture = async () => {
     if (!user?.uid) {
-      Alert.alert('Error', 'No se pudo identificar tu sesión. Intenta cerrar sesión y volver a entrar.');
+      wakeAlert('Error', 'No se pudo identificar tu sesión. Intenta cerrar sesión y volver a entrar.');
       return;
     }
     try {
@@ -392,17 +393,17 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       
       if (newPictureUrl) {
         setProfilePictureUrl(newPictureUrl);
-        Alert.alert('Éxito', 'Tu foto de perfil se ha actualizado correctamente.');
+        wakeAlert('Éxito', 'Tu foto de perfil se ha actualizado correctamente.');
       }
     } catch (error) {
       logger.error('Error changing profile picture:', error);
       if (error.message.includes('Permission')) {
-        Alert.alert(
+        wakeAlert(
           'Permiso necesario', 
           'Necesitamos acceso a tu galería de fotos para cambiar tu foto de perfil.'
         );
       } else {
-        Alert.alert('Error', 'No se pudo cambiar la foto de perfil. Inténtalo de nuevo.');
+        wakeAlert('Error', 'No se pudo cambiar la foto de perfil. Inténtalo de nuevo.');
       }
     } finally {
       setLoading(false);
@@ -487,7 +488,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       setPinnedTrainingTitle(title);
     } catch (e) {
       logger.error('[Profile] pinnedTrainingCourseId update failed', e);
-      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+      wakeAlert('Error', 'No se pudo guardar la preferencia.');
     }
   };
 
@@ -502,7 +503,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       setPinnedNutritionTitle(title);
     } catch (e) {
       logger.error('[Profile] pinnedNutritionAssignmentId update failed', e);
-      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+      wakeAlert('Error', 'No se pudo guardar la preferencia.');
     }
   };
 
@@ -514,7 +515,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.user.detail(user?.uid) });
     } catch (e) {
       logger.error('[Profile] readinessOptIn update failed', e);
-      Alert.alert('Error', 'No se pudo guardar la preferencia.');
+      wakeAlert('Error', 'No se pudo guardar la preferencia.');
     }
   };
 
@@ -539,7 +540,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         validatePhoneNumber(userProfile.phoneNumber);
       }
     } catch (validationError) {
-      Alert.alert('Error de Validación', validationError.message);
+      wakeAlert('Error de Validación', validationError.message);
       return;
     }
 
@@ -566,7 +567,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       }
 
       setOriginalProfile({...userProfile});
-      if (Platform.OS !== 'web') Alert.alert('Éxito', 'Tu perfil ha sido actualizado');
+      if (Platform.OS !== 'web') wakeAlert('Éxito', 'Tu perfil ha sido actualizado');
       hideSettingsModal();
 
       navigation.reset({
@@ -576,9 +577,9 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     } catch (error) {
       logger.error('Error saving profile:', error);
       if (error?.code === 'CONFLICT' || error?.response?.status === 409) {
-        Alert.alert('Error', 'Ese nombre de usuario ya está en uso.');
+        wakeAlert('Error', 'Ese nombre de usuario ya está en uso.');
       } else {
-        Alert.alert('Error', 'No se pudo guardar el perfil');
+        wakeAlert('Error', 'No se pudo guardar el perfil');
       }
     } finally {
       setSettingsLoading(false);
@@ -607,7 +608,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       // On native, AppNavigator handles navigation to Auth screen via auth state
     } catch (error) {
       logger.error('❌ Error signing out:', error);
-      Alert.alert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
+      wakeAlert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
     }
   };
 
@@ -663,19 +664,19 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
     let feedbackToSave = '';
     if (selectedDeleteReason === 'Otros') {
       if (!deleteAccountFeedback.trim()) {
-        Alert.alert('Campo requerido', 'Por favor, cuéntanos por qué deseas eliminar tu cuenta.');
+        wakeAlert('Campo requerido', 'Por favor, cuéntanos por qué deseas eliminar tu cuenta.');
         return;
       }
       feedbackToSave = deleteAccountFeedback.trim();
     } else if (selectedDeleteReason) {
       feedbackToSave = selectedDeleteReason;
     } else {
-      Alert.alert('Campo requerido', 'Por favor, selecciona una razón para eliminar tu cuenta.');
+      wakeAlert('Campo requerido', 'Por favor, selecciona una razón para eliminar tu cuenta.');
       return;
     }
 
     if (!auth.currentUser) {
-      Alert.alert('Error', 'No hay un usuario autenticado');
+      wakeAlert('Error', 'No hay un usuario autenticado');
       return;
     }
 
@@ -691,7 +692,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       setShowFinalDeleteButton(true);
     } catch (error) {
       logger.error('Error saving feedback:', error);
-      Alert.alert('Error', 'No se pudo guardar el feedback. Por favor intenta de nuevo.');
+      wakeAlert('Error', 'No se pudo guardar el feedback. Por favor intenta de nuevo.');
     } finally {
       setDeleteAccountLoading(false);
     }
@@ -700,12 +701,12 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
   // Handle delete account confirmation
   const handleDeleteAccountConfirm = async () => {
     if (!auth.currentUser) {
-      Alert.alert('Error', 'No hay un usuario autenticado');
+      wakeAlert('Error', 'No hay un usuario autenticado');
       return;
     }
 
     if (!showFinalDeleteButton) {
-      Alert.alert('Error', 'Por favor completa el feedback primero');
+      wakeAlert('Error', 'Por favor completa el feedback primero');
       return;
     }
 
@@ -719,7 +720,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       if (providerId === 'password') {
         // Email/password authentication - need password
         if (!deletePassword.trim()) {
-          Alert.alert('Error', 'Por favor ingresa tu contraseña para confirmar');
+          wakeAlert('Error', 'Por favor ingresa tu contraseña para confirmar');
           setDeleteAccountLoading(false);
           return;
         }
@@ -771,7 +772,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
       setWasSettingsModalOpen(false);
       
       // Show success message (user will be signed out automatically)
-      Alert.alert(
+      wakeAlert(
         'Cuenta eliminada',
         'Tu cuenta ha sido eliminada permanentemente. Todos tus datos han sido eliminados.',
         [
@@ -795,7 +796,7 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
         errorMessage = error.message;
       }
       
-      Alert.alert('Error', errorMessage);
+      wakeAlert('Error', errorMessage);
       setDeletePassword('');
       // Don't reset showFinalDeleteButton or feedback on error - let user try again
     } finally {

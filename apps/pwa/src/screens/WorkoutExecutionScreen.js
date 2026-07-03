@@ -256,6 +256,7 @@ import SvgCamera from '../components/icons/vectors_fig/System/Camera';
 import VideoExchangeOverlay from '../components/videoExchange/VideoExchangeOverlay.web';
 // SvgCamera used inside the Notas y videos modal and the register modal.
 import Svg, { Defs, G, Text as SvgText, Filter, FeGaussianBlur } from 'react-native-svg';
+import { wakeAlert } from '../utils/wakeAlert';
 
 // ============================================================================
 // LAZY LOADERS - Constants (loaded only when needed)
@@ -1102,7 +1103,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   const useStateStartTime1 = performance.now();
   const [isObjectiveInfoModalVisible, setIsObjectiveInfoModalVisible] = useState(false);
   
-  // Confirmation modal state for web (Alert.alert doesn't work well on web)
+  // Confirmation modal state for web (wakeAlert doesn't work well on web)
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [confirmModalConfig, setConfirmModalConfig] = useState(null);
   const useStateDuration1 = performance.now() - useStateStartTime1;
@@ -2577,7 +2578,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [saveCheckpointToLocalStorage, navigation]);
 
   const handleDiscardWorkout = useCallback(async () => {
-    // Use custom modal on web, Alert.alert on native
+    // Use custom modal on web, wakeAlert on native
     if (isWeb) {
       setConfirmModalConfig({
         title: 'Descartar Entrenamiento',
@@ -2631,8 +2632,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       });
       setConfirmModalVisible(true);
     } else {
-      // Native: Use Alert.alert
-      Alert.alert(
+      // Native: Use wakeAlert
+      wakeAlert(
         'Descartar Entrenamiento',
         '¿Estás seguro de que quieres salir y descartar este entrenamiento? Todo el progreso no guardado se perderá.',
         [
@@ -2666,7 +2667,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
               } catch (error) {
                 logger.error('❌ Error discarding workout:', error);
-                Alert.alert('Error', 'No se pudo descartar el entrenamiento.');
+                wakeAlert('Error', 'No se pudo descartar el entrenamiento.');
               }
             },
           },
@@ -2798,7 +2799,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       ]).start();
       setIsSetInputVisible(false);
       setCurrentSetInputData({});
-      Alert.alert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
+      wakeAlert('Error', 'No se pudo guardar los datos de la serie. Inténtalo de nuevo.');
     }
   }, [currentExerciseIndex, currentSetIndex, currentSetInputData, workout, setData, saveCheckpointToLocalStorage, debouncedApiCheckpoint]);
 
@@ -3558,7 +3559,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
     } catch (error) {
       logger.error('❌ Error swapping exercise:', error);
-      Alert.alert('Error', 'No se pudo cambiar el ejercicio. Inténtalo de nuevo.');
+      wakeAlert('Error', 'No se pudo cambiar el ejercicio. Inténtalo de nuevo.');
     }
   }, [currentSwapExerciseIndex, workout, videoPlayer, swapModalVideoPlayer]);
 
@@ -3786,7 +3787,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       logger.error('❌ Error opening add exercise modal:', error);
-      Alert.alert('Error', 'No se pudo abrir la lista de ejercicios.');
+      wakeAlert('Error', 'No se pudo abrir la lista de ejercicios.');
     }
   }, []);
 
@@ -3821,7 +3822,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
   }, [editingExercises]);
 
   const handleRemoveExerciseInEdit = useCallback((exerciseIndex) => {
-    Alert.alert(
+    wakeAlert(
       'Eliminar Ejercicio',
       '¿Estás seguro de que quieres eliminar este ejercicio?',
       [
@@ -4248,7 +4249,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     
     // Check for validation errors first
     if (hasValidationErrors()) {
-      Alert.alert(
+      wakeAlert(
         'Datos Inválidos',
         'Hay campos con datos inválidos. Por favor corrige los errores antes de finalizar el entrenamiento.',
         [{ text: 'OK' }]
@@ -4261,7 +4262,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
     if (!isCompleted) {
       // Show warning for incomplete workout
       
-      // Use web-compatible confirmation on web, Alert.alert on native
+      // Use web-compatible confirmation on web, wakeAlert on native
       if (isWeb) {
         setConfirmModalConfig({
           title: 'Entrenamiento Incompleto',
@@ -4281,8 +4282,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         return;
       }
       
-      // Native: Use Alert.alert
-      Alert.alert(
+      // Native: Use wakeAlert
+      wakeAlert(
         'Entrenamiento Incompleto',
         'No has completado todos los ejercicios de esta sesión. ¿Estás seguro de que quieres finalizar y guardar el entrenamiento de todas formas?',
         [
@@ -4310,7 +4311,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
 
   const confirmEndWorkout = useCallback(() => {
     
-      // Use web-compatible confirmation on web, Alert.alert on native
+      // Use web-compatible confirmation on web, wakeAlert on native
       if (isWeb) {
         setConfirmModalConfig({
           title: 'Finalizar Entrenamiento',
@@ -4331,8 +4332,8 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         return;
       }
     
-    // Native: Use Alert.alert
-    Alert.alert(
+    // Native: Use wakeAlert
+    wakeAlert(
       'Finalizar Entrenamiento',
       '¿Estás seguro de que quieres finalizar y guardar este entrenamiento?',
       [
@@ -4441,7 +4442,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                         setDataKeys: Object.keys(effectiveSetData).length,
                         workoutExerciseCount: workout.exercises?.length,
                       });
-                      Alert.alert(
+                      wakeAlert(
                         'Error al guardar',
                         'No pudimos alinear los datos de la sesión. Cierra y vuelve a abrir el entrenamiento para reintentar.'
                       );
@@ -4486,7 +4487,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                          });
                        } catch (navError) {
                          logger.error('❌ Navigation error:', navError);
-                         Alert.alert('Error', 'No se pudo navegar a la pantalla de finalización.');
+                         wakeAlert('Error', 'No se pudo navegar a la pantalla de finalización.');
                        }
                      } else {
                        logger.error('❌ No session found to complete - result is falsy');
@@ -4503,7 +4504,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                          });
                          setConfirmModalVisible(true);
                        } else {
-                         Alert.alert('Error', 'No se encontró una sesión activa para finalizar.');
+                         wakeAlert('Error', 'No se encontró una sesión activa para finalizar.');
                        }
                      }
                   } else {
@@ -4531,7 +4532,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                       });
                       setConfirmModalVisible(true);
                     } else {
-                      Alert.alert('Error', 'No se pudo finalizar el entrenamiento: datos de usuario o curso faltantes.');
+                      wakeAlert('Error', 'No se pudo finalizar el entrenamiento: datos de usuario o curso faltantes.');
                     }
                   }
                  } catch (error) {
@@ -4554,7 +4555,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                      });
                      setConfirmModalVisible(true);
                    } else {
-                     Alert.alert('Error', 'No se pudo finalizar el entrenamiento. Inténtalo de nuevo.');
+                     wakeAlert('Error', 'No se pudo finalizar el entrenamiento. Inténtalo de nuevo.');
                    }
                  } finally {
                    setIsSavingWorkout(false);
@@ -5252,7 +5253,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       logger.error('❌ Error in handleCompleteWorkout (delegated):', error);
-      Alert.alert('Error', 'Error al completar el entrenamiento. Inténtalo de nuevo.');
+      wakeAlert('Error', 'Error al completar el entrenamiento. Inténtalo de nuevo.');
     }
   }, []);
 
@@ -5518,7 +5519,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             justifyContent: 'center',
           }}
         onPress={() => {
-            Alert.alert('Test Version', `Version ${TEST_VERSION}`);
+            wakeAlert('Test Version', `Version ${TEST_VERSION}`);
           }}
         >
           <Text style={{ color: '#1a1a1a', fontSize: 18, fontWeight: 'bold' }}>
@@ -6924,7 +6925,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         </React.Suspense>
       )}
       
-      {/* Confirmation Modal for Web (Alert.alert doesn't work well on web) */}
+      {/* Confirmation Modal for Web (wakeAlert doesn't work well on web) */}
       {confirmModalVisible && confirmModalConfig && (
           <Modal
             visible={confirmModalVisible}

@@ -17,6 +17,7 @@ import oneRepMaxService from '../services/oneRepMaxService';
 import ExerciseDetailContent from '../components/ExerciseDetailContent';
 import { FixedWakeHeader } from '../components/WakeHeader';
 import logger from '../utils/logger.js';
+import { wakeAlert } from '../utils/wakeAlert';
 
 const PRDetailScreen = ({ navigation, route }) => {
   // Safety check for route
@@ -34,7 +35,7 @@ const PRDetailScreen = ({ navigation, route }) => {
   const [isInfoModalVisible, setIsInfoModalVisible] = useState(false);
 
   const handleResetPR = () => {
-    Alert.alert(
+    wakeAlert(
       '¿Resetear PR?',
       `Esto eliminará el récord actual de ${exerciseName}. El historial se mantendrá pero el sistema recalculará desde cero en tu próximo entrenamiento.`,
       [
@@ -48,11 +49,11 @@ const PRDetailScreen = ({ navigation, route }) => {
           onPress: async () => {
             try {
               await oneRepMaxService.resetEstimate(user.uid, exerciseKey);
-              Alert.alert('PR Reseteado', 'El récord ha sido eliminado exitosamente.');
+              wakeAlert('PR Reseteado', 'El récord ha sido eliminado exitosamente.');
               navigation.goBack();
             } catch (error) {
               logger.error('❌ Error resetting PR:', error);
-              Alert.alert('Error', 'No se pudo resetear el récord. Inténtalo de nuevo.');
+              wakeAlert('Error', 'No se pudo resetear el récord. Inténtalo de nuevo.');
             }
           },
         },

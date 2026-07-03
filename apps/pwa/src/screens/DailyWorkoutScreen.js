@@ -34,6 +34,7 @@ import logger from '../utils/logger.js';
 import { isWeb } from '../utils/platform';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, cacheConfig } from '../config/queryClient';
+import { wakeAlert } from '../utils/wakeAlert';
 
 // Only on native — react-native-linear-gradient can break on web
 const LinearGradient = Platform.OS !== 'web' ? require('react-native-linear-gradient').default : null;
@@ -460,7 +461,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       });
     } catch (error) {
       logger.error('❌ Failed to start workout:', error);
-      Alert.alert('Error', 'Error al iniciar el entrenamiento. Inténtalo de nuevo.');
+      wakeAlert('Error', 'Error al iniciar el entrenamiento. Inténtalo de nuevo.');
     }
   };
 
@@ -514,7 +515,7 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
       }));
       // Clear preview state on error too
       setPreviewSessionId(null);
-      Alert.alert('Error', 'No se pudo cambiar la sesión');
+      wakeAlert('Error', 'No se pudo cambiar la sesión');
     } finally {
       setIsChangingSession(false);
     }

@@ -3,6 +3,7 @@
 
 import { Alert } from 'react-native';
 import logger from './logger';
+import { wakeAlert } from './wakeAlert';
 
 /**
  * Error types we handle
@@ -137,7 +138,7 @@ function getErrorMessage(error) {
 export function showErrorAlert(error, title = 'Error') {
   const message = getErrorMessage(error);
   
-  Alert.alert(
+  wakeAlert(
     title,
     message,
     [{ text: 'Entendido', style: 'default' }],
@@ -151,7 +152,7 @@ export function showErrorAlert(error, title = 'Error') {
 export function showErrorWithRetry(error, onRetry, title = 'Error') {
   const message = getErrorMessage(error);
   
-  Alert.alert(
+  wakeAlert(
     title,
     message,
     [

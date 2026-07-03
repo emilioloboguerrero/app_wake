@@ -9,6 +9,7 @@ import { Image } from 'react-native';
 import { useAuth } from '../../../contexts/AuthContext';
 import { auth } from '../../../config/firebase';
 import apiClient from '../../../utils/apiClient';
+import { wakeAlert } from '../../../utils/wakeAlert';
 import profilePictureService from '../../../services/profilePictureService';
 import logger from '../../../utils/logger';
 import { queryKeys } from '../../../config/queryClient';
@@ -513,6 +514,10 @@ export default function OnboardingEducation({ onComplete }) {
       try { localStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
     } catch (err) {
       logger.error('[ONBOARDING_EDU] saveProfile error:', err);
+      // Re-throw so goToCompletion does NOT show the success screen on a failed
+      // save. Previously the error was swallowed here: the user saw "completo",
+      // got bounced back to the start of onboarding, and their profile was lost.
+      throw err;
     }
   }, [user, profile, queryClient]);
 
@@ -522,11 +527,20 @@ export default function OnboardingEducation({ onComplete }) {
     saveCompleteRef.current = false;
     animReadyRef.current = false;
 
-    // Start save in background
-    saveProfile().finally(() => {
-      saveCompleteRef.current = true;
-      tryShowDone();
-    });
+    saveProfile()
+      .then(() => {
+        saveCompleteRef.current = true;
+        tryShowDone();
+      })
+      .catch((err) => {
+        // Return to the profile form (state is preserved) so the user can retry.
+        setPhase('profile');
+        setCompletionStep('loading');
+        wakeAlert(
+          'No pudimos guardar tu perfil',
+          err?.message || 'Revisa tu conexión e inténtalo de nuevo.'
+        );
+      });
   }, [saveProfile, tryShowDone]);
 
   const handlePhotoSelect = useCallback((e) => {

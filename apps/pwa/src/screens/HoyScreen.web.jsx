@@ -88,7 +88,7 @@ const HoyScreen = () => {
     () => Math.min(Math.max(500, screenHeight * 0.62), CARD_WIDTH * 1.7),
     [screenHeight, CARD_WIDTH],
   );
-  const { courses, isLoading: coursesLoading } = useUserCourses(user?.uid, { includeInactive: true });
+  const { courses, isLoading: coursesLoading, error: coursesError, refetch: refetchCourses } = useUserCourses(user?.uid, { includeInactive: true });
   // Enrich with creator_id (fetched from top-level courses doc — user.courses doesn't carry it).
   // Non-blocking: carousel renders as soon as useUserCourses resolves; coach grouping
   // reflows when creator_id lands. Courses without resolved creator_id share a fallback
@@ -602,6 +602,36 @@ const HoyScreen = () => {
   }
 
   const isEmpty = !coachEnvironments.length;
+
+  // Distinguish a failed courses load from a genuinely empty account. Without
+  // this, a /users/me error fell through to the "no tienes programas" empty
+  // state — a user with programs believed they had lost them.
+  if (coursesError && isEmpty) {
+    return (
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <SafeAreaView
+          style={containerStyle}
+          edges={Platform.OS === 'web' ? ['left', 'right'] : ['bottom', 'left', 'right']}
+        >
+          <FixedWakeHeader />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: CARD_MARGIN }}>
+            <Text style={{ fontSize: 17, fontWeight: '600', color: 'rgba(255,255,255,0.92)', textAlign: 'center', marginBottom: 8 }}>
+              No pudimos cargar tus programas
+            </Text>
+            <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.55)', textAlign: 'center', marginBottom: 22 }}>
+              Revisa tu conexión e inténtalo de nuevo.
+            </Text>
+            <TouchableOpacity
+              onPress={() => refetchCourses()}
+              style={{ backgroundColor: '#fff', paddingVertical: 13, paddingHorizontal: 28, borderRadius: 12 }}
+            >
+              <Text style={{ color: '#111', fontSize: 15, fontWeight: '600' }}>Reintentar</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </div>
+    );
+  }
 
   if (isEmpty) {
     // Banners must render above the empty state so a one-on-one invitee — who

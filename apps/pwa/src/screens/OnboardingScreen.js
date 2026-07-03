@@ -38,6 +38,7 @@ import citiesBundle from '../../assets/data/cities.json';
 
 import { sanitizeInput } from '../utils/validation.js';
 import { isPWA } from '../utils/platform';
+import { wakeAlert } from '../utils/wakeAlert';
 import { 
   validateDisplayName, 
   validateUsername as validateUsernameFormat,
@@ -899,7 +900,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
       }
     } catch (error) {
       logger.error('Error selecting profile picture:', error);
-      Alert.alert('Error', 'No se pudo seleccionar la imagen. Inténtalo de nuevo.');
+      wakeAlert('Error', 'No se pudo seleccionar la imagen. Inténtalo de nuevo.');
     }
   };
 
@@ -1262,13 +1263,13 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
   const handleSubmit = async () => {
     if (!validateForm()) {
-      Alert.alert('Error de Validación', 'Por favor corrige los errores e intenta de nuevo.');
+      wakeAlert('Error de Validación', 'Por favor corrige los errores e intenta de nuevo.');
       return;
     }
 
     const uidForSubmit = user?.uid || auth.currentUser?.uid;
     if (!uidForSubmit) {
-      Alert.alert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
+      wakeAlert('Error', 'No se pudo identificar tu sesión. Cierra sesión e intenta de nuevo.');
       return;
     }
 
@@ -1288,7 +1289,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
         }
         validateGender(formData.gender);
       } catch (validationError) {
-        Alert.alert('Error de Validación', validationError.message);
+        wakeAlert('Error de Validación', validationError.message);
         setLoading(false);
         return;
       }
@@ -1381,14 +1382,14 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
 
     } catch (error) {
       logger.error('Error completing onboarding:', error);
-      Alert.alert('Error', 'No se pudo guardar tu información. Por favor intenta de nuevo.');
+      wakeAlert('Error', 'No se pudo guardar tu información. Por favor intenta de nuevo.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleCancelOnboarding = async () => {
-    Alert.alert(
+    wakeAlert(
       'Cancelar Onboarding',
       '¿Estás seguro de que quieres cancelar? Esto te llevará de vuelta a la pantalla de inicio de sesión.',
       [
@@ -1412,7 +1413,7 @@ const OnboardingScreen = ({ navigation, route, onComplete }) => {
               // On native, auth state change will navigate to login
             } catch (error) {
               logger.error('Error signing out:', error);
-              Alert.alert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
+              wakeAlert('Error', 'No se pudo cerrar sesión. Por favor intenta de nuevo.');
             } finally {
               setLoading(false);
             }
