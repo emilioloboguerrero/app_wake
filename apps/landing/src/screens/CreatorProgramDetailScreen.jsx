@@ -351,6 +351,16 @@ function ReloadIcon({ size = 20 }) {
   );
 }
 
+function GlobeIcon({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3 12h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function CreatorProgramDetailScreen() {
   const { username, programId } = useParams();
   const [data, setData] = useState(null);
@@ -1031,9 +1041,14 @@ export default function CreatorProgramDetailScreen() {
                     setPendingMode(null);
                   }}
                 >
-                  {provider === 'mercadopago'
-                    ? 'Pagar con tarjeta internacional (USD)'
-                    : 'Pagar en Colombia (COP)'}
+                  {provider === 'mercadopago' ? (
+                    <>
+                      <GlobeIcon size={18} />
+                      <span>Pagar con tarjeta internacional <strong>(USD)</strong></span>
+                    </>
+                  ) : (
+                    <span>Pagar en Colombia <strong>(COP)</strong></span>
+                  )}
                 </button>
               ) : null}
             </>

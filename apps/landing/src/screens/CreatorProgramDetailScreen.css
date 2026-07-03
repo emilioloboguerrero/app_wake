@@ -354,25 +354,46 @@
   margin: 0;
 }
 
-/* Subtle text button below the CTAs to switch payment method (COP ↔ USD).
-   Mirrors the muted-text style of .cpd-alt-email-cancel; brightens on hover. */
+/* Prominent pill below the CTAs to switch payment method (COP ↔ USD). Bordered
+   and accent-tinted so international buyers clearly notice the USD option — on
+   mobile and desktop alike. */
 .cpd-provider-toggle {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   width: 100%;
-  margin-top: 12px;
-  padding: 6px;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 13px;
+  margin-top: 14px;
+  padding: 13px 18px;
+  background: var(--cpd-accent-soft);
+  border: 1px solid var(--cpd-accent-line);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 14px;
+  font-weight: 500;
   font-family: inherit;
   text-align: center;
   cursor: pointer;
-  transition: color 150ms ease;
+  transition: background 150ms ease, border-color 150ms ease, transform 120ms ease;
 }
 
 .cpd-provider-toggle:hover {
-  color: rgba(255, 255, 255, 0.85);
+  background: var(--cpd-accent-line);
+  border-color: var(--cpd-accent);
+  color: #fff;
+}
+
+.cpd-provider-toggle:active {
+  transform: translateY(1px);
+}
+
+.cpd-provider-toggle strong {
+  font-weight: 700;
+}
+
+.cpd-provider-toggle svg {
+  flex-shrink: 0;
+  opacity: 0.9;
 }
 
 /* CTA block inside a full-width landing section. Centered and constrained so it
