@@ -198,39 +198,25 @@ const SubscriptionsScreen = ({ navigation }) => {
       );
     }
 
-    // Polar subscriptions — cancel IN-APP (clear, immediate) and keep the Polar
-    // portal as a secondary path for updating the card / viewing invoices.
+    // Polar subscriptions — a single "Gestionar suscripción" action hands off to
+    // the Polar customer portal, which covers cancel, resume (un-cancel), card
+    // update and invoices. Whatever the customer does there syncs back to us via
+    // the subscription.updated webhook, so we don't need our own cancel UI.
     if (subscription.provider === 'polar') {
       const busy = actionState[subscription.id]?.loading;
       return (
-        <>
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => {
-                analyticsService.track('subscription.cancel_intent', {
-                  course_id: subscription.course_id ?? subscription.courseId ?? null,
-                  provider: 'polar',
-                });
-                handleCancelIntent(subscription);
-              }}
-              activeOpacity={0.7}
-              disabled={busy}
-            >
-              <Text style={styles.actionButtonText}>
-                {busy ? 'Procesando…' : 'Cancelar suscripción'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.actionsRow}>
           <TouchableOpacity
-            style={styles.secondaryLink}
+            style={styles.actionButton}
             onPress={() => openPolarPortal(subscription)}
             activeOpacity={0.7}
             disabled={busy}
           >
-            <Text style={styles.secondaryLinkText}>Actualizar método de pago</Text>
+            <Text style={styles.actionButtonText}>
+              {busy ? 'Abriendo…' : 'Gestionar suscripción'}
+            </Text>
           </TouchableOpacity>
-        </>
+        </View>
       );
     }
 
@@ -272,10 +258,11 @@ const SubscriptionsScreen = ({ navigation }) => {
     try {
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: true } }));
 
-      const endpoint = options.provider === 'polar'
-        ? `/payments/polar/subscriptions/${subscriptionId}/cancel`
-        : `/payments/subscriptions/${subscriptionId}/cancel`;
-      await apiClient.post(endpoint, { survey: options.survey });
+      // MercadoPago only — Polar subscriptions are managed via the Polar portal.
+      await apiClient.post(
+        `/payments/subscriptions/${subscriptionId}/cancel`,
+        { survey: options.survey }
+      );
 
       // Refetch so the card flips to "Cancelada" right away — no ambiguity.
       queryClient.invalidateQueries({ queryKey: queryKeys.user.subscriptions(user.uid) });
@@ -1008,17 +995,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
     fontSize: 14,
-  },
-  secondaryLink: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    marginTop: 10,
-  },
-  secondaryLinkText: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 13,
-    fontWeight: '500',
-    textDecorationLine: 'underline',
   },
   oneOnOneRedirect: {
     flex: 1,
