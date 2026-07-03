@@ -1,10 +1,29 @@
-# Polar International Payments — Status & Handoff (2026-07-02)
+# Polar International Payments — Status & Handoff (2026-07-03)
 
 Companion to the design spec: `docs/superpowers/specs/2026-07-01-polar-international-payments-design.md`.
 
 ## TL;DR
 
-Phase 1 of the Polar (merchant-of-record) integration is **BUILT, MERGED to `main`, and DEPLOYED to production** (`wolf-20b8b`), running in **SANDBOX mode** (`POLAR_SERVER=sandbox` + sandbox secrets) so it can be tested on prod infrastructure with test cards and **no real money**. MercadoPago (Colombia) is untouched and fully working. Everything up to the final card payment is validated live. **Public storefront buy page wired for Polar + deployed 2026-07-02. Remaining: finish the E2E card test, then the go-live flip to real money.**
+Phase 1 of the Polar (merchant-of-record) integration is **LIVE IN PRODUCTION with real money** (`wolf-20b8b`, `POLAR_SERVER=production`, live secrets, Polar org approved). MercadoPago (Colombia) is untouched. International USD pricing is now **ON BY DEFAULT for every published course** (USD auto-derived from the COP price), the public buy page has a dedicated "Suscríbete con precio internacional" section, and portal-side cancellations are reflected via the `subscription.updated` webhook. The full E2E purchase path (checkout → grant → subscription → ledger → idempotency) and the cancel/re-activate webhook path are **verified live**. See "2026-07-03 update" below for the current state.
+
+---
+
+## 2026-07-03 update — international-by-default + go-live verified
+
+Shipped + deployed to prod (commit `6dd670f`, `functions:api` + hosting):
+
+- **International USD on by default.** `creator.ts` PATCH `/creator/programs/:id` now auto-provisions a Polar product for any **published** course with a COP price, deriving USD via `deriveUsdFromCop(cop) = max(1, round((cop/3500)*1.10))` (in `polarProducts.ts`). An explicit `price_usd` from the creator pins it **manual** (`courses.{id}.polar.price_source_monthly|_onetime = "manual"`) and stops auto re-derivation; auto prices re-derive + re-provision when the COP price changes. Re-provisioning **archives the superseded product** (`archivePolarProduct` → `products.update {isArchived:true}`). Legacy products (a `polar` id with no `price_source`) are treated as manual — never auto-overridden.
+- **`subscription.updated` webhook handler** (`polar.ts`). Reflects portal-side cancels/re-activations: `cancel_at_period_end` (or `canceled`/`revoked` status) → local sub `cancelled` (access retained until `expires_at`); back to active/not-scheduled → `active`. Polar was already delivering this event; only the handler was missing. **Verified live** (reversible cancel→cancelled→un-cancel→active, ~3s each).
+- **Public buy page section.** `CreatorProgramDetailScreen.jsx` renders a "Suscríbete con precio internacional" card below the hero (shown to COP-default viewers; the top COP↔USD toggle stays). `handleInternationalBuy` forces the Polar path.
+- **Backfill.** `scripts/backfill-polar-international.js` (dry-run default, `--live`) provisioned: **Método Bejarano `NTQIWMZBOxntwmUiXQZp` → $25/mo** (product `330a1109-44df-4c45-995b-64dbd47c090d`) and **BOOST X JFF `352ruaYiQ4Sa6oXz1HOO` → $41 one-time** (product `6402bf4a-2431-42a8-adf5-2bf9eeea7a15`), both `price_source: "auto"`.
+- **Código ABS** (`ezJWUr3wJvaeptIM5f86`) is **already at $25/mo** (product `1f10c144-9da8-40d6-91e0-2fb276151045` charges $25.00). The earlier "$4" was a separate orphaned test product `d14bd62f-9881-47ec-95ea-b8e9eab14793`.
+- **E2E purchase — validated** via the live $4 test purchase (order `540b5044…`, user `oXKlavb5…`/emilioprieva): course active (expires 2026-08-03), `provider:"polar"` sub doc, `payment_ledger/polar_order_540b5044…` (`initial`, gross $4 / net $3.24 / provider_fee $0.76 estimate, `platform_commission_rate: null`), `processed_payments` approved.
+
+**Still OPEN:**
+- **$4 test sub cleanup** (`2f4f3fce-2acf-4c19-8a1e-8e5d5b72f065`, product `d14bd62f`): user is running the **in-app cancel UI test** first; then refund the order (`540b5044…`) + cancel the sub. Refunding also exercises the untested `order.refunded` path (revoke + refund ledger).
+- **`PLATFORM_COMMISSION_RATE`** still `null` (fill when the owner decides Polar vs MP commission).
+- Trial CTA on the Polar path (cosmetic).
+- Dev helpers left in `scripts/`: `polar-inspect.js`, `polar-test-sub-updated.js` (read-only / reversible).
 
 ---
 
