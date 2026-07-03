@@ -5,6 +5,7 @@ import apiClient, { WakeApiError } from '../utils/apiClient';
 import { getCreatorProgram, getCreatorStorefront } from '../services/creatorStorefrontService';
 import {
   startStorefrontCheckout,
+  startPolarCheckout,
   StorefrontCheckoutError,
 } from '../services/storefrontCheckoutService';
 import { getCurrentUser } from '../services/storefrontAuthService';
@@ -21,6 +22,25 @@ const COP = new Intl.NumberFormat('es-CO', {
 });
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const USD = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+function formatUsd(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return USD.format(value);
+}
+
+// Best-effort default payment method for the public page, which has no stored
+// buyer country. Colombia-looking browsers default to MercadoPago (COP);
+// everyone else to Polar (international cards, USD). Always overridable.
+function detectDefaultProvider() {
+  try {
+    if (Intl.DateTimeFormat().resolvedOptions().timeZone === 'America/Bogota') return 'mercadopago';
+    const langs = [navigator.language, ...(navigator.languages || [])].filter(Boolean);
+    if (langs.some((l) => /^es-CO$/i.test(l))) return 'mercadopago';
+  } catch { /* non-browser / blocked — fall through */ }
+  return 'polar';
+}
 
 function formatPrice(value, currency) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
@@ -359,6 +379,8 @@ export default function CreatorProgramDetailScreen() {
   const [videoMuted, setVideoMuted] = useState(false);
   const videoRef = useRef(null);
   const [related, setRelated] = useState([]);
+  // null = follow the heuristic default; 'mercadopago' | 'polar' = explicit toggle.
+  const [providerOverride, setProviderOverride] = useState(null);
 
   const accent = useAccentFromImage(data?.program?.imageUrl);
 
@@ -463,6 +485,20 @@ export default function CreatorProgramDetailScreen() {
   const oneTimePrice = formatPrice(program.price, program.currency);
   const subPrice = formatPrice(program.subscriptionPrice, program.currency);
 
+  const polarCfg = program.polar || null;
+  const copAvailable = hasOneTime || hasSubscription;
+  const polarAvailable = !!polarCfg && (polarCfg.hasSubscription || polarCfg.hasOnetime);
+  // Clamp to what's actually available; only honor the toggle when both exist.
+  const provider = isOneOnOne
+    ? 'mercadopago'
+    : (copAvailable && polarAvailable)
+      ? (providerOverride || detectDefaultProvider())
+      : (polarAvailable ? 'polar' : 'mercadopago');
+  const polarSubPrice = polarCfg ? formatUsd(polarCfg.priceUsdMonthly) : null;
+  const polarOtpPrice = polarCfg ? formatUsd(polarCfg.priceUsdOnetime) : null;
+  const polarHasSub = !!polarCfg?.hasSubscription;
+  const polarHasOtp = !!polarCfg?.hasOnetime;
+
   const accentStyle = accent
     ? {
       '--cpd-accent': accent.accent,
@@ -550,6 +586,34 @@ export default function CreatorProgramDetailScreen() {
     }
   };
 
+  const runPolarCheckout = async (mode) => {
+    setBusyMode(mode);
+    setCheckoutError(null);
+    setAlreadyOwned(null);
+    try {
+      const result = await startPolarCheckout({ courseId: program.id, paymentType: mode });
+      if (result?.alreadyPurchased) {
+        setAlreadyOwned({ appUrl: result.appUrl || '/app/' });
+        setBusyMode(null);
+        return;
+      }
+      if (result?.checkoutUrl) {
+        try {
+          analyticsService.track('subscription.checkout.created', {
+            course_id: program.id, surface: 'landing', kind: 'course', provider: 'polar',
+          });
+        } catch { /* analytics is best-effort */ }
+        window.location.href = result.checkoutUrl;
+        return;
+      }
+      throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
+    } catch (err) {
+      setBusyMode(null);
+      if (err?.code === 'CAPACITY_FULL') { openWaitlist(); return; }
+      setCheckoutError(err?.message || 'No se pudo iniciar el pago');
+    }
+  };
+
   const goToBooking = () => {
     // Deep-link into the PWA so the existing call-booking flow handles the
     // session selection. The query params let the PWA route to a coach-scoped
@@ -562,6 +626,7 @@ export default function CreatorProgramDetailScreen() {
   // preapproval (it binds to that email and can't be re-bound). One-time
   // payments go straight to checkout.
   const startForMode = (mode) => {
+    if (provider === 'polar') { runPolarCheckout(mode); return; }
     if (mode === 'subscription') {
       openEmailStep();
     } else {
@@ -867,51 +932,111 @@ export default function CreatorProgramDetailScreen() {
             // a subscription attempt with the wrong email and loop the same
             // MP rejection. The alt-email form below is the only valid next
             // step until it succeeds or the user resets the flow.
-            <div className="cpd-ctas">
-              {hasSubscription ? (
+            <>
+              {provider === 'polar' ? (
+                <div className="cpd-ctas">
+                  {polarHasSub ? (
+                    <button
+                      type="button"
+                      className="cpd-cta cpd-cta-primary"
+                      onClick={() => handleBuy('subscription')}
+                      disabled={busyMode !== null}
+                    >
+                      <span className="cpd-cta-label">
+                        {busyMode === 'subscription' ? 'Procesando…' : 'Suscríbete'}
+                      </span>
+                      {polarSubPrice ? (
+                        <span className="cpd-cta-price">
+                          {polarSubPrice}<span className="cpd-cta-suffix">/mes</span>
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
+                  {polarHasOtp ? (
+                    <button
+                      type="button"
+                      className={`cpd-cta ${polarHasSub ? 'cpd-cta-secondary' : 'cpd-cta-primary'}`}
+                      onClick={() => handleBuy('one_time')}
+                      disabled={busyMode !== null}
+                    >
+                      <span className="cpd-cta-label">
+                        {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
+                      </span>
+                      {polarOtpPrice ? (
+                        <span className="cpd-cta-price">
+                          {polarOtpPrice}
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="cpd-ctas">
+                  {hasSubscription ? (
+                    <button
+                      type="button"
+                      className="cpd-cta cpd-cta-primary"
+                      onClick={() => handleBuy('subscription')}
+                      disabled={busyMode !== null}
+                    >
+                      <span className="cpd-cta-label">
+                        {busyMode === 'subscription' ? 'Procesando…' : 'Suscríbete'}
+                      </span>
+                      {subPrice ? (
+                        <span className="cpd-cta-price">
+                          {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.subscriptionPrice ? (
+                            <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+                          ) : null}
+                          {subPrice}<span className="cpd-cta-suffix">/mes</span>
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
+                  {hasOneTime ? (
+                    <button
+                      type="button"
+                      className={`cpd-cta ${oneTimeIsPrimary ? 'cpd-cta-primary' : 'cpd-cta-secondary'}`}
+                      onClick={() => handleBuy('one_time')}
+                      disabled={busyMode !== null}
+                    >
+                      <span className="cpd-cta-label">
+                        {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
+                      </span>
+                      {oneTimePrice ? (
+                        <span className="cpd-cta-price">
+                          {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.price ? (
+                            <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+                          ) : null}
+                          {oneTimePrice}
+                        </span>
+                      ) : null}
+                    </button>
+                  ) : null}
+                  {!hasOneTime && !hasSubscription ? (
+                    <p className="cpd-no-price">Este programa aún no tiene precio.</p>
+                  ) : null}
+                </div>
+              )}
+              {copAvailable && polarAvailable ? (
                 <button
                   type="button"
-                  className="cpd-cta cpd-cta-primary"
-                  onClick={() => handleBuy('subscription')}
-                  disabled={busyMode !== null}
+                  className="cpd-provider-toggle"
+                  onClick={() => {
+                    setProviderOverride(provider === 'polar' ? 'mercadopago' : 'polar');
+                    setCheckoutError(null);
+                    setEmailStep(false);
+                    setNeedsAltEmail(false);
+                    setUseCustomEmail(false);
+                    setAltEmail('');
+                    setPendingMode(null);
+                  }}
                 >
-                  <span className="cpd-cta-label">
-                    {busyMode === 'subscription' ? 'Procesando…' : 'Suscríbete'}
-                  </span>
-                  {subPrice ? (
-                    <span className="cpd-cta-price">
-                      {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.subscriptionPrice ? (
-                        <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
-                      ) : null}
-                      {subPrice}<span className="cpd-cta-suffix">/mes</span>
-                    </span>
-                  ) : null}
+                  {provider === 'mercadopago'
+                    ? 'Pagar con tarjeta internacional (USD)'
+                    : 'Pagar en Colombia (COP)'}
                 </button>
               ) : null}
-              {hasOneTime ? (
-                <button
-                  type="button"
-                  className={`cpd-cta ${oneTimeIsPrimary ? 'cpd-cta-primary' : 'cpd-cta-secondary'}`}
-                  onClick={() => handleBuy('one_time')}
-                  disabled={busyMode !== null}
-                >
-                  <span className="cpd-cta-label">
-                    {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
-                  </span>
-                  {oneTimePrice ? (
-                    <span className="cpd-cta-price">
-                      {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.price ? (
-                        <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
-                      ) : null}
-                      {oneTimePrice}
-                    </span>
-                  ) : null}
-                </button>
-              ) : null}
-              {!hasOneTime && !hasSubscription ? (
-                <p className="cpd-no-price">Este programa aún no tiene precio.</p>
-              ) : null}
-            </div>
+            </>
           )}
 
           {checkoutError ? <p className="cpd-error" role="alert">{checkoutError}</p> : null}

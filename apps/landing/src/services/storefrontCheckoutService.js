@@ -144,6 +144,98 @@ export async function startStorefrontCheckout({
   return respBody?.data ?? null;
 }
 
+// POST /api/v1/payments/polar/checkout — international (USD) hosted checkout via
+// Polar. Same auth as the MercadoPago storefront checkout (Firebase ID token +
+// App Check). Returns { checkoutUrl } on success, or { alreadyPurchased, appUrl }
+// on a 409 already-owned. Throws StorefrontCheckoutError otherwise — CAPACITY_FULL
+// is surfaced via .code so the screen can flip to the waitlist.
+export async function startPolarCheckout({ courseId, paymentType }) {
+  let token = await getCurrentIdToken();
+  if (!token) {
+    throw new StorefrontCheckoutError(
+      'Debes iniciar sesión para continuar',
+      'UNAUTHENTICATED',
+      401
+    );
+  }
+  const appCheckToken = await getAppCheckTokenForRequest();
+
+  const callOnce = async (authToken) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS);
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        'X-Wake-Client': 'landing/1.0',
+      };
+      if (appCheckToken) headers['X-Firebase-AppCheck'] = appCheckToken;
+      return await fetch('/api/v1/payments/polar/checkout', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ courseId, paymentType }),
+        signal: ctrl.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  let res;
+  try {
+    res = await callOnce(token);
+  } catch (err) {
+    throw new StorefrontCheckoutError(
+      err?.name === 'AbortError'
+        ? 'La conexión tardó demasiado. Intenta de nuevo.'
+        : 'Error de red. Intenta de nuevo.',
+      err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
+      0
+    );
+  }
+
+  // 401: ID token may be stale — force-refresh once and retry.
+  if (res.status === 401) {
+    const refreshed = await getCurrentIdToken(true);
+    if (refreshed && refreshed !== token) {
+      token = refreshed;
+      try {
+        res = await callOnce(token);
+      } catch (err) {
+        throw new StorefrontCheckoutError(
+          err?.name === 'AbortError'
+            ? 'La conexión tardó demasiado. Intenta de nuevo.'
+            : 'Error de red. Intenta de nuevo.',
+          err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
+          0
+        );
+      }
+    }
+  }
+
+  let respBody = null;
+  try { respBody = await res.json(); } catch { /* non-JSON */ }
+
+  if (res.status === 409 && respBody?.alreadyPurchased) {
+    return { alreadyPurchased: true, appUrl: respBody.appUrl || '/app/' };
+  }
+
+  if (!res.ok) {
+    throw new StorefrontCheckoutError(
+      respBody?.error?.message || 'No se pudo iniciar el pago',
+      respBody?.error?.code || 'INTERNAL_ERROR',
+      res.status
+    );
+  }
+
+  const checkoutUrl = respBody?.data?.checkout_url;
+  if (!checkoutUrl) {
+    throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
+  }
+  return { checkoutUrl };
+}
+
 // Polled by /comprado to confirm the webhook has granted access before
 // sending the user into the PWA. Returns { active, expiresAt } or null on a
 // transient error (caller treats null as "not yet" and keeps polling).

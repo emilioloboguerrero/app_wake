@@ -282,6 +282,12 @@ interface PublicProgramDetail extends PublicProgramCard {
   tags: string[] | null;
   sections: PublicLandingSection[] | null;
   compareAtPrice: number | null;
+  polar: {
+    priceUsdMonthly: number | null;
+    priceUsdOnetime: number | null;
+    hasSubscription: boolean;
+    hasOnetime: boolean;
+  } | null;
 }
 
 function shapePublicProgramDetail(
@@ -302,6 +308,21 @@ function shapePublicProgramDetail(
       data.compare_at_price > 0 ?
         (data.compare_at_price as number) :
         null,
+    polar: (() => {
+      const p = data.polar as Record<string, unknown> | null | undefined;
+      if (!p || typeof p !== "object") return null;
+      const hasSubscription =
+        typeof p.subscription_product_id === "string" && p.subscription_product_id.length > 0;
+      const hasOnetime =
+        typeof p.onetime_product_id === "string" && p.onetime_product_id.length > 0;
+      if (!hasSubscription && !hasOnetime) return null;
+      return {
+        priceUsdMonthly: typeof p.price_usd_monthly === "number" ? p.price_usd_monthly : null,
+        priceUsdOnetime: typeof p.price_usd_onetime === "number" ? p.price_usd_onetime : null,
+        hasSubscription,
+        hasOnetime,
+      };
+    })(),
   };
 }
 

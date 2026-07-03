@@ -146,6 +146,24 @@ router.post("/payments/polar/checkout", async (req, res) => {
     }
   }
 
+  // Already-owned guard (parity with MP /public/checkout/start): a returning
+  // buyer who still has active access must not be able to double-charge.
+  const buyerDoc = await db.collection("users").doc(auth.userId).get();
+  const ownedEntry = (buyerDoc.data()?.courses?.[body.courseId] ?? null) as
+    { status?: string; expires_at?: string | null } | null;
+  if (ownedEntry?.status === "active") {
+    const exp = ownedEntry.expires_at;
+    const stillValid = !exp || (typeof exp === "string" && Date.parse(exp) > Date.now());
+    if (stillValid) {
+      res.status(409).json({
+        error: {code: "CONFLICT", message: "Ya tienes acceso a este programa"},
+        alreadyPurchased: true,
+        appUrl: "/app/",
+      });
+      return;
+    }
+  }
+
   const productId = resolvePolarProductId(course, paymentType);
   if (!productId) {
     throw new WakeApiServerError(
