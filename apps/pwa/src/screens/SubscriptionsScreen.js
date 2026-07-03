@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../config/queryClient';
 import { STALE_TIMES } from '../config/queryConfig';
 import {
@@ -53,7 +53,8 @@ const SubscriptionsScreen = ({ navigation }) => {
   // CRITICAL: Use Firebase auth directly as fallback if AuthContext user isn't available yet
   // This handles the case where Firebase has restored auth from IndexedDB but AuthContext hasn't updated
   const user = contextUser || auth.currentUser;
-  
+  const queryClient = useQueryClient();
+
   const [actionState, setActionState] = useState({});
   const [isInfoModalVisible, setInfoModalVisible] = useState(false);
   const [showCancelSurvey, setShowCancelSurvey] = useState(false);
@@ -197,23 +198,39 @@ const SubscriptionsScreen = ({ navigation }) => {
       );
     }
 
-    // Polar subscriptions — open the Polar customer portal (cancel / update
-    // card / view invoices). Access is retained until the period end.
+    // Polar subscriptions — cancel IN-APP (clear, immediate) and keep the Polar
+    // portal as a secondary path for updating the card / viewing invoices.
     if (subscription.provider === 'polar') {
       const busy = actionState[subscription.id]?.loading;
       return (
-        <View style={styles.actionsRow}>
+        <>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => {
+                analyticsService.track('subscription.cancel_intent', {
+                  course_id: subscription.course_id ?? subscription.courseId ?? null,
+                  provider: 'polar',
+                });
+                handleCancelIntent(subscription);
+              }}
+              activeOpacity={0.7}
+              disabled={busy}
+            >
+              <Text style={styles.actionButtonText}>
+                {busy ? 'Procesando…' : 'Cancelar suscripción'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
-            style={styles.actionButton}
+            style={styles.secondaryLink}
             onPress={() => openPolarPortal(subscription)}
             activeOpacity={0.7}
             disabled={busy}
           >
-            <Text style={styles.actionButtonText}>
-              {busy ? 'Abriendo…' : 'Gestionar'}
-            </Text>
+            <Text style={styles.secondaryLinkText}>Actualizar método de pago</Text>
           </TouchableOpacity>
-        </View>
+        </>
       );
     }
 
@@ -255,11 +272,18 @@ const SubscriptionsScreen = ({ navigation }) => {
     try {
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: true } }));
 
-      await apiClient.post(`/payments/subscriptions/${subscriptionId}/cancel`, {
-        survey: options.survey,
-      });
+      const endpoint = options.provider === 'polar'
+        ? `/payments/polar/subscriptions/${subscriptionId}/cancel`
+        : `/payments/subscriptions/${subscriptionId}/cancel`;
+      await apiClient.post(endpoint, { survey: options.survey });
 
-      Alert.alert('Éxito', 'La suscripción ha sido actualizada correctamente');
+      // Refetch so the card flips to "Cancelada" right away — no ambiguity.
+      queryClient.invalidateQueries({ queryKey: queryKeys.user.subscriptions(user.uid) });
+
+      Alert.alert(
+        'Suscripción cancelada',
+        'Mantienes el acceso hasta el final del periodo actual. Puedes volver a suscribirte cuando quieras.',
+      );
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false } }));
     } catch (error) {
       logger.error('Error performing subscription action:', error);
@@ -426,6 +450,7 @@ const SubscriptionsScreen = ({ navigation }) => {
     };
     performAction(pendingCancelSubscription.id, 'cancel', {
       survey: surveyPayload,
+      provider: pendingCancelSubscription.provider,
     });
     resetCancelFlow();
   };
@@ -983,6 +1008,17 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     color: 'rgba(255, 255, 255, 1)',
     fontWeight: '600',
     fontSize: 14,
+  },
+  secondaryLink: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 10,
+  },
+  secondaryLinkText: {
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 13,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
   },
   oneOnOneRedirect: {
     flex: 1,
