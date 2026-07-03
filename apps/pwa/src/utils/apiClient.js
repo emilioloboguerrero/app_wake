@@ -98,6 +98,38 @@ class ApiClient {
     return this.#refreshPromise;
   }
 
+  // Races a promise against a timeout so token acquisition (Firebase ID token
+  // or App Check) can never hang the request forever — a stalled provider now
+  // surfaces a REQUEST_TIMEOUT the UI can show/retry instead of a stuck spinner.
+  #withTimeout(promise, ms, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new WakeApiError('REQUEST_TIMEOUT', `${label} timed out`, 0)),
+        ms
+      );
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  }
+
+  // App Check token with a timeout. Returns null (rather than hanging or
+  // throwing) when App Check is unconfigured / slow / blocked — the request
+  // proceeds without the header; a resulting 401 is recovered by the retry,
+  // which force-refreshes App Check.
+  async #getAppCheckToken(forceRefresh = false) {
+    if (!appCheck) return null;
+    try {
+      const { token } = await this.#withTimeout(
+        getToken(appCheck, forceRefresh),
+        8000,
+        'App Check'
+      );
+      return token;
+    } catch {
+      return null;
+    }
+  }
+
   async #request(method, path, body, options = {}) {
     const { includeAuth = true, timeout = 15000, signal, params } = options;
 
@@ -128,15 +160,9 @@ class ApiClient {
     };
 
     if (includeAuth) {
-      headers['Authorization'] = `Bearer ${await this.#getToken()}`;
-      if (appCheck) {
-        try {
-          const { token } = await getToken(appCheck, /* forceRefresh */ false);
-          headers['X-Firebase-AppCheck'] = token;
-        } catch {
-          // App Check unavailable in emulator — silently skip
-        }
-      }
+      headers['Authorization'] = `Bearer ${await this.#withTimeout(this.#getToken(), 10000, 'Auth token')}`;
+      const appCheckToken = await this.#getAppCheckToken();
+      if (appCheckToken) headers['X-Firebase-AppCheck'] = appCheckToken;
     }
 
     const controller = new AbortController();
@@ -163,8 +189,12 @@ class ApiClient {
       }
 
       if (res.status === 401 && includeAuth && this.#mode === 'firebase') {
-        const fresh = await this.#refreshToken();
+        const fresh = await this.#withTimeout(this.#refreshToken(), 10000, 'Token refresh');
         headers['Authorization'] = `Bearer ${fresh}`;
+        // The 401 may be a stale/missing App Check token (dropped when the first
+        // fetch failed) — force-refresh it so the retry can actually succeed.
+        const freshAppCheck = await this.#getAppCheckToken(/* forceRefresh */ true);
+        if (freshAppCheck) headers['X-Firebase-AppCheck'] = freshAppCheck;
 
         const retryController = new AbortController();
         const retryTimeoutId = setTimeout(() => retryController.abort(), timeout);
