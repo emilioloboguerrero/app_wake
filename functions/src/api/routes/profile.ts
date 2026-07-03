@@ -1024,6 +1024,14 @@ router.patch("/users/me/courses/:courseId/version", async (req, res) => {
 // string, letting users set status="trial" on a paid course to game trial
 // logic. expiresAt only applies to "expired"/"cancelled" transitions —
 // extending paid access via this endpoint is not allowed.
+//
+// Launch hardening (2026-07-03): a user could self-grant paid access by
+// sending status="active" for ANY courseId — the dot-path update created the
+// entry from nothing and the workout gates only check status==="active". This
+// endpoint is user-mutable ONLY to let a user retire their own access
+// (expired/cancelled); granting "active" is server-side only (payment webhook
+// / assignCourseToUser). Two guards now: (1) reject "active" here, (2) refuse
+// to touch a course the user does not already own.
 router.patch("/users/me/courses/:courseId/status", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);
 
@@ -1035,26 +1043,39 @@ router.patch("/users/me/courses/:courseId/status", async (req, res) => {
 
   assertAllowedUserCourseStatus(body.status);
 
+  if (body.status === "active") {
+    throw new WakeApiServerError(
+      "FORBIDDEN",
+      403,
+      "No puedes activar el acceso a un programa desde este endpoint",
+      "status"
+    );
+  }
+
+  const userRef = db.collection("users").doc(auth.userId);
+  const userSnap = await userRef.get();
+  const existing = (userSnap.data()?.courses ?? {})[courseId];
+  if (!existing) {
+    throw new WakeApiServerError(
+      "NOT_FOUND",
+      404,
+      "No tienes acceso a este programa",
+      "courseId"
+    );
+  }
+
   const updates: Record<string, unknown> = {
     [`courses.${courseId}.status`]: body.status,
     updated_at: FieldValue.serverTimestamp(),
   };
 
-  // Only allow setting expiresAt when transitioning to a terminal state.
-  // Forbids users from extending their own paid access by sending a future date.
+  // expiresAt is always a terminal-state field here: status is guaranteed
+  // "expired" or "cancelled" (active is rejected above).
   if (body.expiresAt !== undefined) {
-    if (body.status !== "expired" && body.status !== "cancelled") {
-      throw new WakeApiServerError(
-        "VALIDATION_ERROR",
-        400,
-        "expiresAt solo se puede establecer al cancelar o expirar",
-        "expiresAt"
-      );
-    }
     updates[`courses.${courseId}.expires_at`] = body.expiresAt;
   }
 
-  await db.collection("users").doc(auth.userId).update(updates);
+  await userRef.update(updates);
 
   res.json({data: {updated: true}});
 });

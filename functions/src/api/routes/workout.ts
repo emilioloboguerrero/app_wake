@@ -274,6 +274,24 @@ function toLocalDateISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Launch hardening (2026-07-03): "today" was computed from `new Date()` in the
+// Cloud Function's UTC clock. Colombia is UTC-5, so any user after 19:00 local
+// got tomorrow's session and their completions were dated on the wrong day.
+// This returns a Date at 00:00 UTC on Bogota's current calendar day. Because
+// Cloud Functions run in UTC (the same assumption toLocalDateISO and
+// firstMondayOfBogMonth already rely on), reading its get*/setDate/getTime with
+// the surrounding week arithmetic yields Bogota-correct calendar dates.
+function bogotaMidnightToday(): Date {
+  const p = bogotaDateParts(new Date());
+  return new Date(Date.UTC(p.year, p.month - 1, p.day));
+}
+
+// Bogota's current calendar day as YYYY-MM-DD (for the fixed-program daily path).
+function bogotaTodayISO(): string {
+  const p = bogotaDateParts(new Date());
+  return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
 // GET /workout/daily
 router.get("/workout/daily", async (req, res) => {
   const auth = await validateAuth(req);
@@ -330,7 +348,7 @@ router.get("/workout/daily", async (req, res) => {
     // Path A: plan-based weeks — planAssignments on user doc → client_plan_content/{id}/sessions
     // Path B: date-based individual sessions — client_sessions → client_session_content
     const requestedDate = (req.query.date as string) ?? null;
-    const targetDate = requestedDate ?? new Date().toISOString().slice(0, 10);
+    const targetDate = requestedDate ?? bogotaTodayISO();
 
     // Read planAssignments from user doc (already fetched above)
     const planAssignments = (courses[courseId]?.planAssignments ?? {}) as Record<string, { planId: string; moduleId: string }>;
@@ -774,12 +792,11 @@ router.get("/workout/daily", async (req, res) => {
       const weekSessions = allModSessions.filter((s) => sessionMatchesWeek(s, weekInBlock));
 
       // Apply dayIndex → plannedDate (same weekly branch convention: 1..7 = Lun..Dom)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = bogotaMidnightToday();
       const requestedDate = (req.query.date as string) ?? null;
-      const todayWeekdayIdx = ((today.getDay() + 6) % 7) + 1; // 1..7 Lun..Dom
+      const todayWeekdayIdx = ((today.getUTCDay() + 6) % 7) + 1; // 1..7 Lun..Dom
       const weekStart = new Date(today);
-      weekStart.setDate(today.getDate() - (todayWeekdayIdx - 1));
+      weekStart.setUTCDate(today.getUTCDate() - (todayWeekdayIdx - 1));
       const weekStartIso = weekStart.toISOString();
 
       // Re-scope completed IDs to this week only (sessions repeat week-to-week)
@@ -935,11 +952,10 @@ router.get("/workout/daily", async (req, res) => {
       const isWeekly = course.scheduling === "weekly";
       if (isWeekly) {
         const requestedDate = (req.query.date as string) ?? null;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayWeekdayIdx = ((today.getDay() + 6) % 7) + 1; // 1..7 Lun..Dom
+        const today = bogotaMidnightToday();
+        const todayWeekdayIdx = ((today.getUTCDay() + 6) % 7) + 1; // 1..7 Lun..Dom
         const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - (todayWeekdayIdx - 1));
+        weekStart.setUTCDate(today.getUTCDate() - (todayWeekdayIdx - 1));
 
         // Weekly programs repeat the same sessionIds every week, so the
         // course-scoped sessionHistory fetched above includes completions
@@ -1761,8 +1777,17 @@ router.post("/workout/complete", async (req, res) => {
     {maxArrayLength: 50}
   );
 
-  // Extract date from completedAt
-  const completionDate = body.completedAt.slice(0, 10);
+  // Extract the completion's CALENDAR day in Bogota time. body.completedAt is
+  // the device's instant as a UTC ISO string; slicing it (UTC date) put a
+  // session finished after 19:00 Colombia onto the next day, mismatching the
+  // Bogota-based "today" the read paths now use. Fall back to the raw slice if
+  // the timestamp is unparseable.
+  const completionDate = (() => {
+    const parsed = new Date(body.completedAt);
+    if (isNaN(parsed.getTime())) return body.completedAt.slice(0, 10);
+    const p = bogotaDateParts(parsed);
+    return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+  })();
 
   // Unique completion ID — allows the same session to be completed multiple times per day
   const completionId = `${auth.userId}_${body.sessionId}_${completionDate}_${Date.now()}`;
@@ -1790,9 +1815,13 @@ router.post("/workout/complete", async (req, res) => {
   // Pre-fetch existing PRs for all exercises to compare. See deriveExerciseKey
   // for the key shape; it returns null (skip) rather than persist a wrong-shape
   // key, which would corrupt post-migration history.
-  const exerciseKeys = exercises
-    .map((ex) => deriveExerciseKey(ex as Record<string, unknown>))
-    .filter(Boolean) as string[];
+  // alignedExerciseKeys stays index-aligned with `exercises` (nulls preserved)
+  // so the per-exercise write loop below pairs each exercise with ITS OWN key.
+  // The filtered `exerciseKeys` is only for set/union/batch-fetch operations
+  // that key by value, never by index.
+  const alignedExerciseKeys = exercises
+    .map((ex) => deriveExerciseKey(ex as Record<string, unknown>));
+  const exerciseKeys = alignedExerciseKeys.filter(Boolean) as string[];
 
   // ── Reopen handling ──────────────────────────────────────────────────────
   // When replacesCompletionId is set, the client is re-finishing a session that
@@ -1960,6 +1989,39 @@ router.post("/workout/complete", async (req, res) => {
     achievedWith: { weight: number; reps: number; intensity: string | null };
   }> = [];
 
+  // Idempotency (launch hardening): this endpoint has no natural idempotency
+  // key and completionId embeds Date.now(), so a client retry after a
+  // timed-out-but-committed request wrote a full duplicate session (double
+  // streak, double volume). A (completedAt + sessionId + courseId) tuple
+  // uniquely identifies one completion — the client resends the same
+  // millisecond-precision completedAt on retry. completedAt is single-field
+  // indexed (the /workout/sessions order-by), so no composite index is needed.
+  // Reopen (replaceId) is a deliberate re-write and is exempt.
+  if (!replaceId) {
+    const dupSnap = await db
+      .collection("users")
+      .doc(auth.userId)
+      .collection("sessionHistory")
+      .where("completedAt", "==", body.completedAt)
+      .limit(5)
+      .get();
+    const dup = dupSnap.docs.find(
+      (d) => d.data().sessionId === body.sessionId && d.data().courseId === body.courseId
+    );
+    if (dup) {
+      res.json({
+        data: {
+          completionId: dup.id,
+          personalRecords: [],
+          streakUpdated: false,
+          muscleVolumes: {},
+          duplicate: true,
+        },
+      });
+      return;
+    }
+  }
+
   const batch = db.batch();
 
   // 1. Session history. On reopen this overwrites the original doc in place
@@ -1998,7 +2060,7 @@ router.post("/workout/complete", async (req, res) => {
 
   for (let i = 0; i < hydratedExercises.length; i++) {
     const exercise = hydratedExercises[i];
-    const exerciseKey = exerciseKeys[i];
+    const exerciseKey = alignedExerciseKeys[i];
     if (!exerciseKey) continue;
     newKeySet.add(exerciseKey);
 

@@ -44,7 +44,33 @@ service cloud.firestore {
     // Creator access to client data is API-mediated (Admin SDK bypasses rules)
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Launch hardening (2026-07-03): the create rule had no field allowlist.
+      // Combined with owner-delete below, any user could deleteDoc(users/{uid})
+      // then re-create it via the bundled JS SDK carrying privileged fields —
+      // courses (self-grant paid access), role:'admin', trial_used:false. The
+      // user doc is bootstrapped server-side by onUserCreated (Admin SDK, which
+      // bypasses rules); no client code path creates it (verified: zero
+      // setDoc(users/{uid}) in apps/pwa or apps/creator-dashboard). Client
+      // create is now restricted to the same non-privileged allowlist as
+      // update, so a re-created doc can never carry courses/role/trial_used.
+      allow create: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'displayName', 'photoURL', 'profilePictureUrl',
+          'country', 'city', 'gender',
+          'height', 'weight', 'bodyweight', 'goalWeight', 'weightUnit',
+          'birthDate', 'phoneNumber',
+          'bio',
+          'onboardingData', 'creatorOnboardingData',
+          'webOnboardingCompleted', 'profileCompleted',
+          'onboardingCompleted', 'bibliotecaGuideCompleted',
+          'pinnedTrainingCourseId', 'pinnedNutritionAssignmentId',
+          'beholdFeedId',
+          'creatorDiscipline', 'creatorDeliveryType', 'creatorClientRange',
+          'creatorSpecializations', 'creatorExperience', 'creatorCertifications',
+          'creatorNavPreferences', 'socialLinks', 'websiteUrl',
+          'howTheyFoundUs',
+          'lastSessionDate', 'updated_at', 'created_at'
+        ]);
       // F-RULES-01 / F-RULES-02 lockdown.
       // Owner updates are restricted to a non-privileged allowlist of
       // profile-shape fields. Privileged fields — role, courses,
