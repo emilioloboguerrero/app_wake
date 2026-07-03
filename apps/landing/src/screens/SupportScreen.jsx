@@ -15,7 +15,7 @@ const SupportScreen = () => {
   const faqs = [
     {
       question: '¿Cómo puedo contactar al equipo de soporte?',
-      answer: 'La vía más rápida es WhatsApp al +57 313 4950869: te respondemos directo desde el chat. También puedes escribirnos por correo electrónico a emilioloboguerrero@gmail.com, donde respondemos en un plazo de 24-48 horas durante días hábiles.'
+      answer: 'La vía más rápida es WhatsApp al +57 317 8751956: te respondemos directo desde el chat. También puedes escribirnos por correo electrónico a emilioloboguerrero@gmail.com, donde respondemos en un plazo de 24-48 horas durante días hábiles.'
     },
     {
       question: '¿Cuál es el tiempo de respuesta del soporte?',
