@@ -19,11 +19,11 @@ Shipped + deployed to prod (commit `6dd670f`, `functions:api` + hosting):
 - **Código ABS** (`ezJWUr3wJvaeptIM5f86`) is **already at $25/mo** (product `1f10c144-9da8-40d6-91e0-2fb276151045` charges $25.00). The earlier "$4" was a separate orphaned test product `d14bd62f-9881-47ec-95ea-b8e9eab14793`.
 - **E2E purchase — validated** via the live $4 test purchase (order `540b5044…`, user `oXKlavb5…`/emilioprieva): course active (expires 2026-08-03), `provider:"polar"` sub doc, `payment_ledger/polar_order_540b5044…` (`initial`, gross $4 / net $3.24 / provider_fee $0.76 estimate, `platform_commission_rate: null`), `processed_payments` approved.
 - **Polar sub management = single "Gestionar suscripción" → Polar portal** (`2afefe4`). PWA `SubscriptionsScreen.js`: dropped the Polar in-app cancel + card-update buttons for one portal action (cancel, resume/un-cancel, card, invoices; org `allow_customer_updates:true`). Portal actions sync back via `subscription.updated`. MP keeps its in-app cancel. `e30c0ab`: show that button for cancelled-at-period-end Polar subs (was hidden by a `status==='cancelled' → null` early-return) and relabel "Próximo cobro" → "Acceso hasta" when cancelled. **In-app cancel verified live** (200 → Firestore `cancelled` + Polar `cancel_at_period_end:true`).
-- **Hosting cache fix** (`firebase.json`): the service worker was served `max-age=31536000` (frozen) and the PWA entry `/app/` fell to the default `max-age=3600`, so deploys weren't reaching installed PWAs. Firebase Hosting = **last-matching header rule wins**; reordered so SPA scopes + `sw.js` + HTML are `no-cache` and hashed assets stay 1-year. Verified live. See [[reference_pwa_appcheck_and_cache_gotchas]].
+- **Hosting cache fix** (`firebase.json`): the service worker was served `max-age=31536000` (frozen) and the PWA entry `/app/` fell to the default `max-age=3600`, so deploys weren't reaching installed PWAs. Firebase Hosting = **last-matching header rule wins**; reordered so SPA scopes + `sw.js` + HTML are `no-cache` and hashed assets stay 1-year. Verified live.
 
 **DONE (this session, later):**
 - **$4 test sub refunded** — order `540b5044…` refunded ($4, `succeeded`); the `order.refunded` webhook revoked access (course `cancelled`) and wrote `payment_ledger/polar_refund_540b5044…` (net $3.24). All Polar webhook paths now verified live (order.paid, subscription.updated, subscription.canceled, order.refunded).
-- **apiClient App Check resilience** — fixed + deployed (`#withTimeout` on token fetches, bounded App Check getter, force-refresh App Check on 401 retry). See [[reference_pwa_appcheck_and_cache_gotchas]].
+- **apiClient App Check resilience** — fixed + deployed (`#withTimeout` on token fetches, bounded App Check getter, force-refresh App Check on 401 retry).
 - **Hosting cache-header bug** — fixed + verified (frozen `sw.js` / `/app/` at 3600 → deploys now reach installed PWAs).
 - **Cancellation-reason** — NO config needed: Polar captures it natively in the portal cancel flow (`customer_cancellation_reason` on the subscription, visible in the Polar dashboard).
 
@@ -46,7 +46,7 @@ Key commits: `3d0aa0d` (core checkout/webhook/cancel/portal + PWA), `1d943c5` (a
   - `POST /payments/polar/subscriptions/:id/cancel` — own endpoint (cancel-at-period-end via Polar API) + cancellation-feedback survey (mirrors MercadoPago).
   - `POST /payments/polar/subscriptions/:id/portal` — returns a fresh Polar customer-portal URL.
 - **`services/polarClient.ts`** — `getPolarClient()`; reads `POLAR_ACCESS_TOKEN`, selects base by `POLAR_SERVER` (`sandbox`|`production`).
-- **`services/polarProducts.ts`** — `provisionPolarProduct()`; creates a Polar product (recurring `month` or one-time; fixed USD cents; trial from `course.free_trial`, capped 14d), returns the `polar.*` fields. ⚠️ Creates a **fresh product on every price change** and orphans the old one (see follow-ups).
+- **`services/polarProducts.ts`** — `provisionPolarProduct()` (create), `deriveUsdFromCop()` (USD from COP), `archivePolarProduct()` (archive superseded product). Subscription = recurring `month`; one-time = single price; fixed USD cents; trial from `course.free_trial` capped 14d. On a price change the caller provisions a fresh product, repoints the course, and **archives the old product** (fixed 2026-07-03).
 - **`services/polarHelpers.ts`** + **`polarHelpers.test.ts`** — pure helpers (product resolution, metadata parse, cents→major, date normalize, renewal/trial classification) + **22 unit tests**.
 - **`routes/creator.ts`** — `PATCH /creator/programs/:programId` now accepts **`price_usd`** (whole USD ≥ 1). After the doc write it **auto-provisions** the Polar product and writes `courses/{id}.polar.*`. Best-effort: a Polar failure (or unconfigured token) never blocks the price save; response includes `polar_provisioning: "ok" | "failed"`.
 - **`index.ts`** — `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET` secrets defined + bound to the `api` function.
@@ -67,55 +67,44 @@ Key commits: `3d0aa0d` (core checkout/webhook/cancel/portal + PWA), `1d943c5` (a
 
 ---
 
-## Deployed state (production `wolf-20b8b`)
+## Deployed state (production `wolf-20b8b`) — LIVE, real money
 
-- **`functions:api`** deployed with `POLAR_ACCESS_TOKEN` + `POLAR_WEBHOOK_SECRET` (**sandbox** values, in Secret Manager) + **`POLAR_SERVER=sandbox`** via `functions/.env.wolf-20b8b` (gitignored — see `.gitignore`).
-- **`hosting`** deployed (PWA toggle/USD + creator dashboard USD field). Verified the PWA bundle uses **production** Firebase config (`wolf-20b8b`), not staging (metro-cache check passed).
-- Smoke tests: `/api/v1/health` 200, polar checkout 401 (auth-gated), polar webhook 403 (signature-gated); `/app`, `/creators`, `/` all 200.
-- Note: `firebase deploy` runs a **`notify-deploy` postdeploy hook** that commits + pushes `main` and posts to `wake_ops` — this is the source of the "mystery" deploy commits/branch moves seen earlier.
+- **`functions:api`** deployed with **live** `POLAR_ACCESS_TOKEN` (v3, full-scope) + `POLAR_WEBHOOK_SECRET` (v2) in Secret Manager, and **`POLAR_SERVER=production`** via `functions/.env.wolf-20b8b` (gitignored). Read the token for ops: `gcloud secrets versions access latest --secret=POLAR_ACCESS_TOKEN --project=wolf-20b8b` (curl not on PATH — use node fetch; never echo the token).
+- **`hosting`** deployed. Cache headers fixed 2026-07-03 (SPA entry + `sw.js` are `no-cache`, hashed assets 1-year) so deploys reach installed PWAs.
+- Note: `firebase deploy` runs a **`notify-deploy` postdeploy hook** that commits + pushes `main` and posts to `wake_ops` — the source of the "mystery" deploy commits.
 
-## Polar account (SANDBOX)
+## Polar account (PRODUCTION)
 
-- Org **"Wake"**, country **CO**, sandbox environment. Payout connected (Stripe **test** account).
-- **Access token**: organization token (sandbox) — set in Secret Manager. **ROTATE at/before go-live** (it was shared in chat).
-- **Webhook**: sandbox endpoint → `https://wakelab.co/api/v1/payments/polar/webhook`; signing secret set.
-- Dashboards: sandbox `https://sandbox.polar.sh`, production `https://polar.sh`, docs `https://docs.polar.sh`.
+- Org **"Wake"** (id `cea4c447-2c0f-4b3c-a26a-8dc16c0d29f2`, slug `wake`), **approved**, production environment, real payout connected.
+- **Access/webhook secrets**: live values in Secret Manager (see above). Prod webhook → `https://wakelab.co/api/v1/payments/polar/webhook`, subscribed to `order.paid|refunded`, `subscription.active|created|updated|canceled|revoked|uncanceled`, etc.
+- `subscription_settings.allow_customer_updates: true` (portal allows cancel/resume/card). Cancellation reason captured natively (`customer_cancellation_reason` on the subscription).
+- Dashboard: `https://polar.sh`; docs `https://docs.polar.sh`.
 
-## Validated live (2026-07-02)
+## Validated live (2026-07-02 sandbox → 2026-07-03 production)
 
-- `products.create` payload accepted (recurring `month`, fixed USD cents, trial, metadata).
-- `checkouts.create` returns hosted URL; **metadata round-trips** (`userId/courseId/paymentType`).
-- **MoR tax calc works**: $21 → $22.86 (NY sales tax computed by Polar at checkout).
-- Checkout form renders + accepts email/name/full billing address (Playwright).
-- **Webhook signature verification is live** (rejects unsigned → 403).
-- ❗ **NOT yet completed:** final card payment → `order.paid` → access grant. Blocked in automation because the **Stripe Payment Element doesn't render/fill in headless Chrome** (a Stripe test-tooling limitation, not a Wake bug). To be confirmed via a **human manual purchase**.
+- **Full E2E purchase confirmed on prod** (real $4 card charge): `checkouts.create` → metadata round-trip → `order.paid` → `assignCourseToUser` grant + `provider:"polar"` sub doc + `payment_ledger` (initial, gross $4 / net $3.24) + `processed_payments` approved. MoR tax computed by Polar at checkout.
+- **All webhook side-effect paths verified live:** `order.paid` (grant), `subscription.updated` (portal cancel→reactivate reflection), in-app `cancel` (Firestore + Polar `cancel_at_period_end`), `order.refunded` (revoke access + `payment_ledger/polar_refund_…`). Signature verification rejects unsigned (403).
 
-## Código ABS test state (the program used for testing)
+## Código ABS (the program used for testing)
 
 - `courseId = ezJWUr3wJvaeptIM5f86`, **published**, `creator_id = yMqKOXBcVARa6vjU7wImf3Tp85J2`.
-- `price_usd = 21`, `polar.subscription_product_id = 2e48089f-8c72-4ec3-b1c1-923e9cc5a684` ($21/mo). No trial.
-- Orphaned $20 product (from an earlier save) was archived.
+- **$25/mo** — `polar.subscription_product_id = 1f10c144-9da8-40d6-91e0-2fb276151045` (charges $25.00). (Earlier sandbox/test products $20/$21/$4 — e.g. orphan `d14bd62f` — are superseded.)
 
 ---
 
 ## Known gaps / follow-ups
 
 1. ~~**Public buy page NOT wired for Polar**~~ — **DONE (deployed 2026-07-02).** `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` now has provider selection (timezone/locale heuristic default + COP↔USD toggle when both methods exist), USD price display from `program.polar`, and calls `POST /payments/polar/checkout`. Backend: `shapePublicProgramDetail` exposes `program.polar` (display prices + availability booleans, never product IDs); the Polar checkout endpoint gained an already-owned 409 guard (parity with MP). Landing service: `startPolarCheckout` in `storefrontCheckoutService.js`. See "Public buy page — DONE" below.
-2. **Product cleanup on price change** — `provisionPolarProduct` orphans the old product; should archive it (`PATCH /v1/products/{id}` `{is_archived:true}`) after repointing.
-3. **Trial CTA on the Polar path** — Polar branch shows a single "Comprar - $X/mes" button, no "Empezar prueba de N días". Cosmetic.
-4. **Portal button not wired in UI** — the `/subscriptions/:id/portal` endpoint exists but no button calls it.
-5. **Go-live flip** — see below.
-6. **Owner/creator/admin accounts free-grant their own programs** → you cannot test the buy flow from the program owner's account; use a regular non-CO account.
+> **NOTE:** the numbered follow-ups below were the 2026-07-02 sandbox-era gaps. Most are now DONE — see the "2026-07-03 update" section at the top of this doc for the authoritative current state. Kept for history.
+
+2. ~~**Product cleanup on price change**~~ — **DONE.** `archivePolarProduct` archives the superseded product on re-provision.
+3. **Trial CTA on the Polar path** — still open, intentionally deferred (cosmetic; no Polar course uses a free trial today, so building it would be speculative).
+4. ~~**Portal button not wired in UI**~~ — **DONE.** The Polar sub row is now a single "Gestionar suscripción" that opens the portal.
+5. ~~**Go-live flip**~~ — **DONE 2026-07-03** (`POLAR_SERVER=production`, live secrets, prod org approved, real payment verified).
+6. **Owner/creator/admin accounts free-grant their own programs** → you cannot test the buy flow from the program owner's account; use a regular non-CO account (testing caveat below still applies).
 
 ### Testing caveat
-To test a purchase you need a **non-CO, non-owner** account (or the toggle). The program owner (creator/admin) gets free access to their own program, so no buy button appears.
-
-### Go-live flip (to charge real money)
-1. In **production** Polar (`polar.sh`, not sandbox): complete org details, connect the **real** payout (Colombian bank via Stripe Connect, KYC), create a **production access token** + **production webhook** (→ `wakelab.co/api/v1/payments/polar/webhook`).
-2. Swap `POLAR_ACCESS_TOKEN` / `POLAR_WEBHOOK_SECRET` secrets to the live values.
-3. Set `POLAR_SERVER=production` (edit `functions/.env.wolf-20b8b`, or delete the file — default is production).
-4. Redeploy `functions:api`.
-5. Re-enter the international prices in the dashboard (provisions **live** products).
+To test a purchase you need a **non-CO, non-owner** account (or the currency toggle). The program owner (creator/admin) gets free access to their own program, so no buy button appears.
 
 ---
 

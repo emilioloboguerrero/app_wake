@@ -2677,6 +2677,48 @@ Cancel, pause, or resume a MercadoPago subscription.
 
 ---
 
+### Polar (International Payments)
+
+Merchant-of-record card payments for international customers, coexisting with MercadoPago (Colombia). Routing is by `users/{uid}.country` (CO → MercadoPago, else → Polar) with a manual override toggle on the buy screens. USD prices are auto-derived from the COP price (`max(1, round((cop/3500)*1.10))`) and stored on `courses/{id}.polar.*` (see `routes/polar.ts`, `services/polarProducts.ts`). Full context: `docs/POLAR_INTEGRATION_STATUS.md`.
+
+#### `POST /api/v1/payments/polar/checkout`
+Create a Polar hosted checkout (redirect), carrying `{userId, courseId, paymentType}` as Polar metadata.
+
+**Auth:** Firebase ID token
+**Request:** `{ "courseId": "string", "paymentType": "subscription | one_time" }`
+**Response:** `{ "data": { "checkout_url": "https://...", "checkout_id": "string" } }`
+**Errors:** `VALIDATION_ERROR`, `NOT_FOUND` (course), `FORBIDDEN` (unpublished), `CONFLICT` (already owned / one-on-one lock / capacity full), `SERVICE_UNAVAILABLE`
+
+---
+
+#### `POST /api/v1/payments/polar/webhook`
+Polar webhook endpoint. Standard-Webhooks signature validated over the raw body.
+
+**Auth:** none (signature verified via `validateEvent`; public path)
+**Handles:** `order.paid` (grant/renew), `subscription.active|created` when trialing (trial grant), `subscription.updated` (reflect portal cancel/reactivate), `subscription.canceled` (keep access to period end), `subscription.revoked` (revoke), `order.refunded` (full → revoke access + write `payment_ledger/polar_refund_{id}`). Idempotent via `processed_payments/polar_order_{id}`.
+**Returns:** 200 processed/duplicate, 403 bad signature, 500 transient (Polar retries).
+
+---
+
+#### `POST /api/v1/payments/polar/subscriptions/{subscriptionId}/cancel`
+Cancel-at-period-end a Polar subscription (kept for programmatic/admin use; the PWA UI now hands off to the customer portal instead). Access retained until `expires_at`.
+
+**Auth:** Firebase ID token, must own subscription
+**Request (optional):** `{ "survey": { ... } }`
+**Response:** `{ "data": { "status": "cancelled" } }`
+**Errors:** `NOT_FOUND`, `SERVICE_UNAVAILABLE`
+
+---
+
+#### `POST /api/v1/payments/polar/subscriptions/{subscriptionId}/portal`
+Mint a fresh Polar customer-portal URL (cancel, resume/un-cancel, update card, invoices). URLs expire, so it's minted on demand.
+
+**Auth:** Firebase ID token, must own subscription
+**Response:** `{ "data": { "portal_url": "https://..." } }`
+**Errors:** `NOT_FOUND`, `SERVICE_UNAVAILABLE` (no `customer_id` on the sub)
+
+---
+
 #### `GET /api/v1/users/me/subscriptions`
 List the authenticated user's subscriptions.
 

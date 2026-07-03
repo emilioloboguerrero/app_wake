@@ -115,10 +115,13 @@ functions/src/
       creator.ts              ← /creator/programs, /creator/clients, etc.
       apiKeys.ts              ← /api-keys CRUD
       events.ts               ← /events (public)
-      payments.ts             ← /payments (wraps existing logic)
+      payments.ts             ← /payments (MercadoPago — Colombia)
+      polar.ts                ← /payments/polar (Polar MoR — international cards)
       analytics.ts            ← /analytics/weekly-volume, etc.
       appResources.ts         ← /app-resources (public)
 ```
+
+**Payments:** MercadoPago (Colombia, `payments.ts`) + Polar (merchant-of-record for international cards, `polar.ts`) coexist; the client routes by `users/{uid}.country` (CO → MP, else → Polar) with a manual override toggle. Polar international USD pricing is on by default (derived from the COP price). See `docs/POLAR_INTEGRATION_STATUS.md`.
 
 ### Gen1 Functions (existing)
 
