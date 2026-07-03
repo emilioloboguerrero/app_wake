@@ -32,6 +32,7 @@ const statusLabels = {
   pending: 'Pendiente',
   authorized: 'Activa',
   active: 'Activa',
+  trialing: 'Prueba',
   paused: 'Pausada',
   cancelled: 'Cancelada',
 };
@@ -40,6 +41,7 @@ const statusColors = {
   pending: '#f1c40f',
   authorized: '#2ecc71',
   active: '#2ecc71',
+  trialing: '#3498db',
   paused: '#e67e22',
   cancelled: '#e74c3c',
 };
@@ -103,12 +105,15 @@ const SubscriptionsScreen = ({ navigation }) => {
     return set;
   }, [purchasedCourses]);
 
-  const subscriptions = rawSubscriptions
-    .filter((sub) => !sub.type || sub.type === 'mercadopago')
-    .map((sub) => ({ ...sub, type: 'mercadopago' }));
+  // Show both MercadoPago and Polar subscriptions, tagged by provider so the
+  // manage action routes to the right flow (MP survey/portal vs Polar portal).
+  const subscriptions = rawSubscriptions.map((sub) => ({
+    ...sub,
+    provider: sub.provider === 'polar' ? 'polar' : 'mercadopago',
+  }));
 
   const filteredSubscriptions = useMemo(() => {
-    const allowedStatuses = new Set(['active', 'authorized', 'cancelled', 'expired']);
+    const allowedStatuses = new Set(['active', 'authorized', 'trialing', 'cancelled', 'expired']);
 
     // Only MercadoPago subscriptions
     const allSubscriptions = [...subscriptions];
@@ -192,6 +197,26 @@ const SubscriptionsScreen = ({ navigation }) => {
       );
     }
 
+    // Polar subscriptions — open the Polar customer portal (cancel / update
+    // card / view invoices). Access is retained until the period end.
+    if (subscription.provider === 'polar') {
+      const busy = actionState[subscription.id]?.loading;
+      return (
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => openPolarPortal(subscription)}
+            activeOpacity={0.7}
+            disabled={busy}
+          >
+            <Text style={styles.actionButtonText}>
+              {busy ? 'Abriendo…' : 'Gestionar'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     // MercadoPago subscriptions - show manage button
     const handleManageSubscription = () => {
       analyticsService.track('subscription.cancel_intent', {
@@ -240,6 +265,29 @@ const SubscriptionsScreen = ({ navigation }) => {
       logger.error('Error performing subscription action:', error);
       Alert.alert('Error', error.message || 'No se pudo procesar la acción');
       setActionState(prev => ({ ...prev, [subscriptionId]: { loading: false, error: error.message } }));
+    }
+  };
+
+  // Open the Polar customer portal for a Polar subscription. Mints a fresh
+  // portal URL server-side from the stored customer_id (they expire), then
+  // hands off — the buyer cancels / updates their card / views invoices there.
+  const openPolarPortal = async (subscription) => {
+    if (!subscription?.id) return;
+    try {
+      setActionState((prev) => ({ ...prev, [subscription.id]: { loading: true } }));
+      analyticsService.track('subscription.manage_portal_opened', {
+        course_id: subscription.course_id ?? subscription.courseId ?? null,
+        provider: 'polar',
+      });
+      const res = await apiClient.post(`/payments/polar/subscriptions/${subscription.id}/portal`);
+      const url = res?.data?.portal_url;
+      if (!url) throw new Error('No se pudo abrir el portal de gestión');
+      setActionState((prev) => ({ ...prev, [subscription.id]: { loading: false } }));
+      await Linking.openURL(url);
+    } catch (error) {
+      logger.error('openPolarPortal failed', error);
+      Alert.alert('Error', error.message || 'No se pudo abrir el portal de gestión');
+      setActionState((prev) => ({ ...prev, [subscription.id]: { loading: false } }));
     }
   };
 
@@ -680,12 +728,14 @@ const SubscriptionsScreen = ({ navigation }) => {
                   </Text>
                 </View>
 
-                <View style={styles.infoRow}>
-                  <Text style={styles.infoLabel}>Email de pago:</Text>
-                  <Text style={styles.infoValue}>
-                    {subscription.payer_email || 'No disponible'}
-                  </Text>
-                </View>
+                {subscription.payer_email ? (
+                  <View style={styles.infoRow}>
+                    <Text style={styles.infoLabel}>Email de pago:</Text>
+                    <Text style={styles.infoValue}>
+                      {subscription.payer_email}
+                    </Text>
+                  </View>
+                ) : null}
 
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Creada:</Text>
