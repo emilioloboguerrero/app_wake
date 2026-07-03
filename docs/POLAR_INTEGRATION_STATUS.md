@@ -4,7 +4,7 @@ Companion to the design spec: `docs/superpowers/specs/2026-07-01-polar-internati
 
 ## TL;DR
 
-Phase 1 of the Polar (merchant-of-record) integration is **BUILT, MERGED to `main`, and DEPLOYED to production** (`wolf-20b8b`), running in **SANDBOX mode** (`POLAR_SERVER=sandbox` + sandbox secrets) so it can be tested on prod infrastructure with test cards and **no real money**. MercadoPago (Colombia) is untouched and fully working. Everything up to the final card payment is validated live. **Remaining: wire the public storefront buy page, finish the E2E card test, then the go-live flip to real money.**
+Phase 1 of the Polar (merchant-of-record) integration is **BUILT, MERGED to `main`, and DEPLOYED to production** (`wolf-20b8b`), running in **SANDBOX mode** (`POLAR_SERVER=sandbox` + sandbox secrets) so it can be tested on prod infrastructure with test cards and **no real money**. MercadoPago (Colombia) is untouched and fully working. Everything up to the final card payment is validated live. **Public storefront buy page wired for Polar + deployed 2026-07-02. Remaining: finish the E2E card test, then the go-live flip to real money.**
 
 ---
 
@@ -74,7 +74,7 @@ Key commits: `3d0aa0d` (core checkout/webhook/cancel/portal + PWA), `1d943c5` (a
 
 ## Known gaps / follow-ups
 
-1. **Public buy page NOT wired for Polar** — `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` (the shareable storefront buy page) has zero Polar handling. The international routing/USD/toggle exist ONLY in the in-app PWA `CourseDetailScreen`. **This is the next task** and is required for a real international launch.
+1. ~~**Public buy page NOT wired for Polar**~~ — **DONE (deployed 2026-07-02).** `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` now has provider selection (timezone/locale heuristic default + COP↔USD toggle when both methods exist), USD price display from `program.polar`, and calls `POST /payments/polar/checkout`. Backend: `shapePublicProgramDetail` exposes `program.polar` (display prices + availability booleans, never product IDs); the Polar checkout endpoint gained an already-owned 409 guard (parity with MP). Landing service: `startPolarCheckout` in `storefrontCheckoutService.js`. See "Public buy page — DONE" below.
 2. **Product cleanup on price change** — `provisionPolarProduct` orphans the old product; should archive it (`PATCH /v1/products/{id}` `{is_archived:true}`) after repointing.
 3. **Trial CTA on the Polar path** — Polar branch shows a single "Comprar - $X/mes" button, no "Empezar prueba de N días". Cosmetic.
 4. **Portal button not wired in UI** — the `/subscriptions/:id/portal` endpoint exists but no button calls it.
@@ -93,12 +93,18 @@ To test a purchase you need a **non-CO, non-owner** account (or the toggle). The
 
 ---
 
-## Next task (new chat): wire the public buy page for Polar
+## Public buy page — DONE (deployed 2026-07-02)
 
-**File:** `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` (+ its `.css`).
+Wired `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` (+ `.css`) for Polar.
 
-**Crux to investigate first:** the `/payments/polar/checkout` endpoint requires `validateAuth` (a Firebase ID token). The public storefront buyer may not be logged in. **Determine how the existing public MercadoPago buy flow authenticates** (it appears to use a magic-link / `/comprado` polling flow) and mirror it for Polar — or add a public Polar checkout path. Do NOT assume; read the current public buy flow end to end before designing.
+**Auth crux — resolved:** the public storefront is NOT anonymous. The buyer signs up / logs in via `AuthModal` (Google or email/password → real Firebase account) BEFORE checkout, so `startStorefrontCheckout` already sends a Firebase ID token + App Check. Both the MP `/public/checkout/start` and `/payments/polar/checkout` sit behind the SAME `validateAuth` + `enforceAppCheck` gate (the `/public/` prefix is just naming, not an auth bypass). So the landing calls the existing Polar checkout endpoint with the exact auth it already uses for MP — no anonymous/magic-link checkout path. The magic-link on `/comprado` is post-payment account recovery, not checkout auth. `/comprado` polling (`getCheckoutStatus`) is provider-agnostic and unchanged; the Polar checkout already builds the `/{username}/comprado` success URL.
 
-**Then add:** USD price display from `program.polar.price_usd_monthly` / `price_usd_onetime`, provider selection (by buyer country if known, else a clear method choice/toggle), a call to the Polar checkout, and open the returned `checkout_url`. Keep MercadoPago as the Colombian path.
+**Shipped:**
+- Backend `public.ts`: `shapePublicProgramDetail` exposes `program.polar = { priceUsdMonthly, priceUsdOnetime, hasSubscription, hasOnetime }` — display prices + availability booleans only, never product IDs.
+- Backend `polar.ts`: already-owned 409 guard on `/payments/polar/checkout` (parity with MP's `alreadyPurchased`), to stop a returning buyer double-charging.
+- Landing `storefrontCheckoutService.js`: `startPolarCheckout({ courseId, paymentType })` — same transport as the MP storefront checkout.
+- Landing screen: provider selection via a timezone/locale heuristic default (`America/Bogota` or `es-CO` → COP; else → USD), clamped to available methods, with a COP↔USD toggle shown only when both exist; USD price display; Polar CTAs that skip the MP email step and redirect to `checkout_url`.
 
-**Verify:** `qa-fast` on `functions/` if touched; babel-parse the landing JSX; build `build:landing`; then a full-stack deploy (`build:all` + `firebase deploy --only hosting`) — remember to keep `POLAR_SERVER=sandbox` for continued testing.
+**Verified live:** `GET /public/creators/bejaranofit/programs/ezJWUr3wJvaeptIM5f86` returns `polar:{priceUsdMonthly:21,hasSubscription:true}` alongside `subscriptionPrice:79000` (so Código ABS shows the toggle); `/payments/polar/checkout` 401s without auth; health 200.
+
+**Remaining:** human E2E card test (a person completes the Polar checkout with `4242 4242 4242 4242` — the Stripe Payment Element needs a real browser) and confirms the webhook granted access in Firestore. Note: the heuristic keys off the BROWSER timezone/locale, not the account country — a Bogotá browser defaults to COP even for a non-CO account, so click "Pagar con tarjeta internacional (USD)" (or test from a non-Bogotá browser) to exercise the Polar path.

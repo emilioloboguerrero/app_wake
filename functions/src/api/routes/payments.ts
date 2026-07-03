@@ -16,6 +16,7 @@ import {
   calculateExpirationDate, classifyError, getClient,
 } from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
+import {writeLedgerEntryBestEffort, sumMercadoPagoFee} from "../services/paymentLedger.js";
 import {assertCourseHasSeat} from "../services/capacity.js";
 import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
@@ -1368,6 +1369,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
     date_created?: string;
     transaction_amount?: number;
     currency_id?: string;
+    fee_details?: unknown;
     payer?: { email?: string };
     preapproval?: { id?: string; external_reference?: string };
     payment?: { status?: string };
@@ -1437,6 +1439,20 @@ router.post("/payments/webhook", async (req: Request, res) => {
           [`courses.${prevData.courseId}.status`]: "cancelled",
           [`courses.${prevData.courseId}.cancelled_at`]: new Date().toISOString(),
           updated_at: FieldValue.serverTimestamp(),
+        });
+      }
+      if (prevData?.courseId && prevData?.userId && !prevData?.bundleId) {
+        await writeLedgerEntryBestEffort({
+          id: `mp_refund_${paymentId}`,
+          provider: "mercadopago",
+          type: "refund",
+          status: "refunded",
+          courseId: prevData.courseId as string,
+          userId: prevData.userId as string,
+          externalPaymentId: paymentId,
+          grossAmount: paymentData.transaction_amount ?? 0,
+          currency: paymentData.currency_id ?? "COP",
+          chargedAt: new Date().toISOString(),
         });
       }
     } catch (refundErr) {
@@ -1904,6 +1920,27 @@ router.post("/payments/webhook", async (req: Request, res) => {
       });
     } catch {/* best-effort */}
 
+    if (!isBundle) {
+      await writeLedgerEntryBestEffort({
+        id: `mp_${paymentId}`,
+        provider: "mercadopago",
+        type: "renewal",
+        status: "paid",
+        courseId,
+        userId,
+        userEmail: paymentData.payer?.email ?? null,
+        subscriptionId: subscriptionId ?? null,
+        externalPaymentId: paymentId,
+        grossAmount: refreshedAmount ?? paymentData.transaction_amount ?? 0,
+        currency: refreshedCurrency ?? paymentData.currency_id ?? "COP",
+        providerFeeActual: sumMercadoPagoFee(paymentData.fee_details),
+        chargedAt: paymentData.date_approved ?? paymentData.date_created ?? new Date().toISOString(),
+        creatorId: (courseDetails.creator_id as string) ?? null,
+        creatorName: (courseDetails.creatorName as string) ?? (courseDetails.creator_name as string) ?? null,
+        courseTitle,
+      });
+    }
+
     res.status(200).send("OK");
     return;
   }
@@ -2010,6 +2047,27 @@ router.post("/payments/webhook", async (req: Request, res) => {
     });
   } catch {
     // ignore — analytics is best-effort
+  }
+
+  if (!isBundle) {
+    await writeLedgerEntryBestEffort({
+      id: `mp_${paymentId}`,
+      provider: "mercadopago",
+      type: isSubscription ? "initial" : "one_time",
+      status: "paid",
+      courseId,
+      userId,
+      userEmail: paymentData.payer?.email ?? null,
+      subscriptionId: isSubscription ? (subscriptionId ?? null) : null,
+      externalPaymentId: paymentId,
+      grossAmount: paymentData.transaction_amount ?? 0,
+      currency: paymentData.currency_id ?? "COP",
+      providerFeeActual: sumMercadoPagoFee(paymentData.fee_details),
+      chargedAt: paymentData.date_approved ?? paymentData.date_created ?? new Date().toISOString(),
+      creatorId: (courseDetails.creator_id as string) ?? null,
+      creatorName: (courseDetails.creatorName as string) ?? (courseDetails.creator_name as string) ?? null,
+      courseTitle,
+    });
   }
 
   res.status(200).send("OK");

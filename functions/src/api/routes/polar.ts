@@ -15,6 +15,7 @@ import {checkRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 import {EMAIL_RE, COURSE_ID_RE, calculateExpirationDate} from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
+import {buildLedgerEntry, writeLedgerEntryBestEffort} from "../services/paymentLedger.js";
 import {assertCourseHasSeat} from "../services/capacity.js";
 import {getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {getPolarClient} from "../services/polarClient.js";
@@ -316,6 +317,10 @@ async function handleOrderPaid(order: Record<string, unknown>): Promise<void> {
   const amountMajor = polarCentsToMajor(order.totalAmount);
   const currency = typeof order.currency === "string" ? order.currency.toUpperCase() : "USD";
   const customerId = typeof order.customerId === "string" ? order.customerId : null;
+  // Ledger money facts: gross is pre-tax (what Wake earns on); tax is remitted by
+  // Polar (MoR). Fall back to totalAmount when the pre-tax amount field is absent.
+  const grossMajor = polarCentsToMajor(order.amount ?? order.totalAmount);
+  const taxMajor = order.taxAmount != null ? polarCentsToMajor(order.taxAmount) : null;
 
   let alreadyProcessed = false;
   await db.runTransaction(async (tx) => {
@@ -365,6 +370,29 @@ async function handleOrderPaid(order: Record<string, unknown>): Promise<void> {
       isRenewal,
       state: "completed",
     }, {merge: true});
+
+    tx.set(
+      db.collection("payment_ledger").doc(`polar_order_${orderId}`),
+      buildLedgerEntry({
+        id: `polar_order_${orderId}`,
+        provider: "polar",
+        type: isSubscription ? (isRenewal ? "renewal" : "initial") : "one_time",
+        status: "paid",
+        courseId: meta.courseId,
+        userId: meta.userId,
+        userEmail: recipientEmail(userData),
+        subscriptionId: subscriptionId ?? null,
+        externalPaymentId: orderId,
+        grossAmount: grossMajor,
+        currency,
+        taxAmount: taxMajor,
+        chargedAt: new Date().toISOString(),
+        creatorId: (course.creator_id as string) ?? null,
+        creatorName: (course.creatorName as string) ?? (course.creator_name as string) ?? null,
+        courseTitle: (course.title as string) ?? null,
+      }),
+      {merge: true}
+    );
   });
 
   if (alreadyProcessed) return;
@@ -547,6 +575,20 @@ async function handleOrderRefunded(order: Record<string, unknown>): Promise<void
     return;
   }
   await revokeCourseAccess(meta.userId, meta.courseId);
+
+  const refundOrderId = typeof order.id === "string" ? order.id : `${meta.userId}_${meta.courseId}`;
+  await writeLedgerEntryBestEffort({
+    id: `polar_refund_${refundOrderId}`,
+    provider: "polar",
+    type: "refund",
+    status: "refunded",
+    courseId: meta.courseId,
+    userId: meta.userId,
+    externalPaymentId: refundOrderId,
+    grossAmount: polarCentsToMajor(order.refundedAmount ?? order.totalAmount),
+    currency: typeof order.currency === "string" ? order.currency.toUpperCase() : "USD",
+    chargedAt: new Date().toISOString(),
+  });
 }
 
 async function revokeCourseAccess(userId: string, courseId: string): Promise<void> {
