@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { LandingFooter } from './ShowcaseLandingScreen';
 import { WakeApiError } from '../utils/apiClient';
 import { getCreatorStorefront } from '../services/creatorStorefrontService';
+import WhatsAppFab from '../components/WhatsAppFab';
 import wakeIcon from '../assets/hero-logo.svg';
 import './CreatorStorefrontScreen.css';
 
@@ -276,6 +277,7 @@ export default function CreatorStorefrontScreen() {
         );
       })()}
 
+      <WhatsAppFab prefill={`Hola, tengo una pregunta sobre los programas de ${creator.displayName}.`} />
       <LandingFooter />
     </div>
   );

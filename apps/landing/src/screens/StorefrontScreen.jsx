@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LandingFooter } from './ShowcaseLandingScreen';
 import { getStorefrontCreators } from '../services/creatorStorefrontService';
+import WhatsAppFab from '../components/WhatsAppFab';
 import wakeIcon from '../assets/hero-logo.svg';
 import './StorefrontScreen.css';
 
@@ -108,6 +109,7 @@ export default function StorefrontScreen() {
         </section>
       ) : null}
 
+      <WhatsAppFab />
       <LandingFooter />
     </div>
   );
