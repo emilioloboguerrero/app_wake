@@ -3482,7 +3482,9 @@ export const wakePosthogAlertsWebhook = onRequest(
       posthogAlertsSecret,
       resendApiKeyV2,
     ],
-    memory: "256MiB",
+    // 256MiB OOMed on cold start (267MiB observed 2026-07-04) — the shared
+    // index.ts module graph plus Resend pushes past the floor.
+    memory: "512MiB",
     timeoutSeconds: 30,
     cors: false,
   },
