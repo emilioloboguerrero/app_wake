@@ -482,6 +482,7 @@ export default function OnboardingEducation({ onComplete }) {
           await profilePictureService.uploadProfilePicture(uid, profile.photoPreview);
         } catch (err) {
           logger.error('[ONBOARDING_EDU] Photo upload error:', err);
+          wakeAlert('No se pudo subir tu foto', 'Tu perfil se guardó, pero la foto no. Puedes agregarla luego desde tu perfil.');
         }
       }
 

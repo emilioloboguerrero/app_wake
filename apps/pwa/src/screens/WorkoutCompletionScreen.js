@@ -26,6 +26,7 @@ import tutorialManager from '../services/tutorialManager';
 import TutorialOverlay from '../components/TutorialOverlay';
 import completionPhrases from '../../assets/data/completionPhrases.json';
 import logger from '../utils/logger.js';
+import { wakeAlert } from '../utils/wakeAlert';
 import SvgChampion from '../components/icons/SvgChampion';
 import WeeklyMuscleVolumeCard from '../components/WeeklyMuscleVolumeCard';
 import MuscleSilhouette from '../components/MuscleSilhouette';
@@ -598,6 +599,7 @@ const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn })
       setTimeout(() => setNotesSaved(false), 2500);
     } catch (error) {
       logger.error('Error saving session notes:', error);
+      wakeAlert('No se pudo guardar la nota', 'Revisa tu conexión e inténtalo de nuevo.');
     } finally {
       setNotesSaving(false);
     }

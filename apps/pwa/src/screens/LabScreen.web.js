@@ -431,6 +431,7 @@ function BodyEntryModal({ visible, onClose, entry, userId, unit, onUnitChange, o
       setPhotos((prev) => [...prev, photo]);
     } catch (err) {
       logger.error('[BodyEntryModal] photo upload error', err?.message);
+      wakeAlert('No se pudo subir la foto', 'Revisa tu conexión e inténtalo de nuevo.');
     } finally {
       setUploadingAngle(null);
       setUploadProgress(0);
@@ -458,6 +459,7 @@ function BodyEntryModal({ visible, onClose, entry, userId, unit, onUnitChange, o
       onClose();
     } catch (err) {
       logger.error('[BodyEntryModal] save error', err?.message);
+      wakeAlert('No se pudo guardar', 'Revisa tu conexión e inténtalo de nuevo.');
       setSaving(false);
     }
   };
@@ -763,6 +765,7 @@ function GoalWeightModal({ visible, onClose, currentGoal, unit, userId, onSaved 
       onClose();
     } catch (err) {
       logger.error('[GoalWeightModal] save error', err?.message);
+      wakeAlert('No se pudo guardar tu meta', 'Revisa tu conexión e inténtalo de nuevo.');
       setSaving(false);
     }
   };
@@ -1659,6 +1662,7 @@ const LabScreen = () => {
               handleEntrySaved();
             } catch (err) {
               logger.error('[Lab] handleDeletePhoto error', err?.message);
+              wakeAlert('No se pudo eliminar la foto', 'Intenta de nuevo.');
             }
           },
         },

@@ -986,23 +986,15 @@ const ProfileScreen = ({ navigation, onOpenReadinessModal }) => {
                   )}
                 </View>
 
-                {/* Email */}
+                {/* Email — read-only: managed by the account, not editable here */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Email</Text>
                   <TextInput
-                    style={[
-                      styles.textInput,
-                      !valuesAreEqual(userProfile.email, originalProfile.email) && styles.textInputChanged
-                    ]}
+                    style={[styles.textInput, { opacity: 0.6 }]}
                     value={userProfile.email}
-                    onChangeText={(value) => updateProfileField('email', value)}
+                    editable={false}
                     placeholder="Ingresa tu email"
                     placeholderTextColor="#999999"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    returnKeyType="done"
-                    onSubmitEditing={Keyboard.dismiss}
-                    blurOnSubmit={true}
                   />
                 </View>
 
