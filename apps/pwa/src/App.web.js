@@ -16,7 +16,6 @@ import {
   installFlushOnHide,
   setUserIdProvider,
 } from './utils/errorReporter';
-import { auth } from './config/firebase';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
@@ -42,7 +41,15 @@ analyticsService.init();
 
 // Error reports carry the signed-in user so ops can tell WHO hit an error;
 // flush-on-hide keeps queued errors from being lost when the tab closes.
-setUserIdProvider(() => auth.currentUser?.uid ?? null);
+// Reads the lazily-loaded module-scope `auth` (declared below) at flush time
+// so this file keeps firebase out of the initial login-route bundle.
+setUserIdProvider(() => {
+  try {
+    return auth?.currentUser?.uid ?? null;
+  } catch {
+    return null;
+  }
+});
 installFlushOnHide();
 
 // expo-video's web player calls HTMLVideoElement.play() without handling the
