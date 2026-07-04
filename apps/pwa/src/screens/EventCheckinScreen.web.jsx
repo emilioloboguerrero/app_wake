@@ -31,7 +31,7 @@ export default function EventCheckinScreen() {
   // getEvent omits creator_id, so the ownership check below always failed and
   // every creator saw "Acceso no autorizado". A non-owner gets a 403 → isError
   // → denied, which is exactly the gate we want.
-  const { data: eventData, isLoading: eventLoading, isError: eventError } = useQuery({
+  const { data: eventData, isLoading: eventLoading, isError: eventError, error: eventErr, refetch: refetchEvent } = useQuery({
     queryKey: ['creator', 'events', eventId],
     queryFn: () => eventService.getCreatorEvent(eventId),
     enabled: !!user && !!eventId,
@@ -40,11 +40,19 @@ export default function EventCheckinScreen() {
   });
 
   const event = eventData ?? null;
+  // Only a real authorization failure (403/404) is "denied". A transient
+  // network/5xx blip must show an error+retry, not "Acceso no autorizado" —
+  // otherwise a flaky connection reads as a permissions problem.
+  const isAuthDenial =
+    eventErr && (eventErr.status === 403 || eventErr.status === 404 ||
+      eventErr.code === 'FORBIDDEN' || eventErr.code === 'NOT_FOUND');
   const accessStatus = eventLoading
     ? 'loading'
-    : (!event || event.creator_id !== user?.uid || eventError)
-      ? 'denied'
-      : 'ready';
+    : (eventError && !isAuthDenial)
+      ? 'error'
+      : (!event || event.creator_id !== user?.uid || eventError)
+        ? 'denied'
+        : 'ready';
 
   useEffect(() => {
     if (!event?.image_url) return;
@@ -263,6 +271,25 @@ export default function EventCheckinScreen() {
         <FixedWakeHeader showBackButton onBackPress={() => navigate('/creator/events')} />
         <div style={s.loaderWrap}>
           <WakeLoader />
+        </div>
+      </div>
+    );
+  }
+
+  if (accessStatus === 'error') {
+    return (
+      <div style={s.screen}>
+        <FixedWakeHeader showBackButton onBackPress={() => navigate('/creator/events')} />
+        <WakeHeaderSpacer />
+        <div style={{ ...s.loaderWrap, flexDirection: 'column', gap: 16 }}>
+          <p style={s.loadingText}>No pudimos cargar el evento.</p>
+          <button
+            type="button"
+            onClick={() => refetchEvent()}
+            style={{ padding: '12px 28px', borderRadius: 12, border: 'none', background: '#fff', color: '#111', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     );

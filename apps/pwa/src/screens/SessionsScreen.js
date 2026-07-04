@@ -45,6 +45,8 @@ const SessionsScreen = ({ navigation }) => {
     isFetching,
     isFetchingNextPage,
     isLoading: loading,
+    isError,
+    refetch,
   } = useInfiniteQuery({
     queryKey: ['sessions', userId],
     queryFn: ({ pageParam = null }) =>
@@ -278,6 +280,20 @@ const SessionsScreen = ({ navigation }) => {
           loading ? (
             <View style={styles.loadingContainer}>
               <WakeLoader />
+            </View>
+          ) : isError ? (
+            // A failed load must NOT read as "you have no sessions" — that makes
+            // a user with history think they lost it. Distinct error + retry.
+            <View style={styles.emptyContainer}>
+              <SvgTimer width={48} height={48} color="rgba(255,255,255,0.4)" />
+              <Text style={styles.emptyTitle}>No pudimos cargar tus sesiones</Text>
+              <TouchableOpacity
+                style={styles.emptyCta}
+                onPress={() => refetch()}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.emptyCtaText}>Reintentar</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.emptyContainer}>

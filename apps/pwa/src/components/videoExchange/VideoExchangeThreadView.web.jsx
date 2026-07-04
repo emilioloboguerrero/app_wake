@@ -12,7 +12,7 @@ import AuthedVideo from './AuthedVideo.web';
 export default function VideoExchangeThreadView({ exchangeId, userId, onBack }) {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: queryKeys.videoExchanges.detail(exchangeId),
     queryFn: () => videoExchangeService.getThread(exchangeId),
     ...cacheConfig.videoExchanges,
@@ -39,7 +39,7 @@ export default function VideoExchangeThreadView({ exchangeId, userId, onBack }) 
         <div style={styles.headerText}>
           <span style={styles.headerTitle}>{exchange?.exerciseName || 'Video'}</span>
           <span style={styles.headerSubtitle}>
-            {coachMsg ? 'Respuesta del coach' : 'En espera del coach'}
+            {coachMsg ? 'Respuesta del coach' : isError ? 'No se pudo cargar' : 'En espera del coach'}
           </span>
         </div>
       </div>
@@ -49,6 +49,12 @@ export default function VideoExchangeThreadView({ exchangeId, userId, onBack }) 
 
         {coachMsg ? (
           <CoachReply msg={coachMsg} />
+        ) : isError && !isLoading ? (
+          // A failed load must not masquerade as "en espera del coach".
+          <div style={styles.placeholder}>
+            <div style={{ marginBottom: 12 }}>No pudimos cargar esta conversación.</div>
+            <button style={styles.backBtn} onClick={() => refetch()}>Reintentar</button>
+          </div>
         ) : !isLoading ? (
           <WaitingState />
         ) : null}

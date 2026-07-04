@@ -1229,10 +1229,13 @@ const ClientesScreen = () => {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (isClientsError && activeTab === 'clientes') {
+  // Both tabs are driven by the same overview query; a failure must show the
+  // error+retry on EITHER tab, not fall through to the "empty" state on
+  // asesorías (which read as "you have no programs").
+  if (isClientsError) {
     return (
       <DashboardLayout screenName="Asesorías">
-        <FullScreenError title="No pudimos cargar tus clientes" message="Revisa tu conexion e intenta de nuevo." onRetry={refetchClients} />
+        <FullScreenError title="No pudimos cargar esta sección" message="Revisa tu conexión e intenta de nuevo." onRetry={refetchClients} />
       </DashboardLayout>
     );
   }
