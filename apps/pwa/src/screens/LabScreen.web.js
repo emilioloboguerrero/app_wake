@@ -41,6 +41,7 @@ import {
   formatWeekDisplay,
 } from '../utils/weekCalculation';
 import logger from '../utils/logger';
+import { wakeAlert } from '../utils/wakeAlert';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { STALE_TIMES, GC_TIMES } from '../config/queryConfig';
@@ -1632,21 +1633,37 @@ const LabScreen = () => {
     if (uid) apiClient.patch('/users/me', { weightUnit: u }).catch(() => {});
   };
 
-  const handleDeletePhoto = async (photo) => {
-    setLightboxPhoto(null);
-    try {
-      const uid = user?.uid || auth.currentUser?.uid;
-      if (!uid) return;
-      const entry = bodyLogEntries.find(e => e.photos?.find(p => p.id === photo.id));
-      if (entry) {
-        const newPhotos = (entry.photos || []).filter(p => p.id !== photo.id);
-        await bodyProgressService.saveEntry(uid, entry.date, { photos: newPhotos });
-        await bodyProgressService.cleanupPhoto(photo.storagePath);
-      }
-      handleEntrySaved();
-    } catch (err) {
-      logger.error('[Lab] handleDeletePhoto error', err?.message);
-    }
+  const handleDeletePhoto = (photo) => {
+    // Confirm before a permanent, un-undoable delete (removes the file from
+    // Storage). Previously fired on a single tap → one mis-tap lost a progress
+    // photo forever.
+    wakeAlert(
+      '¿Eliminar esta foto?',
+      'Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            setLightboxPhoto(null);
+            try {
+              const uid = user?.uid || auth.currentUser?.uid;
+              if (!uid) return;
+              const entry = bodyLogEntries.find(e => e.photos?.find(p => p.id === photo.id));
+              if (entry) {
+                const newPhotos = (entry.photos || []).filter(p => p.id !== photo.id);
+                await bodyProgressService.saveEntry(uid, entry.date, { photos: newPhotos });
+                await bodyProgressService.cleanupPhoto(photo.storagePath);
+              }
+              handleEntrySaved();
+            } catch (err) {
+              logger.error('[Lab] handleDeletePhoto error', err?.message);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleSessionPress = (session, completedAtIso) => {

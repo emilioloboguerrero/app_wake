@@ -28,6 +28,7 @@ import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import WakeLoader from '../components/WakeLoader';
 import { wakeAlert } from '../utils/wakeAlert';
+import { SUPPORT_EMAIL } from '../config/support';
 
 const statusLabels = {
   pending: 'Pendiente',
@@ -655,7 +656,7 @@ const SubscriptionsScreen = ({ navigation }) => {
               Para reembolsos, preguntas o PQRS escribe a
               {' '}
               <Text style={styles.infoModalEmail}>
-                emilioloboguerrero@gmail.com
+                {SUPPORT_EMAIL}
               </Text>
             </Text>
             <TouchableOpacity

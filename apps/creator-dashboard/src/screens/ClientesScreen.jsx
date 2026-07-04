@@ -429,13 +429,13 @@ function AsesoriaCard({ program, index, enrollmentHistory, onClick, onDelete }) 
   const gradTopColor = accentRgb ? `rgba(${accentRgb}, 0.35)` : 'rgba(255,255,255,0.3)';
   const gradBotColor = accentRgb ? `rgba(${accentRgb}, 0)` : 'rgba(255,255,255,0)';
 
-  const adherenceData = useMemo(() => {
-    if (program.adherenceHistory?.length) return program.adherenceHistory;
-    const base = Math.max(0, completion - 15);
-    return Array.from({ length: 8 }, (_, i) => ({
-      adherence: Math.round(base + Math.random() * 20 + (i * (completion - base)) / 8),
-    }));
-  }, [program.adherenceHistory, completion]);
+  // Never synthesize adherence data. When there's no real history, show an
+  // honest "Sin datos aún" instead of a fabricated (Math.random) sparkline that
+  // a coach could mistake for real engagement.
+  const adherenceData = useMemo(
+    () => (program.adherenceHistory?.length ? program.adherenceHistory : null),
+    [program.adherenceHistory],
+  );
 
   const menuItems = [
     { label: 'Eliminar', onClick: () => onDelete(program), danger: true },
@@ -492,26 +492,32 @@ function AsesoriaCard({ program, index, enrollmentHistory, onClick, onDelete }) 
           <div className="cl-asesoria-stat cl-asesoria-stat--chart">
             <span className="cl-asesoria-stat__label">{Math.round(completion)}% adherencia</span>
             <div className="cl-asesoria-card__chart">
-              <ResponsiveContainer width="100%" height={48}>
-                <AreaChart data={adherenceData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id={`adh-grad-${index}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={gradTopColor} />
-                      <stop offset="100%" stopColor={gradBotColor} />
-                    </linearGradient>
-                  </defs>
-                  <YAxis hide domain={[dataMin => Math.max(0, dataMin - 5), dataMax => Math.min(100, dataMax + Math.max(10, Math.ceil(dataMax * 0.3)))]} />
-                  <Area
-                    type="monotone"
-                    dataKey="adherence"
-                    stroke={strokeColor}
-                    strokeWidth={1.5}
-                    fill={`url(#adh-grad-${index})`}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {adherenceData ? (
+                <ResponsiveContainer width="100%" height={48}>
+                  <AreaChart data={adherenceData} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id={`adh-grad-${index}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={gradTopColor} />
+                        <stop offset="100%" stopColor={gradBotColor} />
+                      </linearGradient>
+                    </defs>
+                    <YAxis hide domain={[dataMin => Math.max(0, dataMin - 5), dataMax => Math.min(100, dataMax + Math.max(10, Math.ceil(dataMax * 0.3)))]} />
+                    <Area
+                      type="monotone"
+                      dataKey="adherence"
+                      stroke={strokeColor}
+                      strokeWidth={1.5}
+                      fill={`url(#adh-grad-${index})`}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div style={{ height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: 'rgba(255,255,255,0.35)' }}>
+                  Sin datos aún
+                </div>
+              )}
             </div>
           </div>
 

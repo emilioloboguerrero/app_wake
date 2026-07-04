@@ -11,6 +11,7 @@ import { InlineError, FullScreenError } from '../components/ui/ErrorStates';
 import { queryKeys, cacheConfig } from '../config/queryClient';
 import authService from '../services/authService';
 import apiClient from '../utils/apiClient';
+import { SUPPORT_EMAIL } from '../config/support';
 import useAutoSave from '../hooks/useAutoSave';
 import { useToast } from '../contexts/ToastContext';
 import { GetCountries, GetState, GetCity } from 'react-country-state-city';
@@ -594,7 +595,7 @@ const ProfileScreen = () => {
                   onClick={() => {
                     const subject = encodeURIComponent('Solicitud de eliminación de cuenta');
                     const body = encodeURIComponent(`Hola,\n\nQuiero solicitar la eliminación de mi cuenta de Wake.\n\nCorreo: ${user?.email || ''}\nID: ${user?.uid || ''}\n\nEntiendo que esta acción es permanente e irreversible.`);
-                    window.open(`mailto:emilioloboguerrero@gmail.com?subject=${subject}&body=${body}`, '_blank');
+                    window.open(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`, '_blank');
                   }}
                 >
                   Solicitar eliminación de cuenta

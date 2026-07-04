@@ -10,7 +10,8 @@ import {
   Platform,
 } from 'react-native';
 import WakeLoader from '../components/WakeLoader';
-import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent } from '../components/WakeHeader';
+import { FixedWakeHeader, WakeHeaderSpacer, WakeHeaderContent, getGapAfterHeader } from '../components/WakeHeader';
+import logger from '../utils/logger';
 import BottomSpacer from '../components/BottomSpacer';
 import SvgInfo from '../components/icons/SvgInfo';
 import { useAuth } from '../contexts/AuthContext';
@@ -161,8 +162,13 @@ const SessionDetailScreen = ({ navigation, route }) => {
           showBackButton={true}
           onBackPress={handleBackPress}
         />
-        <View style={[styles.loadingContainer, { marginTop: headerTotalHeight + getGapAfterHeader() }]}>
-          <WakeLoader />
+        <View style={[styles.loadingContainer, { marginTop: getGapAfterHeader(), alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }]}>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.9)', textAlign: 'center', marginBottom: 6 }}>
+            No pudimos abrir esta sesión
+          </Text>
+          <Text style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', textAlign: 'center' }}>
+            Vuelve a tu historial y ábrela de nuevo.
+          </Text>
         </View>
       </SafeAreaView>
     );
