@@ -237,6 +237,7 @@ export default function PlanEditorScreen() {
   const [deletingCategoryIndex, setDeletingCategoryIndex] = useState(null);
   const [deleteOptionModal, setDeleteOptionModal] = useState({ open: false, categoryIndex: -1, optionIndex: -1, optionLabel: '', itemCount: 0 });
   const [selectedOptionByCategory, setSelectedOptionByCategory] = useState({}); // { [catIdx]: optIdx }
+  const [addMenu, setAddMenu] = useState(null); // { payload } while picking a meal for a tap-added food
   const selectedOption = (catIdx) => selectedOptionByCategory[catIdx] ?? 0;
   const setSelectedOption = (catIdx, optIdx) => setSelectedOptionByCategory((prev) => ({ ...prev, [catIdx]: optIdx }));
 
@@ -720,6 +721,51 @@ export default function PlanEditorScreen() {
     });
   }
 
+  /** Resolve a drag/tap payload into the right add-action on category ci, option optIdx. */
+  async function addPayloadToOption(data, ci, optIdx) {
+    if (data.custom_food_item) {
+      addItemToOption(ci, optIdx, data.custom_food_item);
+    } else if (data.meal_id != null) {
+      const meal = meals.find((m) => m.id === data.meal_id) || { id: data.meal_id, name: data.meal_name || '' };
+      addRecipeAsNewOption(ci, meal);
+    } else if (data.food_id != null) {
+      const food = foodSearchResults.find((f) => String(f.food_id) === String(data.food_id));
+      if (!food) return;
+      const portionOptions = getServingsWithStandardOptions(food);
+      if (portionOptions.length === 0) return;
+      const s = portionOptions[0];
+      const mult = 1;
+      let foodCategory = null;
+      const subCat = food.food_sub_categories?.food_sub_category;
+      if (subCat != null) {
+        foodCategory = Array.isArray(subCat) ? subCat[0] : subCat;
+      } else {
+        try {
+          const getRes = await nutritionApi.nutritionFoodGet(food.food_id, { include_sub_categories: true });
+          const getSub = getRes?.food?.food_sub_categories?.food_sub_category;
+          foodCategory = Array.isArray(getSub) ? getSub[0] : (getSub ?? food.food_name ?? null);
+        } catch (_) {
+          foodCategory = food.food_name ?? null;
+        }
+      }
+      if (foodCategory == null) foodCategory = food.food_name ?? null;
+      addItemToOption(ci, optIdx, {
+        food_id: food.food_id,
+        serving_id: s.serving_id,
+        number_of_units: mult,
+        name: food.food_name || 'Alimento',
+        food_category: foodCategory,
+        calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
+        protein: s.protein != null ? Math.round(Number(s.protein) * mult * 10) / 10 : null,
+        carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult * 10) / 10 : null,
+        fat: s.fat != null ? Math.round(Number(s.fat) * mult * 10) / 10 : null,
+        serving_unit: s.serving_description ?? s.measurement_description ?? null,
+        grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
+        servings: portionOptions,
+      });
+    }
+  }
+
   /** Add dropped item to category ci, option optIdx. Used by both category block and option pill drop targets. */
   async function applyDropToOption(e, ci, optIdx) {
     e.preventDefault();
@@ -732,48 +778,25 @@ export default function PlanEditorScreen() {
     if (!raw) return;
     try {
       const data = JSON.parse(raw);
-      if (data.custom_food_item) {
-        addItemToOption(ci, optIdx, data.custom_food_item);
-      } else if (data.meal_id != null) {
-        const meal = meals.find((m) => m.id === data.meal_id) || { id: data.meal_id, name: data.meal_name || '' };
-        addRecipeAsNewOption(ci, meal);
-      } else if (data.food_id != null) {
-        const food = foodSearchResults.find((f) => String(f.food_id) === String(data.food_id));
-        if (!food) return;
-        const portionOptions = getServingsWithStandardOptions(food);
-        if (portionOptions.length === 0) return;
-        const s = portionOptions[0];
-        const mult = 1;
-        let foodCategory = null;
-        const subCat = food.food_sub_categories?.food_sub_category;
-        if (subCat != null) {
-          foodCategory = Array.isArray(subCat) ? subCat[0] : subCat;
-        } else {
-          try {
-            const getRes = await nutritionApi.nutritionFoodGet(food.food_id, { include_sub_categories: true });
-            const getSub = getRes?.food?.food_sub_categories?.food_sub_category;
-            foodCategory = Array.isArray(getSub) ? getSub[0] : (getSub ?? food.food_name ?? null);
-          } catch (_) {
-            foodCategory = food.food_name ?? null;
-          }
-        }
-        if (foodCategory == null) foodCategory = food.food_name ?? null;
-        addItemToOption(ci, optIdx, {
-          food_id: food.food_id,
-          serving_id: s.serving_id,
-          number_of_units: mult,
-          name: food.food_name || 'Alimento',
-          food_category: foodCategory,
-          calories: s.calories != null ? Math.round(Number(s.calories) * mult) : null,
-          protein: s.protein != null ? Math.round(Number(s.protein) * mult * 10) / 10 : null,
-          carbs: s.carbohydrate != null ? Math.round(Number(s.carbohydrate) * mult * 10) / 10 : null,
-          fat: s.fat != null ? Math.round(Number(s.fat) * mult * 10) / 10 : null,
-          serving_unit: s.serving_description ?? s.measurement_description ?? null,
-          grams_per_unit: s.metric_serving_amount != null ? Number(s.metric_serving_amount) : null,
-          servings: portionOptions,
-        });
-      }
+      await addPayloadToOption(data, ci, optIdx);
     } catch (_) {}
+  }
+
+  /**
+   * Tap fallback for adding a food/recipe (drag doesn't fire on touch). One
+   * category → add straight to its selected option; several → open a small
+   * picker so the coach chooses which meal it lands in.
+   */
+  function handleTapAddFood(payload) {
+    if (categories.length === 0) {
+      showToast('Agrega una comida primero.', 'error');
+      return;
+    }
+    if (categories.length === 1) {
+      addPayloadToOption(payload, 0, selectedOption(0));
+      return;
+    }
+    setAddMenu({ payload });
   }
 
   function handleDropOnCategory(e, ci) {
@@ -994,6 +1017,9 @@ export default function PlanEditorScreen() {
                               e.dataTransfer.setData('application/json', JSON.stringify({ food_id: f.food_id }));
                               e.dataTransfer.effectAllowed = 'copy';
                             }}
+                            onClick={() => { if (hasServings) handleTapAddFood({ food_id: f.food_id }); }}
+                            style={{ cursor: hasServings ? 'pointer' : 'default' }}
+                            title={hasServings ? 'Agregar' : undefined}
                           >
                             <span className="pe-food-card-name">{f.food_name}</span>
                             {per100 && (
@@ -1016,6 +1042,9 @@ export default function PlanEditorScreen() {
                             e.dataTransfer.setData('application/json', JSON.stringify({ custom_food_item: item }));
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
+                          onClick={() => handleTapAddFood({ custom_food_item: item })}
+                          style={{ cursor: 'pointer' }}
+                          title="Agregar"
                         >
                           <span className="pe-food-card-name">{item.name}</span>
                           <div className="pe-food-card-meta">
@@ -1026,7 +1055,7 @@ export default function PlanEditorScreen() {
                           </div>
                         </div>
                       ))}
-                      {(sortedFoodSearchResults.length > 0 || customFoods.length > 0) && <p className="pe-drag-hint">Arrastra al centro para agregar</p>}
+                      {(sortedFoodSearchResults.length > 0 || customFoods.length > 0) && <p className="pe-drag-hint">Toca o arrastra para agregar</p>}
                     </>
                   )
                 ) : (
@@ -1043,6 +1072,9 @@ export default function PlanEditorScreen() {
                             e.dataTransfer.setData('application/json', JSON.stringify({ meal_id: meal.id, meal_name: meal.name || '' }));
                             e.dataTransfer.effectAllowed = 'copy';
                           }}
+                          onClick={() => handleTapAddFood({ meal_id: meal.id, meal_name: meal.name || '' })}
+                          style={{ cursor: 'pointer' }}
+                          title="Agregar"
                         >
                           <span className="pe-food-card-name">{meal.name || 'Receta'}</span>
                           {Array.isArray(meal.items) && meal.items.length > 0 && (
@@ -1052,7 +1084,7 @@ export default function PlanEditorScreen() {
                           )}
                         </div>
                       ))}
-                      <p className="pe-drag-hint">Arrastra al centro para agregar</p>
+                      <p className="pe-drag-hint">Toca o arrastra para agregar</p>
                     </>
                   )
                 )}
@@ -1424,6 +1456,31 @@ export default function PlanEditorScreen() {
         onPropagate={handleNavigatePropagate}
         onLeaveWithoutPropagate={handleNavigateLeaveWithoutPropagate}
       />
+      {addMenu && (
+        <div
+          onClick={() => setAddMenu(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '320px', background: '#1f1f1f', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '18px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}
+          >
+            <p style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>¿A qué comida lo agrego?</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {categories.map((cat, ci) => (
+                <button
+                  key={cat.id || ci}
+                  type="button"
+                  onClick={() => { addPayloadToOption(addMenu.payload, ci, selectedOption(ci)); setAddMenu(null); }}
+                  style={{ textAlign: 'left', padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: '14px', fontFamily: 'inherit', cursor: 'pointer' }}
+                >
+                  {cat.label || `Comida ${ci + 1}`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <ContextualHint screenKey="plan-editor" />
     </DashboardLayout>
     </>

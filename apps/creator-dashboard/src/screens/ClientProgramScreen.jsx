@@ -362,6 +362,18 @@ const ClientProgramScreen = () => {
     ].filter((d) => d.value > 0);
   }, [nutritionPlanDetail?.daily_protein_g, nutritionPlanDetail?.daily_carbs_g, nutritionPlanDetail?.daily_fat_g]);
 
+  // Opens the assign modal with sensible date defaults. Shared by the drag-drop
+  // path and the tap/keyboard path so assigning works on touch devices too.
+  function openNutritionAssignModal(planId, planName) {
+    setNutritionAssignModalPlan({ id: planId, name: planName || 'Plan' });
+    const today = new Date().toISOString().slice(0, 10);
+    setNutritionModalStartDate(today);
+    setNutritionModalNoEndDate(true);
+    setNutritionModalEndDate('');
+    setNutritionModalCalendarMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+    setNutritionModalEditingEnd(false);
+  }
+
   async function handleAssignNutritionPlan(overrides = null) {
     const planId = overrides?.planId ?? nutritionAssignPlanId;
     const startDate = overrides?.startDate ?? nutritionAssignStartDate;
@@ -1808,7 +1820,7 @@ const ClientProgramScreen = () => {
                             role="button"
                             tabIndex={0}
                             className={`client-program-nutricion-plan-item client-program-nutricion-plan-item-draggable ${isSelected ? 'client-program-nutricion-plan-item-selected' : ''}`}
-                            onClick={() => setNutritionAssignPlanId(p.id)}
+                            onClick={() => openNutritionAssignModal(p.id, p.name || `Plan ${(p.id || '').slice(0, 8)}`)}
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.effectAllowed = 'copy';
@@ -1820,7 +1832,7 @@ const ClientProgramScreen = () => {
                               e.currentTarget.classList.add('client-program-nutricion-plan-item-dragging');
                             }}
                             onDragEnd={(e) => e.currentTarget.classList.remove('client-program-nutricion-plan-item-dragging')}
-                            onKeyDown={(e) => e.key === 'Enter' && setNutritionAssignPlanId(p.id)}
+                            onKeyDown={(e) => e.key === 'Enter' && openNutritionAssignModal(p.id, p.name || `Plan ${(p.id || '').slice(0, 8)}`)}
                           >
                             <span className="client-program-nutricion-plan-item-avatar">{(p.name || 'P').charAt(0)}</span>
                             <span className="client-program-nutricion-plan-item-name">{p.name || `Plan ${(p.id || '').slice(0, 8)}`}</span>
@@ -1854,13 +1866,7 @@ const ClientProgramScreen = () => {
                           data = JSON.parse(e.dataTransfer.getData('application/json'));
                         } catch { return; }
                         if (data?.type !== NUTRITION_DRAG_TYPE || !data?.planId) return;
-                        setNutritionAssignModalPlan({ id: data.planId, name: data.planName || 'Plan' });
-                        const today = new Date().toISOString().slice(0, 10);
-                        setNutritionModalStartDate(today);
-                        setNutritionModalNoEndDate(true);
-                        setNutritionModalEndDate('');
-                        setNutritionModalCalendarMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-                        setNutritionModalEditingEnd(false);
+                        openNutritionAssignModal(data.planId, data.planName || 'Plan');
                       }}
                     >
                       <div className="client-program-nutricion-empty-icon" aria-hidden>
@@ -1869,8 +1875,8 @@ const ClientProgramScreen = () => {
                           <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </div>
-                      <p className="client-program-nutricion-empty-text">Este cliente no tiene un plan asignado. Asignale uno desde Planificacion.</p>
-                      <p className="client-program-nutricion-empty-hint">Arrastra un plan desde el panel izquierdo para asignarlo</p>
+                      <p className="client-program-nutricion-empty-text">Este cliente no tiene un plan asignado.</p>
+                      <p className="client-program-nutricion-empty-hint">Toca un plan del panel para asignarlo.</p>
                     </div>
             ) : (
               <>
