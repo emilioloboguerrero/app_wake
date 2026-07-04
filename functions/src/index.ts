@@ -24,6 +24,7 @@ import {handleClientErrorsIngest} from "./ops/clientErrorsIngest.js";
 import {handleOpsApi} from "./ops/opsApi.js";
 import {handleSignalsWebhook} from "./ops/signalsWebhook.js";
 import {handleGithubWebhook} from "./ops/githubWebhook.js";
+import {handlePosthogAlert} from "./ops/posthogAlerts.js";
 import {parseTopicMap, sendTo} from "./ops/telegram.js";
 import {
   getClient as sharedGetClient,
@@ -3013,6 +3014,7 @@ const telegramChatId = defineSecret("TELEGRAM_CHAT_ID");
 const telegramWebhookSecret = defineSecret("TELEGRAM_WEBHOOK_SECRET");
 const githubWebhookSecret = defineSecret("GITHUB_WEBHOOK_SECRET");
 const opsApiKey = defineSecret("OPS_API_KEY");
+const posthogAlertsSecret = defineSecret("POSTHOG_ALERTS_SECRET");
 
 const GITHUB_OPS_OWNER = "emilioloboguerrero";
 const GITHUB_OPS_REPO = "wake";
@@ -3437,6 +3439,30 @@ export const wakeGithubWebhook = onRequest(
         botUsername: "signals_wake_bot",
         botRole: "signals",
       },
+    });
+  }
+);
+
+// ─── Webhook: PostHog error-tracking alerts → #signals ────────────────────
+export const wakePosthogAlertsWebhook = onRequest(
+  {
+    region: "us-central1",
+    secrets: [
+      telegramSignalsBotToken,
+      telegramChatId,
+      telegramTopics,
+      posthogAlertsSecret,
+    ],
+    memory: "256MiB",
+    timeoutSeconds: 30,
+    cors: false,
+  },
+  async (req, res) => {
+    await handlePosthogAlert(req, res, {
+      webhookSecret: posthogAlertsSecret.value(),
+      botToken: telegramSignalsBotToken.value(),
+      chatId: telegramChatId.value(),
+      topics: readTopics(),
     });
   }
 );

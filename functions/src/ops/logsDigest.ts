@@ -613,16 +613,11 @@ export async function runLogsDigest(opts: {
   functions.logger.info("wake-logs-digest: fetched deploys", {count: deploys.length});
 
   if (entries.length === 0) {
-    const deployLines = summarizeDeploys(deploys);
-    const body = [
-      `[wake-logs-digest] ${todayKey} · prod`,
-      "",
-      "No warnings or errors in the last 24h. All quiet.",
-    ];
-    if (deployLines.length > 0) {
-      body.push("", "Deploys in window:", ...deployLines);
-    }
-    await sendTo(ctx, "signals", body.join("\n"));
+    // Quiet-when-clean: no Telegram post on clean days. Liveness is covered
+    // by wakeHeartbeatCron; this log line keeps the run traceable.
+    functions.logger.info("wake-logs-digest: clean day, skipping post", {
+      deploys: deploys.length,
+    });
     return;
   }
 

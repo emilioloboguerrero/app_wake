@@ -216,11 +216,9 @@ export async function runClientErrors(
   }
 
   if (snap.empty) {
-    await sendTo(
-      ctx,
-      "signals",
-      `[${tag}] ${todayKey} · 24h\n\nNo errors reported. All quiet.`
-    );
+    // Quiet-when-clean: no Telegram post on clean days. Liveness is covered
+    // by wakeHeartbeatCron; this log line keeps the run traceable.
+    functions.logger.info(`${tag}: clean day, skipping post`, {source});
     return;
   }
 
