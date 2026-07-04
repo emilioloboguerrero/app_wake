@@ -3443,7 +3443,7 @@ export const wakeGithubWebhook = onRequest(
   }
 );
 
-// ─── Webhook: PostHog error-tracking alerts → #signals ────────────────────
+// ─── Webhook: PostHog error-tracking alerts → #signals + email ────────────
 export const wakePosthogAlertsWebhook = onRequest(
   {
     region: "us-central1",
@@ -3452,6 +3452,7 @@ export const wakePosthogAlertsWebhook = onRequest(
       telegramChatId,
       telegramTopics,
       posthogAlertsSecret,
+      resendApiKeyV2,
     ],
     memory: "256MiB",
     timeoutSeconds: 30,
@@ -3463,6 +3464,8 @@ export const wakePosthogAlertsWebhook = onRequest(
       botToken: telegramSignalsBotToken.value(),
       chatId: telegramChatId.value(),
       topics: readTopics(),
+      resendApiKey: resendApiKeyV2.value(),
+      alertEmail: "emilioloboguerrero@gmail.com",
     });
   }
 );
