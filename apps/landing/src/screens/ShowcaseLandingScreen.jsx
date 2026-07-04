@@ -4,7 +4,11 @@ import { getMainHeroLandingImages } from '../services/heroImagesService';
 import wakeIcon from '../assets/hero-logo.svg';
 import wakeLogo from '../assets/Logotipo-WAKE-positivo.svg';
 import CascadeText, { SEI_EASE } from '../components/CascadeText';
+import analyticsService from '../services/analyticsService';
 import './ShowcaseLandingScreen.css';
+
+const trackCta = (section, label) =>
+  analyticsService.track('landing.cta_clicked', { section, cta_label: label });
 
 const SLIDE_INTERVAL = 4000;
 // Keep the hero slideshow small — every image is mounted and composited.
@@ -535,7 +539,7 @@ function AthletesGallery() {
 function CtaSection() {
   return (
     <section className="tl-cta">
-      <a href="/app" className="tl-cta-button">Empieza a entrenar</a>
+      <a href="/app" className="tl-cta-button" onClick={() => trackCta('cta', 'Empieza a entrenar')}>Empieza a entrenar</a>
     </section>
   );
 }
@@ -551,8 +555,8 @@ export function LandingFooter() {
           <img src={wakeLogo} alt="Wake" className="tl-footer-logo" />
         </div>
         <div className="tl-footer-links">
-          <a href="/app" className="tl-footer-link">App</a>
-          <a href="/creadores" className="tl-footer-link">Creadores</a>
+          <a href="/app" className="tl-footer-link" onClick={() => trackCta('footer', 'App')}>App</a>
+          <a href="/creadores" className="tl-footer-link" onClick={() => trackCta('footer', 'Creadores')}>Creadores</a>
           <a href="/support" className="tl-footer-link">Soporte</a>
           <a href="/legal" className="tl-footer-link">Legal</a>
         </div>

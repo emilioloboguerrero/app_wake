@@ -4,6 +4,7 @@ import { LandingFooter } from './ShowcaseLandingScreen';
 import MuscleSilhouetteSVG from '../components/MuscleSilhouetteSVG';
 import CascadeText from '../components/CascadeText';
 import { getCreatorHeroClips } from '../services/creatorHeroClipsService';
+import analyticsService from '../services/analyticsService';
 import './CreadoresLandingScreen.css';
 
 const SPRING = [0.22, 1, 0.36, 1];
@@ -1347,6 +1348,7 @@ function Close() {
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true, margin: '-20%' }}
         transition={{ duration: 0.7, ease: SPRING }}
+        onClick={() => analyticsService.track('landing.cta_clicked', { section: 'creadores_close', cta_label: 'Publica tu método' })}
       >
         Publica tu método
       </motion.a>

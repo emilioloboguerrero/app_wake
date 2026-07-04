@@ -432,6 +432,13 @@ export default function CreatorProgramDetailScreen() {
         }
         setData(res);
         setStatus('ready');
+        // Top of the purchase funnel: pairs with subscription.checkout.*
+        // events below to measure view → checkout conversion per program.
+        analyticsService.track('program.viewed', {
+          course_id: res.program?.id || programId,
+          kind: 'course',
+          surface: 'landing',
+        });
         if (storefront?.programs) {
           const all = [
             ...(storefront.programs.general || []),

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import wakeLogotype from '../assets/wake-logotype.svg';
 import { subscribeAuthState, signOutStorefront } from '../services/storefrontAuthService';
+import analyticsService from '../services/analyticsService';
 import './Header.css';
 
 function getInitial(user) {
@@ -118,7 +119,12 @@ export default function Header() {
           {NAV_LINKS.map(({ to, label, reloadDocument }) => (
             <Link key={to} to={to} reloadDocument={reloadDocument} className="wk-pill-link">{label}</Link>
           ))}
-          <Link to={ctaHref} reloadDocument className="wk-pill-cta">{ctaLabel}</Link>
+          <Link
+            to={ctaHref}
+            reloadDocument
+            className="wk-pill-cta"
+            onClick={() => analyticsService.track('landing.cta_clicked', { section: 'header', cta_label: ctaLabel })}
+          >{ctaLabel}</Link>
           {user ? (
             <div className="wk-account">
               <button
@@ -142,7 +148,13 @@ export default function Header() {
           ) : null}
         </div>
 
-        <Link to={ctaHref} reloadDocument className="wk-pill-cta-mobile" aria-label={ctaLabel}>
+        <Link
+          to={ctaHref}
+          reloadDocument
+          className="wk-pill-cta-mobile"
+          aria-label={ctaLabel}
+          onClick={() => analyticsService.track('landing.cta_clicked', { section: 'header_mobile', cta_label: ctaLabel })}
+        >
           {ctaMobileLabel}
         </Link>
 
