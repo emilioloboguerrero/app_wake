@@ -490,6 +490,7 @@ class SessionService {
       try {
         analyticsService.track('workout.session_completed', {
           course_id: actualSessionData.courseId || null,
+          session_id: actualSessionData.sessionId || null,
           duration_seconds: Math.round(Number(actualSessionData.duration) || 0),
           sets_completed: stats?.totalSets || 0,
           exercises_completed: stats?.exercisesCompleted ?? (actualSessionData.exercises?.length || 0),

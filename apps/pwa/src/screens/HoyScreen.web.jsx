@@ -359,7 +359,7 @@ const HoyScreen = () => {
   const handleBeginWorkout = useCallback(async ({ course, workout, sessionId, mode }) => {
     // "Empezar de nuevo" (and the normal first start) → warmup then a fresh session.
     if (mode !== 'reopen') {
-      navigate('/warmup', { state: { course, workout, sessionId } });
+      navigate('/warmup', { state: { course, workout, sessionId, entryPath: 'hoy' } });
       return;
     }
 
@@ -378,7 +378,7 @@ const HoyScreen = () => {
     }
     if (!completion) {
       // Couldn't locate the completed session — fall back to a fresh start.
-      navigate('/warmup', { state: { course, workout, sessionId } });
+      navigate('/warmup', { state: { course, workout, sessionId, entryPath: 'hoy' } });
       return;
     }
     const checkpoint = sessionService.buildReopenCheckpoint(completion, workout);

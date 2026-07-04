@@ -115,9 +115,9 @@ const BottomTabBar = () => {
       }
       const workout = sessionState.workout;
       const sessionId = workout.sessionId || sessionState.session?.sessionId || sessionState.session?.id;
-      const session = await sessionManager.startSession(userId, courseId, sessionId, workout.title);
+      const session = await sessionManager.startSession(userId, courseId, sessionId, workout.title, { entryPath: 'entrenar_tab' });
       closeMenu();
-      navigate('/warmup', { state: { course: courseObj, workout, sessionId: session.sessionId } });
+      navigate('/warmup', { state: { course: courseObj, workout, sessionId: session.sessionId, entryPath: 'entrenar_tab' } });
     } catch (err) {
       logger.error('[Entrenar] getCurrentSession or startSession failed', err?.message ?? err);
       closeMenu();

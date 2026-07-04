@@ -27,7 +27,7 @@ import { isWeb } from '../utils/platform';
 import analyticsService from '../services/analyticsService';
 const WarmupScreen = ({ navigation, route }) => {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const { course, workout, sessionId } = route.params;
+  const { course, workout, sessionId, entryPath } = route.params;
   const { user } = useAuth();
   const { isMuted, toggleMute } = useVideo();
   
@@ -480,7 +480,7 @@ const WarmupScreen = ({ navigation, route }) => {
               setIsActive(false);
               // Use setTimeout to navigate after render cycle
               setTimeout(() => {
-                navigation.navigate('WorkoutExecution', { course, workout, sessionId });
+                navigation.navigate('WorkoutExecution', { course, workout, sessionId, entryPath });
               }, 0);
               return 0;
             }
@@ -555,7 +555,7 @@ const WarmupScreen = ({ navigation, route }) => {
       const nextIndex = currentExerciseIndex + 1;
       if (nextIndex >= warmupData.warmup.exercises.length) {
         setTimeout(() => {
-          navigation.navigate('WorkoutExecution', { course, workout, sessionId });
+          navigation.navigate('WorkoutExecution', { course, workout, sessionId, entryPath });
         }, 0);
         return;
       }
@@ -570,7 +570,7 @@ const WarmupScreen = ({ navigation, route }) => {
 
   const finishWarmup = useCallback(() => {
     setTimeout(() => {
-      navigation.navigate('WorkoutExecution', { course, workout, sessionId });
+      navigation.navigate('WorkoutExecution', { course, workout, sessionId, entryPath });
     }, 0);
   }, [navigation, course, workout, sessionId]);
 
@@ -585,7 +585,7 @@ const WarmupScreen = ({ navigation, route }) => {
       }
     }
 
-    navigation.navigate('WorkoutExecution', { course, workout, sessionId });
+    navigation.navigate('WorkoutExecution', { course, workout, sessionId, entryPath });
   }, [videoPlayer, navigation, course, workout, sessionId]);
 
   const togglePause = useCallback(() => {

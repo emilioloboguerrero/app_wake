@@ -76,7 +76,7 @@ class SessionManager {
   /**
    * Start a new session
    */
-  async startSession(userId, courseId, sessionId, sessionName) {
+  async startSession(userId, courseId, sessionId, sessionName, { entryPath = 'unknown', silent = false } = {}) {
     try {
       const now = new Date().toISOString();
       const sessionData = {
@@ -96,12 +96,19 @@ class SessionManager {
       await AsyncStorage.setItem('current_session', JSON.stringify(sessionData));
       this.#scheduleCheckpoint(sessionData);
 
-      try {
-        analyticsService.track('workout.session_started', {
-          course_id: courseId || null,
-          session_id: sessionId || null,
-        });
-      } catch {}
+      // Single emission point for workout.session_started: every entry path
+      // (Hoy, DailyWorkout, Entrenar tab) creates its session here. Callers
+      // pass silent:true when the mount is a recovery/reopen, which is a
+      // workout.session_recovered, not a start.
+      if (!silent) {
+        try {
+          analyticsService.track('workout.session_started', {
+            course_id: courseId || null,
+            session_id: sessionId || null,
+            entry_path: entryPath,
+          });
+        } catch {}
+      }
 
       return sessionData;
     } catch (error) {
@@ -189,6 +196,16 @@ class SessionManager {
    */
   cancelPendingCheckpoint() {
     this.#cancelPendingCheckpoint();
+  }
+
+  /**
+   * Drop the local session record after successful completion. The server
+   * checkpoint doc is already deleted by /workout/complete; leaving the local
+   * record behind resurrects the finished session on the next same-course
+   * start (stale progress + suppressed session_started).
+   */
+  async clearCurrentSession() {
+    try { await AsyncStorage.removeItem('current_session'); } catch {}
   }
 
   /**

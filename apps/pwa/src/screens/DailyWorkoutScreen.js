@@ -452,12 +452,14 @@ const DailyWorkoutScreen = ({ navigation, route, selectedDate: selectedDateProp,
         user.uid,
         course.courseId,
         sessionId,
-        sessionState.workout.title
+        sessionState.workout.title,
+        { entryPath: 'daily_workout' }
       );
       navigation.navigate('Warmup', {
         course: { ...course, availableLibraries: sessionState.availableLibraries || course.availableLibraries || [] },
         workout: sessionState.workout,
-        sessionId: session.sessionId
+        sessionId: session.sessionId,
+        entryPath: 'daily_workout'
       });
     } catch (error) {
       logger.error('❌ Failed to start workout:', error);

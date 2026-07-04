@@ -4464,6 +4464,7 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
                        // Clear checkpoint on successful completion
                        try { localStorage.removeItem('wake_session_checkpoint'); } catch {}
                        sessionManager.cancelPendingCheckpoint();
+                       sessionManager.clearCurrentSession();
                        if (checkpointApiTimerRef.current) {
                          clearTimeout(checkpointApiTimerRef.current);
                          checkpointApiTimerRef.current = null;
@@ -4988,6 +4989,12 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
         if (session && session.courseId && session.courseId !== course.courseId) {
           session = null;
         }
+        // Discard sessions older than the 24h checkpoint window — resurrecting
+        // a days-old abandoned session would graft its progress onto what the
+        // user experiences as a fresh start.
+        if (session?.startedAt && Date.now() - new Date(session.startedAt).getTime() > 24 * 60 * 60 * 1000) {
+          session = null;
+        }
 
         if (!session) {
           const currentUserForSession = resolvedUser || user || auth.currentUser;
@@ -4998,7 +5005,10 @@ const WorkoutExecutionScreen = ({ navigation, route }) => {
             currentUserForSession.uid,
             course.courseId,
             sessionIdValue,
-            workout.title || 'Workout Session'
+            workout.title || 'Workout Session',
+            // Checkpoint mounts are recoveries/reopens, not starts — the
+            // session_recovered event covers them.
+            { entryPath: route.params.entryPath || 'unknown', silent: !!routeCheckpoint }
           );
         }
 
