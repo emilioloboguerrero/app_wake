@@ -267,6 +267,10 @@ async function handlePolarEvent(type: string, data: Record<string, unknown>): Pr
     if (isTrialingSubscription(data)) await handleTrialActivated(data);
     break;
   case POLAR_EVENTS.SUBSCRIPTION_UPDATED:
+  case POLAR_EVENTS.SUBSCRIPTION_UNCANCELED:
+    // uncanceled = the buyer reversed a scheduled cancel from the Polar portal;
+    // it does not always come with a subscription.updated, so reflect the
+    // reactivation (clear cancel_at_period_end, status active) here too.
     await handleSubscriptionUpdated(data);
     break;
   case POLAR_EVENTS.SUBSCRIPTION_CANCELED:
@@ -275,8 +279,9 @@ async function handlePolarEvent(type: string, data: Record<string, unknown>): Pr
   case POLAR_EVENTS.SUBSCRIPTION_REVOKED:
     await handleAccessRevoked(data);
     break;
-  case POLAR_EVENTS.ORDER_REFUNDED:
-    await handleOrderRefunded(data);
+  case POLAR_EVENTS.REFUND_CREATED:
+  case POLAR_EVENTS.REFUND_UPDATED:
+    await handleRefund(data);
     break;
   default:
     functions.logger.info("polar.webhook: ignored event", {type});
@@ -605,33 +610,61 @@ async function handleAccessRevoked(subscription: Record<string, unknown>): Promi
   }
 }
 
-// Full refund revokes access; a partial refund leaves access intact.
-async function handleOrderRefunded(order: Record<string, unknown>): Promise<void> {
-  const meta = parsePolarMetadata(order.metadata);
-  const total = typeof order.totalAmount === "number" ? order.totalAmount : null;
-  const refunded = typeof order.refundedAmount === "number" ? order.refundedAmount : null;
-  const fullyRefunded = total !== null && refunded !== null && refunded >= total;
-  if (!fullyRefunded) {
-    functions.logger.info("polar.webhook: partial refund, access retained", {
-      userId: meta.userId, courseId: meta.courseId,
-    });
+// refund.created / refund.updated — Polar's real refund lifecycle events (it
+// does NOT emit order.refunded). Two things happen here:
+//   1. Ledger: record the refund so revenue nets it out. Previously these
+//      events were unhandled, so refunds never hit payment_ledger and reports
+//      overstated income.
+//   2. Access: honor Polar's `revoke_benefits` decision (product decision
+//      2026-07-04) — revoke access ONLY when the refund was issued WITH revoke
+//      benefits. A refund that keeps benefits (revoke_benefits=false) leaves
+//      access intact until expires_at, matching what Polar shows the customer.
+// The refund payload carries no checkout metadata, so user/course are resolved
+// from the processed_payments row written at order.paid. Idempotent: both
+// events key the ledger by refund id (merge) and revokeCourseAccess is a no-op
+// when already revoked. Field names are read in both camelCase (SDK-parsed) and
+// snake_case (raw payload) so we're robust to how validateEvent deserializes.
+async function handleRefund(refund: Record<string, unknown>): Promise<void> {
+  const pick = (camel: string, snake: string): unknown => refund[camel] ?? refund[snake];
+  // Only act on a settled refund; refund.created can arrive as "pending".
+  if (refund.status !== "succeeded") return;
+
+  const refundId = typeof refund.id === "string" ? refund.id : null;
+  const orderIdRaw = pick("orderId", "order_id");
+  const orderId = typeof orderIdRaw === "string" ? orderIdRaw : null;
+  if (!refundId || !orderId) return;
+
+  const procSnap = await db.collection("processed_payments").doc(`polar_order_${orderId}`).get();
+  const proc = procSnap.data() ?? {};
+  const userId = typeof proc.userId === "string" ? proc.userId : null;
+  const courseId = typeof proc.courseId === "string" ? proc.courseId : null;
+  if (!userId || !courseId) {
+    functions.logger.warn("polar.webhook: refund could not be attributed to a user/course", {orderId, refundId});
     return;
   }
-  await revokeCourseAccess(meta.userId, meta.courseId);
 
-  const refundOrderId = typeof order.id === "string" ? order.id : `${meta.userId}_${meta.courseId}`;
+  const subIdRaw = pick("subscriptionId", "subscription_id");
+  const taxRaw = pick("taxAmount", "tax_amount");
   await writeLedgerEntryBestEffort({
-    id: `polar_refund_${refundOrderId}`,
+    id: `polar_refund_${refundId}`,
     provider: "polar",
     type: "refund",
     status: "refunded",
-    courseId: meta.courseId,
-    userId: meta.userId,
-    externalPaymentId: refundOrderId,
-    grossAmount: polarCentsToMajor(order.refundedAmount ?? order.totalAmount),
-    currency: typeof order.currency === "string" ? order.currency.toUpperCase() : "USD",
+    courseId,
+    userId,
+    subscriptionId: typeof subIdRaw === "string" ? subIdRaw : null,
+    externalPaymentId: refundId,
+    grossAmount: polarCentsToMajor(refund.amount),
+    currency: typeof refund.currency === "string" ? refund.currency.toUpperCase() : "USD",
+    taxAmount: typeof taxRaw === "number" ? polarCentsToMajor(taxRaw) : null,
     chargedAt: new Date().toISOString(),
   });
+
+  if (pick("revokeBenefits", "revoke_benefits") === true) {
+    await revokeCourseAccess(userId, courseId);
+  } else {
+    functions.logger.info("polar.webhook: refund kept access (revoke_benefits=false)", {userId, courseId, refundId});
+  }
 }
 
 async function revokeCourseAccess(userId: string, courseId: string): Promise<void> {

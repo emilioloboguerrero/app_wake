@@ -63,12 +63,11 @@ const todayYmd = () => {
 const isCourseExpired = (course) => {
   if (course?.is_trial) return false;
   // includeInactive surfaces cancelled/inactive subscriptions in the carousel
-  // so the user can renew. hasAccess is the source of truth — gate on it so
-  // a cancelled course (status !== 'active') reads as expired even if its
-  // expires_at is in the future.
-  if (course && course.hasAccess === false) return true;
-  if (!course?.expires_at) return false;
-  return new Date(course.expires_at) <= new Date();
+  // so the user can renew. hasAccess (isCourseEntryActive) is the single source
+  // of truth and already applies the 3-day grace window; gate on it directly so
+  // a subscriber whose expires_at just passed isn't shown "Acceso expirado" and
+  // blocked while the server still serves their content within the grace.
+  return course?.hasAccess === false;
 };
 
 const HoyScreen = () => {

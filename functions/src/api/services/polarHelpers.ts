@@ -15,14 +15,17 @@ export interface PolarCheckoutMetadata {
 
 // Webhook event `type` strings we act on. Full list is larger; these are the
 // only ones with side effects. Grant on order.paid (charges) and the trialing
-// subscription; revoke on subscription.revoked and refunds.
+// subscription; revoke on subscription.revoked. Refunds arrive as refund.created
+// / refund.updated (Polar does NOT emit order.refunded) — they carry the
+// revoke_benefits flag we honor when deciding whether a refund ends access.
 export const POLAR_EVENTS = {
   ORDER_PAID: "order.paid",
-  ORDER_REFUNDED: "order.refunded",
   REFUND_CREATED: "refund.created",
+  REFUND_UPDATED: "refund.updated",
   SUBSCRIPTION_CREATED: "subscription.created",
   SUBSCRIPTION_ACTIVE: "subscription.active",
   SUBSCRIPTION_UPDATED: "subscription.updated",
+  SUBSCRIPTION_UNCANCELED: "subscription.uncanceled",
   SUBSCRIPTION_CANCELED: "subscription.canceled",
   SUBSCRIPTION_REVOKED: "subscription.revoked",
 } as const;
