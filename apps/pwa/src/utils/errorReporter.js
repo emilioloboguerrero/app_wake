@@ -146,7 +146,11 @@ function reportError({ message, stack, url }) {
   }
 }
 
-function installGlobalHooks() {
+// App.web.js owns the window error/unhandledrejection listeners (it filters
+// extension noise, benign AbortErrors, and resource-load errors before
+// calling reportError). This hook only guarantees the queue flushes when the
+// tab is backgrounded/closed before the 5s timer fires.
+function installFlushOnHide() {
   if (installed || typeof window === 'undefined') return;
   installed = true;
 
@@ -157,43 +161,6 @@ function installGlobalHooks() {
     },
     false
   );
-
-  // The app's existing window.onerror / unhandledrejection handlers call
-  // reportError directly where they live. This hook is a safety net only —
-  // if the app never wires explicit calls, we still catch top-level throws.
-  window.addEventListener(
-    'error',
-    (e) => {
-      const msg = String(e?.message || '');
-      if (!msg) return;
-      reportError({
-        message: msg,
-        stack: e?.error && e.error.stack ? e.error.stack : null,
-        url:
-          typeof location !== 'undefined' ?
-            location.pathname + (e?.filename ? ` (${e.filename})` : '') :
-            '',
-      });
-    },
-    true
-  );
-
-  window.addEventListener('unhandledrejection', (e) => {
-    const reason = e?.reason;
-    const msg =
-      reason && typeof reason === 'object' && reason.message ?
-        String(reason.message) :
-        String(reason || '');
-    if (!msg) return;
-    reportError({
-      message: msg,
-      stack:
-        reason && typeof reason === 'object' && reason.stack ?
-          String(reason.stack) :
-          null,
-      url: typeof location !== 'undefined' ? location.pathname : '',
-    });
-  });
 }
 
-export { reportError, installGlobalHooks, setUserIdProvider };
+export { reportError, installFlushOnHide, setUserIdProvider };

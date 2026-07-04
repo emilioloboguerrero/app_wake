@@ -82,14 +82,40 @@ function writeOptOut(v) {
 // not a real error, and can't be caught at the call site (player.play() returns
 // void). Our own fetch aborts are already translated to WakeApiError upstream,
 // so a raw AbortError reaching here is always this benign media case.
+//
+// Browsers report these as `type: "DOMException"` with the AbortError name in
+// the value ("AbortError: ..."), not as `type: "AbortError"` — match both.
+function isAbortException(e) {
+  if (!e) return false;
+  if (e.type === 'AbortError') return true;
+  return e.type === 'DOMException' && String(e.value || '').startsWith('AbortError');
+}
+
 function dropBenignAbortErrors(event) {
   if (event?.event === '$exception') {
     const list = event.properties?.$exception_list;
-    if (Array.isArray(list) && list.some((e) => e?.type === 'AbortError')) {
+    if (Array.isArray(list) && list.some(isAbortException)) {
       return null;
     }
   }
   return event;
+}
+
+// Redact sensitive query params (Firebase magic-link oobCode, api keys,
+// emails) from URL-shaped values before any event leaves the device. The
+// magic-link screen also cleans its own URL on mount; this is defense in
+// depth for every event that carries a URL prop.
+const SENSITIVE_QUERY_PARAMS = /([?&#](?:oobCode|apiKey|email|token|access_token|id_token|continueUrl)=)[^&#\s]*/gi;
+
+function scrubPiiFromProps(props) {
+  if (!props) return props;
+  for (const key of Object.keys(props)) {
+    const value = props[key];
+    if (typeof value === 'string' && value.includes('=')) {
+      props[key] = value.replace(SENSITIVE_QUERY_PARAMS, '$1REDACTED');
+    }
+  }
+  return props;
 }
 
 function init() {
@@ -111,6 +137,7 @@ function init() {
       capture_pageleave: true,
       capture_exceptions: true,
       before_send: dropBenignAbortErrors,
+      sanitize_properties: scrubPiiFromProps,
       disable_session_recording: false,
       session_recording: {
         maskAllInputs: true,

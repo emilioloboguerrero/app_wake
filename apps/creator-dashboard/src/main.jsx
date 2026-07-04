@@ -4,7 +4,11 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './config/queryClient';
 import wakeDebug from './utils/wakeDebug';
 import { apiClient } from './utils/apiClient';
-import { installGlobalHooks as installClientErrorHooks } from './utils/errorReporter';
+import {
+  installGlobalHooks as installClientErrorHooks,
+  setUserIdProvider,
+} from './utils/errorReporter';
+import { auth } from './config/firebase';
 import analyticsService from './services/analyticsService';
 import App from './App';
 import './index.css';
@@ -16,6 +20,8 @@ analyticsService.init();
 window.__WAKE_BOOT = performance.now();
 
 installClientErrorHooks();
+// Error reports carry the signed-in coach so ops can tell WHO hit an error.
+setUserIdProvider(() => auth.currentUser?.uid ?? null);
 
 // Initialize debug instrumentation (no-op when WAKE_DEBUG !== '1')
 wakeDebug.patchApiClient(apiClient);

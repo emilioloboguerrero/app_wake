@@ -43,6 +43,21 @@ function writeOptOut(v) {
   } catch {}
 }
 
+// Redact sensitive query params (auth codes, api keys, emails) from
+// URL-shaped values before any event leaves the device.
+const SENSITIVE_QUERY_PARAMS = /([?&#](?:oobCode|apiKey|email|token|access_token|id_token|continueUrl)=)[^&#\s]*/gi;
+
+function scrubPiiFromProps(props) {
+  if (!props) return props;
+  for (const key of Object.keys(props)) {
+    const value = props[key];
+    if (typeof value === 'string' && value.includes('=')) {
+      props[key] = value.replace(SENSITIVE_QUERY_PARAMS, '$1REDACTED');
+    }
+  }
+  return props;
+}
+
 function init() {
   if (initAttempted) return;
   initAttempted = true;
@@ -58,6 +73,7 @@ function init() {
       capture_pageview: 'history_change',
       capture_pageleave: true,
       capture_exceptions: true,
+      sanitize_properties: scrubPiiFromProps,
       session_recording: {
         maskAllInputs: true,
         maskTextSelector: '[data-ph-no-capture]',

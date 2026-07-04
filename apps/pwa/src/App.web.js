@@ -11,7 +11,12 @@ import InstallScreen from './screens/InstallScreen.web';
 import logger from './utils/logger';
 import wakeDebug from './utils/wakeDebug';
 import apiClient from './utils/apiClient';
-import { reportError as reportClientError } from './utils/errorReporter';
+import {
+  reportError as reportClientError,
+  installFlushOnHide,
+  setUserIdProvider,
+} from './utils/errorReporter';
+import { auth } from './config/firebase';
 import useFrozenBottomInset from './hooks/useFrozenBottomInset.web';
 import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
@@ -19,6 +24,11 @@ import analyticsService from './services/analyticsService';
 
 // Initialize analytics as early as possible (no-op when key missing or opted out).
 analyticsService.init();
+
+// Error reports carry the signed-in user so ops can tell WHO hit an error;
+// flush-on-hide keeps queued errors from being lost when the tab closes.
+setUserIdProvider(() => auth.currentUser?.uid ?? null);
+installFlushOnHide();
 
 // expo-video's web player calls HTMLVideoElement.play() without handling the
 // returned promise (VideoPlayer.web.js). On iOS Safari an interrupted
