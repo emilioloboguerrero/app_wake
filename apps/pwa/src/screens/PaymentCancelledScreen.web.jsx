@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import analyticsService from '../services/analyticsService';
 
 const PaymentCancelledScreen = () => {
   const navigate = useNavigate();
+
+  // The provider's cancel redirect carries no params, so this is the only
+  // signal that a checkout ended in abandonment.
+  useEffect(() => {
+    analyticsService.track('subscription.checkout.cancelled', { surface: 'pwa_web' });
+  }, []);
 
   // MercadoPago can redirect back in the SAME tab, so "cierra esta ventana"
   // left the buyer stranded with no way back into the app. Navigate to the

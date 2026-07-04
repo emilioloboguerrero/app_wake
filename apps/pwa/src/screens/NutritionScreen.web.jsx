@@ -25,6 +25,7 @@ import WakeModalOverlay from '../components/WakeModalOverlay.web';
 import * as nutritionDb from '../services/nutritionFirestoreService';
 import * as nutritionApi from '../services/nutritionApiService';
 import logger from '../utils/logger';
+import analyticsService from '../services/analyticsService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import SvgFire from '../components/icons/vectors_fig/Environment/Fire';
 import Steak from '../components/icons/Steak';
@@ -877,6 +878,9 @@ const NutritionScreen = () => {
   const [buscarLoading, setBuscarLoading] = useState(false);
   const [buscarShowSaved, setBuscarShowSaved] = useState(false);
   const [selectedFood, setSelectedFood] = useState(null);
+  // How the food in the detail modal was found (search | barcode | saved) —
+  // carried into the nutrition.meal_logged event when the add confirms.
+  const foodDetailSourceRef = useRef('search');
   const [buscarServingIndex, setBuscarServingIndex] = useState(0);
   const [buscarAmount, setBuscarAmount] = useState('1');
   const [buscarAddLoading, setBuscarAddLoading] = useState(false);
@@ -1135,6 +1139,11 @@ const NutritionScreen = () => {
           };
         });
         await nutritionDb.addDiaryEntries(userId, entries);
+        analyticsService.track('nutrition.meal_logged', {
+          meal_type: meal || null,
+          source: 'plan',
+          items: entries.length,
+        });
         queryClient.invalidateQueries({ queryKey: ['user', userId] });
         trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
@@ -1189,6 +1198,11 @@ const NutritionScreen = () => {
           };
         });
         await nutritionDb.addDiaryEntries(userId, entries);
+        analyticsService.track('nutrition.meal_logged', {
+          meal_type: mealId || null,
+          source: 'saved_meal',
+          items: entries.length,
+        });
         queryClient.invalidateQueries({ queryKey: ['user', userId] });
         trackNewEntriesRef.current = new Set(diaryEntries.map((e) => e.id));
         await queryClient.invalidateQueries({ queryKey: ['nutrition', 'diary', userId, selectedDate] });
@@ -1213,6 +1227,11 @@ const NutritionScreen = () => {
       const data = await nutritionApi.nutritionFoodSearch(term.trim(), 0, 20);
       const foods = data?.foods_search?.results?.food ?? [];
       setBuscarResults(Array.isArray(foods) ? foods : []);
+      // Submit-only search (no autocomplete) — one event per user-initiated
+      // query; result_count doubles as a FatSecret usage signal.
+      analyticsService.track('nutrition.food_searched', {
+        result_count: Array.isArray(foods) ? foods.length : 0,
+      });
     } catch (e) {
       logger.error('[NutritionScreen] buscar search:', e);
       setBuscarResults([]);
@@ -1224,7 +1243,8 @@ const NutritionScreen = () => {
 
   const handleBuscarSearch = useCallback(() => runSearch(buscarQuery), [runSearch, buscarQuery]);
 
-  const openFoodDetail = useCallback(async (foodId, foodName, foodCategory, initialServings, initialServingIdx, initialAmount) => {
+  const openFoodDetail = useCallback(async (foodId, foodName, foodCategory, initialServings, initialServingIdx, initialAmount, source = 'search') => {
+    foodDetailSourceRef.current = source;
     setEditingDiaryEntry(null);
     setSelectedFood({ food_id: foodId, food_name: foodName, food_category: foodCategory ?? null, servings: initialServings });
     setBuscarServingIndex(initialServingIdx);
@@ -1294,7 +1314,7 @@ const NutritionScreen = () => {
     const oneGIdx = servings.findIndex((s) => s.serving_id === 'derived-1g' || /^1\s*g$/i.test(String(s.serving_description || '').trim()));
     const firstNonDerived = servings.findIndex((s) => !String(s.serving_id).startsWith('derived-'));
     const idx = oneGIdx >= 0 ? oneGIdx : (firstNonDerived >= 0 ? firstNonDerived : 0);
-    openFoodDetail(food.food_id, food.food_name ?? food.name ?? '', food.food_category ?? null, servings, idx, '1');
+    openFoodDetail(food.food_id, food.food_name ?? food.name ?? '', food.food_category ?? null, servings, idx, '1', 'barcode');
   }, [openFoodDetail]);
 
   const handleSelectSavedFood = useCallback((savedFood) => {
@@ -1317,7 +1337,7 @@ const NutritionScreen = () => {
           metric_serving_unit: 'g',
         }];
     const idx = servings.findIndex((s) => s.serving_id === savedFood.serving_id);
-    openFoodDetail(savedFood.food_id, savedFood.name, savedFood.food_category ?? null, servings, idx >= 0 ? idx : 0, String(savedFood.number_of_units ?? 1));
+    openFoodDetail(savedFood.food_id, savedFood.name, savedFood.food_category ?? null, servings, idx >= 0 ? idx : 0, String(savedFood.number_of_units ?? 1), 'saved');
   }, [openFoodDetail]);
 
   const recipeVideoRef = useRef(null);
@@ -1417,6 +1437,10 @@ const NutritionScreen = () => {
         (prev) => (prev || []).filter((e) => e.id !== entry.id)
       );
       await nutritionDb.deleteDiaryEntry(userId, entry.id);
+      analyticsService.track('nutrition.entry_deleted', {
+        meal_type: entry.meal || null,
+        calories: entry.calories != null ? Number(entry.calories) : null,
+      });
       showToast('Eliminado', 'info', {
         actionLabel: 'Deshacer',
         onAction: async () => {
@@ -1549,6 +1573,11 @@ const NutritionScreen = () => {
         });
         queryClient.invalidateQueries({ queryKey: ['user', userId] });
         const addedCals = Math.round((Number(serving.calories) || 0) * qty);
+        analyticsService.track('nutrition.meal_logged', {
+          meal_type: meal || null,
+          source: foodDetailSourceRef.current,
+          calories: addedCals,
+        });
         const addedProtein = Math.round((Number(serving.protein) || 0) * qty * 10) / 10;
         const addedCarbs = Math.round((Number(serving.carbohydrate) || 0) * qty * 10) / 10;
         const addedFat = Math.round((Number(serving.fat) || 0) * qty * 10) / 10;

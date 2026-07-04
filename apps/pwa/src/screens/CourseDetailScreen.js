@@ -157,6 +157,22 @@ const CourseDetailScreen = ({ navigation, route }) => {
     [course?.deliveryType, course?.delivery_type]
   );
 
+  // Top of the purchase funnel: one view event per course id. Waits for
+  // deliveryType so the prop isn't logged as null on the snapshot render.
+  const viewTrackedRef = useRef(null);
+  useEffect(() => {
+    const cId = course?.id || course?.courseId;
+    const deliveryType = course?.deliveryType || course?.delivery_type;
+    if (!cId || !deliveryType || viewTrackedRef.current === cId) return;
+    viewTrackedRef.current = cId;
+    analyticsService.track('program.viewed', {
+      course_id: cId,
+      kind: 'course',
+      delivery_type: deliveryType,
+      surface: 'pwa_web',
+    });
+  }, [course]);
+
   // Initialize video player — skip external URLs (YouTube/Vimeo use iframe).
   // Pass '' as the source so the player instance survives URI changes and we
   // update via player.replace(). Passing the URI directly causes expo-video

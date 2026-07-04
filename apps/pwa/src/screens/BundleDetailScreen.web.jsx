@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../utils/apiClient';
@@ -43,6 +43,19 @@ const BundleDetailScreen = () => {
     enabled: !!bundleId,
     staleTime: 60 * 1000,
   });
+
+  // Top of the purchase funnel: one view event per loaded bundle id (the
+  // query refetches on focus, so gate on id, not object identity).
+  const viewTrackedRef = React.useRef(null);
+  useEffect(() => {
+    if (!bundle || !bundleId || viewTrackedRef.current === bundleId) return;
+    viewTrackedRef.current = bundleId;
+    analyticsService.track('program.viewed', {
+      bundle_id: bundleId,
+      kind: 'bundle',
+      surface: 'pwa_web',
+    });
+  }, [bundle, bundleId]);
 
   if (isLoading) return <LoadingScreen />;
   if (error || !bundle) {

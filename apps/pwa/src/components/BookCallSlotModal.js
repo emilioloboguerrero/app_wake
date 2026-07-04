@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Modal, TouchableOpacity, Text, ActivityIndicator, ScrollView, StyleSheet, Animated, TouchableWithoutFeedback } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { getAvailableSlots, createBooking, cancelBooking } from '../services/callBookingService';
+import analyticsService from '../services/analyticsService';
 import WakeLoader from './WakeLoader';
 import SvgChevronLeft from './icons/vectors_fig/Arrow/ChevronLeft';
 
@@ -168,6 +169,11 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
         courseId
       );
       if (result.success) {
+        analyticsService.track('booking.call_booked', {
+          creator_id: creatorId || null,
+          course_id: courseId || null,
+          is_reschedule: Boolean(isManageMode && existingBooking?.id),
+        });
         onSuccess?.();
         handleCloseRequest();
       } else {
@@ -187,6 +193,10 @@ export default function BookCallSlotModal({ visible, onClose, creatorId, creator
     try {
       const res = await cancelBooking(existingBooking.id);
       if (res.success) {
+        analyticsService.track('booking.call_cancelled', {
+          creator_id: existingBooking.creatorId || null,
+          course_id: existingBooking.courseId || null,
+        });
         onSuccess?.();
         handleCloseRequest();
       } else {
