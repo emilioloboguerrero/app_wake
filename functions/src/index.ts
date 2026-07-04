@@ -43,6 +43,7 @@ import {
 import {buildSignInUrl as buildPurchaseSignInUrl} from "./api/services/purchaseEmails.js";
 import {capture as analyticsCapture, flushAnalytics} from "./lib/analytics.js";
 import {allLevelPlansPublishAt} from "./api/services/levelResolution.js";
+import {reconcileMpRefunds} from "./api/services/refunds.js";
 
 const db = admin.firestore();
 
@@ -3281,6 +3282,33 @@ export const lapsedCoursesFlip = onSchedule(
     functions.logger.info("lapsedCoursesFlip: done", {
       usersChecked, usersUpdated, coursesFlipped, trialsFlipped,
     });
+  }
+);
+
+// ─── Scheduled: reconcile MercadoPago refunds the webhook missed ─────────────
+// MP refunds issued from the MP dashboard don't reliably fire a payment.updated
+// webhook, so a refund can revoke nothing and never hit payment_ledger. Daily,
+// re-check recent MP sales against the live MP payment status and apply any
+// refund/chargeback the webhook missed (revoke access + ledger row). Idempotent
+// and safe to run repeatedly. Polar refunds arrive via refund.* webhooks and
+// are not covered here.
+export const reconcileMpRefundsCron = onSchedule(
+  {
+    schedule: "every day 05:00",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    secrets: [mercadopagoAccessToken],
+    memory: "512MiB",
+    timeoutSeconds: 540,
+  },
+  async () => {
+    const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (!token) {
+      functions.logger.error("reconcileMpRefundsCron: MERCADOPAGO_ACCESS_TOKEN missing");
+      return;
+    }
+    const {scanned, checked, reconciled, hits} = await reconcileMpRefunds(token);
+    functions.logger.info("reconcileMpRefundsCron: done", {scanned, checked, reconciled, hits: hits.length});
   }
 );
 

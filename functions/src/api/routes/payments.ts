@@ -17,8 +17,9 @@ import {
 } from "../services/paymentHelpers.js";
 import {assignCourseToUser} from "../services/courseAssignment.js";
 import {writeLedgerEntryBestEffort, sumMercadoPagoFee} from "../services/paymentLedger.js";
+import {applyMpRefund} from "../services/refunds.js";
 import {assertCourseHasSeat} from "../services/capacity.js";
-import {assignBundleToUser, revokeBundleAccess} from "../services/bundleAssignment.js";
+import {assignBundleToUser} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
 import {capture as analyticsCapture} from "../../lib/analytics.js";
@@ -1424,37 +1425,23 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
-  // Refund or chargeback — revoke access
+  // Refund or chargeback — revoke access + ledger. Shared with the daily
+  // reconciliation cron (applyMpRefund) so a webhook-delivered refund and a
+  // polled one are applied identically.
   if (paymentData && (paymentData.status === "refunded" || paymentData.status === "charged_back")) {
     try {
       const prev = await processedRef.get();
       const prevData = prev.exists ? prev.data()! : null;
-      if (prevData?.bundleId && prevData?.userId) {
-        const revoked = await revokeBundleAccess(prevData.userId as string, prevData.bundleId as string);
-        functions.logger.info("Bundle access revoked via refund", {
-          paymentId, bundleId: prevData.bundleId, revoked,
-        });
-      } else if (prevData?.courseId && prevData?.userId) {
-        await db.collection("users").doc(prevData.userId as string).update({
-          [`courses.${prevData.courseId}.status`]: "cancelled",
-          [`courses.${prevData.courseId}.cancelled_at`]: new Date().toISOString(),
-          updated_at: FieldValue.serverTimestamp(),
-        });
-      }
-      if (prevData?.courseId && prevData?.userId && !prevData?.bundleId) {
-        await writeLedgerEntryBestEffort({
-          id: `mp_refund_${paymentId}`,
-          provider: "mercadopago",
-          type: "refund",
-          status: "refunded",
-          courseId: prevData.courseId as string,
-          userId: prevData.userId as string,
-          externalPaymentId: paymentId,
-          grossAmount: paymentData.transaction_amount ?? 0,
-          currency: paymentData.currency_id ?? "COP",
-          chargedAt: new Date().toISOString(),
-        });
-      }
+      await applyMpRefund({
+        paymentId,
+        grant: {
+          userId: prevData?.userId as string | undefined,
+          courseId: prevData?.courseId as string | undefined,
+          bundleId: prevData?.bundleId as string | undefined,
+        },
+        grossAmount: paymentData.transaction_amount ?? 0,
+        currency: paymentData.currency_id ?? "COP",
+      });
     } catch (refundErr) {
       functions.logger.error("Refund revocation failed", refundErr);
     }
