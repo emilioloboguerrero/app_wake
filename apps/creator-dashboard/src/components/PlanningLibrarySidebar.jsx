@@ -16,7 +16,7 @@ const DRAG_TYPE_PLAN = 'planning/plan';
 // Uses native HTML5 drag (same as plans) so it's compatible with CalendarView's native onDrop
 const DraggableSessionItem = ({ session }) => {
   const handleDragStart = (e) => {
-    const payload = { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesion' };
+    const payload = { type: DRAG_TYPE_LIBRARY_SESSION, librarySessionRef: session.id, title: session.title || 'Sesión' };
     e.dataTransfer.effectAllowed = 'all';
     e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.setData('text/plain', JSON.stringify(payload));
@@ -45,7 +45,7 @@ const DraggableSessionItem = ({ session }) => {
         )}
         <div className="planning-sidebar-program-info">
           <span className="planning-sidebar-program-name">
-            {session.title || `Sesion ${session.id?.slice(0, 8)}`}
+            {session.title || `Sesión ${session.id?.slice(0, 8)}`}
           </span>
         </div>
       </div>

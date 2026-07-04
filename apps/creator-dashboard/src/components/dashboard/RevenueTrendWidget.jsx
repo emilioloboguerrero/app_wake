@@ -46,7 +46,7 @@ function RevenueTrendWidget({ isLoading, isError, trendData }) {
       ) : isError ? (
         <InlineError message="No pudimos cargar la tendencia." field="revenue-trend" />
       ) : trend.length === 0 ? (
-        <p className="ds-widget-empty">Cuando tengas tu primera venta, aqui veras la evolucion de tus ingresos.</p>
+        <p className="ds-widget-empty">Cuando tengas tu primera venta, aquí veras la evolucion de tus ingresos.</p>
       ) : (
         <>
           <p className="ds-widget-number ds-widget-number--revenue">

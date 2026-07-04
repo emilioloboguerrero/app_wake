@@ -107,7 +107,7 @@ export default function ProgramLabTab({ programId, isActive }) {
                   statKey="activeEnrollments"
                   value={analytics.enrollment?.activeEnrollments}
                   label="Activos"
-                  description="Usuarios con inscripcion activa actualmente"
+                  description="Usuarios con inscripción activa actualmente"
                   onExplain={handleExplain}
                 />
                 <MetricCard
@@ -121,7 +121,7 @@ export default function ProgramLabTab({ programId, isActive }) {
                   statKey="completionRate"
                   value={`${analytics.engagement?.completionRate || 0}%`}
                   label="Tasa de Finalizacion"
-                  description="Porcentaje de usuarios que han completado al menos una sesion"
+                  description="Porcentaje de usuarios que han completado al menos una sesión"
                   onExplain={handleExplain}
                 />
               </div>
@@ -135,7 +135,7 @@ export default function ProgramLabTab({ programId, isActive }) {
                 <MetricCard
                   statKey="recentEnrollments30Days"
                   value={analytics.enrollment?.recentEnrollments30Days}
-                  label="Ultimos 30 dias"
+                  label="Últimos 30 días"
                   description="Nuevas inscripciones en el ultimo mes"
                   percentageChange={analytics.enrollment?.recentEnrollmentsPercentageChange}
                   onExplain={handleExplain}
@@ -165,7 +165,7 @@ export default function ProgramLabTab({ programId, isActive }) {
                   statKey="averageEnrollmentDurationDays"
                   value={analytics.enrollment?.averageEnrollmentDurationDays}
                   label="Duracion Promedio"
-                  description="Duracion promedio de las inscripciones en dias"
+                  description="Duracion promedio de las inscripciones en días"
                   onExplain={handleExplain}
                 />
               </div>
@@ -187,7 +187,7 @@ export default function ProgramLabTab({ programId, isActive }) {
                   statKey="usersWithAtLeastOneSession"
                   value={analytics.engagement?.usersWithAtLeastOneSession}
                   label="Usuarios Activos"
-                  description="Usuarios que han completado al menos una sesion"
+                  description="Usuarios que han completado al menos una sesión"
                   onExplain={handleExplain}
                 />
                 <MetricCard
@@ -196,14 +196,14 @@ export default function ProgramLabTab({ programId, isActive }) {
                     ? `${Math.floor(analytics.sessions.averageDuration / 60)}m ${analytics.sessions.averageDuration % 60}s`
                     : 'N/A'}
                   label="Duracion Promedio"
-                  description="Tiempo promedio que tardan los usuarios en completar una sesion"
+                  description="Tiempo promedio que tardan los usuarios en completar una sesión"
                   onExplain={handleExplain}
                 />
                 <MetricCard
                   statKey="totalCompletions"
                   value={analytics.sessions?.totalCompletions}
                   label="Total Completadas"
-                  description="Numero total de veces que se completaron sesiones"
+                  description="Número total de veces que se completaron sesiones"
                   onExplain={handleExplain}
                 />
               </div>
@@ -218,7 +218,7 @@ export default function ProgramLabTab({ programId, isActive }) {
                   statKey="usersWithZeroSessions"
                   value={analytics.progression?.usersWithZeroSessions}
                   label="0 Sesiones"
-                  description="Usuarios que aun no han completado ninguna sesion"
+                  description="Usuarios que aun no han completado ninguna sesión"
                   onExplain={handleExplain}
                 />
                 <MetricCard
@@ -256,7 +256,7 @@ export default function ProgramLabTab({ programId, isActive }) {
           </>
         ) : (
           <div className="lab-empty">
-            <p>Cuando tengas clientes inscritos, aqui vas a ver como van.</p>
+            <p>Cuando tengas clientes inscritos, aquí vas a ver como van.</p>
           </div>
         )}
       </div>
@@ -264,7 +264,7 @@ export default function ProgramLabTab({ programId, isActive }) {
       <Modal
         isOpen={isStatExplanationModalOpen}
         onClose={() => setIsStatExplanationModalOpen(false)}
-        title={statExplanation?.title || 'Informacion'}
+        title={statExplanation?.title || 'Información'}
       >
         <div className="stat-explanation-modal-content">
           <p className="stat-explanation-text">{statExplanation?.description || ''}</p>

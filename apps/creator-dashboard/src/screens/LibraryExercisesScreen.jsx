@@ -620,7 +620,7 @@ const LibraryExercisesScreen = () => {
                   <div className="cfo-step" key="ex-name">
                     <div className="cfo-step__header">
                       <h1 className="cfo-step__title">Nuevo ejercicio</h1>
-                      <p className="cfo-step__desc">Despues podras agregar video, musculos e implementos.</p>
+                      <p className="cfo-step__desc">Después podras agregar video, musculos e implementos.</p>
                     </div>
                     <div className="cfo-step__content">
                       <input

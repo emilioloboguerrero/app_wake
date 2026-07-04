@@ -243,7 +243,7 @@ const LibraryModuleDetailScreen = () => {
         await addSessionToModule(active.data.current.session);
       } catch (err) {
         logger.error('Error in drag-add session:', err);
-        showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
+        showToast('No pudimos agregar la sesión. Intenta de nuevo.', 'error');
       }
       return;
     }
@@ -290,7 +290,7 @@ const LibraryModuleDetailScreen = () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
     } catch (err) {
       logger.error('Error adding session:', err);
-      showToast('No pudimos agregar la sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos agregar la sesión. Intenta de nuevo.', 'error');
     }
   };
 
@@ -348,7 +348,7 @@ const LibraryModuleDetailScreen = () => {
       setDeleteConfirmation('');
     } catch (err) {
       logger.error('Error removing session:', err);
-      showToast('No pudimos remover la sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos remover la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsDeleting(false);
     }

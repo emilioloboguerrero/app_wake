@@ -169,7 +169,7 @@ const BibliotecaScreen = () => {
       }, 1600);
     },
     onError: () => {
-      showToast('No pudimos crear la sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos crear la sesión. Intenta de nuevo.', 'error');
     },
   });
 
@@ -285,7 +285,7 @@ const BibliotecaScreen = () => {
   const getPrimaryLabel = () => {
     const labels = {
       ejercicios: 'Nueva biblioteca',
-      sesiones: 'Nueva sesion',
+      sesiones: 'Nueva sesión',
       planes: 'Nuevo plan',
       recetas: 'Nueva receta',
       planes_nutri: 'Crear día',
@@ -470,7 +470,7 @@ const BibliotecaScreen = () => {
           isOpen={showCreateLibrary}
           onClose={() => setShowCreateLibrary(false)}
           title="Nueva biblioteca"
-          description="Organiza tus ejercicios por categoria, nivel o disciplina."
+          description="Organiza tus ejercicios por categoría, nivel o disciplina."
           placeholder="Ej: Tren superior, Calistenia avanzada..."
           ctaLabel="Crear biblioteca"
           creatingText="Creando biblioteca"
@@ -484,12 +484,12 @@ const BibliotecaScreen = () => {
         <SimpleCreateOverlay
           isOpen={showCreateSession}
           onClose={() => setShowCreateSession(false)}
-          title="Nueva sesion"
-          description="Dale un nombre a tu sesion. Luego agregaras imagen y ejercicios."
-          placeholder="Ej: Empuje dia A, Pierna fuerza..."
-          ctaLabel="Crear sesion"
-          creatingText="Creando sesion"
-          successTitle="Sesion creada"
+          title="Nueva sesión"
+          description="Dale un nombre a tu sesión. Luego agregaras imagen y ejercicios."
+          placeholder="Ej: Empuje día A, Pierna fuerza..."
+          ctaLabel="Crear sesión"
+          creatingText="Creando sesión"
+          successTitle="Sesión creada"
           successDesc="Agrega ejercicios y configura tus series."
           onSubmit={(name) => createSessionMutation.mutate(name)}
           isPending={createSessionMutation.isPending}
@@ -530,7 +530,7 @@ const BibliotecaScreen = () => {
           isOpen={showCreateNutriProgram}
           onClose={() => setShowCreateNutriProgram(false)}
           title="Nuevo plan nutricional"
-          description="Combina dias de alimentacion en una secuencia de varias semanas."
+          description="Combina días de alimentación en una secuencia de varias semanas."
           placeholder="Ej: Definicion 4 semanas, Volumen progresivo..."
           ctaLabel="Crear plan"
           creatingText="Creando plan"

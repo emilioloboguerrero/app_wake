@@ -54,7 +54,7 @@ function countdownLabel(days) {
   if (days < 0) return 'Finalizado';
   if (days === 0) return 'Hoy';
   if (days === 1) return 'Manana';
-  return `En ${days} dias`;
+  return `En ${days} días`;
 }
 
 
@@ -594,7 +594,7 @@ export default function EventsScreen() {
               >
                 <FullScreenError
                   title="No pudimos cargar tus eventos"
-                  message="Verifica tu conexion e intenta de nuevo."
+                  message="Verifica tu conexión e intenta de nuevo."
                   onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.events.byCreator(user?.uid) })}
                 />
               </motion.div>
@@ -699,7 +699,7 @@ export default function EventsScreen() {
             isOpen={showCreateModal}
             onClose={() => { if (!createMutation.isPending) setShowCreateModal(false); }}
             title="Nuevo evento"
-            description="Dale un nombre a tu evento. Podras editar todos los detalles despues."
+            description="Dale un nombre a tu evento. Podras editar todos los detalles después."
             placeholder="Ej. Run Club Marzo 2026"
             ctaLabel="Crear evento"
             creatingText="Creando evento"

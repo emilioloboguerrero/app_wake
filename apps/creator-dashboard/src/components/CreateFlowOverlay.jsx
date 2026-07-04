@@ -313,7 +313,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
             <div className="cfo-step" key="discipline">
               <div className="cfo-step__header">
                 <h1 className="cfo-step__title">Tipo de entrenamiento</h1>
-                <p className="cfo-step__desc">Selecciona la disciplina principal. Puedes cambiarla despues.</p>
+                <p className="cfo-step__desc">Selecciona la disciplina principal. Puedes cambiarla después.</p>
               </div>
               <div className="cfo-step__content">
                 <div className="cfo-grid">
@@ -351,7 +351,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
                 {libraries.length === 0 ? (
                   <div className="cfo-lib-empty">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" /></svg>
-                    <p>No tienes bibliotecas creadas todavia. Puedes agregar una despues.</p>
+                    <p>No tienes bibliotecas creadas todavía. Puedes agregar una después.</p>
                   </div>
                 ) : (
                   <div className="cfo-choice">
@@ -473,7 +473,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
             <div className="cfo-step" key="cadence">
               <div className="cfo-step__header">
                 <h1 className="cfo-step__title">Como entregas el contenido?</h1>
-                <p className="cfo-step__desc">Decide si todo el programa esta disponible desde el primer dia o si lo liberas mes a mes.</p>
+                <p className="cfo-step__desc">Decide si todo el programa esta disponible desde el primer día o si lo liberas mes a mes.</p>
               </div>
               <div className="cfo-step__content">
                 <div className="cfo-choice">
@@ -484,7 +484,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
                     </span>
                     <span className="cfo-choice-card__text">
                       <span className="cfo-choice-card__label">Todo abierto</span>
-                      <span className="cfo-choice-card__desc">Los clientes ven todos los modulos desde el primer dia</span>
+                      <span className="cfo-choice-card__desc">Los clientes ven todos los modulos desde el primer día</span>
                     </span>
                   </button>
                   <button type="button" className={`cfo-choice-card ${monthlyDrops ? 'cfo-choice-card--active' : ''}`} onClick={() => setMonthlyDrops(true)}>
@@ -513,7 +513,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
             <div className="cfo-step" key="price">
               <div className="cfo-step__header">
                 <h1 className="cfo-step__title">Precio</h1>
-                <p className="cfo-step__desc">Cuanto van a pagar tus clientes? Puedes cambiarlo despues.</p>
+                <p className="cfo-step__desc">Cuanto van a pagar tus clientes? Puedes cambiarlo después.</p>
               </div>
               <div className="cfo-step__content">
                 <div className="cfo-price-field">
@@ -552,7 +552,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
             <div className="cfo-step" key="trial">
               <div className="cfo-step__header">
                 <h1 className="cfo-step__title">Prueba gratis</h1>
-                <p className="cfo-step__desc">Ofrece unos dias de prueba para que tus clientes conozcan el programa antes de pagar.</p>
+                <p className="cfo-step__desc">Ofrece unos días de prueba para que tus clientes conozcan el programa antes de pagar.</p>
               </div>
               <div className="cfo-step__content">
                 <div className="cfo-choice">
@@ -579,7 +579,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
                 </div>
                 {freeTrialActive && (
                   <div className="cfo-duration-row">
-                    <span className="cfo-duration-row__label">Dias de prueba</span>
+                    <span className="cfo-duration-row__label">Días de prueba</span>
                     <div className="cfo-duration-row__input-wrap">
                       <input
                         type="number"
@@ -589,7 +589,7 @@ export default function CreateFlowOverlay({ isOpen, onClose, type = 'program', o
                         value={freeTrialDays}
                         onChange={(e) => setFreeTrialDays(e.target.value.replace(/\D/g, ''))}
                       />
-                      <span className="cfo-duration-row__unit">dias</span>
+                      <span className="cfo-duration-row__unit">días</span>
                     </div>
                   </div>
                 )}

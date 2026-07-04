@@ -357,7 +357,7 @@ export default function MealEditorScreen() {
       <DashboardLayout screenName="Comida" showBackButton backPath="/nutrition">
         <FullScreenError
           title="No pudimos cargar la receta"
-          message="Hubo un problema cargando esta receta. Revisa tu conexion e intenta de nuevo."
+          message="Hubo un problema cargando esta receta. Revisa tu conexión e intenta de nuevo."
           onRetry={refetchMeal}
         />
       </DashboardLayout>

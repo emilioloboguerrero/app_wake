@@ -16,7 +16,7 @@ export default function DeleteSessionModal({
   isOpen,
   onClose,
   onConfirm,
-  title = 'Eliminar esta sesion del plan?',
+  title = 'Eliminar esta sesión del plan?',
   sessionName = '',
   description = '',
   confirmLabel = 'Eliminar',
@@ -52,7 +52,7 @@ export default function DeleteSessionModal({
             className="dsm-container"
             role="alertdialog"
             aria-modal="true"
-            aria-label="Eliminar sesion"
+            aria-label="Eliminar sesión"
             initial={{ opacity: 0, y: 24, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.96 }}
@@ -99,7 +99,7 @@ export default function DeleteSessionModal({
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
               >
-                {description || 'El cliente ya no vera esta sesion en su semana.'}
+                {description || 'El cliente ya no vera esta sesión en su semana.'}
               </motion.p>
             </motion.div>
 

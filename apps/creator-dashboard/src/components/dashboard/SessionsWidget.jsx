@@ -22,7 +22,7 @@ function SessionsWidget({ isLoading, isError, sessionsCompleted }) {
             <p className="ds-widget-empty">Tus clientes no han completado sesiones aun.</p>
           ) : (
             <p className="ds-widget-label">
-              {sessionsCompleted === 1 ? 'sesion completada' : 'sesiones completadas'} · esta semana
+              {sessionsCompleted === 1 ? 'sesión completada' : 'sesiones completadas'} · esta semana
             </p>
           )}
         </>

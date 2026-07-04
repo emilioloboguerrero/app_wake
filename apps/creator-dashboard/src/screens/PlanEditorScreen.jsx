@@ -920,7 +920,7 @@ export default function PlanEditorScreen() {
       <DashboardLayout screenName="Plan" showBackButton onBack={handleBack} backPath={returnTo || '/nutrition'} backState={returnState}>
         <FullScreenError
           title="No pudimos cargar el plan"
-          message="Hubo un problema cargando este plan. Revisa tu conexion e intenta de nuevo."
+          message="Hubo un problema cargando este plan. Revisa tu conexión e intenta de nuevo."
           onRetry={refetchPlan}
         />
       </DashboardLayout>
@@ -1060,7 +1060,7 @@ export default function PlanEditorScreen() {
                   )
                 ) : (
                   filteredMeals.length === 0 ? (
-                    <p className="pe-left-empty">{recipeSearchQuery.trim() ? 'No se encontraron recetas.' : 'No tienes recetas creadas todavia.'}</p>
+                    <p className="pe-left-empty">{recipeSearchQuery.trim() ? 'No se encontraron recetas.' : 'No tienes recetas creadas todavía.'}</p>
                   ) : (
                     <>
                       {filteredMeals.map((meal) => (
@@ -1131,7 +1131,7 @@ export default function PlanEditorScreen() {
                           autoFocus
                         />
                       ) : (
-                        <span className="pe-category-name">{cat.label || 'Categoria'}</span>
+                        <span className="pe-category-name">{cat.label || 'Categoría'}</span>
                       )}
                       <div className="pe-options-tabs">
                         {(cat.options || []).map((opt, oi) => {
@@ -1171,7 +1171,7 @@ export default function PlanEditorScreen() {
                         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
                         onDrop={(e) => handleDropOnCategory(e, ci)}
                       >
-                        Arrastra alimentos o recetas aqui
+                        Arrastra alimentos o recetas aquí
                       </div>
                     ) : (
                       <div

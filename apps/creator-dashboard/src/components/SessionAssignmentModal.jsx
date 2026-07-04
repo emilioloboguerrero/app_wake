@@ -71,7 +71,7 @@ const SessionAssignmentModal = ({
       handleClose();
     } catch (err) {
       logger.error('Error creating session:', err);
-      showToast(err.message || 'No pudimos crear la sesion. Intenta de nuevo.', 'error');
+      showToast(err.message || 'No pudimos crear la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsCreating(false);
     }

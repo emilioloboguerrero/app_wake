@@ -17,7 +17,7 @@ function ClientsWidget({ isLoading, isError, oneOnOne }) {
           field="clients"
         />
       ) : oneOnOne.clientCount === 0 ? (
-        <p className="ds-widget-empty">Todavia no tienes clientes. Invita al primero desde Clientes.</p>
+        <p className="ds-widget-empty">Todavía no tienes clientes. Invita al primero desde Clientes.</p>
       ) : (
         <>
           <p className="ds-widget-number">

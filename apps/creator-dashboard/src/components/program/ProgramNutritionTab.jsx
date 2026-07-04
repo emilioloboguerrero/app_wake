@@ -171,7 +171,7 @@ export default function ProgramNutritionTab({ programId, creatorId }) {
                   </span>
                   <div className="pnt-plan-cal">
                     <span className="pnt-plan-cal-value">{dailyCalories}</span>
-                    <span className="pnt-plan-cal-unit">kcal/dia</span>
+                    <span className="pnt-plan-cal-unit">kcal/día</span>
                   </div>
                 </div>
                 {macroData.length > 0 && (

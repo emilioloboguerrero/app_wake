@@ -288,13 +288,13 @@ function AccessManagement({ clientDetail, clientName, clientId }) {
         />
         {daysRemaining !== null && !isExpired && (
           <span className="access-management__days">
-            {daysRemaining} {daysRemaining === 1 ? 'dia' : 'dias'} restantes
+            {daysRemaining} {daysRemaining === 1 ? 'día' : 'días'} restantes
           </span>
         )}
       </div>
       {isWarning && (
         <p className="access-management__warning">
-          El acceso de {clientName} vence en {daysRemaining} {daysRemaining === 1 ? 'dia' : 'dias'}.
+          El acceso de {clientName} vence en {daysRemaining} {daysRemaining === 1 ? 'día' : 'días'}.
         </p>
       )}
       {isExpired && (
@@ -359,7 +359,7 @@ function NutricionTab({ clientDetail }) {
   if (!plan) {
     return (
       <div className="tab-content tab-empty">
-        <p className="tab-empty__text">Sin plan de nutricion asignado todavia.</p>
+        <p className="tab-empty__text">Sin plan de nutricion asignado todavía.</p>
       </div>
     );
   }
@@ -494,7 +494,7 @@ function LabTab({ client, clientDetail }) {
           </div>
           <div className="lab-card__info">
             <span className="lab-card__metric-label">Readiness</span>
-            <span className="lab-card__metric-sub">Promedio 7 dias</span>
+            <span className="lab-card__metric-sub">Promedio 7 días</span>
           </div>
         </div>
 
@@ -511,7 +511,7 @@ function LabTab({ client, clientDetail }) {
           </div>
           <div className="lab-card__info">
             <span className="lab-card__metric-label">Sesiones completadas</span>
-            <span className="lab-card__metric-sub">Ultimos 30 dias</span>
+            <span className="lab-card__metric-sub">Últimos 30 días</span>
           </div>
         </div>
       </div>
@@ -536,7 +536,7 @@ function LabTab({ client, clientDetail }) {
 
         <div className="lab-chart-card">
           <h4 className="lab-chart-card__title">Peso corporal</h4>
-          <p className="lab-chart-card__sub">Ultimos 30 dias</p>
+          <p className="lab-chart-card__sub">Últimos 30 días</p>
           {bodyChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={170}>
               <LineChart data={bodyChartData} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -554,7 +554,7 @@ function LabTab({ client, clientDetail }) {
 
       <div className={`lab-chart-card lab-entrance ${entered ? 'lab-entrance--in' : ''}`} style={{ transitionDelay: '160ms' }}>
         <h4 className="lab-chart-card__title">Nutricion: real vs. objetivo</h4>
-        <p className="lab-chart-card__sub">Promedio diario — ultimos 7 dias</p>
+        <p className="lab-chart-card__sub">Promedio diario — últimos 7 días</p>
         <div className="lab-nutri-bars">
           {NUTRI_BARS.map(({ key, label, unit }) => {
             const actual = nutrition.actual?.[key] ?? 0;
@@ -595,7 +595,7 @@ function LlamadasTab({ clientDetail }) {
   if (calls.length === 0) {
     return (
       <div className="tab-content tab-empty">
-        <p className="tab-empty__text">No hay llamadas agendadas todavia.</p>
+        <p className="tab-empty__text">No hay llamadas agendadas todavía.</p>
       </div>
     );
   }
@@ -663,7 +663,7 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail, isDetailError, re
   }, []);
 
   const handleSessionAssigned = useCallback((sessionData) => {
-    showToast('Sesion asignada correctamente', 'success');
+    showToast('Sesión asignada correctamente', 'success');
     setShowSessionModal(false);
   }, [showToast]);
 
@@ -741,7 +741,7 @@ function ProfilePanel({ client, clientDetail, isLoadingDetail, isDetailError, re
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                Asignar sesion
+                Asignar sesión
               </button>
               <button
                 type="button"
@@ -1009,7 +1009,7 @@ const ProgramsAndClientsScreen = () => {
                   type="button"
                   className="roster-search__clear"
                   onClick={handleClearSearch}
-                  aria-label="Limpiar busqueda"
+                  aria-label="Limpiar búsqueda"
                 >
                   ✕
                 </button>
@@ -1037,7 +1037,7 @@ const ProgramsAndClientsScreen = () => {
             ) : isClientsError ? (
               <FullScreenError
                 title="No pudimos cargar tus clientes"
-                message="Revisa tu conexion e intenta de nuevo."
+                message="Revisa tu conexión e intenta de nuevo."
                 onRetry={refetchClients}
               />
             ) : showEmptyState ? (

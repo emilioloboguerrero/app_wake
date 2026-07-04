@@ -5,7 +5,7 @@ import GlowCard from '../components/GlowCard';
 const ease = [0.22, 1, 0.36, 1];
 const events = [
   { name: 'Taller de Movilidad', date: '15 Mar', spots: '12/20', status: 'Activo' },
-  { name: 'Reto 30 Dias', date: '1 Abr', spots: '45/50', status: 'Activo' },
+  { name: 'Reto 30 Días', date: '1 Abr', spots: '45/50', status: 'Activo' },
   { name: 'Workshop Nutricion', date: '10 Abr', spots: '8/15', status: 'Borrador' },
 ];
 

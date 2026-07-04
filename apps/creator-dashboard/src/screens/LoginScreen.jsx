@@ -158,7 +158,7 @@ const LoginScreen = () => {
           setPasswordError('Esta cuenta ha sido deshabilitada. Contacta soporte.');
           break;
         case 'auth/network-request-failed':
-          showToast('No pudimos conectar con el servidor. Revisa tu conexion.', 'error');
+          showToast('No pudimos conectar con el servidor. Revisa tu conexión.', 'error');
           break;
         case 'auth/too-many-requests':
           setFormError('Demasiados intentos. Espera un momento e intenta de nuevo');
@@ -304,7 +304,7 @@ const LoginScreen = () => {
               onClick={() => switchMode('login')}
               disabled={isLoading}
             >
-              Iniciar sesion
+              Iniciar sesión
             </button>
             <button
               className={`ln-mode-btn${mode === 'signup' ? ' ln-mode-btn--active' : ''}`}

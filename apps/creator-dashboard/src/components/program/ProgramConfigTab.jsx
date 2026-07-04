@@ -125,7 +125,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, status }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -140,7 +140,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, title: t }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingProgram(false);
     }
@@ -157,7 +157,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, price: numericPrice }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingPrice(false);
     }
@@ -174,7 +174,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, subscription_price: numeric }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingSubscriptionPrice(false);
     }
@@ -192,7 +192,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, compare_at_price: numeric }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingCompareAtPrice(false);
     }
@@ -209,7 +209,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, duration: durationString }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingDuration(false);
     }
@@ -225,7 +225,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, free_trial }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingFreeTrial(false);
     }
@@ -239,7 +239,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, weight_suggestions: !!enabled }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingWeightSuggestions(false);
     }
@@ -254,7 +254,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, availableLibraries: ids }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingAuxiliaryLibraries(false);
     }
@@ -269,7 +269,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, image_url: null, image_path: null }));
     } catch (err) {
       logger.error(err);
-      showToast('No pudimos subir la imagen. Revisa tu conexion e intenta de nuevo.', 'error');
+      showToast('No pudimos subir la imagen. Revisa tu conexión e intenta de nuevo.', 'error');
     }
   };
 
@@ -289,7 +289,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       setIntroVideoUploadProgress(100);
     } catch (err) {
       logger.error(err);
-      showToast('No pudimos subir la imagen. Revisa tu conexion e intenta de nuevo.', 'error');
+      showToast('No pudimos subir la imagen. Revisa tu conexión e intenta de nuevo.', 'error');
     } finally {
       setIsUploadingIntroVideo(false);
       event.target.value = '';
@@ -306,7 +306,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, video_intro_url: null }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     }
   };
 
@@ -336,7 +336,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       setAnuncioVideoUploadProgress(100);
     } catch (err) {
       logger.error(err);
-      showToast('No pudimos subir la imagen. Revisa tu conexion e intenta de nuevo.', 'error');
+      showToast('No pudimos subir la imagen. Revisa tu conexión e intenta de nuevo.', 'error');
     } finally {
       setIsUploadingAnuncioVideo(false);
       event.target.value = '';
@@ -359,7 +359,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       queryClient.setQueryData(queryKeys.programs.detail(program.id), (old) => ({ ...old, tutorials }));
     } catch (err) {
       logger.error(err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     }
   };
 
@@ -384,7 +384,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
       {program.deliveryType === 'one_on_one' && (
         <div className="program-section pd-one-on-one-notice">
           <p className="pd-one-on-one-notice-text">
-            Este programa es un contenedor general (1-on-1). Los cambios aqui se aplican por referencia a todos los clientes.
+            Este programa es un contenedor general (1-on-1). Los cambios aquí se aplican por referencia a todos los clientes.
           </p>
         </div>
       )}
@@ -494,10 +494,10 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
         </div>
       </div>
 
-      {/* Informacion basica */}
+      {/* Información basica */}
       <div className="program-section">
         <div className="program-section__header">
-          <h2 className="program-section__title">Informacion basica</h2>
+          <h2 className="program-section__title">Información basica</h2>
         </div>
         <div className="program-section__content program-config-inline">
           <div className="program-config-inline-row">
@@ -541,7 +541,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
                         setIsEditingDescription(false);
                       } catch (err) {
                         logger.error(err);
-                        showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+                        showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
                       } finally {
                         setIsUpdatingDescription(false);
                       }
@@ -601,7 +601,7 @@ export default function ProgramConfigTab({ program, programId, user, queryClient
               {freeTrialActive && (
                 <>
                   <input type="number" min={0} className="program-config-inline-input pd-inline-input-w56" value={freeTrialDurationDays} onChange={(e) => setFreeTrialDurationDays(e.target.value.replace(/\D/g, ''))} />
-                  <span className="program-config-inline-hint">dias</span>
+                  <span className="program-config-inline-hint">días</span>
                 </>
               )}
               <button type="button" className="program-config-inline-btn" onClick={() => saveFreeTrial(freeTrialActive, freeTrialDurationDays)} disabled={isUpdatingFreeTrial}>{isUpdatingFreeTrial ? 'Guardando...' : 'Guardar'}</button>

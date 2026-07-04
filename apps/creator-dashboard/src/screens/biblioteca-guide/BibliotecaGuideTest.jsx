@@ -60,7 +60,7 @@ export default function BibliotecaGuideTest() {
             <BibliotecaGuide onComplete={() => setGuideComplete(true)} />
           ) : (
             <div className="bgt-done">
-              <p className="bgt-done-text">Guia completada. Aqui iria el contenido de la biblioteca.</p>
+              <p className="bgt-done-text">Guia completada. Aquí iria el contenido de la biblioteca.</p>
               <button
                 className="bgt-done-replay"
                 onClick={() => setGuideComplete(false)}

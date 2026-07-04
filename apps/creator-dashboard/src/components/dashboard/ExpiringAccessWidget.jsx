@@ -30,7 +30,7 @@ function ExpiringAccessWidget({ isLoading, isError, expiringData }) {
       ) : isError ? (
         <InlineError message="No pudimos cargar los accesos." field="expiring" />
       ) : count === 0 ? (
-        <p className="ds-widget-empty">Ningun cliente tiene acceso por vencer en los proximos 30 dias.</p>
+        <p className="ds-widget-empty">Ningun cliente tiene acceso por vencer en los proximos 30 días.</p>
       ) : (
         <>
           <p className="ds-widget-number">

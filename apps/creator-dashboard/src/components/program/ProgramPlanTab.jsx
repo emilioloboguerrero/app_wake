@@ -155,14 +155,14 @@ export default function ProgramPlanTab({ programId, programName, creatorId, prog
       );
       invalidateCalendar();
     } catch (err) {
-      alert(err.message || 'Error al mover la sesion');
+      alert(err.message || 'Error al mover la sesión');
     }
   }, [programId, invalidateCalendar]);
 
   const handleAddLibrarySessionToPlanDay = useCallback(({ weekKey, dayIndex, librarySessionId }) => {
     if (!programId) return;
     addLibrarySessionMutation.mutate({ weekKey, dayIndex, librarySessionId }, {
-      onError: (err) => alert(err.message || 'Error al agregar la sesion'),
+      onError: (err) => alert(err.message || 'Error al agregar la sesión'),
     });
   }, [programId, addLibrarySessionMutation]);
 
@@ -174,7 +174,7 @@ export default function ProgramPlanTab({ programId, programName, creatorId, prog
     if (deleteConfirm.type === 'plan') {
       deleteSessionMutation.mutate(
         { weekKey: deleteConfirm.weekKey, sessionId: deleteConfirm.session.id },
-        { onSuccess: onDone, onError: (err) => { onDone(); alert(err.message || 'Error al quitar la sesion'); } }
+        { onSuccess: onDone, onError: (err) => { onDone(); alert(err.message || 'Error al quitar la sesión'); } }
       );
     } else if (deleteConfirm.type === 'removePlan') {
       removePlanMutation.mutate(
@@ -187,7 +187,7 @@ export default function ProgramPlanTab({ programId, programName, creatorId, prog
   const deleteConfirmItemName = deleteConfirm
     ? deleteConfirm.type === 'removePlan'
       ? deleteConfirm.planName
-      : (deleteConfirm.session?.title || 'Sesion')
+      : (deleteConfirm.session?.title || 'Sesión')
     : '';
 
   const isDeletePending = deleteSessionMutation.isPending || removePlanMutation.isPending;
@@ -289,13 +289,13 @@ export default function ProgramPlanTab({ programId, programName, creatorId, prog
         title={
           deleteConfirm?.type === 'removePlan'
             ? 'Quitar este plan del programa?'
-            : 'Eliminar esta sesion del plan?'
+            : 'Eliminar esta sesión del plan?'
         }
         sessionName={deleteConfirmItemName}
         description={
           deleteConfirm?.type === 'removePlan'
             ? 'Se eliminaran todas las semanas asignadas de este plan.'
-            : 'Esta sesion se eliminara de la semana.'
+            : 'Esta sesión se eliminara de la semana.'
         }
         confirmLabel={deleteConfirm?.type === 'removePlan' ? 'Quitar plan' : 'Eliminar'}
         confirmingLabel={deleteConfirm?.type === 'removePlan' ? 'Quitando...' : 'Eliminando...'}

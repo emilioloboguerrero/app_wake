@@ -35,7 +35,7 @@ const DragSessionPreview = ({ session }) => {
 
   if (!session) return null;
 
-  const title = session.title || session.session_name || session.name || 'Sesion';
+  const title = session.title || session.session_name || session.name || 'Sesión';
   const imageUrl = session.image_url ?? null;
 
   return createPortal(

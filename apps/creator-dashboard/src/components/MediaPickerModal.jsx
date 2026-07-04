@@ -304,7 +304,7 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
                   <rect x="8" y="14" width="32" height="24" rx="4" stroke="currentColor" strokeWidth="2" strokeDasharray="4 3"/>
                   <path d="M24 22v8M20 26l4-4 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                <span>Suelta aqui tus archivos</span>
+                <span>Suelta aquí tus archivos</span>
               </div>
             </div>
           )}
@@ -342,7 +342,7 @@ export default function MediaPickerModal({ isOpen, onClose, onSelect, accept = '
               </div>
               <p className="mp-empty-title">Tu carpeta esta vacia</p>
               <p className="mp-empty-sub">
-                Arrastra archivos aqui o haz clic en <strong>Subir</strong> para comenzar
+                Arrastra archivos aquí o haz clic en <strong>Subir</strong> para comenzar
               </p>
               <button className="mp-empty-cta" onClick={() => fileInputRef.current?.click()}>
                 Subir tu primer archivo

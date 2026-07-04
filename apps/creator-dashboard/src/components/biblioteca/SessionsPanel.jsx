@@ -137,7 +137,7 @@ function SortableSessionCard({ session, onNavigate, onDelete, onDuplicate, index
           <>
             <img
               src={session.image_url}
-              alt={session.title || 'Sesion'}
+              alt={session.title || 'Sesión'}
               className="pgs-card__img"
               loading="lazy"
             />
@@ -293,8 +293,8 @@ export default function SessionsPanel({ searchQuery = '', sortKey, onCreateSessi
       isError={isError}
       isEmpty={!filtered.length && !isLoading}
       emptyTitle="Sin sesiones guardadas"
-      emptySub="Crea una sesion y reutilizala en multiples programas."
-      emptyCta="+ Nueva sesion"
+      emptySub="Crea una sesión y reutilizala en multiples programas."
+      emptyCta="+ Nueva sesión"
       onCta={onCreateSession || (() => navigate('/library/sessions/new'))}
       onRetry={() => window.location.reload()}
       renderSkeleton={() => <SessionsPanelSkeleton />}
@@ -328,7 +328,7 @@ export default function SessionsPanel({ searchQuery = '', sortKey, onCreateSessi
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
-        itemName={deleteTarget?.title || 'esta sesion'}
+        itemName={deleteTarget?.title || 'esta sesión'}
         description="Esta accion no se puede deshacer."
         isDeleting={deleteMutation.isPending}
       />

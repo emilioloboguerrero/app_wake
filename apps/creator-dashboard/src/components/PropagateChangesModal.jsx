@@ -55,7 +55,7 @@ const PropagateChangesModal = ({
                       </svg>
                     </div>
                     <h3 className="propagate-option-title">Propagar cambios</h3>
-                    <p className="propagate-option-desc">Los cambios se aplican a <strong>todos los programas</strong> que usen esta sesion. Las personalizaciones se sobreescriben.</p>
+                    <p className="propagate-option-desc">Los cambios se aplican a <strong>todos los programas</strong> que usen esta sesión. Las personalizaciones se sobreescriben.</p>
                   </div>
                   <div className="propagate-option-divider" />
                   <div className="propagate-option">

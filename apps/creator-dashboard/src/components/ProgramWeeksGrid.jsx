@@ -164,7 +164,7 @@ const ProgramWeeksGrid = ({
         if (modAgain && sess) onSessionClick(modAgain, sess);
       }
     } catch (err) {
-      showToast(err.message || 'No pudimos crear la sesion. Intenta de nuevo.', 'error');
+      showToast(err.message || 'No pudimos crear la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -203,7 +203,7 @@ const ProgramWeeksGrid = ({
       }
     } catch (err) {
       setIsMovingOrAddingItem(false);
-      showToast(err.message || 'No pudimos asignar la sesion. Intenta de nuevo.', 'error');
+      showToast(err.message || 'No pudimos asignar la sesión. Intenta de nuevo.', 'error');
     }
   };
 
@@ -238,7 +238,7 @@ const ProgramWeeksGrid = ({
       await refreshModules();
       setDeleteConfirmTarget(null);
     } catch (err) {
-      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesion'), 'error');
+      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesión'), 'error');
     } finally {
       setIsDeleting(false);
     }

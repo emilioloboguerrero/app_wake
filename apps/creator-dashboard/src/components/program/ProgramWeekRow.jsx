@@ -33,7 +33,7 @@ export default function ProgramWeekRow({ module, moduleIndex, isIncomplete, onCl
       {module.sessionCount > 0 && (
         <div className="module-card-footer">
           <span className="module-card-session-count">
-            {module.sessionCount} {module.sessionCount === 1 ? 'sesion' : 'sesiones'}
+            {module.sessionCount} {module.sessionCount === 1 ? 'sesión' : 'sesiones'}
           </span>
         </div>
       )}

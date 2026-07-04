@@ -417,7 +417,7 @@ const ProgramasScreen = () => {
               ) : programsError ? (
                 <FullScreenError
                   title="No pudimos cargar tus programas"
-                  message="Revisa tu conexion e intenta de nuevo."
+                  message="Revisa tu conexión e intenta de nuevo."
                   onRetry={() => window.location.reload()}
                 />
               ) : programs.length === 0 ? (
@@ -428,7 +428,7 @@ const ProgramasScreen = () => {
                     </svg>
                   </div>
                   <TextAnimate animation="blurInUp" by="word" as="p" className="pgs-empty__text" once>
-                    Todavia no tienes programas grupales.
+                    Todavía no tienes programas grupales.
                   </TextAnimate>
                   <TextAnimate animation="fadeIn" by="word" as="p" className="pgs-empty__sub" delay={0.15} once>
                     Crea tu primer programa y empieza a vender.
@@ -466,7 +466,7 @@ const ProgramasScreen = () => {
               ) : bundlesError ? (
                 <FullScreenError
                   title="No pudimos cargar tus bundles"
-                  message="Revisa tu conexion e intenta de nuevo."
+                  message="Revisa tu conexión e intenta de nuevo."
                   onRetry={() => window.location.reload()}
                 />
               ) : bundles.length === 0 ? (

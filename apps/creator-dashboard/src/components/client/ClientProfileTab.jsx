@@ -178,7 +178,7 @@ export default function ClientProfileTab({ clientId, clientUserId, clientName, c
                     </button>
                   </div>
                 )) : (
-                  <p className="cprt-notes-empty">Las notas que escribas sobre este cliente apareceran aqui. Solo tu las puedes ver.</p>
+                  <p className="cprt-notes-empty">Las notas que escribas sobre este cliente apareceran aquí. Solo tu las puedes ver.</p>
                 )}
               </div>
             </div>

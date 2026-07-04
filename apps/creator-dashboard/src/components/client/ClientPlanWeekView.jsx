@@ -57,7 +57,7 @@ function SessionCard({ session, sessionHistory, onClick }) {
         <div className="cpwv-session-inner">
           <div className="cpwv-session-header">
             <Dumbbell size={12} className="cpwv-session-icon" />
-            <span className="cpwv-session-name">{session.title || 'Sesion'}</span>
+            <span className="cpwv-session-name">{session.title || 'Sesión'}</span>
             <span className={`cpwv-dot cpwv-dot--${status}`} />
           </div>
           <div className="cpwv-session-meta">

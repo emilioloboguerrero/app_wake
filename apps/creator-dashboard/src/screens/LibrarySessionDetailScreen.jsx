@@ -2873,7 +2873,7 @@ const LibrarySessionDetailScreen = () => {
     libraryService.propagateLibrarySession(sessionId, mode)
       .then((result) => {
         const count = result?.updatedCount ?? 0;
-        showToast(count > 0 ? `Cambios propagados a ${count} sesion(es).` : 'No habia sesiones para actualizar.', 'success');
+        showToast(count > 0 ? `Cambios propagados a ${count} sesión(es).` : 'No habia sesiones para actualizar.', 'success');
       })
       .catch((err) => {
         logger.error('Error propagating:', err);
@@ -3562,7 +3562,7 @@ const LibrarySessionDetailScreen = () => {
         backState={backState}
       >
         <FullScreenError
-          title="No se pudo cargar la sesion"
+          title="No se pudo cargar la sesión"
           message={error || 'Esta sesión no existe o fue eliminada'}
           onRetry={() => navigate(0)}
         />
@@ -3669,7 +3669,7 @@ const LibrarySessionDetailScreen = () => {
               </svg>
               <span className="library-session-client-edit-banner-text">
                 {isProgramInstanceEdit
-                  ? 'Editando esta sesion del programa. Los cambios no afectan la biblioteca.'
+                  ? 'Editando esta sesión del programa. Los cambios no afectan la biblioteca.'
                   : 'Editando solo esta semana del plan. Los cambios no afectan la biblioteca ni otras semanas.'}
               </span>
             </div>
@@ -3690,7 +3690,7 @@ const LibrarySessionDetailScreen = () => {
                   type="button"
                   className="library-session-client-edit-revert"
                   onClick={async () => {
-                    const ok = await confirm('¿Restablecer esta sesion al contenido de la biblioteca? Se perderan los cambios personalizados para este cliente.');
+                    const ok = await confirm('¿Restablecer esta sesión al contenido de la biblioteca? Se perderan los cambios personalizados para este cliente.');
                     if (!ok) return;
                     try {
                       await clientSessionContentService.deleteClientSessionContent(effectiveClientSessionId);
@@ -3702,7 +3702,7 @@ const LibrarySessionDetailScreen = () => {
                       queryClient.invalidateQueries({ queryKey: queryKeys.library.sessionsSlim(user.uid) });
                     } catch (err) {
                       logger.error('Error reverting to library:', err);
-                      showToast('No pudimos restablecer la sesion. Intenta de nuevo.', 'error');
+                      showToast('No pudimos restablecer la sesión. Intenta de nuevo.', 'error');
                     }
                   }}
                 >

@@ -74,7 +74,7 @@ const CreateLibrarySessionScreen = () => {
       navigate(backPath, { state: backState });
     },
     onError: (err) => {
-      showToast(`No pudimos crear la sesion: ${err.message || 'Intenta de nuevo.'}`, 'error');
+      showToast(`No pudimos crear la sesión: ${err.message || 'Intenta de nuevo.'}`, 'error');
     },
   });
 

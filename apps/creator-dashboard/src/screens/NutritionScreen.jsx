@@ -246,7 +246,7 @@ export default function NutritionScreen({ clientId = null }) {
       <DashboardLayout screenName="Nutrición">
         <FullScreenError
           title="No pudimos cargar la nutrición"
-          message="Hubo un problema cargando tus recetas y planes. Revisa tu conexion e intenta de nuevo."
+          message="Hubo un problema cargando tus recetas y planes. Revisa tu conexión e intenta de nuevo."
           onRetry={() => { refetchMeals(); refetchPlans(); }}
         />
       </DashboardLayout>
@@ -321,8 +321,8 @@ export default function NutritionScreen({ clientId = null }) {
                 <div className="ns-list-empty">
                   <InlineError
                     message={activeTab === 'recetas'
-                      ? 'No pudimos cargar tus recetas. Revisa tu conexion e intenta de nuevo.'
-                      : 'No pudimos cargar tus planes. Revisa tu conexion e intenta de nuevo.'}
+                      ? 'No pudimos cargar tus recetas. Revisa tu conexión e intenta de nuevo.'
+                      : 'No pudimos cargar tus planes. Revisa tu conexión e intenta de nuevo.'}
                   />
                 </div>
               ) : filtered.length === 0 ? (

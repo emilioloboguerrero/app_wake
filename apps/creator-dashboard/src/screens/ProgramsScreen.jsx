@@ -223,12 +223,12 @@ const GrupalesTab = ({ userId }) => {
       ) : error ? (
         <FullScreenError
           title="No pudimos cargar tus programas"
-          message="Revisa tu conexion e intenta de nuevo."
+          message="Revisa tu conexión e intenta de nuevo."
           onRetry={() => window.location.reload()}
         />
       ) : programs.length === 0 ? (
         <EmptyState
-          text="Todavia no tienes programas grupales. Usa el botón + de arriba para crear uno."
+          text="Todavía no tienes programas grupales. Usa el botón + de arriba para crear uno."
           cta={null}
         />
       ) : (
@@ -299,7 +299,7 @@ const IndividualesTab = ({ userId, isEditing }) => {
       ) : error ? (
         <FullScreenError
           title="No pudimos cargar tus planes"
-          message="Revisa tu conexion e intenta de nuevo."
+          message="Revisa tu conexión e intenta de nuevo."
           onRetry={() => queryClient.invalidateQueries({ queryKey: queryKeys.plans.byCreator(userId) })}
         />
       ) : plans.length === 0 ? (

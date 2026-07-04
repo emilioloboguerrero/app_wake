@@ -19,7 +19,7 @@ const PlanSessionDetailScreen = () => {
   if (!user) return null;
 
   return (
-    <DashboardLayout screenName="Sesion" showBackButton backPath={`/plans/${planId}`}>
+    <DashboardLayout screenName="Sesión" showBackButton backPath={`/plans/${planId}`}>
       <div className="plan-session-detail-container" />
     </DashboardLayout>
   );

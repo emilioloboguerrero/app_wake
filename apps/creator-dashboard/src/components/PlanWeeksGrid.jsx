@@ -296,7 +296,7 @@ const PlanWeeksGrid = ({
     if (data.type !== DRAG_TYPE_LIBRARY_SESSION || !libSessionId) return;
 
     const prevModules = (modules || []).map((m) => ({ ...m, sessions: [...(m.sessions || [])] }));
-    const optimisticSession = { id: `temp-${Date.now()}`, title: data.title || 'Sesion', dayIndex, _optimistic: true };
+    const optimisticSession = { id: `temp-${Date.now()}`, title: data.title || 'Sesión', dayIndex, _optimistic: true };
     const optimisticModules = prevModules.map((m) =>
       m.id === moduleId ? { ...m, sessions: [...(m.sessions || []), optimisticSession] } : m
     );
@@ -306,7 +306,7 @@ const PlanWeeksGrid = ({
 
     try {
       const libSession = await libraryService?.getLibrarySessionById?.(creatorId, libSessionId);
-      const title = libSession?.title || data.title || 'Sesion';
+      const title = libSession?.title || data.title || 'Sesión';
       const imageUrl = libSession?.image_url ?? null;
       await plansService.createSession(planId, moduleId, title, dayIndex, imageUrl, libSessionId, dayIndex);
       await refreshModules();
@@ -355,7 +355,7 @@ const PlanWeeksGrid = ({
     if (!dragMoveTarget) return;
     const { sourceModuleId, sourceSessionId, targetModuleId, targetDayIndex, sourceSession: srcData } = dragMoveTarget;
     setDragMoveTarget(null);
-    setMovingToCell({ moduleId: targetModuleId, dayIndex: targetDayIndex, title: srcData?.title || 'Sesion' });
+    setMovingToCell({ moduleId: targetModuleId, dayIndex: targetDayIndex, title: srcData?.title || 'Sesión' });
     try {
       if (sourceModuleId === targetModuleId) {
         await plansService.updateSession(planId, sourceModuleId, sourceSessionId, {
@@ -363,9 +363,9 @@ const PlanWeeksGrid = ({
         });
       } else {
         const sourceSession = await plansService.getSessionById(planId, sourceModuleId, sourceSessionId);
-        if (!sourceSession) throw new Error('Sesion no encontrada');
+        if (!sourceSession) throw new Error('Sesión no encontrada');
         await plansService.createSession(
-          planId, targetModuleId, sourceSession.title || 'Sesion',
+          planId, targetModuleId, sourceSession.title || 'Sesión',
           targetDayIndex, sourceSession.image_url ?? null,
           sourceSession.source_library_session_id ?? sourceSession.librarySessionRef ?? null, targetDayIndex
         );
@@ -384,10 +384,10 @@ const PlanWeeksGrid = ({
     if (!dragMoveTarget) return;
     const { sourceModuleId, sourceSessionId, targetModuleId, targetDayIndex, sourceSession: srcData } = dragMoveTarget;
     setDragMoveTarget(null);
-    setMovingToCell({ moduleId: targetModuleId, dayIndex: targetDayIndex, title: srcData?.title || 'Sesion' });
+    setMovingToCell({ moduleId: targetModuleId, dayIndex: targetDayIndex, title: srcData?.title || 'Sesión' });
     try {
       await plansService.createSession(
-        planId, targetModuleId, srcData?.title || 'Sesion',
+        planId, targetModuleId, srcData?.title || 'Sesión',
         targetDayIndex, srcData?.image_url ?? null,
         srcData?.source_library_session_id ?? null, targetDayIndex
       );
@@ -456,7 +456,7 @@ const PlanWeeksGrid = ({
     }
 
     setDeleteConfirmTarget(null);
-    showToast(type === 'week' ? 'Semana eliminada' : 'Sesion eliminada', 'success');
+    showToast(type === 'week' ? 'Semana eliminada' : 'Sesión eliminada', 'success');
 
     try {
       if (type === 'week') {
@@ -469,7 +469,7 @@ const PlanWeeksGrid = ({
       // Rollback on failure
       queryClient.setQueryData(planKey, prevPlan);
       queryClient.setQueryData(modulesKey, prevModules);
-      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesion'), 'error');
+      showToast(err.message || (type === 'week' ? 'No pudimos eliminar la semana' : 'No pudimos eliminar la sesión'), 'error');
     }
   };
 

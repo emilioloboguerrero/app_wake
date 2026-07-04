@@ -110,7 +110,7 @@ export default function NutritionProgramsPanel({ searchQuery = '', sortKey, onCr
         isError={isError}
         isEmpty={!programs.length && !isLoading}
         emptyTitle="Sin planes de nutricion"
-        emptySub="Combina dias de alimentacion en una secuencia de varias semanas y asignala a tus clientes."
+        emptySub="Combina días de alimentación en una secuencia de varias semanas y asignala a tus clientes."
         emptyCta="+ Crear plan"
         onCta={onCreateProgram}
         onRetry={() => window.location.reload()}

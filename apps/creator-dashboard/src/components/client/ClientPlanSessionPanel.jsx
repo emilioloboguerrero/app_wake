@@ -192,7 +192,7 @@ export default function ClientPlanSessionPanel({
             />
           ))
         ) : (
-          <p className="cpsp-empty">Esta sesion no tiene ejercicios</p>
+          <p className="cpsp-empty">Esta sesión no tiene ejercicios</p>
         )}
       </div>
     </div>

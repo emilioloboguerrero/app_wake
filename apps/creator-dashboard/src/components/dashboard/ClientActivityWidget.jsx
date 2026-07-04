@@ -31,7 +31,7 @@ function ClientActivityWidget({ isLoading, isError, activityData }) {
       ) : isError ? (
         <InlineError message="No pudimos cargar la actividad." field="client-activity" />
       ) : summary.total === 0 ? (
-        <p className="ds-widget-empty">Cuando tengas clientes, aqui veras quien esta entrenando.</p>
+        <p className="ds-widget-empty">Cuando tengas clientes, aquí veras quien esta entrenando.</p>
       ) : (
         <>
           <div className="ds-activity-summary">

@@ -276,7 +276,7 @@ const ProfileScreen = () => {
       navigate('/login');
     } catch (error) {
       logger.error('Error signing out:', error);
-      showToast('Error al cerrar sesion. Intenta de nuevo.', 'error');
+      showToast('Error al cerrar sesión. Intenta de nuevo.', 'error');
     }
   };
 
@@ -338,7 +338,7 @@ const ProfileScreen = () => {
         <div className="profile-screen">
           <FullScreenError
             title="No pudimos cargar tu perfil"
-            message="Revisa tu conexion e intenta de nuevo."
+            message="Revisa tu conexión e intenta de nuevo."
             onRetry={refetchProfile}
           />
         </div>
@@ -587,7 +587,7 @@ const ProfileScreen = () => {
                 </div>
 
                 <button className="profile-logout-button" onClick={handleSignOut}>
-                  Cerrar sesion
+                  Cerrar sesión
                 </button>
 
                 <button

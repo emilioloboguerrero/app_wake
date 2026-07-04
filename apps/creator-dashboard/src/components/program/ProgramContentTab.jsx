@@ -170,7 +170,7 @@ const SortableSessionCard = ({ session, isSessionEditMode, onSessionClick, onDel
       )}
       <div className="session-card-header">
         <h3 className="session-card-title">
-          {session.title || session.name || `Sesion ${session.id.slice(0, 8)}`}
+          {session.title || session.name || `Sesión ${session.id.slice(0, 8)}`}
           {!session.librarySessionRef && (
             <span className="session-desvinculado-badge">Desvinculado</span>
           )}
@@ -467,7 +467,7 @@ const ProgramContentTab = ({
       } catch (error) {
         logger.error('Error saving module order:', error);
         if (originalModulesOrder.length > 0) setModules([...originalModulesOrder]);
-        showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+        showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
       }
     }, 1000),
     [programId, updateModuleOrderMutation, originalModulesOrder]
@@ -485,7 +485,7 @@ const ProgramContentTab = ({
       } catch (error) {
         logger.error('Error saving session order:', error);
         if (originalSessionsOrder.length > 0) setSessions([...originalSessionsOrder]);
-        showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+        showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
       }
     }, 1000),
     [programId, selectedModule, updateSessionOrderMutation, originalSessionsOrder]
@@ -612,7 +612,7 @@ const ProgramContentTab = ({
       }
     } catch (err) {
       logger.error('Error creating module:', err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     }
   };
 
@@ -658,7 +658,7 @@ const ProgramContentTab = ({
     } catch (err) {
       logger.error('Error updating module order:', err);
       if (originalModulesOrder.length > 0) setModules([...originalModulesOrder]);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingModuleOrder(false);
     }
@@ -823,7 +823,7 @@ const ProgramContentTab = ({
       handleCloseCopySessionModal();
     } catch (err) {
       logger.error('Error creating session from library:', err);
-      showToast(`Error al agregar la sesion: ${err.message || 'Intenta de nuevo.'}`, 'error');
+      showToast(`Error al agregar la sesión: ${err.message || 'Intenta de nuevo.'}`, 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -846,7 +846,7 @@ const ProgramContentTab = ({
       }
     } catch (err) {
       logger.error('Error creating session:', err);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsCreatingSession(false);
     }
@@ -873,7 +873,7 @@ const ProgramContentTab = ({
     } catch (err) {
       logger.error('Error updating session order:', err);
       if (originalSessionsOrder.length > 0) setSessions([...originalSessionsOrder]);
-      showToast('Los cambios no se guardaron. Revisa tu conexion.', 'error');
+      showToast('Los cambios no se guardaron. Revisa tu conexión.', 'error');
     } finally {
       setIsUpdatingSessionOrder(false);
     }
@@ -902,7 +902,7 @@ const ProgramContentTab = ({
 
   const handleConfirmDeleteSession = async () => {
     if (!sessionToDelete || !deleteSessionConfirmation.trim() || !programId || !selectedModule) return;
-    const sessionTitle = sessionToDelete.title || sessionToDelete.name || `Sesion ${sessionToDelete.id?.slice(0, 8) || ''}`;
+    const sessionTitle = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
     if (deleteSessionConfirmation.trim() !== sessionTitle) return;
 
     try {
@@ -922,7 +922,7 @@ const ProgramContentTab = ({
       if (freshSessions.length === 0) setIsSessionEditMode(false);
     } catch (err) {
       logger.error('Error deleting session:', err);
-      showToast(`No pudimos eliminar la sesion. ${err.message || 'Intenta de nuevo.'}`, 'error');
+      showToast(`No pudimos eliminar la sesión. ${err.message || 'Intenta de nuevo.'}`, 'error');
     } finally {
       setIsDeletingSession(false);
     }
@@ -969,7 +969,7 @@ const ProgramContentTab = ({
 
     try {
       const libSession = await libraryService.getLibrarySessionById(user?.uid, librarySessionRef);
-      const sessionTitle = libSession?.title || title || 'Sesion';
+      const sessionTitle = libSession?.title || title || 'Sesión';
       const imageUrl = libSession?.image_url ?? null;
 
       const created = await programService.createSession(
@@ -985,7 +985,7 @@ const ProgramContentTab = ({
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.all(programId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.modules.withCounts(programId) });
     } catch (err) {
-      showToast('No pudimos mover esa sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos mover esa sesión. Intenta de nuevo.', 'error');
     }
   }, [programId, user?.uid, queryClient, showToast]);
 
@@ -1003,7 +1003,7 @@ const ProgramContentTab = ({
         type: 'folder',
         children: moduleSessions.map((s, si) => ({
           id: s.id,
-          name: s.title || s.name || `Sesion ${si + 1}`,
+          name: s.title || s.name || `Sesión ${si + 1}`,
           type: 'file',
         })),
       };
@@ -1102,7 +1102,7 @@ const ProgramContentTab = ({
                           )}
                           <div className="session-card-header">
                             <h3 className="session-card-title">
-                              {session.title || session.name || `Sesion ${session.id.slice(0, 8)}`}
+                              {session.title || session.name || `Sesión ${session.id.slice(0, 8)}`}
                               {!session.librarySessionRef && (
                                 <span className="session-desvinculado-badge">Desvinculado</span>
                               )}
@@ -1153,7 +1153,7 @@ const ProgramContentTab = ({
       <div className="program-tab-content">
         <h1 className="program-page-title">Contenido</h1>
         <p className="pd-drag-hint" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Arrastra sesiones desde tu biblioteca al dia que quieras.
+          Arrastra sesiones desde tu biblioteca al día que quieras.
         </p>
         <div className="plan-structure-layout client-program-planning-layout">
           <DndContext
@@ -1180,7 +1180,7 @@ const ProgramContentTab = ({
                     </div>
                   )}
                   <span className="library-drag-overlay-title">
-                    {activeDragSession.title || 'Sesion'}
+                    {activeDragSession.title || 'Sesión'}
                   </span>
                 </div>
               ) : null}
@@ -1267,7 +1267,7 @@ const ProgramContentTab = ({
 
         {modules.length === 0 && !isLoadingModules && (
           <p className="pd-empty-hint" style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-            Este programa no tiene contenido todavia. Agrega una semana para empezar a construir.
+            Este programa no tiene contenido todavía. Agrega una semana para empezar a construir.
           </p>
         )}
         <div className="program-section">
@@ -1532,7 +1532,7 @@ const ProgramContentTab = ({
 
   function renderCopySessionModal() {
     return (
-      <Modal isOpen={isCopySessionModalOpen} onClose={handleCloseCopySessionModal} title="Nueva Sesion">
+      <Modal isOpen={isCopySessionModalOpen} onClose={handleCloseCopySessionModal} title="Nueva Sesión">
         <div className="anuncios-modal-content">
           <div className="anuncios-modal-body">
             <div className="anuncios-modal-left">
@@ -1561,9 +1561,9 @@ const ProgramContentTab = ({
               {copySessionModalPage === 'crear' && (
                 <div className="edit-program-modal-right pd-modal-scroll-panel">
                   <div className="edit-program-input-group">
-                    <label className="edit-program-input-label">Nombre de la Sesion</label>
+                    <label className="edit-program-input-label">Nombre de la Sesión</label>
                     <Input
-                      placeholder="Nombre de la sesion"
+                      placeholder="Nombre de la sesión"
                       value={sessionName}
                       onChange={(e) => setSessionName(e.target.value)}
                       type="text"
@@ -1588,7 +1588,7 @@ const ProgramContentTab = ({
                       onClick={() => navigate('/library/sessions/new')}
                     >
                       <span className="pd-modal-new-btn-icon">+</span>
-                      <span>Nueva Sesion</span>
+                      <span>Nueva Sesión</span>
                     </button>
                   </div>
                   {isLoadingLibrarySessions ? (
@@ -1601,7 +1601,7 @@ const ProgramContentTab = ({
                         <div key={librarySession.id} className="copy-session-item">
                           <div className="copy-session-item-info">
                             <h4 className="copy-session-item-name">
-                              {librarySession.title || `Sesion ${librarySession.id?.slice(0, 8)}`}
+                              {librarySession.title || `Sesión ${librarySession.id?.slice(0, 8)}`}
                             </h4>
                           </div>
                           <div className="pd-copy-item-actions">
@@ -1637,15 +1637,15 @@ const ProgramContentTab = ({
       <Modal
         isOpen={isDeleteSessionModalOpen}
         onClose={handleCloseDeleteSessionModal}
-        title={sessionToDelete?.title || sessionToDelete?.name || 'Eliminar sesion'}
+        title={sessionToDelete?.title || sessionToDelete?.name || 'Eliminar sesión'}
       >
         <div className="modal-library-content">
-          <p className="delete-instruction-text">Para confirmar, escribe el nombre de la sesion:</p>
+          <p className="delete-instruction-text">Para confirmar, escribe el nombre de la sesión:</p>
           <div className="delete-input-button-row">
             <Input
               placeholder={(() => {
-                if (!sessionToDelete) return 'Nombre de la sesion';
-                return sessionToDelete.title || sessionToDelete.name || `Sesion ${sessionToDelete.id?.slice(0, 8) || ''}`;
+                if (!sessionToDelete) return 'Nombre de la sesión';
+                return sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
               })()}
               value={deleteSessionConfirmation}
               onChange={(e) => setDeleteSessionConfirmation(e.target.value)}
@@ -1655,13 +1655,13 @@ const ProgramContentTab = ({
             <button
               className={`delete-library-button ${(() => {
                 if (!sessionToDelete) return true;
-                const title = sessionToDelete.title || sessionToDelete.name || `Sesion ${sessionToDelete.id?.slice(0, 8) || ''}`;
+                const title = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
                 return deleteSessionConfirmation.trim() !== title;
               })() ? 'delete-library-button-disabled' : ''}`}
               onClick={handleConfirmDeleteSession}
               disabled={(() => {
                 if (!sessionToDelete) return true;
-                const title = sessionToDelete.title || sessionToDelete.name || `Sesion ${sessionToDelete.id?.slice(0, 8) || ''}`;
+                const title = sessionToDelete.title || sessionToDelete.name || `Sesión ${sessionToDelete.id?.slice(0, 8) || ''}`;
                 return deleteSessionConfirmation.trim() !== title || isDeletingSession;
               })()}
             >
@@ -1669,7 +1669,7 @@ const ProgramContentTab = ({
             </button>
           </div>
           <p className="delete-warning-text">
-            Esta accion es irreversible. Todo el contenido de esta sesion se eliminara permanentemente.
+            Esta accion es irreversible. Todo el contenido de esta sesión se eliminara permanentemente.
           </p>
         </div>
       </Modal>

@@ -662,7 +662,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
                           onChange={(e) => setFreeTrialDays(e.target.value.replace(/\D/g, ''))}
                           onBlur={saveTrialDays}
                         />
-                        <span className="gp-trial__days-label">dias</span>
+                        <span className="gp-trial__days-label">días</span>
                       </>
                     )}
                   </div>
@@ -1014,7 +1014,7 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
         <div className="program-detail-migrating-overlay" role="alert" aria-busy="true">
           <div className="program-detail-migrating-content">
             <div className="program-detail-migrating-spinner" aria-hidden />
-            <p className="program-detail-migrating-text">Preparando sesion para editar...</p>
+            <p className="program-detail-migrating-text">Preparando sesión para editar...</p>
           </div>
         </div>
       )}

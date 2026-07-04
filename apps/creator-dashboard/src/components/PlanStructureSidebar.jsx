@@ -36,7 +36,7 @@ const PlanStructureSidebar = ({
       JSON.stringify({
         type: DRAG_TYPE_LIBRARY_SESSION,
         librarySessionRef: session.id,
-        title: session.title || 'Sesion',
+        title: session.title || 'Sesión',
       })
     );
     e.currentTarget.classList.add('plan-structure-item-dragging');
@@ -103,7 +103,7 @@ const PlanStructureSidebar = ({
                       )}
                       <div className="planning-sidebar-program-info">
                         <span className="planning-sidebar-program-name">
-                          {session.title || `Sesion ${session.id?.slice(0, 8)}`}
+                          {session.title || `Sesión ${session.id?.slice(0, 8)}`}
                         </span>
                       </div>
                     </div>

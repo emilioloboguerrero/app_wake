@@ -142,17 +142,17 @@ function buildTimelineInsights(timelineData, total) {
   const firstHalfIdx = timelineData.findIndex(d => d.cumulative >= halfTotal);
   if (firstHalfIdx >= 0 && firstHalfIdx < timelineData.length / 3) {
     const firstHalfPct = Math.round(timelineData[firstHalfIdx].cumulative / total * 100);
-    insights.push(`El ${firstHalfPct}% de los registros llegaron en los primeros ${firstHalfIdx + 1} dia${firstHalfIdx > 0 ? 's' : ''}.`);
+    insights.push(`El ${firstHalfPct}% de los registros llegaron en los primeros ${firstHalfIdx + 1} día${firstHalfIdx > 0 ? 's' : ''}.`);
   }
   const peakDay = timelineData.reduce((max, d) => d.daily > max.daily ? d : max, timelineData[0]);
   const avgDaily = total / timelineData.length;
   if (peakDay.daily > avgDaily * 2) {
-    insights.push(`Hubo un pico el ${peakDay.day} con ${peakDay.daily} registros — revisa si publicaste algo ese dia.`);
+    insights.push(`Hubo un pico el ${peakDay.day} con ${peakDay.daily} registros — revisa si publicaste algo ese día.`);
   }
   const lastThird = timelineData.slice(Math.floor(timelineData.length * 0.66));
   const lastThirdTotal = lastThird.reduce((s, d) => s + d.daily, 0);
   if (lastThirdTotal < total * 0.1 && timelineData.length > 3) {
-    insights.push('Los registros se frenaron en los ultimos dias del periodo.');
+    insights.push('Los registros se frenaron en los últimos días del periodo.');
   }
   return insights;
 }
@@ -887,7 +887,7 @@ export default function EventResultsScreen() {
     const errors = {};
     if (!title.trim()) errors.title = 'El titulo es obligatorio';
     if (!eventDate) errors.date = 'La fecha es obligatoria';
-    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un numero positivo';
+    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un número positivo';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setFieldErrors({});
     setSaving(true);
@@ -1294,7 +1294,7 @@ export default function EventResultsScreen() {
               ))}
             </div>
 
-            {/* Section: Ritmo de inscripcion (chart) */}
+            {/* Section: Ritmo de inscripción (chart) */}
             <ShimmerSkeleton width="160px" height="12px" borderRadius="4px" className="er-skel-mt20" />
             <div className="er-skel-chart-card">
               <ShimmerSkeleton width="100%" height="13px" borderRadius="4px" />
@@ -1334,7 +1334,7 @@ export default function EventResultsScreen() {
         ) : eventError ? (
           <FullScreenError
             title="No pudimos cargar este evento"
-            message="Verifica tu conexion e intenta de nuevo."
+            message="Verifica tu conexión e intenta de nuevo."
             onRetry={() => {
               queryClient.invalidateQueries({ queryKey: queryKeys.events.detail(eventId) });
               queryClient.invalidateQueries({ queryKey: queryKeys.events.registrations(eventId) });
@@ -1505,7 +1505,7 @@ export default function EventResultsScreen() {
 
                 {filteredRegs.length === 0 ? (
                   <div className="event-results-empty">
-                    {search ? 'Sin resultados para esa busqueda.' : 'Nadie se ha registrado todavia. Comparte el link de tu evento.'}
+                    {search ? 'Sin resultados para esa búsqueda.' : 'Nadie se ha registrado todavía. Comparte el link de tu evento.'}
                   </div>
                 ) : (
                   <div className="event-results-table-wrap">
@@ -1634,7 +1634,7 @@ export default function EventResultsScreen() {
                       {fillTime && (
                         <StatCard
                           label="Tiempo de llenado"
-                          value={`${fillTime.days} dia${fillTime.days !== 1 ? 's' : ''}`}
+                          value={`${fillTime.days} día${fillTime.days !== 1 ? 's' : ''}`}
                           sub={`Se lleno el ${fillTime.dateStr}`}
                         />
                       )}
@@ -1647,10 +1647,10 @@ export default function EventResultsScreen() {
                       )}
                     </div>
 
-                    {/* ── Section 2: Ritmo de inscripcion ── */}
+                    {/* ── Section 2: Ritmo de inscripción ── */}
                     {timelineData.length > 1 && (
                       <>
-                        <SectionTitle>Ritmo de inscripcion</SectionTitle>
+                        <SectionTitle>Ritmo de inscripción</SectionTitle>
                         <AnalyticsCard insight={timelineInsights.join(' ')}>
                           <div className="er-chart-wrap">
                             <ResponsiveContainer width="100%" height={220}>
@@ -1829,11 +1829,11 @@ export default function EventResultsScreen() {
                           <AnalyticsCard title="Velocidad de llenado">
                             <div className="er-velocity-stat">
                               <span className="er-velocity-value">{peakDaily}</span>
-                              <span className="er-velocity-unit">registros/dia en el pico</span>
+                              <span className="er-velocity-unit">registros/día en el pico</span>
                             </div>
                             {fillTime && (
                               <p className="er-insight-text">
-                                Alcanzaste capacidad en <strong>{fillTime.days} dia{fillTime.days !== 1 ? 's' : ''}</strong>.
+                                Alcanzaste capacidad en <strong>{fillTime.days} día{fillTime.days !== 1 ? 's' : ''}</strong>.
                               </p>
                             )}
                           </AnalyticsCard>
@@ -1977,7 +1977,7 @@ export default function EventResultsScreen() {
 
                       <textarea
                         className="em-body-input"
-                        placeholder={"Hola {{nombre}},\n\nEscribe tu mensaje aqui...\n\nUsa {{nombre}} para personalizar con el nombre de cada persona."}
+                        placeholder={"Hola {{nombre}},\n\nEscribe tu mensaje aquí...\n\nUsa {{nombre}} para personalizar con el nombre de cada persona."}
                         value={emailBody}
                         onChange={e => setEmailBody(e.target.value)}
                         rows={10}

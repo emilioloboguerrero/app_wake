@@ -250,7 +250,7 @@ export default function ClientPlanTab({
       );
       invalidateCalendar();
     } catch (err) {
-      alert(err.message || 'Error al mover la sesion');
+      alert(err.message || 'Error al mover la sesión');
     }
   }, [clientUserId, programId, invalidateCalendar]);
 
@@ -258,7 +258,7 @@ export default function ClientPlanTab({
   const handleAddLibrarySessionToPlanDay = useCallback(({ weekKey, dayIndex, librarySessionId }) => {
     if (!clientUserId || !programId) return;
     addLibrarySessionMutation.mutate({ weekKey, dayIndex, librarySessionId }, {
-      onError: (err) => alert(err.message || 'Error al agregar la sesion'),
+      onError: (err) => alert(err.message || 'Error al agregar la sesión'),
     });
   }, [clientUserId, programId, addLibrarySessionMutation, planAssignments]);
 
@@ -266,7 +266,7 @@ export default function ClientPlanTab({
   const handleSessionAssignment = useCallback((sessionData) => {
     if (!clientUserId || !programId) return;
     assignDateSessionMutation.mutate(sessionData, {
-      onError: () => alert('Error al asignar la sesion'),
+      onError: () => alert('Error al asignar la sesión'),
     });
   }, [clientUserId, programId, assignDateSessionMutation]);
 
@@ -307,12 +307,12 @@ export default function ClientPlanTab({
     if (deleteConfirm.type === 'plan') {
       deleteSessionMutation.mutate(
         { weekKey: deleteConfirm.weekKey, sessionId: deleteConfirm.session.id },
-        { onSuccess: onDone, onError: (err) => { onDone(); alert(err.message || 'Error al quitar la sesion'); } }
+        { onSuccess: onDone, onError: (err) => { onDone(); alert(err.message || 'Error al quitar la sesión'); } }
       );
     } else if (deleteConfirm.type === 'date') {
       deleteDateSessionMutation.mutate(
         { clientSessionId: deleteConfirm.session.id },
-        { onSuccess: onDone, onError: () => { onDone(); alert('Error al eliminar la sesion'); } }
+        { onSuccess: onDone, onError: () => { onDone(); alert('Error al eliminar la sesión'); } }
       );
     } else if (deleteConfirm.type === 'removePlan') {
       removePlanMutation.mutate(
@@ -325,7 +325,7 @@ export default function ClientPlanTab({
   const deleteConfirmItemName = deleteConfirm
     ? deleteConfirm.type === 'removePlan'
       ? deleteConfirm.planName
-      : (deleteConfirm.session?.title || deleteConfirm.session?.session_name || 'Sesion')
+      : (deleteConfirm.session?.title || deleteConfirm.session?.session_name || 'Sesión')
     : '';
 
   const isDeletePending = deleteSessionMutation.isPending || deleteDateSessionMutation.isPending || removePlanMutation.isPending;
@@ -480,15 +480,15 @@ export default function ClientPlanTab({
         title={
           deleteConfirm?.type === 'removePlan'
             ? 'Quitar este plan del cliente?'
-            : 'Eliminar esta sesion del plan?'
+            : 'Eliminar esta sesión del plan?'
         }
         sessionName={deleteConfirmItemName}
         description={
           deleteConfirm?.type === 'removePlan'
             ? 'Se eliminaran todas las semanas asignadas de este plan.'
             : deleteConfirm?.type === 'plan'
-              ? 'El cliente ya no vera esta sesion en su semana.'
-              : 'Esta sesion se eliminara del dia asignado.'
+              ? 'El cliente ya no vera esta sesión en su semana.'
+              : 'Esta sesión se eliminara del día asignado.'
         }
         confirmLabel={deleteConfirm?.type === 'removePlan' ? 'Quitar plan' : 'Eliminar'}
         confirmingLabel={deleteConfirm?.type === 'removePlan' ? 'Quitando...' : 'Eliminando...'}

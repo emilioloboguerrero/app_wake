@@ -403,7 +403,7 @@ export default function ClientNutritionTab({
                   {!isProgramAssignment && (
                     <div className="cnt-plan-cal">
                       <span className="cnt-plan-cal-value">{dailyCalories}</span>
-                      <span className="cnt-plan-cal-unit">kcal/dia</span>
+                      <span className="cnt-plan-cal-unit">kcal/día</span>
                     </div>
                   )}
                 </div>

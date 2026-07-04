@@ -196,7 +196,7 @@ export default function EventEditorScreen() {
     const errors = {};
     if (!title.trim()) errors.title = 'El titulo es obligatorio';
     if (!date) errors.date = 'La fecha es obligatoria';
-    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un numero positivo';
+    if (maxRegistrations && Number(maxRegistrations) <= 0) errors.capacity = 'Los cupos deben ser un número positivo';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
     setFieldErrors({});
     setSaving(true);

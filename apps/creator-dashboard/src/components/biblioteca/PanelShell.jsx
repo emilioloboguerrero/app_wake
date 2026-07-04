@@ -31,7 +31,7 @@ export default function PanelShell({
     return (
       <FullScreenError
         title="Algo salio mal"
-        message="Revisa tu conexion e intenta de nuevo."
+        message="Revisa tu conexión e intenta de nuevo."
         onRetry={onRetry}
       />
     );

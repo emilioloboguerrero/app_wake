@@ -37,7 +37,7 @@ function ProgramsSoldWidget({ isLoading, isError, trendData }) {
       ) : isError ? (
         <InlineError message="No pudimos cargar las ventas." field="programs-sold" />
       ) : totalProgramsSold === 0 && totalOneOnOne === 0 ? (
-        <p className="ds-widget-empty">Aqui veras cuantos programas has vendido y clientes 1:1 tienes.</p>
+        <p className="ds-widget-empty">Aquí veras cuantos programas has vendido y clientes 1:1 tienes.</p>
       ) : (
         <>
           <div className="ds-programs-stats">

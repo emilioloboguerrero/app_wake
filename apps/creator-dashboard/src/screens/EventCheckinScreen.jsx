@@ -288,7 +288,7 @@ export default function EventCheckinScreen() {
                             <line x1="12" y1="16" x2="12.01" y2="16" />
                           </svg>
                         </div>
-                        <h2 className="ec-result-title">Error de conexion</h2>
+                        <h2 className="ec-result-title">Error de conexión</h2>
                         <p className="ec-result-sub">Intenta de nuevo</p>
                       </>
                     )}

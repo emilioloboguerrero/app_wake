@@ -91,7 +91,7 @@ function RevenueWidget({ isLoading, isError, lowTicket, oneOnOne, programs = [],
     return (
       <div className="ds-widget-inner">
         <p className="ds-widget-title">Ingresos netos</p>
-        <WidgetEmpty message="Cuando vendas tu primer programa, aqui vas a ver tus ingresos." />
+        <WidgetEmpty message="Cuando vendas tu primer programa, aquí vas a ver tus ingresos." />
       </div>
     );
   }

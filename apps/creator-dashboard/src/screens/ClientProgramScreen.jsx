@@ -790,7 +790,7 @@ const ClientProgramScreen = () => {
       setIsSessionAssignmentModalOpen(false);
     } catch (error) {
       logger.error('Error assigning session:', error);
-      showToast('No pudimos asignar la sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos asignar la sesión. Intenta de nuevo.', 'error');
     }
   };
 
@@ -931,7 +931,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleSessionAssignment error:', error);
-      showToast('No pudimos asignar la sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos asignar la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsAssigningSession(false);
     }
@@ -958,7 +958,7 @@ const ClientProgramScreen = () => {
         }
       } catch (error) {
         logger.error('[ClientProgramScreen] handleEditSessionAssignment: copyFromPlan error:', error);
-        showToast('No pudimos abrir la sesion para editar. Intenta de nuevo.', 'error');
+        showToast('No pudimos abrir la sesión para editar. Intenta de nuevo.', 'error');
         return;
       }
       navigate(`/content/sessions/${session.session_id}`, {
@@ -1000,7 +1000,7 @@ const ClientProgramScreen = () => {
       queryClient.invalidateQueries({ queryKey: ['plannedSessions', client?.clientUserId] });
     } catch (error) {
       logger.error('[ClientProgramScreen] handleDeleteSessionAssignment error:', error);
-      showToast('No pudimos eliminar la sesion. Intenta de nuevo.', 'error');
+      showToast('No pudimos eliminar la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsDeletingSessionAssignment(false);
     }
@@ -1132,7 +1132,7 @@ const ClientProgramScreen = () => {
       });
     } catch (error) {
       logger.error('Error opening plan session for edit:', error);
-      showToast(error.message || 'No pudimos abrir la sesion. Intenta de nuevo.', 'error');
+      showToast(error.message || 'No pudimos abrir la sesión. Intenta de nuevo.', 'error');
     }
   };
 
@@ -1168,7 +1168,7 @@ const ClientProgramScreen = () => {
       }
     } catch (error) {
       logger.error('Error deleting plan session:', error);
-      showToast(error.message || 'No pudimos quitar la sesion. Intenta de nuevo.', 'error');
+      showToast(error.message || 'No pudimos quitar la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsDeletingPlanSession(false);
     }
@@ -1215,7 +1215,7 @@ const ClientProgramScreen = () => {
         ...prev,
         ...(prevContent != null && { [weekKey]: prevContent })
       }));
-      showToast(error.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
+      showToast(error.message || 'No pudimos mover la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsMovingPlanSession(false);
     }
@@ -1270,7 +1270,7 @@ const ClientProgramScreen = () => {
       }));
     } catch (error) {
       logger.error('Error moving plan session to week:', error);
-      showToast(error.message || 'No pudimos mover la sesion. Intenta de nuevo.', 'error');
+      showToast(error.message || 'No pudimos mover la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsMovingPlanSession(false);
     }
@@ -1382,7 +1382,7 @@ const ClientProgramScreen = () => {
     }
     const libSession = await libraryService.getLibrarySessionById(user.uid, librarySessionId);
     if (!libSession) {
-      showToast('No encontramos esa sesion en la biblioteca', 'error');
+      showToast('No encontramos esa sesión en la biblioteca', 'error');
       return;
     }
     const payload = {
@@ -1423,7 +1423,7 @@ const ClientProgramScreen = () => {
       await addLibrarySessionToPlanWeek(weekKey, dayIndex, librarySessionId);
     } catch (error) {
       logger.error('Error adding library session to plan day:', error);
-      showToast(error.message || 'No pudimos añadir la sesion. Intenta de nuevo.', 'error');
+      showToast(error.message || 'No pudimos añadir la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingToWeekKey(null);
@@ -1451,7 +1451,7 @@ const ClientProgramScreen = () => {
       setAddPlanSessionTarget(null);
     } catch (error) {
       logger.error('Error adding session:', error);
-      showToast(error.message || 'No pudimos añadir la sesion. Intenta de nuevo.', 'error');
+      showToast(error.message || 'No pudimos añadir la sesión. Intenta de nuevo.', 'error');
     } finally {
       setIsAddingSessionToPlanDay(false);
       setAddingSessionIdInModal(null);
@@ -1762,7 +1762,7 @@ const ClientProgramScreen = () => {
         if (nutritionTabError) {
           return (
             <div className="client-program-tab-content">
-              <InlineError message="No pudimos cargar la informacion de nutricion. Intenta recargar la pagina." />
+              <InlineError message="No pudimos cargar la información de nutricion. Intenta recargar la página." />
             </div>
           );
         }
