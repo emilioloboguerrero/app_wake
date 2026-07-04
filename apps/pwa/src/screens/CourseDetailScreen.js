@@ -1652,7 +1652,7 @@ useEffect(() => {
                   </ImageBackground>
                 ) : (
                   <View style={styles.imageCardFallback}>
-                    <Text style={styles.imageCardFallbackText}>No media available</Text>
+                    <Text style={styles.imageCardFallbackText}>Sin contenido</Text>
                   </View>
                 )}
               </View>

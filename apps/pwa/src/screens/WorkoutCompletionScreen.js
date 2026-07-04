@@ -1759,7 +1759,7 @@ const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn })
                               </View>
                             </View>
                           ) : (
-                            <Text style={styles.shareOptionText}>No muscle data available</Text>
+                            <Text style={styles.shareOptionText}>Sin datos de músculos</Text>
                           )}
                         </View>
                         
@@ -1993,7 +1993,7 @@ const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn })
                       </View>
                     </View>
                   ) : (
-                    <Text style={styles.fullscreenCardText}>No muscle data available</Text>
+                    <Text style={styles.fullscreenCardText}>Sin datos de músculos</Text>
                   )}
                 </View>
                 
@@ -2079,7 +2079,7 @@ const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn })
                     if (top3Sets.length === 0) {
                       return (
                         <View style={styles.top3RMContainer}>
-                          <Text style={styles.top3RMExercise}>No RM data available</Text>
+                          <Text style={styles.top3RMExercise}>Sin datos de RM</Text>
                         </View>
                       );
                     }
@@ -2099,7 +2099,7 @@ const WorkoutCompletionScreen = ({ navigation, route, onRequestReadinessOptIn })
               </View>
             ) : fullscreenCardIndex === 1 ? (
               <View style={styles.fullscreenCard}>
-                <Text style={styles.fullscreenCardText}>Option 2 - Fullscreen</Text>
+                <Text style={styles.fullscreenCardText}>Vista completa no disponible</Text>
               </View>
             ) : null}
           </TouchableOpacity>

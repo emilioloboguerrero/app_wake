@@ -143,7 +143,7 @@ const CompleteProfileScreen = () => {
       errs.birthDate = 'Fecha de nacimiento es requerida';
     } else {
       const age = (Date.now() - new Date(birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-      if (age < 13) errs.birthDate = 'Debes tener al menos 13 anos';
+      if (age < 13) errs.birthDate = 'Debes tener al menos 13 años';
     }
     if (!gender) errs.gender = 'Selecciona tu genero';
     if (!country) errs.country = 'Selecciona un pais';
@@ -243,7 +243,7 @@ const CompleteProfileScreen = () => {
             alt="Wake"
             className="cp-logo"
           />
-          <h1 className="cp-headline">Cuentanos sobre ti</h1>
+          <h1 className="cp-headline">Cuéntanos sobre ti</h1>
         </motion.div>
       </div>
 

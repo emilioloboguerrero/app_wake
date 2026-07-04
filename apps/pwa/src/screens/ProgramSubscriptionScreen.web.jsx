@@ -287,7 +287,7 @@ export default function ProgramSubscriptionScreen() {
               <>
                 <h2 style={styles.modalTitle}>Antes de cancelar</h2>
                 <p style={styles.modalText}>
-                  Si querés, contanos qué pasó. Nos ayuda a mejorar Wake.
+                  Si quieres, cuéntanos qué pasó. Nos ayuda a mejorar Wake.
                 </p>
                 <SurveyQuestion
                   label="¿Por qué cancelás?"

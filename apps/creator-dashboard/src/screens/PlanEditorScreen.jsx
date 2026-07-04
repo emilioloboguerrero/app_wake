@@ -1082,7 +1082,7 @@ export default function PlanEditorScreen() {
                       {deletingCategoryIndex === ci ? (
                         <div className="pe-inline-delete">
                           <span className="pe-inline-delete-text">Eliminar &quot;{cat.label}&quot;?</span>
-                          <button type="button" className="pe-inline-delete-yes" onClick={() => deleteCategory(ci)}>Si</button>
+                          <button type="button" className="pe-inline-delete-yes" onClick={() => deleteCategory(ci)}>Sí</button>
                           <button type="button" className="pe-inline-delete-no" onClick={() => setDeletingCategoryIndex(null)}>No</button>
                         </div>
                       ) : editingCategoryIndex === ci ? (
