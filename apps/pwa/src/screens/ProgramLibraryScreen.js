@@ -33,7 +33,6 @@ import { KeyboardAvoidingView, Keyboard, TouchableWithoutFeedback } from 'react-
 import SvgChevronLeft from '../components/icons/vectors_fig/Arrow/ChevronLeft';
 import SvgChevronRight from '../components/icons/vectors_fig/Arrow/ChevronRight';
 import SvgSearchMagnifyingGlass from '../components/icons/vectors_fig/Interface/SearchMagnifyingGlass';
-import SvgFilter from '../components/icons/vectors_fig/Interface/FilterIcon';
 import SvgCloudOff from '../components/icons/vectors_fig/File/Cloud_Off';
 import SvgInfo from '../components/icons/SvgInfo';
 import SvgListChecklist from '../components/icons/SvgListChecklist';
@@ -613,15 +612,6 @@ const ProgramLibraryScreen = ({ navigation }) => {
                 editable={state.courses.length > 0}
               />
             </View>
-            <TouchableOpacity
-              style={styles.filterButton}
-              onPress={() => { /* Filter functionality to be implemented */ }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.filterIconWrapper}>
-                <SvgFilter width={20} height={20} stroke="#ffffff" strokeWidth={1.5} />
-              </View>
-            </TouchableOpacity>
           </View>
 
           {/* Wrapper: horizontal swipe anywhere (tab bar + content) scrolls between pages */}
@@ -1072,25 +1062,6 @@ const createStyles = (screenWidth, screenHeight) => StyleSheet.create({
     elevation: 2,
     paddingHorizontal: Math.max(20, screenWidth * 0.05),
     paddingVertical: Math.max(10, screenHeight * 0.014),
-  },
-  filterButton: {
-    alignSelf: 'stretch',
-    width: Math.max(44, screenWidth * 0.11),
-    minHeight: Math.max(44, screenHeight * 0.052),
-    borderRadius: Math.max(12, screenWidth * 0.04),
-    backgroundColor: '#2a2a2a',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    shadowColor: 'rgba(255, 255, 255, 0.4)',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 2,
-    elevation: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterIconWrapper: {
-    opacity: 0.65,
   },
   searchContainer: {
     marginBottom: 15,

@@ -18,6 +18,7 @@ const PaymentCancelledScreen = () => {
 
   return (
     <div style={styles.container}>
+      <style>{`@keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div style={styles.card}>
         <div style={styles.iconWrap}>
           <svg width="72" height="72" viewBox="0 0 72 72" fill="none">

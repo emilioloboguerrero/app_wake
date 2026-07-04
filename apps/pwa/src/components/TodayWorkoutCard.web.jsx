@@ -88,6 +88,18 @@ const styles = {
   imageLoaded: {
     opacity: 1,
   },
+  // Shown over the dark card front while the program image loads, so cold-load
+  // reads as "loading" instead of a black card. Reuses the wakeSkeletonShimmer
+  // keyframe injected by SkeletonCard (imported by HoyScreen, this card's host).
+  imageShimmer: {
+    position: 'absolute',
+    inset: 0,
+    background:
+      'linear-gradient(110deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.05) 50%, rgba(255,255,255,0) 70%)',
+    backgroundSize: '200% 100%',
+    animation: 'wakeSkeletonShimmer 1.6s linear infinite',
+    pointerEvents: 'none',
+  },
   imagePlaceholder: {
     position: 'absolute',
     inset: 0,
@@ -688,6 +700,9 @@ const TodayWorkoutCard = ({ course, isExpired = false, downloadStatus = null, se
             ) : (
               <div style={styles.imagePlaceholder}>imagen del programa</div>
             )}
+            {imageUrl && !imageBroken && !imageLoaded ? (
+              <div style={styles.imageShimmer} />
+            ) : null}
             <div style={styles.overlayText}>
               {programTitle ? <span style={styles.kicker}>{programTitle}</span> : null}
               <span style={styles.title}>{headlineTitle}</span>

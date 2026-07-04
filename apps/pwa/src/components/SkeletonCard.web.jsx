@@ -16,7 +16,7 @@ const styles = {
     position: 'absolute',
     inset: 0,
     background:
-      'linear-gradient(110deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.04) 50%, rgba(255,255,255,0) 70%)',
+      'linear-gradient(110deg, rgba(255,255,255,0) 30%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0) 70%)',
     backgroundSize: '200% 100%',
     animation: 'wakeSkeletonShimmer 1.6s linear infinite',
   },
