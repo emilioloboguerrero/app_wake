@@ -15,13 +15,21 @@
 // If anyone lands here without a valid email-link in the URL, we redirect
 // back to /login so they have a clear next step.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { isSignInWithEmailLink, signInWithEmailLink } from 'firebase/auth';
+import {
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  getAdditionalUserInfo,
+} from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { buildAppUrl } from '../utils/basePath';
+import analyticsService from '../services/analyticsService';
 
 const STORAGE_KEY = 'wake_email_for_sign_in';
+// App.web.js stashes the original link href here and scrubs the address bar
+// before analytics init, so the oobCode never reaches replay or events.
+const HREF_STASH_KEY = 'wake_email_link_href';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Validate `?next=` to a SAME-ORIGIN PATH ONLY (no query string). Reject
 // anything with a scheme, protocol-relative URLs, backslash tricks, or
@@ -30,11 +38,30 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // and `?` / `&` / `=` open the door to params we don't want to round-trip.
 const NEXT_PATH_RE = /^\/[A-Za-z0-9/_.\-]{0,256}$/;
 
+// Recover the original link href: preferred from the App.web.js stash (the
+// address bar was already scrubbed), falling back to the live URL for any
+// path that skipped the stash (e.g. direct render in tests).
+function readLinkHref() {
+  try {
+    return window.sessionStorage.getItem(HREF_STASH_KEY) || window.location.href;
+  } catch {
+    return window.location.href;
+  }
+}
+
+function searchFromHref(href) {
+  try {
+    return new URL(href).search;
+  } catch {
+    return '';
+  }
+}
+
 // Pull and validate the post-signin destination. Returns a path under /app
 // or null when no safe next is present (caller falls back to /app/library).
-function getValidatedNext() {
+function getValidatedNext(search) {
   try {
-    const raw = new URLSearchParams(window.location.search).get('next');
+    const raw = new URLSearchParams(search).get('next');
     if (!raw) return null;
     const decoded = decodeURIComponent(raw);
     if (decoded.startsWith('//') || decoded.includes('\\')) return null;
@@ -48,9 +75,9 @@ function getValidatedNext() {
 // Pull the email the link was generated for, baked in by the server in
 // the continueUrl. Falls back to null when missing (older emails) and the
 // caller will then consult localStorage or prompt.
-function getEmailFromQuery() {
+function getEmailFromQuery(search) {
   try {
-    const raw = new URLSearchParams(window.location.search).get('email');
+    const raw = new URLSearchParams(search).get('email');
     if (!raw) return null;
     const decoded = decodeURIComponent(raw).trim().toLowerCase();
     return EMAIL_RE.test(decoded) ? decoded : null;
@@ -79,9 +106,14 @@ const EmailLinkSignInScreen = () => {
   // try). Firebase returns the same error code in both cases.
   const [attemptCount, setAttemptCount] = useState(0);
   const [emailInput, setEmailInput] = useState('');
+  // Original link href + its query, captured once on mount. completeSignIn
+  // and submitEmail run after the address bar was scrubbed, so they must
+  // read from here, never from window.location.
+  const linkRef = useRef({ href: '', search: '' });
 
   useEffect(() => {
-    const href = window.location.href;
+    const href = readLinkHref();
+    linkRef.current = { href, search: searchFromHref(href) };
     if (!isSignInWithEmailLink(auth, href)) {
       // No oobCode in URL — direct visit. Bounce to login.
       navigate('/login', { replace: true });
@@ -93,7 +125,7 @@ const EmailLinkSignInScreen = () => {
     //   2. localStorage (set by /acceso when the same browser made the
     //      original magic-link request).
     //   3. Manual prompt.
-    const queryEmail = getEmailFromQuery();
+    const queryEmail = getEmailFromQuery(linkRef.current.search);
     const stored = (() => {
       try {
         return window.localStorage.getItem(STORAGE_KEY);
@@ -116,8 +148,13 @@ const EmailLinkSignInScreen = () => {
     setErrorAlreadyUsed(false);
     setAttemptCount((c) => c + 1);
     try {
-      await signInWithEmailLink(auth, email, window.location.href);
+      const cred = await signInWithEmailLink(auth, email, linkRef.current.href);
       try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+      try { window.sessionStorage.removeItem(HREF_STASH_KEY); } catch { /* ignore */ }
+      const isNew = getAdditionalUserInfo(cred)?.isNewUser ?? false;
+      analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', {
+        method: 'email_link',
+      });
       setState('done');
       // Honor `?next=` from the email-link continueUrl so confirmation emails
       // (and UnauthAccessGate's magic-link kick) deep-link to a specific
@@ -125,7 +162,7 @@ const EmailLinkSignInScreen = () => {
       // this URL, so we just trust the parsed value here.
       // window.location.replace clears the oobCode from history so the link
       // can't be re-used on back-button.
-      const next = getValidatedNext() || '/library';
+      const next = getValidatedNext(linkRef.current.search) || '/library';
       window.location.replace(resolveAbsoluteRedirect(next));
     } catch (err) {
       const code = err?.code || '';
@@ -135,7 +172,7 @@ const EmailLinkSignInScreen = () => {
       // instead of showing an alarming "ya lo usaste" page.
       if (code === 'auth/invalid-action-code' && auth.currentUser) {
         setState('done');
-        const next = getValidatedNext() || '/library';
+        const next = getValidatedNext(linkRef.current.search) || '/library';
         window.location.replace(resolveAbsoluteRedirect(next));
         return;
       }
@@ -175,7 +212,7 @@ const EmailLinkSignInScreen = () => {
     // otherwise return auth/invalid-action-code on the wrong-email
     // attempt, which both consumes the code AND is indistinguishable
     // from "already used."
-    const expected = getEmailFromQuery();
+    const expected = getEmailFromQuery(linkRef.current.search);
     if (expected && expected !== trimmed) {
       setErrorMsg('El correo no coincide con el del enlace. Usá el mismo correo al que recibiste el email.');
       return;

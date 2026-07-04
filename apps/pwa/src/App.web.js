@@ -22,6 +22,21 @@ import { isPWA, shouldShowAppFlow } from './utils/platform';
 import OfflineBanner from './components/ui/OfflineBanner';
 import analyticsService from './services/analyticsService';
 
+// The magic-link URL carries one-shot auth material (oobCode, apiKey, email).
+// Stash the full href for EmailLinkSignInScreen and scrub it from the address
+// bar BEFORE analytics init, so neither session replay nor any event ever
+// sees it. sessionStorage keeps it per-tab and survives the router mount.
+if (
+  typeof window !== 'undefined' &&
+  window.location.pathname.endsWith('/email-link') &&
+  window.location.search
+) {
+  try {
+    window.sessionStorage.setItem('wake_email_link_href', window.location.href);
+    window.history.replaceState(null, '', window.location.pathname);
+  } catch {}
+}
+
 // Initialize analytics as early as possible (no-op when key missing or opted out).
 analyticsService.init();
 
