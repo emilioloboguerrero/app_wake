@@ -1012,14 +1012,14 @@
   gap: 16px;
   padding: 12px 16px;
   margin: 0 24px 16px;
-  background: rgba(234, 179, 8, 0.1);
-  border: 1px solid rgba(234, 179, 8, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;
   flex-shrink: 0;
 }
 
 .plan-editor-assignment-banner .library-session-client-edit-banner-text {
-  color: rgba(234, 179, 8, 0.85);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 /* Focus resets */

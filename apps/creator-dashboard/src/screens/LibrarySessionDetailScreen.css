@@ -27,15 +27,15 @@
   justify-content: flex-start;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(234, 179, 8, 0.1);
-  border: 1px solid rgba(234, 179, 8, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 8px;
   flex-shrink: 0;
 }
 
 .library-session-client-edit-banner-text {
   font-size: clamp(13px, 3vw, 14px);
-  color: rgba(234, 179, 8, 0.85);
+  color: rgba(255, 255, 255, 0.85);
   text-align: left;
 }
 
@@ -62,22 +62,22 @@
   align-items: center;
   gap: 8px;
   padding: 8px 14px;
-  background: rgba(234, 179, 8, 0.1);
-  border: 1px solid rgba(234, 179, 8, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 6px;
   flex-shrink: 0;
   width: 100%;
 }
 
 .library-session-client-only-icon {
-  color: rgba(234, 179, 8, 0.7);
+  color: rgba(255, 255, 255, 0.7);
   flex-shrink: 0;
 }
 
 .library-session-client-only-text {
   font-size: 0.78rem;
   font-weight: 500;
-  color: rgba(234, 179, 8, 0.85);
+  color: rgba(255, 255, 255, 0.85);
   letter-spacing: 0.02em;
   text-align: left;
 }
@@ -1113,10 +1113,10 @@
   align-items: center;
   gap: 8px;
   padding: 0 18px;
-  background: rgba(234, 179, 8, 0.1);
-  border: 1px solid rgba(234, 179, 8, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px 0 0 6px;
-  color: rgba(234, 179, 8, 0.9);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -1126,9 +1126,9 @@
 }
 
 .library-session-propagate-button:hover {
-  background: rgba(234, 179, 8, 0.18);
-  border-color: rgba(234, 179, 8, 0.45);
-  color: rgba(234, 179, 8, 1);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 1);
 }
 
 .library-session-propagate-dismiss {

@@ -36,7 +36,7 @@
 }
 
 .esim-tip-icon {
-  color: rgba(234, 179, 8, 0.7);
+  color: rgba(255, 255, 255, 0.7);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -60,6 +60,6 @@
 }
 
 .esim-clickable:hover {
-  background: rgba(234, 179, 8, 0.15);
-  border-color: rgba(234, 179, 8, 0.35);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.35);
 }
