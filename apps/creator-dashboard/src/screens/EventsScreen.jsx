@@ -467,12 +467,12 @@ export default function EventsScreen() {
     try {
       await navigator.clipboard.writeText(url);
       showToast('Enlace copiado', 'success');
+      setCopiedId(ev.id);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
     } catch {
       showToast('No se pudo copiar el enlace', 'error');
     }
-    setCopiedId(ev.id);
-    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
     setMenuOpenId(null);
   }
 

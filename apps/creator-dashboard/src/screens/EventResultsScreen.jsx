@@ -680,6 +680,7 @@ export default function EventResultsScreen() {
   const routerLocation = useLocation();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const [admittingId, setAdmittingId] = useState(null);
 
   const defaultTab = routerLocation.pathname.endsWith('/edit') ? 'editar' : 'analytics';
 
@@ -1021,6 +1022,8 @@ export default function EventResultsScreen() {
   }
 
   async function admitFromWaitlist(waitId) {
+    if (admittingId) return;
+    setAdmittingId(waitId);
     try {
       await eventService.admitFromWaitlist(eventId, waitId, event?.max_registrations != null);
       queryClient.invalidateQueries({ queryKey: queryKeys.events.waitlist(eventId) });
@@ -1028,6 +1031,8 @@ export default function EventResultsScreen() {
     } catch (err) {
       logger.error('[EventResults] admit failed', err);
       showToast('No pudimos admitir desde la lista de espera. Intenta de nuevo.', 'error');
+    } finally {
+      setAdmittingId(null);
     }
   }
 
@@ -1577,8 +1582,12 @@ export default function EventResultsScreen() {
                               <td>{w.contact}</td>
                               <td>{formatDate(w.created_at)}</td>
                               <td>
-                                <button className="er-admit-btn" onClick={() => admitFromWaitlist(w.id)}>
-                                  Admitir
+                                <button
+                                  className="er-admit-btn"
+                                  onClick={() => admitFromWaitlist(w.id)}
+                                  disabled={admittingId === w.id}
+                                >
+                                  {admittingId === w.id ? 'Admitiendo…' : 'Admitir'}
                                 </button>
                               </td>
                             </tr>

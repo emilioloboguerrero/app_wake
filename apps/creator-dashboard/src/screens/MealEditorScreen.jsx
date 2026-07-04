@@ -181,6 +181,7 @@ export default function MealEditorScreen() {
       } catch (e) {
         queryClient.invalidateQueries({ queryKey: queryKeys.nutrition.meal(creatorId, mealId) });
         logger.error(e);
+        showToast('No pudimos guardar la receta. Intenta de nuevo.', 'error');
       }
     };
     pendingSaveRef.current = doSave;
