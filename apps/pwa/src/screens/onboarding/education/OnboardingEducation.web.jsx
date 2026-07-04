@@ -12,6 +12,7 @@ import apiClient from '../../../utils/apiClient';
 import { wakeAlert } from '../../../utils/wakeAlert';
 import profilePictureService from '../../../services/profilePictureService';
 import logger from '../../../utils/logger';
+import analyticsService from '../../../services/analyticsService';
 import { queryKeys } from '../../../config/queryClient';
 import './OnboardingEducation.css';
 
@@ -443,13 +444,20 @@ export default function OnboardingEducation({ onComplete }) {
 
   // ── Navigation ──
 
+  // Linear step order for the funnel: welcome(0) → education slides(1-3) →
+  // profile(4). Each step_completed fires on the transition OUT of the step,
+  // covering tap, swipe, and keyboard (all delegate to these callbacks).
   const start = useCallback(() => {
+    analyticsService.track('onboarding.step_completed', { step: 0, step_id: 'welcome' });
     setTitleVisible(false);
     setTimeout(() => setPhase('education'), 800);
   }, []);
 
   const eduNext = useCallback(() => {
-    if (eduStep < 2) setEduStep(s => s + 1);
+    if (eduStep < 2) {
+      analyticsService.track('onboarding.step_completed', { step: 1 + eduStep, step_id: `education_${eduStep}` });
+      setEduStep(s => s + 1);
+    }
   }, [eduStep]);
 
   const eduPrev = useCallback(() => {
@@ -457,6 +465,7 @@ export default function OnboardingEducation({ onComplete }) {
   }, [eduStep]);
 
   const goToProfile = useCallback(() => {
+    analyticsService.track('onboarding.step_completed', { step: 3, step_id: 'education_2' });
     setPhase('profile');
   }, []);
 
@@ -513,6 +522,14 @@ export default function OnboardingEducation({ onComplete }) {
         cachedAt: Date.now(),
       });
       try { localStorage.setItem(`onboarding_status_${uid}`, statusCache); } catch (_) {}
+
+      // Only after the confirmed server write — a failed save re-enters the
+      // profile form and must not count as completed.
+      analyticsService.track('onboarding.completed', {
+        country: profile.country || null,
+        gender: profile.gender || null,
+        has_photo: Boolean(profile.photoPreview),
+      });
     } catch (err) {
       logger.error('[ONBOARDING_EDU] saveProfile error:', err);
       // Re-throw so goToCompletion does NOT show the success screen on a failed
@@ -523,6 +540,7 @@ export default function OnboardingEducation({ onComplete }) {
   }, [user, profile, queryClient]);
 
   const goToCompletion = useCallback(() => {
+    analyticsService.track('onboarding.step_completed', { step: 4, step_id: 'profile' });
     setPhase('completion');
     setCompletionStep('loading');
     saveCompleteRef.current = false;

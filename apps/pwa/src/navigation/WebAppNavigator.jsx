@@ -53,6 +53,7 @@ import PaymentSuccessScreen from '../screens/PaymentSuccessScreen.web';
 import PaymentCancelledScreen from '../screens/PaymentCancelledScreen.web';
 import apiService from '../services/apiService';
 import apiClient from '../utils/apiClient';
+import analyticsService from '../services/analyticsService';
 import DebugScreenTracker from '../components/DebugScreenTracker.web';
 import { isAdmin, isCreator } from '../utils/roleHelper';
 import BottomTabBar from '../components/BottomTabBar.web';
@@ -82,6 +83,11 @@ const OnboardingRoute = () => {
   const ctx = useContext(RefreshProfileContext);
   const navigate = useNavigate();
   const refreshUserProfile = ctx?.refreshUserProfile;
+  // Route entry = funnel start. The gate upstream only routes users with
+  // needsOnboarding here, so this never fires for already-onboarded users.
+  React.useEffect(() => {
+    analyticsService.track('onboarding.started');
+  }, []);
   const onComplete = React.useCallback(async () => {
     if (refreshUserProfile) {
       const p = refreshUserProfile();
