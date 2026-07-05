@@ -1241,7 +1241,7 @@ export const processEmailQueue = onSchedule(
     schedule: "every 5 minutes",
     region: "us-central1",
     secrets: [resendApiKey, unsubscribeSecret, posthogApiKeyV2],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 120,
   },
   async () => {
@@ -1705,7 +1705,7 @@ function formatEventDate(value: unknown): string {
 export const eventPage = onRequest(
   {
     region: "us-central1",
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 10,
     concurrency: 80,
   },
@@ -1826,7 +1826,7 @@ function applyOgTags(
 export const creatorPage = onRequest(
   {
     region: "us-central1",
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 10,
     concurrency: 80,
   },
@@ -1969,7 +1969,7 @@ export const expandWeeklyAvailability = onSchedule(
     schedule: "every day 03:00",
     region: "us-central1",
     timeoutSeconds: 300,
-    memory: "256MiB",
+    memory: "512MiB",
   },
   async () => {
     const snapshot = await db.collection("creator_availability").get();
@@ -2065,7 +2065,7 @@ export const sendCallReminders = onSchedule(
     schedule: "every 15 minutes",
     region: "us-central1",
     timeoutSeconds: 120,
-    memory: "256MiB",
+    memory: "512MiB",
     secrets: [resendApiKeyV2],
   },
   async () => {
@@ -2263,7 +2263,7 @@ export const detectAbandonedSessions = onSchedule(
     schedule: "every 6 hours",
     region: "us-central1",
     timeoutSeconds: 300,
-    memory: "256MiB",
+    memory: "512MiB",
     secrets: [posthogApiKeyV2],
   },
   async () => {
@@ -2343,7 +2343,7 @@ export const cleanupVideoExchanges = onSchedule(
     schedule: "every day 04:00",
     region: "us-central1",
     timeoutSeconds: 300,
-    memory: "256MiB",
+    memory: "512MiB",
   },
   async () => {
     const cutoff = admin.firestore.Timestamp.fromMillis(
@@ -2445,7 +2445,7 @@ export const reconcileSubscriptions = onSchedule(
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [mercadopagoAccessToken],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 540,
   },
   async () => {
@@ -3045,7 +3045,7 @@ export const monthlyDropAdvance = onSchedule(
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 120,
   },
   async () => {
@@ -3147,7 +3147,7 @@ export const monthlyDropReadinessCheck = onSchedule(
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 60,
   },
   async () => {
@@ -3369,7 +3369,7 @@ export const wakeHeartbeatCron = onSchedule(
     timeZone: "America/Bogota",
     region: "us-central1",
     secrets: [telegramSignalsBotToken, telegramChatId, telegramTopics],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 60,
   },
   async () => {
@@ -3391,7 +3391,7 @@ export const wakeHeartbeatCron = onSchedule(
 export const wakeClientErrorsIngest = onRequest(
   {
     region: "us-central1",
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 15,
     cors: false,
   },
@@ -3405,7 +3405,7 @@ export const wakeOpsApi = onRequest(
   {
     region: "us-central1",
     secrets: [opsApiKey],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 30,
     cors: false,
   },
@@ -3427,7 +3427,7 @@ export const wakeSignalsWebhook = onRequest(
       telegramWebhookSecret,
       telegramTopics,
     ],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 120,
     cors: false,
   },
@@ -3452,7 +3452,7 @@ export const wakeGithubWebhook = onRequest(
       telegramTopics,
       githubWebhookSecret,
     ],
-    memory: "256MiB",
+    memory: "512MiB",
     timeoutSeconds: 30,
     cors: false,
   },
