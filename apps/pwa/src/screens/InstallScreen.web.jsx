@@ -554,6 +554,18 @@ export default function InstallScreen() {
           </div>
         ) : (
           <div className="install-steps">
+            {isIOSDevice() && (
+              <div className="install-video-wrap">
+                <iframe
+                  className="install-video-iframe"
+                  src="https://www.youtube.com/embed/bla7Nr8p49A?playsinline=1"
+                  title="Cómo instalar Wake en iPhone"
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            )}
             {/* Step 1: Share */}
             <div className="install-card install-card-with-image">
               <div className="install-card-number" aria-hidden="true">1</div>

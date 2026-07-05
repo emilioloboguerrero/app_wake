@@ -180,6 +180,30 @@
   position: relative;
 }
 
+/* iOS install video (vertical Short) – above the step cards */
+.install-screen .install-video-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 240px;
+  aspect-ratio: 9 / 16;
+  margin-top: 1.25rem;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 32px 80px rgba(0,0,0,0.65), 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  pointer-events: auto;
+  animation: wSlideUp 0.42s var(--ease-spring, cubic-bezier(0.22,1,0.36,1)) 0.1s both;
+}
+
+.install-screen .install-video-iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
 /* Google app flow: intro paragraph above steps */
 .install-screen .install-steps-google .install-google-intro {
   margin: 0 0 1rem 0;
