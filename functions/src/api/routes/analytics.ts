@@ -922,31 +922,32 @@ router.get("/analytics/earnings", async (req, res) => {
     });
   });
 
-  // MRR + active subscriptions from the subscriptions collectionGroup (subs
-  // carry course_id, not creator_id — join through the creator's courses).
+  // MRR + active subscriptions from the subscriptions collectionGroup. Subs
+  // carry course_id (not creator_id), so we scan and filter to the creator's
+  // courses in memory: a filtered `where("course_id","in",…)` collection-group
+  // query needs a collection-group index that isn't provisioned; the unfiltered
+  // scan doesn't. Volume is low today; revisit with an index if subs grow large.
   if (courseIds.length > 0) {
+    const courseIdSet = new Set(courseIds);
     try {
-      for (let i = 0; i < courseIds.length; i += 30) {
-        const batch = courseIds.slice(i, i + 30);
-        const snap = await db.collectionGroup("subscriptions")
-          .where("course_id", "in", batch).get();
-        snap.docs.forEach((d) => {
-          const s = d.data();
-          if (!EARNINGS_ACTIVE_SUB_STATUSES.has(s.status)) return;
-          const cur = String(s.currency_id ?? "COP").toUpperCase();
-          const cid = String(s.course_id ?? "unknown");
-          const gross = typeof s.transaction_amount === "number" ? s.transaction_amount : 0;
-          const provider = s.provider === "polar" ? "polar" : "mercadopago";
-          const earn = r2((gross - estimateProviderFee(provider, gross)) * keep);
-          tBucket(cur).mrr += earn;
-          tBucket(cur).activeSubscriptions += 1;
-          pBucket(cid, cur).mrr += earn;
-          pBucket(cid, cur).activeSubscriptions += 1;
-        });
-      }
+      const snap = await db.collectionGroup("subscriptions").get();
+      snap.docs.forEach((d) => {
+        const s = d.data();
+        if (!courseIdSet.has(s.course_id as string)) return;
+        if (!EARNINGS_ACTIVE_SUB_STATUSES.has(s.status)) return;
+        const cur = String(s.currency_id ?? "COP").toUpperCase();
+        const cid = String(s.course_id ?? "unknown");
+        const gross = typeof s.transaction_amount === "number" ? s.transaction_amount : 0;
+        const provider = s.provider === "polar" ? "polar" : "mercadopago";
+        const earn = r2((gross - estimateProviderFee(provider, gross)) * keep);
+        tBucket(cur).mrr += earn;
+        tBucket(cur).activeSubscriptions += 1;
+        pBucket(cid, cur).mrr += earn;
+        pBucket(cid, cur).activeSubscriptions += 1;
+      });
     } catch {
-      // Missing collection-group index or transient error: MRR/active stay 0
-      // rather than failing the whole dashboard. Revenue/orders are unaffected.
+      // Transient error: MRR/active stay 0 rather than failing the whole
+      // dashboard. Revenue/orders (from the ledger) are unaffected.
     }
   }
 
