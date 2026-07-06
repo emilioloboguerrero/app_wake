@@ -1038,12 +1038,13 @@ router.get("/analytics/earnings", async (req, res) => {
   // the paid month lapses). A member counts for the period they paid for, even
   // if later refunded — they were a real member during that window.
   const MEMBER_ACCESS_MS = 31 * 86400000;
-  const memberIntervals: Array<{startMs: number; endMs: number}> = [];
+  const memberIntervals: Array<{startMs: number; endMs: number; courseId: string}> = [];
   for (const key of new Set<string>([...payFirst.keys(), ...activeNowKeys])) {
     const activeNow = activeNowKeys.has(key);
     const first = payFirst.get(key) ?? subCreated.get(key) ?? nowMs;
     const last = payLast.get(key) ?? first;
-    memberIntervals.push({startMs: first, endMs: activeNow ? nowMs : last + MEMBER_ACCESS_MS});
+    const courseId = key.slice(key.indexOf("|") + 1);
+    memberIntervals.push({startMs: first, endMs: activeNow ? nowMs : last + MEMBER_ACCESS_MS, courseId});
   }
 
   // Cumulative active-sub + MRR curves per day from each active sub's start date
@@ -1073,8 +1074,36 @@ router.get("/analytics/earnings", async (req, res) => {
     return m;
   };
   roundBuckets(totals);
+
+  // Monthly active-members series (last 12 months) — computed PER PROGRAM so the
+  // dashboard shows each program's own trend (churn = the line falling) instead
+  // of an aggregate that masks it. Months are shared across programs so the lines
+  // align; leading months with zero total members are trimmed.
+  const nowDate = new Date(nowMs);
+  const monthRefs: Array<{month: string; ref: number}> = [];
+  for (let k = 11; k >= 0; k--) {
+    const mDate = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth() - k, 1));
+    monthRefs.push({
+      month: mDate.toISOString().slice(0, 7),
+      ref: Math.min(Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth() + 1, 0, 23, 59, 59), nowMs),
+    });
+  }
+  const countAt = (ivs: Array<{startMs: number; endMs: number}>, ref: number): number =>
+    ivs.reduce((n, iv) => n + (iv.startMs <= ref && iv.endMs >= ref ? 1 : 0), 0);
+  let trimFrom = 0;
+  while (trimFrom < monthRefs.length - 2 && countAt(memberIntervals, monthRefs[trimFrom].ref) === 0) trimFrom++;
+  const months = monthRefs.slice(trimFrom);
+  const seriesFor = (ivs: Array<{startMs: number; endMs: number}>): Array<{month: string; active: number}> =>
+    months.map((m) => ({month: m.month, active: countAt(ivs, m.ref)}));
+  const monthlyActive = seriesFor(memberIntervals);
+
   const programs = Object.entries(programAgg)
-    .map(([courseId, p]) => ({courseId, title: p.title, currencies: roundBuckets(p.currencies)}))
+    .map(([courseId, p]) => ({
+      courseId,
+      title: p.title,
+      currencies: roundBuckets(p.currencies),
+      monthlyActive: seriesFor(memberIntervals.filter((iv) => iv.courseId === courseId)),
+    }))
     .filter((p) => Object.keys(p.currencies).length > 0);
   const byMonth = Object.entries(monthAgg)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -1088,24 +1117,6 @@ router.get("/analytics/earnings", async (req, res) => {
   const latestOrders = orders
     .sort((a, b) => String(b.chargedAt ?? "").localeCompare(String(a.chargedAt ?? "")))
     .slice(0, 20);
-
-  // Monthly active subscribers (last 12 months). A member counts in month M if
-  // its active interval [start, end] covers the month's reference instant
-  // (month end, or now for the current month). Leading all-zero months trimmed.
-  const nowDate = new Date(nowMs);
-  const monthlyActive: Array<{month: string; active: number}> = [];
-  for (let k = 11; k >= 0; k--) {
-    const mDate = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth() - k, 1));
-    const monthStr = mDate.toISOString().slice(0, 7);
-    const monthEndMs = Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth() + 1, 0, 23, 59, 59);
-    const ref = Math.min(monthEndMs, nowMs);
-    let active = 0;
-    for (const iv of memberIntervals) {
-      if (iv.startMs <= ref && iv.endMs >= ref) active += 1;
-    }
-    monthlyActive.push({month: monthStr, active});
-  }
-  while (monthlyActive.length > 2 && monthlyActive[0].active === 0) monthlyActive.shift();
 
   res.json({
     data: {

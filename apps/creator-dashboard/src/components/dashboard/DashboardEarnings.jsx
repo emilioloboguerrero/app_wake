@@ -124,6 +124,10 @@ function DailyTooltip({ active, payload, label }) {
 function ProgramRow({ program }) {
   const curs = orderCurrencies(Object.keys(program.currencies || {}));
   const active = curs.reduce((s, c) => s + (program.currencies[c]?.activeSubscriptions ?? 0), 0);
+  const monthly = program.monthlyActive || [];
+  const spark = monthly.length >= 2 ? monthly.map((m) => m.active) : null;
+  const peak = monthly.reduce((mx, m) => Math.max(mx, m.active), active);
+  const churned = Math.max(0, peak - active);
   return (
     <Card className="earn-program">
       <p className="earn-program__title">{program.title}</p>
@@ -137,7 +141,9 @@ function ProgramRow({ program }) {
       </div>
       <div className="earn-program__meta">
         <span>{active} activas</span>
+        {churned > 0 && <><span>·</span><span className="earn-program__churn">{churned} de baja</span></>}
       </div>
+      {spark && <Sparkline id={`spk-prog-${program.courseId}`} values={spark} color={MONTHLY_COLOR} />}
     </Card>
   );
 }
@@ -162,7 +168,6 @@ function DashboardEarnings({ programId = null }) {
         currencies: data.currencies || [],
         programs: data.programs || [],
         daily: data.daily || [],
-        monthlyActive: data.monthlyActive || [],
       };
     }
     const p = (data.programs || []).find((x) => x.courseId === programId);
@@ -197,9 +202,6 @@ function DashboardEarnings({ programId = null }) {
   const { totals, currencies, programs, daily } = scoped;
   const totalActive = currencies.reduce((s, c) => s + (totals[c]?.activeSubscriptions ?? 0), 0);
   const chartCurrencies = orderCurrencies(currencies).filter((c) => daily.some((p) => (p[c] ?? 0) !== 0));
-  const monthly = scoped.monthlyActive || [];
-  const monthlyValue = monthly.length ? monthly[monthly.length - 1].active : 0;
-  const monthlySpark = monthly.length >= 2 ? monthly.map((m) => m.active) : null;
 
   return (
     <div className="earn-wrap">
@@ -210,10 +212,6 @@ function DashboardEarnings({ programId = null }) {
           spark={sparks?.mrr} sparkColor={MRR_COLOR} sparkId="spk-mrr" />
         <CountTile label="Suscripciones activas" value={totalActive}
           spark={sparks?.active} sparkColor={ACTIVE_COLOR} sparkId="spk-act" />
-        {!programId && (
-          <CountTile label="Activos por mes" value={monthlyValue}
-            spark={monthlySpark} sparkColor={MONTHLY_COLOR} sparkId="spk-mon" />
-        )}
       </div>
 
       {!programId && chartCurrencies.length > 0 && (

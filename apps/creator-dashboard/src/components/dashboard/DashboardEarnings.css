@@ -131,6 +131,9 @@
   color: var(--text-secondary, rgba(255, 255, 255, 0.55));
   margin-top: 6px;
 }
+.earn-program__churn {
+  color: rgba(255, 150, 110, 0.85);
+}
 
 /* Chart tooltip */
 .earn-tooltip {
