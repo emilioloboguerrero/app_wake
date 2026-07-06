@@ -5,6 +5,8 @@ import {
   signInWithEmail,
   signUpWithEmail,
 } from '../services/storefrontAuthService';
+import analyticsService from '../services/analyticsService';
+import { detectInAppBrowser } from '../utils/inAppBrowser';
 import './AuthModal.css';
 
 const ANIM_MS = 220;
@@ -38,7 +40,7 @@ function mapAuthError(err) {
   }
 }
 
-export default function AuthModal({ open, onClose, onAuthenticated, title, subtitle }) {
+export default function AuthModal({ open, onClose, onAuthenticated, title, subtitle, analyticsContext }) {
   // Default to signup — storefront traffic is overwhelmingly first-time
   // buyers. Returning users flip to signin via the footer link.
   const [tab, setTab] = useState('signup'); // 'signup' | 'signin'
@@ -63,6 +65,16 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
     } else {
       setAnimating(false);
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      analyticsService.track('auth_modal.shown', {
+        ...(analyticsContext || {}),
+        in_app_browser: detectInAppBrowser(),
+      });
+    } catch { /* analytics is best-effort */ }
   }, [open]);
 
   // iOS Safari scroll lock — `body { overflow: hidden }` doesn't actually stop
@@ -164,7 +176,7 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const handle = async (fn) => {
+  const handle = async (fn, method) => {
     // Synchronous busy flip prevents a race where the close-button is still
     // active in the same tick that signInWithPopup is firing off.
     busyRef.current = true;
@@ -172,9 +184,27 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
     setError(null);
     try {
       const user = await fn();
+      try {
+        analyticsService.track('auth_modal.result', {
+          ...(analyticsContext || {}),
+          method,
+          status: 'success',
+          in_app_browser: detectInAppBrowser(),
+        });
+      } catch { /* analytics is best-effort */ }
       if (user) onAuthenticated?.(user);
     } catch (err) {
       const msg = mapAuthError(err);
+      try {
+        analyticsService.track('auth_modal.result', {
+          ...(analyticsContext || {}),
+          method,
+          status: 'error',
+          error_code: err?.code || 'unknown',
+          surfaced_to_user: msg !== null,
+          in_app_browser: detectInAppBrowser(),
+        });
+      } catch { /* analytics is best-effort */ }
       if (msg !== null) setError(msg);
     } finally {
       busyRef.current = false;
@@ -197,9 +227,9 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
       return;
     }
     if (tab === 'signup') {
-      handle(() => signUpWithEmail(trimmedEmail, password, name.trim() || null));
+      handle(() => signUpWithEmail(trimmedEmail, password, name.trim() || null), 'email_signup');
     } else {
-      handle(() => signInWithEmail(trimmedEmail, password));
+      handle(() => signInWithEmail(trimmedEmail, password), 'email_signin');
     }
   };
 
@@ -269,7 +299,7 @@ export default function AuthModal({ open, onClose, onAuthenticated, title, subti
               ref={firstFocusRef}
               type="button"
               className="am-provider-btn"
-              onClick={() => handle(signInWithGoogle)}
+              onClick={() => handle(signInWithGoogle, 'google')}
               disabled={busy}
             >
               <span className="am-provider-icon" aria-hidden="true">
