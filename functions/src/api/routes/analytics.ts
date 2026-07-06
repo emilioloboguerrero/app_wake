@@ -1133,6 +1133,132 @@ router.get("/analytics/earnings", async (req, res) => {
   });
 });
 
+// ─── Admin: platform-wide sales across ALL creators ─────────────────────────
+// The money truth is pulled LIVE from MercadoPago (the complete record — the
+// ledger only exists since 2026-07), joined with Firestore for creator names,
+// course titles and active-member counts. Also surfaces the WAKE CREADORES B2B
+// revenue (creators paying the platform — MP-only, no courseId). Admin-only.
+function requireAdmin(auth: { role: string }): void {
+  if (auth.role !== "admin") {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Acceso restringido a administradores");
+  }
+}
+
+let adminMpCache: {payments: Array<Record<string, unknown>>; expiresAt: number} | null = null;
+async function fetchMpApprovedPayments(): Promise<Array<Record<string, unknown>>> {
+  if (adminMpCache && adminMpCache.expiresAt > Date.now()) return adminMpCache.payments;
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN ?? "";
+  const out: Array<Record<string, unknown>> = [];
+  let offset = 0;
+  for (let guard = 0; guard < 30; guard++) {
+    const resp = await fetch(
+      "https://api.mercadopago.com/v1/payments/search?limit=50&sort=date_created&criteria=desc&offset=" + offset,
+      {headers: {Authorization: "Bearer " + token}},
+    );
+    if (!resp.ok) break;
+    const j = (await resp.json()) as {results?: Array<Record<string, unknown>>; paging?: {total?: number}};
+    const results = j.results ?? [];
+    out.push(...results);
+    const total = j.paging?.total ?? 0;
+    offset += 50;
+    if (offset >= total || results.length === 0) break;
+  }
+  const approved = out.filter((p) => p.status === "approved");
+  adminMpCache = {payments: approved, expiresAt: Date.now() + 300000};
+  return approved;
+}
+
+router.get("/analytics/admin/platform", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireAdmin(auth);
+
+  const [coursesSnap, creatorsSnap, subsSnap] = await Promise.all([
+    db.collection("courses").get(),
+    db.collection("users").where("role", "in", ["creator", "admin"]).get(),
+    db.collectionGroup("subscriptions").get(),
+  ]);
+  const courseMeta: Record<string, {creatorId: string; title: string}> = {};
+  coursesSnap.docs.forEach((d) => {
+    courseMeta[d.id] = {creatorId: String(d.data().creator_id ?? ""), title: String(d.data().title ?? d.id)};
+  });
+  const creatorMeta: Record<string, {name: string; email: string}> = {};
+  creatorsSnap.docs.forEach((d) => {
+    const x = d.data();
+    creatorMeta[d.id] = {name: String(x.displayName ?? x.email ?? d.id), email: String(x.email ?? "")};
+  });
+  const activeByCourse: Record<string, number> = {};
+  subsSnap.docs.forEach((d) => {
+    const s = d.data();
+    if (!EARNINGS_ACTIVE_SUB_STATUSES.has(s.status)) return;
+    if (isTestSale(d.ref.parent?.parent?.id, s.course_id)) return;
+    const cid = String(s.course_id ?? "");
+    activeByCourse[cid] = (activeByCourse[cid] ?? 0) + 1;
+  });
+
+  let mpApproved: Array<Record<string, unknown>>;
+  try {
+    mpApproved = await fetchMpApprovedPayments();
+  } catch {
+    mpApproved = adminMpCache?.payments ?? [];
+  }
+
+  const cidFromExt = (ext: unknown): string | null => {
+    const parts = String(ext ?? "").split("|");
+    return parts.length >= 3 ? parts[2] : null;
+  };
+  interface Prog {courseId: string; title: string; revenueCOP: number; sales: number; active: number}
+  const creatorAgg: Record<string, Record<string, Prog>> = {};
+  let b2bCOP = 0; let b2bPayments = 0; let platformCOP = 0;
+  mpApproved.forEach((p) => {
+    const amt = typeof p.transaction_amount === "number" ? p.transaction_amount : 0;
+    const cid = cidFromExt(p.external_reference);
+    if (!cid) {
+      if (/CREADORES/i.test(String(p.description ?? ""))) {
+        b2bCOP += amt; b2bPayments += 1;
+      }
+      return;
+    }
+    const meta = courseMeta[cid];
+    if (!meta || isTestSale(meta.creatorId, cid)) return;
+    const progs = (creatorAgg[meta.creatorId] ??= {});
+    const pr = (progs[cid] ??= {courseId: cid, title: meta.title, revenueCOP: 0, sales: 0, active: activeByCourse[cid] ?? 0});
+    pr.revenueCOP += amt;
+    pr.sales += 1;
+    platformCOP += amt;
+  });
+
+  const creators = Object.entries(creatorAgg)
+    .map(([creatorId, progs]) => {
+      const programs = Object.values(progs)
+        .map((pr) => ({...pr, revenueCOP: r2(pr.revenueCOP)}))
+        .sort((a, b) => b.revenueCOP - a.revenueCOP);
+      return {
+        creatorId,
+        name: creatorMeta[creatorId]?.name ?? creatorId,
+        email: creatorMeta[creatorId]?.email ?? "",
+        programs,
+        revenueCOP: r2(programs.reduce((s, p) => s + p.revenueCOP, 0)),
+        sales: programs.reduce((s, p) => s + p.sales, 0),
+        activeMembers: programs.reduce((s, p) => s + p.active, 0),
+      };
+    })
+    .sort((a, b) => b.revenueCOP - a.revenueCOP);
+
+  res.json({
+    data: {
+      platform: {
+        courseRevenueCOP: r2(platformCOP),
+        b2bRevenueCOP: r2(b2bCOP),
+        b2bPayments,
+        totalCOP: r2(platformCOP + b2bCOP),
+        creatorCount: creators.length,
+        activeMembers: creators.reduce((s, c) => s + c.activeMembers, 0),
+      },
+      creators,
+    },
+  });
+});
+
 // GET /analytics/adherence
 router.get("/analytics/adherence", async (req, res) => {
   const auth = await validateAuthAndRateLimit(req);

@@ -28,6 +28,7 @@ import EventResultsScreen from './screens/EventResultsScreen';
 import EventCheckinScreen from './screens/EventCheckinScreen';
 import ApiKeysScreen from './screens/ApiKeysScreen';
 import AppResourcesScreen from './screens/AppResourcesScreen';
+import AdminSalesScreen from './screens/AdminSalesScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -341,6 +342,14 @@ function AppContent() {
               }
             />
             {/* ── Admin routes ────────────────────────────────── */}
+            <Route
+              path="/admin/sales"
+              element={
+                <ProtectedRoute>
+                  <DebugScreenTracker name="AdminSalesScreen"><AdminSalesScreen /></DebugScreenTracker>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/admin/resources"
               element={

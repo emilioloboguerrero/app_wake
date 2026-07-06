@@ -21,6 +21,7 @@ import {
   CalendarCheck,
   KeyRound,
   Shield,
+  TrendingUp,
   LifeBuoy,
 } from 'lucide-react';
 
@@ -98,6 +99,13 @@ const DEV_NAV_ITEMS = [
 ];
 
 const ADMIN_NAV_ITEMS = [
+  {
+    key: 'admin-sales',
+    label: 'Ventas',
+    path: '/admin/sales',
+    match: (p) => p.startsWith('/admin/sales'),
+    icon: <TrendingUp size={ICON_SIZE} />,
+  },
   {
     key: 'app-resources',
     label: 'Recursos',
