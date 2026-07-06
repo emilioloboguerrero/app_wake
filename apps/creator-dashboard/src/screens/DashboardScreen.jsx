@@ -9,6 +9,7 @@ import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import DashboardOneOnOneView from '../components/dashboard/DashboardOneOnOneView';
 import DashboardEarnings from '../components/dashboard/DashboardEarnings';
+import EarningsCommissionPill from '../components/dashboard/EarningsCommissionPill';
 import { cacheConfig } from '../config/queryClient';
 import apiClient from '../utils/apiClient';
 import './DashboardScreen.css';
@@ -100,6 +101,7 @@ const DashboardScreen = () => {
               activeId={activeView}
               onSelect={handleSelectView}
             />
+            {activeView === 'programs' && <EarningsCommissionPill />}
           </div>
 
           <div className="ds-view-body">

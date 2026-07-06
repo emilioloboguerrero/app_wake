@@ -6,32 +6,11 @@
   gap: 20px;
 }
 
-.earn-header {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.earn-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--text-primary, rgba(255, 255, 255, 0.95));
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-.earn-subtitle {
-  font-size: 0.78rem;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  margin: 0;
-}
-
 /* KPI grid */
 .earn-kpis {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
-}
-@media (max-width: 900px) {
-  .earn-kpis { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* Card surface */
@@ -58,11 +37,6 @@
   color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
   font-weight: 600;
   margin: 0;
-}
-.earn-sublabel {
-  font-size: 0.72rem;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  margin: -4px 0 0;
 }
 
 .earn-money-list {
@@ -98,11 +72,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: auto;
-}
-.earn-count__icon {
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  display: flex;
+  margin-top: 4px;
 }
 .earn-count__value {
   font-size: 1.9rem;
@@ -118,10 +88,6 @@
   color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
   font-size: 0.82rem;
   padding: 8px 0;
-}
-.earn-empty--wide {
-  justify-content: center;
-  padding: 28px 0;
 }
 
 /* By-month chart */
@@ -166,64 +132,6 @@
   margin-top: 6px;
 }
 
-/* Orders log */
-.earn-orders {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.earn-order {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--radius-md, 12px);
-  background: var(--surface-1, #222);
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
-}
-.earn-order--refund { opacity: 0.72; }
-.earn-order__main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.earn-order__title {
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--text-primary, rgba(255, 255, 255, 0.95));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.earn-order__date {
-  font-size: 0.7rem;
-  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
-}
-.earn-order__amounts {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
-  flex-shrink: 0;
-}
-.earn-order__earnings {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text-primary, rgba(255, 255, 255, 0.95));
-  font-variant-numeric: tabular-nums;
-}
-.earn-order--refund .earn-order__earnings {
-  color: var(--error, #ff6b6b);
-}
-.earn-order__breakdown {
-  font-size: 0.66rem;
-  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
-  font-variant-numeric: tabular-nums;
-}
-
 /* Chart tooltip */
 .earn-tooltip {
   background: rgba(20, 20, 20, 0.95);
@@ -240,30 +148,10 @@
   font-weight: 600;
 }
 
-/* KPI sparklines + service pill */
+/* KPI sparklines */
 .earn-tile { min-height: 156px; }
-.earn-count {
-  margin-top: 4px;
-}
 .earn-spark {
   height: 46px;
   width: calc(100% + 36px);
   margin: auto -18px 0;
-}
-.earn-header__titlerow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.earn-service-pill {
-  font-size: 0.62rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
 }

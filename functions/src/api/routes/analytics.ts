@@ -6,6 +6,7 @@ import {loadCreatorOwnedCourseIds} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {isProgramSnapshot, resolveProgramDay, programHasAnyMacroTarget} from "../services/nutritionProgramResolver.js";
 import {estimateProviderFee} from "../services/paymentLedger.js";
+import {isTestSale} from "../services/testData.js";
 
 const router = Router();
 const db = admin.firestore();
@@ -823,8 +824,10 @@ router.get("/analytics/revenue", async (req, res) => {
 });
 
 // ─── GET /analytics/earnings ───────────────────────────────────────────────
-// Creator-facing earnings. payment_ledger (real per-order fees) → revenue,
-// orders, daily/monthly trend; subscriptions collectionGroup → MRR + active.
+// Creator-facing earnings. payment_ledger (real per-order fees) → revenue +
+// orders scoped to the trailing 30-day window (matches the chart and Polar's
+// period model) + daily/monthly trend; subscriptions collectionGroup → MRR +
+// active (current run-rate, not windowed).
 // The platform commission is applied SERVER-SIDE (never client-writable). The
 // DEFAULT depends on the creator's `service_type`: `self_serve` (creator runs
 // everything) = 15% local / 20% international; `managed` (Wake does the heavy
@@ -923,23 +926,26 @@ router.get("/analytics/earnings", async (req, res) => {
     const rate = rateFor(provider);
     const earnings = r2(net * (1 - rate)) * sign;
     const cid = String(x.course_id ?? "unknown");
+    if (isTestSale(x.user_id, cid)) return; // exclude QA/self-test charges
 
-    tBucket(cur).revenue += earnings;
-    pBucket(cid, cur).revenue += earnings;
-    if (!isRefund) {
-      tBucket(cur).orders += 1;
-      pBucket(cid, cur).orders += 1;
-    }
-
+    // Revenue + orders are scoped to the trailing 30-day window (matches the
+    // chart and Polar's period model). Subscriptions/MRR/active below stay
+    // current (run-rate), not windowed.
     const iso = tsToIso(x.charged_at ?? x.created_at);
+    const di = iso ? dayIndex[iso.slice(0, 10)] : undefined;
+    if (di !== undefined) {
+      tBucket(cur).revenue += earnings;
+      pBucket(cid, cur).revenue += earnings;
+      if (cur === "USD") daily[di].USD += earnings; else daily[di].COP += earnings;
+      if (!isRefund) {
+        tBucket(cur).orders += 1;
+        pBucket(cid, cur).orders += 1;
+        daily[di].orders += 1;
+      }
+    }
     if (iso) {
       const month = iso.slice(0, 7);
       (monthAgg[month] ??= {})[cur] = (monthAgg[month][cur] ?? 0) + earnings;
-      const di = dayIndex[iso.slice(0, 10)];
-      if (di !== undefined) {
-        if (cur === "USD") daily[di].USD += earnings; else daily[di].COP += earnings;
-        if (!isRefund) daily[di].orders += 1;
-      }
     }
     orders.push({
       id: d.id,
@@ -972,6 +978,7 @@ router.get("/analytics/earnings", async (req, res) => {
         const s = d.data();
         if (!courseIdSet.has(s.course_id as string)) return;
         if (!EARNINGS_ACTIVE_SUB_STATUSES.has(s.status)) return;
+        if (isTestSale(d.ref.parent?.parent?.id, s.course_id)) return; // QA/self-test subs
         const cur = String(s.currency_id ?? "COP").toUpperCase();
         const cid = String(s.course_id ?? "unknown");
         const gross = typeof s.transaction_amount === "number" ? s.transaction_amount : 0;

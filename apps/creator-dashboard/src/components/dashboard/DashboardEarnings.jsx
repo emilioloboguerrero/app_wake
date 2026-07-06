@@ -17,10 +17,6 @@ const CUR_COLOR = { COP: 'rgba(100,225,150,0.90)', USD: 'rgba(100,180,255,0.90)'
 const REVENUE_COLOR = 'rgba(100,225,150,0.9)';
 const MRR_COLOR = 'rgba(100,180,255,0.9)';
 const ACTIVE_COLOR = 'rgba(210,120,255,0.9)';
-const ORDERS_COLOR = 'rgba(255,195,70,0.9)';
-const TYPE_LABEL = {
-  initial: 'Nueva', renewal: 'Renovación', one_time: 'Pago único', refund: 'Reembolso',
-};
 
 function fmtMoney(n, cur) {
   return new Intl.NumberFormat(cur === 'USD' ? 'en-US' : 'es-CO', {
@@ -29,11 +25,6 @@ function fmtMoney(n, cur) {
     minimumFractionDigits: cur === 'USD' ? 2 : 0,
     maximumFractionDigits: cur === 'USD' ? 2 : 0,
   }).format(n ?? 0);
-}
-
-function fmtDate(iso) {
-  if (!iso) return '';
-  try { return new Date(iso).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }); } catch { return ''; }
 }
 
 function fmtDay(str) {
@@ -83,14 +74,13 @@ function Sparkline({ id, values, color }) {
   );
 }
 
-function MoneyTile({ label, sublabel, totals, currencies, field, spark, sparkColor, sparkId }) {
+function MoneyTile({ label, totals, currencies, field, spark, sparkColor, sparkId }) {
   const curs = orderCurrencies(currencies);
   const nonEmpty = curs.filter((c) => (totals[c]?.[field] ?? 0) !== 0);
   const show = nonEmpty.length ? nonEmpty : curs.slice(0, 1);
   return (
     <Card className="earn-tile">
       <p className="earn-label">{label}</p>
-      {sublabel && <p className="earn-sublabel">{sublabel}</p>}
       {show.length === 0 ? (
         <div className="earn-empty"><span>Sin datos</span></div>
       ) : (
@@ -133,7 +123,6 @@ function DailyTooltip({ active, payload, label }) {
 function ProgramRow({ program }) {
   const curs = orderCurrencies(Object.keys(program.currencies || {}));
   const active = curs.reduce((s, c) => s + (program.currencies[c]?.activeSubscriptions ?? 0), 0);
-  const orders = curs.reduce((s, c) => s + (program.currencies[c]?.orders ?? 0), 0);
   return (
     <Card className="earn-program">
       <p className="earn-program__title">{program.title}</p>
@@ -146,29 +135,9 @@ function ProgramRow({ program }) {
         ))}
       </div>
       <div className="earn-program__meta">
-        <span>{active} activas</span><span>·</span><span>{orders} órdenes</span>
+        <span>{active} activas</span>
       </div>
     </Card>
-  );
-}
-
-function OrderRow({ order }) {
-  const isRefund = order.type === 'refund' || order.status === 'refunded';
-  return (
-    <div className={`earn-order ${isRefund ? 'earn-order--refund' : ''}`}>
-      <div className="earn-order__main">
-        <span className="earn-order__title">{order.courseTitle}</span>
-        <span className="earn-order__date">
-          {fmtDate(order.chargedAt)} · {TYPE_LABEL[order.type] || order.type || ''} · {order.provider === 'polar' ? 'Polar' : 'Mercado Pago'}
-        </span>
-      </div>
-      <div className="earn-order__amounts">
-        <span className="earn-order__earnings">{fmtMoney(order.earnings, order.currency)}</span>
-        <span className="earn-order__breakdown">
-          {fmtMoney(order.gross, order.currency)} bruto · −{fmtMoney(order.providerFee, order.currency)} fee · −{fmtMoney(Math.abs(order.commission ?? 0), order.currency)} Wake
-        </span>
-      </div>
-    </div>
   );
 }
 
@@ -192,9 +161,6 @@ function DashboardEarnings({ programId = null }) {
         currencies: data.currencies || [],
         programs: data.programs || [],
         daily: data.daily || [],
-        orders: data.latestOrders || [],
-        commissionRates: data.commissionRates || {},
-        serviceType: data.serviceType,
       };
     }
     const p = (data.programs || []).find((x) => x.courseId === programId);
@@ -204,64 +170,41 @@ function DashboardEarnings({ programId = null }) {
       currencies: Object.keys(totals),
       programs: [],
       daily: [],
-      orders: (data.latestOrders || []).filter((o) => o.courseId === programId),
-      commissionRates: data.commissionRates || {},
-      serviceType: data.serviceType,
     };
   }, [data, programId]);
 
   const sparks = useMemo(() => {
     const d = scoped?.daily || [];
     if (d.length < 2) return null;
-    let cop = 0; let ord = 0;
+    let cop = 0;
     return {
       revenue: d.map((p) => (cop += p.COP || 0)),
-      orders: d.map((p) => (ord += p.orders || 0)),
       mrr: d.map((p) => p.mrrCum || 0),
       active: d.map((p) => p.activeCum || 0),
     };
   }, [scoped]);
 
   if (isLoading) {
-    return <div className="earn-wrap"><div className="earn-kpis">{[0, 1, 2, 3].map((i) => <SkeletonCard key={i} />)}</div></div>;
+    return <div className="earn-wrap"><div className="earn-kpis">{[0, 1, 2].map((i) => <SkeletonCard key={i} />)}</div></div>;
   }
   if (isError) {
     return <div className="earn-wrap"><InlineError message="No se pudo cargar los ingresos." field="earnings" /></div>;
   }
   if (!scoped) return null;
 
-  const { totals, currencies, programs, daily, orders, commissionRates, serviceType } = scoped;
+  const { totals, currencies, programs, daily } = scoped;
   const totalActive = currencies.reduce((s, c) => s + (totals[c]?.activeSubscriptions ?? 0), 0);
-  const totalOrders = currencies.reduce((s, c) => s + (totals[c]?.orders ?? 0), 0);
   const chartCurrencies = orderCurrencies(currencies).filter((c) => daily.some((p) => (p[c] ?? 0) !== 0));
-  const mpPct = Math.round((commissionRates.mercadopago ?? 0) * 100);
-  const intlPct = Math.round((commissionRates.polar ?? 0) * 100);
 
   return (
     <div className="earn-wrap">
-      {!programId && (
-        <div className="earn-header">
-          <div className="earn-header__titlerow">
-            <h2 className="earn-title">Ingresos</h2>
-            {serviceType && (
-              <span className="earn-service-pill">
-                {serviceType === 'managed' ? 'Gestionado por Wake' : 'Autogestión'}
-              </span>
-            )}
-          </div>
-          <p className="earn-subtitle">Tu ganancia después de comisión Wake · {mpPct}% local · {intlPct}% internacional</p>
-        </div>
-      )}
-
       <div className="earn-kpis">
-        <MoneyTile label="Revenue" sublabel="Total ganado" totals={totals} currencies={currencies} field="revenue"
+        <MoneyTile label="Revenue" totals={totals} currencies={currencies} field="revenue"
           spark={sparks?.revenue} sparkColor={REVENUE_COLOR} sparkId="spk-rev" />
-        <MoneyTile label="MRR" sublabel="Recurrente mensual" totals={totals} currencies={currencies} field="mrr"
+        <MoneyTile label="MRR" totals={totals} currencies={currencies} field="mrr"
           spark={sparks?.mrr} sparkColor={MRR_COLOR} sparkId="spk-mrr" />
         <CountTile label="Suscripciones activas" value={totalActive}
           spark={sparks?.active} sparkColor={ACTIVE_COLOR} sparkId="spk-act" />
-        <CountTile label="Órdenes" value={totalOrders}
-          spark={sparks?.orders} sparkColor={ORDERS_COLOR} sparkId="spk-ord" />
       </div>
 
       {!programId && chartCurrencies.length > 0 && (
@@ -297,15 +240,6 @@ function DashboardEarnings({ programId = null }) {
           <div className="earn-programs">{programs.map((p) => <ProgramRow key={p.courseId} program={p} />)}</div>
         </div>
       )}
-
-      <div className="earn-section">
-        <p className="earn-section-title">Últimas órdenes</p>
-        {orders.length === 0 ? (
-          <div className="earn-empty earn-empty--wide"><span>Sin órdenes todavía</span></div>
-        ) : (
-          <div className="earn-orders">{orders.map((o) => <OrderRow key={o.id} order={o} />)}</div>
-        )}
-      </div>
     </div>
   );
 }

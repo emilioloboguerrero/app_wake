@@ -1,0 +1,97 @@
+.ecp {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ecp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.1));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.ecp-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--text-primary, rgba(255, 255, 255, 0.85));
+}
+.ecp-pill[aria-expanded='true'] {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+.ecp-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: 264px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(28, 28, 28, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 6px 18px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  animation: ecp-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes ecp-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ecp-pop__title {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  margin: 0 0 6px;
+}
+.ecp-pop__body {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.6));
+  margin: 0 0 12px;
+}
+.ecp-pop__rates {
+  display: flex;
+  gap: 10px;
+}
+.ecp-rate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.ecp-rate__pct {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.ecp-rate__lbl {
+  font-size: 0.62rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.4));
+  letter-spacing: 0.02em;
+}
