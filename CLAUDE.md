@@ -117,11 +117,12 @@ functions/src/
       events.ts               ← /events (public)
       payments.ts             ← /payments (MercadoPago — Colombia)
       polar.ts                ← /payments/polar (Polar MoR — international cards)
+      public.ts               ← /public (storefront: creators, programs, checkout start/guest-start/status, waitlist)
       analytics.ts            ← /analytics/weekly-volume, etc.
       appResources.ts         ← /app-resources (public)
 ```
 
-**Payments:** MercadoPago (Colombia, `payments.ts`) + Polar (merchant-of-record for international cards, `polar.ts`) coexist; the client routes by `users/{uid}.country` (CO → MP, else → Polar) with a manual override toggle. Polar international USD pricing is on by default (derived from the COP price). See `docs/POLAR_INTEGRATION_STATUS.md`.
+**Payments:** MercadoPago (Colombia, `payments.ts`) + Polar (merchant-of-record for international cards, `polar.ts`) coexist; the client routes by `users/{uid}.country` (CO → MP, else → Polar) with a manual override toggle. Polar international USD pricing is on by default (derived from the COP price). The public buy page sells **without a pre-checkout account**: signed-out buyers type only an email and `POST /public/checkout/guest-start` (public, rate-limited) find-or-creates the Firebase Auth user server-side; the post-payment magic link is the way into the account (optional Google linking on consumption). See `docs/POLAR_INTEGRATION_STATUS.md` and `docs/API_ENDPOINTS.md` §10.
 
 ### Gen1 Functions (existing)
 

@@ -2677,6 +2677,48 @@ Cancel, pause, or resume a MercadoPago subscription.
 
 ---
 
+### Storefront checkout (public buy page)
+
+The public buy page (`wakelab.co/{username}/{programId}`) sells through two entry points that share one execution path (`executeStorefrontCheckout` in `routes/public.ts`). Both support MercadoPago (default) and Polar (`"provider": "polar"`). The buy page requires **no account before paying**: signed-out buyers go through `guest-start` with just an email.
+
+#### `POST /api/v1/public/checkout/start`
+Start a storefront checkout for a signed-in buyer (identity from the ID token).
+
+**Auth:** Firebase ID token + App Check
+**Request:**
+```json
+{
+  "username": "string",
+  "courseId": "string",
+  "mode": "one_time | subscription",
+  "provider": "polar (optional; omit for MercadoPago)",
+  "payerEmail": "string (optional — MP alternate-email retry)",
+  "surface": "string (optional)"
+}
+```
+**Response:** MercadoPago → `{ "data": { "initPoint": "https://...", "subscriptionId": "string?", "mode": "..." } }`; Polar → `{ "data": { "checkoutUrl": "https://polar.sh/...", "checkoutId": "string", "mode": "..." } }`
+**Errors:** `VALIDATION_ERROR`, `NOT_FOUND` (creator/course/unpublished), 409 `{ alreadyPurchased: true, appUrl }` (active access — don't double-charge), 409 `{ requireAlternateEmail: true }` (MP rejected the payer email), `CONFLICT` `CAPACITY_FULL` (beta cap → waitlist), `INTERNAL_ERROR`
+**Notes:** bootstraps `users/{uid}` with first-touch storefront-acquisition flags; subscription retries within 10 min dedupe to the existing MP `init_point`.
+
+---
+
+#### `POST /api/v1/public/checkout/guest-start`
+Same contract as `start`, but the buyer's identity is **just an email** — no session, no App Check. The server finds or creates the Firebase Auth user for that email (`getUserByEmail` → `createUser`) and starts checkout for that uid. No session is ever returned to the caller, so typing someone else's email can only gift them a course; the post-payment magic-link email is the door into the account.
+
+**Auth:** none (public path in `app.ts`; rate-limited 10/min per IP + 5/min per email)
+**Request:** `start`'s body plus `"email": "string"` (required)
+**Response / Errors:** identical to `start`. On the 409 already-owned, the landing client sends the email a magic link instead of charging again.
+
+---
+
+#### `GET /api/v1/public/checkout/status?course={courseId}`
+Whether the signed-in buyer has active access to a program. Polled by `/comprado` until the payment webhook grants access. Guests can't poll (no session) — the post-payment screen shows the soft "activando" state and relies on the magic-link email.
+
+**Auth:** Firebase ID token
+**Response:** `{ "data": { "active": boolean, "expiresAt": "ISO string | null" } }`
+
+---
+
 ### Polar (International Payments)
 
 Merchant-of-record card payments for international customers, coexisting with MercadoPago (Colombia). Routing is by `users/{uid}.country` (CO → MercadoPago, else → Polar) with a manual override toggle on the buy screens. USD prices are auto-derived from the COP price (`max(1, round((cop/3500)*1.10))`) and stored on `courses/{id}.polar.*` (see `routes/polar.ts`, `services/polarProducts.ts`). Full context: `docs/POLAR_INTEGRATION_STATUS.md`.

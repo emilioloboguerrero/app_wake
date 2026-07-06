@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-06-30. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-07-06. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -26,6 +26,21 @@ Feature "Recursos adicionales" (PDF / YouTube / link por programa, tarjeta "Recu
 - **Verificado:** build de prod OK; Playwright renderizó el Manuscrito real (17 páginas, canvas no-blanco). Assets live en `wakelab.co/app/pdf.min.js` + worker (200). **Pendiente confirmación on-device:** el usuario debe cerrar y reabrir (o reinstalar) el PWA instalado para soltar el bundle v1 cacheado y recibir el visor nuevo.
 
 Archivos: `apps/pwa/src/components/resources/PdfViewerOverlay.web.jsx`, `apps/pwa/src/screens/ResourcesScreen.web.jsx`.
+
+---
+
+### Guest checkout del storefront `COMPLETED` — follow-ups abiertos
+
+**SHIPPED a prod 2026-07-05/06** (commits `38c5027`, `6604149`). El buy page ya no exige cuenta antes de pagar: CTA → un campo de correo → `POST /public/checkout/guest-start` (público, rate-limited por IP+correo) hace find-or-create del usuario de Firebase Auth y crea el checkout (MP `init_point` o Polar, `provider:'polar'`). Correo ya-dueño → magic link en vez de doble cobro. Post-pago: magic link automático al correo stashed (`wake_email_for_sign_in`); al consumirlo, `EmailLinkSignInScreen` ofrece vincular Google (`linkWithPopup`, opcional, nunca bloquea). AuthModal quedó solo para `book_call`. Contexto completo: memoria del funnel ManyChat 2026-07-05 (~96% moría en el AuthModal) y `docs/API_ENDPOINTS.md` §10.
+
+**Follow-ups abiertos:**
+- **Primer pago real por la vía guest** — E2E verificado hasta el formulario de tarjeta (MP invitado + Polar) con Playwright; falta que un comprador orgánico complete el cobro (el primero llegó hasta MP a los ~10s del CTA la noche del 2026-07-06).
+- **App Check dentro del webview real de IG** — la vía guest lo esquiva (endpoint público), pero la vía authed (usuarios con sesión) sigue dependiendo de él; nunca se ha verificado en el webview real.
+- **Google-link completado** — el popup abre y cancelar es inocuo (verificado); completar el login requiere un humano con cuenta Google real.
+- **`/public/checkout/status` es auth-gated** — los guests no pueden hacer poll post-pago; hoy ven el estado suave + magic link. Considerar variante pública firmada si molesta.
+- **Fase 2 MP sin redirect** — preapproval por API con `card_token_id` (Bricks embebido) eliminaría también el redirect a MP; verificar disponibilidad en Colombia antes de diseñar.
+- **Limpieza de artefactos QA** — auth user `wake.qa.guest.jul05@gmail.com` (preapprovals pending, sin compras); cuenta QA `emilioloboguerrero+wakeqa0703@` (ojo: MP rechaza ese alias del collector con 500 — no sirve para probar compras MP).
+- **Medición** — funnel "Guest checkout — funnel del buy page" (PostHog `4VMIdXbS`, dashboard Core Metrics); comparar contra el baseline 0.19% viewer→pago del blast 2026-07-05 cuando salga el próximo blast.
 
 ---
 

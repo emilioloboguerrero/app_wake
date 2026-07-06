@@ -34,6 +34,12 @@ Shipped + deployed to prod (commit `6dd670f`, `functions:api` + hosting):
 
 ---
 
+## 2026-07-06 update — guest checkout (no account before paying)
+
+The buy page no longer requires an account before checkout (commits `38c5027` + `6604149`, deployed). Signed-out buyers type only an email; `POST /public/checkout/guest-start` (public, IP+email rate-limited) find-or-creates the Firebase Auth user and runs the same `executeStorefrontCheckout` path. **Polar impact:** checkout-session creation was extracted to `createPolarCheckoutSession()` (exported from `polar.ts`) and is now reachable from both `/payments/polar/checkout` (authed) and the guest path (`provider: "polar"`). Metadata/attribution unchanged (`{userId, courseId, paymentType}` + `externalCustomerId`); `customerEmail` prefills from the typed email. Post-payment, the magic link auto-sends to the stashed guest email, and the PWA's email-link screen offers optional Google linking (`linkWithPopup`). The "Auth crux" paragraph below is **superseded** — it describes the pre-2026-07-06 flow. E2E verified live under an Instagram-webview UA: email → MP "Sin cuenta de Mercado Pago → Tarjeta" and email → Polar hosted checkout with prefilled email. Full context: the ManyChat funnel analysis (2026-07-05) that motivated this.
+
+---
+
 ## What was built
 
 **Branch:** `feature/polar-international-payments` → merged (fast-forward) into `main`.
@@ -112,7 +118,7 @@ To test a purchase you need a **non-CO, non-owner** account (or the currency tog
 
 Wired `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` (+ `.css`) for Polar.
 
-**Auth crux — resolved:** the public storefront is NOT anonymous. The buyer signs up / logs in via `AuthModal` (Google or email/password → real Firebase account) BEFORE checkout, so `startStorefrontCheckout` already sends a Firebase ID token + App Check. Both the MP `/public/checkout/start` and `/payments/polar/checkout` sit behind the SAME `validateAuth` + `enforceAppCheck` gate (the `/public/` prefix is just naming, not an auth bypass). So the landing calls the existing Polar checkout endpoint with the exact auth it already uses for MP — no anonymous/magic-link checkout path. The magic-link on `/comprado` is post-payment account recovery, not checkout auth. `/comprado` polling (`getCheckoutStatus`) is provider-agnostic and unchanged; the Polar checkout already builds the `/{username}/comprado` success URL.
+**Auth crux — resolved:** *(SUPERSEDED 2026-07-06 by guest checkout — see the "2026-07-06 update" section above. Kept for history.)* the public storefront is NOT anonymous. The buyer signs up / logs in via `AuthModal` (Google or email/password → real Firebase account) BEFORE checkout, so `startStorefrontCheckout` already sends a Firebase ID token + App Check. Both the MP `/public/checkout/start` and `/payments/polar/checkout` sit behind the SAME `validateAuth` + `enforceAppCheck` gate (the `/public/` prefix is just naming, not an auth bypass). So the landing calls the existing Polar checkout endpoint with the exact auth it already uses for MP — no anonymous/magic-link checkout path. The magic-link on `/comprado` is post-payment account recovery, not checkout auth. `/comprado` polling (`getCheckoutStatus`) is provider-agnostic and unchanged; the Polar checkout already builds the `/{username}/comprado` success URL.
 
 **Shipped:**
 - Backend `public.ts`: `shapePublicProgramDetail` exposes `program.polar = { priceUsdMonthly, priceUsdOnetime, hasSubscription, hasOnetime }` — display prices + availability booleans only, never product IDs.
