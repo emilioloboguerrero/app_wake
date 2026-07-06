@@ -916,6 +916,9 @@ router.get("/analytics/earnings", async (req, res) => {
   const ledgerSnap = await db.collection("payment_ledger")
     .where("creator_id", "==", creatorId).get();
   const orders: Array<Record<string, unknown>> = [];
+  // `${userId}|${courseId}` → earliest real (non-refund) charge ms. Doubles as
+  // the "has this member ever paid?" set and their accurate "member since" date.
+  const paidStart = new Map<string, number>();
   ledgerSnap.docs.forEach((d) => {
     const x = d.data();
     const cur = String(x.currency ?? "COP").toUpperCase();
@@ -933,6 +936,12 @@ router.get("/analytics/earnings", async (req, res) => {
     // current (run-rate), not windowed.
     const iso = tsToIso(x.charged_at ?? x.created_at);
     const di = iso ? dayIndex[iso.slice(0, 10)] : undefined;
+    if (!isRefund) {
+      const key = String(x.user_id ?? "") + "|" + cid;
+      const cms = iso ? Date.parse(iso) : nowMs;
+      const prev = paidStart.get(key);
+      if (prev === undefined || cms < prev) paidStart.set(key, cms);
+    }
     if (di !== undefined) {
       tBucket(cur).revenue += earnings;
       pBucket(cid, cur).revenue += earnings;
@@ -970,6 +979,7 @@ router.get("/analytics/earnings", async (req, res) => {
   // query needs a collection-group index that isn't provisioned; the unfiltered
   // scan doesn't. Volume is low today; revisit with an index if subs grow large.
   const subStarts: Array<{ms: number; earn: number}> = [];
+  const memberIntervals: Array<{startMs: number; endMs: number}> = [];
   if (courseIds.length > 0) {
     const courseIdSet = new Set(courseIds);
     try {
@@ -977,10 +987,32 @@ router.get("/analytics/earnings", async (req, res) => {
       snap.docs.forEach((d) => {
         const s = d.data();
         if (!courseIdSet.has(s.course_id as string)) return;
-        if (!EARNINGS_ACTIVE_SUB_STATUSES.has(s.status)) return;
         if (isTestSale(d.ref.parent?.parent?.id, s.course_id)) return; // QA/self-test subs
-        const cur = String(s.currency_id ?? "COP").toUpperCase();
         const cid = String(s.course_id ?? "unknown");
+        const isActiveNow = EARNINGS_ACTIVE_SUB_STATUSES.has(s.status);
+
+        // Member interval for the monthly active-subscribers series. Count a sub
+        // only if it truly activated (active now, or has a paid ledger charge —
+        // excludes never-paid abandoned checkouts). "member since" = first real
+        // charge date when known (more accurate than the checkout-created date),
+        // else created_at. end = now for live subs, else the cancellation date
+        // (churn pulls the monthly line down).
+        const memberKey = String(d.ref.parent?.parent?.id ?? "") + "|" + cid;
+        const paidStartMs = paidStart.get(memberKey);
+        const createdIsoM = tsToIso(s.created_at);
+        const createdMsM = createdIsoM ? Date.parse(createdIsoM) : nowMs;
+        if (isActiveNow || paidStartMs !== undefined) {
+          const startMsM = paidStartMs ?? createdMsM;
+          let endMsM = nowMs;
+          if (!isActiveNow) {
+            const endIso = tsToIso(s.cancelled_at) ?? tsToIso(s.updated_at);
+            endMsM = endIso ? Date.parse(endIso) : startMsM;
+          }
+          memberIntervals.push({startMs: startMsM, endMs: endMsM});
+        }
+
+        if (!isActiveNow) return;
+        const cur = String(s.currency_id ?? "COP").toUpperCase();
         const gross = typeof s.transaction_amount === "number" ? s.transaction_amount : 0;
         const provider = normProvider(s.provider);
         const earn = r2((gross - estimateProviderFee(provider, gross)) * (1 - rateFor(provider)));
@@ -988,8 +1020,7 @@ router.get("/analytics/earnings", async (req, res) => {
         tBucket(cur).activeSubscriptions += 1;
         pBucket(cid, cur).mrr += earn;
         pBucket(cid, cur).activeSubscriptions += 1;
-        const startIso = tsToIso(s.created_at);
-        subStarts.push({ms: startIso ? Date.parse(startIso) : nowMs, earn});
+        subStarts.push({ms: paidStartMs ?? createdMsM, earn});
       });
     } catch {
       // Transient error: MRR/active stay 0 rather than failing the whole
@@ -1040,6 +1071,24 @@ router.get("/analytics/earnings", async (req, res) => {
     .sort((a, b) => String(b.chargedAt ?? "").localeCompare(String(a.chargedAt ?? "")))
     .slice(0, 20);
 
+  // Monthly active subscribers (last 12 months). A member counts in month M if
+  // its active interval [start, end] covers the month's reference instant
+  // (month end, or now for the current month). Leading all-zero months trimmed.
+  const nowDate = new Date(nowMs);
+  const monthlyActive: Array<{month: string; active: number}> = [];
+  for (let k = 11; k >= 0; k--) {
+    const mDate = new Date(Date.UTC(nowDate.getUTCFullYear(), nowDate.getUTCMonth() - k, 1));
+    const monthStr = mDate.toISOString().slice(0, 7);
+    const monthEndMs = Date.UTC(mDate.getUTCFullYear(), mDate.getUTCMonth() + 1, 0, 23, 59, 59);
+    const ref = Math.min(monthEndMs, nowMs);
+    let active = 0;
+    for (const iv of memberIntervals) {
+      if (iv.startMs <= ref && iv.endMs >= ref) active += 1;
+    }
+    monthlyActive.push({month: monthStr, active});
+  }
+  while (monthlyActive.length > 2 && monthlyActive[0].active === 0) monthlyActive.shift();
+
   res.json({
     data: {
       serviceType,
@@ -1049,6 +1098,7 @@ router.get("/analytics/earnings", async (req, res) => {
       programs,
       daily,
       byMonth,
+      monthlyActive,
       latestOrders,
     },
   });

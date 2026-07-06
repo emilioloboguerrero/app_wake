@@ -17,6 +17,7 @@ const CUR_COLOR = { COP: 'rgba(100,225,150,0.90)', USD: 'rgba(100,180,255,0.90)'
 const REVENUE_COLOR = 'rgba(100,225,150,0.9)';
 const MRR_COLOR = 'rgba(100,180,255,0.9)';
 const ACTIVE_COLOR = 'rgba(210,120,255,0.9)';
+const MONTHLY_COLOR = 'rgba(255,190,90,0.9)';
 
 function fmtMoney(n, cur) {
   return new Intl.NumberFormat(cur === 'USD' ? 'en-US' : 'es-CO', {
@@ -161,6 +162,7 @@ function DashboardEarnings({ programId = null }) {
         currencies: data.currencies || [],
         programs: data.programs || [],
         daily: data.daily || [],
+        monthlyActive: data.monthlyActive || [],
       };
     }
     const p = (data.programs || []).find((x) => x.courseId === programId);
@@ -195,6 +197,9 @@ function DashboardEarnings({ programId = null }) {
   const { totals, currencies, programs, daily } = scoped;
   const totalActive = currencies.reduce((s, c) => s + (totals[c]?.activeSubscriptions ?? 0), 0);
   const chartCurrencies = orderCurrencies(currencies).filter((c) => daily.some((p) => (p[c] ?? 0) !== 0));
+  const monthly = scoped.monthlyActive || [];
+  const monthlyValue = monthly.length ? monthly[monthly.length - 1].active : 0;
+  const monthlySpark = monthly.length >= 2 ? monthly.map((m) => m.active) : null;
 
   return (
     <div className="earn-wrap">
@@ -205,6 +210,10 @@ function DashboardEarnings({ programId = null }) {
           spark={sparks?.mrr} sparkColor={MRR_COLOR} sparkId="spk-mrr" />
         <CountTile label="Suscripciones activas" value={totalActive}
           spark={sparks?.active} sparkColor={ACTIVE_COLOR} sparkId="spk-act" />
+        {!programId && (
+          <CountTile label="Activos por mes" value={monthlyValue}
+            spark={monthlySpark} sparkColor={MONTHLY_COLOR} sparkId="spk-mon" />
+        )}
       </div>
 
       {!programId && chartCurrencies.length > 0 && (
