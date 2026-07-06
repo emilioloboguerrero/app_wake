@@ -824,13 +824,20 @@ router.get("/analytics/revenue", async (req, res) => {
 
 // ─── GET /analytics/earnings ───────────────────────────────────────────────
 // Creator-facing earnings. payment_ledger (real per-order fees) → revenue,
-// orders, by-month; subscriptions collectionGroup → MRR + active counts. The
-// per-creator platform commission is applied SERVER-SIDE (never client-writable)
-// and defaults until an admin sets `users/{creatorId}.commission_rate`. COP and
-// USD are reported separately (no FX). earnings = net × (1 − commission); refunds
-// subtract.
-const DEFAULT_COMMISSION_RATE = 0.15;
+// orders, daily/monthly trend; subscriptions collectionGroup → MRR + active.
+// The platform commission is applied SERVER-SIDE (never client-writable). The
+// DEFAULT depends on the creator's `service_type`: `self_serve` (creator runs
+// everything) = 15% local / 20% international; `managed` (Wake does the heavy
+// lifting) = 30% local / 35% international. Overridable per creator via an
+// admin-only `commission_rates` map (or legacy `commission_rate` number).
+// COP/USD reported separately (no FX). earnings = net × (1 − commission).
+const DEFAULT_COMMISSION_BY_SERVICE: Record<string, Record<string, number>> = {
+  self_serve: {mercadopago: 0.15, polar: 0.20},
+  managed: {mercadopago: 0.30, polar: 0.35},
+};
 const EARNINGS_ACTIVE_SUB_STATUSES = new Set(["active", "authorized", "trialing"]);
+const EARNINGS_TREND_DAYS = 30;
+const normProvider = (p: unknown): "polar" | "mercadopago" => (p === "polar" ? "polar" : "mercadopago");
 
 interface EarningsBucket {
   revenue: number;
@@ -859,12 +866,20 @@ router.get("/analytics/earnings", async (req, res) => {
     getCreatorCourses(creatorId),
   ]);
 
-  // Commission is a per-creator, admin-only field on the user doc. Applied here
-  // server-side so the rate is never exposed as a client-writable value.
-  const rawRate = userDoc.data()?.commission_rate;
-  const commissionRate = typeof rawRate === "number" && rawRate >= 0 && rawRate <= 1 ?
-    rawRate : DEFAULT_COMMISSION_RATE;
-  const keep = 1 - commissionRate;
+  // Per-provider commission, admin-only, applied server-side. Precedence:
+  // `commission_rates[provider]` map > legacy `commission_rate` number >
+  // service-type default (managed vs self_serve).
+  const userData = userDoc.data() ?? {};
+  const serviceType = userData.service_type === "managed" ? "managed" : "self_serve";
+  const serviceDefaults = DEFAULT_COMMISSION_BY_SERVICE[serviceType];
+  const overrideMap = userData.commission_rates as Record<string, number> | undefined;
+  const legacyRate = userData.commission_rate;
+  const rateFor = (provider: string): number => {
+    const p = normProvider(provider);
+    if (overrideMap && typeof overrideMap[p] === "number") return overrideMap[p];
+    if (typeof legacyRate === "number" && legacyRate >= 0 && legacyRate <= 1) return legacyRate;
+    return serviceDefaults[p];
+  };
 
   const courseTitle: Record<string, string> = {};
   const courseIds: string[] = [];
@@ -880,17 +895,33 @@ router.get("/analytics/earnings", async (req, res) => {
   const pEntry = (cid: string) => (programAgg[cid] ??= {title: courseTitle[cid] ?? cid, currencies: {}});
   const pBucket = (cid: string, cur: string): EarningsBucket => (pEntry(cid).currencies[cur] ??= emptyBucket());
 
-  // Revenue / orders / by-month from the ledger (real per-order fees).
+  // 30-day daily trend scaffold (oldest → newest). COP/USD/orders are per-day
+  // deltas from the ledger; activeCum/mrrCum are filled from subscriptions below.
+  interface DailyPoint {
+    date: string; COP: number; USD: number; orders: number; activeCum: number; mrrCum: number;
+  }
+  const dayIndex: Record<string, number> = {};
+  const daily: DailyPoint[] = [];
+  const nowMs = Date.now();
+  for (let i = EARNINGS_TREND_DAYS - 1; i >= 0; i--) {
+    const date = new Date(nowMs - i * 86400000).toISOString().slice(0, 10);
+    dayIndex[date] = daily.length;
+    daily.push({date, COP: 0, USD: 0, orders: 0, activeCum: 0, mrrCum: 0});
+  }
+
+  // Revenue / orders / trend from the ledger (real per-order fees).
   const ledgerSnap = await db.collection("payment_ledger")
     .where("creator_id", "==", creatorId).get();
   const orders: Array<Record<string, unknown>> = [];
   ledgerSnap.docs.forEach((d) => {
     const x = d.data();
     const cur = String(x.currency ?? "COP").toUpperCase();
+    const provider = normProvider(x.provider);
     const isRefund = x.type === "refund" || x.status === "refunded";
     const sign = isRefund ? -1 : 1;
     const net = typeof x.net_amount === "number" ? x.net_amount : 0;
-    const earnings = r2(net * keep) * sign;
+    const rate = rateFor(provider);
+    const earnings = r2(net * (1 - rate)) * sign;
     const cid = String(x.course_id ?? "unknown");
 
     tBucket(cur).revenue += earnings;
@@ -904,6 +935,11 @@ router.get("/analytics/earnings", async (req, res) => {
     if (iso) {
       const month = iso.slice(0, 7);
       (monthAgg[month] ??= {})[cur] = (monthAgg[month][cur] ?? 0) + earnings;
+      const di = dayIndex[iso.slice(0, 10)];
+      if (di !== undefined) {
+        if (cur === "USD") daily[di].USD += earnings; else daily[di].COP += earnings;
+        if (!isRefund) daily[di].orders += 1;
+      }
     }
     orders.push({
       id: d.id,
@@ -913,7 +949,7 @@ router.get("/analytics/earnings", async (req, res) => {
       gross: typeof x.gross_amount === "number" ? x.gross_amount : 0,
       providerFee: typeof x.provider_fee === "number" ? x.provider_fee : 0,
       net,
-      commission: r2(net * commissionRate) * sign,
+      commission: r2(net * rate) * sign,
       earnings,
       type: x.type ?? null,
       status: x.status ?? null,
@@ -927,6 +963,7 @@ router.get("/analytics/earnings", async (req, res) => {
   // courses in memory: a filtered `where("course_id","in",…)` collection-group
   // query needs a collection-group index that isn't provisioned; the unfiltered
   // scan doesn't. Volume is low today; revisit with an index if subs grow large.
+  const subStarts: Array<{ms: number; earn: number}> = [];
   if (courseIds.length > 0) {
     const courseIdSet = new Set(courseIds);
     try {
@@ -938,17 +975,38 @@ router.get("/analytics/earnings", async (req, res) => {
         const cur = String(s.currency_id ?? "COP").toUpperCase();
         const cid = String(s.course_id ?? "unknown");
         const gross = typeof s.transaction_amount === "number" ? s.transaction_amount : 0;
-        const provider = s.provider === "polar" ? "polar" : "mercadopago";
-        const earn = r2((gross - estimateProviderFee(provider, gross)) * keep);
+        const provider = normProvider(s.provider);
+        const earn = r2((gross - estimateProviderFee(provider, gross)) * (1 - rateFor(provider)));
         tBucket(cur).mrr += earn;
         tBucket(cur).activeSubscriptions += 1;
         pBucket(cid, cur).mrr += earn;
         pBucket(cid, cur).activeSubscriptions += 1;
+        const startIso = tsToIso(s.created_at);
+        subStarts.push({ms: startIso ? Date.parse(startIso) : nowMs, earn});
       });
     } catch {
       // Transient error: MRR/active stay 0 rather than failing the whole
       // dashboard. Revenue/orders (from the ledger) are unaffected.
     }
+  }
+
+  // Cumulative active-sub + MRR curves per day from each active sub's start date
+  // (approximates growth-to-current), plus rounding of daily revenue deltas.
+  subStarts.sort((a, b) => a.ms - b.ms);
+  for (const point of daily) {
+    const dayEndMs = Date.parse(point.date + "T23:59:59.999Z");
+    let cnt = 0;
+    let mrr = 0;
+    for (const s of subStarts) {
+      if (s.ms <= dayEndMs) {
+        cnt += 1;
+        mrr += s.earn;
+      }
+    }
+    point.activeCum = cnt;
+    point.mrrCum = r2(mrr);
+    point.COP = r2(point.COP);
+    point.USD = r2(point.USD);
   }
 
   const roundBuckets = (m: Record<string, EarningsBucket>): Record<string, EarningsBucket> => {
@@ -976,7 +1034,16 @@ router.get("/analytics/earnings", async (req, res) => {
     .slice(0, 20);
 
   res.json({
-    data: {commissionRate, currencies: Object.keys(totals), totals, programs, byMonth, latestOrders},
+    data: {
+      serviceType,
+      commissionRates: {mercadopago: rateFor("mercadopago"), polar: rateFor("polar")},
+      currencies: Object.keys(totals),
+      totals,
+      programs,
+      daily,
+      byMonth,
+      latestOrders,
+    },
   });
 });
 
