@@ -138,6 +138,9 @@ const PUBLIC_PATHS = [
   /^\/public\/programs\/[^/]+\/availability$/, // GET program seat availability
   /^\/public\/programs\/[^/]+\/waitlist$/, // POST join sold-out waitlist
   /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
+  // Guest checkout: buyer identity is an email resolved server-side; the
+  // handler enforces per-IP + per-email rate limits itself.
+  /^\/public\/checkout\/guest-start$/,
   // MP webhook authenticates via HMAC signature, not Firebase token (the
   // handler verifies x-signature / x-hmac-signature before doing any work).
   // Without this entry, the auth middleware 401s the webhook before it ever

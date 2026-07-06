@@ -144,6 +144,81 @@ export async function startStorefrontCheckout({
   return respBody?.data ?? null;
 }
 
+// POST /api/v1/public/checkout/guest-start — same contract as
+// startStorefrontCheckout but the buyer's identity is just an email: no
+// session, no ID token, no App Check (public path; server rate-limits per
+// IP + email). Backend finds or creates the Firebase Auth user for the email
+// and starts checkout for it. `provider: 'polar'` returns { checkoutUrl };
+// MercadoPago returns { initPoint }.
+export async function startGuestCheckout({
+  username,
+  courseId,
+  mode,
+  provider,
+  email,
+  payerEmail,
+}) {
+  const body = {
+    username,
+    courseId,
+    mode,
+    email,
+    ...(provider === 'polar' ? { provider } : {}),
+    ...(payerEmail ? { payerEmail } : {}),
+  };
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch('/api/v1/public/checkout/guest-start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Wake-Client': 'landing/1.0',
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    throw new StorefrontCheckoutError(
+      err?.name === 'AbortError'
+        ? 'La conexión tardó demasiado. Intenta de nuevo.'
+        : 'Error de red. Intenta de nuevo.',
+      err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
+      0
+    );
+  }
+  clearTimeout(timer);
+
+  let respBody = null;
+  try { respBody = await res.json(); } catch { /* non-JSON */ }
+
+  if (res.status === 409) {
+    if (respBody?.requireAlternateEmail) {
+      return { needsAlternateEmail: true };
+    }
+    if (respBody?.alreadyPurchased) {
+      return {
+        alreadyPurchased: true,
+        appUrl: respBody.appUrl || '/app/',
+      };
+    }
+  }
+
+  if (!res.ok) {
+    throw new StorefrontCheckoutError(
+      respBody?.error?.message || 'No se pudo iniciar el pago',
+      respBody?.error?.code || 'INTERNAL_ERROR',
+      res.status
+    );
+  }
+
+  return respBody?.data ?? null;
+}
+
 // POST /api/v1/payments/polar/checkout — international (USD) hosted checkout via
 // Polar. Same auth as the MercadoPago storefront checkout (Firebase ID token +
 // App Check). Returns { checkoutUrl } on success, or { alreadyPurchased, appUrl }

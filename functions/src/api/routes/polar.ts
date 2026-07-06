@@ -105,6 +105,53 @@ function recipientEmail(userData: Record<string, unknown> | null | undefined): s
   return typeof email === "string" && EMAIL_RE.test(email) ? email : null;
 }
 
+// Shared checkout-session creation for the authed route below AND the
+// storefront guest checkout (public.ts). Callers own the already-owned and
+// capacity guards; this resolves the product and creates the hosted checkout.
+export async function createPolarCheckoutSession(args: {
+  userId: string;
+  email: string | null;
+  courseId: string;
+  course: Record<string, unknown>;
+  paymentType: PolarPaymentType;
+  successUrl: string;
+}): Promise<{url: string; id: string}> {
+  const productId = resolvePolarProductId(args.course, args.paymentType);
+  if (!productId) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Este programa no está disponible para pago internacional todavía"
+    );
+  }
+
+  const polar = getPolarClient();
+  let checkout;
+  try {
+    checkout = await polar.checkouts.create({
+      products: [productId],
+      successUrl: args.successUrl,
+      // Echoed back on every webhook — how we attribute the payment.
+      metadata: {userId: args.userId, courseId: args.courseId, paymentType: args.paymentType},
+      // Ties the Polar customer to our Firebase uid for portal/reconciliation.
+      externalCustomerId: args.userId,
+      ...(args.email ? {customerEmail: args.email} : {}),
+    });
+  } catch (error) {
+    functions.logger.error("polar.checkout.create failed", {
+      userId: args.userId, courseId: args.courseId, paymentType: args.paymentType,
+      error: String(error),
+    });
+    throw new WakeApiServerError(
+      "SERVICE_UNAVAILABLE", 503, "No pudimos crear el enlace de pago. Inténtalo de nuevo."
+    );
+  }
+
+  if (!checkout?.url || !checkout?.id) {
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
+  }
+  return {url: checkout.url, id: checkout.id};
+}
+
 // ─── POST /payments/polar/checkout ───────────────────────────────────────────
 router.post("/payments/polar/checkout", async (req, res) => {
   const auth = await validateAuth(req);
@@ -165,14 +212,6 @@ router.post("/payments/polar/checkout", async (req, res) => {
     }
   }
 
-  const productId = resolvePolarProductId(course, paymentType);
-  if (!productId) {
-    throw new WakeApiServerError(
-      "VALIDATION_ERROR", 400,
-      "Este programa no está disponible para pago internacional todavía"
-    );
-  }
-
   // Beta cap: refuse checkout once the program is full.
   await assertCourseHasSeat(body.courseId, course);
 
@@ -180,30 +219,14 @@ router.post("/payments/polar/checkout", async (req, res) => {
   const username = await resolveCreatorUsername(course.creator_id);
   const successUrl = buildSuccessUrl({base, username, courseId: body.courseId, mode: paymentType});
 
-  const polar = getPolarClient();
-  let checkout;
-  try {
-    checkout = await polar.checkouts.create({
-      products: [productId],
-      successUrl,
-      // Echoed back on every webhook — how we attribute the payment.
-      metadata: {userId: auth.userId, courseId: body.courseId, paymentType},
-      // Ties the Polar customer to our Firebase uid for portal/reconciliation.
-      externalCustomerId: auth.userId,
-      ...(auth.email ? {customerEmail: auth.email} : {}),
-    });
-  } catch (error) {
-    functions.logger.error("polar.checkout.create failed", {
-      userId: auth.userId, courseId: body.courseId, paymentType, error: String(error),
-    });
-    throw new WakeApiServerError(
-      "SERVICE_UNAVAILABLE", 503, "No pudimos crear el enlace de pago. Inténtalo de nuevo."
-    );
-  }
-
-  if (!checkout?.url) {
-    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo crear el enlace de pago");
-  }
+  const checkout = await createPolarCheckoutSession({
+    userId: auth.userId,
+    email: auth.email ?? null,
+    courseId: body.courseId,
+    course,
+    paymentType,
+    successUrl,
+  });
 
   res.json({data: {checkout_url: checkout.url, checkout_id: checkout.id}});
 });

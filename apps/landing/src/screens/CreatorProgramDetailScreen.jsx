@@ -6,9 +6,11 @@ import { getCreatorProgram, getCreatorStorefront } from '../services/creatorStor
 import {
   startStorefrontCheckout,
   startPolarCheckout,
+  startGuestCheckout,
   StorefrontCheckoutError,
 } from '../services/storefrontCheckoutService';
 import { getCurrentUser } from '../services/storefrontAuthService';
+import { requestMagicLink } from '../services/magicLinkService';
 import analyticsService from '../services/analyticsService';
 import { useAccentFromImage } from '../utils/accentColor';
 import AuthModal from '../components/AuthModal';
@@ -405,6 +407,14 @@ export default function CreatorProgramDetailScreen() {
   const [emailStep, setEmailStep] = useState(false);
   const [useCustomEmail, setUseCustomEmail] = useState(false);
   const [alreadyOwned, setAlreadyOwned] = useState(null);
+  // Guest checkout: signed-out buyers type only an email — no account step.
+  // The backend resolves/creates the Firebase user and the magic-link email
+  // after payment is the way into the account.
+  const [guestEmailStep, setGuestEmailStep] = useState(false);
+  const [guestEmail, setGuestEmail] = useState('');
+  // Guest typed an email that already owns this program → we sent it a
+  // magic link instead of charging twice.
+  const [guestAccessSent, setGuestAccessSent] = useState(false);
   // Sold-out waitlist: 'hidden' (just the CTA) | 'form' | 'done'.
   const [waitlistPhase, setWaitlistPhase] = useState('hidden');
   const [waitlistName, setWaitlistName] = useState('');
@@ -707,7 +717,136 @@ export default function CreatorProgramDetailScreen() {
     if (getCurrentUser()) {
       startForMode(mode);
     } else {
-      setAuthOpen(true);
+      openGuestEmailStep(mode);
+    }
+  };
+
+  // Signed-out purchase path: ask for an email, nothing else. No AuthModal —
+  // the account is created server-side and the magic link after payment is
+  // the way in. AuthModal survives only for book_call (booking lives in the
+  // PWA, which needs a session).
+  const openGuestEmailStep = (mode) => {
+    setGuestEmailStep(true);
+    setGuestAccessSent(false);
+    setCheckoutError(null);
+    try {
+      analyticsService.track('guest_checkout.email_step.shown', {
+        course_id: program.id,
+        surface: 'landing',
+        mode,
+        provider,
+        in_app_browser: detectInAppBrowser(),
+      });
+    } catch { /* analytics is best-effort */ }
+    // Section CTAs live far below the hero where this form renders — bring
+    // the buyer to it instead of letting the click appear to do nothing.
+    requestAnimationFrame(() => {
+      try {
+        document.querySelector('.cpd-guest-email')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch { /* older webviews — ignore */ }
+    });
+  };
+
+  const runGuestCheckout = async (mode, payerEmailOverride) => {
+    const email = guestEmail.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      setCheckoutError('Correo inválido.');
+      return;
+    }
+    setBusyMode(mode);
+    setCheckoutError(null);
+    setAlreadyOwned(null);
+    try {
+      analyticsService.track('guest_checkout.email_submitted', {
+        course_id: program.id,
+        surface: 'landing',
+        mode,
+        provider,
+        in_app_browser: detectInAppBrowser(),
+      });
+    } catch { /* analytics is best-effort */ }
+    try {
+      const result = await startGuestCheckout({
+        username: creator.username,
+        courseId: program.id,
+        mode,
+        provider,
+        email,
+        payerEmail: payerEmailOverride,
+      });
+      if (result?.needsAlternateEmail) {
+        setNeedsAltEmail(true);
+        setBusyMode(null);
+        return;
+      }
+      if (result?.alreadyPurchased) {
+        // The guest has no session — a link into the app would dead-end at
+        // login. Send the magic link and say so.
+        requestMagicLink(email);
+        setGuestAccessSent(true);
+        setGuestEmailStep(false);
+        setBusyMode(null);
+        try {
+          analyticsService.track('guest_checkout.already_owned', {
+            course_id: program.id,
+            surface: 'landing',
+          });
+        } catch { /* analytics is best-effort */ }
+        return;
+      }
+      const target = result?.initPoint || result?.checkoutUrl;
+      if (target) {
+        try {
+          const payer = payerEmailOverride ? payerEmailOverride.trim().toLowerCase() : email;
+          window.sessionStorage.setItem(`wake_payer_${program.id}`, payer);
+        } catch { /* private mode — fall through */ }
+        try {
+          // PostPaymentScreen and the PWA's /email-link screen read this key
+          // to know who the signed-out buyer is. Shared with magicLinkService.
+          window.localStorage.setItem('wake_email_for_sign_in', email);
+        } catch { /* private mode — fall through */ }
+        if (mode === 'subscription') {
+          try {
+            analyticsService.track('subscription.checkout.created', {
+              course_id: program.id,
+              surface: 'landing',
+              kind: 'course',
+              provider,
+              guest: true,
+            });
+          } catch { /* analytics is best-effort */ }
+          try {
+            analyticsService.track('subscription.checkout.redirected', {
+              course_id: program.id,
+              surface: 'landing',
+              kind: 'course',
+              provider,
+              guest: true,
+            });
+          } catch { /* analytics is best-effort */ }
+        }
+        window.location.href = target;
+        return;
+      }
+      throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
+    } catch (err) {
+      setBusyMode(null);
+      if (err?.code === 'CAPACITY_FULL') {
+        openWaitlist();
+        return;
+      }
+      if (mode === 'subscription') {
+        try {
+          analyticsService.track('subscription.checkout.create_failed', {
+            course_id: program?.id ?? null,
+            surface: 'landing',
+            kind: 'course',
+            guest: true,
+            error_code: err?.code || err?.message || 'unknown',
+          });
+        } catch { /* analytics is best-effort */ }
+      }
+      setCheckoutError(err?.message || 'No se pudo iniciar el pago');
     }
   };
 
@@ -791,7 +930,11 @@ export default function CreatorProgramDetailScreen() {
       setCheckoutError('Correo inválido.');
       return;
     }
-    runCheckout(pendingMode, trimmed);
+    if (getCurrentUser()) {
+      runCheckout(pendingMode, trimmed);
+    } else {
+      runGuestCheckout(pendingMode, trimmed);
+    }
   };
 
   const openWaitlist = () => {
@@ -997,7 +1140,7 @@ export default function CreatorProgramDetailScreen() {
                 </>
               )}
             </div>
-          ) : (needsAltEmail || emailStep) ? null : (
+          ) : (needsAltEmail || emailStep || guestEmailStep) ? null : (
             // Hide the primary CTAs while the alt-email form is showing. Both
             // buttons remained visible and clickable, so a user could re-fire
             // a subscription attempt with the wrong email and loop the same
@@ -1116,6 +1259,60 @@ export default function CreatorProgramDetailScreen() {
                 <span className="cpd-cta-label">Abrir en la app</span>
               </a>
             </div>
+          ) : null}
+
+          {guestAccessSent ? (
+            <div className="cpd-already-owned" role="status">
+              <p>
+                Este correo ya tiene acceso a este programa. Te enviamos un
+                enlace de entrada a <strong>{guestEmail.trim().toLowerCase()}</strong> —
+                revisa spam si no lo ves.
+              </p>
+            </div>
+          ) : null}
+
+          {guestEmailStep ? (
+            <form
+              className="cpd-alt-email cpd-guest-email"
+              onSubmit={(e) => { e.preventDefault(); runGuestCheckout(pendingMode); }}
+            >
+              <p className="cpd-alt-email-label">
+                Tu correo es tu acceso: ahí te llega el programa después de pagar.
+              </p>
+              <input
+                type="email"
+                className="cpd-alt-email-input"
+                placeholder="Tu correo"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                autoComplete="email"
+                maxLength={254}
+                required
+                autoFocus
+                disabled={busyMode !== null}
+              />
+              <button
+                type="submit"
+                className="cpd-cta cpd-cta-primary"
+                disabled={busyMode !== null || !guestEmail.trim()}
+              >
+                <span className="cpd-cta-label">
+                  {busyMode !== null ? 'Procesando…' : 'Continuar al pago'}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="cpd-alt-email-cancel"
+                onClick={() => {
+                  setGuestEmailStep(false);
+                  setCheckoutError(null);
+                  setPendingMode(null);
+                }}
+                disabled={busyMode !== null}
+              >
+                Volver
+              </button>
+            </form>
           ) : null}
 
           {emailStep ? (

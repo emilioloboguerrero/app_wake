@@ -9,6 +9,7 @@
 
 import {Router} from "express";
 import type {Request, Response} from "express";
+import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
 import {Preference, PreApproval} from "mercadopago";
 import {db, FieldValue} from "../firestore.js";
@@ -24,6 +25,7 @@ import {
   type MercadoPagoPreapproval,
 } from "../services/paymentHelpers.js";
 import {getCourseAvailability, assertCourseHasSeat} from "../services/capacity.js";
+import {createPolarCheckoutSession} from "./polar.js";
 
 const router = Router();
 
@@ -514,15 +516,20 @@ router.get(
 
 // ─── Storefront checkout ───────────────────────────────────────────────────
 //
-// POST /public/checkout/start
+// Two entry points share one execution path (executeStorefrontCheckout):
 //
-// Auth required (Firebase ID token). The visitor just signed in / signed up
-// in the landing app's auth modal; this endpoint:
+//   POST /public/checkout/start        — auth required (Firebase ID token);
+//                                        buyer identity comes from the token.
+//   POST /public/checkout/guest-start  — public; buyer identity is an email,
+//                                        resolved to a Firebase Auth user
+//                                        server-side (find-or-create).
+//
+// The shared path:
 //   1. Validates the program is published AND owned by the named creator.
 //   2. Bootstraps the user doc with storefront-acquisition flags so the PWA
 //      can defer onboarding on first entry.
-//   3. Initiates MercadoPago checkout (one-time or subscription) and returns
-//      the init_point URL.
+//   3. Initiates checkout — MercadoPago (one-time or subscription init_point)
+//      or Polar (hosted checkout URL) when body.provider === "polar".
 
 const STOREFRONT_REDIRECT_ALLOWED_ORIGINS = new Set([
   "https://wakelab.co",
@@ -582,17 +589,27 @@ function logCheckout(step: string, data: Record<string, unknown>): void {
   functions.logger.info(`checkout.${step}`, {flow: "checkout", step, ...data});
 }
 
+type StorefrontCheckoutIdentity = {
+  userId: string;
+  email: string; // lowercased + validated by the caller
+  displayName: string | null;
+};
+
+type StorefrontCheckoutBody = {
+  username: string;
+  courseId: string;
+  mode: "one_time" | "subscription";
+  email?: string;
+  payerEmail?: string;
+  surface?: string;
+  provider?: string;
+};
+
 router.post("/public/checkout/start", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(auth.userId, 30, "rate_limit_first_party");
 
-  const body = validateBody<{
-    username: string;
-    courseId: string;
-    mode: "one_time" | "subscription";
-    payerEmail?: string;
-    surface?: string;
-  }>(
+  const body = validateBody<StorefrontCheckoutBody>(
     {
       username: "string",
       courseId: "string",
@@ -601,9 +618,112 @@ router.post("/public/checkout/start", async (req, res) => {
       // breaking the alternate-email retry flow.
       payerEmail: "optional_string",
       surface: "optional_string",
+      provider: "optional_string",
     },
     req.body
   );
+
+  // Resolve buyer email from the verified ID-token claims. Avoids a separate
+  // admin.auth().getUser() round-trip — the token already carries email/name,
+  // and the lookup also breaks local dev (functions emulator + auth emulator
+  // can't see users created against production Firebase Auth).
+  const buyerEmail = (auth.email || "").trim().toLowerCase();
+  if (!buyerEmail || !EMAIL_RE.test(buyerEmail)) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400, "Tu cuenta debe tener un correo válido", "email"
+    );
+  }
+
+  await executeStorefrontCheckout(req, res, {
+    userId: auth.userId,
+    email: buyerEmail,
+    displayName: auth.displayName ?? null,
+  }, body);
+});
+
+// POST /public/checkout/guest-start
+//
+// Public — no Firebase session. The buyer types only an email: we find or
+// create the Firebase Auth user for it server-side and start checkout for
+// that uid. No session is ever handed back to the caller, so typing someone
+// else's email can only gift them a course. The post-payment magic-link
+// email is the door into the account. Registered in app.ts PUBLIC_PATHS.
+router.post("/public/checkout/guest-start", async (req, res) => {
+  // IP limit BEFORE body parse (mirrors /auth/request-magic-link); the
+  // per-email limit below caps a single-address spray. Server-side user
+  // creation here is not a new abuse surface — Firebase Auth signup is
+  // already public via the client SDK.
+  await checkIpRateLimit(req, 10);
+
+  const body = validateBody<StorefrontCheckoutBody>(
+    {
+      username: "string",
+      courseId: "string",
+      mode: "string",
+      email: "string",
+      payerEmail: "optional_string",
+      surface: "optional_string",
+      provider: "optional_string",
+    },
+    req.body
+  );
+
+  const email = (body.email || "").trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Correo inválido", "email");
+  }
+  await checkRateLimit(`guest-checkout:${email}`, 5, "rate_limit_first_party");
+
+  let userId: string;
+  let displayName: string | null = null;
+  try {
+    const existing = await admin.auth().getUserByEmail(email);
+    userId = existing.uid;
+    displayName = existing.displayName ?? null;
+  } catch (err) {
+    if ((err as {code?: string})?.code !== "auth/user-not-found") {
+      functions.logger.error("guest-start getUserByEmail failed", safeErrorPayload(err));
+      throw new WakeApiServerError(
+        "SERVICE_UNAVAILABLE", 503, "No pudimos validar tu correo. Intenta de nuevo."
+      );
+    }
+    try {
+      const created = await admin.auth().createUser({email, emailVerified: false});
+      userId = created.uid;
+    } catch (createErr) {
+      // Race: another request created this email between lookup and create.
+      if ((createErr as {code?: string})?.code === "auth/email-already-exists") {
+        const existing = await admin.auth().getUserByEmail(email);
+        userId = existing.uid;
+        displayName = existing.displayName ?? null;
+      } else {
+        functions.logger.error("guest-start createUser failed", safeErrorPayload(createErr));
+        throw new WakeApiServerError(
+          "SERVICE_UNAVAILABLE", 503, "No pudimos validar tu correo. Intenta de nuevo."
+        );
+      }
+    }
+  }
+
+  logCheckout("guest.identity_resolved", {
+    userId,
+    courseId: body.courseId,
+    email: redactEmailForLog(email),
+  });
+
+  await executeStorefrontCheckout(req, res, {userId, email, displayName}, body);
+});
+
+async function executeStorefrontCheckout(
+  req: Request,
+  res: Response,
+  identity: StorefrontCheckoutIdentity,
+  body: StorefrontCheckoutBody
+): Promise<void> {
+  // Historical local names — the body below is the long-lived authed handler,
+  // moved verbatim; `auth` is whichever identity the route resolved.
+  const auth = {userId: identity.userId, displayName: identity.displayName};
+  const buyerEmail = identity.email;
   const surface = typeof body.surface === "string" ? body.surface : "storefront";
 
   const username = (body.username || "").toLowerCase().trim();
@@ -656,17 +776,6 @@ router.post("/public/checkout/start", async (req, res) => {
     });
     throw new WakeApiServerError(
       "VALIDATION_ERROR", 400, "Este programa no está disponible para compra ahora"
-    );
-  }
-
-  // Resolve buyer email from the verified ID-token claims. Avoids a separate
-  // admin.auth().getUser() round-trip — the token already carries email/name,
-  // and the lookup also breaks local dev (functions emulator + auth emulator
-  // can't see users created against production Firebase Auth).
-  const buyerEmail = (auth.email || "").trim().toLowerCase();
-  if (!buyerEmail || !EMAIL_RE.test(buyerEmail)) {
-    throw new WakeApiServerError(
-      "VALIDATION_ERROR", 400, "Tu cuenta debe tener un correo válido", "email"
     );
   }
 
@@ -733,6 +842,19 @@ router.post("/public/checkout/start", async (req, res) => {
   // append `?status` for subscription preapproval back_url, so this is the
   // only signal the SPA gets.
   const subscriptionSuccessUrl = `${successUrl}&mode=subscription`;
+
+  if (body.provider === "polar") {
+    const checkout = await createPolarCheckoutSession({
+      userId: auth.userId,
+      email: buyerEmail,
+      courseId: body.courseId,
+      course,
+      paymentType: body.mode,
+      successUrl: body.mode === "subscription" ? subscriptionSuccessUrl : successUrl,
+    });
+    res.json({data: {checkoutUrl: checkout.url, checkoutId: checkout.id, mode: body.mode}});
+    return;
+  }
 
   if (body.mode === "one_time") {
     const price = course.price;
@@ -997,7 +1119,7 @@ router.post("/public/checkout/start", async (req, res) => {
       mode: "subscription",
     },
   });
-});
+}
 
 // GET /public/checkout/status?course={courseId}
 //

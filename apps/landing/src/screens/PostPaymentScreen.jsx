@@ -65,6 +65,18 @@ export default function PostPaymentScreen() {
   })();
   const accountEmailLower = userEmail ? userEmail.toLowerCase() : null;
   const payerDiffersFromAccount = payerEmail && accountEmailLower && payerEmail !== accountEmailLower;
+  // Guest checkout: the buy page stashes the typed email here before
+  // redirecting to the payment provider. Guests come back with no Firebase
+  // session, so this is the only identity we have to send the magic link to.
+  const stashedEmail = (() => {
+    try {
+      const raw = window.localStorage.getItem('wake_email_for_sign_in');
+      return raw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? raw.toLowerCase() : null;
+    } catch {
+      return null;
+    }
+  })();
+  const magicLinkEmail = userEmail || stashedEmail;
   // 'idle' | 'polling' | 'active' | 'timeout'
   // Now also runs for subscriptions: MP's authorized_payment commonly fires
   // within seconds of the back_url redirect, so we should detect it instead
@@ -257,7 +269,7 @@ export default function PostPaymentScreen() {
   // request a new one at /acceso.
   useEffect(() => {
     if (magicLinkFiredRef.current) return;
-    if (!userEmail) return;
+    if (!magicLinkEmail) return;
     const shouldSend =
       (accessState === 'active') ||
       (isSubscription && !isRejected) ||
@@ -265,7 +277,7 @@ export default function PostPaymentScreen() {
     if (!shouldSend) return;
     // sessionStorage key includes the resource so different course purchases
     // each get their own magic-link without colliding on a single fire flag.
-    const fireKey = `wake_pp_ml_${userEmail}_${courseId || 'noctx'}`;
+    const fireKey = `wake_pp_ml_${magicLinkEmail}_${courseId || 'noctx'}`;
     try {
       const already = window.sessionStorage.getItem(fireKey);
       if (already === 'sent') { setMagicLinkState('sent'); magicLinkFiredRef.current = true; return; }
@@ -273,12 +285,12 @@ export default function PostPaymentScreen() {
     } catch { /* private mode — fall through */ }
     magicLinkFiredRef.current = true;
     setMagicLinkState('sending');
-    requestMagicLink(userEmail).then((r) => {
+    requestMagicLink(magicLinkEmail).then((r) => {
       const outcome = r.success ? 'sent' : 'failed';
       setMagicLinkState(outcome);
       try { window.sessionStorage.setItem(fireKey, outcome); } catch { /* ignore */ }
     });
-  }, [userEmail, courseId, accessState, isSubscription, isRejected, isApprovedParam]);
+  }, [magicLinkEmail, courseId, accessState, isSubscription, isRejected, isApprovedParam]);
 
   const downloadUrl = getDownloadUrl();
   const downloadLabel = getDownloadLabel();
@@ -443,7 +455,7 @@ export default function PostPaymentScreen() {
           </div>
         )}
 
-        {!isRejected && !isIncompleteFinal && userEmail ? (
+        {!isRejected && !isIncompleteFinal && magicLinkEmail ? (
           <div className="pp-email-block">
             {/* Tell the buyer the truth about whether the magic-link
                 actually went out — the old code claimed success even when
@@ -451,18 +463,18 @@ export default function PostPaymentScreen() {
             {magicLinkState === 'sent' || magicLinkState === 'sending' ? (
               <p className="pp-email-note">
                 {magicLinkState === 'sending' ? 'Enviando un enlace de acceso a' : 'Te enviamos un enlace de acceso a'}{' '}
-                <strong>{userEmail}</strong>.
+                <strong>{magicLinkEmail}</strong>.
                 {' '}Guardálo — tu correo es tu llave a la cuenta.
               </p>
             ) : magicLinkState === 'failed' ? (
               <p className="pp-email-note">
-                No pudimos enviar el correo a <strong>{userEmail}</strong> en este intento.
+                No pudimos enviar el correo a <strong>{magicLinkEmail}</strong> en este intento.
                 Podés pedir uno nuevo en{' '}
                 <Link to="/acceso" className="pp-inline-link">wakelab.co/acceso</Link>.
               </p>
             ) : (
               <p className="pp-email-note">
-                Te enviaremos un enlace de acceso a <strong>{userEmail}</strong>{' '}
+                Te enviaremos un enlace de acceso a <strong>{magicLinkEmail}</strong>{' '}
                 en un momento. Tu correo es tu llave a la cuenta.
               </p>
             )}
