@@ -5,6 +5,7 @@ import {validateDateFormat} from "../middleware/validate.js";
 import {loadCreatorOwnedCourseIds} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {isProgramSnapshot, resolveProgramDay, programHasAnyMacroTarget} from "../services/nutritionProgramResolver.js";
+import {estimateProviderFee} from "../services/paymentLedger.js";
 
 const router = Router();
 const db = admin.firestore();
@@ -819,6 +820,163 @@ router.get("/analytics/revenue", async (req, res) => {
   ]);
 
   res.json({data: computeRevenue(paymentDocs, clientsSnap, callsSnap)});
+});
+
+// ─── GET /analytics/earnings ───────────────────────────────────────────────
+// Creator-facing earnings. payment_ledger (real per-order fees) → revenue,
+// orders, by-month; subscriptions collectionGroup → MRR + active counts. The
+// per-creator platform commission is applied SERVER-SIDE (never client-writable)
+// and defaults until an admin sets `users/{creatorId}.commission_rate`. COP and
+// USD are reported separately (no FX). earnings = net × (1 − commission); refunds
+// subtract.
+const DEFAULT_COMMISSION_RATE = 0.15;
+const EARNINGS_ACTIVE_SUB_STATUSES = new Set(["active", "authorized", "trialing"]);
+
+interface EarningsBucket {
+  revenue: number;
+  orders: number;
+  mrr: number;
+  activeSubscriptions: number;
+}
+const emptyBucket = (): EarningsBucket => ({revenue: 0, orders: 0, mrr: 0, activeSubscriptions: 0});
+const r2 = (n: number): number => Math.round(n * 100) / 100;
+
+function tsToIso(raw: unknown): string | null {
+  if (raw && typeof (raw as {toDate?: () => Date}).toDate === "function") {
+    return (raw as {toDate: () => Date}).toDate().toISOString();
+  }
+  if (typeof raw === "string") return raw;
+  return null;
+}
+
+router.get("/analytics/earnings", async (req, res) => {
+  const auth = await validateAuthAndRateLimit(req);
+  requireCreator(auth);
+  const creatorId = auth.userId;
+
+  const [userDoc, coursesSnap] = await Promise.all([
+    db.collection("users").doc(creatorId).get(),
+    getCreatorCourses(creatorId),
+  ]);
+
+  // Commission is a per-creator, admin-only field on the user doc. Applied here
+  // server-side so the rate is never exposed as a client-writable value.
+  const rawRate = userDoc.data()?.commission_rate;
+  const commissionRate = typeof rawRate === "number" && rawRate >= 0 && rawRate <= 1 ?
+    rawRate : DEFAULT_COMMISSION_RATE;
+  const keep = 1 - commissionRate;
+
+  const courseTitle: Record<string, string> = {};
+  const courseIds: string[] = [];
+  coursesSnap.docs.forEach((d) => {
+    courseIds.push(d.id);
+    courseTitle[d.id] = (d.data().title as string) ?? d.id;
+  });
+
+  const totals: Record<string, EarningsBucket> = {};
+  const programAgg: Record<string, {title: string; currencies: Record<string, EarningsBucket>}> = {};
+  const monthAgg: Record<string, Record<string, number>> = {};
+  const tBucket = (cur: string): EarningsBucket => (totals[cur] ??= emptyBucket());
+  const pEntry = (cid: string) => (programAgg[cid] ??= {title: courseTitle[cid] ?? cid, currencies: {}});
+  const pBucket = (cid: string, cur: string): EarningsBucket => (pEntry(cid).currencies[cur] ??= emptyBucket());
+
+  // Revenue / orders / by-month from the ledger (real per-order fees).
+  const ledgerSnap = await db.collection("payment_ledger")
+    .where("creator_id", "==", creatorId).get();
+  const orders: Array<Record<string, unknown>> = [];
+  ledgerSnap.docs.forEach((d) => {
+    const x = d.data();
+    const cur = String(x.currency ?? "COP").toUpperCase();
+    const isRefund = x.type === "refund" || x.status === "refunded";
+    const sign = isRefund ? -1 : 1;
+    const net = typeof x.net_amount === "number" ? x.net_amount : 0;
+    const earnings = r2(net * keep) * sign;
+    const cid = String(x.course_id ?? "unknown");
+
+    tBucket(cur).revenue += earnings;
+    pBucket(cid, cur).revenue += earnings;
+    if (!isRefund) {
+      tBucket(cur).orders += 1;
+      pBucket(cid, cur).orders += 1;
+    }
+
+    const iso = tsToIso(x.charged_at ?? x.created_at);
+    if (iso) {
+      const month = iso.slice(0, 7);
+      (monthAgg[month] ??= {})[cur] = (monthAgg[month][cur] ?? 0) + earnings;
+    }
+    orders.push({
+      id: d.id,
+      courseId: cid,
+      courseTitle: String(x.course_title ?? courseTitle[cid] ?? cid),
+      currency: cur,
+      gross: typeof x.gross_amount === "number" ? x.gross_amount : 0,
+      providerFee: typeof x.provider_fee === "number" ? x.provider_fee : 0,
+      net,
+      commission: r2(net * commissionRate) * sign,
+      earnings,
+      type: x.type ?? null,
+      status: x.status ?? null,
+      provider: x.provider ?? null,
+      chargedAt: iso,
+    });
+  });
+
+  // MRR + active subscriptions from the subscriptions collectionGroup (subs
+  // carry course_id, not creator_id — join through the creator's courses).
+  if (courseIds.length > 0) {
+    try {
+      for (let i = 0; i < courseIds.length; i += 30) {
+        const batch = courseIds.slice(i, i + 30);
+        const snap = await db.collectionGroup("subscriptions")
+          .where("course_id", "in", batch).get();
+        snap.docs.forEach((d) => {
+          const s = d.data();
+          if (!EARNINGS_ACTIVE_SUB_STATUSES.has(s.status)) return;
+          const cur = String(s.currency_id ?? "COP").toUpperCase();
+          const cid = String(s.course_id ?? "unknown");
+          const gross = typeof s.transaction_amount === "number" ? s.transaction_amount : 0;
+          const provider = s.provider === "polar" ? "polar" : "mercadopago";
+          const earn = r2((gross - estimateProviderFee(provider, gross)) * keep);
+          tBucket(cur).mrr += earn;
+          tBucket(cur).activeSubscriptions += 1;
+          pBucket(cid, cur).mrr += earn;
+          pBucket(cid, cur).activeSubscriptions += 1;
+        });
+      }
+    } catch {
+      // Missing collection-group index or transient error: MRR/active stay 0
+      // rather than failing the whole dashboard. Revenue/orders are unaffected.
+    }
+  }
+
+  const roundBuckets = (m: Record<string, EarningsBucket>): Record<string, EarningsBucket> => {
+    Object.values(m).forEach((b) => {
+      b.revenue = r2(b.revenue);
+      b.mrr = r2(b.mrr);
+    });
+    return m;
+  };
+  roundBuckets(totals);
+  const programs = Object.entries(programAgg)
+    .map(([courseId, p]) => ({courseId, title: p.title, currencies: roundBuckets(p.currencies)}))
+    .filter((p) => Object.keys(p.currencies).length > 0);
+  const byMonth = Object.entries(monthAgg)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, cur]) => {
+      const out: Record<string, number | string> = {month};
+      Object.entries(cur).forEach(([c, v]) => {
+        out[c] = r2(v);
+      });
+      return out;
+    });
+  const latestOrders = orders
+    .sort((a, b) => String(b.chargedAt ?? "").localeCompare(String(a.chargedAt ?? "")))
+    .slice(0, 20);
+
+  res.json({
+    data: {commissionRate, currencies: Object.keys(totals), totals, programs, byMonth, latestOrders},
+  });
 });
 
 // GET /analytics/adherence

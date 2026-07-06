@@ -8,7 +8,7 @@ import TubelightNavBar from '../components/ui/TubelightNavBar';
 import ContextualHint from '../components/hints/ContextualHint';
 import { FullScreenError } from '../components/ui/ErrorStates';
 import DashboardOneOnOneView from '../components/dashboard/DashboardOneOnOneView';
-import DashboardProgramsView from '../components/dashboard/DashboardProgramsView';
+import DashboardEarnings from '../components/dashboard/DashboardEarnings';
 import { cacheConfig } from '../config/queryClient';
 import apiClient from '../utils/apiClient';
 import './DashboardScreen.css';
@@ -110,11 +110,7 @@ const DashboardScreen = () => {
                 isError={isError}
               />
             ) : (
-              <DashboardProgramsView
-                data={programsData}
-                isLoading={isLoading}
-                isError={isError}
-              />
+              <DashboardEarnings />
             )}
           </div>
 

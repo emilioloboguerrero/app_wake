@@ -1,0 +1,241 @@
+/* Creator earnings dashboard — Wake dark system (tokens from index.css). */
+
+.earn-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.earn-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.earn-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.earn-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  margin: 0;
+}
+
+/* KPI grid */
+.earn-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+@media (max-width: 900px) {
+  .earn-kpis { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Card surface */
+.earn-card {
+  position: relative;
+  background: var(--surface-1, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+  border-radius: var(--radius-lg, 16px);
+  overflow: hidden;
+}
+.earn-card__inner {
+  position: relative;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.earn-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+  font-weight: 600;
+  margin: 0;
+}
+.earn-sublabel {
+  font-size: 0.72rem;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  margin: -4px 0 0;
+}
+
+.earn-money-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+.earn-money-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.earn-money-value {
+  font-size: clamp(1.3rem, 2.2vw, 1.7rem);
+  font-weight: 800;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.earn-money-value--sm {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.earn-cur-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.earn-count {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+.earn-count__icon {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  display: flex;
+}
+.earn-count__value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  font-variant-numeric: tabular-nums;
+}
+
+.earn-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+  font-size: 0.82rem;
+  padding: 8px 0;
+}
+.earn-empty--wide {
+  justify-content: center;
+  padding: 28px 0;
+}
+
+/* By-month chart */
+.earn-chart-card .earn-card__inner { gap: 12px; }
+.earn-chart {
+  height: 200px;
+  width: 100%;
+}
+
+/* Sections */
+.earn-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.earn-section-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Per-program cards */
+.earn-programs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+.earn-program__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  margin: 0;
+}
+.earn-program__meta {
+  display: flex;
+  gap: 6px;
+  font-size: 0.74rem;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  margin-top: 6px;
+}
+
+/* Orders log */
+.earn-orders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.earn-order {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 12px);
+  background: var(--surface-1, #222);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+}
+.earn-order--refund { opacity: 0.72; }
+.earn-order__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.earn-order__title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.earn-order__date {
+  font-size: 0.7rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+}
+.earn-order__amounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.earn-order__earnings {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary, rgba(255, 255, 255, 0.95));
+  font-variant-numeric: tabular-nums;
+}
+.earn-order--refund .earn-order__earnings {
+  color: var(--error, #ff6b6b);
+}
+.earn-order__breakdown {
+  font-size: 0.66rem;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.3));
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart tooltip */
+.earn-tooltip {
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.74rem;
+}
+.earn-tooltip__label {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  font-weight: 600;
+}

@@ -10,6 +10,7 @@ import { BentoCard } from '../ui/BentoGrid';
 import GlowingEffect from '../ui/GlowingEffect';
 import NumberTicker from '../ui/NumberTicker';
 import ProgramRevenueCard from './ProgramRevenueCard';
+import DashboardEarnings from '../dashboard/DashboardEarnings';
 import ProgramTrainingTab from './ProgramTrainingTab';
 import ProgramNutritionTab from './ProgramNutritionTab';
 import ProgramResourcesTab from './ProgramResourcesTab';
@@ -559,6 +560,11 @@ export default function GroupProgramView({ program, programId, backTo, refetchPr
               {/* Right -- Revenue */}
               <ProgramRevenueCard programId={programId} accentRgb={accentRgb} />
 
+            </div>
+
+            {/* Program earnings — real fees + Wake commission */}
+            <div style={{ marginTop: 24, marginBottom: 8 }}>
+              <DashboardEarnings programId={programId} />
             </div>
 
             {/* BOTTOM: Config Bento */}
