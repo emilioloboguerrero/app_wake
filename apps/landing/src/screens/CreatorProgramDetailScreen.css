@@ -396,10 +396,12 @@
   opacity: 0.9;
 }
 
-/* CTA block inside a full-width landing section. Centered and constrained so it
-   reads as a focused call to action rather than a full-bleed bar. */
-.cpd-section-cta {
-  width: auto;
+/* CTA block + provider toggle inside a full-width landing section. Centered and
+   constrained so they read as one focused checkout unit, like the hero. */
+.cpd-section-checkout {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
   min-width: 280px;
   max-width: 420px;
   margin: 0 auto;
@@ -698,52 +700,6 @@
 /* Optional creator-authored content (text / image / youtube / video) below the
    hero+CTA. Constrained to a comfortable reading width — narrower than the
    content grid so prose never spans ultra-wide. Each section fades + rises in. */
-/* "Precio internacional" — a focused card between the hero and the editorial
-   sections that surfaces the USD (Polar) purchase to COP-default viewers who
-   might otherwise miss the toggle up top. */
-.cpd-intl {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 8px 24px 0;
-}
-
-.cpd-intl-card {
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 28px 28px 26px;
-  background: var(--cpd-accent-soft);
-  border: 1px solid var(--cpd-accent-line);
-  border-radius: 18px;
-  text-align: center;
-}
-
-.cpd-intl-head {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 22px;
-}
-
-.cpd-intl-head svg {
-  flex-shrink: 0;
-  opacity: 0.9;
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.cpd-intl-title {
-  margin: 0;
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: #fff;
-}
-
-.cpd-intl-ctas {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 .cpd-sections {
   max-width: 1040px;
   margin: 0 auto;

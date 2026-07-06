@@ -12,6 +12,7 @@ import { getCurrentUser } from '../services/storefrontAuthService';
 import analyticsService from '../services/analyticsService';
 import { useAccentFromImage } from '../utils/accentColor';
 import AuthModal from '../components/AuthModal';
+import { detectInAppBrowser } from '../utils/inAppBrowser';
 import WhatsAppFab from '../components/WhatsAppFab';
 import './CreatorProgramDetailScreen.css';
 
@@ -112,7 +113,7 @@ function renderCtaLabel(label) {
   );
 }
 
-function SectionBlock({ block, program, onCtaClick }) {
+function SectionBlock({ block, program, onCtaClick, checkout }) {
   if (block.type === 'text') {
     return <p className="cpd-section-text">{block.value}</p>;
   }
@@ -200,33 +201,58 @@ function SectionBlock({ block, program, onCtaClick }) {
   }
   if (block.type === 'cta') {
     if (!block.label) return null;
-    // Mirror the hero CTA: subscription price wins when present, else one-time.
-    const sub = formatPrice(program?.subscriptionPrice, program?.currency);
-    const otp = formatPrice(program?.price, program?.currency);
-    const isSub = typeof program?.subscriptionPrice === 'number' && program.subscriptionPrice > 0;
+    // Mirror the hero checkout: price follows the active provider (COP ↔ USD),
+    // subscription price wins when present, else one-time, and the same
+    // provider toggle sits below the button.
+    const co = checkout || {};
+    const intl = co.provider === 'polar';
+    const sub = intl ? co.polarSubPrice : formatPrice(program?.subscriptionPrice, program?.currency);
+    const otp = intl ? co.polarOtpPrice : formatPrice(program?.price, program?.currency);
+    const isSub = intl
+      ? co.polarHasSub
+      : typeof program?.subscriptionPrice === 'number' && program.subscriptionPrice > 0;
     return (
-      <button type="button" className="cpd-cta cpd-cta-primary cpd-section-cta" onClick={onCtaClick}>
-        <span className="cpd-cta-label">{renderCtaLabel(block.label)}</span>
-        {isSub ? (
-          sub ? (
-            <span className="cpd-cta-price">
-              {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.subscriptionPrice ? (
-                <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
-              ) : null}
-              {sub}<span className="cpd-cta-suffix">/mes</span>
-            </span>
-          ) : null
-        ) : (
-          otp ? (
-            <span className="cpd-cta-price">
-              {typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.price ? (
-                <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
-              ) : null}
-              {otp}
-            </span>
-          ) : null
-        )}
-      </button>
+      <div className="cpd-section-checkout">
+        <button
+          type="button"
+          className="cpd-cta cpd-cta-primary"
+          onClick={onCtaClick}
+          disabled={co.busyMode != null}
+        >
+          <span className="cpd-cta-label">{renderCtaLabel(block.label)}</span>
+          {isSub ? (
+            sub ? (
+              <span className="cpd-cta-price">
+                {!intl && typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.subscriptionPrice ? (
+                  <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+                ) : null}
+                {sub}<span className="cpd-cta-suffix">/mes</span>
+              </span>
+            ) : null
+          ) : (
+            otp ? (
+              <span className="cpd-cta-price">
+                {!intl && typeof program.compareAtPrice === 'number' && program.compareAtPrice > program.price ? (
+                  <span className="cpd-cta-compare">{formatPrice(program.compareAtPrice, program.currency)}</span>
+                ) : null}
+                {otp}
+              </span>
+            ) : null
+          )}
+        </button>
+        {co.copAvailable && co.polarAvailable ? (
+          <button type="button" className="cpd-provider-toggle" onClick={co.onToggleProvider}>
+            {intl ? (
+              <span>Pagar en Colombia <strong>(COP)</strong></span>
+            ) : (
+              <>
+                <GlobeIcon size={18} />
+                <span>Pagar con tarjeta internacional <strong>(USD)</strong></span>
+              </>
+            )}
+          </button>
+        ) : null}
+      </div>
     );
   }
   return null;
@@ -251,7 +277,7 @@ function CompareCross() {
 // Optional creator-authored "landing sections" (e.g. "Qué incluye",
 // "Novedades") rendered below the hero/CTA. Server-sanitized; each section is
 // guaranteed a non-empty heading and at least one valid block.
-function ProgramSections({ sections, program, onCtaClick }) {
+function ProgramSections({ sections, program, onCtaClick, checkout }) {
   if (!Array.isArray(sections) || sections.length === 0) return null;
   return (
     <section className="cpd-sections" aria-label="Sobre el programa">
@@ -266,7 +292,7 @@ function ProgramSections({ sections, program, onCtaClick }) {
             <div className="cpd-section cpd-section--full" key={i}>
               <h2 className="cpd-section-heading">{section.heading}</h2>
               {section.blocks.map((block, j) => (
-                <SectionBlock block={block} program={program} onCtaClick={onCtaClick} key={j} />
+                <SectionBlock block={block} program={program} onCtaClick={onCtaClick} checkout={checkout} key={j} />
               ))}
             </div>
           );
@@ -658,6 +684,16 @@ export default function CreatorProgramDetailScreen() {
     setAlreadyOwned(null);
     setAltEmail('');
     setPendingMode(mode);
+    try {
+      analyticsService.track('program.buy_cta_clicked', {
+        course_id: program.id,
+        surface: 'landing',
+        mode,
+        provider,
+        is_authenticated: !!getCurrentUser(),
+        in_app_browser: detectInAppBrowser(),
+      });
+    } catch { /* analytics is best-effort */ }
     if (isOneOnOne) {
       const intentMode = mode === 'book_call' ? 'book_call' : 'book_call';
       setPendingMode(intentMode);
@@ -675,28 +711,28 @@ export default function CreatorProgramDetailScreen() {
     }
   };
 
-  // Dedicated international (USD) purchase, fired from the "precio internacional"
-  // section below the hero. Forces the Polar path regardless of the resolved
-  // default provider: pins the override to 'polar' so a post-auth resume also
-  // goes through Polar, then runs the checkout directly when already signed in.
-  const handleInternationalBuy = (mode) => {
+  // COP ↔ USD switch, shared by the hero toggle and the landing-section CTA
+  // toggle. Resets any in-progress email/alt-email step so the flow restarts
+  // cleanly under the new provider.
+  const toggleProvider = () => {
+    setProviderOverride(provider === 'polar' ? 'mercadopago' : 'polar');
     setCheckoutError(null);
-    setNeedsAltEmail(false);
     setEmailStep(false);
-    setAlreadyOwned(null);
-    setPendingMode(mode);
-    setProviderOverride('polar');
-    if (getCurrentUser()) {
-      runPolarCheckout(mode);
-    } else {
-      setAuthOpen(true);
-    }
+    setNeedsAltEmail(false);
+    setUseCustomEmail(false);
+    setAltEmail('');
+    setPendingMode(null);
   };
 
   // Landing-section CTA blocks fire the same primary purchase action as the
-  // hero button, choosing the mode by the program's delivery/pricing shape.
+  // hero button, choosing the mode by the active provider's pricing shape.
   const handlePrimaryCta = () => {
     if (isOneOnOne) { handleBuy('book_call'); return; }
+    if (provider === 'polar') {
+      if (polarHasSub) { handleBuy('subscription'); return; }
+      if (polarHasOtp) { handleBuy('one_time'); return; }
+      return;
+    }
     if (hasSubscription) { handleBuy('subscription'); return; }
     if (hasOneTime) { handleBuy('one_time'); return; }
   };
@@ -1056,15 +1092,7 @@ export default function CreatorProgramDetailScreen() {
                 <button
                   type="button"
                   className="cpd-provider-toggle"
-                  onClick={() => {
-                    setProviderOverride(provider === 'polar' ? 'mercadopago' : 'polar');
-                    setCheckoutError(null);
-                    setEmailStep(false);
-                    setNeedsAltEmail(false);
-                    setUseCustomEmail(false);
-                    setAltEmail('');
-                    setPendingMode(null);
-                  }}
+                  onClick={toggleProvider}
                 >
                   {provider === 'mercadopago' ? (
                     <>
@@ -1206,53 +1234,22 @@ export default function CreatorProgramDetailScreen() {
         </div>
       </article>
 
-      {!isOneOnOne && !(program.isFull || waitlistPhase !== 'hidden') && !alreadyOwned &&
-        provider === 'mercadopago' && polarAvailable && (polarHasSub || polarHasOtp) ? (
-          <section className="cpd-intl" aria-label="Precio internacional">
-            <div className="cpd-intl-card">
-              <div className="cpd-intl-head">
-                <GlobeIcon size={20} />
-                <h2 className="cpd-intl-title">Suscríbete con precio internacional</h2>
-              </div>
-              <div className="cpd-intl-ctas">
-                {polarHasSub ? (
-                  <button
-                    type="button"
-                    className="cpd-cta cpd-cta-primary"
-                    onClick={() => handleInternationalBuy('subscription')}
-                    disabled={busyMode !== null}
-                  >
-                    <span className="cpd-cta-label">
-                      {busyMode === 'subscription' ? 'Procesando…' : 'Suscríbete'}
-                    </span>
-                    {polarSubPrice ? (
-                      <span className="cpd-cta-price">
-                        {polarSubPrice}<span className="cpd-cta-suffix">/mes</span>
-                      </span>
-                    ) : null}
-                  </button>
-                ) : null}
-                {polarHasOtp ? (
-                  <button
-                    type="button"
-                    className={`cpd-cta ${polarHasSub ? 'cpd-cta-secondary' : 'cpd-cta-primary'}`}
-                    onClick={() => handleInternationalBuy('one_time')}
-                    disabled={busyMode !== null}
-                  >
-                    <span className="cpd-cta-label">
-                      {busyMode === 'one_time' ? 'Procesando…' : 'Pago único'}
-                    </span>
-                    {polarOtpPrice ? (
-                      <span className="cpd-cta-price">{polarOtpPrice}</span>
-                    ) : null}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-      <ProgramSections sections={program.sections} program={program} onCtaClick={handlePrimaryCta} />
+      <ProgramSections
+        sections={program.sections}
+        program={program}
+        onCtaClick={handlePrimaryCta}
+        checkout={{
+          provider,
+          copAvailable,
+          polarAvailable,
+          polarHasSub,
+          polarHasOtp,
+          polarSubPrice,
+          polarOtpPrice,
+          busyMode,
+          onToggleProvider: toggleProvider,
+        }}
+      />
 
       {related.length > 0 ? (
         <section className="cpd-related" aria-label={`Más programas de ${creator.displayName}`}>
@@ -1279,6 +1276,11 @@ export default function CreatorProgramDetailScreen() {
         open={authOpen}
         onClose={() => setAuthOpen(false)}
         onAuthenticated={handleAuthenticated}
+        analyticsContext={{
+          course_id: program.id,
+          surface: 'landing',
+          pending_mode: pendingMode,
+        }}
         title={
           pendingMode === 'book_call' ?
             `Reserva una llamada con ${creator.displayName}` :
