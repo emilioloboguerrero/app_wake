@@ -21,6 +21,8 @@ import {
   isSignInWithEmailLink,
   signInWithEmailLink,
   getAdditionalUserInfo,
+  GoogleAuthProvider,
+  linkWithPopup,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { buildAppUrl } from '../utils/basePath';
@@ -95,9 +97,16 @@ function resolveAbsoluteRedirect(nextPath) {
 
 const EmailLinkSignInScreen = () => {
   const navigate = useNavigate();
-  // 'verifying' | 'needs_email' | 'signing_in' | 'error' | 'done'
+  // 'verifying' | 'needs_email' | 'signing_in' | 'offer_google' | 'error' | 'done'
   const [state, setState] = useState('verifying');
   const [errorMsg, setErrorMsg] = useState('');
+  // Optional post-signin Google linking. Firebase supports multiple providers
+  // per account, so connecting Google here gives one-tap sign-in later while
+  // the email link keeps working. Never blocks entry — every failure path
+  // still lets the user continue into the app.
+  const [linking, setLinking] = useState(false);
+  const [offerError, setOfferError] = useState('');
+  const nextRef = useRef('/library');
   // Tracks whether the failure is the "already used" case — those messages
   // need a softer copy because the buyer is most likely already inside.
   const [errorAlreadyUsed, setErrorAlreadyUsed] = useState(false);
@@ -155,15 +164,26 @@ const EmailLinkSignInScreen = () => {
       analyticsService.track(isNew ? 'auth.signup_completed' : 'auth.login', {
         method: 'email_link',
       });
-      setState('done');
       // Honor `?next=` from the email-link continueUrl so confirmation emails
       // (and UnauthAccessGate's magic-link kick) deep-link to a specific
       // screen. The server validates and embeds `next` before it ever reaches
       // this URL, so we just trust the parsed value here.
+      nextRef.current = getValidatedNext(linkRef.current.search) || '/library';
+      // Offer Google linking once, only to accounts that don't have it yet.
+      // The email link usually opens in the real browser (not the IG webview),
+      // so the popup works here even for buyers who came from Instagram.
+      const hasGoogle = cred.user?.providerData?.some(
+        (p) => p?.providerId === 'google.com'
+      );
+      if (!hasGoogle) {
+        analyticsService.track('auth.google_link.offered', { surface: 'email_link' });
+        setState('offer_google');
+        return;
+      }
+      setState('done');
       // window.location.replace clears the oobCode from history so the link
       // can't be re-used on back-button.
-      const next = getValidatedNext(linkRef.current.search) || '/library';
-      window.location.replace(resolveAbsoluteRedirect(next));
+      window.location.replace(resolveAbsoluteRedirect(nextRef.current));
     } catch (err) {
       const code = err?.code || '';
       // If the user is already signed in (e.g. they clicked the link twice
@@ -200,6 +220,45 @@ const EmailLinkSignInScreen = () => {
     }
   };
 
+  const proceedToApp = () => {
+    setState('done');
+    window.location.replace(resolveAbsoluteRedirect(nextRef.current));
+  };
+
+  const linkGoogle = async () => {
+    if (linking) return;
+    setLinking(true);
+    setOfferError('');
+    try {
+      await linkWithPopup(auth.currentUser, new GoogleAuthProvider());
+      analyticsService.track('auth.google_link.result', {
+        surface: 'email_link',
+        status: 'success',
+      });
+      proceedToApp();
+    } catch (err) {
+      const code = err?.code || 'unknown';
+      analyticsService.track('auth.google_link.result', {
+        surface: 'email_link',
+        status: 'error',
+        error_code: code,
+      });
+      setLinking(false);
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return; // user backed out — keep the offer available, no error copy
+      }
+      if (code === 'auth/credential-already-in-use') {
+        setOfferError('Esa cuenta de Google ya está conectada a otra cuenta de Wake. Sigue con tu correo.');
+        return;
+      }
+      if (code === 'auth/popup-blocked') {
+        setOfferError('El navegador bloqueó la ventana de Google. Puedes conectarlo después desde tu perfil.');
+        return;
+      }
+      setOfferError('No se pudo conectar Google. Puedes seguir con tu correo.');
+    }
+  };
+
   const submitEmail = (e) => {
     e.preventDefault();
     const trimmed = emailInput.trim().toLowerCase();
@@ -232,6 +291,33 @@ const EmailLinkSignInScreen = () => {
             <p style={styles.message}>
               {state === 'done' ? 'Abriendo tu cuenta…' : 'Un momento.'}
             </p>
+          </>
+        ) : state === 'offer_google' ? (
+          <>
+            <h1 style={styles.title}>Ya estás dentro</h1>
+            <p style={styles.message}>
+              ¿Quieres entrar con Google la próxima vez? Tu correo sigue
+              funcionando igual.
+            </p>
+            <div style={styles.form}>
+              <button
+                type="button"
+                style={{ ...styles.button, opacity: linking ? 0.6 : 1 }}
+                onClick={linkGoogle}
+                disabled={linking}
+              >
+                {linking ? 'Conectando…' : 'Conectar Google'}
+              </button>
+              {offerError ? <p style={styles.error}>{offerError}</p> : null}
+              <button
+                type="button"
+                style={styles.ghostButton}
+                onClick={proceedToApp}
+                disabled={linking}
+              >
+                Seguir con mi correo
+              </button>
+            </div>
           </>
         ) : state === 'needs_email' ? (
           <>
@@ -336,6 +422,17 @@ const styles = {
     color: '#ff6b6b',
     fontSize: 13,
     margin: 0,
+  },
+  ghostButton: {
+    padding: '12px 18px',
+    borderRadius: 12,
+    border: 'none',
+    background: 'transparent',
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: 500,
+    fontSize: 14,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
   link: {
     color: 'rgba(255,255,255,0.85)',
