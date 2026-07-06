@@ -57,17 +57,17 @@ export default function EarningsCommissionPill() {
           <p className="ecp-pop__title">Comisión Wake</p>
           <p className="ecp-pop__body">
             {managed
-              ? 'Wake gestiona los cobros, los impuestos y la plataforma. Tu ganancia es lo que queda después de la comisión.'
-              : 'Tú gestionas tu operación. Wake cobra una comisión sobre cada venta.'}
+              ? 'Wake se queda esta comisión de cada venta (cobros, impuestos y plataforma). Los montos de arriba ya son tu ganancia neta — lo que te queda a ti.'
+              : 'Wake se queda esta comisión de cada venta. Los montos de arriba ya son tu ganancia neta — lo que te queda a ti.'}
           </p>
           <div className="ecp-pop__rates">
             <div className="ecp-rate">
               <span className="ecp-rate__pct">{mpPct}%</span>
-              <span className="ecp-rate__lbl">Ventas locales</span>
+              <span className="ecp-rate__lbl">Comisión local · recibes {100 - mpPct}%</span>
             </div>
             <div className="ecp-rate">
               <span className="ecp-rate__pct">{intlPct}%</span>
-              <span className="ecp-rate__lbl">Ventas internacionales</span>
+              <span className="ecp-rate__lbl">Comisión internacional · recibes {100 - intlPct}%</span>
             </div>
           </div>
         </div>

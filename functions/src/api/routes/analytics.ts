@@ -916,9 +916,6 @@ router.get("/analytics/earnings", async (req, res) => {
   const ledgerSnap = await db.collection("payment_ledger")
     .where("creator_id", "==", creatorId).get();
   const orders: Array<Record<string, unknown>> = [];
-  // `${userId}|${courseId}` → earliest real (non-refund) charge ms. Doubles as
-  // the "has this member ever paid?" set and their accurate "member since" date.
-  const paidStart = new Map<string, number>();
   ledgerSnap.docs.forEach((d) => {
     const x = d.data();
     const cur = String(x.currency ?? "COP").toUpperCase();
@@ -936,12 +933,6 @@ router.get("/analytics/earnings", async (req, res) => {
     // current (run-rate), not windowed.
     const iso = tsToIso(x.charged_at ?? x.created_at);
     const di = iso ? dayIndex[iso.slice(0, 10)] : undefined;
-    if (!isRefund) {
-      const key = String(x.user_id ?? "") + "|" + cid;
-      const cms = iso ? Date.parse(iso) : nowMs;
-      const prev = paidStart.get(key);
-      if (prev === undefined || cms < prev) paidStart.set(key, cms);
-    }
     if (di !== undefined) {
       tBucket(cur).revenue += earnings;
       pBucket(cid, cur).revenue += earnings;
@@ -979,7 +970,8 @@ router.get("/analytics/earnings", async (req, res) => {
   // query needs a collection-group index that isn't provisioned; the unfiltered
   // scan doesn't. Volume is low today; revisit with an index if subs grow large.
   const subStarts: Array<{ms: number; earn: number}> = [];
-  const memberIntervals: Array<{startMs: number; endMs: number}> = [];
+  const activeNowKeys = new Set<string>(); // `${uid}|${courseId}` of live subs
+  const subCreated = new Map<string, number>(); // `${uid}|${courseId}` → created ms
   if (courseIds.length > 0) {
     const courseIdSet = new Set(courseIds);
     try {
@@ -990,26 +982,11 @@ router.get("/analytics/earnings", async (req, res) => {
         if (isTestSale(d.ref.parent?.parent?.id, s.course_id)) return; // QA/self-test subs
         const cid = String(s.course_id ?? "unknown");
         const isActiveNow = EARNINGS_ACTIVE_SUB_STATUSES.has(s.status);
-
-        // Member interval for the monthly active-subscribers series. Count a sub
-        // only if it truly activated (active now, or has a paid ledger charge —
-        // excludes never-paid abandoned checkouts). "member since" = first real
-        // charge date when known (more accurate than the checkout-created date),
-        // else created_at. end = now for live subs, else the cancellation date
-        // (churn pulls the monthly line down).
         const memberKey = String(d.ref.parent?.parent?.id ?? "") + "|" + cid;
-        const paidStartMs = paidStart.get(memberKey);
         const createdIsoM = tsToIso(s.created_at);
         const createdMsM = createdIsoM ? Date.parse(createdIsoM) : nowMs;
-        if (isActiveNow || paidStartMs !== undefined) {
-          const startMsM = paidStartMs ?? createdMsM;
-          let endMsM = nowMs;
-          if (!isActiveNow) {
-            const endIso = tsToIso(s.cancelled_at) ?? tsToIso(s.updated_at);
-            endMsM = endIso ? Date.parse(endIso) : startMsM;
-          }
-          memberIntervals.push({startMs: startMsM, endMs: endMsM});
-        }
+        if (createdMsM < (subCreated.get(memberKey) ?? Infinity)) subCreated.set(memberKey, createdMsM);
+        if (isActiveNow) activeNowKeys.add(memberKey);
 
         if (!isActiveNow) return;
         const cur = String(s.currency_id ?? "COP").toUpperCase();
@@ -1020,12 +997,53 @@ router.get("/analytics/earnings", async (req, res) => {
         tBucket(cur).activeSubscriptions += 1;
         pBucket(cid, cur).mrr += earn;
         pBucket(cid, cur).activeSubscriptions += 1;
-        subStarts.push({ms: paidStartMs ?? createdMsM, earn});
+        subStarts.push({ms: createdMsM, earn});
       });
     } catch {
       // Transient error: MRR/active stay 0 rather than failing the whole
       // dashboard. Revenue/orders (from the ledger) are unaffected.
     }
+  }
+
+  // Membership history for the monthly active-subscribers series, from
+  // processed_payments — the COMPLETE record of real charges. The ledger only
+  // exists from 2026-07, so pre-ledger paying members that later churned would
+  // otherwise be invisible. Query bounded to the creator's courses.
+  const payFirst = new Map<string, number>();
+  const payLast = new Map<string, number>();
+  for (let i = 0; i < courseIds.length; i += 10) {
+    const batch = courseIds.slice(i, i + 10);
+    if (batch.length === 0) break;
+    const ppSnap = await db.collection("processed_payments")
+      .where("courseId", "in", batch).get();
+    ppSnap.docs.forEach((d) => {
+      const p = d.data();
+      const st = p.status ?? p.state;
+      if (st !== "approved" && st !== "completed") return;
+      const uid = String(p.userId ?? "");
+      const cid = String(p.courseId ?? "");
+      if (isTestSale(uid, cid)) return;
+      const payIso = tsToIso(p.processed_at ?? p.created_at);
+      const ms = payIso ? Date.parse(payIso) : null;
+      if (ms === null) return;
+      const key = uid + "|" + cid;
+      if (ms < (payFirst.get(key) ?? Infinity)) payFirst.set(key, ms);
+      if (ms > (payLast.get(key) ?? -Infinity)) payLast.set(key, ms);
+    });
+  }
+
+  // Each member's active interval: start = first real payment (else the sub's
+  // created date for a live sub with no payment record); end = now if the sub is
+  // live, else the last paid period end (last payment + 31d, i.e. they churn once
+  // the paid month lapses). A member counts for the period they paid for, even
+  // if later refunded — they were a real member during that window.
+  const MEMBER_ACCESS_MS = 31 * 86400000;
+  const memberIntervals: Array<{startMs: number; endMs: number}> = [];
+  for (const key of new Set<string>([...payFirst.keys(), ...activeNowKeys])) {
+    const activeNow = activeNowKeys.has(key);
+    const first = payFirst.get(key) ?? subCreated.get(key) ?? nowMs;
+    const last = payLast.get(key) ?? first;
+    memberIntervals.push({startMs: first, endMs: activeNow ? nowMs : last + MEMBER_ACCESS_MS});
   }
 
   // Cumulative active-sub + MRR curves per day from each active sub's start date
