@@ -70,7 +70,7 @@
 
 .earn-count {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 10px;
   margin-top: 4px;
 }
@@ -79,6 +79,11 @@
   font-weight: 800;
   color: var(--text-primary, rgba(255, 255, 255, 0.95));
   font-variant-numeric: tabular-nums;
+}
+.earn-count__churn {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: rgba(255, 150, 110, 0.85);
 }
 
 .earn-empty {
