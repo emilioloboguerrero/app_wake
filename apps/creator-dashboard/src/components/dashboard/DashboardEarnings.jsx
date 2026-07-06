@@ -97,7 +97,7 @@ function MoneyTile({ label, sublabel, totals, currencies, field, spark, sparkCol
         <div className="earn-money-list">
           {show.map((c) => (
             <div key={c} className="earn-money-row">
-              <span className="earn-money-value">{fmtMoney(totals[c]?.[field] ?? 0, c)}</span>
+              <span className="earn-money-value">{fmtMoney(Math.max(0, totals[c]?.[field] ?? 0), c)}</span>
               <span className="earn-cur-tag" style={{ color: CUR_COLOR[c] }}>{c}</span>
             </div>
           ))}
@@ -140,7 +140,7 @@ function ProgramRow({ program }) {
       <div className="earn-money-list">
         {curs.map((c) => (
           <div key={c} className="earn-money-row">
-            <span className="earn-money-value earn-money-value--sm">{fmtMoney(program.currencies[c]?.revenue ?? 0, c)}</span>
+            <span className="earn-money-value earn-money-value--sm">{fmtMoney(Math.max(0, program.currencies[c]?.revenue ?? 0), c)}</span>
             <span className="earn-cur-tag" style={{ color: CUR_COLOR[c] }}>{c}</span>
           </div>
         ))}
