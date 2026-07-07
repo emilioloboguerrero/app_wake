@@ -1214,5 +1214,196 @@
     padding: 15px 18px;
     font-size: 14px;
   }
+  /* Shorter hero on phones so the title, description and price surface without
+     a full scroll past the video. */
+  .cpd-media,
+  .cpd-media .cpd-video,
+  .cpd-media .cpd-cover {
+    max-height: 58vh;
+  }
+  /* Clear the floating buy bar. */
+  .cpd-root {
+    padding-bottom: 96px;
+  }
+}
+
+/* ── Lead / description ────────────────────────────────────────────────── */
+/* The creator's own words on what the program is — shown under the title so a
+   buyer who never taps the video still understands what they're getting. */
+.cpd-lead {
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.72);
+  margin: -4px 0 22px;
+  white-space: pre-wrap;
+  animation: cpd-fade-in 600ms cubic-bezier(0.22, 1, 0.36, 1) 80ms both;
+}
+
+/* ── Launch-price badge ────────────────────────────────────────────────── */
+/* Anchors the price against the compareAtPrice: "Precio de lanzamiento −47%". */
+.cpd-save-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  margin-bottom: 12px;
+  padding: 6px 6px 6px 13px;
+  border-radius: 999px;
+  background: var(--cpd-accent-soft);
+  border: 1px solid var(--cpd-accent-line);
+}
+
+.cpd-save-badge-tag {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cpd-save-badge-pct {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--cpd-accent);
+  color: var(--cpd-accent-text);
+}
+
+/* ── Trust line ────────────────────────────────────────────────────────── */
+.cpd-trust {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.01em;
+}
+
+/* ── YouTube facade (click-to-load hero) ───────────────────────────────── */
+/* Clean cover + play button; the YouTube iframe (and its player JS) only loads
+   on tap. Keeps YouTube's red chrome off the first paint and its player off the
+   initial load. */
+.cpd-video-facade {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: #0a0a0a;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cpd-video-facade .cpd-cover {
+  aspect-ratio: 9 / 12;
+  object-fit: cover;
+}
+
+.cpd-video-play-icon--facade {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.42);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+              background 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpd-video-facade:hover .cpd-video-play-icon--facade {
+  transform: translate(-50%, -50%) scale(1.06);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* ── Sticky buy bar ────────────────────────────────────────────────────── */
+/* Persistent CTA that follows the buyer on mobile, where the hero CTA scrolls
+   out of view. Floating rounded bar with small side margins — the same pill
+   language as the global header. Hidden on desktop, where the right-column CTA
+   stays in view. */
+.cpd-buybar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 10px 10px 10px 18px;
+  border-radius: 16px;
+  background: rgba(26, 26, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
+  animation: cpd-buybar-in 460ms cubic-bezier(0.22, 1, 0.36, 1) 240ms backwards;
+}
+
+@keyframes cpd-buybar-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cpd-buybar-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.cpd-buybar-price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.cpd-buybar-compare {
+  font-size: 12px;
+  text-decoration: line-through;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cpd-buybar-amount {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #fff;
+}
+
+.cpd-buybar-suffix {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+  margin-left: 1px;
+}
+
+.cpd-buybar-cta {
+  flex: 1 1 auto;
+  width: auto;
+  justify-content: center;
+  padding: 13px 20px;
+  white-space: nowrap;
+}
+
+/* Lift the WhatsApp support pill above the buy bar so the two never stack. */
+.cpd-root .wa-fab {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 84px);
+}
+
+/* The buy bar is a mobile pattern; on desktop the right-column CTA is enough. */
+@media (min-width: 861px) {
+  .cpd-buybar {
+    display: none;
+  }
+  .cpd-root .wa-fab {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 20px);
+  }
 }
 

@@ -10,8 +10,7 @@ import {
   onAuthStateChanged,
   signOut,
 } from 'firebase/auth';
-import { getToken } from 'firebase/app-check';
-import { auth, appCheck } from '../config/firebase';
+import { auth, ensureAppCheck } from '../config/firebase';
 
 export async function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
@@ -57,11 +56,17 @@ export function getCurrentIdToken(forceRefresh = false) {
   return auth.currentUser.getIdToken(forceRefresh);
 }
 
-// Returns the current App Check token, or null if App Check isn't initialized.
-// Backend public endpoints rely on this to mitigate headless abuse.
+// Returns the current App Check token, or null if App Check isn't available.
+// Backend public endpoints rely on this to mitigate headless abuse, but treat
+// it as best-effort — a null token never blocks the guest (public) checkout.
+// App Check is deferred (see config/firebase.js): this lazily initializes it on
+// the first call and dynamically loads the app-check SDK so it stays out of the
+// main bundle.
 export async function getAppCheckTokenForRequest() {
+  const appCheck = await ensureAppCheck();
   if (!appCheck) return null;
   try {
+    const { getToken } = await import('firebase/app-check');
     const result = await getToken(appCheck, /* forceRefresh */ false);
     return result?.token ?? null;
   } catch {
