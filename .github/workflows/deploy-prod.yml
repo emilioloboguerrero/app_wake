@@ -1,0 +1,62 @@
+name: Deploy a producción (Firebase)
+
+# Corre en los runners de GitHub (red abierta), NO en el entorno remoto de Claude
+# cuyo egress bloquea Firebase. Se dispara solo a mano desde la pestaña Actions.
+#
+# Requiere un secreto del repo:
+#   FIREBASE_SERVICE_ACCOUNT  -> contenido JSON de una service account de wolf-20b8b
+#                                con permisos de Firebase Admin / Functions / Hosting.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Qué desplegar"
+        required: true
+        default: "functions,hosting"
+        type: choice
+        options:
+          - "functions,hosting"
+          - "functions"
+          - "hosting"
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias
+        run: |
+          npm ci
+          npm ci --prefix functions
+          npm ci --prefix apps/landing
+          npm ci --prefix apps/pwa
+          npm ci --prefix apps/creator-dashboard
+          npm ci --prefix apps/developer-portal
+
+      - name: Compilar functions
+        run: npm --prefix functions run build
+
+      - name: Compilar y ensamblar hosting
+        if: contains(github.event.inputs.target, 'hosting')
+        run: npm run build:all
+
+      - name: Escribir la service account
+        run: printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Desplegar
+        run: npx firebase-tools@latest deploy --only "$TARGET" --project wolf-20b8b --non-interactive
+        env:
+          TARGET: ${{ github.event.inputs.target }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json

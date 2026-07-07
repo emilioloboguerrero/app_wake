@@ -1,0 +1,65 @@
+name: Correo a compradores que no han entrado
+
+# Corre notifyStrandedBuyers.js en los runners de GitHub. Encuentra a los
+# compradores de un programa que nunca han iniciado sesión y les envía el correo
+# con instrucciones de instalación del PWA + "inicia sesión con el mismo correo".
+#
+# SIMULACIÓN por defecto: solo imprime la lista. Para enviar de verdad, pon
+# el input "send" en SEND (en mayúsculas). Ejecútalo desde la pestaña Actions.
+#
+# Requiere secretos del repo:
+#   FIREBASE_SERVICE_ACCOUNT  -> JSON de una service account de wolf-20b8b con
+#                                lectura de Firestore + Auth.
+#   RESEND_API_KEY            -> API key de Resend de producción (solo para --send).
+on:
+  workflow_dispatch:
+    inputs:
+      course:
+        description: "courseId o título del programa (ej: abs)"
+        required: true
+      send:
+        description: 'Escribe SEND para enviar de verdad. Vacío = simulación (no envía).'
+        required: false
+        default: ""
+
+concurrency:
+  group: notify-buyers
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar y compilar functions
+        run: |
+          npm ci --prefix functions
+          npm --prefix functions run build
+
+      - name: Escribir la service account
+        run: printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
+        env:
+          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Ejecutar outreach
+        working-directory: functions
+        run: |
+          ARGS="--course=$COURSE"
+          if [ "$SEND" = "SEND" ]; then
+            ARGS="$ARGS --send"
+            echo "MODO ENVÍO REAL"
+          else
+            echo "MODO SIMULACIÓN (no se envía nada)"
+          fi
+          node lib/scripts/notifyStrandedBuyers.js $ARGS
+        env:
+          COURSE: ${{ github.event.inputs.course }}
+          SEND: ${{ github.event.inputs.send }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
