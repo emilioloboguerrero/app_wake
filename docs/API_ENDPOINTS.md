@@ -2679,7 +2679,14 @@ Cancel, pause, or resume a MercadoPago subscription.
 
 ### Storefront checkout (public buy page)
 
-The public buy page (`wakelab.co/{username}/{programId}`) sells through two entry points that share one execution path (`executeStorefrontCheckout` in `routes/public.ts`). Both support MercadoPago (default) and Polar (`"provider": "polar"`). The buy page requires **no account before paying**: signed-out buyers go through `guest-start` with just an email.
+The public buy page (`wakelab.co/{username}/{programId}`) requires **no account before paying**. There are four entry points:
+
+- **`start`** — signed-in buyers (identity from ID token). MercadoPago or Polar. Shared path `executeStorefrontCheckout` in `routes/public.ts`.
+- **`guest-start`** — signed-out buyers, identity = an email typed on our page. Used for MP one-time and (legacy) Polar. Shared path `executeStorefrontCheckout`.
+- **`plan-start`** — signed-out **pay-first** MercadoPago subscriptions: **no email on our side**. Returns a shared MercadoPago `PreApprovalPlan` init_point; MP's hosted "checkout externo" collects the email + card (guest, no MP account). The webhook resolves the buyer from the MP-collected `payer_email` via a `payer_id` join (see `services/planCheckout.ts` + `POLAR_INTEGRATION_STATUS.md` §2026-07-07).
+- **`polar-start`** — signed-out **pay-first** Polar (international): no email on our side. Returns a Polar hosted checkout with no pre-known customer; the webhook resolves the buyer from `order.customer.email`.
+
+The client (`CreatorProgramDetailScreen.jsx`) routes a signed-out CTA: Polar → `polar-start`; MP subscription → `plan-start`; MP one-time → `guest-start`.
 
 #### `POST /api/v1/public/checkout/start`
 Start a storefront checkout for a signed-in buyer (identity from the ID token).
@@ -2708,6 +2715,28 @@ Same contract as `start`, but the buyer's identity is **just an email** — no s
 **Auth:** none (public path in `app.ts`; rate-limited 10/min per IP + 5/min per email)
 **Request:** `start`'s body plus `"email": "string"` (required)
 **Response / Errors:** identical to `start`. On the 409 already-owned, the landing client sends the email a magic link instead of charging again.
+
+---
+
+#### `POST /api/v1/public/checkout/plan-start`
+Pay-first MercadoPago **subscription** — no email, no session. Ensures a `PreApprovalPlan` exists for the course (created/reused, keyed on `subscription_price`; stored on `courses/{id}.mp_preapproval_plan_id` + reverse map `mp_plans/{planId}`) and returns its shared init_point. MP collects the buyer's email + card on its hosted page. Provisioning happens entirely in the webhook: `subscription_preapproval` events carry an **empty** `payer_email` (only `payer_id`), so the webhook stashes `mp_plan_pending/{payer_id} → course`; the `payment` charge event carries the real `payer.email` (+ the preapproval id hidden in `point_of_interaction.transaction_data.subscription_id`), and looks the course up by `payer_id`, find-or-creates the user, writes a full subscription doc, and grants. See `services/planCheckout.ts`.
+
+**Auth:** none (public path in `app.ts`; rate-limited 15/min per IP)
+**Request:** `{ "username": "string", "courseId": "string" }`
+**Response:** `{ "data": { "initPoint": "https://www.mercadopago.com.co/subscriptions/checkout?preapproval_plan_id=...", "mode": "subscription" } }`
+**Errors:** `VALIDATION_ERROR` (bad username/courseId, or course has no `subscription_price`), `NOT_FOUND`, `CONFLICT` `CAPACITY_FULL`, `INTERNAL_ERROR`
+**Notes:** the init_point is reusable across buyers — safe to blast in a link (IG/ManyChat). Already-owned is NOT pre-checked (no email); a re-subscribe would double-charge (rare for cold traffic; follow-up).
+
+---
+
+#### `POST /api/v1/public/checkout/polar-start`
+Pay-first Polar (international cards) — no email, no session. Creates a Polar hosted checkout with **no pre-known customer** (metadata `{courseId, paymentType}`, no `userId`/`externalCustomerId`); Polar collects the email itself. The webhook (`order.paid` + subscription handlers) resolves the buyer from `order.customer.email` when the metadata carries no `userId` (`resolvePolarMeta` in `routes/polar.ts`). Works for `subscription` and `one_time`. Simpler than MP — Polar's webhooks carry the customer email directly (no `payer_id` join).
+
+**Auth:** none (public path in `app.ts`; rate-limited 15/min per IP)
+**Request:** `{ "username": "string", "courseId": "string", "mode": "subscription | one_time" }`
+**Response:** `{ "data": { "checkoutUrl": "https://polar.sh/checkout/...", "mode": "..." } }`
+**Errors:** `VALIDATION_ERROR` (bad params, or no Polar product configured), `NOT_FOUND`, `CONFLICT` `CAPACITY_FULL`, `INTERNAL_ERROR`
+**Notes:** each call creates a new Polar checkout session (single-use). For a reusable blastable link, use Polar's checkout-link API (not yet wired).
 
 ---
 

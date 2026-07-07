@@ -2,20 +2,22 @@ import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import Footer from './components/Footer';
 import Header from './components/Header';
-import SupportScreen from './screens/SupportScreen';
-import AccessRecoveryScreen from './screens/AccessRecoveryScreen';
-import LegalDocumentsScreen from './screens/LegalDocumentsScreen';
-import CreadoresLandingScreen from './screens/CreadoresLandingScreen';
-import StorefrontScreen from './screens/StorefrontScreen';
-import EventSignupScreen from './screens/EventSignupScreen';
-import LandingDesignScreen from './screens/LandingDesignScreen';
-import TestLandingScreen from './screens/TestLandingScreen';
-import NotFoundScreen from './screens/NotFoundScreen';
-import ShowcaseLandingScreen from './screens/ShowcaseLandingScreen';
 
-// Storefront screens carry the Firebase Auth + App Check + reCAPTCHA SDK
-// payload. Lazy-loading them keeps that ~100KB gz off the homepage bundle so
-// IG-bio-link cold loads stay fast.
+// Every route screen is lazy-loaded so the entry bundle carries only the router
+// shell (React + react-router + Header/Footer). Each screen — and the heavy libs
+// it drags in (motion, lenis, the Firebase Auth SDK) — becomes its own on-demand
+// chunk. This keeps cold loads fast on the surfaces that matter most: the buy
+// page and creator storefront that IG/ad traffic lands on.
+const SupportScreen = lazy(() => import('./screens/SupportScreen'));
+const AccessRecoveryScreen = lazy(() => import('./screens/AccessRecoveryScreen'));
+const LegalDocumentsScreen = lazy(() => import('./screens/LegalDocumentsScreen'));
+const CreadoresLandingScreen = lazy(() => import('./screens/CreadoresLandingScreen'));
+const StorefrontScreen = lazy(() => import('./screens/StorefrontScreen'));
+const EventSignupScreen = lazy(() => import('./screens/EventSignupScreen'));
+const LandingDesignScreen = lazy(() => import('./screens/LandingDesignScreen'));
+const TestLandingScreen = lazy(() => import('./screens/TestLandingScreen'));
+const NotFoundScreen = lazy(() => import('./screens/NotFoundScreen'));
+const ShowcaseLandingScreen = lazy(() => import('./screens/ShowcaseLandingScreen'));
 const CreatorStorefrontScreen = lazy(() => import('./screens/CreatorStorefrontScreen'));
 const CreatorProgramDetailScreen = lazy(() => import('./screens/CreatorProgramDetailScreen'));
 const PostPaymentScreen = lazy(() => import('./screens/PostPaymentScreen'));
@@ -33,7 +35,10 @@ const RESERVED_TOP_LEVEL_PATHS = new Set([
   'lab', 'comprar', 'gracias', 'cancelar', 'acceso',
 ]);
 
-function StorefrontFallback() {
+// Empty, layout-stable placeholder while a route chunk loads. No spinner: the
+// chunk lands in a few hundred ms and a flash of spinner reads worse than a
+// brief blank on the surfaces this guards.
+function RouteFallback() {
   return <div style={{ minHeight: '60vh' }} aria-hidden="true" />;
 }
 
@@ -42,17 +47,21 @@ function AppContent() {
 
   if (location.pathname === '/design') {
     return (
-      <Routes>
-        <Route path="/design" element={<LandingDesignScreen />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/design" element={<LandingDesignScreen />} />
+        </Routes>
+      </Suspense>
     );
   }
 
   if (location.pathname.startsWith('/e/')) {
     return (
-      <Routes>
-        <Route path="/e/:eventId" element={<EventSignupScreen />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/e/:eventId" element={<EventSignupScreen />} />
+        </Routes>
+      </Suspense>
     );
   }
 
@@ -60,9 +69,11 @@ function AppContent() {
     return (
       <>
         <Header />
-        <Routes>
-          <Route path="/" element={<ShowcaseLandingScreen />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<ShowcaseLandingScreen />} />
+          </Routes>
+        </Suspense>
       </>
     );
   }
@@ -71,9 +82,11 @@ function AppContent() {
     return (
       <>
         <Header />
-        <Routes>
-          <Route path="/test" element={<TestLandingScreen />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/test" element={<TestLandingScreen />} />
+          </Routes>
+        </Suspense>
       </>
     );
   }
@@ -82,9 +95,11 @@ function AppContent() {
     return (
       <>
         <Header />
-        <Routes>
-          <Route path="/creadores" element={<CreadoresLandingScreen />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/creadores" element={<CreadoresLandingScreen />} />
+          </Routes>
+        </Suspense>
       </>
     );
   }
@@ -93,10 +108,12 @@ function AppContent() {
     return (
       <>
         <Header />
-        <Routes>
-          <Route path="/lab" element={<StorefrontScreen />} />
-          <Route path="/tienda" element={<StorefrontScreen />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/lab" element={<StorefrontScreen />} />
+            <Route path="/tienda" element={<StorefrontScreen />} />
+          </Routes>
+        </Suspense>
       </>
     );
   }
@@ -115,7 +132,7 @@ function AppContent() {
     return (
       <>
         <Header />
-        <Suspense fallback={<StorefrontFallback />}>
+        <Suspense fallback={<RouteFallback />}>
           <Routes>
             {/* /:username/comprado MUST come before /:username/:programId so
                 react-router matches it first. */}
@@ -132,14 +149,16 @@ function AppContent() {
     <div className="app-layout">
       <Header />
       <main className="main-content">
-        <Routes>
-          <Route path="/support" element={<SupportScreen />} />
-          <Route path="/acceso" element={<AccessRecoveryScreen />} />
-          <Route path="/legal" element={<LegalDocumentsScreen />} />
-          <Route path="/landing" element={<Navigate to="/" replace />} />
-          <Route path="/landing/*" element={<LandingPathRedirect />} />
-          <Route path="*" element={<NotFoundScreen />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/support" element={<SupportScreen />} />
+            <Route path="/acceso" element={<AccessRecoveryScreen />} />
+            <Route path="/legal" element={<LegalDocumentsScreen />} />
+            <Route path="/landing" element={<Navigate to="/" replace />} />
+            <Route path="/landing/*" element={<LandingPathRedirect />} />
+            <Route path="*" element={<NotFoundScreen />} />
+          </Routes>
+        </Suspense>
       </main>
       <Footer />
     </div>

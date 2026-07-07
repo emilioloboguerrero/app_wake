@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router-dom';
 import wakeLogotype from '../assets/wake-logotype.svg';
-import { subscribeAuthState, signOutStorefront } from '../services/storefrontAuthService';
 import analyticsService from '../services/analyticsService';
 import './Header.css';
 
@@ -61,14 +60,26 @@ export default function Header() {
   const [accountOpen, setAccountOpen] = useState(false);
   const { pathname } = useLocation();
 
+  // The auth subscription pulls in the Firebase Auth SDK. Load it dynamically
+  // after mount so firebase/auth stays out of the entry bundle — the header
+  // renders in its signed-out state (its default) until the session resolves.
   useEffect(() => {
-    const unsub = subscribeAuthState((u) => setUser(u || null));
-    return () => unsub?.();
+    let unsub;
+    let cancelled = false;
+    import('../services/storefrontAuthService').then(({ subscribeAuthState }) => {
+      if (cancelled) return;
+      unsub = subscribeAuthState((u) => setUser(u || null));
+    });
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
   const handleSignOut = async () => {
     setAccountOpen(false);
     try {
+      const { signOutStorefront } = await import('../services/storefrontAuthService');
       await signOutStorefront();
     } catch {
       // Firebase signOut rarely fails; nothing actionable to show.

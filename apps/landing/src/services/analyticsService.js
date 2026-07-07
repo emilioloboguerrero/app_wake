@@ -2,14 +2,21 @@
 // Anonymous behavior: identified_only person profiles, but anonymous events still flow
 // for funnel analysis ($pageview, landing.cta_clicked). Session replay at 100%.
 
-import posthog from 'posthog-js';
+// posthog-js is ~50KB gz and pulls the session-replay recorder. It is NOT
+// statically imported: it would land in the entry bundle and block first paint
+// on every page. Instead init() dynamically imports it (off the critical path)
+// and events fired before it loads are queued and flushed on ready.
 
 const APP_NAME = 'landing';
 const STORAGE_OPTOUT_KEY = 'wake_analytics_opt_out';
 const REPLAY_SAMPLE = 1.0;
+const MAX_PENDING = 100;
 
-let initialized = false;
+let posthog = null;
+let ready = false;
+let disabled = false;
 let initAttempted = false;
+const pending = [];
 
 function readKey() {
   return import.meta.env.VITE_POSTHOG_KEY || null;
@@ -59,14 +66,22 @@ function scrubPiiFromProps(props) {
   return props;
 }
 
-function init() {
+function flushPending() {
+  while (pending.length) {
+    const fn = pending.shift();
+    try { fn(posthog); } catch (err) { console.error('[analytics] call failed', err); }
+  }
+}
+
+async function init() {
   if (initAttempted) return;
   initAttempted = true;
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined') { disabled = true; return; }
   const key = readKey();
-  if (!key) return;
-  if (readOptOut()) return;
+  if (!key || readOptOut()) { disabled = true; return; }
   try {
+    const mod = await import('posthog-js');
+    posthog = mod.default;
     posthog.init(key, {
       api_host: readHost(),
       person_profiles: 'identified_only',
@@ -88,18 +103,24 @@ function init() {
           app_version: (import.meta.env.VITE_APP_VERSION) || 'unknown',
           env: detectEnv(),
         });
-        initialized = true;
+        ready = true;
+        flushPending();
       },
     });
   } catch (err) {
     console.error('[analytics] init failed', err);
+    disabled = true;
   }
 }
 
 function safe(fn) {
-  if (!initialized) return;
-  if (readOptOut()) return;
-  try { fn(posthog); } catch (err) { console.error('[analytics] call failed', err); }
+  if (disabled || readOptOut()) return;
+  if (ready) {
+    try { fn(posthog); } catch (err) { console.error('[analytics] call failed', err); }
+    return;
+  }
+  // posthog is still loading — queue the call (bounded) and flush on ready.
+  if (pending.length < MAX_PENDING) pending.push(fn);
 }
 
 const analyticsService = {

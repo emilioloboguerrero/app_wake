@@ -4,7 +4,27 @@ Companion to the design spec: `docs/superpowers/specs/2026-07-01-polar-internati
 
 ## TL;DR
 
-Phase 1 of the Polar (merchant-of-record) integration is **LIVE IN PRODUCTION with real money** (`wolf-20b8b`, `POLAR_SERVER=production`, live secrets, Polar org approved). MercadoPago (Colombia) is untouched. International USD pricing is now **ON BY DEFAULT for every published course** (USD auto-derived from the COP price), the public buy page surfaces the COP↔USD toggle on both the hero and the landing-section CTA block, and portal-side cancellations are reflected via the `subscription.updated` webhook. The full E2E purchase path (checkout → grant → subscription → ledger → idempotency) and the cancel/re-activate webhook path are **verified live**. See the "2026-07-06 update" (latest) and "2026-07-03 update" below.
+Phase 1 of the Polar (merchant-of-record) integration is **LIVE IN PRODUCTION with real money** (`wolf-20b8b`, `POLAR_SERVER=production`, live secrets, Polar org approved). MercadoPago (Colombia) is untouched. International USD pricing is now **ON BY DEFAULT for every published course** (USD auto-derived from the COP price), the public buy page surfaces the COP↔USD toggle on both the hero and the landing-section CTA block, and portal-side cancellations are reflected via the `subscription.updated` webhook. The full E2E purchase path (checkout → grant → subscription → ledger → idempotency) and the cancel/re-activate webhook path are **verified live**. See the "2026-07-07 update" (latest) and "2026-07-03 update" below.
+
+---
+
+## 2026-07-07 update — PAY-FIRST checkout (no email before paying), MP + Polar — LIVE + validated with real money
+
+The buy page no longer asks signed-out buyers for an email before paying. The payment provider's own hosted page collects it, and the account is provisioned entirely from the webhook.
+
+**MP subscriptions (`services/planCheckout.ts`, `POST /public/checkout/plan-start`):** switched from the per-buyer `PreApproval` (which required `payer_email` up front) to a shared **`PreApprovalPlan`** ("checkout externo"). One plan per course, created/reused keyed on `subscription_price`, stored on `courses/{id}.mp_preapproval_plan_id` + reverse map `mp_plans/{planId} → {course_id, creator_id}`. The init_point is reusable — blastable in an IG/ManyChat link. **Webhook join (the tricky bit):** MP's `subscription_preapproval` events carry an **empty `payer_email`** (only `payer_id`); the `payment` charge event carries the real `payer.email` but **no course link** (the preapproval id is hidden in `point_of_interaction.transaction_data.subscription_id`). So the preapproval webhook stashes `mp_plan_pending/{payer_id} → course`, and the payment webhook looks it up by `payer.id`, find-or-creates the user from `payer.email`, writes a full subscription doc, and grants (synthesizing the existing `v1|uid|courseId|sub` external_reference so the legacy grant path runs unchanged). If a subscription charge can't resolve yet, it 500s so MP retries.
+
+**Polar (`resolvePolarMeta` in `routes/polar.ts`, `POST /public/checkout/polar-start`):** checkout created with **no `userId`** in metadata (`{courseId, paymentType}` only). Every metadata-parsing handler (`order.paid`, trial, updated, canceled, revoked) resolves the user from `order.customer.email` when the metadata carries no `userId` — simpler than MP (Polar's webhooks carry the customer email directly, no `payer_id` join). Authed flow unchanged.
+
+**Client (`CreatorProgramDetailScreen.jsx`):** signed-out CTA routes: Polar → `polar-start`; MP subscription → `plan-start`; MP one-time → `guest-start` (email). `parsePolarMetadataGuest` + `findOrCreateUserByEmail` (shared) added.
+
+**Also fixed:** (1) pay-first subs now write a **complete subscription doc** (the manage screen's cancel button + `next_billing_date` read from it; surfaced the hidden preapproval id + fetch next-charge date from the preapproval). (2) `PostPaymentScreen.jsx` — MP appends `?preapproval_id=` to a back_url already ending in `?...`, which corrupted the `mode` param and left a session-less guest on an infinite "Verificando tu pago" spinner; now parses defensively (affected **every** MP subscription return). Session-less guests can't be auto-logged-in — the magic-link email is the secure login.
+
+**Validated LIVE with real payments (2026-07-07):** MP pay-first — real 19.000 COP guest purchase → webhook granted + confirmation email received. Polar pay-first — real $6 guest purchase → `resolvePolarMeta` resolved the user from `order.customer.email` + granted + ledgered. Full-frontend Playwright E2E against prod (IG UA, signed-out): MP + Polar CTAs skip email + redirect; PostPayment shows a clear status. Deployed: `functions:api` + hosting.
+
+**Fee reality (from `payment_ledger`, `provider_fee_basis:"estimate"`):** on the $6/mo abs sub — Polar took **$0.89 (~14.8%)** → net $5.11 (the fixed per-tx fee dominates small tickets; on a $26.75 order it was 8.4%). MP on the 19.000 COP equivalent — **~8.9%** fee + ~1.9% recoverable retenciones → net ~89%. So Polar is ~6 pts costlier on small tickets; the CO→MP / intl→Polar routing stands.
+
+**Open follow-ups:** already-owned is not pre-checked on pay-first (no email → a re-subscribe double-charges; rare for cold traffic); ordering edge if a plan `payment` webhook beats the `subscription_preapproval` (mitigated by the 500-retry); Polar `polar-start` mints a single-use checkout session (no reusable blast link yet).
 
 ---
 
