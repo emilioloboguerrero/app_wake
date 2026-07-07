@@ -293,6 +293,31 @@ export async function sendCancellationEmail(args: {
   });
 }
 
+// Outreach email for buyers who already paid but never entered the app. The
+// CTA is a Firebase magic link (buildSignInUrl) so a single tap auto-signs
+// them in and deep-links to their course — combined with the install +
+// same-email instructions, this is the full "how do I actually get in" answer.
+// Used by the notifyStrandedBuyers script, not by any webhook.
+export async function sendAccessHowToEmail(args: {
+  to: string;
+  programTitle: string;
+  courseId: string;
+}): Promise<boolean> {
+  const cta = await buildSignInUrl(args.to, `/course/${args.courseId}`);
+  const title = escapeHtml(args.programTitle);
+  const body = `
+    <p style="margin:0 0 12px;">Ya tienes acceso a <strong>${title}</strong>, pero vimos que todavía no has entrado a la app — queremos ayudarte a empezar.</p>
+    <p style="margin:0 0 12px;">Todo tu contenido vive dentro de la app de Wake. Sigue estos dos pasos y en un minuto estás adentro:</p>
+    ${accessInstructionsBlock(args.to)}
+    <p style="margin:0 0 12px;">El botón de abajo te lleva directo y te firma automáticamente en tu cuenta. Ábrelo desde tu teléfono.</p>
+  `;
+  return sendEmail({
+    to: args.to,
+    subject: sanitizeSubject(`Cómo entrar a ${args.programTitle} en Wake`),
+    html: wrapTemplate({heading: "Así entras a tu programa", body, ctaLabel: "Abrir Wake", ctaUrl: cta}),
+  });
+}
+
 export async function sendOneTimePurchaseEmail(args: {
   to: string;
   programTitle: string;
