@@ -85,7 +85,7 @@ function prettyDiscipline(slug) {
 // play button; the YouTube iframe (and its player JS) only loads on click. Keeps
 // YouTube's red chrome off the first paint and its player off the initial load.
 // The poster is the program's own image (CSP-allowed), not a YouTube thumbnail.
-function YouTubeFacade({ ytId, poster, title }) {
+function YouTubeFacade({ ytId, poster, title, onActivate }) {
   const [active, setActive] = useState(false);
   if (active) {
     return (
@@ -105,7 +105,7 @@ function YouTubeFacade({ ytId, poster, title }) {
     <button
       type="button"
       className="cpd-video-facade"
-      onClick={() => setActive(true)}
+      onClick={() => { setActive(true); onActivate?.(); }}
       aria-label={title ? `Reproducir: ${title}` : 'Reproducir video'}
     >
       {poster ? (
@@ -492,6 +492,9 @@ export default function CreatorProgramDetailScreen() {
   const [waitlistError, setWaitlistError] = useState(null);
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [videoMuted, setVideoMuted] = useState(false);
+  // Whether the hero YouTube facade has been activated — hides the headline
+  // overlay so it never sits on top of the playing video.
+  const [heroPlaying, setHeroPlaying] = useState(false);
   const videoRef = useRef(null);
   const [related, setRelated] = useState([]);
   // null = follow the heuristic default; 'mercadopago' | 'polar' = explicit toggle.
@@ -1194,7 +1197,7 @@ export default function CreatorProgramDetailScreen() {
         <div className="cpd-media">
           {heroVideoUrl ? (
             introYtId ? (
-              <YouTubeFacade ytId={introYtId} poster={program.imageUrl} title={program.title} />
+              <YouTubeFacade ytId={introYtId} poster={program.imageUrl} title={program.title} onActivate={() => setHeroPlaying(true)} />
             ) : (
             <div
               className="cpd-video-shell"
@@ -1260,6 +1263,11 @@ export default function CreatorProgramDetailScreen() {
             <div className="cpd-cover cpd-cover-placeholder" aria-hidden="true" />
           )}
           <IncludesTags program={program} className="cpd-includes-overlay" />
+          {program.heroHeadline && !heroPlaying && !videoPlaying ? (
+            <div className="cpd-hero-caption" aria-hidden="false">
+              <p className="cpd-hero-headline">{program.heroHeadline}</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="cpd-info">

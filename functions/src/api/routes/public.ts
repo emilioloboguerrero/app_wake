@@ -279,6 +279,7 @@ function sanitizeLandingSections(
 
 interface PublicProgramDetail extends PublicProgramCard {
   description: string | null;
+  heroHeadline: string | null;
   videoIntroUrl: string | null;
   storefrontVideoUrl: string | null;
   duration: string | null;
@@ -300,6 +301,12 @@ function shapePublicProgramDetail(
   return {
     ...shapePublicProgramCard(id, data),
     description: (data.description as string) ?? null,
+    // Short punchy line overlaid on the storefront hero ("carátula con texto").
+    // Creator-authored; trimmed and length-capped for a clean overlay.
+    heroHeadline:
+      typeof data.hero_headline === "string" && data.hero_headline.trim() ?
+        data.hero_headline.trim().slice(0, 140) :
+        null,
     videoIntroUrl: (data.video_intro_url as string) ?? null,
     storefrontVideoUrl: (data.storefront_video_url as string) ?? null,
     duration: (data.duration as string) ?? null,
