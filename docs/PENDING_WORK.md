@@ -44,6 +44,15 @@ Archivos: `apps/pwa/src/components/resources/PdfViewerOverlay.web.jsx`, `apps/pw
 
 ---
 
+### Buy-page conversión + velocidad `SHIPPED 2026-07-06/07` — un follow-up abierto
+
+Pase de conversión sobre `CreatorProgramDetailScreen` (genérico para el builder, seedeado y live para Código ABS). Detalle técnico completo en la memoria `project_landing_sections.md`. Resumen: **hero "carátula con texto"** (campo nuevo `courses.hero_headline` → `program.heroHeadline`, overlay sobre la portada), **YouTube click-to-load facade** (portada + play; el iframe carga al tocar), **App Check/reCAPTCHA diferido** (ya NO es eager en el landing — se calienta en la primera interacción; ~2 MB fuera del render inicial), **barra de compra sticky** (móvil), **secciones más grandes**, **sección "Así se ve por dentro"** con 3 screenshots de la app en abanico con forma de teléfono (`SectionFan` detecta imágenes verticales con un `new Image()` probe — NO `onLoad`, que no dispara con imágenes cacheadas), chip "Precio de lanzamiento" + línea "Cancela cuando quieras", y ancla de precio `compare_at_price` 79k vs `subscription_price` 19k.
+
+**Follow-up abierto:**
+- **Editor del `hero_headline` en el dashboard** — hoy el titular del hero se seedea vía datos (Firestore); falta agregar el campo al editor de programas (`GroupProgramView`/`ProgramLandingSectionsEditor` o su config) para que el creador lo edite. Las imágenes de la sección "Así se ve por dentro" YA son editables desde el editor de secciones.
+
+---
+
 ### 5b. Download Screen Refresh `NOT STARTED`
 
 The course download screen (driven by `courseDownloadService` in the PWA) is the first sustained moment of attention after purchase — currently a generic loading UI. Two changes:
