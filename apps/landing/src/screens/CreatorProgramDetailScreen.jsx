@@ -345,6 +345,32 @@ function CompareCross() {
   );
 }
 
+// Fans 2-3 images like the bundle cover stack. Detects tall phone screenshots
+// on load (height/width > 1.6) and switches to a phone-shaped fan so app
+// screenshots read as phones instead of being cropped to the 4:5 photo tile.
+function SectionFan({ media }) {
+  const [isPhone, setIsPhone] = useState(false);
+  const count = Math.min(media.length, 3);
+  return (
+    <div className={`cpd-section-fan cpd-section-fan--${count}${isPhone ? ' cpd-section-fan--phone' : ''}`}>
+      {media.slice(0, 3).map((block, j) => (
+        <div className={`cpd-section-fan-tile cpd-section-fan-tile--${j}`} key={j}>
+          <img
+            src={block.url}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onLoad={j === 0 ? (e) => {
+              const img = e.currentTarget;
+              if (img.naturalWidth && img.naturalHeight / img.naturalWidth > 1.6) setIsPhone(true);
+            } : undefined}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Optional creator-authored "landing sections" (e.g. "Qué incluye",
 // "Novedades") rendered below the hero/CTA. Server-sanitized; each section is
 // guaranteed a non-empty heading and at least one valid block.
@@ -379,14 +405,9 @@ function ProgramSections({ sections, program, onCtaClick, checkout }) {
             {media.length > 0 ? (
               <div className="cpd-section-media">
                 {media.length >= 2 && media.every((b) => b.type === 'image') ? (
-                  // Multiple images fan out like the bundle cover stack.
-                  <div className={`cpd-section-fan cpd-section-fan--${Math.min(media.length, 3)}`}>
-                    {media.slice(0, 3).map((block, j) => (
-                      <div className={`cpd-section-fan-tile cpd-section-fan-tile--${j}`} key={j}>
-                        <img src={block.url} alt="" loading="lazy" decoding="async" />
-                      </div>
-                    ))}
-                  </div>
+                  // Multiple images fan out like the bundle cover stack. Tall
+                  // phone screenshots fan as phones (detected at load).
+                  <SectionFan media={media} />
                 ) : (
                   media.map((block, j) => <SectionBlock block={block} program={program} onCtaClick={onCtaClick} key={j} />)
                 )}

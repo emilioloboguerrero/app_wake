@@ -910,6 +910,37 @@
   z-index: 2;
 }
 
+/* Phone-shaped fan — for app screenshots. Taller container + phone-aspect tiles
+   so the screens read as an actual phone, not a cropped photo. */
+.cpd-section-fan--phone {
+  aspect-ratio: 1 / 1.12;
+}
+
+.cpd-section-fan--phone .cpd-section-fan-tile {
+  width: 43%;
+  aspect-ratio: 1179 / 2556;
+  border-radius: 22px;
+  box-shadow:
+    0 22px 44px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.cpd-section-fan--phone.cpd-section-fan--3 .cpd-section-fan-tile--0 {
+  transform: translate(-50%, -50%) translateX(-54%) translateY(5%) rotate(-7deg);
+}
+.cpd-section-fan--phone.cpd-section-fan--3 .cpd-section-fan-tile--1 {
+  transform: translate(-50%, -50%) rotate(0deg);
+}
+.cpd-section-fan--phone.cpd-section-fan--3 .cpd-section-fan-tile--2 {
+  transform: translate(-50%, -50%) translateX(54%) translateY(5%) rotate(7deg);
+}
+.cpd-section-fan--phone.cpd-section-fan--2 .cpd-section-fan-tile--0 {
+  transform: translate(-50%, -50%) translateX(-30%) translateY(3%) rotate(-6deg);
+}
+.cpd-section-fan--phone.cpd-section-fan--2 .cpd-section-fan-tile--1 {
+  transform: translate(-50%, -50%) translateX(30%) translateY(3%) rotate(6deg);
+}
+
 /* Responsive 16:9 YouTube embed. */
 .cpd-section-embed {
   position: relative;
