@@ -37,7 +37,12 @@ export default function PostPaymentScreen() {
     .toLowerCase()
     .trim();
   const status = rawStatus && rawStatus !== 'null' ? rawStatus : '';
-  const mode = params.get('mode') || 'one_time';
+  // MP appends `?preapproval_id=...` to the subscription back_url, which already
+  // carries `?course=...&mode=subscription` — the extra `?` makes the browser
+  // parse `mode` as "subscription?preapproval_id=...". Strip anything from the
+  // stray `?`/`&` so the mode (and the whole success UX) is correct. Affects
+  // every MP subscription return, not just pay-first.
+  const mode = (params.get('mode') || '').split(/[?&]/)[0] || 'one_time';
   const isSubscription = mode === 'subscription';
   const isApprovedParam = status === 'approved';
   const isPendingParam = status === 'pending' || status === 'in_process';
