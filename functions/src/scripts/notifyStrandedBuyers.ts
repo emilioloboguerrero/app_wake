@@ -23,6 +23,7 @@ interface Args {
   course: string;
   send: boolean;
   limit: number | null;
+  exclude: Set<string>;
 }
 
 interface Buyer {
@@ -34,6 +35,7 @@ function parseArgs(argv: string[]): Args {
   let course = "";
   let send = false;
   let limit: number | null = null;
+  const exclude = new Set<string>();
   for (const raw of argv.slice(2)) {
     if (raw === "--send") {
       send = true;
@@ -42,9 +44,14 @@ function parseArgs(argv: string[]): Args {
     } else if (raw.startsWith("--limit=")) {
       const n = parseInt(raw.slice("--limit=".length), 10);
       if (!Number.isNaN(n) && n > 0) limit = n;
+    } else if (raw.startsWith("--exclude=")) {
+      for (const e of raw.slice("--exclude=".length).split(",")) {
+        const norm = e.trim().toLowerCase();
+        if (norm) exclude.add(norm);
+      }
     }
   }
-  return {course, send, limit};
+  return {course, send, limit, exclude};
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -115,9 +122,21 @@ async function resolveStranded(buyer: Buyer): Promise<{stranded: boolean; email:
     const rec = await admin.auth().getUser(buyer.uid);
     if (!rec.metadata.lastSignInTime) stranded = true;
     if (!EMAIL_RE.test(email) && rec.email) email = rec.email.trim().toLowerCase();
-  } catch {
-    // No Auth user at all → certainly never signed in.
-    stranded = true;
+  } catch (err) {
+    // ONLY a genuine "no such Auth user" means never-signed-in. Any other Auth
+    // error (API unreachable, permission/quota — e.g. running under user ADC
+    // without a service account) must abort the run, never be read as stranded:
+    // that once flagged every buyer and emailed already-active users.
+    const code = (err as {code?: string})?.code;
+    if (code === "auth/user-not-found") {
+      stranded = true;
+    } else {
+      throw new Error(
+        `Firebase Auth lookup failed for ${buyer.uid} (${code || (err as Error).message}). ` +
+        "Aborting so an Auth outage can't mass-email buyers. Run with a service " +
+        "account: GOOGLE_APPLICATION_CREDENTIALS=/path/sa.json",
+      );
+    }
   }
   return {stranded, email};
 }
@@ -149,6 +168,10 @@ async function main(): Promise<void> {
     if (!stranded) continue;
     if (!EMAIL_RE.test(email)) {
       console.warn(`  skip ${buyer.uid}: no usable email`);
+      continue;
+    }
+    if (args.exclude.has(email)) {
+      console.log(`  exclude ${email} (${buyer.uid})`);
       continue;
     }
     recipients.push({uid: buyer.uid, email});
