@@ -8,8 +8,10 @@ name: Correo a compradores que no han entrado
 # el input "send" en SEND (en mayúsculas). Ejecútalo desde la pestaña Actions.
 #
 # Requiere secretos del repo:
-#   FIREBASE_SERVICE_ACCOUNT  -> JSON de una service account de wolf-20b8b con
-#                                lectura de Firestore + Auth.
+#   OUTREACH_SERVICE_ACCOUNT  -> JSON de la SA wake-ci de wolf-20b8b (mínimo
+#                                privilegio: roles/datastore.user +
+#                                roles/firebaseauth.admin). Dedicada a este
+#                                outreach; NO reutiliza la SA de deploy.
 #   RESEND_API_KEY            -> API key de Resend de producción (solo para --send).
 on:
   workflow_dispatch:
@@ -45,7 +47,7 @@ jobs:
       - name: Escribir la service account
         run: printf '%s' "$SA_JSON" > "$RUNNER_TEMP/sa.json"
         env:
-          SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SA_JSON: ${{ secrets.OUTREACH_SERVICE_ACCOUNT }}
 
       - name: Ejecutar outreach
         working-directory: functions
