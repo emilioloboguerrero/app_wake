@@ -9,6 +9,10 @@ import {Resend} from "resend";
 const APP_BASE = "https://wakelab.co/app";
 const SUPPORT_EMAIL = "soporte@wakelab.co";
 const FROM = "Wake <hola@wakelab.co>";
+// wakelab.co has no MX record (it can't receive mail), so replies to FROM would
+// bounce. Route replies to a monitored inbox until inbound forwarding
+// (hola@/soporte@ -> this inbox) is set up at the DNS host.
+const REPLY_TO = "emilioloboguerrero@gmail.com";
 
 interface SendArgs {
   to: string;
@@ -24,7 +28,7 @@ async function sendEmail({to, subject, html}: SendArgs): Promise<boolean> {
   }
   try {
     const resend = new Resend(apiKey);
-    const {error} = await resend.emails.send({from: FROM, to, subject, html});
+    const {error} = await resend.emails.send({from: FROM, replyTo: REPLY_TO, to, subject, html});
     if (error) {
       functions.logger.error("purchase email Resend error", {error, to: redact(to), subject});
       return false;

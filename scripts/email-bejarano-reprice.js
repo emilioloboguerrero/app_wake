@@ -28,6 +28,7 @@ const ONLY = arg('only');
 const TO_OVERRIDE = arg('to-override');
 
 const FROM = 'Felipe Bejarano <hola@wakelab.co>';
+const REPLY_TO = 'emilioloboguerrero@gmail.com'; // wakelab.co has no MX; route replies to a real inbox
 const SUPPORT = 'soporte@wakelab.co';
 const APP_URL = 'https://wakelab.co/app';
 
@@ -96,7 +97,7 @@ async function main() {
     const { subject, html } = buildEmail(row);
     console.log(`  ${SEND ? 'SEND' : 'WOULD SEND'} -> ${to}  |  ${subject}  (${row.course_title}/${row.provider})`);
     if (!SEND) continue;
-    const { error } = await resend.emails.send({ from: FROM, to, subject, html });
+    const { error } = await resend.emails.send({ from: FROM, replyTo: REPLY_TO, to, subject, html });
     if (error) console.error(`    Resend error: ${JSON.stringify(error)}`);
     else { sent++; console.log('    sent'); }
   }
