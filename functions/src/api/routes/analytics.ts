@@ -6,7 +6,7 @@ import {loadCreatorOwnedCourseIds} from "../middleware/securityHelpers.js";
 import {WakeApiServerError} from "../errors.js";
 import {isProgramSnapshot, resolveProgramDay, programHasAnyMacroTarget} from "../services/nutritionProgramResolver.js";
 import {estimateProviderFee} from "../services/paymentLedger.js";
-import {isTestSale} from "../services/testData.js";
+import {isTestSale, TEST_CREATOR_IDS, TEST_COURSE_IDS} from "../services/testData.js";
 
 const router = Router();
 const db = admin.firestore();
@@ -1219,7 +1219,9 @@ router.get("/analytics/admin/platform", async (req, res) => {
       return;
     }
     const meta = courseMeta[cid];
-    if (!meta || isTestSale(meta.creatorId, cid)) return;
+    // Exclude test COURSES and test CREATOR accounts — but NOT via the buyer
+    // TEST_USER_IDS (that set includes real creators who self-tested as buyers).
+    if (!meta || TEST_CREATOR_IDS.has(meta.creatorId) || TEST_COURSE_IDS.has(cid)) return;
     const progs = (creatorAgg[meta.creatorId] ??= {});
     const pr = (progs[cid] ??= {courseId: cid, title: meta.title, revenueCOP: 0, sales: 0, active: activeByCourse[cid] ?? 0});
     pr.revenueCOP += amt;

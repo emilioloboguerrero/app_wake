@@ -23,6 +23,15 @@ export const TEST_USER_IDS = new Set<string>([
   "Iv9LRuqDcXN5t1DkRmpkgji2bC32", // sebastianlunaperdomo@gmail.com (Método 2000 test)
 ]);
 
+// Test CREATOR accounts — their whole footprint is test. NOT the same as
+// TEST_USER_IDS: that set includes real creators (e.g. fbejaranofit / Bejarano)
+// who only self-tested as BUYERS. Use this set to exclude test creators from the
+// admin panel; never filter creators by TEST_USER_IDS (it would drop Bejarano).
+export const TEST_CREATOR_IDS = new Set<string>([
+  "bUCvwdPYolPe6i8JuCaY5w2PcB53", // test@gmail.com (Test API User)
+  "XQ9NDAngzAPEIwPMjDAX8e6xYa72", // prueba@gmail.com (Simon)
+]);
+
 // Courses that only exist for testing (not sold). Excluded wholesale.
 export const TEST_COURSE_IDS = new Set<string>([
   "80DynSiQ7txL8tWbeGx1", // "general prueba"
