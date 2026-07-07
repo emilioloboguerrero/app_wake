@@ -30,6 +30,7 @@ import {
   sendChargeReceiptEmail,
   sendTrialActivatedEmail,
   sendCancellationEmail,
+  sendCreatorSaleNotification,
 } from "../services/purchaseEmails.js";
 
 const router = Router();
@@ -1769,6 +1770,33 @@ router.post("/payments/webhook", async (req: Request, res) => {
             });
           }
         }
+
+        // Notify each program's creator of the bundle sale. Group by creator so
+        // a coach with several programs in the bundle gets one email, not N.
+        if (amount && amount > 0) {
+          const bundleSaleType: "renewal" | "subscription" | "one_time" =
+            isSubscription ? (isBundleRenewal ? "renewal" : "subscription") : "one_time";
+          const buyerName =
+            ((userDoc.data() as Record<string, unknown> | undefined)?.displayName as string) ||
+            ((userDoc.data() as Record<string, unknown> | undefined)?.name as string) || null;
+          const notifiedCreators = new Set<string>();
+          for (const cid of bundleResult.courseIdsGranted) {
+            const cSnap = await db.collection("courses").doc(cid).get();
+            const bundleCreatorId = cSnap.data()?.creator_id as string | undefined;
+            if (!bundleCreatorId || notifiedCreators.has(bundleCreatorId)) continue;
+            notifiedCreators.add(bundleCreatorId);
+            await sendCreatorSaleNotification({
+              creatorId: bundleCreatorId,
+              buyerId: userId,
+              programTitle: bundleResult.bundleTitle,
+              amount,
+              currencyId: currency,
+              buyerEmail: recipient,
+              buyerName,
+              saleType: bundleSaleType,
+            });
+          }
+        }
       } catch (emailErr) {
         functions.logger.warn("Bundle email send failed (non-blocking)", {
           userId, bundleId, error: String(emailErr),
@@ -1940,6 +1968,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
           chargeDate: paymentData.date_approved || paymentData.date_created || new Date().toISOString(),
           nextBillingDate: refreshedNextBilling ?? null,
         });
+        if (courseDetails.creator_id) {
+          await sendCreatorSaleNotification({
+            creatorId: courseDetails.creator_id as string,
+            buyerId: userId,
+            programTitle: courseTitle,
+            amount: finalAmount,
+            currencyId: finalCurrency,
+            buyerEmail: recipient,
+            buyerName: (userData?.displayName as string) || (userData?.name as string) || null,
+            saleType: "renewal",
+          });
+        }
       }
     } catch (emailErr) {
       functions.logger.warn("Renewal email send failed (non-blocking)", {
@@ -2056,6 +2096,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
             transactionAmount: amount,
             currencyId: currency,
           });
+          if (courseDetails.creator_id) {
+            await sendCreatorSaleNotification({
+              creatorId: courseDetails.creator_id as string,
+              buyerId: userId,
+              programTitle: courseTitle,
+              amount,
+              currencyId: currency,
+              buyerEmail: recipient,
+              buyerName: (userData?.displayName as string) || (userData?.name as string) || null,
+              saleType: "subscription",
+            });
+          }
         }
       } else {
         await sendOneTimePurchaseEmail({
@@ -2066,6 +2118,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
           currencyId: currency,
           accessUntil: expirationDate,
         });
+        if (courseDetails.creator_id) {
+          await sendCreatorSaleNotification({
+            creatorId: courseDetails.creator_id as string,
+            buyerId: userId,
+            programTitle: courseTitle,
+            amount,
+            currencyId: currency,
+            buyerEmail: recipient,
+            buyerName: (userData?.displayName as string) || (userData?.name as string) || null,
+            saleType: "one_time",
+          });
+        }
       }
     }
   } catch (emailErr) {

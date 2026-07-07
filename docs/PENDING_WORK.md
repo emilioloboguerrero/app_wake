@@ -1,6 +1,6 @@
 # Wake — Pending Work
 
-Last updated: 2026-07-06. Single source of truth for all unimplemented, partial, and planned work.
+Last updated: 2026-07-07. Single source of truth for all unimplemented, partial, and planned work.
 
 ---
 
@@ -496,6 +496,17 @@ feedback_board/{itemId}/votes/{userId}
 ---
 
 ## Platform
+
+### Frontend load-time performance — code-splitting `IN PROGRESS`
+
+Pase de tiempo-de-carga sobre las tres apps web (2026-07-06/07). Detalle completo y gotchas de deploy: memoria `project_landing_perf_codesplit_20260707`.
+
+- **Landing `COMPLETED` (live):** todas las pantallas de ruta en `apps/landing/src/App.jsx` → `lazy()` + `Suspense`; PostHog con import dinámico + init en idle + cola de eventos; `firebase/auth` diferido fuera del Header; 11 imágenes de `landing_sections` recomprimidas a WebP. Entry **830 → 189 KB raw / 225 → 53 KB brotli**.
+- **Creator-dashboard `COMPLETED` (live):** las ~28 pantallas de `apps/creator-dashboard/src/App.jsx` (antes 0 `lazy()`) → `lazy()` + un `Suspense` sobre `<Routes>`. Entry **2895 → 652 KB raw / 186 KB brotli**; recharts/react-query/dnd-kit fuera del entry. Login arranca limpio.
+- **PWA (`apps/pwa`, `/app`) `NOT STARTED`:** bundle único de Metro de **6.9 MB** (+1.5 MB pdf.js, ya lazy en archivos aparte). No hay win rápido/seguro: los levers reales son (a) crear variantes `.web.jsx` con recharts para que `react-native-chart-kit` + `react-native-svg` salgan del bundle web — 4 componentes sin `.web`: `ExerciseProgressChart`, `MuscleVolumeStats`, `PRHistoryChart`, `VolumeChart`; y/o (b) code-splitting de rutas en Metro. Ambos requieren pruebas de paridad nativa → esfuerzo dedicado. `react-native-gifted-charts` es dep muerta (0 usos).
+- **Videos de `app_resources` (homepage) `NOT STARTED`:** la colección referencia **~675 MB de videos `.mov`** (QuickTime, 40–113 MB c/u) + PNGs de 2–3 MB. Probablemente el mayor problema de carga de la homepage, pero es migración de datos/transcoding (no rápido/seguro). Verificar primero si realmente se cargan en la home.
+
+---
 
 ### 12. Platform Mapping & Documentation Refresh `NOT STARTED`
 

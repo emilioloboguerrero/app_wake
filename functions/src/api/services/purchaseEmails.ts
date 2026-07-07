@@ -338,3 +338,123 @@ export async function sendOneTimePurchaseEmail(args: {
     html: wrapTemplate({heading: "Tu programa está listo", body, ctaLabel: "Abrir mi programa", ctaUrl: cta}),
   });
 }
+
+// ─── Creator sale notification ──────────────────────────────────────────────
+// Sent to the program's CREATOR (coach) whenever one of their programs sells or
+// a subscription renews. Purely informational — no magic-link CTA (the coach
+// already has a dashboard account), so it uses its own template rather than
+// wrapTemplate. Fired from the same webhook sites as the buyer emails, so it
+// inherits their processed_payments idempotency (no double-sends on retries).
+
+const CREATOR_DASHBOARD_URL = "https://wakelab.co/creators";
+
+type CreatorSaleType = "one_time" | "subscription" | "renewal";
+
+const SALE_TYPE_LABEL: Record<CreatorSaleType, string> = {
+  one_time: "Compra única",
+  subscription: "Suscripción",
+  renewal: "Renovación",
+};
+
+// COP has no minor units; USD (Polar) does. Format by the actual currency so a
+// coach selling internationally sees "$6.00 USD", not "$6 COP".
+function formatMoney(amount: number, currency: string): string {
+  const cur = (currency || "COP").toUpperCase();
+  try {
+    return new Intl.NumberFormat("es-CO", {
+      style: "currency", currency: cur, minimumFractionDigits: cur === "COP" ? 0 : 2,
+    }).format(amount);
+  } catch {
+    return `${amount} ${cur}`;
+  }
+}
+
+function creatorInfoRow(label: string, value: string): string {
+  return `
+    <tr>
+      <td style="padding:11px 0;font-size:13px;color:rgba(255,255,255,0.5);vertical-align:top;">${escapeHtml(label)}</td>
+      <td style="padding:11px 0;font-size:14px;color:#fff;text-align:right;vertical-align:top;">${value}</td>
+    </tr>`;
+}
+
+export async function sendCreatorSaleNotification(args: {
+  creatorId: string;
+  buyerId?: string | null;
+  programTitle: string;
+  amount: number;
+  currencyId: string;
+  buyerEmail?: string | null;
+  buyerName?: string | null;
+  saleType: CreatorSaleType;
+}): Promise<boolean> {
+  // Don't ping a coach about their own test purchase.
+  if (args.buyerId && args.buyerId === args.creatorId) return false;
+
+  let creatorEmail: string | undefined;
+  let creatorName = "";
+  try {
+    const snap = await admin.firestore().collection("users").doc(args.creatorId).get();
+    const data = snap.data() ?? {};
+    creatorEmail = typeof data.email === "string" ? data.email : undefined;
+    creatorName =
+      (typeof data.displayName === "string" && data.displayName) ||
+      (typeof data.name === "string" && data.name) || "";
+  } catch (err) {
+    functions.logger.warn("creator sale notification: creator lookup failed", {
+      creatorId: args.creatorId, error: String(err),
+    });
+    return false;
+  }
+  if (!creatorEmail) {
+    functions.logger.warn("creator sale notification: creator has no email", {creatorId: args.creatorId});
+    return false;
+  }
+
+  const title = escapeHtml(args.programTitle || "tu programa");
+  const buyerShort = args.buyerName ?
+    escapeHtml(args.buyerName) :
+    escapeHtml(args.buyerEmail || "Un cliente");
+  const buyerFull = args.buyerName && args.buyerEmail ?
+    `${escapeHtml(args.buyerName)} · ${escapeHtml(args.buyerEmail)}` :
+    escapeHtml(args.buyerName || args.buyerEmail || "—");
+
+  const isRenewal = args.saleType === "renewal";
+  const heading = isRenewal ? "Se renovó una suscripción" : "Nueva venta";
+  const intro = isRenewal ?
+    `Se renovó la suscripción de <strong>${buyerShort}</strong> a <strong>${title}</strong>.` :
+    args.saleType === "subscription" ?
+      `<strong>${buyerShort}</strong> se suscribió a <strong>${title}</strong>.` :
+      `<strong>${buyerShort}</strong> compró <strong>${title}</strong>.`;
+
+  const rows =
+    creatorInfoRow("Programa", title) +
+    creatorInfoRow("Monto", `<strong>${formatMoney(args.amount, args.currencyId)}</strong>`) +
+    creatorInfoRow("Tipo", SALE_TYPE_LABEL[args.saleType]) +
+    creatorInfoRow("Comprador", buyerFull) +
+    creatorInfoRow("Fecha", formatDate(new Date().toISOString()));
+
+  const greeting = creatorName ? `Hola ${escapeHtml(creatorName)}. ` : "";
+  const html = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>${heading}</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a1a;color:#fff;padding:24px;margin:0;">
+  <div style="max-width:480px;margin:0 auto;">
+    <div style="font-size:13px;letter-spacing:1px;color:rgba(255,255,255,0.5);text-transform:uppercase;margin-bottom:32px;">Wake</div>
+    <h1 style="font-size:24px;font-weight:600;margin:0 0 16px;letter-spacing:-0.3px;">${heading}</h1>
+    <p style="font-size:15px;line-height:1.55;color:rgba(255,255,255,0.8);margin:0 0 24px;">${intro}</p>
+    <table style="width:100%;border-collapse:collapse;border-top:1px solid rgba(255,255,255,0.12);border-bottom:1px solid rgba(255,255,255,0.12);margin:0 0 28px;">
+      ${rows}
+    </table>
+    <a href="${CREATOR_DASHBOARD_URL}" style="display:inline-block;background:#fff;color:#1a1a1a;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;text-decoration:none;">Ver en tu panel</a>
+    <p style="font-size:12px;color:rgba(255,255,255,0.35);margin:32px 0 0;line-height:1.5;">
+      ${greeting}Recibís este correo porque sos el creador de este programa en Wake.
+      ¿Necesitás ayuda? Escribinos a <a href="mailto:${SUPPORT_EMAIL}" style="color:rgba(255,255,255,0.6);">${SUPPORT_EMAIL}</a>.
+    </p>
+  </div>
+</body></html>`;
+
+  return sendEmail({
+    to: creatorEmail,
+    subject: sanitizeSubject(`${isRenewal ? "Renovación" : "Nueva venta"} — ${args.programTitle}`),
+    html,
+  });
+}

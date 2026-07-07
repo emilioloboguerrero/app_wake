@@ -36,6 +36,7 @@ import {
   sendSubscriptionStartedEmail,
   sendTrialActivatedEmail,
   sendCancellationEmail,
+  sendCreatorSaleNotification,
 } from "../services/purchaseEmails.js";
 
 const router = Router();
@@ -504,6 +505,29 @@ async function handleOrderPaid(order: Record<string, unknown>): Promise<void> {
   } catch (emailErr) {
     functions.logger.warn("polar.webhook: purchase email failed (non-blocking)", {
       userId: meta.userId, courseId: meta.courseId, error: String(emailErr),
+    });
+  }
+
+  // Best-effort creator notification: fires on initial, one-time AND renewal
+  // (unlike the buyer email, which skips renewal cycles). Trials never reach
+  // here — handleTrialActivated has no charge.
+  try {
+    const creatorId = (course.creator_id as string) ?? null;
+    if (creatorId && amountMajor && amountMajor > 0) {
+      await sendCreatorSaleNotification({
+        creatorId,
+        buyerId: meta.userId,
+        programTitle: typeof course.title === "string" ? course.title : "tu programa",
+        amount: amountMajor,
+        currencyId: currency,
+        buyerEmail: recipientEmail(userData),
+        buyerName: (userData?.displayName as string) || (userData?.name as string) || null,
+        saleType: isSubscription ? (isRenewal ? "renewal" : "subscription") : "one_time",
+      });
+    }
+  } catch (creatorErr) {
+    functions.logger.warn("polar.webhook: creator sale notification failed (non-blocking)", {
+      userId: meta.userId, courseId: meta.courseId, error: String(creatorErr),
     });
   }
 }
