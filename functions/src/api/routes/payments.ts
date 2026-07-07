@@ -1383,13 +1383,18 @@ router.post("/payments/webhook", async (req: Request, res) => {
     date_created?: string;
     transaction_amount?: number;
     currency_id?: string;
+    description?: string;
     fee_details?: unknown;
     payer?: { email?: string; id?: string };
     preapproval?: { id?: string; external_reference?: string };
     payment?: { status?: string };
     // Plan-based subscription charges arrive on the `payment` topic with
     // point_of_interaction.type === "SUBSCRIPTIONS" and no external_reference.
-    point_of_interaction?: { type?: string };
+    // The preapproval id is hidden here (not at top level) on these charges.
+    point_of_interaction?: {
+      type?: string;
+      transaction_data?: { subscription_id?: string };
+    };
   }
 
   let paymentData: MercadoPagoPaymentData | null = null;
@@ -1527,12 +1532,25 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   let externalReference: string | null = paymentData.external_reference ?? null;
   if (!externalReference) {
+    // Plan-based subscription charges hide the preapproval id inside
+    // point_of_interaction (not at top level). Surface it so the grant writes a
+    // proper subscription doc — the manage screen's cancel button + billing
+    // dates read from it.
+    const planSubId = paymentData.point_of_interaction?.transaction_data?.subscription_id;
+    if (!paymentData.subscription_id && !paymentData.preapproval_id && planSubId) {
+      paymentData.subscription_id = planSubId;
+    }
     // Pay-first plan subscription charge: the `payment` event carries the real
     // payer email but no course link. Recover the course from the pending record
-    // the preapproval webhook stashed (keyed by payer id), then grant.
+    // the preapproval webhook stashed (keyed by payer id), then grant + create
+    // the subscription doc.
     externalReference = await resolvePlanPaymentReference({
       payerEmail: paymentData.payer?.email,
       payerId: paymentData.payer?.id,
+      subscriptionId: paymentData.subscription_id ?? null,
+      transactionAmount: paymentData.transaction_amount ?? null,
+      currency: paymentData.currency_id ?? null,
+      courseTitle: typeof paymentData.description === "string" ? paymentData.description : null,
     });
     // Clearly a subscription charge we couldn't resolve yet — the preapproval
     // webhook that stashes the pending record may not have landed. 500 so MP

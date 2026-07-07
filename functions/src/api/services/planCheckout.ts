@@ -16,7 +16,7 @@
 
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
-import {PreApprovalPlan} from "mercadopago";
+import {PreApprovalPlan, PreApproval} from "mercadopago";
 import {db, FieldValue} from "../firestore.js";
 import {getClient, buildExternalReference, EMAIL_RE} from "./paymentHelpers.js";
 
@@ -169,7 +169,7 @@ async function lookupCourseByPlan(
 // so the existing webhook grant path proceeds unchanged.
 async function synthesizeRefForCourse(
   courseId: string, creatorId: string | null, payerEmail: string
-): Promise<string> {
+): Promise<{userId: string; ref: string}> {
   const {userId, displayName} = await findOrCreateUserByEmail(payerEmail);
 
   const userRef = db.collection("users").doc(userId);
@@ -192,7 +192,73 @@ async function synthesizeRefForCourse(
   }
   await userRef.set(seed, {merge: true});
 
-  return buildExternalReference(userId, courseId, "sub");
+  return {userId, ref: buildExternalReference(userId, courseId, "sub")};
+}
+
+// Materialize the local subscription doc for a pay-first plan subscription.
+// The normal (email-first) flow writes this rich doc at checkout time, which
+// pay-first skips — without it the manage screen has no cancel button, next
+// billing date, or status. Fetches the preapproval for the accurate next-charge
+// date + amount (the `payment` payload doesn't carry them); falls back to +30d.
+async function ensurePlanSubscriptionDoc(args: {
+  userId: string;
+  courseId: string;
+  subscriptionId: string;
+  courseTitle: string | null;
+  payerEmail: string;
+  transactionAmount: number | null;
+  currency: string | null;
+}): Promise<void> {
+  const subRef = db.collection("users").doc(args.userId)
+    .collection("subscriptions").doc(args.subscriptionId);
+  const existing = await subRef.get();
+
+  let nextBilling: string | null = null;
+  let amount = args.transactionAmount;
+  let currency = args.currency;
+  try {
+    const client = getClient(process.env.MERCADOPAGO_ACCESS_TOKEN ?? "");
+    const pre = await new PreApproval(client).get({id: args.subscriptionId}) as unknown as {
+      next_payment_date?: string | null;
+      auto_recurring?: {
+        next_payment_date?: string | null;
+        transaction_amount?: number | null;
+        currency_id?: string | null;
+      };
+    };
+    nextBilling = pre?.next_payment_date ?? pre?.auto_recurring?.next_payment_date ?? null;
+    if (typeof pre?.auto_recurring?.transaction_amount === "number") {
+      amount = pre.auto_recurring.transaction_amount;
+    }
+    if (typeof pre?.auto_recurring?.currency_id === "string") {
+      currency = pre.auto_recurring.currency_id;
+    }
+  } catch (err) {
+    functions.logger.warn("ensurePlanSubscriptionDoc: preapproval fetch failed", {
+      subscriptionId: args.subscriptionId, error: String(err),
+    });
+  }
+  if (!nextBilling) {
+    nextBilling = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  await subRef.set({
+    subscription_id: args.subscriptionId,
+    user_id: args.userId,
+    userId: args.userId,
+    course_id: args.courseId,
+    course_title: args.courseTitle ?? "Suscripción",
+    status: "authorized",
+    payer_email: args.payerEmail,
+    transaction_amount: amount,
+    currency_id: currency,
+    access_duration: "monthly",
+    management_url:
+      `https://www.mercadopago.com.co/subscriptions/management?preapproval_id=${args.subscriptionId}`,
+    next_billing_date: nextBilling,
+    ...(existing.exists ? {} : {created_at: FieldValue.serverTimestamp()}),
+    updated_at: FieldValue.serverTimestamp(),
+  }, {merge: true});
 }
 
 // Stash a pending plan-subscription keyed by MP payer id. MP's
@@ -235,7 +301,7 @@ export async function resolvePlanPreapprovalReference(args: {
     typeof args.payerEmail === "string" ? args.payerEmail.trim().toLowerCase() : null;
   if (payerEmail && EMAIL_RE.test(payerEmail)) {
     functions.logger.info("plan preapproval: resolved with email", {planId, courseId: mapped.courseId});
-    return synthesizeRefForCourse(mapped.courseId, mapped.creatorId, payerEmail);
+    return (await synthesizeRefForCourse(mapped.courseId, mapped.creatorId, payerEmail)).ref;
   }
   functions.logger.info("plan preapproval: no email yet, pending stashed", {planId, payerId});
   return null;
@@ -247,6 +313,10 @@ export async function resolvePlanPreapprovalReference(args: {
 export async function resolvePlanPaymentReference(args: {
   payerEmail: string | null | undefined;
   payerId: string | number | null | undefined;
+  subscriptionId?: string | null;
+  transactionAmount?: number | null;
+  currency?: string | null;
+  courseTitle?: string | null;
 }): Promise<string | null> {
   const payerEmail =
     typeof args.payerEmail === "string" ? args.payerEmail.trim().toLowerCase() : null;
@@ -261,6 +331,22 @@ export async function resolvePlanPaymentReference(args: {
   const courseId = pendingDoc.data()?.course_id as string | undefined;
   const creatorId = (pendingDoc.data()?.creator_id as string | undefined) ?? null;
   if (!courseId) return null;
-  functions.logger.info("plan payment: resolved from pending", {payerId, courseId});
-  return synthesizeRefForCourse(courseId, creatorId, payerEmail);
+
+  const {userId, ref} = await synthesizeRefForCourse(courseId, creatorId, payerEmail);
+  functions.logger.info("plan payment: resolved from pending", {payerId, courseId, userId});
+
+  // Create the subscription doc the manage screen reads (cancel + billing).
+  const subscriptionId = typeof args.subscriptionId === "string" ? args.subscriptionId : null;
+  if (subscriptionId) {
+    await ensurePlanSubscriptionDoc({
+      userId,
+      courseId,
+      subscriptionId,
+      courseTitle: args.courseTitle ?? null,
+      payerEmail,
+      transactionAmount: args.transactionAmount ?? null,
+      currency: args.currency ?? null,
+    });
+  }
+  return ref;
 }
