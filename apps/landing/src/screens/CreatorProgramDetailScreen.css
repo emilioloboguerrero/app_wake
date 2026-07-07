@@ -1240,14 +1240,14 @@
 }
 
 /* ── Launch-price badge ────────────────────────────────────────────────── */
-/* Anchors the price against the compareAtPrice: "Precio de lanzamiento −47%". */
+/* Subtle "this is a launch price" chip, paired with the struck-through price in
+   the CTA. No percentage — the raw discount can be large/volatile. */
 .cpd-save-badge {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   align-self: flex-start;
   margin-bottom: 12px;
-  padding: 6px 6px 6px 13px;
+  padding: 6px 13px;
   border-radius: 999px;
   background: var(--cpd-accent-soft);
   border: 1px solid var(--cpd-accent-line);
@@ -1259,16 +1259,6 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.9);
-}
-
-.cpd-save-badge-pct {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.01em;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--cpd-accent);
-  color: var(--cpd-accent-text);
 }
 
 /* ── Trust line ────────────────────────────────────────────────────────── */

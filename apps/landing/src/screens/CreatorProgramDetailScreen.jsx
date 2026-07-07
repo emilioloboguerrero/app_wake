@@ -1095,15 +1095,16 @@ export default function CreatorProgramDetailScreen() {
 
   const disciplineLabel = prettyDiscipline(program.discipline);
 
-  // Launch-price badge: percent saved vs the compareAtPrice. compareAtPrice is
-  // COP, so only surface it on the COP (MercadoPago) provider.
+  // Launch-price badge: shown when the program carries a compareAtPrice above
+  // what's being charged. compareAtPrice is COP, so only anchor on the COP
+  // (MercadoPago) provider. The struck-through price already lives in the CTA;
+  // the badge is a subtle "this is a launch price" cue, no percentage — the raw
+  // discount can be large/volatile mid-repricing and a hard number reads spammy.
   const activeCopPrice = hasSubscription ? program.subscriptionPrice : program.price;
-  const savingsPct = (provider !== 'polar'
+  const hasLaunchDiscount = provider !== 'polar'
     && typeof program.compareAtPrice === 'number'
     && typeof activeCopPrice === 'number'
-    && program.compareAtPrice > activeCopPrice)
-    ? Math.round((1 - activeCopPrice / program.compareAtPrice) * 100)
-    : null;
+    && program.compareAtPrice > activeCopPrice;
 
   // Reassurance line under a subscription CTA.
   const showCancelAnytime = provider === 'polar' ? polarHasSub : hasSubscription;
@@ -1300,10 +1301,9 @@ export default function CreatorProgramDetailScreen() {
             // MP rejection. The alt-email form below is the only valid next
             // step until it succeeds or the user resets the flow.
             <>
-              {savingsPct ? (
+              {hasLaunchDiscount ? (
                 <div className="cpd-save-badge">
                   <span className="cpd-save-badge-tag">Precio de lanzamiento</span>
-                  <span className="cpd-save-badge-pct">−{savingsPct}%</span>
                 </div>
               ) : null}
               {provider === 'polar' ? (
