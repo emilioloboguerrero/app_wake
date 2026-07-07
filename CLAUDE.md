@@ -220,6 +220,10 @@ All file uploads use this flow — files never pass through a Cloud Function:
 
 Image compression required before upload: profile pictures ≤ 200KB, progress photos ≤ 500KB.
 
+### Email (Resend send + ImprovMX receive)
+- **Sending:** all transactional email via **Resend** from `Wake <hola@wakelab.co>` (`functions/src/api/services/purchaseEmails.ts`, `RESEND_API_KEY` secret). Every Wake email carries `Reply-To: emilioloboguerrero@gmail.com` (const `REPLY_TO`) so replies land in Gmail.
+- **Receiving:** `wakelab.co` receives via **ImprovMX** forwarding — apex MX `mx1/mx2.improvmx.com` → aliases `hola@`/`soporte@`/catch-all `*@wakelab.co` → Gmail. DNS at GoDaddy (API key in Secret Manager `GODADDY_API_SSO_KEY`). Details: memory `reference_wakelab_email_infra`.
+
 ---
 
 ## Code Architecture

@@ -3,7 +3,7 @@
 **Creator:** Felipe Bejarano (UID `yMqKOXBcVARa6vjU7wImf3Tp85J2`)
 **Library:** `exercises_library/jeoVyzhUrBeJofT62MOe` (117 exercises, 46 prior sessions)
 **Course:** `courses/{auto-id}`, `deliveryType: "general"`, `block_cadence: "monthly_first_monday"`
-**Subscription:** 79.000 COP / mes via MercadoPago PreApproval
+**Subscription:** 19.000 COP / mes (MercadoPago PreApproval) · $6 USD/mes internacional (Polar). Repriced 2026-07-06 from 79.000/$25 — see [project_bejarano_reprice_19k_20260706](../.claude/projects/-Users-emilioloboguerrero-app/memory/project_bejarano_reprice_19k_20260706.md).
 **Architecture:** monthly drops, cohort-synced first-Monday cron, 30-day rolling per-user access. See [project_monthly_drops](../.claude/projects/-Users-emilioloboguerrero-app/memory/project_monthly_drops.md).
 
 ---

@@ -4,7 +4,20 @@ Companion to the design spec: `docs/superpowers/specs/2026-07-01-polar-internati
 
 ## TL;DR
 
-Phase 1 of the Polar (merchant-of-record) integration is **LIVE IN PRODUCTION with real money** (`wolf-20b8b`, `POLAR_SERVER=production`, live secrets, Polar org approved). MercadoPago (Colombia) is untouched. International USD pricing is now **ON BY DEFAULT for every published course** (USD auto-derived from the COP price), the public buy page surfaces the COP↔USD toggle on both the hero and the landing-section CTA block, and portal-side cancellations are reflected via the `subscription.updated` webhook. The full E2E purchase path (checkout → grant → subscription → ledger → idempotency) and the cancel/re-activate webhook path are **verified live**. See "2026-07-03 update" below for the current state.
+Phase 1 of the Polar (merchant-of-record) integration is **LIVE IN PRODUCTION with real money** (`wolf-20b8b`, `POLAR_SERVER=production`, live secrets, Polar org approved). MercadoPago (Colombia) is untouched. International USD pricing is now **ON BY DEFAULT for every published course** (USD auto-derived from the COP price), the public buy page surfaces the COP↔USD toggle on both the hero and the landing-section CTA block, and portal-side cancellations are reflected via the `subscription.updated` webhook. The full E2E purchase path (checkout → grant → subscription → ledger → idempotency) and the cancel/re-activate webhook path are **verified live**. See the "2026-07-06 update" (latest) and "2026-07-03 update" below.
+
+---
+
+## 2026-07-06 update — Bejarano reprice to 19k/$6 + subscriber migration + email deliverability
+
+**Reprice (LIVE, `scripts/reprice-bejarano.js`).** Both Bejarano subscriptions dropped from **79.000 COP / $25 → 19.000 COP / $6**:
+- **Código ABS** `ezJWUr3wJvaeptIM5f86` → new Polar product `f9e0d0a0-e3f1-48f0-ada5-7bb138a24827` ($6/mo); old `1f10c144…` **archived**. (Was Polar-manual-pinned, so `price_usd` was set explicitly to 6; now `price_source_monthly:"auto"`.)
+- **Método Bejarano** `NTQIWMZBOxntwmUiXQZp` → new Polar product `6e9da373-ca88-48e6-af88-46fcf1b1143e` ($6/mo, auto-derived); old `330a1109…` **archived**.
+- These supersede the $25 prices/product-ids in the 2026-07-03 section below.
+
+**Existing subscribers migrated + refunded.** Changing `subscription_price` only affects NEW buyers — existing subs keep their amount (MP baked in the PreApproval; Polar on the old product). So all **6 real active subscribers** were migrated down + refunded the difference, verified live: 5 MP (`PreApproval.update` → 19000 + a 60.000 COP partial refund each) + 1 Polar (product switch via `subscriptions.update {product_id, proration_behavior:"next_period"}` → a `pending_update` at next renewal + a $19 partial refund). **Key mechanics:** a MP *partial* refund keeps the payment `status:"approved"`, so it does NOT trip the refund-revocation logic (`refunds.ts` keys on `status ∈ {refunded, charged_back}`) and fires NO webhook (ledger row written by the script); a Polar refund without `revoke_benefits` keeps access (`handleRefund`) and auto-ledgers. Reusable dry-run scripts: `scripts/{audit,reprice,migrate,email}-bejarano*.js`. Spec: `docs/superpowers/specs/2026-07-06-reprice-bejarano-programs-design.md`. Full detail: memory `project_bejarano_reprice_19k_20260706`.
+
+**Email deliverability fixed.** `wakelab.co` apex had **no MX** → replies to Wake emails (all sent from `hola@wakelab.co` via Resend) bounced. Fixed two ways: (1) **Reply-To** added to `purchaseEmails.ts` (`REPLY_TO = emilioloboguerrero@gmail.com`), deployed `functions:api`, so replies land in Gmail regardless of domain; (2) **inbound forwarding** via ImprovMX — apex MX `mx1/mx2.improvmx.com` (added at GoDaddy) → aliases `hola@`/`soporte@`/catch-all `*@wakelab.co` → Gmail. The `send.wakelab.co` MX (Resend/SES) and the SPF were left intact. Full detail: memory `reference_wakelab_email_infra`.
 
 ---
 
@@ -94,7 +107,7 @@ Key commits: `3d0aa0d` (core checkout/webhook/cancel/portal + PWA), `1d943c5` (a
 ## Código ABS (the program used for testing)
 
 - `courseId = ezJWUr3wJvaeptIM5f86`, **published**, `creator_id = yMqKOXBcVARa6vjU7wImf3Tp85J2`.
-- **$25/mo** — `polar.subscription_product_id = 1f10c144-9da8-40d6-91e0-2fb276151045` (charges $25.00). (Earlier sandbox/test products $20/$21/$4 — e.g. orphan `d14bd62f` — are superseded.)
+- **$6/mo / 19.000 COP** (repriced 2026-07-06) — `polar.subscription_product_id = f9e0d0a0-e3f1-48f0-ada5-7bb138a24827`. The prior `1f10c144…` ($25) is archived; earlier sandbox/test products $20/$21/$4 (e.g. orphan `d14bd62f`) are also superseded.
 
 ---
 
@@ -126,6 +139,6 @@ Wired `apps/landing/src/screens/CreatorProgramDetailScreen.jsx` (+ `.css`) for P
 - Landing `storefrontCheckoutService.js`: `startPolarCheckout({ courseId, paymentType })` — same transport as the MP storefront checkout.
 - Landing screen: provider selection via a timezone/locale heuristic default (`America/Bogota` or `es-CO` → COP; else → USD), clamped to available methods, with a COP↔USD toggle shown only when both exist; USD price display; Polar CTAs that skip the MP email step and redirect to `checkout_url`.
 
-**Verified live:** `GET /public/creators/bejaranofit/programs/ezJWUr3wJvaeptIM5f86` returns `polar:{priceUsdMonthly:21,hasSubscription:true}` alongside `subscriptionPrice:79000` (so Código ABS shows the toggle); `/payments/polar/checkout` 401s without auth; health 200.
+**Verified live:** `GET /public/creators/bejaranofit/programs/ezJWUr3wJvaeptIM5f86` returns `polar:{priceUsdMonthly:…,hasSubscription:true}` alongside the COP `subscriptionPrice` (so Código ABS shows the toggle); `/payments/polar/checkout` 401s without auth; health 200. *(Prices shown here were `21`/`79000` at the time; now `6`/`19000` after the 2026-07-06 reprice.)*
 
 **Remaining:** human E2E card test (a person completes the Polar checkout with `4242 4242 4242 4242` — the Stripe Payment Element needs a real browser) and confirms the webhook granted access in Firestore. Note: the heuristic keys off the BROWSER timezone/locale, not the account country — a Bogotá browser defaults to COP even for a non-CO account, so click "Pagar con tarjeta internacional (USD)" (or test from a non-Bogotá browser) to exercise the Polar path.
