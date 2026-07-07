@@ -142,6 +142,38 @@ function formatDate(iso: string): string {
   }
 }
 
+// Reusable "how to get in" block appended to every access-granting email.
+// The #1 support problem is buyers not knowing that Wake content lives inside
+// the installed PWA and that they must sign in with the SAME email they paid
+// with. Spell both out, right above the sign-in CTA, on every purchase email.
+// `email` is the buyer's address so we can name the exact inbox they must use.
+function accessInstructionsBlock(email: string): string {
+  const safeEmail = escapeHtml(email);
+  return `
+    <div style="border:1px solid rgba(255,255,255,0.14);border-radius:12px;padding:16px 18px;margin:0 0 24px;">
+      <p style="font-size:13px;letter-spacing:0.5px;color:rgba(255,255,255,0.5);text-transform:uppercase;margin:0 0 12px;">Cómo entrar a tu programa</p>
+      <p style="font-size:14px;line-height:1.55;color:rgba(255,255,255,0.8);margin:0 0 10px;">
+        <strong style="color:#fff;">1.</strong> Instala la app de Wake en tu teléfono.
+        En <strong>iPhone</strong>: abre <a href="${APP_BASE}" style="color:rgba(255,255,255,0.85);">wakelab.co/app</a> en Safari, toca <strong>Compartir</strong> y luego <strong>«Añadir a inicio»</strong>.
+        En <strong>Android</strong>: ábrela en Chrome y toca <strong>«Instalar app»</strong>.
+      </p>
+      <p style="font-size:14px;line-height:1.55;color:rgba(255,255,255,0.8);margin:0;">
+        <strong style="color:#fff;">2.</strong> Abre Wake e <strong>inicia sesión con el mismo correo con el que pagaste</strong>: <strong style="color:#fff;">${safeEmail}</strong>.
+        Todo tu contenido se ve desde la app.
+      </p>
+    </div>`;
+}
+
+// Minimal HTML-escape for values interpolated into email markup (buyer email).
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function wrapTemplate(args: {
   heading: string;
   body: string;
@@ -183,6 +215,7 @@ export async function sendTrialActivatedEmail(args: {
     <p style="margin:0 0 12px;">Empezó tu prueba gratuita de <strong>${args.programTitle}</strong>.</p>
     <p style="margin:0 0 12px;">Tenés acceso completo hasta el <strong>${formatDate(args.trialEndDate)}</strong>.
     Después se cobrarán <strong>${formatCOP(args.transactionAmount)} ${args.currencyId}/mes</strong> a tu tarjeta — podés cancelar antes desde la app sin costo.</p>
+    ${accessInstructionsBlock(args.to)}
   `;
   return sendEmail({
     to: args.to,
@@ -203,6 +236,7 @@ export async function sendSubscriptionStartedEmail(args: {
   const body = `
     <p style="margin:0 0 12px;">Tu suscripción a <strong>${args.programTitle}</strong> está activa.</p>
     <p style="margin:0 0 12px;">El próximo cobro será el <strong>${formatDate(args.nextBillingDate)}</strong> por <strong>${formatCOP(args.transactionAmount)} ${args.currencyId}</strong>.</p>
+    ${accessInstructionsBlock(args.to)}
   `;
   return sendEmail({
     to: args.to,
@@ -227,6 +261,7 @@ export async function sendChargeReceiptEmail(args: {
   const body = `
     <p style="margin:0 0 12px;">Cobramos <strong>${formatCOP(args.amount)} ${args.currencyId}</strong> por tu suscripción a <strong>${args.programTitle}</strong> el ${formatDate(args.chargeDate)}.</p>
     ${nextLine}
+    ${accessInstructionsBlock(args.to)}
   `;
   return sendEmail({
     to: args.to,
@@ -270,6 +305,7 @@ export async function sendOneTimePurchaseEmail(args: {
   const body = `
     <p style="margin:0 0 12px;">Tienes acceso a <strong>${args.programTitle}</strong>.</p>
     <p style="margin:0 0 12px;">Pagaste <strong>${formatCOP(args.amount)} ${args.currencyId}</strong>. Acceso válido hasta el <strong>${formatDate(args.accessUntil)}</strong>.</p>
+    ${accessInstructionsBlock(args.to)}
   `;
   return sendEmail({
     to: args.to,

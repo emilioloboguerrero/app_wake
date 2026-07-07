@@ -668,6 +668,17 @@ export default function InstallScreen() {
         </div>
       </div>
 
+      {/* Buyers arrive here after paying without knowing that content lives
+          inside the app or that they must reuse their purchase email. Spell
+          both out so the post-payment flow is consistent everywhere. */}
+      <div className="install-signin-note">
+        <p className="install-signin-note-title">¿Ya compraste?</p>
+        <p className="install-signin-note-text">
+          Todo tu contenido se ve desde esta app. Cuando la instales, ábrela e{' '}
+          <strong>inicia sesión con el mismo correo con el que pagaste</strong>.
+        </p>
+      </div>
+
       {showGuidePicker && !selectedGuide && (
         <div
           className="install-guide-picker-overlay"

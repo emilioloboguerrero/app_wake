@@ -7,8 +7,44 @@ import { getCheckoutStatus } from '../services/storefrontCheckoutService';
 import { requestMagicLink } from '../services/magicLinkService';
 import { getCurrentIdToken } from '../services/storefrontAuthService';
 import analyticsService from '../services/analyticsService';
-import { getDownloadUrl, getDownloadLabel } from '../utils/smartDownload';
+import { getDownloadUrl, getDownloadLabel, detectPlatform } from '../utils/smartDownload';
 import './PostPaymentScreen.css';
+
+// The #1 support problem: buyers pay and don't know Wake content lives inside
+// the installed PWA, or that they must sign in with the SAME email they paid
+// with. This spells both out on the post-payment screen itself, device-aware,
+// so the instructions match the phone the buyer is holding. `email` names the
+// exact inbox to sign in with (falls back to a generic line when unknown).
+function PwaAccessGuide({ platform, email }) {
+  return (
+    <div className="pp-guide">
+      <p className="pp-guide-title">Cómo entrar a tu programa</p>
+      <ol className="pp-guide-steps">
+        <li className="pp-guide-step">
+          <span className="pp-guide-num" aria-hidden="true">1</span>
+          <p className="pp-guide-text">
+            <strong>Instala Wake en tu teléfono.</strong>{' '}
+            {platform === 'ios' ? (
+              <>En Safari, toca <strong>Compartir</strong> y luego <strong>«Añadir a inicio»</strong>.</>
+            ) : platform === 'android' ? (
+              <>En Chrome, abre el menú <strong>⋮</strong> y toca <strong>«Instalar app»</strong>.</>
+            ) : (
+              <>Abre <strong>wakelab.co/app</strong> desde tu teléfono para instalarla.</>
+            )}
+          </p>
+        </li>
+        <li className="pp-guide-step">
+          <span className="pp-guide-num" aria-hidden="true">2</span>
+          <p className="pp-guide-text">
+            <strong>Inicia sesión con el mismo correo con el que pagaste</strong>
+            {email ? <>: <strong>{email}</strong></> : null}. Todo tu contenido se ve
+            desde la app.
+          </p>
+        </li>
+      </ol>
+    </div>
+  );
+}
 
 // MP webhook usually lands within ~10s of the auto_return redirect, but the
 // Functions cold-start path can stretch past that. 30s of polling at 2s
@@ -419,6 +455,13 @@ export default function PostPaymentScreen() {
             Verificando tu pago.
           </p>
         )}
+
+        {/* Every non-rejected buyer needs the app to access content — show the
+            install + same-email guide here so they don't get stranded at
+            wakelab.co/app not knowing what to do next. */}
+        {!isRejected && !isIncompleteFinal ? (
+          <PwaAccessGuide platform={detectPlatform()} email={magicLinkEmail} />
+        ) : null}
 
         {/* Hide the "Abrir Wake" CTA when access isn't actually confirmed —
             the buyer would land in an empty library. The magic-link in the

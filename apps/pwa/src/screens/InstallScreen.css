@@ -465,6 +465,42 @@
   outline: none;
 }
 
+/* Post-payment sign-in reminder */
+.install-screen .install-signin-note {
+  width: 100%;
+  max-width: 360px;
+  margin: 0 auto 1.5rem;
+  padding: 1rem 1.15rem;
+  box-sizing: border-box;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+}
+
+.install-screen .install-signin-note-title {
+  margin: 0 0 0.4rem;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.install-screen .install-signin-note-text {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.install-screen .install-signin-note-text strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
 /* Guide picker modal */
 .install-screen .install-guide-picker-overlay {
   position: fixed;
