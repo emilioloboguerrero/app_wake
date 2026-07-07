@@ -19,7 +19,7 @@ import {assignCourseToUser} from "../services/courseAssignment.js";
 import {writeLedgerEntryBestEffort, sumMercadoPagoFee} from "../services/paymentLedger.js";
 import {applyMpRefund} from "../services/refunds.js";
 import {assertCourseHasSeat} from "../services/capacity.js";
-import {resolvePlanPreapprovalReference} from "../services/planCheckout.js";
+import {resolvePlanPreapprovalReference, resolvePlanPaymentReference} from "../services/planCheckout.js";
 import {assignBundleToUser} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
@@ -1044,6 +1044,7 @@ router.post("/payments/webhook", async (req: Request, res) => {
         externalReference = await resolvePlanPreapprovalReference({
           planId: preapprovalData?.preapproval_plan_id,
           payerEmail: preapprovalData?.payer_email ?? preapprovalData?.payer?.email,
+          payerId: preapprovalData?.payer_id ?? preapprovalData?.payer?.id,
         });
       }
       logCheckout("webhook.preapproval.fetched", {
@@ -1383,9 +1384,12 @@ router.post("/payments/webhook", async (req: Request, res) => {
     transaction_amount?: number;
     currency_id?: string;
     fee_details?: unknown;
-    payer?: { email?: string };
+    payer?: { email?: string; id?: string };
     preapproval?: { id?: string; external_reference?: string };
     payment?: { status?: string };
+    // Plan-based subscription charges arrive on the `payment` topic with
+    // point_of_interaction.type === "SUBSCRIPTIONS" and no external_reference.
+    point_of_interaction?: { type?: string };
   }
 
   let paymentData: MercadoPagoPaymentData | null = null;
@@ -1523,36 +1527,26 @@ router.post("/payments/webhook", async (req: Request, res) => {
 
   let externalReference: string | null = paymentData.external_reference ?? null;
   if (!externalReference) {
-    // Pay-first (plan-associated) subscription charge: the payment carries no
-    // external_reference. Recover identity from the preapproval MP created, then
-    // synthesize the reference so the grant below runs unchanged.
-    const planPreapprovalId = paymentData.preapproval_id || paymentData.preapproval?.id || null;
-    if (planPreapprovalId) {
-      try {
-        const preClient = getMPClient();
-        const pre = await new PreApproval(preClient)
-          .get({id: planPreapprovalId}) as unknown as MercadoPagoPreapproval;
-        externalReference = await resolvePlanPreapprovalReference({
-          planId: pre?.preapproval_plan_id,
-          payerEmail: pre?.payer_email ?? pre?.payer?.email,
-        });
-      } catch (resolveErr) {
-        // Transient MP/Firestore failure — retry rather than silently drop a
-        // paid subscription (processedRef stays "processing", which the
-        // idempotency guard treats as reprocessable).
-        if (classifyError(resolveErr) === "RETRYABLE") {
-          functions.logger.warn("plan payment: preapproval resolve retryable", {
-            preapprovalId: planPreapprovalId, error: String(resolveErr),
-          });
-          res.status(500).json({
-            error: {code: "INTERNAL_ERROR", message: "Error resolviendo suscripción"},
-          });
-          return;
-        }
-        functions.logger.error("plan payment: preapproval resolve failed", {
-          preapprovalId: planPreapprovalId, error: String(resolveErr),
-        });
-      }
+    // Pay-first plan subscription charge: the `payment` event carries the real
+    // payer email but no course link. Recover the course from the pending record
+    // the preapproval webhook stashed (keyed by payer id), then grant.
+    externalReference = await resolvePlanPaymentReference({
+      payerEmail: paymentData.payer?.email,
+      payerId: paymentData.payer?.id,
+    });
+    // Clearly a subscription charge we couldn't resolve yet — the preapproval
+    // webhook that stashes the pending record may not have landed. 500 so MP
+    // retries rather than stranding a paid buyer without access.
+    if (!externalReference &&
+        paymentData.payer?.email &&
+        paymentData.point_of_interaction?.type === "SUBSCRIPTIONS") {
+      functions.logger.warn("plan payment: unresolved subscription charge, asking MP to retry", {
+        paymentId, payerId: paymentData.payer?.id ?? null,
+      });
+      res.status(500).json({
+        error: {code: "INTERNAL_ERROR", message: "Suscripción aún no lista, reintentar"},
+      });
+      return;
     }
   }
   if (!externalReference) {

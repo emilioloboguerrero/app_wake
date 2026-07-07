@@ -147,40 +147,31 @@ export async function findOrCreateUserByEmail(
   }
 }
 
-// Resolve the synthetic external_reference for a plan-based preapproval (which
-// carries none of its own). Maps preapproval_plan_id -> course via
-// mp_plans/{planId}, find-or-creates the Firebase user from the MP-collected
-// payer email, bootstraps/attributes the user doc exactly like
-// executeStorefrontCheckout, and returns v1|{userId}|{courseId}|sub so the
-// existing webhook grant path proceeds unchanged. Returns null when it can't
-// resolve (unknown plan or missing/invalid payer email) — the caller should
-// then 200 the webhook without granting.
-export async function resolvePlanPreapprovalReference(args: {
-  planId: string | null | undefined;
-  payerEmail: string | null | undefined;
-}): Promise<string | null> {
-  const planId = typeof args.planId === "string" ? args.planId : null;
-  const payerEmail =
-    typeof args.payerEmail === "string" ? args.payerEmail.trim().toLowerCase() : null;
-  if (!planId || !payerEmail || !EMAIL_RE.test(payerEmail)) return null;
-
+// Map a plan id to its course via mp_plans/{planId}.
+async function lookupCourseByPlan(
+  planId: string
+): Promise<{courseId: string; creatorId: string | null} | null> {
   const planDoc = await db.collection("mp_plans").doc(planId).get();
   if (!planDoc.exists) {
-    functions.logger.warn("plan preapproval: unknown mp_plans mapping", {planId});
+    functions.logger.warn("plan lookup: unknown mp_plans mapping", {planId});
     return null;
   }
   const courseId = planDoc.data()?.course_id as string | undefined;
-  const creatorId = (planDoc.data()?.creator_id as string | undefined) ?? null;
   if (!courseId) {
-    functions.logger.warn("plan preapproval: mp_plans doc missing course_id", {planId});
+    functions.logger.warn("plan lookup: mp_plans doc missing course_id", {planId});
     return null;
   }
+  return {courseId, creatorId: (planDoc.data()?.creator_id as string | undefined) ?? null};
+}
 
+// Find-or-create the buyer, bootstrap/attribute the user doc exactly like
+// executeStorefrontCheckout, and return the v1|{userId}|{courseId}|sub reference
+// so the existing webhook grant path proceeds unchanged.
+async function synthesizeRefForCourse(
+  courseId: string, creatorId: string | null, payerEmail: string
+): Promise<string> {
   const {userId, displayName} = await findOrCreateUserByEmail(payerEmail);
 
-  // Bootstrap / attribute the user doc so a pay-first buyer is indistinguishable
-  // from an email-first storefront acquisition (same fields as
-  // executeStorefrontCheckout). First-touch attribution only — never overwrite.
   const userRef = db.collection("users").doc(userId);
   const existing = await userRef.get();
   const existingData = existing.data() ?? {};
@@ -201,6 +192,75 @@ export async function resolvePlanPreapprovalReference(args: {
   }
   await userRef.set(seed, {merge: true});
 
-  functions.logger.info("plan preapproval: resolved identity", {planId, courseId, userId});
   return buildExternalReference(userId, courseId, "sub");
+}
+
+// Stash a pending plan-subscription keyed by MP payer id. MP's
+// subscription_preapproval events carry the plan (-> course) + payer id but an
+// EMPTY payer_email, while the `payment` charge event carries the real
+// payer.email but no plan/course link. payer_id is the only key present in both,
+// so the preapproval webhook writes this record and the payment webhook reads it.
+async function recordPendingPlanSub(args: {
+  payerId: string; courseId: string; creatorId: string | null;
+}): Promise<void> {
+  await db.collection("mp_plan_pending").doc(args.payerId).set({
+    course_id: args.courseId,
+    creator_id: args.creatorId,
+    updated_at: FieldValue.serverTimestamp(),
+  }, {merge: true});
+}
+
+// Preapproval-webhook resolution. Maps plan -> course, always stashes the
+// pending (payerId -> course) record for the payment webhook to pick up, and
+// only synthesizes a reference (grants now) when MP happened to include a
+// payer_email — which it usually does NOT at preapproval-create time.
+export async function resolvePlanPreapprovalReference(args: {
+  planId: string | null | undefined;
+  payerEmail: string | null | undefined;
+  payerId: string | number | null | undefined;
+}): Promise<string | null> {
+  const planId = typeof args.planId === "string" ? args.planId : null;
+  if (!planId) return null;
+  const mapped = await lookupCourseByPlan(planId);
+  if (!mapped) return null;
+
+  const payerId = args.payerId != null ? String(args.payerId) : null;
+  if (payerId) {
+    await recordPendingPlanSub({
+      payerId, courseId: mapped.courseId, creatorId: mapped.creatorId,
+    });
+  }
+
+  const payerEmail =
+    typeof args.payerEmail === "string" ? args.payerEmail.trim().toLowerCase() : null;
+  if (payerEmail && EMAIL_RE.test(payerEmail)) {
+    functions.logger.info("plan preapproval: resolved with email", {planId, courseId: mapped.courseId});
+    return synthesizeRefForCourse(mapped.courseId, mapped.creatorId, payerEmail);
+  }
+  functions.logger.info("plan preapproval: no email yet, pending stashed", {planId, payerId});
+  return null;
+}
+
+// Payment-webhook resolution. The MP `payment` charge event carries the real
+// payer.email but no course link, so recover the course from the pending record
+// the preapproval webhook stashed (keyed by payer id), then grant.
+export async function resolvePlanPaymentReference(args: {
+  payerEmail: string | null | undefined;
+  payerId: string | number | null | undefined;
+}): Promise<string | null> {
+  const payerEmail =
+    typeof args.payerEmail === "string" ? args.payerEmail.trim().toLowerCase() : null;
+  const payerId = args.payerId != null ? String(args.payerId) : null;
+  if (!payerEmail || !EMAIL_RE.test(payerEmail) || !payerId) return null;
+
+  const pendingDoc = await db.collection("mp_plan_pending").doc(payerId).get();
+  if (!pendingDoc.exists) {
+    functions.logger.warn("plan payment: no pending record for payer", {payerId});
+    return null;
+  }
+  const courseId = pendingDoc.data()?.course_id as string | undefined;
+  const creatorId = (pendingDoc.data()?.creator_id as string | undefined) ?? null;
+  if (!courseId) return null;
+  functions.logger.info("plan payment: resolved from pending", {payerId, courseId});
+  return synthesizeRefForCourse(courseId, creatorId, payerEmail);
 }

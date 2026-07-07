@@ -37,8 +37,12 @@ export interface MercadoPagoPreapproval {
   reason?: string | null;
   status?: string | null;
   payer_email?: string | null;
+  // MP populates payer_id on plan-based preapprovals even when payer_email is
+  // still empty — it's the join key the payment webhook matches on.
+  payer_id?: string | number | null;
   payer?: {
     email?: string | null;
+    id?: string | number | null;
   };
 }
 
