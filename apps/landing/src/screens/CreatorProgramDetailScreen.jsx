@@ -351,20 +351,29 @@ function CompareCross() {
 function SectionFan({ media }) {
   const [isPhone, setIsPhone] = useState(false);
   const count = Math.min(media.length, 3);
+  const firstUrl = media[0]?.url;
+  // Measure the first image's natural aspect via a detached Image so detection
+  // never depends on the rendered <img>'s event timing (a cached image can load
+  // before React attaches onLoad, so onLoad alone is unreliable).
+  useEffect(() => {
+    if (!firstUrl) return undefined;
+    let cancelled = false;
+    const probe = new Image();
+    const check = () => {
+      if (!cancelled && probe.naturalWidth && probe.naturalHeight / probe.naturalWidth > 1.6) {
+        setIsPhone(true);
+      }
+    };
+    probe.onload = check;
+    probe.src = firstUrl;
+    if (probe.complete) check();
+    return () => { cancelled = true; };
+  }, [firstUrl]);
   return (
     <div className={`cpd-section-fan cpd-section-fan--${count}${isPhone ? ' cpd-section-fan--phone' : ''}`}>
       {media.slice(0, 3).map((block, j) => (
         <div className={`cpd-section-fan-tile cpd-section-fan-tile--${j}`} key={j}>
-          <img
-            src={block.url}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            onLoad={j === 0 ? (e) => {
-              const img = e.currentTarget;
-              if (img.naturalWidth && img.naturalHeight / img.naturalWidth > 1.6) setIsPhone(true);
-            } : undefined}
-          />
+          <img src={block.url} alt="" loading="lazy" decoding="async" />
         </div>
       ))}
     </div>
