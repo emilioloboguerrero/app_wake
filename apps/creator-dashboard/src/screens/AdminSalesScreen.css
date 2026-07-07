@@ -42,6 +42,15 @@
   margin: 0;
 }
 
+/* Wake's own take — the headline number for the platform. */
+.as-stat--wake {
+  background: linear-gradient(180deg, rgba(120, 235, 170, 0.08), rgba(120, 235, 170, 0.02));
+  border-color: rgba(120, 235, 170, 0.22);
+}
+.as-stat--wake .as-stat__value {
+  color: rgba(150, 240, 190, 0.98);
+}
+
 .as-section-title {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -99,6 +108,13 @@
 .as-creator__meta {
   font-size: 0.72rem;
   color: var(--text-secondary, rgba(255, 255, 255, 0.5));
+}
+.as-creator__wake {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(150, 240, 190, 0.9);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
 }
 
 .as-programs {

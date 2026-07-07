@@ -11,9 +11,13 @@ const fmtCOP = (n) => new Intl.NumberFormat('es-CO', {
   style: 'currency', currency: 'COP', maximumFractionDigits: 0,
 }).format(n ?? 0);
 
-function StatCard({ label, value, sub }) {
+const fmtUSD = (n) => new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD', maximumFractionDigits: 2,
+}).format(n ?? 0);
+
+function StatCard({ label, value, sub, highlight = false }) {
   return (
-    <div className="as-stat">
+    <div className={`as-stat${highlight ? ' as-stat--wake' : ''}`}>
       <p className="as-stat__label">{label}</p>
       <p className="as-stat__value">{value}</p>
       {sub && <p className="as-stat__sub">{sub}</p>}
@@ -32,6 +36,12 @@ function CreatorCard({ c }) {
         <div className="as-creator__totals">
           <span className="as-creator__rev">{fmtCOP(c.revenueCOP)}</span>
           <span className="as-creator__meta">{c.activeMembers} activos · {c.sales} ventas</span>
+          {(c.wakeRevenueCOP > 0 || c.wakeRevenueUSD > 0) && (
+            <span className="as-creator__wake">
+              Wake se queda {fmtCOP(c.wakeRevenueCOP)}
+              {c.wakeRevenueUSD > 0 ? ` + ${fmtUSD(c.wakeRevenueUSD)}` : ''}
+            </span>
+          )}
         </div>
       </div>
       <div className="as-programs">
@@ -67,6 +77,14 @@ const AdminSalesScreen = () => {
         {data && (
           <>
             <div className="as-stats">
+              <StatCard
+                label="Revenue de Wake"
+                highlight
+                value={fmtCOP(data.platform.wakeRevenueCOP)}
+                sub={data.platform.wakeRevenueUSD > 0
+                  ? `+ ${fmtUSD(data.platform.wakeRevenueUSD)} · comisión + B2B`
+                  : 'comisión + B2B'}
+              />
               <StatCard label="Ingreso total" value={fmtCOP(data.platform.totalCOP)} sub="cursos + plataforma" />
               <StatCard label="Ventas de cursos" value={fmtCOP(data.platform.courseRevenueCOP)} />
               <StatCard label="Wake Creadores · B2B" value={fmtCOP(data.platform.b2bRevenueCOP)} sub={`${data.platform.b2bPayments} pagos`} />
@@ -79,7 +97,7 @@ const AdminSalesScreen = () => {
             </div>
 
             <p className="as-note">
-              Ventas en COP desde MercadoPago (la fuente real de dinero, histórico completo). Los cobros internacionales (Polar/USD) se muestran aparte en el dashboard de cada creador.
+              Ventas de cursos en COP desde MercadoPago (la fuente real de dinero, histórico completo). El revenue de Wake es la comisión de plataforma por creador más el B2B de Wake Creadores; la comisión internacional (Polar/USD) se reporta aparte en USD desde el ledger de pagos.
             </p>
           </>
         )}

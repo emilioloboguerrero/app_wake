@@ -842,6 +842,21 @@ const EARNINGS_ACTIVE_SUB_STATUSES = new Set(["active", "authorized", "trialing"
 const EARNINGS_TREND_DAYS = 30;
 const normProvider = (p: unknown): "polar" | "mercadopago" => (p === "polar" ? "polar" : "mercadopago");
 
+// Per-provider commission rate for a creator, applied server-side. Precedence:
+// `commission_rates[provider]` map > legacy `commission_rate` number >
+// service-type default (managed vs self_serve). Shared by the creator earnings
+// endpoint and the admin platform-revenue rollup.
+function commissionRateFor(userData: Record<string, unknown> | null | undefined, provider: string): number {
+  const p = normProvider(provider);
+  const serviceType = userData?.service_type === "managed" ? "managed" : "self_serve";
+  const serviceDefaults = DEFAULT_COMMISSION_BY_SERVICE[serviceType];
+  const overrideMap = userData?.commission_rates as Record<string, number> | undefined;
+  const legacyRate = userData?.commission_rate;
+  if (overrideMap && typeof overrideMap[p] === "number") return overrideMap[p];
+  if (typeof legacyRate === "number" && legacyRate >= 0 && legacyRate <= 1) return legacyRate;
+  return serviceDefaults[p];
+}
+
 interface EarningsBucket {
   revenue: number;
   orders: number;
@@ -874,15 +889,7 @@ router.get("/analytics/earnings", async (req, res) => {
   // service-type default (managed vs self_serve).
   const userData = userDoc.data() ?? {};
   const serviceType = userData.service_type === "managed" ? "managed" : "self_serve";
-  const serviceDefaults = DEFAULT_COMMISSION_BY_SERVICE[serviceType];
-  const overrideMap = userData.commission_rates as Record<string, number> | undefined;
-  const legacyRate = userData.commission_rate;
-  const rateFor = (provider: string): number => {
-    const p = normProvider(provider);
-    if (overrideMap && typeof overrideMap[p] === "number") return overrideMap[p];
-    if (typeof legacyRate === "number" && legacyRate >= 0 && legacyRate <= 1) return legacyRate;
-    return serviceDefaults[p];
-  };
+  const rateFor = (provider: string): number => commissionRateFor(userData, provider);
 
   const courseTitle: Record<string, string> = {};
   const courseIds: string[] = [];
@@ -1090,11 +1097,16 @@ router.get("/analytics/earnings", async (req, res) => {
   }
   const countAt = (ivs: Array<{startMs: number; endMs: number}>, ref: number): number =>
     ivs.reduce((n, iv) => n + (iv.startMs <= ref && iv.endMs >= ref ? 1 : 0), 0);
+  // Cumulative churn: members whose paid-access interval had already ended by the
+  // month's reference instant. Live members carry endMs=now, so they never count
+  // as churned for any past/current ref — the line only rises when someone lapses.
+  const churnedAt = (ivs: Array<{startMs: number; endMs: number}>, ref: number): number =>
+    ivs.reduce((n, iv) => n + (iv.endMs < ref ? 1 : 0), 0);
   let trimFrom = 0;
   while (trimFrom < monthRefs.length - 2 && countAt(memberIntervals, monthRefs[trimFrom].ref) === 0) trimFrom++;
   const months = monthRefs.slice(trimFrom);
-  const seriesFor = (ivs: Array<{startMs: number; endMs: number}>): Array<{month: string; active: number}> =>
-    months.map((m) => ({month: m.month, active: countAt(ivs, m.ref)}));
+  const seriesFor = (ivs: Array<{startMs: number; endMs: number}>): Array<{month: string; active: number; churned: number}> =>
+    months.map((m) => ({month: m.month, active: countAt(ivs, m.ref), churned: churnedAt(ivs, m.ref)}));
   const monthlyActive = seriesFor(memberIntervals);
 
   const programs = Object.entries(programAgg)
@@ -1181,10 +1193,10 @@ router.get("/analytics/admin/platform", async (req, res) => {
   coursesSnap.docs.forEach((d) => {
     courseMeta[d.id] = {creatorId: String(d.data().creator_id ?? ""), title: String(d.data().title ?? d.id)};
   });
-  const creatorMeta: Record<string, {name: string; email: string}> = {};
+  const creatorMeta: Record<string, {name: string; email: string; data: Record<string, unknown>}> = {};
   creatorsSnap.docs.forEach((d) => {
     const x = d.data();
-    creatorMeta[d.id] = {name: String(x.displayName ?? x.email ?? d.id), email: String(x.email ?? "")};
+    creatorMeta[d.id] = {name: String(x.displayName ?? x.email ?? d.id), email: String(x.email ?? ""), data: x};
   });
   const activeByCourse: Record<string, number> = {};
   subsSnap.docs.forEach((d) => {
@@ -1202,13 +1214,23 @@ router.get("/analytics/admin/platform", async (req, res) => {
     mpApproved = adminMpCache?.payments ?? [];
   }
 
+  const partsFromExt = (ext: unknown): string[] => String(ext ?? "").split("|");
   const cidFromExt = (ext: unknown): string | null => {
-    const parts = String(ext ?? "").split("|");
+    const parts = partsFromExt(ext);
     return parts.length >= 3 ? parts[2] : null;
   };
-  interface Prog {courseId: string; title: string; revenueCOP: number; sales: number; active: number}
+  const uidFromExt = (ext: unknown): string | null => {
+    const parts = partsFromExt(ext);
+    return parts.length >= 2 ? parts[1] : null;
+  };
+  interface Prog {courseId: string; title: string; revenueCOP: number; sales: number; active: number; wakeCOP: number}
   const creatorAgg: Record<string, Record<string, Prog>> = {};
   let b2bCOP = 0; let b2bPayments = 0; let platformCOP = 0;
+  // Wake's cut of each COURSE sale (MercadoPago/COP): (gross − provider_fee) ×
+  // commissionRate, rate resolved per creator. Test buyers are excluded so this
+  // stays honest, even though the displayed gross above intentionally does not
+  // exclude them (real creators self-purchase to test).
+  let wakeCommissionCOP = 0;
   mpApproved.forEach((p) => {
     const amt = typeof p.transaction_amount === "number" ? p.transaction_amount : 0;
     const cid = cidFromExt(p.external_reference);
@@ -1223,16 +1245,48 @@ router.get("/analytics/admin/platform", async (req, res) => {
     // TEST_USER_IDS (that set includes real creators who self-tested as buyers).
     if (!meta || TEST_CREATOR_IDS.has(meta.creatorId) || TEST_COURSE_IDS.has(cid)) return;
     const progs = (creatorAgg[meta.creatorId] ??= {});
-    const pr = (progs[cid] ??= {courseId: cid, title: meta.title, revenueCOP: 0, sales: 0, active: activeByCourse[cid] ?? 0});
+    const pr = (progs[cid] ??= {courseId: cid, title: meta.title, revenueCOP: 0, sales: 0, active: activeByCourse[cid] ?? 0, wakeCOP: 0});
     pr.revenueCOP += amt;
     pr.sales += 1;
     platformCOP += amt;
+    if (!isTestSale(uidFromExt(p.external_reference), cid)) {
+      const rate = commissionRateFor(creatorMeta[meta.creatorId]?.data, "mercadopago");
+      const cut = r2((amt - estimateProviderFee("mercadopago", amt)) * rate);
+      pr.wakeCOP += cut;
+      wakeCommissionCOP += cut;
+    }
   });
+
+  // Wake's cut of each Polar (international/USD) sale, from payment_ledger — the
+  // complete record for Polar (it launched after the ledger existed). creator_id
+  // is denormalized on each row and net_amount already nets the settled fee.
+  // Refunds subtract; test sales excluded. Best-effort: a read failure leaves
+  // Polar revenue at 0 without breaking the MP-based panel.
+  let wakeCommissionUSD = 0;
+  const creatorWakeUSD: Record<string, number> = {};
+  try {
+    const polarLedger = await db.collection("payment_ledger").where("provider", "==", "polar").get();
+    polarLedger.docs.forEach((d) => {
+      const x = d.data();
+      const cid = String(x.course_id ?? "");
+      const creatorId = String(x.creator_id ?? "");
+      if (!creatorId || TEST_CREATOR_IDS.has(creatorId) || TEST_COURSE_IDS.has(cid)) return;
+      if (isTestSale(x.user_id, cid)) return;
+      if (String(x.currency ?? "USD").toUpperCase() !== "USD") return;
+      const sign = (x.type === "refund" || x.status === "refunded") ? -1 : 1;
+      const net = typeof x.net_amount === "number" ? x.net_amount : 0;
+      const cut = r2(net * commissionRateFor(creatorMeta[creatorId]?.data, "polar")) * sign;
+      creatorWakeUSD[creatorId] = (creatorWakeUSD[creatorId] ?? 0) + cut;
+      wakeCommissionUSD += cut;
+    });
+  } catch {
+    // Polar commission stays 0 — MP panel unaffected.
+  }
 
   const creators = Object.entries(creatorAgg)
     .map(([creatorId, progs]) => {
       const programs = Object.values(progs)
-        .map((pr) => ({...pr, revenueCOP: r2(pr.revenueCOP)}))
+        .map((pr) => ({...pr, revenueCOP: r2(pr.revenueCOP), wakeCOP: r2(pr.wakeCOP)}))
         .sort((a, b) => b.revenueCOP - a.revenueCOP);
       return {
         creatorId,
@@ -1240,6 +1294,8 @@ router.get("/analytics/admin/platform", async (req, res) => {
         email: creatorMeta[creatorId]?.email ?? "",
         programs,
         revenueCOP: r2(programs.reduce((s, p) => s + p.revenueCOP, 0)),
+        wakeRevenueCOP: r2(programs.reduce((s, p) => s + p.wakeCOP, 0)),
+        wakeRevenueUSD: r2(creatorWakeUSD[creatorId] ?? 0),
         sales: programs.reduce((s, p) => s + p.sales, 0),
         activeMembers: programs.reduce((s, p) => s + p.active, 0),
       };
@@ -1252,6 +1308,10 @@ router.get("/analytics/admin/platform", async (req, res) => {
         courseRevenueCOP: r2(platformCOP),
         b2bRevenueCOP: r2(b2bCOP),
         b2bPayments,
+        // Wake's real take: course-sale commissions + B2B (creators paying the
+        // platform). COP and USD (Polar) reported separately — no FX.
+        wakeRevenueCOP: r2(wakeCommissionCOP + b2bCOP),
+        wakeRevenueUSD: r2(wakeCommissionUSD),
         totalCOP: r2(platformCOP + b2bCOP),
         creatorCount: creators.length,
         activeMembers: creators.reduce((s, c) => s + c.activeMembers, 0),

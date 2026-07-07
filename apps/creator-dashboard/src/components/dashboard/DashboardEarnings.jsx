@@ -18,6 +18,7 @@ const REVENUE_COLOR = 'rgba(100,225,150,0.9)';
 const MRR_COLOR = 'rgba(100,180,255,0.9)';
 const ACTIVE_COLOR = 'rgba(210,120,255,0.9)';
 const MONTHLY_COLOR = 'rgba(255,190,90,0.9)';
+const CHURN_COLOR = 'rgba(255,150,110,0.9)';
 
 function fmtMoney(n, cur) {
   return new Intl.NumberFormat(cur === 'USD' ? 'en-US' : 'es-CO', {
@@ -75,6 +76,39 @@ function Sparkline({ id, values, color }) {
   );
 }
 
+// Active-members sparkline with a cumulative "bajas" overlay. Aggregate net
+// active can keep rising while members churn (growth in one program masks losses
+// in another), so the churn line — members whose access lapsed — is drawn on top
+// (dashed, only when there is churn) to make the bajas visible against the active
+// area. Both series share the auto Y-scale, so the churn line reads as "of these
+// members, this many left".
+function DualSparkline({ id, active, churned, activeColor, churnColor }) {
+  const data = useMemo(
+    () => (active || []).map((v, i) => ({ i, active: v, churned: (churned || [])[i] ?? 0 })),
+    [active, churned],
+  );
+  if (data.length < 2) return null;
+  const hasChurn = data.some((d) => d.churned > 0);
+  return (
+    <div className="earn-spark">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={activeColor} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={activeColor} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area type="monotone" dataKey="active" stroke={activeColor} strokeWidth={1.5} fill={`url(#${id})`} dot={false} isAnimationActive={false} />
+          {hasChurn && (
+            <Area type="monotone" dataKey="churned" stroke={churnColor} strokeWidth={1.5} strokeDasharray="3 2" fill="none" dot={false} isAnimationActive={false} />
+          )}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function MoneyTile({ label, totals, currencies, field, spark, sparkColor, sparkId }) {
   const curs = orderCurrencies(currencies);
   const nonEmpty = curs.filter((c) => (totals[c]?.[field] ?? 0) !== 0);
@@ -99,7 +133,7 @@ function MoneyTile({ label, totals, currencies, field, spark, sparkColor, sparkI
   );
 }
 
-function CountTile({ label, value, churn = 0, spark, sparkColor, sparkId }) {
+function CountTile({ label, value, churn = 0, spark, sparkColor, sparkId, churnSpark, churnColor }) {
   return (
     <Card className="earn-tile">
       <p className="earn-label">{label}</p>
@@ -107,7 +141,9 @@ function CountTile({ label, value, churn = 0, spark, sparkColor, sparkId }) {
         <span className="earn-count__value">{value}</span>
         {churn > 0 && <span className="earn-count__churn">{churn} de baja</span>}
       </div>
-      {spark && <Sparkline id={sparkId} values={spark} color={sparkColor} />}
+      {spark && (churnSpark
+        ? <DualSparkline id={sparkId} active={spark} churned={churnSpark} activeColor={sparkColor} churnColor={churnColor} />
+        : <Sparkline id={sparkId} values={spark} color={sparkColor} />)}
     </Card>
   );
 }
@@ -207,7 +243,13 @@ function DashboardEarnings({ programId = null }) {
   const totalActive = currencies.reduce((s, c) => s + (totals[c]?.activeSubscriptions ?? 0), 0);
   const chartCurrencies = orderCurrencies(currencies).filter((c) => daily.some((p) => (p[c] ?? 0) !== 0));
   const aggMonthly = scoped.monthlyActive || [];
-  const activeSpark = aggMonthly.length >= 2 ? aggMonthly.map((m) => m.active) : sparks?.active;
+  const hasMonthly = aggMonthly.length >= 2;
+  const activeSpark = hasMonthly ? aggMonthly.map((m) => m.active) : sparks?.active;
+  // Cumulative bajas per month, overlaid on the active line so churn is visible
+  // even when aggregate growth keeps net active rising. Series-derived so the
+  // "N de baja" number and the overlay always agree.
+  const churnSpark = hasMonthly ? aggMonthly.map((m) => m.churned ?? 0) : null;
+  const aggChurned = hasMonthly ? (aggMonthly[aggMonthly.length - 1].churned ?? 0) : null;
   const totalChurned = programs.reduce((sum, p) => {
     const pActive = orderCurrencies(Object.keys(p.currencies || {}))
       .reduce((s, c) => s + (p.currencies[c]?.activeSubscriptions ?? 0), 0);
@@ -222,8 +264,10 @@ function DashboardEarnings({ programId = null }) {
           spark={sparks?.revenue} sparkColor={REVENUE_COLOR} sparkId="spk-rev" />
         <MoneyTile label="MRR" totals={totals} currencies={currencies} field="mrr"
           spark={sparks?.mrr} sparkColor={MRR_COLOR} sparkId="spk-mrr" />
-        <CountTile label="Suscripciones activas" value={totalActive} churn={totalChurned}
-          spark={activeSpark} sparkColor={ACTIVE_COLOR} sparkId="spk-act" />
+        <CountTile label="Suscripciones activas" value={totalActive}
+          churn={aggChurned != null ? aggChurned : totalChurned}
+          spark={activeSpark} sparkColor={ACTIVE_COLOR} sparkId="spk-act"
+          churnSpark={churnSpark} churnColor={CHURN_COLOR} />
       </div>
 
       {!programId && chartCurrencies.length > 0 && (
