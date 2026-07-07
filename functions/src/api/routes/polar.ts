@@ -24,12 +24,13 @@ import {
   type PolarPaymentType,
   resolvePolarProductId,
   isPolarPaymentType,
-  parsePolarMetadata,
+  parsePolarMetadataGuest,
   polarCentsToMajor,
   toIsoDate,
   isTrialingSubscription,
   POLAR_EVENTS,
 } from "../services/polarHelpers.js";
+import {findOrCreateUserByEmail} from "../services/planCheckout.js";
 import {
   sendOneTimePurchaseEmail,
   sendSubscriptionStartedEmail,
@@ -109,7 +110,9 @@ function recipientEmail(userData: Record<string, unknown> | null | undefined): s
 // storefront guest checkout (public.ts). Callers own the already-owned and
 // capacity guards; this resolves the product and creates the hosted checkout.
 export async function createPolarCheckoutSession(args: {
-  userId: string;
+  // null = pay-first: no account yet, Polar collects the email on its page and
+  // the webhook resolves the buyer from order.customer.email.
+  userId: string | null;
   email: string | null;
   courseId: string;
   course: Record<string, unknown>;
@@ -130,10 +133,13 @@ export async function createPolarCheckoutSession(args: {
     checkout = await polar.checkouts.create({
       products: [productId],
       successUrl: args.successUrl,
-      // Echoed back on every webhook — how we attribute the payment.
-      metadata: {userId: args.userId, courseId: args.courseId, paymentType: args.paymentType},
+      // Echoed back on every webhook — how we attribute the payment. Pay-first
+      // omits userId (unknown until the webhook resolves the customer email).
+      metadata: args.userId ?
+        {userId: args.userId, courseId: args.courseId, paymentType: args.paymentType} :
+        {courseId: args.courseId, paymentType: args.paymentType},
       // Ties the Polar customer to our Firebase uid for portal/reconciliation.
-      externalCustomerId: args.userId,
+      ...(args.userId ? {externalCustomerId: args.userId} : {}),
       ...(args.email ? {customerEmail: args.email} : {}),
     });
   } catch (error) {
@@ -311,9 +317,50 @@ async function handlePolarEvent(type: string, data: Record<string, unknown>): Pr
   }
 }
 
+// Resolve checkout metadata to a full {userId, courseId, paymentType}. The
+// authed flow embeds userId; pay-first omits it (buyer had no account), so we
+// recover the user from the Polar-collected customer email (find-or-create) and
+// the rest of each handler runs unchanged. Throws when neither is available —
+// the webhook treats that as "can't attribute" and skips.
+async function resolvePolarMeta(
+  metadata: unknown,
+  obj: Record<string, unknown>
+): Promise<{userId: string; courseId: string; paymentType: PolarPaymentType}> {
+  const loose = parsePolarMetadataGuest(metadata);
+  if (loose.userId) {
+    return {userId: loose.userId, courseId: loose.courseId, paymentType: loose.paymentType};
+  }
+  const customer = obj.customer as {email?: string | null} | undefined;
+  const rawEmail = (typeof customer?.email === "string" ? customer.email : null) ??
+    (typeof obj.customerEmail === "string" ? (obj.customerEmail as string) : null);
+  const email = rawEmail ? rawEmail.trim().toLowerCase() : null;
+  if (!email || !EMAIL_RE.test(email)) {
+    throw new Error("Polar pay-first: no userId and no customer email");
+  }
+  const {userId} = await findOrCreateUserByEmail(email);
+  // Minimal storefront attribution (first-touch only), mirroring the MP
+  // pay-first path so the account is usable + tagged consistently.
+  const userRef = db.collection("users").doc(userId);
+  const existing = await userRef.get();
+  const seed: Record<string, unknown> = {email, updated_at: FieldValue.serverTimestamp()};
+  if (!existing.data()?.acquiredVia) {
+    seed.acquiredVia = "creator_storefront";
+    seed.onboardingDeferred = true;
+  }
+  if (!existing.exists) {
+    seed.role = "user";
+    seed.created_at = FieldValue.serverTimestamp();
+  }
+  await userRef.set(seed, {merge: true});
+  functions.logger.info("polar pay-first: resolved user from customer email", {
+    userId, courseId: loose.courseId,
+  });
+  return {userId, courseId: loose.courseId, paymentType: loose.paymentType};
+}
+
 // order.paid fires for one-time orders AND subscription charges (first + cycles).
 async function handleOrderPaid(order: Record<string, unknown>): Promise<void> {
-  const meta = parsePolarMetadata(order.metadata);
+  const meta = await resolvePolarMeta(order.metadata, order);
   const orderId = typeof order.id === "string" ? order.id : null;
   if (!orderId) throw new Error("polar order.paid missing id");
 
@@ -464,7 +511,7 @@ async function handleOrderPaid(order: Record<string, unknown>): Promise<void> {
 // Trial start: no charge yet, so order.paid won't fire. Grant access with the
 // trial flag and expiry = trial end (mirrors the MercadoPago trial grant).
 async function handleTrialActivated(subscription: Record<string, unknown>): Promise<void> {
-  const meta = parsePolarMetadata(subscription.metadata);
+  const meta = await resolvePolarMeta(subscription.metadata, subscription);
   const subId = typeof subscription.id === "string" ? subscription.id : null;
   if (!subId) throw new Error("polar subscription trial missing id");
 
@@ -568,7 +615,7 @@ async function handleTrialActivated(subscription: Record<string, unknown>): Prom
 
 // Cancel-at-period-end: keep access until expires_at, just flag the sub.
 async function handleSubscriptionCanceled(subscription: Record<string, unknown>): Promise<void> {
-  const meta = parsePolarMetadata(subscription.metadata);
+  const meta = await resolvePolarMeta(subscription.metadata, subscription);
   const subId = typeof subscription.id === "string" ? subscription.id : null;
   if (!subId) return;
   await db.collection("users").doc(meta.userId)
@@ -588,7 +635,7 @@ async function handleSubscriptionCanceled(subscription: Record<string, unknown>)
 // flips it back to active. Access itself is unchanged here — it's retained
 // until expires_at (grace to period end); revoked/refund events end access.
 async function handleSubscriptionUpdated(subscription: Record<string, unknown>): Promise<void> {
-  const meta = parsePolarMetadata(subscription.metadata);
+  const meta = await resolvePolarMeta(subscription.metadata, subscription);
   const subId = typeof subscription.id === "string" ? subscription.id : null;
   if (!subId) return;
 
@@ -623,7 +670,7 @@ async function handleSubscriptionUpdated(subscription: Record<string, unknown>):
 
 // Revoked = access ends now (immediate cancel, or trial abandoned).
 async function handleAccessRevoked(subscription: Record<string, unknown>): Promise<void> {
-  const meta = parsePolarMetadata(subscription.metadata);
+  const meta = await resolvePolarMeta(subscription.metadata, subscription);
   const subId = typeof subscription.id === "string" ? subscription.id : null;
   await revokeCourseAccess(meta.userId, meta.courseId);
   if (subId) {

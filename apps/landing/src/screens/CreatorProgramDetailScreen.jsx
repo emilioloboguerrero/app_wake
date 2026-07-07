@@ -8,6 +8,7 @@ import {
   startPolarCheckout,
   startGuestCheckout,
   startPlanCheckout,
+  startPolarPayFirstCheckout,
   StorefrontCheckoutError,
 } from '../services/storefrontCheckoutService';
 import { getCurrentUser } from '../services/storefrontAuthService';
@@ -784,13 +785,62 @@ export default function CreatorProgramDetailScreen() {
     }
     if (getCurrentUser()) {
       startForMode(mode);
-    } else if (provider !== 'polar' && mode === 'subscription') {
+    } else if (provider === 'polar') {
+      // Pay-first: signed-out Polar goes straight to Polar's hosted checkout,
+      // which collects the email itself. Covers subscription and one-time.
+      runPolarPayFirst(mode);
+    } else if (mode === 'subscription') {
       // Pay-first: signed-out MercadoPago subscriptions skip our email field
-      // entirely and go straight to MP's hosted checkout, which collects the
-      // email itself. Polar and one-time keep the email-first guest flow.
+      // and go straight to MP's hosted checkout. MP one-time keeps email-first.
       runPlanStart(mode);
     } else {
       openGuestEmailStep(mode);
+    }
+  };
+
+  // Pay-first Polar (international): no email step, straight to Polar checkout.
+  const runPolarPayFirst = async (mode) => {
+    setBusyMode(mode);
+    setCheckoutError(null);
+    try {
+      analyticsService.track('subscription.checkout.created', {
+        course_id: program.id,
+        surface: 'landing',
+        kind: 'course',
+        provider: 'polar',
+        guest: true,
+        pay_first: true,
+      });
+    } catch { /* analytics is best-effort */ }
+    try {
+      const result = await startPolarPayFirstCheckout({
+        username: creator.username,
+        courseId: program.id,
+        mode: mode === 'subscription' ? 'subscription' : 'one_time',
+      });
+      const target = result?.checkoutUrl;
+      if (target) {
+        try {
+          analyticsService.track('subscription.checkout.redirected', {
+            course_id: program.id,
+            surface: 'landing',
+            kind: 'course',
+            provider: 'polar',
+            guest: true,
+            pay_first: true,
+          });
+        } catch { /* analytics is best-effort */ }
+        window.location.href = target;
+        return;
+      }
+      throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
+    } catch (err) {
+      setBusyMode(null);
+      if (err?.code === 'CAPACITY_FULL') {
+        openWaitlist();
+        return;
+      }
+      setCheckoutError(err?.message || 'No se pudo iniciar el pago');
     }
   };
 

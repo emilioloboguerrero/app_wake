@@ -81,6 +81,31 @@ export function parsePolarMetadata(raw: unknown): PolarCheckoutMetadata {
   return {userId, courseId, paymentType};
 }
 
+/**
+ * Lenient variant for pay-first checkouts, where the buyer has no account yet
+ * so the checkout metadata carries no userId — the webhook resolves the user
+ * from the Polar-collected customer email instead. Still requires a valid
+ * courseId + paymentType.
+ */
+export function parsePolarMetadataGuest(
+  raw: unknown
+): {userId: string | null; courseId: string; paymentType: PolarPaymentType} {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Polar metadata missing");
+  }
+  const md = raw as Record<string, unknown>;
+  const userId = coerceString(md.userId) || null;
+  const courseId = coerceString(md.courseId);
+  const paymentType = coerceString(md.paymentType);
+  if (!courseId || !COURSE_ID_RE.test(courseId)) {
+    throw new Error("Polar metadata missing/invalid courseId");
+  }
+  if (!isPolarPaymentType(paymentType)) {
+    throw new Error(`Polar metadata invalid paymentType: ${paymentType}`);
+  }
+  return {userId, courseId, paymentType};
+}
+
 function coerceString(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" || typeof value === "boolean") return String(value);

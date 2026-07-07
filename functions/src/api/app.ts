@@ -144,6 +144,9 @@ const PUBLIC_PATHS = [
   // Pay-first MP subscription: no email, no session. Returns the plan
   // init_point; the handler enforces a per-IP rate limit itself.
   /^\/public\/checkout\/plan-start$/,
+  // Pay-first Polar (international cards): no email, no session. Returns the
+  // Polar hosted checkout URL; the handler enforces a per-IP rate limit itself.
+  /^\/public\/checkout\/polar-start$/,
   // MP webhook authenticates via HMAC signature, not Firebase token (the
   // handler verifies x-signature / x-hmac-signature before doing any work).
   // Without this entry, the auth middleware 401s the webhook before it ever

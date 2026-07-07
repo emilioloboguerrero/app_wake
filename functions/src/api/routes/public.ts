@@ -803,6 +803,90 @@ router.post("/public/checkout/plan-start", async (req, res) => {
   res.json({data: {initPoint, mode: "subscription"}});
 });
 
+// POST /public/checkout/polar-start
+//
+// Pay-first Polar (international cards): no email, no session. Creates a Polar
+// hosted checkout with no pre-known customer — Polar collects the email itself,
+// and the webhook resolves the buyer from order.customer.email. Works for both
+// subscription and one_time. Registered in app.ts PUBLIC_PATHS.
+router.post("/public/checkout/polar-start", async (req, res) => {
+  await checkIpRateLimit(req, 15);
+
+  const body = validateBody<{username: string; courseId: string; mode: string}>(
+    {username: "string", courseId: "string", mode: "string"},
+    req.body
+  );
+
+  const username = (body.username || "").toLowerCase().trim();
+  if (!USERNAME_RE.test(username)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "username inválido", "username");
+  }
+  if (!COURSE_ID_RE.test(body.courseId) || RESERVED_COURSE_IDS.has(body.courseId)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
+  }
+  const paymentType: "subscription" | "one_time" | null =
+    body.mode === "subscription" ? "subscription" :
+      body.mode === "one_time" ? "one_time" : null;
+  if (!paymentType) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "mode debe ser one_time o subscription", "mode");
+  }
+
+  const creatorLookup = await lookupCreatorByUsername(username);
+  if (!creatorLookup) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+
+  const courseDoc = await db.collection("courses").doc(body.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const course = courseDoc.data() ?? {};
+  if (course.creator_id !== creatorLookup.userId || course.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const courseDeliveryType =
+    typeof course.deliveryType === "string" && course.deliveryType.trim() ?
+      course.deliveryType :
+      "general";
+  if (!STOREFRONT_SELLABLE_DELIVERY_TYPES.has(courseDeliveryType)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este programa no se vende por la tienda");
+  }
+
+  await assertCourseHasSeat(body.courseId, course);
+
+  const base = resolveStorefrontBase(req);
+  const successUrl =
+    `${base}/${encodeURIComponent(username)}/comprado?course=${encodeURIComponent(body.courseId)}` +
+    (paymentType === "subscription" ? "&mode=subscription" : "");
+
+  let checkout;
+  try {
+    checkout = await createPolarCheckoutSession({
+      userId: null,
+      email: null,
+      courseId: body.courseId,
+      course,
+      paymentType,
+      successUrl,
+    });
+  } catch (err) {
+    if (err instanceof WakeApiServerError) throw err; // e.g. no Polar product configured
+    functions.logger.error("polar-start failed", {
+      courseId: body.courseId,
+      ...safeErrorPayload(err),
+    });
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo iniciar el pago");
+  }
+
+  logCheckout("polar_start.ok", {
+    courseId: body.courseId,
+    creatorId: creatorLookup.userId,
+    paymentType,
+  });
+
+  res.json({data: {checkoutUrl: checkout.url, mode: paymentType}});
+});
+
 async function executeStorefrontCheckout(
   req: Request,
   res: Response,

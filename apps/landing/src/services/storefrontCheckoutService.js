@@ -265,6 +265,52 @@ export async function startPlanCheckout({ username, courseId }) {
   return respBody?.data ?? null;
 }
 
+// POST /api/v1/public/checkout/polar-start — pay-first Polar (international
+// cards). No email, no session, no App Check (public path; server rate-limits
+// per IP). Returns { checkoutUrl } to Polar's hosted checkout, where the buyer
+// pays as guest and Polar collects the email. The webhook provisions the
+// account from that email. Works for subscription and one_time.
+export async function startPolarPayFirstCheckout({ username, courseId, mode }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CHECKOUT_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch('/api/v1/public/checkout/polar-start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Wake-Client': 'landing/1.0',
+      },
+      body: JSON.stringify({ username, courseId, mode }),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    clearTimeout(timer);
+    throw new StorefrontCheckoutError(
+      err?.name === 'AbortError'
+        ? 'La conexión tardó demasiado. Intenta de nuevo.'
+        : 'Error de red. Intenta de nuevo.',
+      err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
+      0
+    );
+  }
+  clearTimeout(timer);
+
+  let respBody = null;
+  try { respBody = await res.json(); } catch { /* non-JSON */ }
+
+  if (!res.ok) {
+    throw new StorefrontCheckoutError(
+      respBody?.error?.message || 'No se pudo iniciar el pago',
+      respBody?.error?.code || 'INTERNAL_ERROR',
+      res.status
+    );
+  }
+
+  return respBody?.data ?? null;
+}
+
 // POST /api/v1/payments/polar/checkout — international (USD) hosted checkout via
 // Polar. Same auth as the MercadoPago storefront checkout (Firebase ID token +
 // App Check). Returns { checkoutUrl } on success, or { alreadyPurchased, appUrl }
