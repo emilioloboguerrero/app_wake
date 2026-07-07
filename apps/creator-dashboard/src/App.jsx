@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -6,41 +6,46 @@ import { MediaUploadProvider } from './contexts/MediaUploadContext';
 import { BackgroundTaskProvider } from './contexts/BackgroundTaskContext';
 import UploadStatusCard from './components/ui/UploadStatusCard';
 import BackgroundTaskCard from './components/ui/BackgroundTaskCard';
-import LoginScreen from './screens/LoginScreen';
-import LibraryExercisesScreen from './screens/LibraryExercisesScreen';
-import LibrarySessionDetailScreen from './screens/LibrarySessionDetailScreen';
-import ProgramDetailScreen from './screens/ProgramDetailScreen';
-import BundleDetailScreen from './screens/BundleDetailScreen';
-import LibraryContentScreen from './screens/LibraryContentScreen';
-import OnboardingEducation from './screens/onboarding/OnboardingEducation';
-import CompleteProfileScreen from './screens/CompleteProfileScreen';
-
-import ProfileScreen from './screens/ProfileScreen';
-import ClientScreen from './screens/ClientScreen';
-import PlanDetailScreen from './screens/PlanDetailScreen';
-import PlanSessionDetailScreen from './screens/PlanSessionDetailScreen';
-import MealEditorScreen from './screens/MealEditorScreen';
-import PlanEditorScreen from './screens/PlanEditorScreen';
-import NutritionProgramEditorScreen from './screens/NutritionProgramEditorScreen';
-import CreateLibrarySessionScreen from './screens/CreateLibrarySessionScreen';
-import EventsScreen from './screens/EventsScreen';
-import EventResultsScreen from './screens/EventResultsScreen';
-import EventCheckinScreen from './screens/EventCheckinScreen';
-import ApiKeysScreen from './screens/ApiKeysScreen';
-import AppResourcesScreen from './screens/AppResourcesScreen';
-import AdminSalesScreen from './screens/AdminSalesScreen';
-import DashboardScreen from './screens/DashboardScreen';
 import ProtectedRoute from './components/ProtectedRoute';
-
-// New IA screens
-import BibliotecaScreen from './screens/BibliotecaScreen';
-import ProgramasScreen from './screens/ProgramasScreen';
-import ClientesScreen from './screens/ClientesScreen';
-
-import BibliotecaGuideTest from './screens/biblioteca-guide/BibliotecaGuideTest';
 import DebugScreenTracker from './components/DebugScreenTracker';
 import ErrorBoundary from './components/ErrorBoundary';
 import './App.css';
+
+// Every route screen is lazy-loaded so the entry bundle carries only the app
+// shell (providers, ProtectedRoute, ErrorBoundary). Each screen becomes its own
+// chunk loaded on navigation — previously all ~28 screens shipped in one 2.8 MB
+// bundle that every coach parsed on cold start.
+const LoginScreen = lazy(() => import('./screens/LoginScreen'));
+const LibraryExercisesScreen = lazy(() => import('./screens/LibraryExercisesScreen'));
+const LibrarySessionDetailScreen = lazy(() => import('./screens/LibrarySessionDetailScreen'));
+const ProgramDetailScreen = lazy(() => import('./screens/ProgramDetailScreen'));
+const BundleDetailScreen = lazy(() => import('./screens/BundleDetailScreen'));
+const LibraryContentScreen = lazy(() => import('./screens/LibraryContentScreen'));
+const OnboardingEducation = lazy(() => import('./screens/onboarding/OnboardingEducation'));
+const CompleteProfileScreen = lazy(() => import('./screens/CompleteProfileScreen'));
+const ProfileScreen = lazy(() => import('./screens/ProfileScreen'));
+const ClientScreen = lazy(() => import('./screens/ClientScreen'));
+const PlanDetailScreen = lazy(() => import('./screens/PlanDetailScreen'));
+const PlanSessionDetailScreen = lazy(() => import('./screens/PlanSessionDetailScreen'));
+const MealEditorScreen = lazy(() => import('./screens/MealEditorScreen'));
+const PlanEditorScreen = lazy(() => import('./screens/PlanEditorScreen'));
+const NutritionProgramEditorScreen = lazy(() => import('./screens/NutritionProgramEditorScreen'));
+const CreateLibrarySessionScreen = lazy(() => import('./screens/CreateLibrarySessionScreen'));
+const EventsScreen = lazy(() => import('./screens/EventsScreen'));
+const EventResultsScreen = lazy(() => import('./screens/EventResultsScreen'));
+const EventCheckinScreen = lazy(() => import('./screens/EventCheckinScreen'));
+const ApiKeysScreen = lazy(() => import('./screens/ApiKeysScreen'));
+const AppResourcesScreen = lazy(() => import('./screens/AppResourcesScreen'));
+const AdminSalesScreen = lazy(() => import('./screens/AdminSalesScreen'));
+const DashboardScreen = lazy(() => import('./screens/DashboardScreen'));
+const BibliotecaScreen = lazy(() => import('./screens/BibliotecaScreen'));
+const ProgramasScreen = lazy(() => import('./screens/ProgramasScreen'));
+const ClientesScreen = lazy(() => import('./screens/ClientesScreen'));
+const BibliotecaGuideTest = lazy(() => import('./screens/biblioteca-guide/BibliotecaGuideTest'));
+
+function RouteFallback() {
+  return <div style={{ minHeight: '100vh' }} aria-hidden="true" />;
+}
 
 const RedirectLibrarySessionEdit = () => {
   const { sessionId } = useParams();
@@ -53,6 +58,7 @@ function AppContent() {
   return (
     <Router basename={CREATOR_BASE}>
         <div className="App">
+          <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/login" element={<DebugScreenTracker name="LoginScreen"><LoginScreen /></DebugScreenTracker>} />
             <Route
@@ -362,6 +368,7 @@ function AppContent() {
             <Route path="/test/biblioteca-guide" element={<BibliotecaGuideTest />} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
           </Routes>
+          </Suspense>
         </div>
       </Router>
   );
