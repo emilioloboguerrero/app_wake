@@ -17,6 +17,9 @@ export function isBundleReference(ref: ParsedReference): boolean {
 
 export interface MercadoPagoPreapproval {
   external_reference?: string | null;
+  // Present only on plan-associated (pay-first) subscriptions — the shared plan
+  // the buyer subscribed to. The webhook maps it back to a course.
+  preapproval_plan_id?: string | null;
   next_payment_date?: string | null;
   auto_recurring?: {
     next_payment_date?: string | null;

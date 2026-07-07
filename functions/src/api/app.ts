@@ -141,6 +141,9 @@ const PUBLIC_PATHS = [
   // Guest checkout: buyer identity is an email resolved server-side; the
   // handler enforces per-IP + per-email rate limits itself.
   /^\/public\/checkout\/guest-start$/,
+  // Pay-first MP subscription: no email, no session. Returns the plan
+  // init_point; the handler enforces a per-IP rate limit itself.
+  /^\/public\/checkout\/plan-start$/,
   // MP webhook authenticates via HMAC signature, not Firebase token (the
   // handler verifies x-signature / x-hmac-signature before doing any work).
   // Without this entry, the auth middleware 401s the webhook before it ever

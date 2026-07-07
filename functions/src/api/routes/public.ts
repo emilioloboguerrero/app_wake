@@ -25,6 +25,7 @@ import {
   type MercadoPagoPreapproval,
 } from "../services/paymentHelpers.js";
 import {getCourseAvailability, assertCourseHasSeat} from "../services/capacity.js";
+import {ensureCoursePlanInitPoint} from "../services/planCheckout.js";
 import {createPolarCheckoutSession} from "./polar.js";
 
 const router = Router();
@@ -712,6 +713,94 @@ router.post("/public/checkout/guest-start", async (req, res) => {
   });
 
   await executeStorefrontCheckout(req, res, {userId, email, displayName}, body);
+});
+
+// POST /public/checkout/plan-start
+//
+// Pay-first MercadoPago subscription: no email, no session. Returns the shared
+// PreApprovalPlan init_point (MP's hosted "checkout externo") where the buyer
+// pays as guest with a card — MP collects their email there and creates the
+// preapproval, which the webhook maps back to this course + user. Only for MP
+// subscriptions; Polar and one-time keep the email-first guest flow.
+// Registered in app.ts PUBLIC_PATHS.
+router.post("/public/checkout/plan-start", async (req, res) => {
+  await checkIpRateLimit(req, 15);
+
+  const body = validateBody<{username: string; courseId: string}>(
+    {username: "string", courseId: "string"},
+    req.body
+  );
+
+  const username = (body.username || "").toLowerCase().trim();
+  if (!USERNAME_RE.test(username)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "username inválido", "username");
+  }
+  if (!COURSE_ID_RE.test(body.courseId) || RESERVED_COURSE_IDS.has(body.courseId)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "courseId inválido", "courseId");
+  }
+
+  const creatorLookup = await lookupCreatorByUsername(username);
+  if (!creatorLookup) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+
+  const courseDoc = await db.collection("courses").doc(body.courseId).get();
+  if (!courseDoc.exists) {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const course = courseDoc.data() ?? {};
+  if (course.creator_id !== creatorLookup.userId || course.status !== "published") {
+    throw new WakeApiServerError("NOT_FOUND", 404, STOREFRONT_NOT_FOUND);
+  }
+  const courseDeliveryType =
+    typeof course.deliveryType === "string" && course.deliveryType.trim() ?
+      course.deliveryType :
+      "general";
+  if (!STOREFRONT_SELLABLE_DELIVERY_TYPES.has(courseDeliveryType)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este programa no se vende por la tienda");
+  }
+  const monthlyPrice =
+    typeof course.subscription_price === "number" &&
+    Number.isInteger(course.subscription_price) &&
+    course.subscription_price > 0 ?
+      course.subscription_price :
+      null;
+  if (monthlyPrice === null) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Este programa no ofrece suscripción");
+  }
+
+  // Beta cap: advisory gate here (the plan init_point is a static shared URL, so
+  // the webhook is the hard cap). Mirrors executeStorefrontCheckout.
+  await assertCourseHasSeat(body.courseId, course);
+
+  const base = resolveStorefrontBase(req);
+  const backUrl =
+    `${base}/${encodeURIComponent(username)}/comprado` +
+    `?course=${encodeURIComponent(body.courseId)}&mode=subscription`;
+
+  let initPoint: string;
+  try {
+    initPoint = await ensureCoursePlanInitPoint({
+      courseId: body.courseId,
+      course,
+      monthlyPrice,
+      backUrl,
+    });
+  } catch (err) {
+    functions.logger.error("plan-start ensure plan failed", {
+      courseId: body.courseId,
+      ...safeErrorPayload(err),
+    });
+    throw new WakeApiServerError("INTERNAL_ERROR", 500, "No se pudo iniciar el pago");
+  }
+
+  logCheckout("plan_start.ok", {
+    courseId: body.courseId,
+    creatorId: creatorLookup.userId,
+    monthlyPrice,
+  });
+
+  res.json({data: {initPoint, mode: "subscription"}});
 });
 
 async function executeStorefrontCheckout(

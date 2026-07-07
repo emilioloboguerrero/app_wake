@@ -19,6 +19,7 @@ import {assignCourseToUser} from "../services/courseAssignment.js";
 import {writeLedgerEntryBestEffort, sumMercadoPagoFee} from "../services/paymentLedger.js";
 import {applyMpRefund} from "../services/refunds.js";
 import {assertCourseHasSeat} from "../services/capacity.js";
+import {resolvePlanPreapprovalReference} from "../services/planCheckout.js";
 import {assignBundleToUser} from "../services/bundleAssignment.js";
 import {cancelMpSubscription, getActiveOneOnOneLock} from "../services/enrollmentLeave.js";
 import {clampTrialDurationDays} from "../middleware/securityHelpers.js";
@@ -1034,10 +1035,21 @@ router.post("/payments/webhook", async (req: Request, res) => {
       const client = getMPClient();
       const preapproval = new PreApproval(client);
       const preapprovalData = await preapproval.get({id: preapprovalId}) as unknown as MercadoPagoPreapproval;
-      const externalReference = preapprovalData?.external_reference;
+      let externalReference: string | null = preapprovalData?.external_reference ?? null;
+      // Pay-first (plan-associated) subscriptions carry no external_reference —
+      // MP created the preapproval from a shared plan init_point. Resolve the
+      // buyer identity from the MP-collected payer_email + preapproval_plan_id
+      // and synthesize the reference the rest of this handler expects.
+      if (!externalReference) {
+        externalReference = await resolvePlanPreapprovalReference({
+          planId: preapprovalData?.preapproval_plan_id,
+          payerEmail: preapprovalData?.payer_email ?? preapprovalData?.payer?.email,
+        });
+      }
       logCheckout("webhook.preapproval.fetched", {
         preapprovalId,
         externalReference: externalReference ?? null,
+        planId: preapprovalData?.preapproval_plan_id ?? null,
         mpStatus: preapprovalData?.status ?? null,
         payerEmail: preapprovalData?.payer_email ?? null,
         mp: preapprovalData,
@@ -1509,7 +1521,40 @@ router.post("/payments/webhook", async (req: Request, res) => {
     return;
   }
 
-  const externalReference = paymentData.external_reference;
+  let externalReference: string | null = paymentData.external_reference ?? null;
+  if (!externalReference) {
+    // Pay-first (plan-associated) subscription charge: the payment carries no
+    // external_reference. Recover identity from the preapproval MP created, then
+    // synthesize the reference so the grant below runs unchanged.
+    const planPreapprovalId = paymentData.preapproval_id || paymentData.preapproval?.id || null;
+    if (planPreapprovalId) {
+      try {
+        const preClient = getMPClient();
+        const pre = await new PreApproval(preClient)
+          .get({id: planPreapprovalId}) as unknown as MercadoPagoPreapproval;
+        externalReference = await resolvePlanPreapprovalReference({
+          planId: pre?.preapproval_plan_id,
+          payerEmail: pre?.payer_email ?? pre?.payer?.email,
+        });
+      } catch (resolveErr) {
+        // Transient MP/Firestore failure — retry rather than silently drop a
+        // paid subscription (processedRef stays "processing", which the
+        // idempotency guard treats as reprocessable).
+        if (classifyError(resolveErr) === "RETRYABLE") {
+          functions.logger.warn("plan payment: preapproval resolve retryable", {
+            preapprovalId: planPreapprovalId, error: String(resolveErr),
+          });
+          res.status(500).json({
+            error: {code: "INTERNAL_ERROR", message: "Error resolviendo suscripción"},
+          });
+          return;
+        }
+        functions.logger.error("plan payment: preapproval resolve failed", {
+          preapprovalId: planPreapprovalId, error: String(resolveErr),
+        });
+      }
+    }
+  }
   if (!externalReference) {
     await processedRef.set({
       processed_at: FieldValue.serverTimestamp(),

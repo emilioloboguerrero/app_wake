@@ -7,6 +7,7 @@ import {
   startStorefrontCheckout,
   startPolarCheckout,
   startGuestCheckout,
+  startPlanCheckout,
   StorefrontCheckoutError,
 } from '../services/storefrontCheckoutService';
 import { getCurrentUser } from '../services/storefrontAuthService';
@@ -57,6 +58,73 @@ function formatPrice(value, currency) {
   } catch {
     return `${value}`;
   }
+}
+
+// Discipline is stored as an internal slug (e.g. "fuerza-hipertrofia"). Turn it
+// into a human label. Known slugs get a curated label; anything else is
+// de-slugified (hyphens → spaces, first letter capitalized).
+const DISCIPLINE_LABELS = {
+  'fuerza-hipertrofia': 'Fuerza e hipertrofia',
+  'perdida-de-grasa': 'Pérdida de grasa',
+  'perdida-grasa': 'Pérdida de grasa',
+  'movilidad': 'Movilidad',
+  'cardio': 'Cardio',
+  'calistenia': 'Calistenia',
+  'powerlifting': 'Powerlifting',
+};
+function prettyDiscipline(slug) {
+  if (typeof slug !== 'string' || !slug.trim()) return null;
+  const key = slug.trim().toLowerCase();
+  if (DISCIPLINE_LABELS[key]) return DISCIPLINE_LABELS[key];
+  const words = key.replace(/[-_]+/g, ' ').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// Click-to-load YouTube hero. Shows the program cover as a clean poster with a
+// play button; the YouTube iframe (and its player JS) only loads on click. Keeps
+// YouTube's red chrome off the first paint and its player off the initial load.
+// The poster is the program's own image (CSP-allowed), not a YouTube thumbnail.
+function YouTubeFacade({ ytId, poster, title }) {
+  const [active, setActive] = useState(false);
+  if (active) {
+    return (
+      <div className="cpd-video-shell cpd-video-shell-embed">
+        <iframe
+          className="cpd-video"
+          src={`https://www.youtube-nocookie.com/embed/${ytId}?rel=0&modestbranding=1&playsinline=1&autoplay=1`}
+          title={title || 'Video'}
+          loading="eager"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="cpd-video-facade"
+      onClick={() => setActive(true)}
+      aria-label={title ? `Reproducir: ${title}` : 'Reproducir video'}
+    >
+      {poster ? (
+        <img
+          src={poster}
+          alt=""
+          className="cpd-cover"
+          loading="eager"
+          decoding="async"
+          fetchPriority="high"
+        />
+      ) : (
+        <div className="cpd-cover cpd-cover-placeholder" aria-hidden="true" />
+      )}
+      <span className="cpd-video-dim" aria-hidden="true" />
+      <span className="cpd-video-play-icon cpd-video-play-icon--facade" aria-hidden="true">
+        <PlayIcon size={28} />
+      </span>
+    </button>
+  );
 }
 
 function IncludesTags({ program, className }) {
@@ -716,8 +784,58 @@ export default function CreatorProgramDetailScreen() {
     }
     if (getCurrentUser()) {
       startForMode(mode);
+    } else if (provider !== 'polar' && mode === 'subscription') {
+      // Pay-first: signed-out MercadoPago subscriptions skip our email field
+      // entirely and go straight to MP's hosted checkout, which collects the
+      // email itself. Polar and one-time keep the email-first guest flow.
+      runPlanStart(mode);
     } else {
       openGuestEmailStep(mode);
+    }
+  };
+
+  // Pay-first MercadoPago subscription: no email step, straight to MP.
+  const runPlanStart = async (mode) => {
+    setBusyMode(mode);
+    setCheckoutError(null);
+    try {
+      analyticsService.track('subscription.checkout.created', {
+        course_id: program.id,
+        surface: 'landing',
+        kind: 'course',
+        provider: 'mercadopago',
+        guest: true,
+        pay_first: true,
+      });
+    } catch { /* analytics is best-effort */ }
+    try {
+      const result = await startPlanCheckout({
+        username: creator.username,
+        courseId: program.id,
+      });
+      const target = result?.initPoint;
+      if (target) {
+        try {
+          analyticsService.track('subscription.checkout.redirected', {
+            course_id: program.id,
+            surface: 'landing',
+            kind: 'course',
+            provider: 'mercadopago',
+            guest: true,
+            pay_first: true,
+          });
+        } catch { /* analytics is best-effort */ }
+        window.location.href = target;
+        return;
+      }
+      throw new StorefrontCheckoutError('Respuesta inesperada del servidor', 'INTERNAL_ERROR', 500);
+    } catch (err) {
+      setBusyMode(null);
+      if (err?.code === 'CAPACITY_FULL') {
+        openWaitlist();
+        return;
+      }
+      setCheckoutError(err?.message || 'No se pudo iniciar el pago');
     }
   };
 
@@ -975,6 +1093,46 @@ export default function CreatorProgramDetailScreen() {
   // one-time is the secondary. When only one is available, that one is primary.
   const oneTimeIsPrimary = hasOneTime && !hasSubscription;
 
+  const disciplineLabel = prettyDiscipline(program.discipline);
+
+  // Launch-price badge: percent saved vs the compareAtPrice. compareAtPrice is
+  // COP, so only surface it on the COP (MercadoPago) provider.
+  const activeCopPrice = hasSubscription ? program.subscriptionPrice : program.price;
+  const savingsPct = (provider !== 'polar'
+    && typeof program.compareAtPrice === 'number'
+    && typeof activeCopPrice === 'number'
+    && program.compareAtPrice > activeCopPrice)
+    ? Math.round((1 - activeCopPrice / program.compareAtPrice) * 100)
+    : null;
+
+  // Reassurance line under a subscription CTA.
+  const showCancelAnytime = provider === 'polar' ? polarHasSub : hasSubscription;
+
+  // Sticky buy bar — persistent CTA that follows the buyer. Mirrors the active
+  // provider's primary price/label. Hidden while any inline checkout step,
+  // waitlist, or owned/sent state is showing so it never competes with the form
+  // the buyer is filling.
+  const stickyIntl = provider === 'polar';
+  const stickyIsSub = stickyIntl ? polarHasSub : hasSubscription;
+  const stickyPrice = isOneOnOne
+    ? 'Asesoría'
+    : stickyIntl
+      ? (polarHasSub ? polarSubPrice : polarOtpPrice)
+      : (hasSubscription ? subPrice : oneTimePrice);
+  const stickyCompare = (!isOneOnOne && !stickyIntl
+    && typeof program.compareAtPrice === 'number'
+    && typeof activeCopPrice === 'number'
+    && program.compareAtPrice > activeCopPrice)
+    ? formatPrice(program.compareAtPrice, program.currency)
+    : null;
+  const stickyLabel = isOneOnOne ? 'Reservar llamada' : (stickyIsSub ? 'Suscríbete' : 'Comprar');
+  const stickyPurchasable = isOneOnOne || hasSubscription || hasOneTime || polarAvailable;
+  const showStickyBar = stickyPurchasable
+    && !program.isFull
+    && waitlistPhase === 'hidden'
+    && !emailStep && !guestEmailStep && !needsAltEmail
+    && !alreadyOwned && !guestAccessSent;
+
   return (
     <div className="cpd-root" style={accentStyle}>
       <Link to={`/${username}`} className="cpd-back-fab" aria-label={`Volver a ${creator.displayName}`}>
@@ -985,16 +1143,7 @@ export default function CreatorProgramDetailScreen() {
         <div className="cpd-media">
           {heroVideoUrl ? (
             introYtId ? (
-              <div className="cpd-video-shell cpd-video-shell-embed">
-                <iframe
-                  className="cpd-video"
-                  src={`https://www.youtube-nocookie.com/embed/${introYtId}?rel=0&modestbranding=1&playsinline=1`}
-                  title="Video intro"
-                  loading="lazy"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
+              <YouTubeFacade ytId={introYtId} poster={program.imageUrl} title={program.title} />
             ) : (
             <div
               className="cpd-video-shell"
@@ -1067,11 +1216,15 @@ export default function CreatorProgramDetailScreen() {
             <h1 className="cpd-title">{program.title}</h1>
 
             <div className="cpd-meta">
-              {program.discipline ? <span>{program.discipline}</span> : null}
+              {disciplineLabel ? <span>{disciplineLabel}</span> : null}
               {program.duration ? <span>{program.duration}</span> : null}
               {program.durationWeeks ? <span>{program.durationWeeks} semanas</span> : null}
             </div>
           </header>
+
+          {program.description ? (
+            <p className="cpd-lead">{program.description}</p>
+          ) : null}
 
           {isOneOnOne ? (
             <button
@@ -1147,6 +1300,12 @@ export default function CreatorProgramDetailScreen() {
             // MP rejection. The alt-email form below is the only valid next
             // step until it succeeds or the user resets the flow.
             <>
+              {savingsPct ? (
+                <div className="cpd-save-badge">
+                  <span className="cpd-save-badge-tag">Precio de lanzamiento</span>
+                  <span className="cpd-save-badge-pct">−{savingsPct}%</span>
+                </div>
+              ) : null}
               {provider === 'polar' ? (
                 <div className="cpd-ctas">
                   {polarHasSub ? (
@@ -1246,6 +1405,9 @@ export default function CreatorProgramDetailScreen() {
                     <span>Pagar en Colombia <strong>(COP)</strong></span>
                   )}
                 </button>
+              ) : null}
+              {showCancelAnytime ? (
+                <p className="cpd-trust">Cancela cuando quieras.</p>
               ) : null}
             </>
           )}
@@ -1466,6 +1628,32 @@ export default function CreatorProgramDetailScreen() {
             : 'Hola, necesito ayuda con Wake.'
         }
       />
+
+      {showStickyBar ? (
+        <div className="cpd-buybar" role="group" aria-label="Comprar programa">
+          <div className="cpd-buybar-info">
+            {stickyPrice ? (
+              <span className="cpd-buybar-price">
+                {stickyCompare ? <span className="cpd-buybar-compare">{stickyCompare}</span> : null}
+                <span className="cpd-buybar-amount">
+                  {stickyPrice}
+                  {stickyIsSub ? <span className="cpd-buybar-suffix">/mes</span> : null}
+                </span>
+              </span>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            className="cpd-cta cpd-cta-primary cpd-buybar-cta"
+            onClick={handlePrimaryCta}
+            disabled={busyMode !== null}
+          >
+            <span className="cpd-cta-label">
+              {busyMode !== null ? 'Procesando…' : stickyLabel}
+            </span>
+          </button>
+        </div>
+      ) : null}
 
       <LandingFooter />
 
