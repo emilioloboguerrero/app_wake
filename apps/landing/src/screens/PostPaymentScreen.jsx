@@ -16,7 +16,17 @@ import './PostPaymentScreen.css';
 // with. This spells both out on the post-payment screen itself, device-aware,
 // so the instructions match the phone the buyer is holding. `email` names the
 // exact inbox to sign in with (falls back to a generic line when unknown).
+// gmail/googlemail buyers can tap "Continuar con Google" (it lands the same
+// account). Everyone else must use the access link we email — the PWA's email
+// button is a password form a guest buyer never set. Steering each buyer to
+// the door that actually works is the whole point of this block.
+function isGoogleEmail(email) {
+  const domain = String(email || '').toLowerCase().split('@')[1] || '';
+  return domain === 'gmail.com' || domain === 'googlemail.com';
+}
+
 function PwaAccessGuide({ platform, email }) {
+  const googleEmail = isGoogleEmail(email);
   return (
     <div className="pp-guide">
       <p className="pp-guide-title">Cómo entrar a tu programa</p>
@@ -37,9 +47,19 @@ function PwaAccessGuide({ platform, email }) {
         <li className="pp-guide-step">
           <span className="pp-guide-num" aria-hidden="true">2</span>
           <p className="pp-guide-text">
-            <strong>Inicia sesión con el mismo correo con el que pagaste</strong>
-            {email ? <>: <strong>{email}</strong></> : null}. Todo tu contenido se ve
-            desde la app.
+            {googleEmail ? (
+              <>
+                <strong>Entra con «Continuar con Google»</strong> usando{' '}
+                {email ? <strong>{email}</strong> : 'tu cuenta de Google'} — es el correo con el que
+                pagaste. También puedes usar el enlace de acceso que te enviamos a ese correo.
+              </>
+            ) : (
+              <>
+                <strong>Entra con el enlace de acceso</strong> que te enviamos
+                {email ? <> a <strong>{email}</strong></> : ' a tu correo'}, el mismo con el que
+                pagaste. Ábrelo desde tu teléfono — es tu llave a la cuenta.
+              </>
+            )}
           </p>
         </li>
       </ol>

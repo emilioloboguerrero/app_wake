@@ -23,6 +23,7 @@ import logger from '../utils/logger';
 import SvgEye from '../components/icons/vectors_fig/Interface/Eye';
 import SvgEyeSlash from '../components/icons/vectors_fig/Interface/EyeSlash';
 import { wakeAlert } from '../utils/wakeAlert';
+import { recordLoginMethod, getLastLoginMethod } from '../utils/lastLoginMethod';
 
 const LoginScreen = ({ navigation }) => {
   const { user, loading } = useAuth();
@@ -90,6 +91,13 @@ const LoginScreen = ({ navigation }) => {
     return password.length >= 6;
   };
 
+  // Nudge the returning buyer toward the door they already used (per-device),
+  // so they don't pick a different provider and split into a second account.
+  const [lastMethod, setLastMethod] = useState(null);
+  useEffect(() => {
+    getLastLoginMethod().then((r) => setLastMethod(r.method)).catch(() => {});
+  }, []);
+
   const handleEmailChange = (text) => {
     setEmail(text);
     if (emailError) setEmailError(null);
@@ -145,6 +153,7 @@ const LoginScreen = ({ navigation }) => {
       
       const currentUser = user || auth.currentUser;
       if (currentUser) {
+        recordLoginMethod('email', email);
         setTimeout(() => {
           navigation.replace('MainApp');
         }, 200);
@@ -282,6 +291,7 @@ const LoginScreen = ({ navigation }) => {
         setIsLoading(false);
         const currentUser = result.user || auth.currentUser;
         if (currentUser) {
+          recordLoginMethod('google', currentUser?.email);
           setTimeout(() => {
             navigation.replace('MainApp');
           }, 200);
@@ -468,6 +478,11 @@ const LoginScreen = ({ navigation }) => {
               onPress={isSignUp ? handleRegister : handleContinue}
               disabled={isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)}
             >
+              {lastMethod === 'email' && !isSignUp ? (
+                <View style={styles.lastUsedBadge}>
+                  <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+                </View>
+              ) : null}
               {isLoading ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
@@ -524,6 +539,11 @@ const LoginScreen = ({ navigation }) => {
               onPress={handleGoogleLogin}
               disabled={isLoading}
             >
+              {lastMethod === 'google' ? (
+                <View style={styles.lastUsedBadge}>
+                  <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+                </View>
+              ) : null}
               <Image
                 source={require('../../assets/google-icon.png')}
                 style={styles.googleIcon}
@@ -716,6 +736,23 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#333',
     marginBottom: 24,
+  },
+  lastUsedBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 12,
+    backgroundColor: '#2a2a2a',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+    zIndex: 2,
+  },
+  lastUsedBadgeText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 11,
+    fontWeight: '600',
   },
   googleButton: {
     width: '100%',
