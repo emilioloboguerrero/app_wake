@@ -8,6 +8,11 @@ import {Resend} from "resend";
 
 const APP_BASE = "https://wakelab.co/app";
 const SUPPORT_EMAIL = "soporte@wakelab.co";
+// WhatsApp is the fastest support channel. Kept in sync with the landing
+// app's single source of truth (apps/landing/src/config/support.js, +57 317
+// 8751956). Functions can't import from the app, so the number lives here too.
+const SUPPORT_WHATSAPP_URL =
+  "https://wa.me/573178751956?text=" + encodeURIComponent("Hola, necesito ayuda con Wake.");
 const FROM = "Wake <hola@wakelab.co>";
 // wakelab.co has no MX record (it can't receive mail), so replies to FROM would
 // bounce. Route replies to a monitored inbox until inbound forwarding
@@ -179,8 +184,19 @@ function wrapTemplate(args: {
   body: string;
   ctaLabel: string;
   ctaUrl: string;
+  secondaryLinks?: {label: string; url: string}[];
   footer?: string;
 }): string {
+  // Secondary links (manage subscription, WhatsApp support, ...) render as a
+  // row of text links under the primary button so every buyer always has the
+  // three doors — open Wake, manage subscription, get help — in one place.
+  const secondary = (args.secondaryLinks || []).length ?
+    `<p style="font-size:14px;line-height:1.8;color:rgba(255,255,255,0.7);margin:20px 0 0;">${
+      (args.secondaryLinks || [])
+        .map((l) => `<a href="${l.url}" style="color:#fff;font-weight:600;text-decoration:none;">${l.label}</a>`)
+        .join("&nbsp;&nbsp;·&nbsp;&nbsp;")
+    }</p>` :
+    "";
   return `<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8"><title>${args.heading}</title></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a1a;color:#fff;padding:24px;margin:0;">
@@ -189,6 +205,7 @@ function wrapTemplate(args: {
     <h1 style="font-size:24px;font-weight:600;margin:0 0 16px;letter-spacing:-0.3px;">${args.heading}</h1>
     <div style="font-size:15px;line-height:1.55;color:rgba(255,255,255,0.8);margin:0 0 28px;">${args.body}</div>
     <a href="${args.ctaUrl}" style="display:inline-block;background:#fff;color:#1a1a1a;padding:14px 28px;border-radius:12px;font-weight:600;font-size:15px;text-decoration:none;">${args.ctaLabel}</a>
+    ${secondary}
     ${args.footer ? `<p style="font-size:12px;color:rgba(255,255,255,0.45);margin:32px 0 0;line-height:1.5;">${args.footer}</p>` : ""}
     <p style="font-size:12px;color:rgba(255,255,255,0.35);margin:32px 0 0;line-height:1.5;">
       Este enlace te firma automáticamente en tu cuenta. Es de un solo uso —
@@ -197,6 +214,20 @@ function wrapTemplate(args: {
     </p>
   </div>
 </body></html>`;
+}
+
+// The secondary doors every post-purchase email carries alongside the primary
+// "Abrir Wake" CTA: manage the subscription (magic link) and reach support
+// (WhatsApp). One tap each, from any device.
+async function manageAndSupportLinks(
+  to: string,
+  courseId: string,
+): Promise<{label: string; url: string}[]> {
+  const manageUrl = await buildSignInUrl(to, `/library/manage/${courseId}`);
+  return [
+    {label: "Gestionar mi suscripción", url: manageUrl},
+    {label: "Ayuda por WhatsApp", url: SUPPORT_WHATSAPP_URL},
+  ];
 }
 
 // ─── Templates ────────────────────────────────────────────────────────────
@@ -210,7 +241,7 @@ export async function sendTrialActivatedEmail(args: {
   transactionAmount: number;
   currencyId: string;
 }): Promise<boolean> {
-  const cta = await buildSignInUrl(args.to, `/library/manage/${args.courseId}`);
+  const cta = await buildSignInUrl(args.to, `/course/${args.courseId}`);
   const body = `
     <p style="margin:0 0 12px;">Empezó tu prueba gratuita de <strong>${args.programTitle}</strong>.</p>
     <p style="margin:0 0 12px;">Tenés acceso completo hasta el <strong>${formatDate(args.trialEndDate)}</strong>.
@@ -220,7 +251,10 @@ export async function sendTrialActivatedEmail(args: {
   return sendEmail({
     to: args.to,
     subject: sanitizeSubject("Empezó tu prueba gratuita en Wake"),
-    html: wrapTemplate({heading: "Tu prueba empezó", body, ctaLabel: "Gestionar mi suscripción", ctaUrl: cta}),
+    html: wrapTemplate({
+      heading: "Tu prueba empezó", body, ctaLabel: "Abrir Wake", ctaUrl: cta,
+      secondaryLinks: await manageAndSupportLinks(args.to, args.courseId),
+    }),
   });
 }
 
@@ -232,7 +266,7 @@ export async function sendSubscriptionStartedEmail(args: {
   transactionAmount: number;
   currencyId: string;
 }): Promise<boolean> {
-  const cta = await buildSignInUrl(args.to, `/library/manage/${args.courseId}`);
+  const cta = await buildSignInUrl(args.to, `/course/${args.courseId}`);
   const body = `
     <p style="margin:0 0 12px;">Tu suscripción a <strong>${args.programTitle}</strong> está activa.</p>
     <p style="margin:0 0 12px;">El próximo cobro será el <strong>${formatDate(args.nextBillingDate)}</strong> por <strong>${formatCOP(args.transactionAmount)} ${args.currencyId}</strong>.</p>
@@ -241,7 +275,10 @@ export async function sendSubscriptionStartedEmail(args: {
   return sendEmail({
     to: args.to,
     subject: sanitizeSubject(`Bienvenido a ${args.programTitle}`),
-    html: wrapTemplate({heading: "Tu suscripción está activa", body, ctaLabel: "Gestionar mi suscripción", ctaUrl: cta}),
+    html: wrapTemplate({
+      heading: "Tu suscripción está activa", body, ctaLabel: "Abrir Wake", ctaUrl: cta,
+      secondaryLinks: await manageAndSupportLinks(args.to, args.courseId),
+    }),
   });
 }
 
@@ -266,7 +303,10 @@ export async function sendChargeReceiptEmail(args: {
   return sendEmail({
     to: args.to,
     subject: sanitizeSubject(`Recibo de pago — ${args.programTitle}`),
-    html: wrapTemplate({heading: "Recibo de pago", body, ctaLabel: "Ver mi suscripción", ctaUrl: cta}),
+    html: wrapTemplate({
+      heading: "Recibo de pago", body, ctaLabel: "Ver mi suscripción", ctaUrl: cta,
+      secondaryLinks: [{label: "Ayuda por WhatsApp", url: SUPPORT_WHATSAPP_URL}],
+    }),
   });
 }
 
@@ -289,7 +329,10 @@ export async function sendCancellationEmail(args: {
   return sendEmail({
     to: args.to,
     subject: sanitizeSubject(`Cancelaste ${args.programTitle}`),
-    html: wrapTemplate({heading: "Suscripción cancelada", body, ctaLabel: "Ver mi suscripción", ctaUrl: cta}),
+    html: wrapTemplate({
+      heading: "Suscripción cancelada", body, ctaLabel: "Ver mi suscripción", ctaUrl: cta,
+      secondaryLinks: [{label: "Ayuda por WhatsApp", url: SUPPORT_WHATSAPP_URL}],
+    }),
   });
 }
 
@@ -314,7 +357,10 @@ export async function sendAccessHowToEmail(args: {
   return sendEmail({
     to: args.to,
     subject: sanitizeSubject(`Cómo entrar a ${args.programTitle} en Wake`),
-    html: wrapTemplate({heading: "Así entras a tu programa", body, ctaLabel: "Abrir Wake", ctaUrl: cta}),
+    html: wrapTemplate({
+      heading: "Así entras a tu programa", body, ctaLabel: "Abrir Wake", ctaUrl: cta,
+      secondaryLinks: await manageAndSupportLinks(args.to, args.courseId),
+    }),
   });
 }
 
@@ -335,7 +381,10 @@ export async function sendOneTimePurchaseEmail(args: {
   return sendEmail({
     to: args.to,
     subject: sanitizeSubject(`Tu acceso a ${args.programTitle}`),
-    html: wrapTemplate({heading: "Tu programa está listo", body, ctaLabel: "Abrir mi programa", ctaUrl: cta}),
+    html: wrapTemplate({
+      heading: "Tu programa está listo", body, ctaLabel: "Abrir mi programa", ctaUrl: cta,
+      secondaryLinks: [{label: "Ayuda por WhatsApp", url: SUPPORT_WHATSAPP_URL}],
+    }),
   });
 }
 
