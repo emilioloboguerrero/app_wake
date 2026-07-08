@@ -222,6 +222,7 @@ Image compression required before upload: profile pictures ≤ 200KB, progress p
 
 ### Email (Resend send + ImprovMX receive)
 - **Sending:** all transactional email via **Resend** from `Wake <hola@wakelab.co>` (`functions/src/api/services/purchaseEmails.ts`, `RESEND_API_KEY` secret). Every Wake email carries `Reply-To: emilioloboguerrero@gmail.com` (const `REPLY_TO`) so replies land in Gmail.
+- **Creator sale alerts:** on every sale/renewal, the program's creator gets a "Nueva venta"/"Renovación" email (`sendCreatorSaleNotification`, same file), fired from the MP + Polar webhooks alongside the buyer emails. Not sent for trials or refunds; self-purchases (buyer == creator) skipped. Detail: memory `project_creator_sale_notification_20260707`.
 - **Receiving:** `wakelab.co` receives via **ImprovMX** forwarding — apex MX `mx1/mx2.improvmx.com` → aliases `hola@`/`soporte@`/catch-all `*@wakelab.co` → Gmail. DNS at GoDaddy (API key in Secret Manager `GODADDY_API_SSO_KEY`). Details: memory `reference_wakelab_email_infra`.
 
 ---
@@ -442,3 +443,7 @@ npm --prefix functions run build   # Compile TypeScript → lib/
 eas build --profile production --platform ios
 eas build --profile production --platform android
 ```
+
+**Cloud workflows (GitHub → Actions → Run workflow, manual `workflow_dispatch`):**
+- **Deploy a producción** (`deploy-prod.yml`) — runs `firebase deploy` (target `functions` / `hosting` / both) from a runner using the `FIREBASE_SERVICE_ACCOUNT` secret (SA `wake-deploy`). Backup for when the local machine isn't available; local `firebase deploy` stays the primary path. CI deploys skip sourcemap upload (gsutil unauth). Detail: memory `reference_ci_deploy_button`.
+- **Correo a compradores que no han entrado** (`notify-buyers.yml`) — stranded-buyer outreach (`functions/src/scripts/notifyStrandedBuyers.ts`, SA `wake-ci` via `OUTREACH_SERVICE_ACCOUNT` + `RESEND_API_KEY` secrets). Simulation by default; `send=SEND` to actually send. Detail: memory `reference_local_outreach_script_auth_gotcha`.
