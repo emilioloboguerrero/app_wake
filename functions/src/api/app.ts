@@ -138,6 +138,8 @@ const PUBLIC_PATHS = [
   /^\/public\/programs\/[^/]+\/availability$/, // GET program seat availability
   /^\/public\/programs\/[^/]+\/waitlist$/, // POST join sold-out waitlist
   /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
+  /^\/auth\/email-code\/request$/, // POST email a 6-digit login code
+  /^\/auth\/email-code\/verify$/, // POST verify code -> custom token
   // Guest checkout: buyer identity is an email resolved server-side; the
   // handler enforces per-IP + per-email rate limits itself.
   /^\/public\/checkout\/guest-start$/,

@@ -1,6 +1,7 @@
 import {Router} from "express";
 import * as admin from "firebase-admin";
 import * as functions from "firebase-functions";
+import * as crypto from "crypto";
 import {Resend} from "resend";
 import {validateBody} from "../middleware/validate.js";
 import {checkRateLimit, checkIpRateLimit} from "../middleware/rateLimit.js";
@@ -171,6 +172,136 @@ function buildMagicLinkHtml(link: string): string {
   </div>
 </body>
 </html>`;
+}
+
+// ── Passwordless CODE sign-in ───────────────────────────────────────────────
+// A 6-digit code (not a link) so it works INSIDE the installed PWA, where a
+// magic link opens in Safari — a separate storage jar on iOS — and never
+// carries the session into the standalone app. The code is typed back into the
+// same app session, then exchanged for a Firebase custom token. This is the
+// door a guest buyer (no password set) can actually use, and it lands them on
+// the exact account for their email (no Google-under-a-different-email split).
+
+const CODE_TTL_MS = 10 * 60 * 1000;
+const CODE_MAX_ATTEMPTS = 5;
+
+function hashCode(email: string, code: string): string {
+  return crypto.createHash("sha256").update(`${email}:${code}`).digest("hex");
+}
+
+// POST /auth/email-code/request — email a fresh 6-digit login code.
+router.post("/auth/email-code/request", async (req, res) => {
+  await checkIpRateLimit(req, 20);
+  const {email} = validateBody<{ email: string }>({email: "string"}, req.body);
+  const trimmed = email.trim().toLowerCase();
+  if (!EMAIL_RE.test(trimmed)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Email inválido", "email");
+  }
+  await checkRateLimit(`email-code:${trimmed}`, 5, "rate_limit_first_party");
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new WakeApiServerError("SERVICE_UNAVAILABLE", 503, "Email service not configured");
+  }
+
+  // crypto.randomInt is cryptographically secure — a 6-digit space with a
+  // 10-min TTL and a 5-attempt cap is infeasible to brute-force.
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+  await admin.firestore().collection("login_codes").doc(trimmed).set({
+    email: trimmed,
+    codeHash: hashCode(trimmed, code),
+    expiresAt: Date.now() + CODE_TTL_MS,
+    attempts: 0,
+    createdAt: Date.now(),
+  });
+
+  try {
+    const resend = new Resend(apiKey);
+    const {error} = await resend.emails.send({
+      from: "Wake <hola@wakelab.co>",
+      replyTo: "emilioloboguerrero@gmail.com",
+      to: trimmed,
+      subject: `${code} es tu código para entrar a Wake`,
+      html: buildLoginCodeHtml(code),
+    });
+    if (error) functions.logger.error("email-code Resend error", {error});
+  } catch (err) {
+    functions.logger.error("email-code Resend exception", err);
+  }
+
+  // Always success — don't reveal whether an account exists.
+  res.json({data: {success: true}});
+});
+
+// POST /auth/email-code/verify — verify the code, return a Firebase custom token.
+router.post("/auth/email-code/verify", async (req, res) => {
+  await checkIpRateLimit(req, 30);
+  const {email, code} = validateBody<{ email: string; code: string }>(
+    {email: "string", code: "string"},
+    req.body
+  );
+  const trimmed = email.trim().toLowerCase();
+  const codeTrim = String(code).trim();
+  if (!EMAIL_RE.test(trimmed) || !/^\d{6}$/.test(codeTrim)) {
+    throw new WakeApiServerError("VALIDATION_ERROR", 400, "Datos inválidos");
+  }
+
+  const ref = admin.firestore().collection("login_codes").doc(trimmed);
+  const snap = await ref.get();
+  const data = snap.data();
+  if (!snap.exists || !data) {
+    throw new WakeApiServerError("UNAUTHENTICATED", 401, "Código inválido o expirado. Pedí uno nuevo.");
+  }
+  if (Date.now() > (data.expiresAt as number)) {
+    await ref.delete().catch(() => {});
+    throw new WakeApiServerError("UNAUTHENTICATED", 401, "El código expiró. Pedí uno nuevo.");
+  }
+  if ((data.attempts as number) >= CODE_MAX_ATTEMPTS) {
+    await ref.delete().catch(() => {});
+    throw new WakeApiServerError("UNAUTHENTICATED", 401, "Demasiados intentos. Pedí un código nuevo.");
+  }
+  if (hashCode(trimmed, codeTrim) !== data.codeHash) {
+    await ref.update({attempts: (data.attempts as number) + 1}).catch(() => {});
+    throw new WakeApiServerError("UNAUTHENTICATED", 401, "Código incorrecto.");
+  }
+
+  // Verified. Find the account for this email (guest checkout already created
+  // one); create it only if truly new. The code proves email ownership, so the
+  // email is verified.
+  let uid: string;
+  try {
+    const rec = await admin.auth().getUserByEmail(trimmed);
+    uid = rec.uid;
+    if (!rec.emailVerified) {
+      await admin.auth().updateUser(uid, {emailVerified: true}).catch(() => {});
+    }
+  } catch (err) {
+    if ((err as {code?: string})?.code === "auth/user-not-found") {
+      const created = await admin.auth().createUser({email: trimmed, emailVerified: true});
+      uid = created.uid;
+    } else {
+      functions.logger.error("email-code verify: getUserByEmail failed", err);
+      throw new WakeApiServerError("INTERNAL_ERROR", 500, "No pudimos iniciar sesión. Intentá de nuevo.");
+    }
+  }
+
+  await ref.delete().catch(() => {});
+  const token = await admin.auth().createCustomToken(uid);
+  res.json({data: {token}});
+});
+
+function buildLoginCodeHtml(code: string): string {
+  return `<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Tu código de acceso a Wake</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a1a;color:#fff;padding:24px;margin:0;">
+  <div style="max-width:480px;margin:0 auto;">
+    <div style="font-size:13px;letter-spacing:1px;color:rgba(255,255,255,0.5);text-transform:uppercase;margin-bottom:28px;">Wake</div>
+    <h1 style="font-size:22px;font-weight:600;margin:0 0 16px;">Tu código para entrar</h1>
+    <p style="font-size:15px;line-height:1.5;color:rgba(255,255,255,0.8);margin:0 0 20px;">Escribe este código en la app para entrar a tu cuenta:</p>
+    <div style="font-size:36px;font-weight:700;letter-spacing:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);border-radius:12px;padding:18px 0;text-align:center;margin:0 0 20px;">${code}</div>
+    <p style="font-size:13px;color:rgba(255,255,255,0.5);margin:0;line-height:1.5;">Vence en 10 minutos. Si no lo pediste, ignora este correo.</p>
+  </div>
+</body></html>`;
 }
 
 export default router;

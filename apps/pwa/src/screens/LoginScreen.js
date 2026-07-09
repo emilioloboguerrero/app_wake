@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../contexts/AuthContext';
 import { auth } from '../config/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
 import logger from '../utils/logger';
@@ -97,6 +98,66 @@ const LoginScreen = ({ navigation }) => {
   useEffect(() => {
     getLastLoginMethod().then((r) => setLastMethod(r.method)).catch(() => {});
   }, []);
+
+  // Passwordless CODE login — the door that works inside the installed PWA
+  // (a magic link opens in Safari and never carries the session in on iOS).
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState(null);
+
+  const handleSendCode = async () => {
+    setOtpError(null);
+    const trimmed = (email || '').trim().toLowerCase();
+    if (!validateEmail(trimmed)) {
+      setOtpError('Escribe tu correo arriba para enviarte el código.');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const res = await fetch('/api/v1/auth/email-code/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      if (!res.ok) throw new Error('request failed');
+      setOtpSent(true);
+    } catch (e) {
+      setOtpError('No pudimos enviar el código. Intenta de nuevo.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    setOtpError(null);
+    const trimmed = (email || '').trim().toLowerCase();
+    const c = (otpCode || '').trim();
+    if (!/^\d{6}$/.test(c)) {
+      setOtpError('El código son 6 dígitos.');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const res = await fetch('/api/v1/auth/email-code/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, code: c }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.data?.token) {
+        setOtpError(json?.error?.message || 'Código incorrecto o expirado.');
+        setOtpLoading(false);
+        return;
+      }
+      await signInWithCustomToken(auth, json.data.token);
+      recordLoginMethod('email', trimmed);
+      setTimeout(() => { navigation.replace('MainApp'); }, 200);
+    } catch (e) {
+      setOtpError('No pudimos verificar el código. Intenta de nuevo.');
+      setOtpLoading(false);
+    }
+  };
 
   const handleEmailChange = (text) => {
     setEmail(text);
@@ -553,6 +614,48 @@ const LoginScreen = ({ navigation }) => {
                 Continua con Google
               </Text>
             </TouchableOpacity>
+
+            {/* Passwordless code login — the door that works inside the
+                installed PWA (a magic link opens in Safari, not the app). */}
+            {Platform.OS === 'web' && !isSignUp ? (
+              <View style={styles.codeSection}>
+                {!otpSent ? (
+                  <TouchableOpacity onPress={handleSendCode} disabled={otpLoading} style={styles.codeLinkBtn}>
+                    <Text style={styles.codeLinkText}>
+                      {otpLoading ? 'Enviando código…' : 'Entra con un código por correo'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.codeBox}>
+                    <Text style={styles.codeHint}>
+                      Te enviamos un código de 6 dígitos a {(email || '').trim().toLowerCase()}. Escríbelo aquí:
+                    </Text>
+                    <TextInput
+                      style={styles.codeInput}
+                      value={otpCode}
+                      onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); if (otpError) setOtpError(null); }}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      placeholder="------"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      autoComplete="one-time-code"
+                      textContentType="oneTimeCode"
+                    />
+                    {otpError ? <Text style={styles.authErrorText}>{otpError}</Text> : null}
+                    <TouchableOpacity
+                      style={[styles.button, (otpLoading || otpCode.length !== 6) && styles.buttonDisabled]}
+                      onPress={handleVerifyCode}
+                      disabled={otpLoading || otpCode.length !== 6}
+                    >
+                      <Text style={styles.buttonText}>{otpLoading ? 'Verificando…' : 'Entrar'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleSendCode} disabled={otpLoading} style={styles.codeLinkBtn}>
+                      <Text style={styles.codeLinkText}>Reenviar código</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -753,6 +856,43 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     fontSize: 11,
     fontWeight: '600',
+  },
+  codeSection: {
+    width: '100%',
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  codeLinkBtn: {
+    paddingVertical: 10,
+  },
+  codeLinkText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  codeBox: {
+    width: '100%',
+  },
+  codeHint: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  codeInput: {
+    width: '100%',
+    height: 54,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    color: '#fff',
+    fontSize: 24,
+    letterSpacing: 8,
+    textAlign: 'center',
+    marginBottom: 12,
   },
   googleButton: {
     width: '100%',
