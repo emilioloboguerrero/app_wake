@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  Alert,
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
@@ -21,23 +20,17 @@ import { signInWithCustomToken } from 'firebase/auth';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
 import logger from '../utils/logger';
-import SvgEye from '../components/icons/vectors_fig/Interface/Eye';
-import SvgEyeSlash from '../components/icons/vectors_fig/Interface/EyeSlash';
-import { wakeAlert } from '../utils/wakeAlert';
 import { recordLoginMethod, getLastLoginMethod } from '../utils/lastLoginMethod';
+
+// API base: relative on web (same origin as /app), absolute on native.
+const API_BASE = Platform.OS === 'web' ? '' : 'https://wakelab.co';
 
 const LoginScreen = ({ navigation }) => {
   const { user, loading } = useAuth();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState(null);
-  const [passwordError, setPasswordError] = useState(null);
   const [authError, setAuthError] = useState(null);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [acceptTerms, setAcceptTerms] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   // Entrance animations
   const mountAnim = useRef(new Animated.Value(0)).current;
@@ -52,16 +45,6 @@ const LoginScreen = ({ navigation }) => {
     );
     Animated.parallel(staggered).start();
   }, []);
-
-  // When in sign-up mode, show password min-length error if field has 1–5 chars
-  useEffect(() => {
-    if (!isSignUp) return;
-    if (password.length > 0 && password.length < 6) {
-      setPasswordError('La contraseña debe tener al menos 6 caracteres');
-    } else if (password.length >= 6) {
-      setPasswordError(null);
-    }
-  }, [isSignUp, password]);
 
   // Redirect if already logged in
   // Note: On web, this is handled by LoginScreen.web.js to prevent infinite loops
@@ -88,10 +71,6 @@ const LoginScreen = ({ navigation }) => {
     return emailRegex.test(email);
   };
 
-  const validatePassword = (password) => {
-    return password.length >= 6;
-  };
-
   // Nudge the returning buyer toward the door they already used (per-device),
   // so they don't pick a different provider and split into a second account.
   const [lastMethod, setLastMethod] = useState(null);
@@ -115,7 +94,7 @@ const LoginScreen = ({ navigation }) => {
     }
     setOtpLoading(true);
     try {
-      const res = await fetch('/api/v1/auth/email-code/request', {
+      const res = await fetch(`${API_BASE}/api/v1/auth/email-code/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: trimmed }),
@@ -139,7 +118,7 @@ const LoginScreen = ({ navigation }) => {
     }
     setOtpLoading(true);
     try {
-      const res = await fetch('/api/v1/auth/email-code/verify', {
+      const res = await fetch(`${API_BASE}/api/v1/auth/email-code/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: trimmed, code: c }),
@@ -163,182 +142,6 @@ const LoginScreen = ({ navigation }) => {
     setEmail(text);
     if (emailError) setEmailError(null);
     if (authError) setAuthError(null);
-  };
-
-  const handlePasswordChange = (text) => {
-    setPassword(text);
-    if (authError) setAuthError(null);
-    // Upfront validation when creating account: show error as they type if < 6 chars
-    if (isSignUp) {
-      if (text.length > 0 && text.length < 6) {
-        setPasswordError('La contraseña debe tener al menos 6 caracteres');
-      } else {
-        setPasswordError(null);
-      }
-    } else {
-      if (passwordError) setPasswordError(null);
-    }
-  };
-
-  // Sign In handler
-  const handleContinue = async () => {
-    setEmailError(null);
-    setPasswordError(null);
-    setAuthError(null);
-    setShowForgotPassword(false);
-
-    if (!email.trim()) {
-      setEmailError('Por favor ingresa tu correo electrónico');
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setEmailError('Correo no válido');
-      return;
-    }
-
-    if (!password.trim()) {
-      setPasswordError('Por favor ingresa tu contraseña');
-      return;
-    }
-
-    if (!validatePassword(password)) {
-      setPasswordError('La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const user = await authService.signInUser(email, password);
-      setIsLoading(false);
-      
-      const currentUser = user || auth.currentUser;
-      if (currentUser) {
-        recordLoginMethod('email', email);
-        setTimeout(() => {
-          navigation.replace('MainApp');
-        }, 200);
-      }
-    } catch (error) {
-      setIsLoading(false);
-      
-      let errorMessage = 'No pudimos iniciar sesión. Intenta de nuevo.';
-      const code = error?.code;
-
-      if (code) {
-        switch (code) {
-          // Generic message for all credential-mismatch outcomes prevents
-          // email enumeration via the login form (user-not-found vs
-          // wrong-password disclosed account existence).
-          case 'auth/user-not-found':
-          case 'auth/wrong-password':
-          case 'auth/invalid-credential':
-            errorMessage = 'Correo o contraseña incorrectos.';
-            setPasswordError('Correo o contraseña incorrectos');
-            setShowForgotPassword(true);
-            break;
-          case 'auth/invalid-email':
-            errorMessage = 'Correo electrónico no válido.';
-            setEmailError(errorMessage);
-            break;
-          case 'auth/too-many-requests':
-            errorMessage = 'Demasiados intentos. Espera un momento e intenta de nuevo.';
-            break;
-          case 'auth/user-disabled':
-            errorMessage = 'Esta cuenta ha sido desactivada. Contacta a soporte si crees que es un error.';
-            break;
-          case 'auth/network-request-failed':
-            errorMessage = 'Sin conexión. Revisa tu internet e intenta de nuevo.';
-            break;
-          case 'auth/operation-not-allowed':
-            errorMessage = 'Inicio de sesión con correo no está habilitado. Contacta a soporte.';
-            break;
-          default:
-            errorMessage = error?.message || errorMessage;
-        }
-      } else {
-        errorMessage = error?.message || errorMessage;
-      }
-
-      setAuthError(errorMessage);
-    }
-  };
-
-  // Register handler
-  const handleRegister = async () => {
-    setEmailError(null);
-    setPasswordError(null);
-    setAuthError(null);
-    setShowForgotPassword(false);
-
-    if (!email.trim()) {
-      setEmailError('Por favor ingresa tu correo electrónico');
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setEmailError('Correo no válido');
-      return;
-    }
-
-    if (!password.trim()) {
-      setPasswordError('Por favor ingresa tu contraseña');
-      return;
-    }
-
-    if (!validatePassword(password)) {
-      setPasswordError('La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-
-    if (!acceptTerms) {
-      setAuthError('Debes aceptar la política de privacidad y los términos y condiciones para continuar.');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const initialDisplayName = email.split('@')[0];
-      const user = await authService.registerUser(email, password, initialDisplayName);
-      setIsLoading(false);
-      if (user || auth.currentUser) {
-        navigation.replace('MainApp');
-      }
-    } catch (error) {
-      setIsLoading(false);
-      
-      let errorMessage = 'No pudimos crear la cuenta. Intenta de nuevo.';
-      const code = error?.code;
-
-      if (code) {
-        switch (code) {
-          case 'auth/email-already-in-use':
-            errorMessage = 'Ya existe una cuenta con este correo. Inicia sesión o usa "¿Olvidaste tu contraseña?" si no la recuerdas.';
-            setEmailError('Este correo ya está registrado');
-            break;
-          case 'auth/weak-password':
-            errorMessage = 'La contraseña es muy débil. Usa al menos 6 caracteres.';
-            setPasswordError('Mínimo 6 caracteres');
-            break;
-          case 'auth/invalid-email':
-            errorMessage = 'Correo electrónico no válido.';
-            setEmailError(errorMessage);
-            break;
-          case 'auth/operation-not-allowed':
-            errorMessage = 'El registro con correo no está habilitado. Contacta a soporte.';
-            break;
-          case 'auth/network-request-failed':
-            errorMessage = 'Sin conexión. Revisa tu internet e intenta de nuevo.';
-            break;
-          default:
-            errorMessage = error?.message || errorMessage;
-        }
-      } else {
-        errorMessage = error?.message || errorMessage;
-      }
-
-      setAuthError(errorMessage);
-    }
   };
 
   // Google Sign-In handler
@@ -368,49 +171,6 @@ const LoginScreen = ({ navigation }) => {
     }
   };
 
-  // Forgot Password handler
-  const handleForgotPassword = async () => {
-    setAuthError(null);
-    if (!email.trim()) {
-      setAuthError('Ingresa tu correo electrónico para recuperar tu contraseña.');
-      setEmailError('Ingresa tu correo');
-      return;
-    }
-
-    if (!validateEmail(email)) {
-      setAuthError('Correo electrónico no válido.');
-      setEmailError('Correo no válido');
-      return;
-    }
-
-    // Show the same success message regardless of whether the email exists,
-    // so the password-reset endpoint can't be used to enumerate accounts.
-    // auth/user-not-found is silently treated as success.
-    const genericResetSuccess = 'Si existe una cuenta con ese correo, te enviaremos un enlace para restablecer tu contraseña. Revisa tu bandeja (y spam).';
-    try {
-      await authService.resetPassword(email);
-      setAuthError(null);
-      wakeAlert('Listo', genericResetSuccess);
-    } catch (error) {
-      const code = error?.code;
-      if (code === 'auth/user-not-found') {
-        // Don't disclose existence — show the same success state.
-        setAuthError(null);
-        wakeAlert('Listo', genericResetSuccess);
-        return;
-      }
-      logger.error('Password Reset Error:', error);
-      let msg = 'No pudimos enviar el correo de recuperación. Intenta de nuevo.';
-      if (code === 'auth/invalid-email') {
-        msg = 'Correo electrónico no válido.';
-      } else if (code === 'auth/too-many-requests') {
-        msg = 'Demasiados intentos. Espera un momento e intenta de nuevo.';
-      }
-      setAuthError(msg);
-    }
-  };
-
-  const isFormValid = validateEmail(email) && validatePassword(password);
 
   if (user) {
     return null;
@@ -447,9 +207,7 @@ const LoginScreen = ({ navigation }) => {
             </Animated.View>
 
             {/* Welcome Text */}
-            <Text style={styles.welcomeText}>
-              {isSignUp ? "Crear Cuenta" : "Inicio"}
-            </Text>
+            <Text style={styles.welcomeText}>Inicio</Text>
 
             {/* Email Input */}
             <Animated.View style={makeFieldStyle(fieldAnims[0])}>
@@ -463,6 +221,7 @@ const LoginScreen = ({ navigation }) => {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                editable={!otpSent}
               />
               {emailError && (
                 <Text style={styles.errorText}>{emailError}</Text>
@@ -470,124 +229,64 @@ const LoginScreen = ({ navigation }) => {
             </View>
             </Animated.View>
 
-            {/* Password Input */}
-            <Animated.View style={makeFieldStyle(fieldAnims[1])}>
-            <View style={styles.inputContainer}>
-              <View style={styles.passwordInputRow}>
-                <TextInput
-                  style={[styles.input, styles.inputWithToggle, passwordError && styles.inputError]}
-                  placeholder="Contraseña"
-                  placeholderTextColor="#999"
-                  value={password}
-                  onChangeText={handlePasswordChange}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity
-                  style={styles.passwordToggle}
-                  onPress={() => setShowPassword((prev) => !prev)}
-                  accessibilityLabel={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-                  accessibilityRole="button"
-                >
-                  {showPassword ? (
-                    <SvgEye width={22} height={22} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={2} />
-                  ) : (
-                    <SvgEyeSlash width={22} height={22} stroke="rgba(255, 255, 255, 0.7)" strokeWidth={2} />
-                  )}
-                </TouchableOpacity>
-              </View>
-              {passwordError && (
-                <Text style={styles.errorText}>{passwordError}</Text>
-              )}
-            </View>
-            </Animated.View>
-
-            {/* Terms and Conditions - Only show during signup */}
-            {isSignUp && (
-              <View style={styles.termsContainer}>
-                <TouchableOpacity
-                  style={styles.checkbox}
-                  onPress={() => setAcceptTerms(!acceptTerms)}
-                >
-                  <View style={[styles.checkboxBox, acceptTerms && styles.checkboxChecked]}>
-                    {acceptTerms && <Text style={styles.checkmark}>✓</Text>}
-                  </View>
-                  <Text style={styles.termsText}>
-                    Acepto la política de privacidad y los términos y condiciones
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Auth error message (sign-in / sign-up failures) */}
+            {/* Auth error message */}
             {authError && (
               <View style={styles.authErrorBlock}>
                 <Text style={styles.authErrorText}>{authError}</Text>
               </View>
             )}
 
-            {/* Main Action Button */}
+            {/* Email CODE login — the primary email door. No password anywhere;
+                the code works inside the installed PWA (a magic link would open
+                in Safari and never carry the session into the standalone app). */}
             <Animated.View style={makeFieldStyle(fieldAnims[2])}>
-            <TouchableOpacity
-              testID="login-primary-button"
-              aria-disabled={isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)}
-              style={[
-                styles.button,
-                (isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)) && styles.buttonDisabled
-              ]}
-              onPress={isSignUp ? handleRegister : handleContinue}
-              disabled={isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)}
-            >
-              {lastMethod === 'email' && !isSignUp ? (
-                <View style={styles.lastUsedBadge}>
-                  <Text style={styles.lastUsedBadgeText}>Última vez</Text>
-                </View>
-              ) : null}
-              {isLoading ? (
-                <ActivityIndicator color="#ffffff" />
-              ) : (
-                <Text style={[
-                  styles.buttonText,
-                  (isLoading || (isSignUp && (!isFormValid || !acceptTerms)) || (!isSignUp && !isFormValid)) && styles.buttonTextDisabled
-                ]}>
-                  {isSignUp ? "Crear Cuenta" : "Iniciar Sesión"}
-                </Text>
-              )}
-            </TouchableOpacity>
-            </Animated.View>
-
-            {/* Toggle between Sign In and Sign Up */}
-            <TouchableOpacity
-              style={styles.toggleButton}
-              onPress={() => {
-                setIsSignUp(!isSignUp);
-                setEmailError(null);
-                setPasswordError(null);
-                setAuthError(null);
-                setShowForgotPassword(false);
-                setAcceptTerms(false);
-              }}
-            >
-              <Text style={styles.toggleText}>
-                {isSignUp ? "¿Ya tienes cuenta? " : "¿No tienes cuenta? "}
-                <Text style={styles.toggleLink}>
-                  {isSignUp ? "Iniciar Sesión" : "Crear Cuenta"}
-                </Text>
-              </Text>
-            </TouchableOpacity>
-
-            {/* Forgot Password Link */}
-            {showForgotPassword && (
+            {!otpSent ? (
               <TouchableOpacity
-                style={styles.forgotButton}
-                onPress={handleForgotPassword}
+                testID="login-code-button"
+                style={[styles.button, otpLoading && styles.buttonDisabled]}
+                onPress={handleSendCode}
+                disabled={otpLoading}
               >
-                <Text style={styles.forgotText}>
-                  ¿Olvidaste tu contraseña?
+                {lastMethod === 'email' ? (
+                  <View style={styles.lastUsedBadge}>
+                    <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+                  </View>
+                ) : null}
+                <Text style={styles.buttonText}>
+                  {otpLoading ? 'Enviando código…' : 'Enviarme un código'}
                 </Text>
               </TouchableOpacity>
+            ) : (
+              <View style={styles.codeBox}>
+                <Text style={styles.codeHint}>
+                  Te enviamos un código de 6 dígitos a {(email || '').trim().toLowerCase()}. Escríbelo aquí:
+                </Text>
+                <TextInput
+                  style={styles.codeInput}
+                  value={otpCode}
+                  onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); if (otpError) setOtpError(null); }}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  placeholder="------"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  autoComplete="one-time-code"
+                  textContentType="oneTimeCode"
+                  autoFocus
+                />
+                {otpError ? <Text style={styles.authErrorText}>{otpError}</Text> : null}
+                <TouchableOpacity
+                  style={[styles.button, (otpLoading || otpCode.length !== 6) && styles.buttonDisabled]}
+                  onPress={handleVerifyCode}
+                  disabled={otpLoading || otpCode.length !== 6}
+                >
+                  <Text style={styles.buttonText}>{otpLoading ? 'Verificando…' : 'Entrar'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSendCode} disabled={otpLoading} style={styles.codeLinkBtn}>
+                  <Text style={styles.codeLinkText}>Reenviar código</Text>
+                </TouchableOpacity>
+              </View>
             )}
+            </Animated.View>
 
             {/* Separator */}
             <View style={styles.separator} />
@@ -615,47 +314,10 @@ const LoginScreen = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
 
-            {/* Passwordless code login — the door that works inside the
-                installed PWA (a magic link opens in Safari, not the app). */}
-            {Platform.OS === 'web' && !isSignUp ? (
-              <View style={styles.codeSection}>
-                {!otpSent ? (
-                  <TouchableOpacity onPress={handleSendCode} disabled={otpLoading} style={styles.codeLinkBtn}>
-                    <Text style={styles.codeLinkText}>
-                      {otpLoading ? 'Enviando código…' : 'Entra con un código por correo'}
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.codeBox}>
-                    <Text style={styles.codeHint}>
-                      Te enviamos un código de 6 dígitos a {(email || '').trim().toLowerCase()}. Escríbelo aquí:
-                    </Text>
-                    <TextInput
-                      style={styles.codeInput}
-                      value={otpCode}
-                      onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); if (otpError) setOtpError(null); }}
-                      keyboardType="number-pad"
-                      maxLength={6}
-                      placeholder="------"
-                      placeholderTextColor="rgba(255,255,255,0.3)"
-                      autoComplete="one-time-code"
-                      textContentType="oneTimeCode"
-                    />
-                    {otpError ? <Text style={styles.authErrorText}>{otpError}</Text> : null}
-                    <TouchableOpacity
-                      style={[styles.button, (otpLoading || otpCode.length !== 6) && styles.buttonDisabled]}
-                      onPress={handleVerifyCode}
-                      disabled={otpLoading || otpCode.length !== 6}
-                    >
-                      <Text style={styles.buttonText}>{otpLoading ? 'Verificando…' : 'Entrar'}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleSendCode} disabled={otpLoading} style={styles.codeLinkBtn}>
-                      <Text style={styles.codeLinkText}>Reenviar código</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            ) : null}
+            {/* Passive terms acceptance — no signup form anymore */}
+            <Text style={styles.termsLine}>
+              Al continuar aceptas nuestros Términos y la Política de privacidad.
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -699,22 +361,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 16,
   },
-  passwordInputRow: {
-    position: 'relative',
-    width: '100%',
-  },
-  inputWithToggle: {
-    paddingRight: 80,
-  },
-  passwordToggle: {
-    position: 'absolute',
-    right: 12,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 44,
-  },
   input: {
     width: '100%',
     height: 56,
@@ -755,42 +401,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  termsContainer: {
-    width: '100%',
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  checkbox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  checkboxBox: {
-    width: 24,
-    height: 24,
-    borderWidth: 2,
-    borderColor: '#333',
-    borderRadius: 4,
-    marginRight: 12,
-    marginTop: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#2a2a2a',
-  },
-  checkboxChecked: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderColor: 'rgba(255, 255, 255, 1)',
-  },
-  checkmark: {
-    color: 'rgba(255, 255, 255, 1)',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  termsText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#cccccc',
-    lineHeight: 18,
-  },
   button: {
     width: '100%',
     height: 50,
@@ -808,31 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#1a1a1a',
-  },
-  buttonTextDisabled: {
-    color: '#ffffff',
-  },
-  toggleButton: {
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  toggleText: {
-    fontSize: 14,
-    color: '#cccccc',
-    textAlign: 'center',
-  },
-  toggleLink: {
-    color: 'rgba(255, 255, 255, 0.72)',
-    fontWeight: '500',
-  },
-  forgotButton: {
-    marginBottom: 24,
-  },
-  forgotText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.72)',
-    textAlign: 'center',
-    textDecorationLine: 'underline',
   },
   separator: {
     width: '100%',
@@ -856,11 +441,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.9)',
     fontSize: 11,
     fontWeight: '600',
-  },
-  codeSection: {
-    width: '100%',
-    marginTop: 14,
-    alignItems: 'center',
   },
   codeLinkBtn: {
     paddingVertical: 10,
@@ -893,6 +473,14 @@ const styles = StyleSheet.create({
     letterSpacing: 8,
     textAlign: 'center',
     marginBottom: 12,
+  },
+  termsLine: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 20,
+    paddingHorizontal: 12,
   },
   googleButton: {
     width: '100%',
