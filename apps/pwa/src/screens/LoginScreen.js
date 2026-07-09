@@ -85,9 +85,10 @@ const LoginScreen = ({ navigation }) => {
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpError, setOtpError] = useState(null);
 
-  const handleSendCode = async () => {
+  const handleSendCode = async (emailArg) => {
     setOtpError(null);
-    const trimmed = (email || '').trim().toLowerCase();
+    // onPress passes a synthetic event; only honor a real string override.
+    const trimmed = ((typeof emailArg === 'string' ? emailArg : email) || '').trim().toLowerCase();
     if (!validateEmail(trimmed)) {
       setOtpError('Escribe tu correo arriba para enviarte el código.');
       return;
@@ -150,7 +151,17 @@ const LoginScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       const result = await googleAuthService.signIn();
-      
+
+      // Email already has an account (one-account-per-email): route to the
+      // code flow for that account instead of spawning a Google duplicate.
+      if (result.needsCode) {
+        setIsLoading(false);
+        const e = (result.email || '').trim().toLowerCase();
+        if (e) setEmail(e);
+        handleSendCode(e);
+        return;
+      }
+
       if (result.success) {
         setIsLoading(false);
         const currentUser = result.user || auth.currentUser;
@@ -206,60 +217,58 @@ const LoginScreen = ({ navigation }) => {
             />
             </Animated.View>
 
-            {/* Welcome Text */}
-            <Text style={styles.welcomeText}>Inicio</Text>
+            {/* Headline */}
+            <Text style={styles.welcomeText}>Entra a Wake</Text>
 
-            {/* Email Input */}
+            {/* Email + code — the primary door (no password anywhere) */}
             <Animated.View style={makeFieldStyle(fieldAnims[0])}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.input, emailError && styles.inputError]}
-                placeholder="Correo electrónico"
-                placeholderTextColor="#999"
-                value={email}
-                onChangeText={handleEmailChange}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!otpSent}
-              />
-              {emailError && (
-                <Text style={styles.errorText}>{emailError}</Text>
-              )}
-            </View>
-            </Animated.View>
-
-            {/* Auth error message */}
-            {authError && (
-              <View style={styles.authErrorBlock}>
-                <Text style={styles.authErrorText}>{authError}</Text>
-              </View>
-            )}
-
-            {/* Email CODE login — the primary email door. No password anywhere;
-                the code works inside the installed PWA (a magic link would open
-                in Safari and never carry the session into the standalone app). */}
-            <Animated.View style={makeFieldStyle(fieldAnims[2])}>
             {!otpSent ? (
-              <TouchableOpacity
-                testID="login-code-button"
-                style={[styles.button, otpLoading && styles.buttonDisabled]}
-                onPress={handleSendCode}
-                disabled={otpLoading}
-              >
-                {lastMethod === 'email' ? (
-                  <View style={styles.lastUsedBadge}>
-                    <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+              <>
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[styles.input, emailError && styles.inputError]}
+                    placeholder="Tu correo"
+                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    value={email}
+                    onChangeText={handleEmailChange}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="email"
+                  />
+                  {emailError && (
+                    <Text style={styles.errorText}>{emailError}</Text>
+                  )}
+                </View>
+
+                {authError && (
+                  <View style={styles.authErrorBlock}>
+                    <Text style={styles.authErrorText}>{authError}</Text>
                   </View>
-                ) : null}
-                <Text style={styles.buttonText}>
-                  {otpLoading ? 'Enviando código…' : 'Enviarme un código'}
-                </Text>
-              </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  testID="login-code-button"
+                  style={[styles.button, otpLoading && styles.buttonDisabled]}
+                  onPress={handleSendCode}
+                  disabled={otpLoading}
+                >
+                  {lastMethod === 'email' ? (
+                    <View style={styles.lastUsedBadge}>
+                      <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+                    </View>
+                  ) : null}
+                  <Text style={styles.buttonText}>
+                    {otpLoading ? 'Enviando…' : 'Continuar con mi correo'}
+                  </Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <View style={styles.codeBox}>
+                <Text style={styles.codeTitle}>Revisa tu correo</Text>
                 <Text style={styles.codeHint}>
-                  Te enviamos un código de 6 dígitos a {(email || '').trim().toLowerCase()}. Escríbelo aquí:
+                  Escribe el código de 6 dígitos que enviamos a{'\n'}
+                  <Text style={styles.codeEmail}>{(email || '').trim().toLowerCase()}</Text>
                 </Text>
                 <TextInput
                   style={styles.codeInput}
@@ -267,13 +276,13 @@ const LoginScreen = ({ navigation }) => {
                   onChangeText={(t) => { setOtpCode(t.replace(/\D/g, '').slice(0, 6)); if (otpError) setOtpError(null); }}
                   keyboardType="number-pad"
                   maxLength={6}
-                  placeholder="------"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  placeholder="••••••"
+                  placeholderTextColor="rgba(255,255,255,0.25)"
                   autoComplete="one-time-code"
                   textContentType="oneTimeCode"
                   autoFocus
                 />
-                {otpError ? <Text style={styles.authErrorText}>{otpError}</Text> : null}
+                {otpError ? <Text style={styles.codeErrorText}>{otpError}</Text> : null}
                 <TouchableOpacity
                   style={[styles.button, (otpLoading || otpCode.length !== 6) && styles.buttonDisabled]}
                   onPress={handleVerifyCode}
@@ -281,43 +290,54 @@ const LoginScreen = ({ navigation }) => {
                 >
                   <Text style={styles.buttonText}>{otpLoading ? 'Verificando…' : 'Entrar'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleSendCode} disabled={otpLoading} style={styles.codeLinkBtn}>
-                  <Text style={styles.codeLinkText}>Reenviar código</Text>
-                </TouchableOpacity>
+                <View style={styles.codeActionsRow}>
+                  <TouchableOpacity onPress={() => { setOtpSent(false); setOtpCode(''); setOtpError(null); }} disabled={otpLoading}>
+                    <Text style={styles.codeLinkText}>Cambiar correo</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleSendCode} disabled={otpLoading}>
+                    <Text style={styles.codeLinkText}>Reenviar código</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
             </Animated.View>
 
-            {/* Separator */}
-            <View style={styles.separator} />
-
-            {/* Google Sign-In Button */}
-            <TouchableOpacity
-              testID="login-google-button"
-              aria-disabled={isLoading}
-              style={[styles.googleButton, isLoading && styles.buttonDisabled]}
-              onPress={handleGoogleLogin}
-              disabled={isLoading}
-            >
-              {lastMethod === 'google' ? (
-                <View style={styles.lastUsedBadge}>
-                  <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+            {!otpSent ? (
+              <>
+                {/* Divider */}
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>o</Text>
+                  <View style={styles.dividerLine} />
                 </View>
-              ) : null}
-              <Image
-                source={require('../../assets/google-icon.png')}
-                style={styles.googleIcon}
-                resizeMode="contain"
-              />
-              <Text style={styles.googleButtonText}>
-                Continua con Google
-              </Text>
-            </TouchableOpacity>
 
-            {/* Passive terms acceptance — no signup form anymore */}
-            <Text style={styles.termsLine}>
-              Al continuar aceptas nuestros Términos y la Política de privacidad.
-            </Text>
+                {/* Google */}
+                <TouchableOpacity
+                  testID="login-google-button"
+                  aria-disabled={isLoading}
+                  style={[styles.googleButton, isLoading && styles.buttonDisabled]}
+                  onPress={handleGoogleLogin}
+                  disabled={isLoading}
+                >
+                  {lastMethod === 'google' ? (
+                    <View style={styles.lastUsedBadge}>
+                      <Text style={styles.lastUsedBadgeText}>Última vez</Text>
+                    </View>
+                  ) : null}
+                  <Image
+                    source={require('../../assets/google-icon.png')}
+                    style={styles.googleIcon}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.googleButtonText}>Continúa con Google</Text>
+                </TouchableOpacity>
+
+                {/* Terms */}
+                <Text style={styles.termsLine}>
+                  Al continuar aceptas nuestros Términos y la Política de privacidad.
+                </Text>
+              </>
+            ) : null}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -351,11 +371,13 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   welcomeText: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '600',
     color: '#ffffff',
     textAlign: 'center',
-    marginBottom: 20,
+    letterSpacing: -0.4,
+    marginTop: 4,
+    marginBottom: 28,
   },
   inputContainer: {
     width: '100%',
@@ -364,20 +386,16 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     height: 56,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     fontSize: 16,
     color: '#ffffff',
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   inputError: {
     borderColor: '#FF6B6B',
-    borderWidth: 1,
-  },
-  inputSuccess: {
-    borderColor: 'rgba(255, 255, 255, 0.7)',
     borderWidth: 1,
   },
   errorText: {
@@ -403,27 +421,37 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '100%',
-    height: 50,
+    height: 56,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
   },
   buttonDisabled: {
-    backgroundColor: '#666666',
+    backgroundColor: 'rgba(255,255,255,0.35)',
     opacity: 0.7,
   },
   buttonText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: '#1a1a1a',
   },
-  separator: {
-    width: '100%',
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
     height: 1,
-    backgroundColor: '#333',
-    marginBottom: 24,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  dividerText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+    marginHorizontal: 14,
   },
   lastUsedBadge: {
     position: 'absolute',
@@ -442,37 +470,58 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-  codeLinkBtn: {
-    paddingVertical: 10,
+  codeActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
   },
   codeLinkText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.6)',
     fontSize: 14,
     fontWeight: '600',
-    textDecorationLine: 'underline',
+    paddingVertical: 6,
   },
   codeBox: {
     width: '100%',
   },
+  codeTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
   codeHint: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    lineHeight: 18,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  codeEmail: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  codeErrorText: {
+    color: '#FF6B6B',
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: 'center',
     marginBottom: 12,
   },
   codeInput: {
     width: '100%',
-    height: 54,
+    height: 62,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(255,255,255,0.14)',
     color: '#fff',
-    fontSize: 24,
-    letterSpacing: 8,
+    fontSize: 30,
+    fontWeight: '600',
+    letterSpacing: 12,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   termsLine: {
     color: 'rgba(255,255,255,0.4)',
@@ -484,7 +533,7 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     width: '100%',
-    height: 50,
+    height: 56,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
