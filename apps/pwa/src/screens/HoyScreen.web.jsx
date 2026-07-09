@@ -638,6 +638,7 @@ const HoyScreen = () => {
     return (
       <HoyEmptyState
         onExplore={() => navigate('/library')}
+        accountEmail={user?.email}
         banners={
           <HoyBanners
             recoveryCheckpoint={recoveryCheckpoint}

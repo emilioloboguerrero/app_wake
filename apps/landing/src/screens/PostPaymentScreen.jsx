@@ -477,6 +477,21 @@ export default function PostPaymentScreen() {
           </p>
         )}
 
+        {/* The identity anchor: state plainly which email the account was created
+            with so a buyer who paid with one inbox but tends to sign in with
+            another lands on the right account. This is the single most important
+            line for the cross-email fragmentation problem. */}
+        {!isRejected && !isIncompleteFinal && magicLinkEmail ? (
+          <div className="pp-account-callout">
+            <p className="pp-account-label">Tu cuenta quedó con este correo</p>
+            <p className="pp-account-email">{magicLinkEmail}</p>
+            <p className="pp-account-hint">
+              Inicia sesión en Wake siempre con este correo. Si entras con otro,
+              no vas a ver tu programa.
+            </p>
+          </div>
+        ) : null}
+
         {/* Every non-rejected buyer needs the app to access content — show the
             install + same-email guide here so they don't get stranded at
             wakelab.co/app not knowing what to do next. */}

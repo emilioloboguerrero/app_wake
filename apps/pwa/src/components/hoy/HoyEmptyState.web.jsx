@@ -5,13 +5,14 @@
 // exposes a URL for it; otherwise it falls back to a clean white CTA. Banners
 // (pending invites, session recovery, etc.) render above the hero so a one-on-one
 // invitee — who has no programs until they accept — can still act.
-import React from 'react';
+import React, { useState } from 'react';
 import { Platform, View, ScrollView, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Text from '../Text';
 import { FixedWakeHeader, WakeHeaderContent, WakeHeaderSpacer } from '../WakeHeader';
 import BottomSpacer from '../BottomSpacer';
 import { useAccentFromImage } from '../../hooks/hoy/useAccentFromImage';
+import RestorePurchaseModal from './RestorePurchaseModal.web.jsx';
 import heroImage from '../../assets/images/library.jpg';
 
 // Render the photo with RN's <Image> (it resolves the bundled asset internally on
@@ -44,7 +45,8 @@ if (typeof document !== 'undefined') {
   }
 }
 
-export default function HoyEmptyState({ onExplore, banners }) {
+export default function HoyEmptyState({ onExplore, banners, accountEmail }) {
+  const [showRestore, setShowRestore] = useState(false);
   const accent = useAccentFromImage(HERO_ACCENT_URL);
   const ctaBg = accent?.accent || 'rgba(255,255,255,0.95)';
   const ctaColor = accent?.accentText || '#1a1a1a';
@@ -101,11 +103,31 @@ export default function HoyEmptyState({ onExplore, banners }) {
                   Explorar programas
                 </button>
               </div>
+              <div style={{ animation: 'hoyEmptyUp 0.55s cubic-bezier(0.22,1,0.36,1) 0.16s both', marginTop: 16, textAlign: 'center' }}>
+                <button
+                  onClick={() => setShowRestore(true)}
+                  style={{
+                    background: 'none', border: 'none', padding: 8, cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: 500,
+                    fontFamily: 'inherit', textDecoration: 'underline',
+                    textDecorationColor: 'rgba(255,255,255,0.25)', textUnderlineOffset: 3,
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  ¿Ya compraste y no ves tu programa?
+                </button>
+              </div>
             </View>
             <BottomSpacer />
           </WakeHeaderContent>
         </ScrollView>
       </SafeAreaView>
+
+      <RestorePurchaseModal
+        visible={showRestore}
+        onClose={() => setShowRestore(false)}
+        accountEmail={accountEmail}
+      />
     </div>
   );
 }
