@@ -4250,6 +4250,10 @@ const NutritionScreen = () => {
                   </TouchableOpacity>
                 </View>
 
+                {String(selectedFood.food_id || '').startsWith('off:') ? (
+                  <Text style={styles.fdSourceCredit}>Datos: Open Food Facts</Text>
+                ) : null}
+
                 {editingDiaryEntry ? (
                   <Text style={styles.fdEditHint}>
                     Puedes cambiar la medida (tipo de porción) y la cantidad; al guardar se actualizará el registro del día.
@@ -6320,6 +6324,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     marginBottom: 16,
     lineHeight: 18,
+  },
+  fdSourceCredit: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.35)',
+    marginTop: -4,
+    marginBottom: 14,
   },
   fdServingsRow: {
     flexDirection: 'row',

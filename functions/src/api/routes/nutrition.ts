@@ -1,4 +1,5 @@
 import {Router} from "express";
+import type {Request} from "express";
 import * as functions from "firebase-functions";
 import {db, FieldValue, Timestamp} from "../firestore.js";
 import type {Query} from "../firestore.js";
@@ -8,6 +9,13 @@ import {checkRateLimit} from "../middleware/rateLimit.js";
 import {WakeApiServerError} from "../errors.js";
 import {updateStreak} from "../streak.js";
 import {isProgramSnapshot, resolveProgramDay} from "../services/nutritionProgramResolver.js";
+import {
+  fetchOffProduct,
+  searchOffColombia,
+  isOffId,
+  offIdToBarcode,
+  isColombianBarcode,
+} from "../services/openFoodFacts.js";
 
 const router = Router();
 
@@ -233,7 +241,11 @@ router.delete("/nutrition/diary/:entryId", async (req, res) => {
   res.status(204).send();
 });
 
-// GET /nutrition/foods/search — FatSecret proxy with cache
+// GET /nutrition/foods/search — FatSecret (US) + Open Food Facts (Colombia).
+// FatSecret covers global/generic foods; OFF appends Colombian packaged
+// products. OFF search is best-effort (its API is flaky) and never breaks the
+// endpoint. Both sources are cached 30d in nutrition_food_cache under separate
+// namespaces (fs:search / off:search).
 router.get("/nutrition/foods/search", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(
@@ -258,85 +270,31 @@ router.get("/nutrition/foods/search", async (req, res) => {
     );
   }
 
-  // Check Firestore cache first (cost optimization per COST_MODEL.md).
-  // M-15: scope cache key with operation namespace + locale + version so a
-  // future cache user (e.g., a per-user enrichment) can't collide with the
-  // public FatSecret search response under the same hash.
+  // M-15: scope cache keys with an operation namespace + locale + version so a
+  // future cache user can't collide under the same hash.
+  const qNorm = q.trim().toLowerCase();
   const crypto = await import("node:crypto");
-  const cacheScope = "fs:search:v4:es";
-  const cacheKey = `${cacheScope}__${crypto
-    .createHash("md5")
-    .update(`${q.trim().toLowerCase()}_${page}`)
-    .digest("hex")}`;
+  const hashKey = (scope: string): string =>
+    `${scope}__${crypto.createHash("md5").update(`${qNorm}_${page}`).digest("hex")}`;
 
-  const cacheRef = db.collection("nutrition_food_cache").doc(cacheKey);
-  const cached = await cacheRef.get();
+  const fs = await fatSecretSearch(qNorm, page, req, hashKey("fs:search:v4:es"));
+  const offFoods = await offColombiaSearch(qNorm, page, hashKey("off:search:co:v1"));
 
-  if (cached.exists) {
-    const cacheData = cached.data()!;
-    const expiresAt = cacheData.expires_at?.toDate?.() ?? new Date(0);
-    if (expiresAt > new Date()) {
-      res.json({data: cacheData.results, cached: true});
-      return;
-    }
-  }
-
-
-  // Call FatSecret via the existing Gen1 function's token logic
-  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
-  if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
-    throw new WakeApiServerError(
-      "SERVICE_UNAVAILABLE", 503,
-      "Servicio de nutrición no configurado"
-    );
-  }
-
-  const fsToken = await getFatSecretToken(
-    FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET
-  );
-
-  const params = new URLSearchParams({
-    search_expression: q.trim(),
-    page_number: String(page),
-    max_results: "20",
-    format: "json",
-    region: "ES",
-    language: "es",
-  });
-
-  if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
-  const fsRes = await fetch(
-    `https://platform.fatsecret.com/rest/foods/search/v4?${params}`,
-    {headers: {Authorization: `Bearer ${fsToken}`}}
-  );
-
-  if (!fsRes.ok) {
+  // FatSecret failed AND no Colombian fallback → surface the outage (503),
+  // preserving the pre-OFF behavior. If either source has data, respond 200.
+  if (!fs.ok && offFoods.length === 0) {
     throw new WakeApiServerError(
       "SERVICE_UNAVAILABLE", 503, "Búsqueda de alimentos falló"
     );
   }
 
-  const rawResults = await fsRes.json();
-
-  // Transform raw FatSecret response into the shape clients expect
-  const foodsArray = rawResults?.foods_search?.results?.food ?? rawResults?.foods ?? [];
-  const totalResults = parseInt(rawResults?.foods_search?.total_results ?? "0", 10);
-  const transformed = {
-    foods: Array.isArray(foodsArray) ? foodsArray : [foodsArray],
-    totalResults,
-    pageNumber: page,
-  };
-
-  // Cache for 30 days
-  const thirtyDays = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-  cacheRef.set({
-    results: transformed,
-    query: q.trim().toLowerCase(),
-    cached_at: FieldValue.serverTimestamp(),
-    expires_at: Timestamp.fromDate(thirtyDays),
-  }).catch((err) => functions.logger.warn("nutrition:search-cache-write-failed", err));
-
-  res.json({data: transformed});
+  res.json({
+    data: {
+      foods: [...fs.foods, ...offFoods],
+      totalResults: fs.totalResults + offFoods.length,
+      pageNumber: page,
+    },
+  });
 });
 
 // GET /nutrition/foods/:foodId
@@ -347,6 +305,17 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
     auth.authType === "apikey" ? 60 : 200,
     auth.authType === "apikey" ? "rate_limit_windows" : "rate_limit_first_party"
   );
+
+  // Open Food Facts food (id shaped `off:<barcode>`) → resolve via OFF, not
+  // FatSecret. Search/barcode results with this id route back here on tap.
+  if (isOffId(req.params.foodId)) {
+    const offFood = await fetchOffProduct(offIdToBarcode(req.params.foodId));
+    if (!offFood) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Alimento no encontrado");
+    }
+    res.json({data: offFood});
+    return;
+  }
 
   const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
   if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
@@ -388,6 +357,10 @@ router.get("/nutrition/foods/:foodId", async (req, res) => {
 });
 
 // GET /nutrition/foods/barcode/:barcode
+// FatSecret's dataset (US) covers global/US products; Open Food Facts fills the
+// Colombian gap. GS1-Colombia barcodes (770/771) hit OFF first — FatSecret's US
+// data won't have them; everything else tries FatSecret first and falls back to
+// OFF on a miss. OFF returns the full food (servings included) in one call.
 router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
   const auth = await validateAuth(req);
   await checkRateLimit(
@@ -405,46 +378,42 @@ router.get("/nutrition/foods/barcode/:barcode", async (req, res) => {
     );
   }
 
-  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
-  if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
-    throw new WakeApiServerError(
-      "SERVICE_UNAVAILABLE", 503, "Servicio de nutrición no configurado"
-    );
-  }
+  const colombian = isColombianBarcode(barcode);
 
-  const fsToken = await getFatSecretToken(
-    FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET, "basic barcode"
-  );
-
-  const params = new URLSearchParams({
-    barcode,
-    format: "json",
-    region: "ES",
-    language: "es",
-  });
-
-  if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
-  const fsRes = await fetch(
-    `https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`,
-    {headers: {Authorization: `Bearer ${fsToken}`}}
-  );
-
-  if (!fsRes.ok) {
-    if (fsRes.status === 404) {
-      throw new WakeApiServerError(
-        "NOT_FOUND", 404,
-        "Ningún alimento encontrado para ese código de barras"
-      );
+  // Colombian barcode → OFF first (FatSecret's US dataset won't carry it).
+  if (colombian) {
+    const offFood = await fetchOffProduct(barcode);
+    if (offFood) {
+      res.json({data: offFood});
+      return;
     }
-    throw new WakeApiServerError(
-      "SERVICE_UNAVAILABLE", 503,
-      "Búsqueda por código de barras falló"
-    );
   }
 
-  const rawResult = await fsRes.json();
-  const foodData = rawResult?.food_id ? rawResult : rawResult?.food ?? rawResult;
-  res.json({data: foodData});
+  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
+  const fsFood = FATSECRET_CLIENT_ID && FATSECRET_CLIENT_SECRET ?
+    await lookupFatSecretBarcode(
+      barcode, FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET, req
+    ) :
+    null;
+  if (fsFood) {
+    res.json({data: fsFood});
+    return;
+  }
+
+  // FatSecret missed (or isn't configured) → last-chance OFF for any
+  // non-Colombian barcode we didn't already try above.
+  if (!colombian) {
+    const offFood = await fetchOffProduct(barcode);
+    if (offFood) {
+      res.json({data: offFood});
+      return;
+    }
+  }
+
+  throw new WakeApiServerError(
+    "NOT_FOUND", 404,
+    "Ningún alimento encontrado para ese código de barras"
+  );
 });
 
 // GET /nutrition/saved-foods — paginated with limit
@@ -843,6 +812,160 @@ async function getFatSecretToken(
     (typeof data.expires_in === "number" ? data.expires_in : 86400) * 1000;
   fsTokenCache.set(scope, {token: data.access_token, expiresAt});
   return data.access_token;
+}
+
+/**
+ * FatSecret barcode lookup. Returns the food object on a hit, or null on a
+ * miss / error so the caller can fall back to Open Food Facts. Never throws —
+ * a FatSecret outage degrades to an OFF lookup or a 404, never a 5xx.
+ */
+async function lookupFatSecretBarcode(
+  barcode: string,
+  clientId: string,
+  clientSecret: string,
+  req: Request
+): Promise<unknown | null> {
+  try {
+    const fsToken = await getFatSecretToken(clientId, clientSecret, "basic barcode");
+    const params = new URLSearchParams({
+      barcode,
+      format: "json",
+      region: "ES",
+      language: "es",
+    });
+    if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
+    const fsRes = await fetch(
+      `https://platform.fatsecret.com/rest/food/barcode/find-by-id/v2?${params}`,
+      {headers: {Authorization: `Bearer ${fsToken}`}}
+    );
+    if (!fsRes.ok) {
+      if (fsRes.status !== 404) {
+        functions.logger.warn("fatsecret:barcode-failed", {status: fsRes.status});
+      }
+      return null;
+    }
+    const rawResult = await fsRes.json();
+    return rawResult?.food_id ? rawResult : rawResult?.food ?? rawResult ?? null;
+  } catch (err) {
+    functions.logger.warn("fatsecret:barcode-error", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+const SEARCH_CACHE_MS = 30 * 24 * 60 * 60 * 1000;
+
+interface FatSecretSearchResult {
+  foods: unknown[];
+  totalResults: number;
+  ok: boolean;
+}
+
+/**
+ * FatSecret food search with a 30-day Firestore cache. Returns ok:false
+ * (instead of throwing) on missing config / outage / non-2xx so the search
+ * route can still respond with Colombian results.
+ */
+async function fatSecretSearch(
+  qNorm: string,
+  page: number,
+  req: Request,
+  cacheKey: string
+): Promise<FatSecretSearchResult> {
+  const cacheRef = db.collection("nutrition_food_cache").doc(cacheKey);
+  const cached = await cacheRef.get();
+  if (cached.exists) {
+    const cacheData = cached.data()!;
+    const expiresAt = cacheData.expires_at?.toDate?.() ?? new Date(0);
+    if (expiresAt > new Date()) {
+      const r = cacheData.results ?? {};
+      return {foods: r.foods ?? [], totalResults: r.totalResults ?? 0, ok: true};
+    }
+  }
+
+  const {FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET} = process.env;
+  if (!FATSECRET_CLIENT_ID || !FATSECRET_CLIENT_SECRET) {
+    return {foods: [], totalResults: 0, ok: false};
+  }
+
+  try {
+    const fsToken = await getFatSecretToken(FATSECRET_CLIENT_ID, FATSECRET_CLIENT_SECRET);
+    const params = new URLSearchParams({
+      search_expression: qNorm,
+      page_number: String(page),
+      max_results: "20",
+      format: "json",
+      region: "ES",
+      language: "es",
+    });
+    if (req.analyticsCounters) req.analyticsCounters.fatsecretCalls++;
+    const fsRes = await fetch(
+      `https://platform.fatsecret.com/rest/foods/search/v4?${params}`,
+      {headers: {Authorization: `Bearer ${fsToken}`}}
+    );
+    if (!fsRes.ok) {
+      functions.logger.warn("fatsecret:search-failed", {status: fsRes.status});
+      return {foods: [], totalResults: 0, ok: false};
+    }
+
+    const rawResults = await fsRes.json();
+    const foodsArray = rawResults?.foods_search?.results?.food ?? rawResults?.foods ?? [];
+    const totalResults = parseInt(rawResults?.foods_search?.total_results ?? "0", 10);
+    const transformed = {
+      foods: Array.isArray(foodsArray) ? foodsArray : [foodsArray],
+      totalResults,
+      pageNumber: page,
+    };
+
+    cacheRef.set({
+      results: transformed,
+      query: qNorm,
+      cached_at: FieldValue.serverTimestamp(),
+      expires_at: Timestamp.fromDate(new Date(Date.now() + SEARCH_CACHE_MS)),
+    }).catch((err) => functions.logger.warn("nutrition:search-cache-write-failed", err));
+
+    return {foods: transformed.foods, totalResults, ok: true};
+  } catch (err) {
+    functions.logger.warn("fatsecret:search-error", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {foods: [], totalResults: 0, ok: false};
+  }
+}
+
+/**
+ * Open Food Facts Colombian search with a 30-day cache. Best-effort: any error
+ * yields []. Empty results are NOT cached — OFF's search API 503s often, and
+ * caching an empty result would suppress Colombian foods for 30 days after a
+ * transient outage.
+ */
+async function offColombiaSearch(
+  qNorm: string,
+  page: number,
+  cacheKey: string
+): Promise<unknown[]> {
+  const cacheRef = db.collection("nutrition_food_cache").doc(cacheKey);
+  const cached = await cacheRef.get();
+  if (cached.exists) {
+    const cacheData = cached.data()!;
+    const expiresAt = cacheData.expires_at?.toDate?.() ?? new Date(0);
+    if (expiresAt > new Date()) {
+      return Array.isArray(cacheData.results) ? cacheData.results : [];
+    }
+  }
+
+  const offFoods = await searchOffColombia(qNorm, page);
+  if (offFoods.length > 0) {
+    cacheRef.set({
+      results: offFoods,
+      query: qNorm,
+      source: "openfoodfacts",
+      cached_at: FieldValue.serverTimestamp(),
+      expires_at: Timestamp.fromDate(new Date(Date.now() + SEARCH_CACHE_MS)),
+    }).catch((err) => functions.logger.warn("off:search-cache-write-failed", err));
+  }
+  return offFoods;
 }
 
 export default router;
