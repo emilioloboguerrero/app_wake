@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useToast } from '../contexts/ToastContext';
+import { auth } from '../config/firebase';
+import { signInWithCustomToken } from 'firebase/auth';
 import authService from '../services/authService';
 import googleAuthService from '../services/googleAuthService';
-import apiClient from '../utils/apiClient';
-import { InlineError } from '../components/ui/ErrorStates';
 import { ASSET_BASE } from '../config/assets';
 import logger from '../utils/logger';
+import { recordLoginMethod, getLastLoginMethod } from '../utils/lastLoginMethod';
 import './LoginScreen.css';
 
 const HERO_IMAGE = `${ASSET_BASE}IMG_4441.JPG`;
+
+// Same-origin API base (creators served from wakelab.co/creators → /api/v1).
+const API_BASE = '/api/v1';
 
 const GoogleIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="ln-google-icon" viewBox="0 0 48 48">
@@ -21,53 +24,34 @@ const GoogleIcon = () => (
   </svg>
 );
 
-const EyeIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-    <circle cx="12" cy="12" r="3" />
-  </svg>
-);
-
-const EyeOffIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-    <line x1="1" y1="1" x2="23" y2="23" />
-  </svg>
-);
-
 const LoginScreen = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isCreator, webOnboardingCompleted, profileCompleted, loading, userRole, authError, refreshUserData } = useAuth();
-  const { showToast } = useToast();
+  const { user, isCreator, webOnboardingCompleted, profileCompleted, loading, userRole, authError } = useAuth();
 
-  const [mode, setMode] = useState('login');
-  const isSigningUpRef = useRef(false);
-
-  // Login fields
+  // Email + code — the only password-free door (mirror of the PWA login).
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [emailError, setEmailError] = useState(null);
-  const [passwordError, setPasswordError] = useState(null);
-  const [formError, setFormError] = useState(null);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotSent, setForgotSent] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState(null);
 
-  // Signup fields
-  const [signupName, setSignupName] = useState('');
-  const [signupEmail, setSignupEmail] = useState('');
-  const [signupPassword, setSignupPassword] = useState('');
-  const [signupShowPassword, setSignupShowPassword] = useState(false);
-  const [signupErrors, setSignupErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false); // Google
+  const [formError, setFormError] = useState(null);
+
+  // Nudge the returning creator toward the door they already used (per-device),
+  // so they don't pick a different provider and split into a second account.
+  const [lastMethod, setLastMethod] = useState(null);
+  useEffect(() => {
+    setLastMethod(getLastLoginMethod().method);
+  }, []);
 
   // Redirect logic for logged-in users
   useEffect(() => {
     if (loading || !user) return;
     if (userRole === null) return;
     if (location.pathname !== '/login') return;
-    if (isSigningUpRef.current) return;
 
     const urlParams = new URLSearchParams(window.location.search);
     const redirectPath = urlParams.get('redirect');
@@ -84,7 +68,6 @@ const LoginScreen = () => {
 
     if (authError) {
       setFormError(authError);
-      setIsLoading(false);
       return;
     }
 
@@ -99,20 +82,12 @@ const LoginScreen = () => {
         navigate('/complete-profile', { replace: true });
       } else {
         setFormError('Esta cuenta no tiene permisos de creador.');
-        setIsLoading(false);
         authService.signOutUser().catch(() => {});
       }
     }
   }, [user, loading, userRole, isCreator, profileCompleted, webOnboardingCompleted, authError, navigate, location.pathname]);
 
   const validateEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-  const validatePassword = (v) => v.length >= 6;
-
-  const clearErrors = () => {
-    setEmailError(null);
-    setPasswordError(null);
-    setFormError(null);
-  };
 
   const handleEmailChange = (e) => {
     setEmail(e.target.value);
@@ -120,63 +95,83 @@ const LoginScreen = () => {
     if (formError) setFormError(null);
   };
 
-  const handlePasswordChange = (e) => {
-    setPassword(e.target.value);
-    if (passwordError) setPasswordError(null);
-    if (formError) setFormError(null);
-  };
-
-  // ─── Login ─────────────────────────────────────────────
-  const handleContinue = async () => {
-    clearErrors();
-    setShowForgotPassword(false);
-
-    if (!email.trim()) { setEmailError('Ingresa tu correo'); return; }
-    if (!validateEmail(email)) { setEmailError('Correo no valido'); return; }
-    if (!password.trim()) { setPasswordError('Ingresa tu contraseña'); return; }
-    if (!validatePassword(password)) { setPasswordError('Minimo 6 caracteres'); return; }
-
-    setIsLoading(true);
+  // ─── Email code ────────────────────────────────────────
+  const handleSendCode = async (emailOverride) => {
+    setOtpError(null);
+    setFormError(null);
+    const trimmed = ((typeof emailOverride === 'string' ? emailOverride : email) || '').trim().toLowerCase();
+    if (!validateEmail(trimmed)) {
+      setEmailError('Ingresa un correo válido');
+      return;
+    }
+    setOtpLoading(true);
     try {
-      await authService.signInUser(email, password);
-      setTimeout(() => setIsLoading(false), 100);
-    } catch (error) {
-      setIsLoading(false);
-      switch (error.code) {
-        // Single generic outcome for all credential failures — prevents
-        // email enumeration via the login form.
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          setPasswordError('Email o contraseña incorrectos.');
-          setShowForgotPassword(true);
-          break;
-        case 'auth/invalid-email':
-          setEmailError('Correo no valido');
-          break;
-        case 'auth/user-disabled':
-          setPasswordError('Esta cuenta ha sido deshabilitada. Contacta soporte.');
-          break;
-        case 'auth/network-request-failed':
-          showToast('No pudimos conectar con el servidor. Revisa tu conexión.', 'error');
-          break;
-        case 'auth/too-many-requests':
-          setFormError('Demasiados intentos. Espera un momento e intenta de nuevo');
-          break;
-        default:
-          logger.error('[LoginScreen] Unhandled login error:', error?.code, error?.message, error);
-          setFormError('Algo salio mal. Intenta de nuevo');
-      }
+      const res = await fetch(`${API_BASE}/auth/email-code/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      if (!res.ok) throw new Error('request failed');
+      setEmail(trimmed);
+      setOtpSent(true);
+    } catch {
+      setOtpError('No pudimos enviar el código. Intenta de nuevo.');
+    } finally {
+      setOtpLoading(false);
     }
   };
 
+  const handleVerifyCode = async () => {
+    setOtpError(null);
+    const trimmed = (email || '').trim().toLowerCase();
+    const c = (otpCode || '').trim();
+    if (!/^\d{6}$/.test(c)) {
+      setOtpError('El código son 6 dígitos.');
+      return;
+    }
+    setOtpLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/auth/email-code/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: trimmed, code: c }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.data?.token) {
+        setOtpError(json?.error?.message || 'Código incorrecto o expirado.');
+        setOtpLoading(false);
+        return;
+      }
+      await signInWithCustomToken(auth, json.data.token);
+      recordLoginMethod('email', trimmed);
+      // The redirect effect routes once AuthContext picks up the session.
+    } catch {
+      setOtpError('No pudimos verificar el código. Intenta de nuevo.');
+      setOtpLoading(false);
+    }
+  };
+
+  // ─── Google ────────────────────────────────────────────
   const handleGoogleLogin = async () => {
+    setFormError(null);
     setIsLoading(true);
-    clearErrors();
     try {
       const result = await googleAuthService.signIn();
+
+      // Email already has an account (one-account-per-email): route to the code
+      // flow for that account instead of spawning a Google duplicate.
+      if (result.needsCode) {
+        setIsLoading(false);
+        const e = (result.email || '').trim().toLowerCase();
+        if (e) setEmail(e);
+        handleSendCode(e);
+        return;
+      }
+
       if (result.success) {
+        recordLoginMethod('google', result.user?.email);
         setTimeout(() => setIsLoading(false), 100);
+        // The redirect effect handles routing.
       } else {
         setFormError(result.error || 'Error al conectar con Google');
         setIsLoading(false);
@@ -186,100 +181,6 @@ const LoginScreen = () => {
       setFormError('Error al conectar con Google');
       setIsLoading(false);
     }
-  };
-
-  const handleForgotPassword = async () => {
-    if (!email.trim()) { setEmailError('Ingresa tu correo primero'); return; }
-    if (!validateEmail(email)) { setEmailError('Ingresa un correo valido'); return; }
-
-    setIsLoading(true);
-    try {
-      await authService.resetPassword(email);
-      setForgotSent(true);
-      setShowForgotPassword(false);
-      setFormError(null);
-    } catch (error) {
-      // Show the same "sent" UI even when the email isn't registered, so the
-      // reset endpoint can't be used to enumerate accounts. Other failures
-      // surface a generic error.
-      if (error?.code === 'auth/user-not-found') {
-        setForgotSent(true);
-        setShowForgotPassword(false);
-        setFormError(null);
-      } else {
-        logger.error('[LoginScreen] Password Reset Error:', error);
-        setFormError('No pudimos enviar el correo. Intenta de nuevo');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // ─── Signup ────────────────────────────────────────────
-  const handleSignup = async () => {
-    setFormError(null);
-    const errors = {};
-    if (!signupName.trim()) errors.name = 'Nombre es requerido';
-    if (!signupEmail.trim() || !validateEmail(signupEmail)) errors.email = 'Correo no valido';
-    if (!signupPassword || signupPassword.length < 6) errors.password = 'Minimo 6 caracteres';
-    if (Object.keys(errors).length > 0) { setSignupErrors(errors); return; }
-
-    setIsLoading(true);
-    isSigningUpRef.current = true;
-    try {
-      await authService.registerUser(signupEmail, signupPassword, signupName);
-      navigate('/complete-profile', { replace: true });
-    } catch (error) {
-      setIsLoading(false);
-      isSigningUpRef.current = false;
-      if (error.code === 'auth/email-already-in-use') {
-        setSignupErrors({ email: 'Ya existe una cuenta con este correo' });
-      } else {
-        logger.error('[LoginScreen] Signup error:', error);
-        setFormError(error.message || 'Algo salio mal. Intenta de nuevo');
-      }
-    }
-  };
-
-  // ─── Google signup ─────────────────────────────────────
-  const handleGoogleSignup = async () => {
-    setIsLoading(true);
-    clearErrors();
-    setFormError(null);
-    isSigningUpRef.current = true;
-    try {
-      const result = await googleAuthService.signIn();
-      if (result.success) {
-        // Check if already a creator — if so, let normal redirect handle it
-        try {
-          const { data } = await apiClient.get('/users/me');
-          if (data.role === 'creator' || data.role === 'admin') {
-            isSigningUpRef.current = false;
-            await refreshUserData();
-            return;
-          }
-        } catch { /* new user or error, proceed to profile completion */ }
-        navigate('/complete-profile', { replace: true });
-      } else {
-        isSigningUpRef.current = false;
-        setFormError(result.error || 'Error al conectar con Google');
-        setIsLoading(false);
-      }
-    } catch (error) {
-      isSigningUpRef.current = false;
-      logger.error('[LoginScreen] Google Sign-Up Error:', error);
-      setFormError('Error al conectar con Google');
-      setIsLoading(false);
-    }
-  };
-
-  const isFormValid = validateEmail(email) && validatePassword(password);
-
-  const switchMode = (newMode) => {
-    setMode(newMode);
-    setFormError(null);
-    setSignupErrors({});
-    clearErrors();
   };
 
   return (
@@ -297,37 +198,9 @@ const LoginScreen = () => {
             <span className="ln-badge">Creadores</span>
           </div>
 
-          {/* Mode toggle */}
-          <div className="ln-mode-toggle ln-animate ln-delay-2">
-            <button
-              className={`ln-mode-btn${mode === 'login' ? ' ln-mode-btn--active' : ''}`}
-              onClick={() => switchMode('login')}
-              disabled={isLoading}
-            >
-              Iniciar sesión
-            </button>
-            <button
-              className={`ln-mode-btn${mode === 'signup' ? ' ln-mode-btn--active' : ''}`}
-              onClick={() => switchMode('signup')}
-              disabled={isLoading}
-            >
-              Crear cuenta
-            </button>
-          </div>
-
-          {/* Forgot sent confirmation */}
-          {forgotSent && mode === 'login' && (
-            <div className="ln-info-banner">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm8-2.5a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0v-4a1 1 0 0 1 1-1zm0-2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" fill="currentColor"/>
-              </svg>
-              Revisa tu bandeja (tambien spam). Te enviamos el enlace.
-            </div>
-          )}
-
           {/* Form error */}
           {formError && (
-            <div className="ln-error-banner">
+            <div className="ln-error-banner ln-animate ln-delay-2">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" fill="currentColor"/>
               </svg>
@@ -335,10 +208,9 @@ const LoginScreen = () => {
             </div>
           )}
 
-          {/* ─── LOGIN MODE ─── */}
-          {mode === 'login' && (
+          {!otpSent ? (
             <>
-              <div className="ln-field-wrap ln-animate ln-delay-4">
+              <div className="ln-field-wrap ln-animate ln-delay-3">
                 <label className="ln-field-label">Email</label>
                 <div className={`ln-glass-input${emailError ? ' ln-glass-input--error' : ''}`}>
                   <input
@@ -348,168 +220,86 @@ const LoginScreen = () => {
                     value={email}
                     onChange={handleEmailChange}
                     autoComplete="email"
-                    disabled={isLoading}
+                    disabled={otpLoading}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSendCode(); }}
                   />
                 </div>
-                <InlineError message={emailError} field="email" />
-              </div>
-
-              <div className="ln-field-wrap ln-animate ln-delay-5">
-                <label className="ln-field-label">Contraseña</label>
-                <div className={`ln-glass-input${passwordError ? ' ln-glass-input--error' : ''}`}>
-                  <div className="ln-password-wrap">
-                    <input
-                      className="ln-glass-field"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Ingresa tu contraseña"
-                      value={password}
-                      onChange={handlePasswordChange}
-                      autoComplete="current-password"
-                      disabled={isLoading}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleContinue(); }}
-                    />
-                    <button
-                      type="button"
-                      className="ln-eye-btn"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
-                    >
-                      {showPassword ? <EyeOffIcon /> : <EyeIcon />}
-                    </button>
-                  </div>
-                </div>
-                <InlineError message={passwordError} field="password" />
-              </div>
-
-              <div className="ln-row-between ln-animate ln-delay-6">
-                {showForgotPassword ? (
-                  <button className="ln-forgot-btn" onClick={handleForgotPassword}>
-                    Recuperar contraseña
-                  </button>
-                ) : (
-                  <button className="ln-forgot-btn" onClick={() => {
-                    if (email.trim()) handleForgotPassword();
-                    else setEmailError('Ingresa tu correo primero');
-                  }}>
-                    Olvidaste tu contraseña?
-                  </button>
-                )}
+                {emailError && <p className="ln-field-error">{emailError}</p>}
               </div>
 
               <button
-                className={`ln-btn-primary ln-animate ln-delay-7${isLoading ? ' ln-btn-primary--loading' : ''}`}
-                onClick={handleContinue}
-                disabled={isLoading || !isFormValid}
+                className="ln-btn-primary ln-btn-relative ln-animate ln-delay-4"
+                onClick={() => handleSendCode()}
+                disabled={otpLoading || !validateEmail(email)}
               >
-                {isLoading ? <span className="ln-spinner" /> : 'Entrar'}
+                {lastMethod === 'email' && <span className="ln-last-badge">Última vez</span>}
+                {otpLoading ? <span className="ln-spinner" /> : 'Continuar con mi correo'}
               </button>
 
-              <div className="ln-divider ln-animate ln-delay-8">
+              <div className="ln-divider ln-animate ln-delay-5">
                 <span className="ln-divider-line" />
-                <span className="ln-divider-text">o continua con</span>
+                <span className="ln-divider-text">o continúa con</span>
                 <span className="ln-divider-line" />
               </div>
 
               <button
-                className="ln-btn-google ln-animate ln-delay-9"
+                className="ln-btn-google ln-btn-relative ln-animate ln-delay-6"
                 onClick={handleGoogleLogin}
                 disabled={isLoading}
               >
+                {lastMethod === 'google' && <span className="ln-last-badge">Última vez</span>}
                 <GoogleIcon />
-                Continuar con Google
+                Continúa con Google
               </button>
+
+              <p className="ln-terms ln-animate ln-delay-7">
+                Al continuar aceptas nuestros Términos y la Política de privacidad.
+              </p>
             </>
-          )}
-
-          {/* ─── SIGNUP MODE ─── */}
-          {mode === 'signup' && (
-            <>
-              <div className="ln-field-wrap ln-animate ln-delay-3">
-                <label className="ln-field-label">Nombre completo</label>
-                <div className={`ln-glass-input${signupErrors.name ? ' ln-glass-input--error' : ''}`}>
-                  <input
-                    className="ln-glass-field"
-                    type="text"
-                    placeholder="Tu nombre"
-                    value={signupName}
-                    onChange={(e) => { setSignupName(e.target.value); setSignupErrors(prev => { const n = { ...prev }; delete n.name; return n; }); }}
-                    disabled={isLoading}
-                  />
-                </div>
-                <InlineError message={signupErrors.name} field="name" />
-              </div>
-
-              <div className="ln-field-wrap ln-animate ln-delay-4">
-                <label className="ln-field-label">Email</label>
-                <div className={`ln-glass-input${signupErrors.email ? ' ln-glass-input--error' : ''}`}>
-                  <input
-                    className="ln-glass-field"
-                    type="email"
-                    placeholder="tu@correo.com"
-                    value={signupEmail}
-                    onChange={(e) => { setSignupEmail(e.target.value); setSignupErrors(prev => { const n = { ...prev }; delete n.email; return n; }); }}
-                    disabled={isLoading}
-                    autoComplete="email"
-                  />
-                </div>
-                <InlineError message={signupErrors.email} field="signup-email" />
-              </div>
-
-              <div className="ln-field-wrap ln-animate ln-delay-5">
-                <label className="ln-field-label">Contraseña</label>
-                <div className={`ln-glass-input${signupErrors.password ? ' ln-glass-input--error' : ''}`}>
-                  <div className="ln-password-wrap">
-                    <input
-                      className="ln-glass-field"
-                      type={signupShowPassword ? 'text' : 'password'}
-                      placeholder="Minimo 6 caracteres"
-                      value={signupPassword}
-                      onChange={(e) => { setSignupPassword(e.target.value); setSignupErrors(prev => { const n = { ...prev }; delete n.password; return n; }); }}
-                      disabled={isLoading}
-                      autoComplete="new-password"
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleSignup(); }}
-                    />
-                    <button
-                      type="button"
-                      className="ln-eye-btn"
-                      onClick={() => setSignupShowPassword(!signupShowPassword)}
-                      tabIndex={-1}
-                    >
-                      {signupShowPassword ? <EyeOffIcon /> : <EyeIcon />}
-                    </button>
-                  </div>
-                </div>
-                <InlineError message={signupErrors.password} field="signup-password" />
-              </div>
-
+          ) : (
+            <div className="ln-code-box ln-animate">
+              <h2 className="ln-code-title">Revisa tu correo</h2>
+              <p className="ln-code-hint">
+                Escribe el código de 6 dígitos que enviamos a<br />
+                <span className="ln-code-email">{(email || '').trim().toLowerCase()}</span>
+              </p>
+              <input
+                className="ln-code-input"
+                value={otpCode}
+                onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); if (otpError) setOtpError(null); }}
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="••••••"
+                autoComplete="one-time-code"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter' && otpCode.length === 6) handleVerifyCode(); }}
+              />
+              {otpError && <p className="ln-code-error">{otpError}</p>}
               <button
-                className={`ln-btn-primary ln-animate ln-delay-6${isLoading ? ' ln-btn-primary--loading' : ''}`}
-                onClick={handleSignup}
-                disabled={isLoading}
+                className="ln-btn-primary"
+                onClick={handleVerifyCode}
+                disabled={otpLoading || otpCode.length !== 6}
               >
-                {isLoading ? <span className="ln-spinner" /> : 'Crear cuenta'}
+                {otpLoading ? <span className="ln-spinner" /> : 'Entrar'}
               </button>
-
-              <div className="ln-divider ln-animate ln-delay-7">
-                <span className="ln-divider-line" />
-                <span className="ln-divider-text">o continua con</span>
-                <span className="ln-divider-line" />
+              <div className="ln-code-actions">
+                <button
+                  className="ln-forgot-btn"
+                  onClick={() => { setOtpSent(false); setOtpCode(''); setOtpError(null); }}
+                  disabled={otpLoading}
+                >
+                  Cambiar correo
+                </button>
+                <button className="ln-forgot-btn" onClick={() => handleSendCode()} disabled={otpLoading}>
+                  Reenviar código
+                </button>
               </div>
-
-              <button
-                className="ln-btn-google ln-animate ln-delay-8"
-                onClick={handleGoogleSignup}
-                disabled={isLoading}
-              >
-                <GoogleIcon />
-                Registrarse con Google
-              </button>
-            </>
+            </div>
           )}
         </div>
       </section>
 
-      {/* ── Right Column: Hero + Testimonials ── */}
+      {/* ── Right Column: Hero ── */}
       <section className="ln-hero-col">
         <div
           className="ln-hero-image"

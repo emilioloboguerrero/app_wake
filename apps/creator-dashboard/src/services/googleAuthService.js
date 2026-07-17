@@ -24,11 +24,15 @@ class GoogleAuthService {
     } catch (error) {
       console.error('Google Sign-In error:', error);
 
-      // Handle specific error cases
+      // The email already has an account (created via code/email). Don't spawn a
+      // duplicate — route the user to their existing account via a login code.
+      // One human, one account.
       if (error.code === 'auth/account-exists-with-different-credential') {
         return {
           success: false,
-          error: 'Ya existe una cuenta con este correo electrónico usando otro método de inicio de sesión'
+          needsCode: true,
+          email: error.customData?.email || null,
+          error: 'Ya tienes una cuenta con este correo. Te enviamos un código para entrar.'
         };
       }
 

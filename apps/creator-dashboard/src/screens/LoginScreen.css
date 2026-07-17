@@ -431,6 +431,106 @@
   border-radius: 1px;
 }
 
+/* ─── "Última vez" badge ─────────────────────────────────── */
+.ln-btn-relative {
+  position: relative;
+  overflow: visible;
+}
+
+.ln-last-badge {
+  position: absolute;
+  top: -9px;
+  right: 12px;
+  background: #2a2a2a;
+  border: 1px solid rgba(255,255,255,0.22);
+  color: rgba(255,255,255,0.9);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* ─── Terms ──────────────────────────────────────────────── */
+.ln-terms {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  padding: 0 12px;
+}
+
+/* ─── Code box ───────────────────────────────────────────── */
+.ln-code-box {
+  display: flex;
+  flex-direction: column;
+}
+
+.ln-code-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.ln-code-hint {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.ln-code-email {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ln-code-input {
+  width: 100%;
+  height: 62px;
+  border-radius: var(--radius-lg);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 12px;
+  text-align: center;
+  outline: none;
+  margin-bottom: 14px;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+.ln-code-input:focus {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.07);
+}
+
+.ln-code-input::placeholder {
+  color: var(--text-tertiary);
+  letter-spacing: 12px;
+}
+
+.ln-code-error {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--error);
+  text-align: center;
+}
+
+.ln-code-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
 /* ─── Responsive ─────────────────────────────────────────── */
 @media (min-width: 768px) {
   .ln-hero-col {

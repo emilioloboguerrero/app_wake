@@ -4,34 +4,10 @@ import logger from '../utils/logger';
 import { queryClient } from '../config/queryClient';
 import analyticsService from './analyticsService';
 import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
   signOut,
-  updateProfile,
-  sendPasswordResetEmail,
   sendEmailVerification
 } from 'firebase/auth';
 class AuthService {
-  async registerUser(email, password, displayName) {
-    const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-    const user = userCredential.user;
-
-    const initialDisplayName = (displayName || '').trim() || email.trim().split('@')[0];
-    await updateProfile(user, { displayName: initialDisplayName });
-    await user.reload();
-
-    try {
-      await sendEmailVerification(user);
-    } catch (err) {
-      logger.warn('[AuthService] sendEmailVerification failed (non-fatal):', err?.message || err);
-    }
-
-    // identify() is handled by AuthContext's onAuthStateChanged.
-    try { analyticsService.track('auth.signup_completed', { method: 'email' }); } catch {}
-
-    return user;
-  }
-
   async resendEmailVerification() {
     const current = auth.currentUser;
     if (!current) throw new Error('No hay sesión activa');
@@ -43,29 +19,6 @@ class AuthService {
     if (!current) return null;
     await current.reload();
     return auth.currentUser;
-  }
-
-  async signInUser(email, password) {
-    const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-    const user = userCredential.user;
-    logger.debug('[AuthService] Firebase sign-in successful for:', user.uid);
-
-    // Sync displayName from API if Firebase Auth profile is missing it
-    if (!user.displayName) {
-      try {
-        const { data } = await apiClient.get('/users/me');
-        const fallbackName = data?.displayName || email.trim().split('@')[0];
-        await updateProfile(user, { displayName: fallbackName });
-        await user.reload();
-      } catch (syncError) {
-        logger.warn('[AuthService] Failed to sync displayName (non-fatal):', syncError?.message || syncError);
-      }
-    }
-
-    // identify() is handled by AuthContext's onAuthStateChanged.
-    try { analyticsService.track('auth.login', { method: 'email' }); } catch {}
-
-    return user;
   }
 
   async signOutUser() {
@@ -84,10 +37,6 @@ class AuthService {
 
   getCurrentUser() {
     return auth.currentUser;
-  }
-
-  async resetPassword(email) {
-    await sendPasswordResetEmail(auth, email.trim());
   }
 }
 
