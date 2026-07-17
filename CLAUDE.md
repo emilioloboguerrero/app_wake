@@ -207,9 +207,11 @@ functions/src/
 - Webhook: return HTTP 500 for retryable errors (MP retries), HTTP 200 for non-retryable (stops retries)
 - MercadoPago will be **replaced in the future** — keep payment logic isolated in Cloud Functions
 
-### FatSecret (Nutrition DB)
-- PWA and creator-dashboard **never call FatSecret directly** — always through Cloud Functions proxy
+### FatSecret + Open Food Facts (Nutrition DB)
+- PWA and creator-dashboard **never call FatSecret or OFF directly** — always through the Cloud Functions API (`/nutrition/foods/*`)
 - PWA service: `apps/pwa/src/services/nutritionApiService.js`
+- **FatSecret** covers global/generic foods, but Wake's account is **Premier Free = US dataset only** (localized country data incl. Colombia needs paid Premier — not enabled).
+- **Open Food Facts** (`functions/src/api/services/openFoodFacts.ts`) complements it for **Colombian packaged products** — barcode + text search. Keyless live proxy, ODbL (attribution shown in the PWA), cached 30d in `nutrition_food_cache`. OFF foods use `off:<barcode>` ids; barcode routing is prefix-aware (770/771 → OFF first); OFF search is fail-soft (flaky infra). Traditional dishes + native ingredients (ICBF TCAC) are a separate future phase. See memory `project_colombian_foods_openfoodfacts_20260716`.
 
 ### Firebase Storage — Signed URL Pattern
 All file uploads use this flow — files never pass through a Cloud Function:

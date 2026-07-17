@@ -12,6 +12,16 @@ Last updated: 2026-07-07. Single source of truth for all unimplemented, partial,
 
 ## Product Quality
 
+### Comida colombiana — Open Food Facts `SHIPPED 2026-07-16` — fase 2 (TCAC) pendiente
+
+Cobertura de alimentos colombianos vía **Open Food Facts (OFF)**, complementando FatSecret (cuenta Premier Free = solo dataset US). **SHIPPED a prod 2026-07-16**: búsqueda por texto + código de barras de productos empacados colombianos (Alpina, Zenú, Colanta, Postobón, Nutresa), server-side, ODbL, `off:<barcode>` ids, rótulo "Datos: Open Food Facts". Adaptador `functions/src/api/services/openFoodFacts.ts`; rutas en `nutrition.ts`; probado E2E autenticado en prod (barcode Colanta + búsqueda "arepa" = 9 productos OFF). Detalle completo + gotchas en memoria `project_colombian_foods_openfoodfacts_20260716`.
+
+- **Barcode = sólido** (la API de producto de OFF es confiable). **Búsqueda = fail-soft** (la API de búsqueda de OFF es intermitente; cuando cae, solo devuelve FatSecret, sin romper; resultados exitosos se cachean 30d, los vacíos no).
+- **PENDIENTE fase 2 — ICBF TCAC:** platos típicos preparados (bandeja paisa, ajiaco, sancocho) e ingredientes nativos por 100g. Es la tabla oficial colombiana; OFF/FatSecret no cubren bien la composición de comida casera tradicional. Requiere: extraer el PDF del TCAC 2018 (773 alimentos, sin API/CSV oficial) → normalizar → colección Firestore separada; **confirmar licencia de uso comercial con el ICBF** antes de shippear (la página solo tiene el pie genérico de gobierno).
+- **Caveats abiertos:** amplitud/completitud de OFF en Colombia sin cuantificar (community-sourced, calidad despareja) → conviene una buena UX de "no encontrado / ayúdanos a agregarlo" como fallback. Atribución ODbL: rótulo por-item ya presente; considerar además un crédito general.
+
+---
+
 ### Recursos adicionales — visor PDF en móvil `COMPLETED`
 
 Feature "Recursos adicionales" (PDF / YouTube / link por programa, tarjeta "Recursos" en el carrusel del Hoy → pantalla de lista → visor) **SHIPPED a prod 2026-06-30**. Visor PDF **in-app con pdf.js** desplegado 2026-06-30.

@@ -388,14 +388,18 @@ Delete a diary entry.
 
 ---
 
-### 4.2 Food Search (FatSecret Proxy)
+### 4.2 Food Search (FatSecret + Open Food Facts)
 
 Replaces `nutritionFoodSearch`, `nutritionFoodGet`, `nutritionBarcodeLookup` Cloud Functions.
+
+**Two sources, one shape.** FatSecret (US dataset — Wake's account is Premier Free, US-only) covers global/generic foods; **Open Food Facts (OFF)** adds Colombian packaged products (Alpina, Zenú, Colanta, Postobón, Nutresa…). OFF products carry a namespaced `off:<barcode>` food id and a `data_source: "openfoodfacts"` marker (ODbL attribution — the PWA shows "Datos: Open Food Facts" on the detail sheet). OFF is called as a live proxy, cached 30d in `nutrition_food_cache` (namespaces `fs:search`/`off:search`). Adapter: `functions/src/api/services/openFoodFacts.ts`.
+
+**OFF search is flaky** (its search infra intermittently 503s), so search is **fail-soft**: any OFF error/timeout resolves to zero OFF results and never breaks the endpoint. Successful OFF searches are cached; empty ones are NOT (so a transient outage doesn't suppress Colombian results for 30 days).
 
 ---
 
 #### `GET /api/v1/nutrition/foods/search`
-Search foods by name.
+Search foods by name. Returns FatSecret (US/generic) + OFF (Colombian packaged) results merged — FatSecret first (relevance-ranked), OFF appended. The two sources run in parallel; OFF is best-effort.
 
 **Auth:** required
 **Query params:**
@@ -424,12 +428,12 @@ Search foods by name.
   }
 }
 ```
-**Errors:** `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE` (FatSecret down)
+**Errors:** `VALIDATION_ERROR`, `SERVICE_UNAVAILABLE` (only when FatSecret fails AND OFF returns nothing)
 
 ---
 
 #### `GET /api/v1/nutrition/foods/{foodId}`
-Get full food detail including all serving options.
+Get full food detail including all serving options. An `off:<barcode>` foodId routes to Open Food Facts instead of FatSecret; any other id goes to FatSecret.
 
 **Auth:** required
 **Response:**
@@ -460,11 +464,13 @@ Get full food detail including all serving options.
 ---
 
 #### `GET /api/v1/nutrition/foods/barcode/{barcode}`
-Barcode lookup.
+Barcode lookup. Prefix-aware routing: GS1-Colombia barcodes (`770`/`771`) hit **OFF first** (FatSecret's US data won't have them); all others try FatSecret first and fall back to OFF on a miss. OFF returns the full food (servings included) in one call.
 
 **Auth:** required
-**Response:** Same shape as food detail above.
-**Errors:** `NOT_FOUND` (barcode not in FatSecret), `SERVICE_UNAVAILABLE`
+**Response:** Same shape as food detail above. OFF-sourced foods include `food_id: "off:<barcode>"` and `data_source: "openfoodfacts"`.
+**Errors:** `NOT_FOUND` (barcode in neither FatSecret nor OFF), `SERVICE_UNAVAILABLE`
+
+> Note: FatSecret's barcode endpoint signals "not found" as HTTP 200 with `{error:{code:211}}` (not a 404); the route treats that as a miss so it falls back to OFF or returns a proper 404.
 
 ---
 
