@@ -849,7 +849,13 @@ async function lookupFatSecretBarcode(
       return null;
     }
     const rawResult = await fsRes.json();
-    return rawResult?.food_id ? rawResult : rawResult?.food ?? rawResult ?? null;
+    // FatSecret signals "not found" as HTTP 200 with {error:{code:211}}, not a
+    // 404. Treat any error body / missing food as a miss so the caller falls
+    // back to OFF (or a proper 404) instead of returning the error as a food.
+    if (rawResult?.error || (!rawResult?.food_id && !rawResult?.food)) {
+      return null;
+    }
+    return rawResult?.food_id ? rawResult : rawResult.food ?? null;
   } catch (err) {
     functions.logger.warn("fatsecret:barcode-error", {
       err: err instanceof Error ? err.message : String(err),
