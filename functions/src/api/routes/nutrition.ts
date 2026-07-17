@@ -277,8 +277,12 @@ router.get("/nutrition/foods/search", async (req, res) => {
   const hashKey = (scope: string): string =>
     `${scope}__${crypto.createHash("md5").update(`${qNorm}_${page}`).digest("hex")}`;
 
-  const fs = await fatSecretSearch(qNorm, page, req, hashKey("fs:search:v4:es"));
-  const offFoods = await offColombiaSearch(qNorm, page, hashKey("off:search:co:v1"));
+  // FatSecret and OFF are independent — run them in parallel so latency is the
+  // slower of the two, not the sum. Both are fail-soft (never reject).
+  const [fs, offFoods] = await Promise.all([
+    fatSecretSearch(qNorm, page, req, hashKey("fs:search:v4:es")),
+    offColombiaSearch(qNorm, page, hashKey("off:search:co:v1")),
+  ]);
 
   // FatSecret failed AND no Colombian fallback → surface the outage (503),
   // preserving the pre-OFF behavior. If either source has data, respond 200.

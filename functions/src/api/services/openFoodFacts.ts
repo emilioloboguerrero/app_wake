@@ -30,7 +30,7 @@ const OFF_BASE = "https://world.openfoodfacts.org";
 // OFF asks every reuser to send an identifying User-Agent.
 const OFF_USER_AGENT = "WakeApp/1.0 (https://wakelab.co; hola@wakelab.co)";
 const PRODUCT_TIMEOUT_MS = 4000;
-const SEARCH_TIMEOUT_MS = 3000;
+const SEARCH_TIMEOUT_MS = 4500;
 const SEARCH_MAX_RESULTS = 10;
 
 /** Namespaced-id prefix marking a food that came from Open Food Facts. */
@@ -254,9 +254,14 @@ export async function fetchOffProduct(barcode: string): Promise<OffFood | null> 
 }
 
 /**
- * Search Colombian products by text. Best-effort: OFF's search API is flaky, so
- * any error / timeout resolves to an empty array (search never breaks because
- * of OFF). Scoped to Colombia via countries_tags_en.
+ * Search Colombian products by free text, scoped to Colombia.
+ *
+ * Uses the legacy CGI search.pl endpoint, NOT the v2 /search API: v2 ignores
+ * `search_terms` (it only filters by tags), so a text query there returns
+ * popularity-ranked, irrelevant products. CGI does real full-text matching.
+ *
+ * Best-effort: OFF's search infra is flaky, so any error / timeout resolves to
+ * an empty array — search never breaks because of OFF.
  */
 export async function searchOffColombia(
   query: string,
@@ -265,13 +270,16 @@ export async function searchOffColombia(
   try {
     const params = new URLSearchParams({
       search_terms: query,
-      countries_tags_en: "colombia",
-      fields: PRODUCT_FIELDS,
+      tagtype_0: "countries",
+      tag_contains_0: "contains",
+      tag_0: "colombia",
+      json: "1",
       page_size: String(SEARCH_MAX_RESULTS),
-      page: String(page + 1), // OFF search is 1-indexed
+      page: String(page + 1), // CGI search is 1-indexed
+      fields: PRODUCT_FIELDS,
     });
     const res = await offFetch(
-      `${OFF_BASE}/api/v2/search?${params}`,
+      `${OFF_BASE}/cgi/search.pl?${params}`,
       SEARCH_TIMEOUT_MS
     );
     if (!res.ok) return [];
