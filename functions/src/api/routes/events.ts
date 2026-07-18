@@ -178,8 +178,8 @@ router.post("/events/:eventId/register", async (req, res) => {
   }
 
   // Check capacity
-  if (event.maxRegistrations || event.capacity) {
-    const cap = event.maxRegistrations || event.capacity;
+  if (event.max_registrations || event.maxRegistrations || event.capacity) {
+    const cap = event.max_registrations || event.maxRegistrations || event.capacity;
     const regsSnap = await db
       .collection("event_signups")
       .doc(req.params.eventId)
