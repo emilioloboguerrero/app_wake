@@ -10,9 +10,12 @@ import workoutProgressService from './src/data-management/workoutProgressService
 import appSessionManager from './src/data-management/appSessionManager';
 import assetBundleService from './src/services/assetBundleService';
 import { useInterFonts } from './src/config/fonts';
-import { initializeMonitoring } from './src/services/monitoringService';
 import { auth } from './src/config/firebase';
 import logger from './src/utils/logger';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { queryClient } from './src/config/queryClient';
+import { persistOptions } from './src/config/queryPersistence';
 
 // Global font configuration - this approach is more reliable
 // We'll use a custom Text component instead of overriding defaultProps
@@ -50,13 +53,7 @@ export default function App() {
         logger.log('⚠️ Note: Asset bundle initialization may fail if Firestore rules require auth');
         await assetBundleService.initialize();
         logger.log('✅ Asset bundle service initialized');
-        
-        // Initialize monitoring system
-        logger.log('📊 Initializing monitoring service...');
-        await initializeMonitoring();
-        logger.log('✅ Monitoring service initialized');
-        
-        
+
         logger.log('✅ App initialization completed successfully');
       } catch (error) {
         logger.error('❌ App initialization failed');
@@ -84,14 +81,18 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ActivityStreakProvider>
-          <VideoProvider>
-            <AppNavigator />
-            <StatusBar style="light" />
-          </VideoProvider>
-        </ActivityStreakProvider>
-      </AuthProvider>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <ActivityStreakProvider>
+              <VideoProvider>
+                <AppNavigator />
+                <StatusBar style="light" />
+              </VideoProvider>
+            </ActivityStreakProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }
