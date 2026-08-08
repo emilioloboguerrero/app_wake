@@ -90,9 +90,12 @@ Standard we aim at: **SonarQube quality gate passing on all new/changed code**, 
 - **Native E2E:** **Maestro** — YAML flows on the iOS simulator with screenshot steps. Flows live in `.maestro/` and accumulate into the regression suite.
 - **Per-screen visual loop (the working method):** when a screen converges, the agent runs the web version (Playwright screenshot = reference), runs the native app in the simulator, drives a Maestro flow to the screen, screenshots it, visually compares against the web reference and STANDARDS.md, adjusts, repeats. The final flow + screenshots are committed as the screen's regression baseline. Every converged screen ships with: component tests, a Maestro flow, and baseline screenshots.
 
-### 6.3 SonarQube
-- Recommended: SonarQube Cloud (SaaS) — Team plan, priced by LOC (~$32/mo at 100k LOC; this repo may land a tier higher). Fallback: self-hosted Community Edition via Docker if cost matters more than convenience. **Open decision — needs owner confirmation before Phase 0.**
-- Quality gate wired into CI as a required PR check (new-code scope).
+### 6.3 SonarQube — DECIDED: self-hosted Community Build, local-first
+- **Server:** SonarQube Community Build (free) via Docker Compose on the dev Mac (sonarqube + postgres, persistent volumes so analysis history and the new-code baseline survive restarts).
+- **Primary enforcement point — the agent dev loop, not CI:** after each slice, the agent runs `sonar-scanner` locally, waits on the quality gate (`sonar.qualitygate.wait=true`), reads findings via the Web API, and fixes them before the slice is considered done. This is where findings actually get fixed immediately.
+- **Community Build limitation (accepted):** no PR decoration / branch analysis — it analyzes one branch (main). Clean-as-You-Code still works via the new-code period on main with persistent history. GitHub-hosted runners cannot reach a laptop-local server, and an ephemeral Sonar container inside CI loses history (breaking new-code scoping), so Sonar is deliberately **not** a GitHub-hosted PR check.
+- **CI carries the rest:** ESLint, `tsc`, vitest coverage thresholds, gitleaks, npm audit remain the GitHub Actions gates.
+- **Optional upgrade later:** a self-hosted GitHub Actions runner on the same Mac can make the Sonar gate a required PR check (workflow reaches localhost); revisit if/when a second developer joins.
 
 ## 7. CI/CD (GitHub Actions)
 
