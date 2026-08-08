@@ -88,16 +88,28 @@ Per CLAUDE.md's "one file, both platforms" default: everything converges to a si
 - **`EmailLinkSignInScreen`** — web-only (magic-link consumption from an email client; native uses in-app auth instead).
 - **Payment redirect screens** (`PaymentSuccessScreen`, `PaymentCancelledScreen`) — web-only (MercadoPago browser checkout redirect targets).
 
-**Everything else in shared (non-`.web.js`) files must be native-safe** — no unguarded `window.*`/`document.*` calls. The Task 5 sweep (90 raw grep hits across 32 files, triaged individually — full log absorbed from the now-deleted `apps/pwa/docs-notes-phase0a.md`) found **zero violations**:
+**Everything else in shared (non-`.web.js`) files must be native-safe** — no unguarded `window.*`/`document.*` calls. The Task 5 sweep (90 raw grep hits across 32 files, triaged individually — full log absorbed from the now-deleted `apps/pwa/docs-notes-phase0a.md`) found zero violations **in first-party source text**:
 
 | Category | Files | Line-hits |
 |---|---|---|
 | GUARDED — existing `isWeb` / `typeof window !== 'undefined'` idiom already wraps the call | 22 | 68 |
 | UNREACHABLE-FROM-NATIVE-NAV — only imported by `App.web.js` or a web-only screen (e.g. `LabScreen.js`, `NutritionScreen.js`, reached only via `WebAppNavigator.jsx`) | 8 | 17 |
 | FALSE-POSITIVE — comment/identifier text matched the grep, not an actual API call | 4 | 5 |
-| **VIOLATION** | **0** | **0** |
+| **VIOLATION (grep-visible)** | **0** | **0** |
+| **FIXED-AT-BOOT (grep-invisible — found only by an actual simulator launch, see below)** | **2** | **2** |
 
 The canonical guard idiom, used throughout: a module-level `isWeb` const (`typeof window !== 'undefined' && typeof document !== 'undefined'`, e.g. `src/utils/platform.js:4`) gating each platform-dependent branch, or an inline `typeof window === 'undefined'` / `typeof document === 'undefined'` early return. New shared code should follow this pattern rather than reach for a `.web.js` split by default.
+
+**The sweep's two blind spots — grep only reads first-party source, not what a dependency does at eval/call time.** The zero-violations result held for static text but not for actual runtime behavior; the first real `expo run:ios` boot (Task 5b/6, this branch) crashed twice, both in code the grep had no way to flag:
+
+1. **Module-scope DOM access inside a `node_modules` dependency.** `apps/pwa/src/services/analyticsService.js` had a static `import posthog from 'posthog-js'`. `posthog-js` reads `document` at *module-evaluation* time (import-time, not call-time) — before any of the importing file's own `isWeb()` guards ever get a chance to run, since those guards only wrap function bodies, not the top-level import statement. Grepping `analyticsService.js` for `window.`/`document.` finds nothing, because the offending access lives inside the dependency, not in Wake's source. Crashed native boot with `ReferenceError: Property 'document' doesn't exist` before the login screen painted. **Fixed in `a966eff`**: the static import became a dynamic `await import('posthog-js')` inside `init()`, gated behind `isWeb()`, so the import line is never reached on native. Every public method is a safe no-op on native for now — native analytics is a later-phase item.
+2. **An SDK call whose internals do their own unguarded DOM access.** `apps/pwa/src/config/firebase.js` called `initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(...) })` with no `isWeb` guard at all, even though the file uses `isWeb` everywhere else in the same file. `ReCaptchaEnterpriseProvider` loads Google's reCAPTCHA script and creates a DOM `<div>` at call time internally — the call site itself is one line of ordinary Firebase SDK usage, nothing a text grep would flag as web-only. Crashed with a real JS stack: `makeDiv -> initializeEnterprise -> initialize -> _activate -> initializeAppCheck`. **Fixed in `cd978e0`**: the whole App Check block (`initializeAppCheck` call + the "missing site key in production" throw) is now wrapped in `if (isWeb)`.
+
+**Resulting platform posture (current, both deliberate):**
+- **App Check is `null` on native.** `apiClient.js`'s `#getAppCheckToken()` already returns `null` immediately when `!appCheck`, so it no-ops rather than throws. The API's own posture (`reference_pwa_appcheck_and_cache_gotchas`) is warn-and-allow for missing App Check tokens from first-party clients, so a native client with no App Check token is not blocked server-side either. Native App Check (DeviceCheck/AppAttest, Play Integrity) is unbuilt — a later-phase item, not a gap in this branch.
+- **Analytics is a safe no-op on native.** `analyticsService.js` never reaches the `posthog-js` import off web; every public method (`track`, `identify`, `reset`, etc.) is callable but does nothing on native. Native analytics is a later-phase item.
+
+Neither fix required a `.web.js` split — both stayed inside the shared file behind the existing `isWeb` guard idiom, consistent with the "one file, both platforms" default above.
 
 ---
 
@@ -124,7 +136,7 @@ The canonical guard idiom, used throughout: a module-level `isWeb` const (`typeo
 | PWA — pure logic | `npm run test:unit --prefix apps/pwa` (`vitest run`) | `apps/pwa/vitest.config.js` — `src/**/*.test.{js,jsx}`, excludes `*.native.test.{js,jsx}` |
 | PWA — native component | `npm run test:native --prefix apps/pwa` (`jest`) | `apps/pwa/jest.config.js` — jest-expo preset + React Native Testing Library, `**/*.native.test.@(js|jsx)`. Seed: `src/components/__tests__/ErrorBoundary.native.test.js` |
 | Web E2E | `npm run test:e2e` (root) | Playwright, `tests/e2e/playwright.config.js` — PWA + creator dashboard flows and screenshots |
-| Native E2E | *pending* | Maestro, planned at `apps/pwa/.maestro/` (YAML flows on iOS simulator). **Not yet created** — parked in Task 6 because this dev machine has no Xcode.app installed (only Command Line Tools); `expo run:ios` halts non-interactively without it. Re-run once Xcode is installed. |
+| Native E2E | `maestro test .maestro/` (from `apps/pwa/`; `maestro test .maestro/<flow>.yaml` for one flow) | Maestro 2.8, `apps/pwa/.maestro/` — YAML flows against a booted iOS simulator with the app already built and installed (`npx expo run:ios`). Flow inventory: `smoke-login.yaml` (launch app, assert "Entra a Wake", screenshot). Baseline screenshots live in `.maestro/screenshots/` and are **committed** — regenerate deliberately, review diffs (policy documented in `apps/pwa/.maestro/README.md`). Xcode 26.6 is installed on the dev machine as of this branch; the original blocker (no Xcode.app, only Command Line Tools) is resolved. |
 | Static quality gate | `npm run sonar` (root) | SonarQube Community Build, self-hosted via `tools/sonar/docker-compose.yml` (`localhost:9000`). Clean-as-You-Code: gate enforced on new/changed code only; legacy issues (5,151 at first scan) are informational and burn down as surfaces converge. Run locally in the dev loop, not as a GitHub-hosted PR check (Community Build has no branch analysis, and CI runners can't reach a laptop-local server). |
 
 ---
