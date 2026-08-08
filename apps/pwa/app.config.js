@@ -59,7 +59,15 @@ export default {
     plugins: [
       "expo-font",
       "expo-video",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-build-properties",
+        {
+          ios: {
+            useFrameworks: "static"
+          }
+        }
+      ]
     ],
     font: {
       family: "Inter-SemiBold"
