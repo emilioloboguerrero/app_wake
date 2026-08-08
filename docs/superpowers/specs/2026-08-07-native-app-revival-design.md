@@ -24,6 +24,8 @@
 | Client weight | **Thin client** — business rules live in the API; client renders state and queues mutations (see §5) |
 | Quality bar | SonarQube quality gate on new/changed code; concurrency, security, and frontend tests as first-class deliverables (see §6) |
 | Docs | Docs-as-code: same-PR updates, per-phase docs exit criteria (see §8) |
+| Release strategy | **Early App Review**: submit at training core + IAP (quiet or unlisted launch, no announcement); updates iterate to parity; public launch at parity. De-risks first-review rejection cycles early |
+| Execution model | Fast path: minimal blocking foundation, then parallel tracks via isolated worktrees (commerce backend ∥ frontend surfaces); Apple's external clocks fired in week 1 (see §9) |
 
 ## 3. Commerce model
 
@@ -112,13 +114,24 @@ Canonical set (anything else is disposable and may be deleted when stale):
 - `docs/ARCHITECTURE.md` — **new**: system map including native (provider tree, navigation shells, platform-split registry, thin-client rules, offline queue).
 - Phase 0 includes a true-up pass of the existing canonical docs (they are currently outdated).
 
-## 9. Phase plan
+## 9. Phase plan (fast path)
 
-Two parallel tracks after Phase 0: commerce (backend) and convergence (frontend). Each convergence slice lands on TestFlight as it completes. App Store submission happens once parity + IAP are both true.
+**Key porting insight:** the PWA is Expo web, so `.web.jsx` forks are already React Native code (RN primitives via react-native-web). Converging a surface is mostly swapping web-only sub-components and guarding DOM calls — not rewriting. This compresses Nutrition from ~3–4 weeks to ~1–1.5, and similarly for Hoy. Genuine rewrites remain only where DOM is structural: Lab charts, PDF viewer, some overlay primitives.
+
+**Week-1 external clocks** (fired immediately, in parallel with all dev — these run on Apple's calendar, not ours):
+1. Paid Apps agreement + banking/tax setup in App Store Connect (never needed before — web sales only; blocks even sandbox IAP products).
+2. Small Business Program enrollment.
+3. ASC API key, RevenueCat account, Sonar account.
+4. One test IAP product submitted early to measure real product-review latency before automation depends on it.
+
+**Parallelization:** Phase 0a is the only serial bottleneck. After it, commerce (Phase 1) shares zero files with frontend convergence and runs fully parallel; frontend surfaces touch disjoint files and run as parallel worktree slices, integrated per-slice. Each slice lands on TestFlight as it completes.
+
+**Early submission:** App Review submission happens when training core + IAP are green (target ~week 4–6), as a quiet or unlisted release with no announcement. Subsequent updates iterate to parity; public launch only at parity.
 
 | Phase | Deliverable | Docs exit criterion |
 |---|---|---|
-| **0. Foundation & rails** | CI pipeline live (§7), Sonar wired, test harnesses (vitest+emulators, RNTL, Playwright, Maestro) proven with seed tests, provider-tree convergence, DOM-call audit, delete `expo-in-app-purchases`, SDK 54 prebuild, EAS build green in CI | TESTING.md + ARCHITECTURE.md created; existing docs true-up |
+| **0a. Blocking foundation (~1 wk)** | Provider-tree convergence, DOM-call audit, delete `expo-in-app-purchases`, SDK 54 prebuild, EAS build green, test harnesses (vitest+emulators, RNTL, Playwright, Maestro) proven with one seed test each | ARCHITECTURE.md created |
+| **0b. Rails (parallel with 2+)** | Full CI pipeline live (§7), Sonar wired as required check, remaining seed suites, existing-docs true-up | TESTING.md created; docs true-up |
 | **1. Commerce backend** | ASC product automation, RevenueCat + webhook route, `channel` field + ledger, refund revocation, Small Business Program enrollment. Testable in sandbox without the native storefront | PAYMENTS.md created (consolidation) |
 | **2. Hoy + navigation** | Native Hoy (converged), route-parity registry, dead buttons fixed | ARCHITECTURE.md nav section |
 | **3. Workout flow + push** | Shared flow verified native (warmup/execution/completion), offline queue formalized, push notifications v1 | ARCHITECTURE.md offline/push sections |
@@ -126,15 +139,16 @@ Two parallel tracks after Phase 0: commerce (backend) and convergence (frontend)
 | **5. Nutrition convergence** | Web fork reconciled to shared implementation; 947-line relic deleted; logic extraction per §5 | API_ENDPOINTS.md nutrition true-up |
 | **6. Lab + charts** | Shared data interface; native `react-native-svg` chart layer | STANDARDS.md charts section |
 | **7. Remaining surfaces** | Resources (native PDF viewer), bundles, video exchange, support, events tooling | per-surface notes |
-| **8. Hardening + release** | Full Maestro regression pass, App Review submission (QA account as demo), Android fast-follow via Play Billing | CLAUDE.md final true-up |
+| **R1. Early submission (after 3+4)** | App Review submission with training core + IAP (QA account as demo, review notes on multiplatform model); quiet or unlisted release | PAYMENTS.md compliance section |
+| **8. Parity + public launch** | Full Maestro regression pass, parity update shipped, public announcement, Android fast-follow via Play Billing | CLAUDE.md final true-up |
 
 **Per-screen workflow (applies to every slice in phases 2–7):**
 converge code → extract logic per thin-client policy (§5) → component tests → visual loop (§6.2: simulator + Maestro + screenshots vs web reference) → Maestro flow + baselines committed → docs updated → Sonar gate green → TestFlight.
 
 ## 10. Effort and risks
 
-- Commerce track: ~3–4 weeks. Phase 0: ~2–3 weeks. Nutrition + Lab: ~5–7 weeks combined. Realistic end-to-end: **3–5 months**, TestFlight usable continuously from Phase 2.
-- **Risks:** App Review rejection cycles despite IAP (mitigate: demo account, review notes, IAP visible day one) · ASC automation review latency per product · nutrition port size (largest single item) · charts rebuild underestimation · CI macOS runner cost (mitigate: release/nightly cadence) · Sonar pricing tier (open decision §6.3).
+- Fast-path targets: Phase 0a ~1 week · commerce track ~3–4 weeks (fully parallel) · early App Review submission ~week 4–6 · parity ~week 8–12. Serial fallback if parallelization underdelivers: 3–5 months. TestFlight usable continuously from Phase 2.
+- **Risks:** App Review rejection cycles (mitigated by early submission — cycles run in parallel with remaining dev) · Paid Apps agreement/banking latency in week 1 · ASC automation review latency per product (measured early via test product) · charts rebuild underestimation · integration overhead of parallel worktree slices (mitigate: disjoint-file slicing, per-slice integration) · CI macOS runner cost (release/nightly cadence) · Sonar pricing tier (open decision §6.3).
 
 ## 11. Out of scope
 
