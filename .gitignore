@@ -219,3 +219,8 @@ eas-build-*.json
 # Security discovery output — may contain PII samples
 scripts/archive/security-2026-05/tier0-discovery-output.json
 .emulator-data
+
+# ============================================
+# SonarQube scanner
+# ============================================
+.scannerwork/
