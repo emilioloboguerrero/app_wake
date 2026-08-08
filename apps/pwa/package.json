@@ -19,7 +19,7 @@
     "build:dev:android": "npx eas-cli build --platform android --profile development",
     "build:dev:ios:local": "npx eas-cli build --local --platform ios --profile development",
     "build:dev:android:local": "npx eas-cli build --local --platform android --profile development",
-    "test": "jest",
+    "test:native": "jest",
     "lint": "eslint .",
     "generate-cities": "node scripts/generate-cities.js",
     "bundle-cities": "node scripts/bundle-cities.js",
@@ -87,9 +87,13 @@
   },
   "devDependencies": {
     "@svgr/cli": "^8.1.0",
+    "@testing-library/react-native": "13.3.3",
     "adm-zip": "^0.5.16",
+    "jest": "^29.7.0",
+    "jest-expo": "^54.0.17",
     "jsdom": "^28.1.0",
     "pdfjs-dist": "^3.11.174",
+    "react-test-renderer": "19.1.0",
     "vitest": "^4.1.0"
   }
 }
