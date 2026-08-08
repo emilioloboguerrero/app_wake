@@ -2,4 +2,9 @@ appId: com.lab.wake.co
 ---
 - launchApp
 - assertVisible: "Entra a Wake"
+- extendedWaitUntil:
+    visible: "Entra a Wake"
+    timeout: 5000
+- waitForAnimationToEnd:
+    timeout: 2000
 - takeScreenshot: .maestro/screenshots/smoke-login
