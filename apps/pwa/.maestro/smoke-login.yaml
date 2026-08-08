@@ -1,0 +1,5 @@
+appId: com.lab.wake.co
+---
+- launchApp
+- assertVisible: "Entra a Wake"
+- takeScreenshot: .maestro/screenshots/smoke-login
