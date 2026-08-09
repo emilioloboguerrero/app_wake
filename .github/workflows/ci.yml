@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-units:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/pwa/package-lock.json
+            apps/creator-dashboard/package-lock.json
+      - name: PWA unit tests (vitest)
+        run: |
+          cd apps/pwa
+          npm ci
+          npm run test:unit
+      - name: PWA native component tests (jest-expo)
+        run: |
+          cd apps/pwa
+          npm run test:native
+      - name: Creator dashboard tests (vitest)
+        run: |
+          cd apps/creator-dashboard
+          npm ci
+          npm test
+
+  build-landing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/landing/package-lock.json
+      - name: Build landing
+        run: |
+          npm ci
+          cd apps/landing && npm ci && cd ../..
+          npm run build:landing
+
+  build-creator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/creator-dashboard/package-lock.json
+      - name: Build creator dashboard
+        run: |
+          npm ci
+          cd apps/creator-dashboard && npm ci && cd ../..
+          npm run build:creator
+
+  build-pwa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/pwa/package-lock.json
+      - name: Build PWA (web export)
+        run: |
+          npm ci
+          cd apps/pwa && npm ci && cd ../..
+          npm run build:pwa
+      - name: Verify prod Firebase project in bundle
+        run: |
+          grep -rl "wolf-20b8b" apps/pwa/dist/ | head -1 || (echo "wolf-20b8b missing from bundle (Metro cache gotcha)" && exit 1)
