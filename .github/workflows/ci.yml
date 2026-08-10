@@ -89,3 +89,48 @@ jobs:
       - name: Verify prod Firebase project in bundle
         run: |
           grep -rl "wolf-20b8b" apps/pwa/dist/ | head -1 || (echo "wolf-20b8b missing from bundle (Metro cache gotcha)" && exit 1)
+
+  functions-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install
+        run: cd functions && npm ci
+      - name: Lint
+        run: cd functions && npm run lint
+      - name: Typecheck + build
+        run: cd functions && npx tsc --noEmit
+      - name: Rules tests (Firestore/Auth/Storage emulators)
+        run: |
+          cd functions
+          npx firebase-tools emulators:exec --only firestore,auth,storage --project demo-wake "npm run test:rules"
+
+  functions-deep:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install + build
+        run: cd functions && npm ci && npm run build
+      - name: API + chains suites (full emulator set)
+        run: |
+          cd functions
+          WAKE_RUN_API_TESTS=1 npx firebase-tools emulators:exec --only functions,firestore,auth,storage --project demo-wake "npm run test:security:full"
