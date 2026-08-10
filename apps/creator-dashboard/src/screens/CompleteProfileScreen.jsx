@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import profilePictureService from '../services/profilePictureService';
 import apiClient from '../utils/apiClient';
 import { ASSET_BASE } from '../config/assets';
 import logger from '../utils/logger';
@@ -93,7 +94,6 @@ const CompleteProfileScreen = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) { setErrors(prev => ({ ...prev, photo: 'Selecciona una imagen valida' })); return; }
-    if (file.size > 5 * 1024 * 1024) { setErrors(prev => ({ ...prev, photo: 'La imagen no debe superar 5MB' })); return; }
     setPhoto(file);
     setPhotoPreview(URL.createObjectURL(file));
     setErrors(prev => { const n = { ...prev }; delete n.photo; return n; });
@@ -109,13 +109,11 @@ const CompleteProfileScreen = () => {
       city,
     });
 
+    // Optional — a failed photo must never strand a creator whose account was
+    // just created by the call above.
     if (photo) {
       try {
-        const { data: uploadData } = await apiClient.post('/creator/profile/upload-url', { contentType: photo.type });
-        if (uploadData?.signedUrl) {
-          await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': photo.type }, body: photo });
-          await apiClient.post('/creator/profile/upload-url/confirm', { storagePath: uploadData.storagePath });
-        }
+        await profilePictureService.uploadProfilePicture(photo);
       } catch (photoErr) {
         logger.error('[CompleteProfile] Photo upload failed (non-blocking):', photoErr);
       }
@@ -351,7 +349,7 @@ const CompleteProfileScreen = () => {
               </div>
               <input ref={photoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoSelect} />
             </div>
-            <span className="cp-photo-label">Foto de perfil</span>
+            <span className="cp-photo-label">Foto de perfil (opcional)</span>
             {errors.photo && <span className="cp-inline-error">{errors.photo}</span>}
           </motion.div>
 
