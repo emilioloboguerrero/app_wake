@@ -52,6 +52,63 @@ Pass `?pageToken={token}` to fetch next page. Page sizes defined per endpoint.
 
 ## 2. Auth + Infrastructure
 
+### Passwordless Sign-in
+
+Public (no Firebase token) — these endpoints exist to *obtain* one. PWA and creator dashboard login screens use the email-code pair as the primary door, plus Google Sign-In client-side; the magic-link endpoint backs `/acceso` and the post-purchase email. There is no password sign-in anywhere in the product.
+
+---
+
+#### `POST /api/v1/auth/request-magic-link`
+Emails a Firebase passwordless sign-in link. Always returns `{success: true}`, even for an unknown email (enumeration safety) — the client's destination screen (`/app/email-link`) calls `signInWithEmailLink` to actually consume the link.
+
+**Auth:** none
+**Rate limits:** 20 req/min/IP, 5 req/min/email
+**Request:**
+```json
+{ "email": "string (required)", "next": "string (optional, path-only, defaults to /library)" }
+```
+**Response:**
+```json
+{ "data": { "success": true } }
+```
+**Errors:** `VALIDATION_ERROR` (bad email), `SERVICE_UNAVAILABLE` (Resend not configured or a known user's link generation failed — client should retry)
+
+---
+
+#### `POST /api/v1/auth/email-code/request`
+Emails a 6-digit login code (10 min TTL, 5 wrong-attempt cap), stored hashed in `login_codes/{email}`. Works inside the installed PWA, where a magic link opens in Safari — a separate storage jar on iOS — and never carries the session into the standalone app. Always returns `{success: true}` regardless of whether the email has an account.
+
+**Auth:** none
+**Rate limits:** 20 req/min/IP, 5 req/min/email
+**Request:**
+```json
+{ "email": "string (required)" }
+```
+**Response:**
+```json
+{ "data": { "success": true } }
+```
+**Errors:** `VALIDATION_ERROR` (bad email), `SERVICE_UNAVAILABLE` (Resend not configured)
+
+---
+
+#### `POST /api/v1/auth/email-code/verify`
+Verifies the code and returns a Firebase custom token for the client to sign in with. Finds the existing Firebase Auth user by email (guest checkout already created one) or creates it — either way `emailVerified` is set `true`, since the code proved ownership. Deletes the code doc on success or once attempts/TTL are exhausted.
+
+**Auth:** none
+**Rate limits:** 30 req/min/IP
+**Request:**
+```json
+{ "email": "string (required)", "code": "6-digit string (required)" }
+```
+**Response:**
+```json
+{ "data": { "token": "firebase custom token" } }
+```
+**Errors:** `VALIDATION_ERROR` (malformed email/code), `UNAUTHENTICATED` (no/expired code, too many attempts, wrong code), `INTERNAL_ERROR`
+
+---
+
 ### API Keys
 
 Only users with `role: 'creator'` can manage API keys.

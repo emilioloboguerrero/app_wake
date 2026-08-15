@@ -52,7 +52,7 @@ Wake is a **fitness & nutrition platform** targeting Spanish-speaking users (pri
 - **Language:** JavaScript (`.js`, `.web.js`, `.web.jsx`) — NOT TypeScript
 - **Navigation:** React Navigation v7 (native); React Router v6 with `BrowserRouter` at basename `/app` (web)
 - **Platform files:** Metro resolves `.web.js` over `.js` on web. Default: one file for both platforms. Create `.web.jsx` only when web behavior meaningfully diverges from native — never preemptively.
-- **Auth:** Firebase Auth (email/password, Google Sign-In, Apple Sign-In)
+- **Auth:** Firebase Auth — passwordless only. Login screen offers a 6-digit email code (primary, via `/auth/email-code/*`, works inside the installed PWA where a magic link would open in Safari's separate storage jar) and Google Sign-In. Password sign-in/sign-up was removed. Magic-link (`/auth/request-magic-link`) still backs `/acceso` and the post-purchase email. `lastLoginMethod.js` records the last-used provider per device (localStorage on web, shared with the landing origin) to show an "Última vez" badge and steer buyers away from creating a duplicate account.
 - **State:** Context API (`AuthContext`, `UserRoleContext`, `VideoContext`), React Query for server state
 - **Data:** Firebase Firestore + React Query (replacing legacy cache systems in migration)
 - **Key services (singletons):** `FirestoreService`, `PurchaseService`, `AuthService`, `courseDownloadService`, `hybridDataService`, `libraryResolutionService`, `nutritionApiService`, `nutritionFirestoreService`
@@ -62,6 +62,7 @@ Wake is a **fitness & nutrition platform** targeting Spanish-speaking users (pri
 ### apps/creator-dashboard
 - **Vite 7**, React 18.2, React Router v6, `base: /creators`
 - **Language:** JavaScript (JSX)
+- **Auth:** mirrors the PWA — passwordless 6-digit email code + Google, no password/signup/forgot-password. Existing creators land on their account (verify find-or-creates by email); new emails route to `/complete-profile`.
 - **Data:** `@tanstack/react-query` v5 for server state; Firestore directly (being migrated to API)
 - **DnD:** `@dnd-kit/core` + `@dnd-kit/sortable`
 - **Charts:** `recharts` v3
@@ -108,6 +109,7 @@ functions/src/
       validate.ts             ← validateBody()
       rateLimit.ts            ← checkRateLimit()
     routes/
+      auth.ts                 ← /auth/request-magic-link, /auth/email-code/request, /auth/email-code/verify (all public)
       profile.ts              ← /users/me, /creator/profile
       nutrition.ts            ← /nutrition/diary, /nutrition/foods, etc.
       workout.ts              ← /workout/daily, /workout/complete, etc.
