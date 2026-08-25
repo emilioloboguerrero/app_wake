@@ -86,7 +86,7 @@ async function sendCallEmail(to: string, subject: string, html: string): Promise
   }
   try {
     // F-NEW-02: daily budget gate.
-    const {reserveEmailBudget} = await import("../services/emailHelpers.js");
+    const {reserveEmailBudget, releaseEmailBudget} = await import("../services/emailHelpers.js");
     await reserveEmailBudget(1);
     const resend = new Resend(apiKey);
     const {error} = await resend.emails.send({
@@ -99,6 +99,7 @@ async function sendCallEmail(to: string, subject: string, html: string): Promise
       },
     });
     if (error) {
+      await releaseEmailBudget(1);
       functions.logger.error("sendCallEmail: resend error", {to, subject, error});
     }
   } catch (err) {

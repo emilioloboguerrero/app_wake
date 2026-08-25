@@ -141,6 +141,31 @@ export async function reserveEmailBudget(count: number): Promise<void> {
 }
 
 /**
+ * Give back a reservation made by reserveEmailBudget when the send did not
+ * actually happen (Resend rejected the batch, the API threw, etc).
+ *
+ * Without this the counter measures *attempts*, not sends: a broadcast that
+ * retries a 100-recipient batch every 5 minutes burns 100 units per tick
+ * while delivering nothing, and once the day's ceiling is reached
+ * reserveEmailBudget throws for every caller — purchase receipts and booking
+ * emails included. Never drops below zero.
+ */
+export async function releaseEmailBudget(count: number): Promise<void> {
+  if (!Number.isInteger(count) || count <= 0) return;
+  const day = todayKey();
+  const ref = db.collection("system_email_budget").doc(day);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const used = (snap.data()?.sent_count as number | undefined) ?? 0;
+    tx.update(ref, {
+      sent_count: Math.max(0, used - count),
+      updated_at: new Date().toISOString(),
+    });
+  });
+}
+
+/**
  * Filter out unsubscribed emails from a recipient list.
  * Chunks into batches of 500 to respect Firestore getAll() limit.
  */
