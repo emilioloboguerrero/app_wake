@@ -224,3 +224,8 @@ scripts/archive/security-2026-05/tier0-discovery-output.json
 # SonarQube scanner
 # ============================================
 .scannerwork/
+
+# One-off Firestore ops scripts (hardcoded to a single email_sends doc).
+# Kept on disk, out of git, so the deploy hook does not commit them.
+/reopen.py
+/stagger.py
