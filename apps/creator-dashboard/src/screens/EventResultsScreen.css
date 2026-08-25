@@ -413,6 +413,102 @@
 .er-modal-field-label { color: rgba(255,255,255,0.35); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; }
 .er-modal-field-value { color: var(--text-primary); font-size: 0.9rem; }
 
+/* ── Attachment button + lightbox ── */
+.er-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.er-attachment-btn:hover {
+  background: rgba(255,255,255,0.11);
+  border-color: rgba(255,255,255,0.24);
+}
+
+.er-lightbox {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  padding: 28px;
+  background: var(--canvas);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05);
+}
+
+.er-lightbox-label {
+  margin: 0 0 16px;
+  padding-right: 32px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.er-lightbox-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.er-lightbox-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 62vh;
+  object-fit: contain;
+}
+
+.er-lightbox-placeholder {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.er-lightbox-error {
+  margin: 0;
+  padding: 24px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.er-lightbox-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.er-lightbox-open {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.er-lightbox-note {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
 .er-modal-checkin-btn {
   background: rgba(var(--er-accent-r), var(--er-accent-g), var(--er-accent-b), 0.85);
   border: none; border-radius: 10px; color: #111; cursor: pointer;

@@ -55,6 +55,15 @@ class EventService {
     await apiClient.delete(`/creator/events/${eventId}`);
   }
 
+  // Signup attachments are private in Storage; this returns a 5-minute signed
+  // read URL, so never cache the result.
+  async getRegistrationAttachmentUrl(eventId, regId, fieldId) {
+    const result = await apiClient.get(
+      `/creator/events/${eventId}/registrations/${regId}/attachments/${fieldId}`
+    );
+    return result?.data ?? null;
+  }
+
   async getEventRegistrations(eventId, opts = {}) {
     const all = [];
     let pageToken = opts.pageToken ?? null;

@@ -7,6 +7,7 @@ import apiClient from '../utils/apiClient';
 import heroLogoSrc from '../assets/hero-logo.svg';
 import wakeLogotypeSrc from '../assets/Logotipo-WAKE-positivo.svg';
 import CascadeText from '../components/CascadeText';
+import { compressForUpload, formatBytes, MAX_INPUT_BYTES, PICKER_ACCEPT } from '../utils/imageCompressor';
 import './EventSignupScreen.css';
 
 // ─── Wake Loader ──────────────────────────────────────────────────
@@ -144,28 +145,86 @@ function AmbientOrbs() {
 }
 
 // ─── Step icons ───────────────────────────────────────────────────
-const STEP_ICONS = [
-  // nombre – person
-  <svg key="p" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.866 3.582-7 8-7s8 3.134 8 7" />
-  </svg>,
-  // email – envelope
-  <svg key="e" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m2 4 10 9 10-9" />
-  </svg>,
-  // telefono – phone
-  <svg key="t" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-  </svg>,
-  // edad – cake/star
-  <svg key="a" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="10" width="20" height="12" rx="2" /><path d="M7 10V7a5 5 0 0110 0v3" /><path d="M12 2v3" /><circle cx="12" cy="5" r="1" />
-  </svg>,
-  // genero – sparkle
-  <svg key="g" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-    <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.636 5.636l2.121 2.121M16.243 16.243l2.121 2.121M5.636 18.364l2.121-2.121M16.243 7.757l2.121-2.121" />
-  </svg>,
-];
+// Keyed by what the step asks for, not by its position. The previous
+// positional array held five icons for the legacy form, so every custom field
+// past the fifth step fell through to a generic circle.
+const STEP_ICONS = {
+  // person
+  person: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.866 3.582-7 8-7s8 3.134 8 7" />
+    </svg>
+  ),
+  // envelope
+  email: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m2 4 10 9 10-9" />
+    </svg>
+  ),
+  // phone
+  tel: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+    </svg>
+  ),
+  // cake
+  age: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="10" width="20" height="12" rx="2" /><path d="M7 10V7a5 5 0 0110 0v3" /><path d="M12 2v3" /><circle cx="12" cy="5" r="1" />
+    </svg>
+  ),
+  // sparkle
+  identity: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.636 5.636l2.121 2.121M16.243 16.243l2.121 2.121M5.636 18.364l2.121-2.121M16.243 7.757l2.121-2.121" />
+    </svg>
+  ),
+  // hash
+  number: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18" />
+    </svg>
+  ),
+  // list
+  choice: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 6h13M8 12h13M8 18h13" /><circle cx="3.5" cy="6" r="1.2" /><circle cx="3.5" cy="12" r="1.2" /><circle cx="3.5" cy="18" r="1.2" />
+    </svg>
+  ),
+  // calendar
+  date: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  ),
+  // image
+  photo: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.8" /><path d="m3 17 5.2-5.2a2 2 0 0 1 2.7-.1L21 20" />
+    </svg>
+  ),
+  // pencil
+  text: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  ),
+};
+
+function iconForStep(step) {
+  if (!step) return STEP_ICONS.text;
+  const field = String(step.field || '').toLowerCase();
+  if (step.type === 'photo') return STEP_ICONS.photo;
+  if (field.includes('edad')) return STEP_ICONS.age;
+  if (field.includes('genero')) return STEP_ICONS.identity;
+  if (step.type === 'email' || field.includes('email')) return STEP_ICONS.email;
+  if (step.type === 'tel' || field.includes('telefono')) return STEP_ICONS.tel;
+  if (step.type === 'date') return STEP_ICONS.date;
+  if (step.type === 'number') return STEP_ICONS.number;
+  if (step.type === 'choice' || step.type === 'multiselect') return STEP_ICONS.choice;
+  if (field.includes('nombre') || field.includes('name')) return STEP_ICONS.person;
+  return STEP_ICONS.text;
+}
 
 // ─── V1 hard-coded steps (fallback when event has no fields) ──────
 const V1_STEPS = [
@@ -201,7 +260,7 @@ function buildStepsFromFields(fields) {
 
 function buildInitialForm(steps) {
   const form = {};
-  steps.forEach(s => { form[s.field] = s.type === 'multiselect' ? [] : ''; });
+  steps.forEach(s => { form[s.field] = s.type === 'multiselect' ? [] : s.type === 'photo' ? null : ''; });
   return form;
 }
 
@@ -320,6 +379,126 @@ function FlierCard({ event, flipped, onFlip, hasImage }) {
   );
 }
 
+// ─── Photo step ───────────────────────────────────────────────────
+// The file leaves the device the moment it is picked, so a required document
+// is confirmed in place instead of at submit time. `state` is owned by the
+// screen so the upload survives going back a step or a failed submit.
+function PhotoStep({ fieldId, state, required, isLast, error, onPick, onContinue }) {
+  const fileRef = useRef(null);
+  const cameraRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [isTouch] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true
+  );
+
+  const status = state?.status ?? 'idle';
+  const busy = status === 'compressing' || status === 'uploading';
+  const done = status === 'done';
+  const showPicker = !state || status === 'idle' || status === 'error';
+
+  function pickFrom(ref) {
+    ref.current?.click();
+  }
+
+  function handleInput(e) {
+    const file = e.target.files?.[0];
+    // Reset so picking the same file twice still fires a change event.
+    e.target.value = '';
+    if (file) onPick(fieldId, file);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file) onPick(fieldId, file);
+  }
+
+  return (
+    <div className="es-upload">
+      <input ref={fileRef} type="file" accept={PICKER_ACCEPT} className="es-upload-input" onChange={handleInput} tabIndex={-1} />
+      {isTouch && (
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="es-upload-input" onChange={handleInput} tabIndex={-1} />
+      )}
+
+      {showPicker ? (
+        <>
+          <button
+            type="button"
+            className={`es-dropzone${dragging ? ' es-dropzone--over' : ''}`}
+            onClick={() => pickFrom(fileRef)}
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+          >
+            <span className="es-dropzone-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+              </svg>
+            </span>
+            <span className="es-dropzone-title">{isTouch ? 'Toca para elegir una imagen' : 'Arrastra una imagen o haz clic'}</span>
+            <span className="es-dropzone-sub">JPG, PNG o WebP</span>
+          </button>
+
+          {isTouch && (
+            <button type="button" className="es-upload-alt" onClick={() => pickFrom(cameraRef)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 7h3l2-2h6l2 2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3.2" />
+              </svg>
+              Tomar foto
+            </button>
+          )}
+        </>
+      ) : (
+        <div className={`es-upload-card${done ? ' es-upload-card--done' : ''}`}>
+          {state.previewUrl
+            ? <img src={state.previewUrl} alt="" className="es-upload-thumb" />
+            : <div className="es-upload-thumb" />}
+
+          <div className="es-upload-meta">
+            <span className="es-upload-name">{state.name || 'Imagen'}</span>
+            <span className="es-upload-sub">
+              {status === 'compressing' ? 'Preparando…'
+                : status === 'uploading' ? `Subiendo ${state.progress ?? 0}%`
+                : formatBytes(state.size)}
+            </span>
+            {busy ? (
+              <div className="es-upload-bar">
+                <div
+                  className="es-upload-bar-fill"
+                  style={{ width: `${status === 'compressing' ? 8 : (state.progress ?? 0)}%` }}
+                />
+              </div>
+            ) : (
+              <button type="button" className="es-upload-change" onClick={() => pickFrom(fileRef)}>
+                Cambiar imagen
+              </button>
+            )}
+          </div>
+
+          {done && (
+            <span className="es-upload-check" aria-label="Imagen recibida">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 12 10 18 20 6" />
+              </svg>
+            </span>
+          )}
+        </div>
+      )}
+
+      {(error || state?.error) && <p className="es-error">{error || state.error}</p>}
+
+      <button className="es-cta" onClick={onContinue} disabled={busy}>
+        {busy ? 'Subiendo…' : isLast ? 'Registrarme' : 'Continuar'}
+      </button>
+
+      {!required && !done && !busy && (
+        <p className="es-upload-optional">Este paso es opcional.</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────
 export default function EventSignupScreen() {
   const { eventId } = useParams();
@@ -342,7 +521,18 @@ export default function EventSignupScreen() {
   const [waitlistContact, setWaitlistContact] = useState('');
   const [waitlistError, setWaitlistError] = useState(null);
   const [cardFlipped, setCardFlipped] = useState(false);
+  // fieldId -> { status, progress, previewUrl, name, size, uploadId, contentType, error }
+  const [uploads, setUploads] = useState({});
   const inputRef = useRef(null);
+  const uploadsRef = useRef(uploads);
+  useEffect(() => { uploadsRef.current = uploads; });
+
+  // Preview URLs are the only thing here the browser will not reclaim on its own.
+  useEffect(() => () => {
+    Object.values(uploadsRef.current).forEach(u => {
+      if (u?.previewUrl) URL.revokeObjectURL(u.previewUrl);
+    });
+  }, []);
 
   const accentCss = `rgb(${accentRgb[0]},${accentRgb[1]},${accentRgb[2]})`;
   const accentTextCss = accentIsDark ? '#111111' : '#ffffff';
@@ -445,10 +635,104 @@ export default function EventSignupScreen() {
     setStep(s => s - 1); setStepKey(k => k + 1);
   }
 
+  // ── Photo upload ────────────────────────────────────────────────
+  function putWithProgress(url, blob, onProgress) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+      xhr.setRequestHeader('Content-Type', blob.type);
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => (xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload failed: ${xhr.status}`)));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.timeout = 120000;
+      xhr.ontimeout = () => reject(new Error('Upload timed out'));
+      xhr.send(blob);
+    });
+  }
+
+  function patchUpload(fieldId, changes) {
+    setUploads(prev => ({ ...prev, [fieldId]: { ...(prev[fieldId] || {}), ...changes } }));
+  }
+
+  function rejectPhoto(fieldId, message) {
+    const previous = uploadsRef.current[fieldId];
+    if (previous?.previewUrl) URL.revokeObjectURL(previous.previewUrl);
+    setUploads(prev => ({ ...prev, [fieldId]: { status: 'error', error: message } }));
+    setForm(prev => ({ ...prev, [fieldId]: null }));
+  }
+
+  async function handlePhotoPick(fieldId, file) {
+    setError(null);
+
+    // Some browsers report an empty type for HEIC; let the decoder judge those.
+    if (file.type && !file.type.startsWith('image/')) {
+      rejectPhoto(fieldId, 'Selecciona una imagen.');
+      return;
+    }
+    if (file.size > MAX_INPUT_BYTES) {
+      rejectPhoto(fieldId, 'La imagen pesa demasiado. Usa una de menos de 15MB.');
+      return;
+    }
+
+    const previous = uploadsRef.current[fieldId];
+    if (previous?.previewUrl) URL.revokeObjectURL(previous.previewUrl);
+
+    setUploads(prev => ({ ...prev, [fieldId]: { status: 'compressing', progress: 0, name: file.name } }));
+    setForm(prev => ({ ...prev, [fieldId]: null }));
+
+    try {
+      const blob = await compressForUpload(file);
+      const previewUrl = URL.createObjectURL(blob);
+      patchUpload(fieldId, { status: 'uploading', progress: 0, previewUrl, size: blob.size });
+
+      const { data } = await apiClient.post(`/events/${eventId}/attachments/start`, {
+        fieldId,
+        contentType: blob.type,
+      });
+
+      await putWithProgress(data.uploadUrl, blob, pct => patchUpload(fieldId, { progress: pct }));
+
+      patchUpload(fieldId, {
+        status: 'done',
+        progress: 100,
+        error: null,
+        uploadId: data.uploadId,
+        contentType: blob.type,
+      });
+      setForm(prev => ({ ...prev, [fieldId]: { uploadId: data.uploadId, contentType: blob.type } }));
+    } catch (err) {
+      // Server errors already carry a Spanish message; local failures do not.
+      const message = err?.code && err?.message
+        ? err.message
+        : (err?.message?.startsWith('No pudimos')
+          ? err.message
+          : 'No pudimos subir la imagen. Intenta de nuevo.');
+      patchUpload(fieldId, { status: 'error', error: message });
+      setForm(prev => ({ ...prev, [fieldId]: null }));
+    }
+  }
+
   // ── Validation ──────────────────────────────────────────────────
   function validateCurrent() {
     const s = steps[step];
     const val = form[s.field];
+    if (s.type === 'photo') {
+      const up = uploads[s.field];
+      if (up?.status === 'compressing' || up?.status === 'uploading') {
+        setError('Espera a que termine de subir.'); return false;
+      }
+      if (up?.status === 'error') {
+        setError(up.error || 'Vuelve a intentar la subida.'); return false;
+      }
+      if (s.required && up?.status !== 'done') {
+        setError('Sube una imagen para continuar.'); return false;
+      }
+      return true;
+    }
     if (s.type === 'multiselect') {
       if (s.required && (!Array.isArray(val) || val.length === 0)) {
         setError('Selecciona al menos una opción'); return false;
@@ -518,7 +802,18 @@ export default function EventSignupScreen() {
 
       const body = { email, displayName };
       if (isV2) {
-        body.fieldValues = finalForm;
+        // An optional photo nobody uploaded is left out entirely rather than
+        // written as null, so `responses` only holds answers that exist.
+        const fieldValues = {};
+        steps.forEach(st => {
+          const value = finalForm[st.field];
+          if (st.type === 'photo') {
+            if (value) fieldValues[st.field] = value;
+            return;
+          }
+          fieldValues[st.field] = value;
+        });
+        body.fieldValues = fieldValues;
       } else {
         body.fieldValues = {
           nombre: finalForm.nombre,
@@ -859,13 +1154,7 @@ export default function EventSignupScreen() {
             key={stepKey}
             className={`es-step ${direction === 'forward' ? 'es-step--enter-up' : 'es-step--enter-down'}`}
           >
-            <div className="es-step-icon">
-              {STEP_ICONS[step] ?? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <circle cx="12" cy="12" r="8" />
-                </svg>
-              )}
-            </div>
+            <div className="es-step-icon">{iconForStep(currentStep)}</div>
             <span className="es-step-count">{step + 1} / {steps.length}</span>
             <h2 className="es-question">{currentStep.question}</h2>
 
@@ -898,6 +1187,16 @@ export default function EventSignupScreen() {
                   {step === steps.length - 1 ? 'Registrarme' : 'Continuar'}
                 </button>
               </div>
+            ) : currentStep.type === 'photo' ? (
+              <PhotoStep
+                fieldId={currentStep.field}
+                state={uploads[currentStep.field]}
+                required={Boolean(currentStep.required)}
+                isLast={step === steps.length - 1}
+                error={error}
+                onPick={handlePhotoPick}
+                onContinue={advance}
+              />
             ) : currentStep.type === 'textarea' ? (
               <div className="es-input-wrap">
                 <textarea

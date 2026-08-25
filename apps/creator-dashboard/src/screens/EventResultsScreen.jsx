@@ -65,9 +65,24 @@ function isV2Registration(reg) {
   return Boolean(reg.responses && typeof reg.responses === 'object');
 }
 
+// Photo answers are stored as an object, every other answer as a string.
+function isFileValue(value) {
+  return Boolean(
+    value && typeof value === 'object' && !Array.isArray(value) && value.kind === 'file'
+  );
+}
+
+function getFileValue(reg, colId) {
+  const val = reg.responses?.[colId] ?? reg.fieldValues?.[colId];
+  return isFileValue(val) ? val : null;
+}
+
 function getCellValue(reg, colId) {
   if (isV2Registration(reg)) {
     const val = reg.responses?.[colId];
+    // The signed read URL lives five minutes, so the CSV records presence, not
+    // a link that would be dead by the time anyone opens the file.
+    if (isFileValue(val)) return 'Adjunto';
     if (Array.isArray(val)) return val.join(', ');
     return val ?? '—';
   }
@@ -551,7 +566,60 @@ function AnalyticsCard({ title, insight, children, className }) {
   );
 }
 
-function RowModal({ reg, columns, onClose, onCheckIn, onRemoveCheckIn, onDelete }) {
+// ─── Attachment viewer ─────────────────────────────────────────────
+// Submitted photos are private in Storage. The signed read URL lives five
+// minutes, so it is fetched every time the viewer opens and never cached.
+function AttachmentViewer({ eventId, regId, fieldId, label, onClose }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['events', 'attachment', eventId, regId, fieldId],
+    queryFn: () => eventService.getRegistrationAttachmentUrl(eventId, regId, fieldId),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+
+  return (
+    <div className="er-modal-backdrop" onClick={onClose}>
+      <div className="er-lightbox er-fade-in" onClick={e => e.stopPropagation()}>
+        <button className="er-modal-close" onClick={onClose} aria-label="Cerrar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
+        <p className="er-lightbox-label">{label}</p>
+
+        <div className="er-lightbox-body">
+          {isLoading && <div className="er-lightbox-placeholder">Cargando…</div>}
+          {error && (
+            <p className="er-lightbox-error">
+              {error?.status === 404
+                ? 'El archivo ya no está disponible. Se elimina 30 días después del evento.'
+                : 'No pudimos abrir el archivo. Intenta de nuevo.'}
+            </p>
+          )}
+          {data?.url && <img src={data.url} alt={label} className="er-lightbox-img" />}
+        </div>
+
+        {data?.url && (
+          <div className="er-lightbox-actions">
+            <a
+              className="er-lightbox-open"
+              href={data.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Abrir en pestaña nueva
+            </a>
+            <span className="er-lightbox-note">Enlace privado, válido por 5 minutos.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RowModal({ reg, columns, onClose, onCheckIn, onRemoveCheckIn, onDelete, onOpenAttachment }) {
   const isCheckedIn = reg.checked_in;
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -596,7 +664,20 @@ function RowModal({ reg, columns, onClose, onCheckIn, onRemoveCheckIn, onDelete 
           {columns.map(col => (
             <div key={col.id} className="er-modal-field">
               <span className="er-modal-field-label">{col.label}</span>
-              <span className="er-modal-field-value">{getCellValue(reg, col.id)}</span>
+              <span className="er-modal-field-value">
+                {getFileValue(reg, col.id) ? (
+                  <button
+                    type="button"
+                    className="er-attachment-btn"
+                    onClick={() => onOpenAttachment(reg.id, col.id, col.label)}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="m3 17 5.2-5.2a2 2 0 0 1 2.7-.1L21 20" />
+                    </svg>
+                    Ver imagen
+                  </button>
+                ) : getCellValue(reg, col.id)}
+              </span>
             </div>
           ))}
           <div className="er-modal-field">
@@ -721,6 +802,8 @@ export default function EventResultsScreen() {
   const isLoading = eventLoading || regsLoading || waitlistLoading;
 
   const [selectedReg, setSelectedReg] = useState(null);
+  // { regId, fieldId, label } for the attachment lightbox
+  const [attachment, setAttachment] = useState(null);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [visitedTabs, setVisitedTabs] = useState(() => new Set([defaultTab]));
@@ -1529,7 +1612,23 @@ export default function EventResultsScreen() {
                             style={{ cursor: 'pointer' }}
                           >
                             {columns.map(col => (
-                              <td key={col.id}>{getCellValue(r, col.id)}</td>
+                              <td key={col.id}>
+                                {getFileValue(r, col.id) ? (
+                                  <button
+                                    type="button"
+                                    className="er-attachment-btn"
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      setAttachment({ regId: r.id, fieldId: col.id, label: col.label });
+                                    }}
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="m3 17 5.2-5.2a2 2 0 0 1 2.7-.1L21 20" />
+                                    </svg>
+                                    Ver imagen
+                                  </button>
+                                ) : getCellValue(r, col.id)}
+                              </td>
                             ))}
                             <td>{formatDate(r.created_at)}</td>
                             <td onClick={e => e.stopPropagation()}>
@@ -2637,6 +2736,16 @@ export default function EventResultsScreen() {
         )}
 
 
+      {attachment && (
+        <AttachmentViewer
+          eventId={eventId}
+          regId={attachment.regId}
+          fieldId={attachment.fieldId}
+          label={attachment.label}
+          onClose={() => setAttachment(null)}
+        />
+      )}
+
       {selectedReg && (
         <RowModal
           reg={selectedReg}
@@ -2645,6 +2754,7 @@ export default function EventResultsScreen() {
           onCheckIn={() => handleManualCheckIn(selectedReg.id)}
           onRemoveCheckIn={() => handleRemoveCheckIn(selectedReg.id)}
           onDelete={() => handleDeleteRegistration(selectedReg.id)}
+          onOpenAttachment={(regId, fieldId, label) => setAttachment({ regId, fieldId, label })}
         />
       )}
 

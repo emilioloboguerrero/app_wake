@@ -2340,6 +2340,25 @@ Mark an attendee as checked in.
 
 ---
 
+#### `GET /api/v1/creator/events/{eventId}/registrations/{registrationId}/attachments/{fieldId}`
+Get a short-lived signed read URL for a photo submitted through the signup form.
+
+**Auth:** required (creator, must own the event)
+**Response:**
+```json
+{
+  "data": {
+    "url": "https://storage.googleapis.com/...",
+    "contentType": "image/jpeg",
+    "expiresInSeconds": 300
+  }
+}
+```
+**Errors:** `NOT_FOUND` (registration missing, field has no file, or the object was already collected by retention), `FORBIDDEN`
+**Notes:** The objects are unreachable through Storage rules, so this is the only read path. Every call logs `event_attachment_viewed`. Never cache the URL — it expires in 5 minutes.
+
+---
+
 #### `DELETE /api/v1/creator/events/{eventId}/registrations/{registrationId}`
 Remove a registration.
 
@@ -2499,6 +2518,33 @@ Get public event details (no auth required — for sharing link `wakelab.co/e/{e
 
 ---
 
+#### `POST /api/v1/events/{eventId}/attachments/start`
+Get a signed URL to upload one photo for a `photo` field of a signup form.
+
+**Auth:** none (unless the event is `wake_users_only`)
+**Rate limits:** 10/min and 40/day per IP
+**Request:**
+```json
+{
+  "fieldId": "string",
+  "contentType": "image/jpeg | image/png | image/webp"
+}
+```
+**Response:**
+```json
+{
+  "data": {
+    "uploadId": "uuid",
+    "uploadUrl": "https://storage.googleapis.com/...",
+    "maxBytes": 5242880
+  }
+}
+```
+**Errors:** `NOT_FOUND` (event missing or draft), `FORBIDDEN` (registrations closed), `VALIDATION_ERROR` (`fieldId` is not a photo field, or unsupported `contentType`), `RATE_LIMITED`
+**Notes:** The client `PUT`s the bytes to `uploadUrl` with a matching `Content-Type`, then sends `{ "uploadId", "contentType" }` as that field's value in `fieldValues` when registering. The object lands in `events/{eventId}/uploads/` and is an orphan until a registration claims it; `cleanupEventAttachments` deletes unclaimed uploads after 24h.
+
+---
+
 #### `POST /api/v1/events/{eventId}/register`
 Register for an event. If at capacity, auto-adds to waitlist.
 
@@ -2523,6 +2569,19 @@ Register for an event. If at capacity, auto-adds to waitlist.
 ```
 **Errors:** `NOT_FOUND`, `CONFLICT` (already registered with this email), `VALIDATION_ERROR` (required fields missing), `FORBIDDEN` (event closed)
 **Notes:** `sendEventConfirmationEmail` Firestore trigger fires automatically on doc creation — no API action needed.
+
+A `photo` field's value is `{ "uploadId", "contentType" }` from `attachments/start`. The server verifies the object against Storage (existence, real size ≤ 5MB, real content type) before any write, moves it to `events/{eventId}/registrations/{regId}/{fieldId}.{ext}`, and stores the answer as:
+```json
+{
+  "kind": "file",
+  "storagePath": "string",
+  "contentType": "string",
+  "size": 0,
+  "uploaded_at": "ISO string",
+  "review_status": "pending"
+}
+```
+An oversized or non-image object is deleted and the request fails with `VALIDATION_ERROR`.
 
 ---
 

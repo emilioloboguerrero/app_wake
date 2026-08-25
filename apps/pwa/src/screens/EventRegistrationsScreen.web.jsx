@@ -26,6 +26,11 @@ function buildColumns(event) {
 function getCellValue(reg, colId) {
   if (reg.responses) {
     const val = reg.responses[colId];
+    // Photo answers are objects. This screen has no viewer; the file opens
+    // from the creator dashboard.
+    if (val && typeof val === 'object' && !Array.isArray(val) && val.kind === 'file') {
+      return 'Adjunto';
+    }
     if (Array.isArray(val)) return val.join(', ');
     return val ?? null;
   }

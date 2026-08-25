@@ -6,7 +6,7 @@ import {db, FieldValue} from "../firestore.js";
 import type {Query, DocumentSnapshot} from "../firestore.js";
 import {validateAuth} from "../middleware/auth.js";
 import {validateBody, pickFields, validateStoragePath} from "../middleware/validate.js";
-import {checkRateLimit, checkIpRateLimit} from "../middleware/rateLimit.js";
+import {checkRateLimit, checkIpRateLimit, checkIpDailyRateLimit} from "../middleware/rateLimit.js";
 import {
   assertHttpsUrl,
   assertTextLength,
@@ -33,6 +33,194 @@ function normalizeDate(value: unknown): string | null {
   return null;
 }
 
+
+// ─── Registration photo attachments ────────────────────────────────────────
+// Signup forms can ask for one photo per field (field.type === "photo"), and
+// those are typically sensitive (payment receipts, IDs). Bytes never pass
+// through the API: the browser PUTs to a signed URL under
+// events/{eventId}/uploads/, and registering moves the object under the
+// record that owns it. Neither prefix is readable by Storage rules — the
+// single-segment `events/{eventId}/{fileName}` public-read rule does not match
+// them — so the creator reads through a short-lived signed URL instead.
+
+const ATTACHMENT_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+const UPLOAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+interface EventFieldDef {
+  id?: string;
+  fieldId?: string;
+  type?: string;
+  label?: string;
+  required?: boolean;
+}
+
+interface ResolvedAttachment {
+  fieldId: string;
+  sourcePath: string;
+  contentType: string;
+  size: number;
+}
+
+/** Throws unless the event declares `fieldId` as a photo field. */
+export function assertPhotoField(event: Record<string, unknown>, fieldId: string): void {
+  const fields = Array.isArray(event.fields) ? (event.fields as EventFieldDef[]) : [];
+  const field = fields.find((f) => (f.id ?? f.fieldId) === fieldId);
+  if (!field || field.type !== "photo") {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Este formulario no pide un archivo en ese campo",
+      "fieldId"
+    );
+  }
+}
+
+/**
+ * Verifies every `{uploadId, contentType}` value in `fieldValues` against the
+ * object actually sitting in Storage. Runs before any Firestore write so a
+ * bad payload never produces a half-formed registration.
+ */
+export async function resolveAttachments(
+  eventId: string,
+  event: Record<string, unknown>,
+  fieldValues: Record<string, unknown>
+): Promise<ResolvedAttachment[]> {
+  const bucket = admin.storage().bucket();
+  const resolved: ResolvedAttachment[] = [];
+
+  for (const [fieldId, value] of Object.entries(fieldValues)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const candidate = value as { uploadId?: unknown; contentType?: unknown };
+    if (typeof candidate.uploadId !== "string") continue;
+
+    assertPhotoField(event, fieldId);
+
+    if (!UPLOAD_ID_RE.test(candidate.uploadId)) {
+      throw new WakeApiServerError("VALIDATION_ERROR", 400, "Archivo inválido", fieldId);
+    }
+
+    const declaredExt = ATTACHMENT_EXTENSIONS[String(candidate.contentType)];
+    if (!declaredExt) {
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "Formato no soportado. Usa JPG, PNG o WebP",
+        fieldId
+      );
+    }
+
+    const sourcePath = `events/${eventId}/uploads/${candidate.uploadId}.${declaredExt}`;
+    const file = bucket.file(sourcePath);
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new WakeApiServerError(
+        "NOT_FOUND", 404,
+        "No encontramos el archivo que subiste. Vuelve a subirlo",
+        fieldId
+      );
+    }
+
+    const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size ?? 0);
+    const actualType = String(metadata.contentType ?? "");
+    if (size > ATTACHMENT_MAX_BYTES || !ATTACHMENT_EXTENSIONS[actualType]) {
+      await file.delete().catch(() => undefined);
+      throw new WakeApiServerError(
+        "VALIDATION_ERROR", 400,
+        "El archivo supera el tamaño permitido o no es una imagen",
+        fieldId
+      );
+    }
+
+    resolved.push({fieldId, sourcePath, contentType: actualType, size});
+  }
+
+  return resolved;
+}
+
+/**
+ * Moves verified uploads under the record that owns them and returns the
+ * values to store in `responses` / `fieldValues`.
+ */
+export async function attachToRecord(
+  attachments: ResolvedAttachment[],
+  destPrefix: string
+): Promise<Record<string, unknown>> {
+  const bucket = admin.storage().bucket();
+  const values: Record<string, unknown> = {};
+
+  for (const att of attachments) {
+    const ext = ATTACHMENT_EXTENSIONS[att.contentType];
+    const storagePath = `${destPrefix}${att.fieldId}.${ext}`;
+    await bucket.file(att.sourcePath).move(storagePath);
+    values[att.fieldId] = {
+      kind: "file",
+      storagePath,
+      contentType: att.contentType,
+      size: att.size,
+      uploaded_at: new Date().toISOString(),
+      review_status: "pending",
+    };
+  }
+
+  return values;
+}
+
+interface StoredFileValue {
+  kind: "file";
+  storagePath: string;
+  contentType: string;
+}
+
+export function isFileValue(value: unknown): value is StoredFileValue {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { kind?: unknown }).kind === "file" &&
+    typeof (value as { storagePath?: unknown }).storagePath === "string"
+  );
+}
+
+/** Deletes every object under a prefix, for when the record that owns them goes away. */
+async function deleteAttachmentsUnder(prefix: string): Promise<void> {
+  try {
+    await admin.storage().bucket().deleteFiles({prefix});
+  } catch (err) {
+    functions.logger.warn("events:attachment-cleanup-failed", {prefix, err});
+  }
+}
+
+/** Re-homes stored file values under a new prefix and returns the rewritten map. */
+async function relocateAttachments(
+  values: Record<string, unknown>,
+  destPrefix: string
+): Promise<Record<string, unknown>> {
+  const bucket = admin.storage().bucket();
+  const out: Record<string, unknown> = {...values};
+
+  for (const [fieldId, value] of Object.entries(values)) {
+    if (!isFileValue(value)) continue;
+    const ext = ATTACHMENT_EXTENSIONS[value.contentType] ?? "jpg";
+    const storagePath = `${destPrefix}${fieldId}.${ext}`;
+    if (storagePath === value.storagePath) continue;
+    try {
+      await bucket.file(value.storagePath).move(storagePath);
+      out[fieldId] = {...value, storagePath};
+    } catch (err) {
+      functions.logger.warn("events:attachment-relocate-failed", {
+        from: value.storagePath,
+        to: storagePath,
+        err,
+      });
+    }
+  }
+
+  return out;
+}
 
 async function generateOgImage(eventId: string, storagePath: string): Promise<void> {
   try {
@@ -138,6 +326,56 @@ router.get("/events/:eventId", async (req, res) => {
   });
 });
 
+// POST /events/:eventId/attachments/start (no auth — public signup forms)
+// Hands out a 15-minute signed URL for one photo. The uploaded object is an
+// orphan until a registration claims it; the daily cleanup sweeps the rest.
+router.post("/events/:eventId/attachments/start", async (req, res) => {
+  await checkIpRateLimit(req, 10);
+  await checkIpDailyRateLimit(req, 40);
+
+  const {fieldId, contentType} = validateBody<{ fieldId: string; contentType: string }>(
+    {fieldId: "string", contentType: "string"},
+    req.body,
+    {maxStringLength: 200}
+  );
+
+  const eventDoc = await db.collection("events").doc(req.params.eventId).get();
+  if (!eventDoc.exists || eventDoc.data()?.status === "draft") {
+    throw new WakeApiServerError("NOT_FOUND", 404, "Evento no encontrado");
+  }
+
+  const event = eventDoc.data()!;
+  if (event.status !== "active" && event.status !== "published") {
+    throw new WakeApiServerError("FORBIDDEN", 403, "Las inscripciones están cerradas");
+  }
+  if (event.wake_users_only === true) {
+    await validateAuth(req);
+  }
+
+  assertPhotoField(event, fieldId);
+
+  const ext = ATTACHMENT_EXTENSIONS[contentType];
+  if (!ext) {
+    throw new WakeApiServerError(
+      "VALIDATION_ERROR", 400,
+      "Formato no soportado. Usa JPG, PNG o WebP",
+      "contentType"
+    );
+  }
+
+  const uploadId = crypto.randomUUID();
+  const storagePath = `events/${req.params.eventId}/uploads/${uploadId}.${ext}`;
+
+  const [uploadUrl] = await admin.storage().bucket().file(storagePath).getSignedUrl({
+    version: "v4",
+    action: "write",
+    expires: Date.now() + 15 * 60 * 1000,
+    contentType,
+  });
+
+  res.json({data: {uploadId, uploadUrl, maxBytes: ATTACHMENT_MAX_BYTES}});
+});
+
 // POST /events/:eventId/register (no auth — supports unauthenticated)
 router.post("/events/:eventId/register", async (req, res) => {
   // IP-based rate limiting (10 RPM) for public endpoint
@@ -177,6 +415,11 @@ router.post("/events/:eventId/register", async (req, res) => {
     await validateAuth(req);
   }
 
+  // Verify photo uploads against Storage before writing anything, so a bad
+  // payload can never leave a registration pointing at a missing file.
+  const fieldValues: Record<string, unknown> = {...(body.fieldValues ?? {})};
+  const attachments = await resolveAttachments(req.params.eventId, event, fieldValues);
+
   // Check capacity
   if (event.max_registrations || event.maxRegistrations || event.capacity) {
     const cap = event.max_registrations || event.maxRegistrations || event.capacity;
@@ -195,17 +438,24 @@ router.post("/events/:eventId/register", async (req, res) => {
         .count()
         .get();
 
-      const waitlistRef = await db
+      const waitlistRef = db
         .collection("event_signups")
         .doc(req.params.eventId)
         .collection("waitlist")
-        .add({
-          email: body.email ?? null,
-          displayName: body.displayName ?? null,
-          phoneNumber: body.phoneNumber ?? null,
-          fieldValues: body.fieldValues ?? {},
-          created_at: FieldValue.serverTimestamp(),
-        });
+        .doc();
+
+      const waitlistAttachments = await attachToRecord(
+        attachments,
+        `events/${req.params.eventId}/waitlist/${waitlistRef.id}/`
+      );
+
+      await waitlistRef.set({
+        email: body.email ?? null,
+        displayName: body.displayName ?? null,
+        phoneNumber: body.phoneNumber ?? null,
+        fieldValues: {...fieldValues, ...waitlistAttachments},
+        created_at: FieldValue.serverTimestamp(),
+      });
 
       res.status(201).json({
         data: {
@@ -221,21 +471,29 @@ router.post("/events/:eventId/register", async (req, res) => {
   const qrEnabled = event.settings?.enable_qr_checkin === true;
   const checkInToken = qrEnabled ? crypto.randomUUID() : null;
 
-  const regRef = await db
+  const regRef = db
     .collection("event_signups")
     .doc(req.params.eventId)
     .collection("registrations")
-    .add({
-      email: body.email ?? null,
-      nombre: body.displayName ?? null,
-      displayName: body.displayName ?? null,
-      phoneNumber: body.phoneNumber ?? null,
-      responses: body.fieldValues ?? {},
-      fieldValues: body.fieldValues ?? {},
-      ...(checkInToken ? {check_in_token: checkInToken} : {}),
-      checked_in: false,
-      created_at: FieldValue.serverTimestamp(),
-    });
+    .doc();
+
+  const attachedValues = await attachToRecord(
+    attachments,
+    `events/${req.params.eventId}/registrations/${regRef.id}/`
+  );
+  const responses = {...fieldValues, ...attachedValues};
+
+  await regRef.set({
+    email: body.email ?? null,
+    nombre: body.displayName ?? null,
+    displayName: body.displayName ?? null,
+    phoneNumber: body.phoneNumber ?? null,
+    responses,
+    fieldValues: responses,
+    ...(checkInToken ? {check_in_token: checkInToken} : {}),
+    checked_in: false,
+    created_at: FieldValue.serverTimestamp(),
+  });
 
   res.status(201).json({
     data: {
@@ -526,6 +784,8 @@ router.delete("/creator/events/:eventId", async (req, res) => {
   }
 
   await doc.ref.delete();
+  // Cover, OG render and any signup uploads go with it.
+  await deleteAttachmentsUnder(`events/${req.params.eventId}/`);
 
   res.status(204).send();
 });
@@ -674,6 +934,66 @@ router.get("/creator/events/:eventId/registrations", async (req, res) => {
     hasMore,
   });
 });
+
+// GET /creator/events/:eventId/registrations/:regId/attachments/:fieldId
+// Submitted photos live in a private Storage prefix, so a short-lived signed
+// read URL is the only way the creator sees one. Every view is logged.
+router.get(
+  "/creator/events/:eventId/registrations/:regId/attachments/:fieldId",
+  async (req, res) => {
+    const auth = await validateAuth(req);
+    requireCreator(auth);
+    await checkRateLimit(auth.userId, 200, "rate_limit_first_party");
+
+    await verifyEventOwnership(req.params.eventId, auth.userId);
+
+    const regDoc = await db
+      .collection("event_signups")
+      .doc(req.params.eventId)
+      .collection("registrations")
+      .doc(req.params.regId)
+      .get();
+
+    if (!regDoc.exists) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Registro no encontrado");
+    }
+
+    const data = regDoc.data()!;
+    const values = (data.responses ?? data.fieldValues ?? {}) as Record<string, unknown>;
+    const value = values[req.params.fieldId];
+    if (!isFileValue(value)) {
+      throw new WakeApiServerError("NOT_FOUND", 404, "Este registro no tiene un archivo en ese campo");
+    }
+
+    // The path is server-written, but re-check the prefix so a tampered
+    // document can never point the signer at an unrelated object.
+    validateStoragePath(value.storagePath, `events/${req.params.eventId}/`);
+
+    const file = admin.storage().bucket().file(value.storagePath);
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new WakeApiServerError(
+        "NOT_FOUND", 404,
+        "El archivo ya fue eliminado por la política de retención"
+      );
+    }
+
+    const [url] = await file.getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + 5 * 60 * 1000,
+    });
+
+    functions.logger.info("event_attachment_viewed", {
+      eventId: req.params.eventId,
+      registrationId: req.params.regId,
+      fieldId: req.params.fieldId,
+      creatorId: auth.userId,
+    });
+
+    res.json({data: {url, contentType: value.contentType, expiresInSeconds: 300}});
+  }
+);
 
 // POST /creator/events/:eventId/registrations/:regId/check-in
 router.post(
@@ -859,6 +1179,9 @@ router.delete(
     }
 
     await regRef.delete();
+    await deleteAttachmentsUnder(
+      `events/${req.params.eventId}/registrations/${req.params.regId}/`
+    );
 
     res.status(204).send();
   }
@@ -924,20 +1247,31 @@ router.post(
     const checkInToken = qrEnabled ? crypto.randomUUID() : null;
 
     // Only copy safe fields from waitlist entry
-    const regRef = await db
+    const regRef = db
       .collection("event_signups")
       .doc(req.params.eventId)
       .collection("registrations")
-      .add({
-        email: waitlistData.email ?? null,
-        displayName: waitlistData.displayName ?? null,
-        phoneNumber: waitlistData.phoneNumber ?? null,
-        fieldValues: waitlistData.fieldValues ?? {},
-        ...(checkInToken ? {check_in_token: checkInToken} : {}),
-        checked_in: false,
-        admitted_from_waitlist: true,
-        created_at: FieldValue.serverTimestamp(),
-      });
+      .doc();
+
+    const admittedValues = await relocateAttachments(
+      (waitlistData.fieldValues ?? {}) as Record<string, unknown>,
+      `events/${req.params.eventId}/registrations/${regRef.id}/`
+    );
+
+    await regRef.set({
+      email: waitlistData.email ?? null,
+      nombre: waitlistData.displayName ?? null,
+      displayName: waitlistData.displayName ?? null,
+      phoneNumber: waitlistData.phoneNumber ?? null,
+      // Every reader keys off `responses`; writing only `fieldValues` left
+      // admitted rows blank in the results table.
+      responses: admittedValues,
+      fieldValues: admittedValues,
+      ...(checkInToken ? {check_in_token: checkInToken} : {}),
+      checked_in: false,
+      admitted_from_waitlist: true,
+      created_at: FieldValue.serverTimestamp(),
+    });
 
     await waitlistRef.delete();
 

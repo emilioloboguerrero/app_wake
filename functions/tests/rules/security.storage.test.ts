@@ -6,6 +6,8 @@
  *   F-RULES-26  courses/{programId}/* writable by any authed user (defacement)
  *   F-RULES-27  courses/.../tutorials and sessions writable by any authed user
  *   F-RULES-28  events/{eventId}/* writable by any authed user (defacement)
+ *   Signup attachments (events/{eventId}/uploads|registrations|waitlist)
+ *               must be unreachable from every client, creator included.
  *
  * Note: Storage rules tests are slower than Firestore rules tests because
  * they upload bytes to the emulator. Each test uploads ~10 bytes only.
@@ -165,6 +167,107 @@ describe("Storage — events/{eventId}/* (F-RULES-28)", () => {
       );
     }
   );
+});
+
+describe("Storage — event signup attachments are client-unreachable", () => {
+  async function seedEvent() {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "events/ev_attach"), {
+        creator_id: "owner_creator",
+        status: "active",
+        fields: [{id: "f_doc", type: "photo", label: "Comprobante", required: true}],
+      });
+    });
+    await seedCreator(env, "owner_creator");
+  }
+
+  it("blocks writing into the staging uploads prefix", async () => {
+    await seedEvent();
+    await seedUser(env, "someone");
+    const ctx = env.authenticatedContext("someone");
+    // Uploads only land through an API-issued signed URL, which bypasses rules.
+    await assertFails(
+      uploadBytes(
+        ref(ctx.storage(), "events/ev_attach/uploads/3f8a1c2e-4b5d-4e6f-8a9b-0c1d2e3f4a5b.jpg"),
+        tinyJpeg,
+        {contentType: "image/jpeg"}
+      )
+    );
+  });
+
+  it("blocks the event's own creator from writing a registration attachment", async () => {
+    await seedEvent();
+    const ctx = env.authenticatedContext("owner_creator");
+    await assertFails(
+      uploadBytes(
+        ref(ctx.storage(), "events/ev_attach/registrations/reg1/f_doc.jpg"),
+        tinyJpeg,
+        {contentType: "image/jpeg"}
+      )
+    );
+  });
+
+  it("blocks the event's own creator from reading a registration attachment", async () => {
+    await seedEvent();
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(
+        ref(ctx.storage(), "events/ev_attach/registrations/reg1/f_doc.jpg"),
+        tinyJpeg,
+        {contentType: "image/jpeg"}
+      );
+    });
+    // The creator reads through a signed URL from the API, never directly —
+    // that is what keeps the object private and every view logged.
+    const ctx = env.authenticatedContext("owner_creator");
+    await assertFails(
+      getBytes(ref(ctx.storage(), "events/ev_attach/registrations/reg1/f_doc.jpg"))
+    );
+  });
+
+  it("blocks an unrelated authed user from reading a registration attachment", async () => {
+    await seedEvent();
+    await seedUser(env, "attacker");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(
+        ref(ctx.storage(), "events/ev_attach/registrations/reg1/f_doc.jpg"),
+        tinyJpeg,
+        {contentType: "image/jpeg"}
+      );
+    });
+    const ctx = env.authenticatedContext("attacker");
+    await assertFails(
+      getBytes(ref(ctx.storage(), "events/ev_attach/registrations/reg1/f_doc.jpg"))
+    );
+  });
+
+  it("blocks reading a waitlist attachment", async () => {
+    await seedEvent();
+    await seedUser(env, "attacker");
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(
+        ref(ctx.storage(), "events/ev_attach/waitlist/w1/f_doc.jpg"),
+        tinyJpeg,
+        {contentType: "image/jpeg"}
+      );
+    });
+    const ctx = env.authenticatedContext("attacker");
+    await assertFails(
+      getBytes(ref(ctx.storage(), "events/ev_attach/waitlist/w1/f_doc.jpg"))
+    );
+  });
+
+  it("still serves the public cover image", async () => {
+    await seedEvent();
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await uploadBytes(
+        ref(ctx.storage(), "events/ev_attach/cover.jpg"),
+        tinyJpeg,
+        {contentType: "image/jpeg"}
+      );
+    });
+    const ctx = env.unauthenticatedContext();
+    await assertSucceeds(getBytes(ref(ctx.storage(), "events/ev_attach/cover.jpg")));
+  });
 });
 
 describe("Storage — exercises_library (F-RULES-25)", () => {

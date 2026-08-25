@@ -741,6 +741,212 @@
   color: #fff;
 }
 
+/* ── Photo upload ── */
+.es-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Kept in the DOM for the ref, out of the layout and the tab order. */
+.es-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.es-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 34px 20px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1.5px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.12s;
+}
+
+.es-dropzone:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.es-dropzone:active { transform: scale(0.99); }
+
+.es-dropzone--over {
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.1);
+  border-color: var(--accent);
+}
+
+.es-dropzone-icon {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 3px;
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.es-dropzone-icon svg { width: 100%; height: 100%; }
+
+.es-dropzone-title {
+  color: #fff;
+  font-size: 0.975rem;
+  font-weight: 600;
+}
+
+.es-dropzone-sub {
+  color: rgba(255, 255, 255, 0.32);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+.es-upload-alt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.es-upload-alt:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.es-upload-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  transition: background 0.25s, border-color 0.25s;
+}
+
+.es-upload-card--done {
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.07);
+  border-color: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.5);
+}
+
+.es-upload-thumb {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.es-upload-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.es-upload-name {
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.es-upload-sub {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.es-upload-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.es-upload-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+}
+
+.es-upload-change {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: color 0.18s;
+}
+
+.es-upload-change:hover { color: #fff; }
+
+.es-upload-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  animation: uploadCheckIn 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.es-upload-check svg { width: 15px; height: 15px; }
+
+@keyframes uploadCheckIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.es-upload-optional {
+  margin: -8px 0 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.8rem;
+}
+
+.es-upload .es-cta:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .es-upload-check { animation: none; }
+  .es-upload-bar-fill { transition: none; }
+}
+
 /* ══════════════════════════════════════════
    CENTER (submitting)
 ══════════════════════════════════════════ */

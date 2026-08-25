@@ -128,6 +128,11 @@ const PUBLIC_PATHS = [
   /^\/events\/[^/]+$/, // GET /events/:eventId
   /^\/events\/[^/]+\/register$/, // POST /events/:eventId/register
   /^\/events\/[^/]+\/waitlist$/, // POST /events/:eventId/waitlist
+  // Signup form photo upload: the signer is anonymous by definition. The
+  // handler enforces its own per-IP minute + day limits, re-checks
+  // wake_users_only, and refuses any fieldId the event did not declare as a
+  // photo field.
+  /^\/events\/[^/]+\/attachments\/start$/, // POST /events/:eventId/attachments/start
   /^\/app-resources$/, // GET /app-resources (exact match only)
   /^\/email\/unsubscribe$/, // GET /email/unsubscribe (public one-click unsub)
   /^\/bundles$/, // GET /bundles?creatorId=X (published only)

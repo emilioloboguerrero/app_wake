@@ -172,6 +172,21 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/events/$(eventId)).data.get('creator_id', '') == request.auth.uid;
     }
 
+    // Signup form attachments (payment receipts, IDs). Deliberately
+    // unreachable from any client: uploads land via API-issued signed write
+    // URLs and the creator reads via a signed read URL. The cover rule above
+    // only matches a single segment, so these are already denied by default —
+    // stated explicitly so a future {allPaths=**} there cannot expose them.
+    match /events/{eventId}/uploads/{fileName} {
+      allow read, write: if false;
+    }
+    match /events/{eventId}/registrations/{regId}/{fileName} {
+      allow read, write: if false;
+    }
+    match /events/{eventId}/waitlist/{waitlistId}/{fileName} {
+      allow read, write: if false;
+    }
+
     // Public landing assets (hero clips, marketing media) — readable by anyone.
     // Upload via Admin SDK or Firebase Console only; Admin SDK bypasses rules.
     match /app_resources/{allPaths=**} {
