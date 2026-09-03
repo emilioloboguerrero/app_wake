@@ -32,6 +32,7 @@ const PlanEditorScreen = lazy(() => import('./screens/PlanEditorScreen'));
 const NutritionProgramEditorScreen = lazy(() => import('./screens/NutritionProgramEditorScreen'));
 const CreateLibrarySessionScreen = lazy(() => import('./screens/CreateLibrarySessionScreen'));
 const EventsScreen = lazy(() => import('./screens/EventsScreen'));
+const DocumentsScreen = lazy(() => import('./screens/DocumentsScreen'));
 const EventResultsScreen = lazy(() => import('./screens/EventResultsScreen'));
 const EventCheckinScreen = lazy(() => import('./screens/EventCheckinScreen'));
 const ApiKeysScreen = lazy(() => import('./screens/ApiKeysScreen'));
@@ -258,6 +259,7 @@ function AppContent() {
                 </ProtectedRoute>
               }
             />
+            <Route path="/documentos" element={<DocumentsScreen />} />
             <Route
               path="/api-keys"
               element={

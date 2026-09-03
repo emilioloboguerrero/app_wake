@@ -1789,6 +1789,76 @@ export const eventPage = onRequest(
   }
 );
 
+// Serves /d/{docId} with the document's own OG tags baked in, so a link
+// pasted into WhatsApp or Instagram previews the cover and title instead of the
+// generic landing card. Same shape as eventPage: on any read failure it falls
+// through to the untouched index.html rather than failing the page.
+export const documentPage = onRequest(
+  {
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 10,
+    concurrency: 80,
+  },
+  async (req, res) => {
+    const match = req.path.match(/^\/d\/([a-zA-Z0-9_-]+)/);
+    if (!match) {
+      res.status(404).send("Not found");
+      return;
+    }
+    if (pageFnRateLimited(req)) {
+      res.set("Retry-After", "60");
+      res.status(429).send("Too many requests");
+      return;
+    }
+    const docId = match[1];
+
+    let html = await getIndexHtml();
+    if (!html) {
+      res.set("Retry-After", "5");
+      res.status(503).send("Service temporarily unavailable");
+      return;
+    }
+
+    try {
+      const snap = await db.collection("public_documents").doc(docId).get();
+      const data = snap.data();
+      if (snap.exists && data?.status === "active") {
+        const title = (data.title as string) || "Documento Wake";
+        let description = "Descárgalo gratis en Wake";
+        if (typeof data.creator_id === "string" && data.creator_id) {
+          const creatorSnap = await db.collection("users").doc(data.creator_id).get();
+          const creator = creatorSnap.data();
+          const name = (creator?.displayName as string) || (creator?.name as string) || null;
+          if (name) description = `Un documento de ${name}. Descárgalo gratis.`;
+        }
+        const coverPath = typeof data.cover_path === "string" ? data.cover_path : null;
+        const rawCover = coverPath ?
+          `https://firebasestorage.googleapis.com/v0/b/${admin.storage().bucket().name}` +
+            `/o/${encodeURIComponent(coverPath)}?alt=media` :
+          null;
+        const ogImage = safeImageUrl(rawCover, "/app_icon.png");
+
+        html = html
+          .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="https://wakelab.co/d/${docId}" />`)
+          .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<title>[^<]*<\/title>/, `<title>${escapeOgAttr(title)} — Wake</title>`);
+      }
+    } catch (err) {
+      functions.logger.error("documentPage Firestore read failed:", err);
+    }
+
+    setStorefrontHtmlSecurityHeaders(res);
+    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.status(200).send(html);
+  }
+);
+
 function escapeOgAttr(s: string): string {
   // L-34: cover the full HTML special-char set so the helper stays safe if
   // a future change moves any of these meta values into a single-quoted attr

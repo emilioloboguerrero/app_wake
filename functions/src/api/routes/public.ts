@@ -1459,9 +1459,33 @@ router.get("/public/documents/:docId", async (req, res) => {
       contentType: doc.content_type || "application/pdf",
       sizeBytes: typeof doc.size_bytes === "number" ? doc.size_bytes : null,
       pageCount: typeof doc.page_count === "number" ? doc.page_count : null,
+      // Rendered from page 1 by the dashboard at upload time. When it is
+      // present the page shows an image instead of pulling the whole PDF down
+      // to draw the cover itself.
+      coverUrl: typeof doc.cover_path === "string" ? publicStorageUrl(doc.cover_path) : null,
       fileUrl: publicStorageUrl(storagePath),
     },
   });
 });
+
+// POST /public/documents/:docId/(view|download)
+//
+// Kept off the GET so that stays CDN-cacheable. Both only ever increment, so a
+// lost write costs a count and nothing else — the response never waits on it.
+// Firestore sustains ~1 write/sec on a single document; past that a burst sheds
+// some counts rather than erroring the caller.
+for (const kind of ["view", "download"] as const) {
+  router.post("/public/documents/:docId/" + kind, async (req, res) => {
+    await checkIpRateLimit(req, 60);
+    const docId = req.params.docId || "";
+    if (!DOC_ID_RE.test(docId)) {
+      throw new WakeApiServerError("NOT_FOUND", 404, DOCUMENT_NOT_FOUND);
+    }
+    res.status(204).send();
+    db.collection("public_documents").doc(docId)
+      .update({[kind + "_count"]: FieldValue.increment(1)})
+      .catch((err) => functions.logger.warn("documents:counter-failed", {docId, kind, err}));
+  });
+}
 
 export default router;

@@ -57,13 +57,13 @@ function AmbientOrbs() {
 // Renders page 1 of the PDF into `canvasRef` and hands back a small JPEG data
 // URL of it, which feeds the accent extractor. Non-PDF documents skip this
 // entirely and fall back to the generic file card.
-function useFirstPageThumbnail(fileUrl, contentType, canvasRef) {
+function useFirstPageThumbnail(fileUrl, contentType, canvasRef, skip) {
   const [state, setState] = useState('idle'); // idle | rendering | done | failed
   const [snapshot, setSnapshot] = useState(null);
   const [aspect, setAspect] = useState(0.7727); // letter portrait until page 1 says otherwise
 
   useEffect(() => {
-    if (!fileUrl || contentType !== 'application/pdf') { setState('idle'); return; }
+    if (skip || !fileUrl || contentType !== 'application/pdf') { setState('idle'); return; }
 
     let cancelled = false;
     let task = null;
@@ -108,7 +108,7 @@ function useFirstPageThumbnail(fileUrl, contentType, canvasRef) {
       cancelled = true;
       if (task) task.destroy?.();
     };
-  }, [fileUrl, contentType, canvasRef]);
+  }, [fileUrl, contentType, canvasRef, skip]);
 
   return { state, snapshot, aspect };
 }
@@ -130,6 +130,7 @@ export default function PublicDocumentScreen() {
         setDoc(data);
         document.title = `${data.title} — Wake`;
         setPhase('ready');
+        apiClient.post(`/public/documents/${docId}/view`).catch(() => {});
       })
       .catch((err) => {
         if (cancelled) return;
@@ -138,14 +139,16 @@ export default function PublicDocumentScreen() {
     return () => { cancelled = true; };
   }, [docId]);
 
-  const thumb = useFirstPageThumbnail(doc?.fileUrl, doc?.contentType, canvasRef);
-  const accent = useAccentFromImage(thumb.snapshot) || DEFAULT_ACCENT;
+  const cover = doc?.coverUrl || null;
+  const thumb = useFirstPageThumbnail(doc?.fileUrl, doc?.contentType, canvasRef, Boolean(cover));
+  const accent = useAccentFromImage(cover || thumb.snapshot) || DEFAULT_ACCENT;
 
   const handleDownload = useCallback(() => {
     if (!doc) return;
     // The file gets its own tab so this one is free to move to the success
     // state immediately, instead of sitting on the cover while bytes transfer.
     window.open(doc.fileUrl, '_blank', 'noopener,noreferrer');
+    apiClient.post(`/public/documents/${doc.docId}/download`).catch(() => {});
     setPhase('downloaded');
   }, [doc]);
 
@@ -245,16 +248,20 @@ export default function PublicDocumentScreen() {
               onClick={handleDownload}
               aria-label={doc.ctaLabel}
             >
-              <canvas
-                ref={canvasRef}
-                className={`pd-doc-canvas ${thumb.state === 'done' ? 'pd-doc-canvas--ready' : ''}`}
-              />
+              {cover ? (
+                <img src={cover} alt="" className="pd-doc-canvas pd-doc-canvas--ready" />
+              ) : (
+                <canvas
+                  ref={canvasRef}
+                  className={`pd-doc-canvas ${thumb.state === 'done' ? 'pd-doc-canvas--ready' : ''}`}
+                />
+              )}
 
-              {thumb.state === 'rendering' && (
+              {!cover && thumb.state === 'rendering' && (
                 <div className="pd-doc-placeholder"><WakeLoader size={44} /></div>
               )}
 
-              {(thumb.state === 'failed' || thumb.state === 'idle') && (
+              {!cover && (thumb.state === 'failed' || thumb.state === 'idle') && (
                 <div className="pd-doc-placeholder">
                   <div className="pd-doc-ext">{extensionLabel(doc.contentType, doc.fileName)}</div>
                 </div>

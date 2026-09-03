@@ -25,6 +25,7 @@ import emailRouter from "./routes/email.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 import bundlesRouter from "./routes/bundles.js";
 import publicRouter from "./routes/public.js";
+import documentsRouter from "./routes/documents.js";
 import authRouter from "./routes/auth.js";
 
 export const app = express();
@@ -141,6 +142,9 @@ const PUBLIC_PATHS = [
   /^\/public\/creators\/[^/]+\/programs\/[^/]+$/, // GET /public/creators/:username/programs/:programId
   /^\/public\/storefront\/creators$/, // GET /public/storefront/creators
   /^\/public\/documents\/[^/]+$/, // GET /public/documents/:docId
+  // Counters. Public by definition (the page has no session) and
+  // per-IP limited in the handler; they only ever increment.
+  /^\/public\/documents\/[^/]+\/(view|download)$/,
   /^\/public\/programs\/[^/]+\/availability$/, // GET program seat availability
   /^\/public\/programs\/[^/]+\/waitlist$/, // POST join sold-out waitlist
   /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
@@ -213,6 +217,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, enrollmentsRouter);
   app.use(prefix, bundlesRouter);
   app.use(prefix, publicRouter);
+  app.use(prefix, documentsRouter);
   app.use(prefix, authRouter);
 }
 
