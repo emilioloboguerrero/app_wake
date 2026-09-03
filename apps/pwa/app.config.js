@@ -17,7 +17,7 @@ export default {
       bundleIdentifier: "com.lab.wake.co",
       buildNumber: "54",
       usesAppleSignIn: true,
-      googleServicesFile: "../../config/firebase/GoogleService-Info.plist",
+      googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? "../../config/firebase/GoogleService-Info.plist",
       infoPlist: {
         NSPhotoLibraryUsageDescription: "Wake necesita acceso a tu galería para que puedas subir una foto de perfil.",
         NSCameraUsageDescription: "Wake necesita acceso a tu cámara para que puedas tomar una foto de perfil.",
@@ -59,7 +59,15 @@ export default {
     plugins: [
       "expo-font",
       "expo-video",
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-build-properties",
+        {
+          ios: {
+            useFrameworks: "static"
+          }
+        }
+      ]
     ],
     font: {
       family: "Inter-SemiBold"

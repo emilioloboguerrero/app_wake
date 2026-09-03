@@ -14,6 +14,7 @@ export const FIELD_TYPES = [
   { type: 'multiselect', label: 'Selección múltiple' },
   { type: 'textarea',    label: 'Párrafo' },
   { type: 'date',        label: 'Fecha' },
+  { type: 'photo',       label: 'Foto o archivo' },
 ];
 
 export const TYPE_LABELS = Object.fromEntries(FIELD_TYPES.map(f => [f.type, f.label]));
@@ -169,6 +170,12 @@ export function SortableField({ field, onUpdate, onRemove }) {
               <span className="ee-toggle-thumb" />
             </button>
           </div>
+          {field.type === 'photo' && (
+            <p className="ee-field-note">
+              El inscrito sube una imagen JPG, PNG o WebP de hasta 5MB. Solo tú
+              puedes verla, y se elimina 30 días después del evento.
+            </p>
+          )}
           {hasOptions && (
             <div className="ee-field-options">
               <label className="ee-field-sub-label">Opciones</label>

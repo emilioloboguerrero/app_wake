@@ -1,0 +1,423 @@
+/* ══════════════════════════════════════════
+   BASE — mirrors the event signup cover
+══════════════════════════════════════════ */
+.pd-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #1a1a1a;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.pd-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.22) 0%,
+    #1a1a1a 62%
+  );
+  transition: background 0.9s ease;
+}
+
+/* ── Logo ── */
+.pd-logo-link {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: block;
+  line-height: 0;
+}
+
+.pd-logo {
+  height: 64px;
+  width: auto;
+  opacity: 0.8;
+}
+
+/* ── Ambient orbs ── */
+.pd-orbs {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pd-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  background: rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.13);
+}
+
+.pd-orb-1 { width: 320px; height: 320px; top: -60px; left: -80px; animation: pdOrbDrift 18s ease-in-out infinite; }
+.pd-orb-2 { width: 260px; height: 260px; bottom: -40px; right: -70px; animation: pdOrbDrift 22s ease-in-out infinite reverse; }
+.pd-orb-3 { width: 200px; height: 200px; top: 45%; right: -60px; animation: pdOrbDrift 26s ease-in-out infinite; }
+
+@keyframes pdOrbDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(24px, -28px) scale(1.12); }
+}
+
+/* ══════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════ */
+.pd-hero {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding-top: calc(64px + env(safe-area-inset-top, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pd-hero-head {
+  padding: 8px 24px 0;
+  text-align: center;
+}
+
+.pd-hero-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 24px 12px;
+  min-height: 0;
+}
+
+.pd-hero-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 24px calc(32px + env(safe-area-inset-bottom, 0px));
+}
+
+.pd-center {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 32px;
+  text-align: center;
+}
+
+/* ══════════════════════════════════════════
+   COPY
+══════════════════════════════════════════ */
+.pd-title {
+  margin: 0;
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.pd-byline {
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.pd-message {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.pd-meta {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+}
+
+/* ══════════════════════════════════════════
+   DOCUMENT CARD — first page + download overlay
+══════════════════════════════════════════ */
+.pd-doc-card {
+  position: relative;
+  display: block;
+  /* Width drives the card; aspect-ratio (set inline from page 1) gives the
+     height. On a short viewport max-height clamps it and the canvas crops from
+     the bottom, so the top of the cover is always what you see. */
+  width: min(340px, 78vw);
+  max-height: 100%;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s;
+}
+
+.pd-doc-card:hover  { transform: translateY(-4px); box-shadow: 0 30px 70px rgba(0, 0, 0, 0.62); }
+.pd-doc-card:active { transform: translateY(-1px) scale(0.99); }
+
+.pd-doc-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.pd-doc-canvas--ready { opacity: 1; }
+
+.pd-doc-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pd-doc-ext {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+/* ══════════════════════════════════════════
+   CTA
+══════════════════════════════════════════ */
+.pd-cta {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  padding: 18px 24px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s, background 0.5s, box-shadow 0.5s;
+}
+
+.pd-cta:hover    { opacity: 0.88; }
+.pd-cta:active   { transform: scale(0.977); }
+
+@keyframes pdCtaPulse {
+  0%, 100% { box-shadow: 0 0 0 0    rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45); }
+  60%      { box-shadow: 0 0 0 14px rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0); }
+}
+
+.pd-cta--pulse { animation: pdCtaPulse 2.6s ease-in-out infinite; }
+
+/* ══════════════════════════════════════════
+   SUCCESS — same rings + check as the event signup
+══════════════════════════════════════════ */
+.pd-success {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pd-success-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px 16px;
+  text-align: center;
+}
+
+.pd-success-footer {
+  padding: 12px 24px calc(36px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+}
+
+/* ── Expanding rings ── */
+.pd-rings-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  margin-bottom: 36px;
+}
+
+.pd-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  width: 76px;
+  height: 76px;
+  animation: pdRingExpand 2s ease-out forwards;
+}
+
+.pd-ring-2 { animation-delay: 0.32s; }
+.pd-ring-3 { animation-delay: 0.64s; }
+
+@keyframes pdRingExpand {
+  from { transform: scale(0.4); opacity: 0.8; }
+  to   { transform: scale(3.2); opacity: 0; }
+}
+
+/* ── Checkmark ── */
+.pd-check {
+  position: relative;
+  z-index: 1;
+  width: 68px;
+  height: 68px;
+  overflow: visible;
+}
+
+.pd-check-circle {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 1.6;
+  stroke-dasharray: 146;
+  stroke-dashoffset: 146;
+  animation: pdCircleIn 0.65s cubic-bezier(0.4, 0, 0.2, 1) 0.15s forwards;
+}
+
+.pd-check-tick {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 40;
+  stroke-dashoffset: 40;
+  animation: pdTickIn 0.36s ease-out 0.72s forwards;
+}
+
+@keyframes pdCircleIn { to { stroke-dashoffset: 0; } }
+@keyframes pdTickIn   { to { stroke-dashoffset: 0; } }
+
+.pd-success-title {
+  color: #fff;
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0 0 12px;
+  animation: pdTextSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
+}
+
+.pd-success-sub {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.95rem;
+  margin: 0 0 12px;
+  animation: pdTextSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.65s both;
+}
+
+.pd-success-doc {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+  animation: pdTextSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.75s both;
+}
+
+@keyframes pdTextSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Second chance if the new tab was blocked by a popup blocker. */
+.pd-again {
+  margin-top: 26px;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  animation: pdTextSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.85s both;
+  transition: color 0.2s;
+}
+
+.pd-again:hover { color: rgba(255, 255, 255, 0.75); }
+
+/* Share button — glass, so it reads as secondary to the download that just ran */
+.pd-cta--share {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: none;
+}
+
+.pd-cta--share:hover { background: rgba(255, 255, 255, 0.30); opacity: 1; }
+
+.pd-cta--copied {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ══════════════════════════════════════════
+   ENTRANCE
+══════════════════════════════════════════ */
+@keyframes pdFadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.pd-fade-in { animation: pdFadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pd-fade-in,
+  .pd-cta--pulse,
+  .pd-orb,
+  .pd-ring,
+  .pd-success-title,
+  .pd-success-sub,
+  .pd-success-doc,
+  .pd-again { animation: none; }
+
+  .pd-check-circle,
+  .pd-check-tick { animation: none; stroke-dashoffset: 0; }
+  .pd-doc-card { transition: none; }
+}
+
+@media (min-width: 768px) {
+  .pd-title   { font-size: 1.85rem; }
+  .pd-message { font-size: 1rem; }
+  .pd-doc-card { width: min(400px, 60vw); }
+}

@@ -42,6 +42,7 @@
     "rewrites": [
       { "source": "/api/**", "function": "api", "region": "us-central1" },
       { "source": "/e/**", "function": "eventPage", "region": "us-central1" },
+      { "source": "/d/**", "function": "documentPage", "region": "us-central1" },
       { "source": "/app", "destination": "/app/index.html" },
       { "source": "/app/**", "destination": "/app/index.html" },
       { "source": "/creators", "destination": "/creators/index.html" },

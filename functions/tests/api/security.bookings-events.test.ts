@@ -6,9 +6,10 @@
  *   F-API2-08  Public event registration TOCTOU + unbounded fields
  *   F-API2-09  Email broadcast resolver picks attacker-supplied email
  *   F-API2-15  POST /creator/availability/slots ignores timezone
+ *   Signup photo uploads must stay reachable without auth (PUBLIC_PATHS).
  */
 
-import {beforeAll, beforeEach, describe} from "vitest";
+import {beforeAll, beforeEach, describe, expect} from "vitest";
 import {
   apiTest,
   apiCall,
@@ -151,4 +152,56 @@ describe("F-API2-09 — broadcast resolver fallback to responses[*email*]", () =
       throw new Error(`Got ${res.status}`);
     }
   );
+});
+
+describe("Signup photo attachments — public reachability + guards", () => {
+  // Regression: the route lives behind app.ts PUBLIC_PATHS. When it is missing
+  // from that allowlist the global gate answers 401 before the handler runs,
+  // and anonymous signups silently cannot upload anything.
+  apiTest("POST /events/:id/attachments/start is NOT behind the auth gate", async () => {
+    const res = await apiCall("POST", "/v1/events/no_such_event/attachments/start", {
+      body: {fieldId: "f_doc", contentType: "image/png"},
+    });
+    expect(res.status).not.toBe(401);
+    expect(res.status).toBe(404);
+  });
+
+  apiTest("rejects a fieldId the event did not declare as a photo field", async () => {
+    await seedFsDoc("events/ev_photo_pub", {
+      title: "QA",
+      creator_id: "c1",
+      status: "active",
+      fields: [
+        {id: "f_nombre", type: "text", label: "Nombre", required: true},
+        {id: "f_doc", type: "photo", label: "Comprobante", required: true},
+      ],
+    });
+
+    const res = await apiCall("POST", "/v1/events/ev_photo_pub/attachments/start", {
+      body: {fieldId: "f_nombre", contentType: "image/png"},
+    });
+    expect(res.status).toBe(400);
+  });
+
+  apiTest("rejects an unsupported content type", async () => {
+    await seedFsDoc("events/ev_photo_ct", {
+      title: "QA",
+      creator_id: "c1",
+      status: "active",
+      fields: [{id: "f_doc", type: "photo", label: "Comprobante", required: true}],
+    });
+
+    const res = await apiCall("POST", "/v1/events/ev_photo_ct/attachments/start", {
+      body: {fieldId: "f_doc", contentType: "application/pdf"},
+    });
+    expect(res.status).toBe(400);
+  });
+
+  apiTest("the creator read endpoint stays behind the auth gate", async () => {
+    const res = await apiCall(
+      "GET",
+      "/v1/creator/events/ev_photo_pub/registrations/r1/attachments/f_doc"
+    );
+    expect(res.status).toBe(401);
+  });
 });

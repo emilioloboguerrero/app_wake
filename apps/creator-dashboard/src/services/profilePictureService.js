@@ -42,7 +42,7 @@ class ProfilePictureService {
     });
   }
 
-  async uploadProfilePicture(userId, imageFile, onProgress = null) {
+  async uploadProfilePicture(imageFile, onProgress = null) {
     if (!imageFile) throw new Error('No se proporcionó ningún archivo');
     if (!imageFile.type.startsWith('image/')) throw new Error('El archivo debe ser una imagen');
 

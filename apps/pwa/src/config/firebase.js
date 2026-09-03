@@ -50,18 +50,25 @@ const RECAPTCHA_SITE_KEY = process.env.EXPO_PUBLIC_RECAPTCHA_SITE_KEY ?? '';
 const isStaging = firebaseEnv === 'staging';
 const isEmulator = process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
 
+// ReCaptchaEnterpriseProvider is web-only: it loads Google's reCAPTCHA script
+// and creates a DOM div, which crashes at call time on native (no document).
+// Native App Check (DeviceCheck/AppAttest, Play Integrity) is a later-phase
+// item — apiClient's #getAppCheckToken already no-ops safely when appCheck is
+// null, and the API tolerates missing tokens for first-party clients.
 let appCheck = null;
-if (RECAPTCHA_SITE_KEY) {
-  appCheck = initializeAppCheck(app, {
-    provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
-    isTokenAutoRefreshEnabled: true,
-  });
-} else if (!isStaging && !isEmulator) {
-  throw new Error(
-    'EXPO_PUBLIC_RECAPTCHA_SITE_KEY is required in production. ' +
-    'Set it at build time, or run with EXPO_PUBLIC_FIREBASE_ENV=staging / ' +
-    'EXPO_PUBLIC_USE_EMULATOR=true to skip App Check.'
-  );
+if (isWeb) {
+  if (RECAPTCHA_SITE_KEY) {
+    appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } else if (!isStaging && !isEmulator) {
+    throw new Error(
+      'EXPO_PUBLIC_RECAPTCHA_SITE_KEY is required in production. ' +
+      'Set it at build time, or run with EXPO_PUBLIC_FIREBASE_ENV=staging / ' +
+      'EXPO_PUBLIC_USE_EMULATOR=true to skip App Check.'
+    );
+  }
 }
 
 // Request persistent storage as early as possible (web). Reduces risk of IndexedDB

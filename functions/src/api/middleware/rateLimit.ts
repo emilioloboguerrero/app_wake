@@ -65,10 +65,25 @@ export async function checkIpRateLimit(
   req: Request,
   limitRpm: number
 ): Promise<void> {
+  await checkRateLimit(ipKey(req), limitRpm, "rate_limit_windows");
+}
+
+/** Sanitizes the caller IP for use as a Firestore doc ID (dots/colons are illegal). */
+function ipKey(req: Request): string {
   const ip = req.ip || req.socket.remoteAddress || "unknown";
-  // Sanitize IP for use as Firestore doc ID (replace dots/colons)
-  const safeIp = ip.replace(/[.:]/g, "_");
-  await checkRateLimit(`ip_${safeIp}`, limitRpm, "rate_limit_windows");
+  return `ip_${ip.replace(/[.:]/g, "_")}`;
+}
+
+/**
+ * Per-IP daily quota for public endpoints that hand out write capability
+ * (signed upload URLs). The per-minute limit stops bursts; this stops a slow
+ * drip from turning the bucket into free storage.
+ */
+export async function checkIpDailyRateLimit(
+  req: Request,
+  limitPerDay: number
+): Promise<void> {
+  await checkDailyRateLimit(ipKey(req), limitPerDay);
 }
 
 /** Enforces a per-key daily request quota using Firestore; throws RATE_LIMITED when the daily limit is exceeded. */

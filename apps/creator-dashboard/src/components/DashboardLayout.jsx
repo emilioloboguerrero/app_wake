@@ -22,8 +22,7 @@ import {
   KeyRound,
   Shield,
   TrendingUp,
-  LifeBuoy,
-} from 'lucide-react';
+  LifeBuoy, FileText} from 'lucide-react';
 
 const TYPE_BUG = 'bug';
 const TYPE_SUGGESTION = 'suggestion';
@@ -85,6 +84,15 @@ const NAV_ITEMS = [
     hideable: true,
     firestoreKey: 'eventos',
     icon: <CalendarCheck size={ICON_SIZE} />,
+  },
+  {
+    key: 'documentos',
+    label: 'Documentos',
+    path: '/documentos',
+    match: (p) => p === '/documentos',
+    hideable: true,
+    firestoreKey: 'documentos',
+    icon: <FileText size={ICON_SIZE} />,
   },
 ];
 

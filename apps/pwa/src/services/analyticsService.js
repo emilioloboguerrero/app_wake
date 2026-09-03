@@ -3,6 +3,14 @@
 // Session-level events only. No per-set, no per-Firestore-call, no autocapture.
 // Free tier safe: identified_only profiles, manual page views, sampled replay.
 //
+// posthog-js touches `document` at module-evaluation time (not just at call
+// time), so it cannot be statically imported: on native (no DOM) that crashes
+// the JS runtime before any `isWeb()` guard ever runs. init() dynamically
+// imports it instead, gated behind isWeb(), so the import never executes off
+// web. Calls made before it loads are queued and flushed on ready. Native
+// analytics is a later-phase item — every public method below is a safe no-op
+// on native for now.
+//
 // Public API:
 //   analyticsService.init()
 //   analyticsService.identify(userId, props)
@@ -13,15 +21,18 @@
 //
 // Every method is safe to call when PostHog is missing, opted out, or pre-init.
 
-import posthog from 'posthog-js';
 import logger from '../utils/logger';
 
 const APP_NAME = 'pwa';
 const STORAGE_OPTOUT_KEY = 'wake_analytics_opt_out';
 const REPLAY_SAMPLE = 0.2;
+const MAX_PENDING = 100;
 
-let initialized = false;
+let posthog = null;
+let ready = false;
+let disabled = false;
 let initAttempted = false;
+const pending = [];
 
 function isWeb() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
@@ -118,17 +129,26 @@ function scrubPiiFromProps(props) {
   return props;
 }
 
-function init() {
+function flushPending() {
+  while (pending.length) {
+    const fn = pending.shift();
+    try { fn(posthog); } catch (err) { logger.error?.('[analytics] call failed', err); }
+  }
+}
+
+async function init() {
   if (initAttempted) return;
   initAttempted = true;
-  if (!isWeb()) return;
+  if (!isWeb()) { disabled = true; return; }
 
   const key = readKey();
-  if (!key) return; // Silent no-op when key not configured (dev, opt-out, etc.)
+  if (!key) { disabled = true; return; } // Silent no-op when key not configured (dev, opt-out, etc.)
 
-  if (readOptOut()) return;
+  if (readOptOut()) { disabled = true; return; }
 
   try {
+    const mod = await import('posthog-js');
+    posthog = mod.default;
     posthog.init(key, {
       api_host: readHost(),
       person_profiles: 'identified_only',
@@ -162,48 +182,47 @@ function init() {
         } catch (err) {
           logger.error?.('[analytics] register failed', err);
         }
+        ready = true;
+        flushPending();
       },
     });
-    // Posthog-js captures events into its queue from the moment init() returns,
-    // even before the loaded callback fires. Gating on the loaded callback (as
-    // we did previously) silently dropped every event between init and load.
-    initialized = true;
   } catch (err) {
     logger.error?.('[analytics] init failed', err);
+    disabled = true;
   }
 }
 
-function withClient(fn) {
-  if (!initialized) return;
-  if (readOptOut()) return;
-  try {
-    fn(posthog);
-  } catch (err) {
-    logger.error?.('[analytics] call failed', err);
+function safe(fn) {
+  if (disabled || readOptOut()) return;
+  if (ready) {
+    try { fn(posthog); } catch (err) { logger.error?.('[analytics] call failed', err); }
+    return;
   }
+  // posthog is still loading — queue the call (bounded) and flush on ready.
+  if (pending.length < MAX_PENDING) pending.push(fn);
 }
 
 function identify(userId, props = {}) {
   if (!userId) return;
-  withClient((c) => c.identify(userId, props));
+  safe((c) => c.identify(userId, props));
 }
 
 function track(event, props = {}) {
   if (!event) return;
-  withClient((c) => c.capture(event, props));
+  safe((c) => c.capture(event, props));
 }
 
 function reset() {
-  withClient((c) => c.reset());
+  safe((c) => c.reset());
 }
 
 function setSuperProps(props = {}) {
-  withClient((c) => c.register(props));
+  safe((c) => c.register(props));
 }
 
 function optOut() {
   writeOptOut(true);
-  withClient((c) => c.opt_out_capturing());
+  safe((c) => c.opt_out_capturing());
 }
 
 function optIn() {
@@ -212,7 +231,7 @@ function optIn() {
     init();
     return;
   }
-  withClient((c) => c.opt_in_capturing());
+  safe((c) => c.opt_in_capturing());
 }
 
 function isOptedOut() {

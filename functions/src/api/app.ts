@@ -25,6 +25,7 @@ import emailRouter from "./routes/email.js";
 import enrollmentsRouter from "./routes/enrollments.js";
 import bundlesRouter from "./routes/bundles.js";
 import publicRouter from "./routes/public.js";
+import documentsRouter from "./routes/documents.js";
 import authRouter from "./routes/auth.js";
 
 export const app = express();
@@ -128,6 +129,11 @@ const PUBLIC_PATHS = [
   /^\/events\/[^/]+$/, // GET /events/:eventId
   /^\/events\/[^/]+\/register$/, // POST /events/:eventId/register
   /^\/events\/[^/]+\/waitlist$/, // POST /events/:eventId/waitlist
+  // Signup form photo upload: the signer is anonymous by definition. The
+  // handler enforces its own per-IP minute + day limits, re-checks
+  // wake_users_only, and refuses any fieldId the event did not declare as a
+  // photo field.
+  /^\/events\/[^/]+\/attachments\/start$/, // POST /events/:eventId/attachments/start
   /^\/app-resources$/, // GET /app-resources (exact match only)
   /^\/email\/unsubscribe$/, // GET /email/unsubscribe (public one-click unsub)
   /^\/bundles$/, // GET /bundles?creatorId=X (published only)
@@ -135,6 +141,10 @@ const PUBLIC_PATHS = [
   /^\/public\/creators\/[^/]+$/, // GET /public/creators/:username
   /^\/public\/creators\/[^/]+\/programs\/[^/]+$/, // GET /public/creators/:username/programs/:programId
   /^\/public\/storefront\/creators$/, // GET /public/storefront/creators
+  /^\/public\/documents\/[^/]+$/, // GET /public/documents/:docId
+  // Counters. Public by definition (the page has no session) and
+  // per-IP limited in the handler; they only ever increment.
+  /^\/public\/documents\/[^/]+\/(view|download)$/,
   /^\/public\/programs\/[^/]+\/availability$/, // GET program seat availability
   /^\/public\/programs\/[^/]+\/waitlist$/, // POST join sold-out waitlist
   /^\/auth\/request-magic-link$/, // POST passwordless sign-in request
@@ -207,6 +217,7 @@ for (const prefix of ["/v1", "/api/v1"]) {
   app.use(prefix, enrollmentsRouter);
   app.use(prefix, bundlesRouter);
   app.use(prefix, publicRouter);
+  app.use(prefix, documentsRouter);
   app.use(prefix, authRouter);
 }
 

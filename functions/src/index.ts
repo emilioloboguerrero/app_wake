@@ -38,6 +38,7 @@ import {
 import {
   escapeHtml as sharedEscapeHtml,
   generateUnsubscribeToken,
+  releaseEmailBudget,
   reserveEmailBudget,
 } from "./api/services/emailHelpers.js";
 import {buildSignInUrl as buildPurchaseSignInUrl} from "./api/services/purchaseEmails.js";
@@ -833,6 +834,7 @@ export const sendEventConfirmationEmail = functions
         },
       });
       if (resendError) {
+        await releaseEmailBudget(1);
         functions.logger.error("sendEventConfirmationEmail: resend error", {eventId, regId, error: resendError});
       } else {
         functions.logger.info("sendEventConfirmationEmail: sent", {eventId, regId, toEmail});
@@ -1191,24 +1193,39 @@ export const sendVideoExchangeNotification = functions
 // is isolated from apex transactional reputation. Requires DNS verification
 // in Resend; skipped to avoid extra ops work.
 
-const RETRY_BACKOFF_MINUTES = [2, 5, 15, 60]; // entries[i] = wait after attempt i
-const MAX_ATTEMPTS = RETRY_BACKOFF_MINUTES.length + 1; // first attempt + 4 retries = 5
+// Spans ~10h so a send survives a provider daily-quota exhaustion. The old
+// [2, 5, 15, 60] burned every attempt inside 82 minutes, which is shorter than
+// any daily quota window — a quota hit at 19:00 permanently failed recipients
+// that would have gone out fine after the reset.
+const RETRY_BACKOFF_MINUTES = [2, 5, 15, 60, 180, 360]; // entries[i] = wait after attempt i
+const MAX_ATTEMPTS = RETRY_BACKOFF_MINUTES.length + 1; // first attempt + 6 retries = 7
 const BATCH_SIZE = 100; // Resend batch API max
 const PENDING_FETCH_LIMIT = 200; // oversample so we can filter out in-backoff docs
 const MAX_BATCHES_PER_TICK = 5; // bounds tick duration; 500 emails/tick/send
 
 type TransientOrPermanent = "transient" | "permanent";
 
-function classifyResendError(message: string | null | undefined): TransientOrPermanent {
+function classifyResendError(
+  message: string | null | undefined,
+  // True when every address in the failed batch passed our own EMAIL_RE check.
+  // Resend intermittently rejects whole batches of well-formed addresses with
+  // an "Invalid `to` field" message (observed in prod: batches of 100 and 65
+  // rejected, the same addresses delivered fine in batches of 16). Since a
+  // batch call is all-or-nothing, believing that message drops every valid
+  // recipient in the batch on the first attempt. When we have already verified
+  // the shape of all of them, the complaint cannot be true — retry instead.
+  addressesPreValidated = false
+): TransientOrPermanent {
   if (!message) return "transient";
   const m = message.toLowerCase();
+  const addressShaped =
+    m.includes("invalid") && (m.includes("email") || m.includes("address") || m.includes("from"));
+  if (addressShaped && addressesPreValidated) return "transient";
   // Clearly permanent — retrying won't help
   if (m.includes("validation")) return "permanent";
-  if (m.includes("invalid") && (m.includes("email") || m.includes("address") || m.includes("from"))) {
-    return "permanent";
-  }
+  if (addressShaped) return "permanent";
   if (m.includes("not verified") || m.includes("domain is not verified")) return "permanent";
-  if (m.includes("forbidden") || m.includes("unauthorized") || m.includes("api key")) {
+  if (m.includes("forbidden") || m.includes("unauthorized") || m.includes("api key") || m.includes("api token")) {
     return "permanent";
   }
   if (m.includes("not found")) return "permanent";
@@ -1389,8 +1406,10 @@ export const processEmailQueue = onSchedule(
         // the batch. If exhausted, mark every doc in this batch as failed
         // with a budget error so the queue can resume tomorrow.
         let batchErrorMsg: string | null = null;
+        let budgetReserved = false;
         try {
           await reserveEmailBudget(batchPayload.length);
+          budgetReserved = true;
         } catch (err: unknown) {
           batchErrorMsg = err instanceof Error ? err.message : "Email budget error";
         }
@@ -1419,8 +1438,14 @@ export const processEmailQueue = onSchedule(
           await writeBatch.commit();
           sentThisTick += validDocs.length;
         } else {
-          // Classify and either schedule retry or mark failed
-          const errorKind = classifyResendError(batchErrorMsg);
+          // Nothing left Resend, so give the reservation back — otherwise the
+          // daily ceiling counts attempts and a retry loop starves every other
+          // sender on the platform. Skipped when the reservation itself was
+          // what failed; there is nothing to return in that case.
+          if (budgetReserved) await releaseEmailBudget(batchPayload.length);
+          // validDocs all passed EMAIL_RE above, so an address-shaped complaint
+          // from Resend is not attributable to any of them.
+          const errorKind = classifyResendError(batchErrorMsg, true);
           let retriedNow = 0;
           let failedNow = 0;
           for (const doc of validDocs) {
@@ -1756,6 +1781,77 @@ export const eventPage = onRequest(
     } catch (err) {
       functions.logger.error("eventPage Firestore read failed:", err);
       // Serve fallback HTML without dynamic tags
+    }
+
+    setStorefrontHtmlSecurityHeaders(res);
+    res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+    res.status(200).send(html);
+  }
+);
+
+// Serves /d/{docId} with the document's own OG tags baked in, so a link
+// pasted into WhatsApp or Instagram previews the cover and title instead of the
+// generic landing card. Same shape as eventPage: on any read failure it falls
+// through to the untouched index.html rather than failing the page.
+export const documentPage = onRequest(
+  {
+    region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 10,
+    concurrency: 80,
+  },
+  async (req, res) => {
+    const match = req.path.match(/^\/d\/([a-zA-Z0-9_-]+)/);
+    if (!match) {
+      res.status(404).send("Not found");
+      return;
+    }
+    if (pageFnRateLimited(req)) {
+      res.set("Retry-After", "60");
+      res.status(429).send("Too many requests");
+      return;
+    }
+    const docId = match[1];
+
+    let html = await getIndexHtml();
+    if (!html) {
+      res.set("Retry-After", "5");
+      res.status(503).send("Service temporarily unavailable");
+      return;
+    }
+
+    try {
+      const snap = await db.collection("public_documents").doc(docId).get();
+      const data = snap.data();
+      if (snap.exists && data?.status === "active") {
+        const title = (data.title as string) || "Documento Wake";
+        let description = "Descárgalo gratis en Wake";
+        if (typeof data.creator_id === "string" && data.creator_id) {
+          const creatorSnap = await db.collection("users").doc(data.creator_id).get();
+          const creator = creatorSnap.data();
+          const name = (creator?.displayName as string) || (creator?.name as string) || null;
+          if (name) description = `Un documento de ${name}. Descárgalo gratis.`;
+        }
+        const coverPath = typeof data.cover_path === "string" ? data.cover_path : null;
+        const rawCover = coverPath ?
+          `https://firebasestorage.googleapis.com/v0/b/${admin.storage().bucket().name}` +
+            `/o/${encodeURIComponent(coverPath)}?alt=media` :
+          null;
+        // Absolute: some crawlers refuse to resolve a relative og:image.
+        const ogImage = safeImageUrl(rawCover, "https://wakelab.co/app_icon.png");
+
+        html = html
+          .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta property="og:description"[^>]*>/, `<meta property="og:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta property="og:image"[^>]*>/, `<meta property="og:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<meta property="og:url"[^>]*>/, `<meta property="og:url" content="https://wakelab.co/d/${docId}" />`)
+          .replace(/<meta name="twitter:title"[^>]*>/, `<meta name="twitter:title" content="${escapeOgAttr(title)}" />`)
+          .replace(/<meta name="twitter:description"[^>]*>/, `<meta name="twitter:description" content="${escapeOgAttr(description)}" />`)
+          .replace(/<meta name="twitter:image"[^>]*>/, `<meta name="twitter:image" content="${escapeOgAttr(ogImage)}" />`)
+          .replace(/<title>[^<]*<\/title>/, `<title>${escapeOgAttr(title)} — Wake</title>`);
+      }
+    } catch (err) {
+      functions.logger.error("documentPage Firestore read failed:", err);
     }
 
     setStorefrontHtmlSecurityHeaders(res);
@@ -2419,6 +2515,107 @@ export const cleanupVideoExchanges = onSchedule(
       exchangesDeleted,
       messagesDeleted,
       messagesSaved,
+    });
+  }
+);
+
+// ─── Scheduled: event signup attachment retention ─────────────────────────
+// Photos submitted through signup forms are sensitive (payment receipts, IDs),
+// so they are kept on a short leash. Two sweeps, both over Storage only:
+//   uploads/       an upload nobody ever registered — deleted after 24h
+//   registrations/ and waitlist/ — deleted 30 days after the event date
+// The Firestore record survives either way; only the object goes, and the
+// creator's viewer reports "eliminado por retención" from then on.
+
+function eventDateMillis(value: unknown): number | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    const ms = Date.parse(value);
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value === "object") {
+    const ts = value as { toMillis?: () => number; _seconds?: number };
+    if (typeof ts.toMillis === "function") return ts.toMillis();
+    if (typeof ts._seconds === "number") return ts._seconds * 1000;
+  }
+  return null;
+}
+
+export const cleanupEventAttachments = onSchedule(
+  {
+    schedule: "every day 04:30",
+    timeZone: "America/Bogota",
+    region: "us-central1",
+    timeoutSeconds: 540,
+    memory: "512MiB",
+  },
+  async () => {
+    const bucket = admin.storage().bucket();
+    const now = Date.now();
+    const ORPHAN_MS = 24 * 60 * 60 * 1000;
+    const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+    const [files] = await bucket.getFiles({prefix: "events/"});
+    type BucketFile = (typeof files)[number];
+
+    const attachmentsByEvent = new Map<string, BucketFile[]>();
+    let orphansDeleted = 0;
+
+    for (const file of files) {
+      // events/{eventId}/{kind}/... — covers and OG renders sit one level up
+      // (events/{eventId}/cover.jpg) and are never touched here.
+      const parts = file.name.split("/");
+      if (parts.length < 4) continue;
+      const [, eventId, kind] = parts;
+
+      if (kind === "uploads") {
+        const created = Date.parse(String(file.metadata.timeCreated ?? ""));
+        if (Number.isFinite(created) && now - created > ORPHAN_MS) {
+          await file.delete().catch(() => undefined);
+          orphansDeleted++;
+        }
+        continue;
+      }
+
+      if (kind === "registrations" || kind === "waitlist") {
+        const list = attachmentsByEvent.get(eventId) ?? [];
+        list.push(file);
+        attachmentsByEvent.set(eventId, list);
+      }
+    }
+
+    let expiredDeleted = 0;
+
+    if (attachmentsByEvent.size > 0) {
+      const eventIds = [...attachmentsByEvent.keys()];
+      const eventDocs = await db.getAll(
+        ...eventIds.map((id) => db.collection("events").doc(id))
+      );
+
+      for (const eventDoc of eventDocs) {
+        const eventFiles = attachmentsByEvent.get(eventDoc.id) ?? [];
+        const eventDate = eventDoc.exists ? eventDateMillis(eventDoc.data()?.date) : null;
+
+        for (const file of eventFiles) {
+          // A deleted event makes every file under it an orphan. An event with
+          // no usable date falls back to the object's own age.
+          const reference = !eventDoc.exists ?
+            0 :
+            eventDate ?? Date.parse(String(file.metadata.timeCreated ?? ""));
+
+          if (!Number.isFinite(reference)) continue;
+          if (now - reference > RETENTION_MS) {
+            await file.delete().catch(() => undefined);
+            expiredDeleted++;
+          }
+        }
+      }
+    }
+
+    functions.logger.info("cleanupEventAttachments: done", {
+      scanned: files.length,
+      orphansDeleted,
+      expiredDeleted,
     });
   }
 );
