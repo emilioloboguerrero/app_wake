@@ -3009,8 +3009,12 @@ so the browser renders and downloads straight from the Storage CDN.
 | `status` | string | `active` publishes it; anything else 404s |
 
 **Publishing a document:**
-1. Upload the file to Storage at `public_documents/{docId}/{fileName}`.
-2. Create `public_documents/{docId}` with the fields above and `status: "active"`.
+1. Create `public_documents/{docId}` with a Firestore auto-ID — same as an event, the
+   URL is an unguessable 20-character code, not a readable slug. Nothing enumerates
+   this collection, so the ID is the only thing standing between a document and
+   someone who was never sent the link.
+2. Upload the file to Storage at `public_documents/{docId}/{fileName}`, matching that ID.
+3. Set the fields above with `status: "active"`.
 
 ---
 

@@ -226,7 +226,6 @@
 
 .pd-cta:hover    { opacity: 0.88; }
 .pd-cta:active   { transform: scale(0.977); }
-.pd-cta:disabled { opacity: 0.6; cursor: default; animation: none; }
 
 @keyframes pdCtaPulse {
   0%, 100% { box-shadow: 0 0 0 0    rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45); }
@@ -356,7 +355,7 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Escape hatch for the browser that silently blocked the save. */
+/* Second chance if the new tab was blocked by a popup blocker. */
 .pd-again {
   margin-top: 26px;
   padding: 8px 4px;
@@ -373,8 +372,7 @@
   transition: color 0.2s;
 }
 
-.pd-again:hover    { color: rgba(255, 255, 255, 0.75); }
-.pd-again:disabled { cursor: default; opacity: 0.5; }
+.pd-again:hover { color: rgba(255, 255, 255, 0.75); }
 
 /* Share button — glass, so it reads as secondary to the download that just ran */
 .pd-cta--share {

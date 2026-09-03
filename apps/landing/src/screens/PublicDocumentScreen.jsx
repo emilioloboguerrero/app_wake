@@ -119,7 +119,6 @@ export default function PublicDocumentScreen() {
 
   const [phase, setPhase] = useState('loading'); // loading | ready | downloaded | not_found | error
   const [doc, setDoc] = useState(null);
-  const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -142,33 +141,13 @@ export default function PublicDocumentScreen() {
   const thumb = useFirstPageThumbnail(doc?.fileUrl, doc?.contentType, canvasRef);
   const accent = useAccentFromImage(thumb.snapshot) || DEFAULT_ACCENT;
 
-  const handleDownload = useCallback(async () => {
-    if (!doc || downloading) return;
-    setDownloading(true);
-    try {
-      // The file is on a different origin, where the `download` attribute is
-      // ignored — the browser would just open the PDF in a tab. Fetching it as
-      // a blob first is what actually saves it under the intended name.
-      const res = await fetch(doc.fileUrl);
-      if (!res.ok) throw new Error('fetch failed');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = doc.fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-      setPhase('downloaded');
-    } catch {
-      // The tab fallback still gets them the file, so it counts as done.
-      window.open(doc.fileUrl, '_blank', 'noopener,noreferrer');
-      setPhase('downloaded');
-    } finally {
-      setDownloading(false);
-    }
-  }, [doc, downloading]);
+  const handleDownload = useCallback(() => {
+    if (!doc) return;
+    // The file gets its own tab so this one is free to move to the success
+    // state immediately, instead of sitting on the cover while bytes transfer.
+    window.open(doc.fileUrl, '_blank', 'noopener,noreferrer');
+    setPhase('downloaded');
+  }, [doc]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -237,10 +216,10 @@ export default function PublicDocumentScreen() {
               </svg>
             </div>
             <h1 className="pd-success-title">¡Listo, ya es tuyo!</h1>
-            <p className="pd-success-sub">Busca el archivo en tus descargas.</p>
+            <p className="pd-success-sub">Se abrió en una pestaña nueva.</p>
             <p className="pd-success-doc">{doc.title}</p>
-            <button className="pd-again" onClick={handleDownload} disabled={downloading}>
-              {downloading ? 'Descargando…' : 'Descargar de nuevo'}
+            <button className="pd-again" onClick={handleDownload}>
+              Abrir de nuevo
             </button>
           </div>
           <div className="pd-success-footer">
@@ -284,8 +263,8 @@ export default function PublicDocumentScreen() {
           </div>
 
           <div className="pd-hero-footer">
-            <button className="pd-cta pd-cta--pulse" onClick={handleDownload} disabled={downloading}>
-              {downloading ? 'Descargando…' : doc.ctaLabel}
+            <button className="pd-cta pd-cta--pulse" onClick={handleDownload}>
+              {doc.ctaLabel}
             </button>
             {meta && <span className="pd-meta">{meta}</span>}
           </div>
