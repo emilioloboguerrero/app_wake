@@ -1837,7 +1837,8 @@ export const documentPage = onRequest(
           `https://firebasestorage.googleapis.com/v0/b/${admin.storage().bucket().name}` +
             `/o/${encodeURIComponent(coverPath)}?alt=media` :
           null;
-        const ogImage = safeImageUrl(rawCover, "/app_icon.png");
+        // Absolute: some crawlers refuse to resolve a relative og:image.
+        const ogImage = safeImageUrl(rawCover, "https://wakelab.co/app_icon.png");
 
         html = html
           .replace(/<meta property="og:title"[^>]*>/, `<meta property="og:title" content="${escapeOgAttr(title)}" />`)
