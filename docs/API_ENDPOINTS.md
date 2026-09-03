@@ -2987,6 +2987,61 @@ Get landing page content assets (hero images, program cards, marketing copy).
 
 ---
 
+## 13. Public Documents
+
+Backs the shareable download page at `wakelab.co/d/{docId}` — an event-flier-style
+cover showing the document's first page, its title and the creator's byline. The
+file itself is never proxied: `storage.rules` opens `public_documents/{docId}/` for public read,
+so the browser renders and downloads straight from the Storage CDN.
+
+**Firestore `public_documents/{docId}`:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `title` | string | Shown as the page heading |
+| `creator_id` | string | UID of the creator who publishes it; the byline reads their `displayName` live |
+| `cta_label` | string | Button text, defaults to "Descargar ahora" |
+| `storage_path` | string | Must be `public_documents/{docId}/{fileName}` |
+| `file_name` | string | Name the file is saved under |
+| `content_type` | string | `application/pdf` renders the first-page thumbnail; anything else falls back to a file card |
+| `size_bytes` | number | Optional, shown under the button |
+| `page_count` | number | Optional, shown under the button |
+| `status` | string | `active` publishes it; anything else 404s |
+
+**Publishing a document:**
+1. Upload the file to Storage at `public_documents/{docId}/{fileName}`.
+2. Create `public_documents/{docId}` with the fields above and `status: "active"`.
+
+---
+
+#### `GET /api/v1/public/documents/:docId`
+Get a public document's metadata and its download URL.
+
+**Auth:** none (60 RPM per IP)
+**Request:** none
+**Response:**
+```json
+{
+  "data": {
+    "docId": "string",
+    "title": "string",
+    "creatorName": "string | null",
+    "ctaLabel": "string",
+    "fileName": "string",
+    "contentType": "string",
+    "sizeBytes": "number | null",
+    "pageCount": "number | null",
+    "fileUrl": "string"
+  }
+}
+```
+**Notes:**
+- Drafts and missing documents return the same 404 (`No encontramos este documento`) — no enumeration oracle.
+- Cached at the CDN with the storefront header (`max-age=60, s-maxage=300`).
+- A row whose `storage_path` doesn't sit under `public_documents/{docId}/` is treated as a half-finished upload and 404s.
+
+---
+
 ## Appendix A — Domain-Specific Error Codes
 
 | Code | Status | Domain | Meaning |

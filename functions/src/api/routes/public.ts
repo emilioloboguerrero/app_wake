@@ -1399,4 +1399,69 @@ router.post("/public/programs/:programId/waitlist", async (req, res) => {
   res.status(201).json({data: {status: "waitlisted", alreadyOnList: false}});
 });
 
+// ─── Public documents (lead magnets, guides, PDFs) ──────────────────────────
+//
+// GET /public/documents/:docId powers `wakelab.co/d/:docId` — a shareable
+// download page. The file itself lives under `public_documents/{docId}/` in
+// Storage, which storage.rules opens for public read, so the browser fetches
+// the bytes straight from the CDN and never through this function. Drafts are
+// invisible: a draft and a missing document return the identical 404.
+
+const DOC_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const DOCUMENT_NOT_FOUND = "No encontramos este documento";
+const STORAGE_BUCKET = "wolf-20b8b.firebasestorage.app";
+
+/** Public, tokenless download URL for an object storage.rules opens to everyone. */
+function publicStorageUrl(storagePath: string): string {
+  return "https://firebasestorage.googleapis.com/v0/b/" + STORAGE_BUCKET +
+    "/o/" + encodeURIComponent(storagePath) + "?alt=media";
+}
+
+router.get("/public/documents/:docId", async (req, res) => {
+  await checkIpRateLimit(req, 60);
+
+  const docId = req.params.docId || "";
+  if (!DOC_ID_RE.test(docId)) {
+    throw new WakeApiServerError("NOT_FOUND", 404, DOCUMENT_NOT_FOUND);
+  }
+
+  const snap = await db.collection("public_documents").doc(docId).get();
+  if (!snap.exists || snap.data()?.status !== "active") {
+    throw new WakeApiServerError("NOT_FOUND", 404, DOCUMENT_NOT_FOUND);
+  }
+
+  const doc = snap.data()!;
+  const storagePath = typeof doc.storage_path === "string" ? doc.storage_path : "";
+  // A document row without a file is a half-finished upload, not a page.
+  if (!storagePath.startsWith("public_documents/" + docId + "/")) {
+    functions.logger.error("public_document has no valid storage_path", {docId});
+    throw new WakeApiServerError("NOT_FOUND", 404, DOCUMENT_NOT_FOUND);
+  }
+
+  // Byline. Read live off the creator's profile rather than denormalizing it,
+  // so renaming a creator doesn't leave a stale name on every document they
+  // ever published. One extra read on an endpoint the CDN caches for 5 min.
+  let creatorName: string | null = null;
+  if (typeof doc.creator_id === "string" && doc.creator_id) {
+    const creatorSnap = await db.collection("users").doc(doc.creator_id).get();
+    const creator = creatorSnap.data();
+    creatorName = (creator?.displayName as string) || (creator?.name as string) || null;
+  }
+
+  setStorefrontCache(res);
+  res.json({
+    data: {
+      docId: snap.id,
+      title: doc.title || "Documento",
+      creatorName,
+      ctaLabel: doc.cta_label || "Descargar ahora",
+      fileName: doc.file_name || docId + ".pdf",
+      contentType: doc.content_type || "application/pdf",
+      sizeBytes: typeof doc.size_bytes === "number" ? doc.size_bytes : null,
+      pageCount: typeof doc.page_count === "number" ? doc.page_count : null,
+      fileUrl: publicStorageUrl(storagePath),
+    },
+  });
+});
+
 export default router;

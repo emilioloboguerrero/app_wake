@@ -187,6 +187,15 @@ service firebase.storage {
       allow read, write: if false;
     }
 
+    // Public documents (lead magnets, guides) served by wakelab.co/d/{docId}.
+    // Public read is the point: the browser renders the first page and
+    // downloads the file straight from the CDN, no signing, no function hop.
+    // Upload via Admin SDK or Firebase Console only; Admin SDK bypasses rules.
+    match /public_documents/{docId}/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Public landing assets (hero clips, marketing media) — readable by anyone.
     // Upload via Admin SDK or Firebase Console only; Admin SDK bypasses rules.
     match /app_resources/{allPaths=**} {

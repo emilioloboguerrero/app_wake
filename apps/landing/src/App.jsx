@@ -14,6 +14,7 @@ const LegalDocumentsScreen = lazy(() => import('./screens/LegalDocumentsScreen')
 const CreadoresLandingScreen = lazy(() => import('./screens/CreadoresLandingScreen'));
 const StorefrontScreen = lazy(() => import('./screens/StorefrontScreen'));
 const EventSignupScreen = lazy(() => import('./screens/EventSignupScreen'));
+const PublicDocumentScreen = lazy(() => import('./screens/PublicDocumentScreen'));
 const LandingDesignScreen = lazy(() => import('./screens/LandingDesignScreen'));
 const TestLandingScreen = lazy(() => import('./screens/TestLandingScreen'));
 const NotFoundScreen = lazy(() => import('./screens/NotFoundScreen'));
@@ -60,6 +61,16 @@ function AppContent() {
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/e/:eventId" element={<EventSignupScreen />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+
+  if (location.pathname.startsWith('/d/')) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/d/:docId" element={<PublicDocumentScreen />} />
         </Routes>
       </Suspense>
     );

@@ -4,57 +4,11 @@ import { auth } from '../config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { QRCodeSVG } from 'qrcode.react';
 import apiClient from '../utils/apiClient';
-import heroLogoSrc from '../assets/hero-logo.svg';
 import wakeLogotypeSrc from '../assets/Logotipo-WAKE-positivo.svg';
 import CascadeText from '../components/CascadeText';
+import WakeLoader from '../components/WakeLoader';
 import { compressForUpload, formatBytes, MAX_INPUT_BYTES, PICKER_ACCEPT } from '../utils/imageCompressor';
 import './EventSignupScreen.css';
-
-// ─── Wake Loader ──────────────────────────────────────────────────
-const LOADER_DURATION = 2700;
-const LOADER_KEY_TIME = 0.72;
-let _loaderUid = 0;
-
-function WakeLoader({ size = 64 }) {
-  const uid = useRef(++_loaderUid).current;
-  const gradId = `wl-g-${uid}`;
-  const maskId = `wl-m-${uid}`;
-  const svgRef = useRef(null);
-
-  useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const grad = svg.querySelector(`#${gradId}`);
-    if (!grad) return;
-    let raf;
-    const start = performance.now();
-    const tick = () => {
-      const t = ((performance.now() - start) % LOADER_DURATION) / LOADER_DURATION;
-      const x = t <= LOADER_KEY_TIME ? -30 + (140 * t) / LOADER_KEY_TIME : -30;
-      grad.setAttribute('gradientTransform', `translate(${x}, 0)`);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [gradId]);
-
-  return (
-    <svg ref={svgRef} width={size} height={size} viewBox="0 0 80 80">
-      <defs>
-        <mask id={maskId}>
-          <image href={heroLogoSrc} x="0" y="0" width="80" height="80" />
-        </mask>
-        <linearGradient id={gradId} gradientUnits="userSpaceOnUse" x1="-20" y1="0" x2="20" y2="0" gradientTransform="translate(-30, 0)">
-          <stop offset="0%" stopColor="white" stopOpacity="0" />
-          <stop offset="50%" stopColor="white" stopOpacity="1" />
-          <stop offset="100%" stopColor="white" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <image href={heroLogoSrc} x="0" y="0" width="80" height="80" opacity="0.18" />
-      <rect x="0" y="0" width="80" height="80" fill={`url(#${gradId})`} mask={`url(#${maskId})`} />
-    </svg>
-  );
-}
 
 // ─── Curved progress line (same as PWA onboarding) ────────────────
 const PROGRESS_PATH = 'M 70,0 C 70,85 295,110 265,215 C 235,320 38,355 60,455 C 82,555 305,585 272,680 C 239,775 42,810 68,875 C 82,920 185,910 185,910';
